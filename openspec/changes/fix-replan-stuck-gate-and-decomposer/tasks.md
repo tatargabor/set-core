@@ -60,16 +60,16 @@
 
 ## 7. Content-Aware Gate Selection (Layer 1 + Web module)
 
-- [ ] 7.0 **Module refactor first**: create `lib/set_orch/gate_registry.py` by moving `GateConfig` + selector logic out of `gate_profiles.py`. `gate_profiles.py` keeps public re-exports for back-compat. ALL subsequent tasks in section 7 depend on this. [REQ: content-classifier]
-- [ ] 7.1 Add `ProjectType.content_classifier_rules() -> dict[str, list[str]]` to the ABC in `lib/set_orch/profile_types.py` (default `{}` on `CoreProfile`) [REQ: content-classifier]
-- [ ] 7.2 Implement `classify_content(globs: list[str]) -> set[str]` in the new `lib/set_orch/gate_registry.py` (created in 7.0) [REQ: content-classifier]
-- [ ] 7.3 Add `ProjectType.content_tag_to_gates() -> dict[str, set[str]]` with core defaults per spec ("ui"→{design-fidelity, i18n_check}, "e2e_ui"→{e2e}, "server"→{test}, "schema"→{build}, "config"→{build}, "i18n_catalog"→{i18n_check}) [REQ: content-tag-to-gate-name-mapping]
-- [ ] 7.4 Implement `WebProjectType.content_classifier_rules()` in `modules/web/set_project_web/project_type.py`: map `src/app/**/*.tsx` and `src/components/**/*.tsx` → `"ui"`, map `tests/e2e/**/*.spec.ts` → `"e2e_ui"`, map `src/server/**` and `src/lib/**` → `"server"`, map `prisma/**` → `"schema"`, map `messages/*.json` → `"i18n_catalog"` [REQ: content-classifier]
-- [ ] 7.5 In the gate selector (currently static `change_type → gate_set`), invoke `classify_content(change.touched_file_globs)` and union the mapped gate names with the existing gate set [REQ: content-aware-gate-selector]
-- [ ] 7.6 Ensure selection is additive: `gate_hints` with value `"require"` forces inclusion; `"skip"` excludes; content scan can only add, never subtract [REQ: content-aware-gate-selector]
-- [ ] 7.7 In `engine.monitor_loop()`, detect the first-commit transition: when a change's `new_commits_since_dispatch` goes from 0 to 1 AND `gate_recheck_done == False`, call `gate_registry.redetect(change)` before running the verify pipeline; set `gate_recheck_done = True` [REQ: re-detection-on-first-commit-poll]
-- [ ] 7.8 `redetect()` scans the files from the first commit's diff, classifies them, unions new tags into `touched_file_globs`, and recomputes the gate set; emits `GATE_SET_EXPANDED` event if the set grew [REQ: re-detection-on-first-commit-poll]
-- [ ] 7.9 Integration test: change with `change_type=infrastructure` and scope containing `src/app/**/*.tsx` → verify `design-fidelity` + `e2e` + `i18n_check` appear in active gate set [REQ: content-aware-gate-selector]
+- [x] 7.0 **Module refactor first**: create `lib/set_orch/gate_registry.py` by moving `GateConfig` + selector logic out of `gate_profiles.py`. `gate_profiles.py` keeps public re-exports for back-compat. ALL subsequent tasks in section 7 depend on this. [REQ: content-classifier]
+- [x] 7.1 Add `ProjectType.content_classifier_rules() -> dict[str, list[str]]` to the ABC in `lib/set_orch/profile_types.py` (default `{}` on `CoreProfile`) [REQ: content-classifier]
+- [x] 7.2 Implement `classify_content(globs: list[str]) -> set[str]` in the new `lib/set_orch/gate_registry.py` (created in 7.0) [REQ: content-classifier]
+- [x] 7.3 Add `ProjectType.content_tag_to_gates() -> dict[str, set[str]]` with core defaults per spec ("ui"→{design-fidelity, i18n_check}, "e2e_ui"→{e2e}, "server"→{test}, "schema"→{build}, "config"→{build}, "i18n_catalog"→{i18n_check}) [REQ: content-tag-to-gate-name-mapping]
+- [x] 7.4 Implement `WebProjectType.content_classifier_rules()` in `modules/web/set_project_web/project_type.py`: map `src/app/**/*.tsx` and `src/components/**/*.tsx` → `"ui"`, map `tests/e2e/**/*.spec.ts` → `"e2e_ui"`, map `src/server/**` and `src/lib/**` → `"server"`, map `prisma/**` → `"schema"`, map `messages/*.json` → `"i18n_catalog"` [REQ: content-classifier]
+- [x] 7.5 In the gate selector (currently static `change_type → gate_set`), invoke `classify_content(change.touched_file_globs)` and union the mapped gate names with the existing gate set [REQ: content-aware-gate-selector]
+- [x] 7.6 Ensure selection is additive: `gate_hints` with value `"require"` forces inclusion; `"skip"` excludes; content scan can only add, never subtract [REQ: content-aware-gate-selector]
+- [x] 7.7 In `engine.monitor_loop()`, detect the first-commit transition: when a change's `new_commits_since_dispatch` goes from 0 to 1 AND `gate_recheck_done == False`, call `gate_registry.redetect(change)` before running the verify pipeline; set `gate_recheck_done = True` [REQ: re-detection-on-first-commit-poll]
+- [x] 7.8 `redetect()` scans the files from the first commit's diff, classifies them, unions new tags into `touched_file_globs`, and recomputes the gate set; emits `GATE_SET_EXPANDED` event if the set grew [REQ: re-detection-on-first-commit-poll]
+- [x] 7.9 Integration test: change with `change_type=infrastructure` and scope containing `src/app/**/*.tsx` → verify `design-fidelity` + `e2e` + `i18n_check` appear in active gate set [REQ: content-aware-gate-selector]
 
 ## 8. Web Gate Tuning (Layer 2 — web module)
 

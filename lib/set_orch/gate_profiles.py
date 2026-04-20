@@ -205,6 +205,17 @@ def resolve_gate_config(
                     else:
                         config.set(key, val)
 
+    # Step 7: Content-aware augmentation (section 7 of
+    # fix-replan-stuck-gate-and-decomposer). Purely additive — the
+    # classifier UNIONs gate names derived from `change.touched_file_globs`
+    # into the current gate set. Never removes. `gate_hints="require"`
+    # wins; `gate_hints="skip"` wins over classifier suggestions.
+    try:
+        from .gate_registry import augment_gate_config_with_content
+        augment_gate_config_with_content(config, change, profile)
+    except Exception:
+        logger.debug("content-aware gate augmentation skipped", exc_info=True)
+
     change_name = getattr(change, "name", "?")
     logger.debug(
         "Gate config for %s (type=%s): %s",

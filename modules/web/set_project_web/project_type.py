@@ -959,6 +959,37 @@ class WebProjectType(CoreProfile):
         }
         return overrides.get(change_type, {})
 
+    def content_classifier_rules(self) -> dict[str, list[str]]:
+        """Map Next.js/Playwright file layout to content tags used by the
+        content-aware gate selector (section 7 of
+        fix-replan-stuck-gate-and-decomposer).
+
+        A change whose scope touches `src/app/**/*.tsx` is treated as UI
+        content regardless of its declared `change_type` — the selector
+        will add design-fidelity + i18n_check + (via `e2e_ui` tag if
+        Playwright specs are touched) e2e to the gate set.
+        """
+        return {
+            "ui": [
+                "src/app/**/*.tsx",
+                "src/components/**/*.tsx",
+            ],
+            "e2e_ui": [
+                "tests/e2e/**/*.spec.ts",
+                "tests/e2e/**/*.spec.tsx",
+            ],
+            "server": [
+                "src/server/**",
+                "src/lib/**",
+            ],
+            "schema": [
+                "prisma/**",
+            ],
+            "i18n_catalog": [
+                "messages/*.json",
+            ],
+        }
+
     def rule_keyword_mapping(self) -> dict:
         """Web-specific keyword-to-rule mapping.
 

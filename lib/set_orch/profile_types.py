@@ -350,6 +350,52 @@ class ProjectType(ABC):
     def gate_overrides(self, change_type: str) -> dict:
         return {}
 
+    # ── Content-aware gate selection (section 7 of
+    # fix-replan-stuck-gate-and-decomposer). `content_classifier_rules()`
+    # maps a glob pattern to a content tag; `content_tag_to_gates()` maps
+    # tags to gate names that must run. Both default to empty on
+    # CoreProfile — only project-type plugins (web, example) need to
+    # declare them.
+
+    def content_classifier_rules(self) -> dict[str, list[str]]:
+        """Return a mapping of content tag → list of glob patterns.
+
+        The dispatcher classifies `touched_file_globs` against these rules
+        and unions the resulting tags into the gate-selector decision.
+        Default is empty — CoreProfile's universal gates drive selection.
+
+        Example (web profile):
+            {"ui": ["src/app/**/*.tsx", "src/components/**/*.tsx"],
+             "e2e_ui": ["tests/e2e/**/*.spec.ts"],
+             "server": ["src/server/**", "src/lib/**"],
+             "schema": ["prisma/**"],
+             "i18n_catalog": ["messages/*.json"]}
+        """
+        return {}
+
+    def content_tag_to_gates(self) -> dict[str, set[str]]:
+        """Return a mapping of content tag → set of gate names to force-run.
+
+        Applied additively on top of the static change_type → gate_set
+        table: the gate set grows by `content_tag_to_gates()[tag]` for
+        every tag matched in the change's scope. It NEVER shrinks.
+        Default is CoreProfile's minimal map, safe for any project type:
+            ui            → design-fidelity, i18n_check
+            e2e_ui        → e2e
+            server        → test
+            schema        → build
+            config        → build
+            i18n_catalog  → i18n_check
+        """
+        return {
+            "ui": {"design-fidelity", "i18n_check"},
+            "e2e_ui": {"e2e"},
+            "server": {"test"},
+            "schema": {"build"},
+            "config": {"build"},
+            "i18n_catalog": {"i18n_check"},
+        }
+
     def rule_keyword_mapping(self) -> dict:
         return {}
 

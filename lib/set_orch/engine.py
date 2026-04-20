@@ -1401,6 +1401,68 @@ def _has_commits_since_gate(wt_path: str, last_gate_commit: str) -> bool:
         return True  # on error, assume progress (safe: triggers re-gate not stall)
 
 
+def _first_commit_gate_redetect(
+    state_file: str,
+    change,
+    event_bus: Any,
+) -> None:
+    """If this is the first poll after the agent committed anything, run
+    the content-aware gate re-detection (section 7 task 7.7).
+
+    One-shot per change: the `gate_recheck_done` flag guards re-entry.
+    Reads files from `git log <default>..HEAD --name-only`, reclassifies
+    them via the active profile, and emits `GATE_SET_EXPANDED` when the
+    gate set grows. Swallows all git errors — re-detection is best
+    effort.
+    """
+    if getattr(change, "gate_recheck_done", False):
+        return
+    wt = getattr(change, "worktree_path", "") or ""
+    if not wt or not os.path.isdir(wt):
+        return
+    try:
+        from .subprocess_utils import detect_default_branch
+        main_branch = detect_default_branch(wt) or "main"
+        r = subprocess.run(
+            ["git", "-C", wt, "log", f"{main_branch}..HEAD",
+             "--name-only", "--pretty=format:"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    if r.returncode != 0:
+        return
+
+    paths = sorted({ln.strip() for ln in r.stdout.splitlines() if ln.strip()})
+    if not paths:
+        # No commits yet — mark nothing, leave flag False for next poll
+        return
+
+    from .profile_loader import load_profile
+    from .gate_registry import redetect
+    profile = load_profile()
+    added = redetect(change, paths, profile)
+
+    # Persist: set gate_recheck_done=True and updated touched_file_globs.
+    with locked_state(state_file) as state:
+        for c in state.changes:
+            if c.name == change.name:
+                c.gate_recheck_done = True
+                c.touched_file_globs = list(change.touched_file_globs or [])
+                break
+
+    if added and event_bus:
+        event_bus.emit(
+            "GATE_SET_EXPANDED",
+            change=change.name,
+            data={"added_gates": sorted(added), "file_count": len(paths)},
+        )
+        logger.info(
+            "Gate set expanded for %s on first commit: +%s (from %d files)",
+            change.name, sorted(added), len(paths),
+        )
+
+
 def _apply_token_runaway_check(
     state_file: str,
     change_name: str,
@@ -1775,6 +1837,18 @@ def _poll_active_changes(
                 if change.name not in s.merge_queue:
                     s.merge_queue.append(change.name)
             continue
+
+        # First-commit gate re-detection (section 7 task 7.7). Runs once
+        # per change, before the verify pipeline — a change typed as
+        # `infrastructure` that committed UI files now gets design-fidelity
+        # + e2e + i18n_check added to its gate set.
+        try:
+            _first_commit_gate_redetect(state_file, change, event_bus)
+        except Exception:
+            logger.warning(
+                "first-commit gate re-detection failed for %s", change.name,
+                exc_info=True,
+            )
 
         try:
             poll_change(
