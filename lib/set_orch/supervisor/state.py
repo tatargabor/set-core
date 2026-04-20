@@ -97,6 +97,17 @@ class SupervisorStatus:
     # halts immediately and the manager API surfaces this to the dashboard.
     permanent_error: Optional[dict] = None
 
+    # Trigger back-off windows — per-tuple suppression of triggers whose
+    # retry budget is exhausted. Distinct from `trigger_attempts` (which
+    # tracks cumulative attempts for the lifetime budget): this tracks the
+    # next time a specific (trigger, change, reason_hash) tuple is allowed
+    # to emit again. Key format: f"{trigger}::{change}::{reason_hash}" where
+    # `change` is "" for orchestration-scoped triggers (e.g. log_silence).
+    # Value shape: {"step": int, "back_off_until": float}. Exponential steps
+    # cap at 600s. Cleared for a tuple when the detector's condition no
+    # longer holds.
+    trigger_backoffs: dict = field(default_factory=dict)
+
 
 def _status_path(project_path: str | Path) -> Path:
     return Path(project_path) / ".set" / "supervisor" / "status.json"

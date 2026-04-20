@@ -840,3 +840,168 @@ class TestRunHook:
             f.write("#!/bin/bash\nexit 1\n")
         # NOT making it executable
         assert run_hook("on_fail", script, "change-1") is True
+
+
+class TestChangeSchemaAdditions:
+    """Round-trip tests for fields added by fix-replan-stuck-gate-and-decomposer.
+
+    Each new field must survive to_dict() -> from_dict() unchanged, and
+    absence from old state files must produce the documented default.
+    """
+
+    def test_stuck_loop_count_default_is_zero(self):
+        c = Change(name="x")
+        assert c.stuck_loop_count == 0
+        d = c.to_dict()
+        assert d["stuck_loop_count"] == 0
+
+    def test_stuck_loop_count_roundtrip(self):
+        c = Change(name="x", stuck_loop_count=3)
+        restored = Change.from_dict(c.to_dict())
+        assert restored.stuck_loop_count == 3
+
+    def test_stuck_loop_count_missing_loads_zero(self):
+        # Old state file without the field
+        old = {"name": "x", "scope": "", "status": "pending"}
+        c = Change.from_dict(old)
+        assert c.stuck_loop_count == 0
+
+    def test_last_gate_fingerprint_default_none(self):
+        c = Change(name="x")
+        assert c.last_gate_fingerprint is None
+        # Must NOT be serialised when None
+        d = c.to_dict()
+        assert "last_gate_fingerprint" not in d
+
+    def test_last_gate_fingerprint_serialises_when_set(self):
+        c = Change(name="x", last_gate_fingerprint="abc123")
+        d = c.to_dict()
+        assert d["last_gate_fingerprint"] == "abc123"
+        restored = Change.from_dict(d)
+        assert restored.last_gate_fingerprint == "abc123"
+
+    def test_token_runaway_baseline_default_none(self):
+        c = Change(name="x")
+        assert c.token_runaway_baseline is None
+        d = c.to_dict()
+        assert "token_runaway_baseline" not in d
+
+    def test_token_runaway_baseline_roundtrip(self):
+        c = Change(name="x", token_runaway_baseline=70_500_000)
+        d = c.to_dict()
+        assert d["token_runaway_baseline"] == 70_500_000
+        restored = Change.from_dict(d)
+        assert restored.token_runaway_baseline == 70_500_000
+
+    def test_fix_iss_child_default_none_omitted(self):
+        c = Change(name="x")
+        assert c.fix_iss_child is None
+        d = c.to_dict()
+        assert "fix_iss_child" not in d
+
+    def test_fix_iss_child_roundtrip(self):
+        c = Change(name="x", fix_iss_child="fix-iss-007-foo")
+        d = c.to_dict()
+        assert d["fix_iss_child"] == "fix-iss-007-foo"
+        restored = Change.from_dict(d)
+        assert restored.fix_iss_child == "fix-iss-007-foo"
+
+    def test_gate_recheck_done_default_false(self):
+        c = Change(name="x")
+        assert c.gate_recheck_done is False
+        d = c.to_dict()
+        # Booleans always serialise (unlike None-omit fields) so the
+        # dashboard/reporter can distinguish "rechecked:false" from
+        # "never observed"
+        assert d["gate_recheck_done"] is False
+
+    def test_gate_recheck_done_roundtrip_true(self):
+        c = Change(name="x", gate_recheck_done=True)
+        restored = Change.from_dict(c.to_dict())
+        assert restored.gate_recheck_done is True
+
+    def test_gate_recheck_done_missing_loads_false(self):
+        old = {"name": "x"}
+        c = Change.from_dict(old)
+        assert c.gate_recheck_done is False
+
+    def test_touched_file_globs_default_empty_list(self):
+        c = Change(name="x")
+        assert c.touched_file_globs == []
+        d = c.to_dict()
+        assert d["touched_file_globs"] == []
+
+    def test_touched_file_globs_roundtrip(self):
+        globs = ["src/app/admin/**/page.tsx", "src/server/promotions/**"]
+        c = Change(name="x", touched_file_globs=list(globs))
+        d = c.to_dict()
+        assert d["touched_file_globs"] == globs
+        restored = Change.from_dict(d)
+        assert restored.touched_file_globs == globs
+
+    def test_touched_file_globs_missing_loads_empty(self):
+        old = {"name": "x"}
+        c = Change.from_dict(old)
+        assert c.touched_file_globs == []
+
+    def test_all_new_fields_together_roundtrip(self):
+        """Regression test: combining every new field must not collide
+        with each other in to_dict/from_dict."""
+        c = Change(
+            name="x",
+            stuck_loop_count=2,
+            last_gate_fingerprint="sha:abc",
+            token_runaway_baseline=21_000_000,
+            fix_iss_child="fix-iss-099-bar",
+            gate_recheck_done=True,
+            touched_file_globs=["src/**/*.ts"],
+        )
+        d = c.to_dict()
+        restored = Change.from_dict(d)
+        assert restored.stuck_loop_count == 2
+        assert restored.last_gate_fingerprint == "sha:abc"
+        assert restored.token_runaway_baseline == 21_000_000
+        assert restored.fix_iss_child == "fix-iss-099-bar"
+        assert restored.gate_recheck_done is True
+        assert restored.touched_file_globs == ["src/**/*.ts"]
+
+
+class TestSupervisorStatusTriggerBackoffs:
+    """Round-trip test for SupervisorStatus.trigger_backoffs."""
+
+    def _fresh_status(self):
+        # Import here to avoid pulling supervisor at module import time
+        from set_orch.supervisor.state import SupervisorStatus
+        return SupervisorStatus
+
+    def test_default_is_empty_dict(self):
+        SupervisorStatus = self._fresh_status()
+        s = SupervisorStatus()
+        assert s.trigger_backoffs == {}
+
+    def test_missing_field_loads_empty_dict(self, tmp_path):
+        """An existing status.json without trigger_backoffs must load cleanly."""
+        from set_orch.supervisor.state import read_status
+        # Write a status without trigger_backoffs
+        status_dir = tmp_path / ".set" / "supervisor"
+        status_dir.mkdir(parents=True)
+        (status_dir / "status.json").write_text(
+            '{"daemon_pid": 42, "poll_cycle": 5}'
+        )
+        loaded = read_status(str(tmp_path))
+        assert loaded.daemon_pid == 42
+        assert loaded.poll_cycle == 5
+        assert loaded.trigger_backoffs == {}
+
+    def test_trigger_backoffs_roundtrip(self, tmp_path):
+        from set_orch.supervisor.state import SupervisorStatus, read_status, write_status
+        s = SupervisorStatus(
+            daemon_pid=1234,
+            trigger_backoffs={
+                "log_silence::::abc123def456": {"step": 2, "back_off_until": 1776571400.0},
+                "integration_failed::foundation-setup::xyz987abcd12": {"step": 1, "back_off_until": 1776571500.0},
+            },
+        )
+        write_status(str(tmp_path), s)
+        loaded = read_status(str(tmp_path))
+        assert loaded.trigger_backoffs == s.trigger_backoffs

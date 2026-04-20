@@ -248,6 +248,31 @@ class Change:
     redispatch_count: int = 0
     merge_retry_count: int = 0
 
+    # Stuck-loop + gate-state fingerprinting (fix-replan-stuck-gate-and-decomposer).
+    # stuck_loop_count: consecutive `loop_status=stuck` exits where the verifier
+    # observed the same gate-state fingerprint. Reset on fingerprint change.
+    # last_gate_fingerprint: stable SHA of the most recent VERIFY_GATE's
+    # (stop_gate, sorted(finding_ids)) — written ONLY by the verifier; read by
+    # the stuck-loop circuit breaker and the token-runaway breaker.
+    # token_runaway_baseline: input_tokens snapshot captured at the last
+    # fingerprint change; delta exceeding a directive-controlled threshold
+    # trips the per-change token circuit breaker.
+    # fix_iss_child: name of the auto-generated fix-iss change when the parent
+    # escalated (retry-budget exhausted / stuck / token-runaway). None if no
+    # escalation has occurred.
+    # gate_recheck_done: one-shot flag — set True after the engine re-detects
+    # gate relevance from the first-commit diff. Subsequent commits do not
+    # re-trigger detection.
+    # touched_file_globs: produced by the decomposer from the scope paragraph;
+    # consumed by the content-aware gate selector. Empty list means "no
+    # content hints" → gate selector falls back to change_type defaults.
+    stuck_loop_count: int = 0
+    last_gate_fingerprint: Optional[str] = None
+    token_runaway_baseline: Optional[int] = None
+    fix_iss_child: Optional[str] = None
+    gate_recheck_done: bool = False
+    touched_file_globs: list[str] = field(default_factory=list)
+
     # Context window metrics (optional — absent on old state files)
     context_tokens_start: Optional[int] = None  # cache_create_tokens after iteration 1
     context_tokens_end: Optional[int] = None    # total_cache_create at loop completion
@@ -298,6 +323,7 @@ class Change:
             elif f.name not in (
                 "requirements", "also_affects_reqs", "watchdog", "gate_hints",
                 "spec_lineage_id", "sentinel_session_id", "sentinel_session_started_at",
+                "last_gate_fingerprint", "token_runaway_baseline", "fix_iss_child",
             ):
                 d[f.name] = val
         # Omit None-valued optional fields that weren't in the original
@@ -313,6 +339,12 @@ class Change:
             d["sentinel_session_id"] = self.sentinel_session_id
         if self.sentinel_session_started_at is not None:
             d["sentinel_session_started_at"] = self.sentinel_session_started_at
+        if self.last_gate_fingerprint is not None:
+            d["last_gate_fingerprint"] = self.last_gate_fingerprint
+        if self.token_runaway_baseline is not None:
+            d["token_runaway_baseline"] = self.token_runaway_baseline
+        if self.fix_iss_child is not None:
+            d["fix_iss_child"] = self.fix_iss_child
         d.update(self.extras)
         return d
 
