@@ -76,10 +76,34 @@ export default function Dashboard({ project, initialTab }: Props) {
   const [sentinelLogLines, setSentinelLogLines] = useState<string[]>([])
   const tabBarRef = useRef<HTMLDivElement>(null)
 
+  // The WS state_update event carries the server's UNFILTERED live state.
+  // When a lineage filter is active (non-null) we must not apply that
+  // payload directly — doing so would overwrite the filtered REST response
+  // every few seconds and make the main panel "jump" between v1 and v2
+  // content while the sidebar selection stays put.  Instead, kick off a
+  // REST refetch with the current lineage so the Dashboard stays coherent.
+  const lineageIdRef = useRef<string | null>(lineageId)
+  lineageIdRef.current = lineageId
   const onEvent = useCallback((event: WSEvent) => {
     switch (event.event) {
       case 'state_update': {
-        // Dedup against REST poll to prevent flickering between WS and REST data
+        const lid = lineageIdRef.current
+        if (lid != null) {
+          // Refetch filtered — ignore the unfiltered WS payload.
+          if (project) {
+            getState(project, lid)
+              .then(d => {
+                const json = JSON.stringify(d)
+                if (json !== stateJsonRef.current) {
+                  stateJsonRef.current = json
+                  setState(d)
+                }
+              })
+              .catch(() => {})
+          }
+          break
+        }
+        // No lineage filter → use the WS payload directly.
         const json = JSON.stringify(event.data)
         if (json !== stateJsonRef.current) {
           stateJsonRef.current = json
@@ -97,7 +121,7 @@ export default function Dashboard({ project, initialTab }: Props) {
         setCheckpointType((event.data as { type?: string })?.type ?? null)
         break
     }
-  }, [])
+  }, [project])
 
   const { connected } = useWebSocket({ project, onEvent })
 
