@@ -286,8 +286,10 @@ class GatePipeline:
         # persist updated tracking state.
         self._gate_cached_this_run: dict[str, str] = {}  # gate_name → reuse reason
         self._gate_full_ran_this_run: set[str] = set()
-        # Memoized retry diff files (current HEAD vs prior full-run baseline).
-        self._retry_diff_cache: dict[str, list[str]] = {}
+        # Memoized retry diff files (current HEAD vs prior full-run
+        # baseline). `None` means the diff could not be computed — safe
+        # default is to force a full run (see _retry_diff_files docstring).
+        self._retry_diff_cache: dict[str, Optional[list[str]]] = {}
 
     def register(
         self,
@@ -309,14 +311,22 @@ class GatePipeline:
         logger.debug("Gate registered: %s for %s (retry_counter=%s, extra_retries=%d)",
                       name, self.change_name, own_retry_counter or "shared", extra_retries)
 
-    def _retry_diff_files(self, baseline_sha: str) -> list[str]:
+    def _retry_diff_files(self, baseline_sha: str) -> Optional[list[str]]:
         """Return files touched since `baseline_sha` in the worktree.
+
+        Returns `None` on failure (missing baseline, git error, non-zero
+        exit, bad worktree path). A `None` return is a cache-miss signal:
+        callers MUST NOT treat it as "no files changed" — the safe default
+        is to invalidate the cache and run fully. This distinction is
+        load-bearing (see review of commit 869792fb, CRITICAL-1).
+
+        Returns `[]` only when git succeeded and reported zero changes.
 
         Memoized per baseline so multiple gates with the same prior-full-run
         commit don't re-shell out to git.
         """
         if not baseline_sha or not self.change.worktree_path:
-            return []
+            return None
         if baseline_sha in self._retry_diff_cache:
             return self._retry_diff_cache[baseline_sha]
         try:
@@ -325,13 +335,22 @@ class GatePipeline:
                  "diff", "--name-only", baseline_sha, "HEAD"],
                 capture_output=True, text=True, timeout=10,
             )
+            if out.returncode != 0:
+                logger.warning(
+                    "retry_diff_files(%s) git exited %d for %s: %s",
+                    baseline_sha[:8], out.returncode, self.change_name,
+                    (out.stderr or "").strip()[:200],
+                )
+                self._retry_diff_cache[baseline_sha] = None  # type: ignore[assignment]
+                return None
             files = [line for line in out.stdout.splitlines() if line.strip()]
         except Exception as exc:
             logger.warning(
                 "retry_diff_files(%s) failed for %s: %s",
                 baseline_sha[:8], self.change_name, exc,
             )
-            files = []
+            self._retry_diff_cache[baseline_sha] = None  # type: ignore[assignment]
+            return None
         self._retry_diff_cache[baseline_sha] = files
         logger.debug(
             "retry_diff_files(%s..HEAD) for %s: %d files",
@@ -340,9 +359,16 @@ class GatePipeline:
         return files
 
     def _diff_touches_scope(
-        self, diff_files: list[str], scope_globs: list[str],
+        self, diff_files: Optional[list[str]], scope_globs: list[str],
     ) -> bool:
-        """Return True if any diff file matches any scope glob."""
+        """Return True if any diff file matches any scope glob.
+
+        Note: callers MUST distinguish between `diff_files=None` (git
+        failure → force invalidate cache) and `diff_files=[]` (no
+        changes → cache can be reused). This helper returns False for
+        both cases; `_try_cache_reuse` handles the `None` path before
+        calling in.
+        """
         if not scope_globs or not diff_files:
             return False
         import fnmatch
@@ -441,6 +467,17 @@ class GatePipeline:
             )
             return None
 
+        # Retry-diff computation. A None result (git failure, bad
+        # worktree) MUST force a full run — the safe default when we
+        # can't tell what changed is to re-verify, not to assume clean.
+        diff_files = self._retry_diff_files(prior_sha)
+        if diff_files is None:
+            logger.info(
+                "Cache invalidated for %s on %s: retry-diff-unavailable",
+                gate_name, self.change_name,
+            )
+            return None
+
         # Scope check: does the retry diff touch any cache-scope glob?
         scope_globs: list[str] = []
         if self.profile is not None and hasattr(self.profile, "gate_cache_scope"):
@@ -448,7 +485,6 @@ class GatePipeline:
                 scope_globs = list(self.profile.gate_cache_scope(gate_name) or [])
             except Exception:
                 scope_globs = []
-        diff_files = self._retry_diff_files(prior_sha)
         if self._diff_touches_scope(diff_files, scope_globs):
             logger.info(
                 "Cache invalidated for %s on %s: diff-touches-scope",
@@ -482,6 +518,8 @@ class GatePipeline:
         if not prior_sha:
             return None
         diff_files = self._retry_diff_files(prior_sha)
+        # None → diff unavailable → force full run; empty list → no changes
+        # → nothing to scope, also force full (caller falls through).
         if not diff_files:
             return None
         try:
@@ -525,28 +563,36 @@ class GatePipeline:
                 self.change_name, gate_name, exc,
             )
 
-    def _record_cache_reuse(self, entry: _GateEntry, prior_sha: str) -> None:
-        """Record a cache reuse: append a 'pass' GateResult with 0 ms,
-        emit GATE_CACHED, and mark the gate in self._gate_cached_this_run.
+    def _record_cache_reuse(self, entry: _GateEntry, prior_sha: str) -> Optional[str]:
+        """Record a cache reuse: append a GateResult with the prior
+        verdict's status, emit GATE_CACHED, and mark the gate in
+        self._gate_cached_this_run.
 
-        The reused verdict is trusted: we report pass. This is load-bearing
-        for downstream VERIFY_GATE aggregation — treating cache reuse as
-        "pass" preserves existing retry semantics (no new stop_gate).
+        Faithfully replays the prior verdict (pass/fail/warn-fail/skipped)
+        — if the prior run failed, the cache reuse must also fail, else a
+        fixed-diff retry would silently let a failing gate pass (see
+        review of commit 869792fb, CRITICAL-2).
+
+        Returns the pipeline stop action ("retry" | "failed") when the
+        replayed verdict blocks, or None otherwise.
         """
+        tracking = self._prior_tracking(entry.name)
+        prior_verdict = tracking.last_verdict or "pass"
+
         result = GateResult(
             gate_name=entry.name,
-            status="pass",
-            output=f"cache reuse from {prior_sha[:8]}",
+            status=prior_verdict,
+            output=f"cache reuse from {prior_sha[:8]} (verdict={prior_verdict})",
             duration_ms=0,
         )
-        self.results.append(result)
         self._persist_gate_result(entry, result, 0)
         self._gate_cached_this_run[entry.name] = prior_sha
         self._emit_gate_cached(entry.name, prior_sha)
         logger.info(
-            "Verify gate: %s CACHED for %s (prior=%s)",
-            entry.name, self.change_name, prior_sha[:8],
+            "Verify gate: %s CACHED for %s (prior=%s, verdict=%s)",
+            entry.name, self.change_name, prior_sha[:8], prior_verdict,
         )
+        return self._finalize_result(entry, result, 0)
 
     def _parallel_group_for(self, gate_name: str) -> Optional[frozenset[str]]:
         """Return the parallel group (as a frozenset) that contains gate_name,
@@ -645,15 +691,19 @@ class GatePipeline:
                     _cache_hit = self._try_cache_reuse(entry.name)
                     if _cache_hit is not None:
                         _reason, _prior_sha = _cache_hit
-                        self._record_cache_reuse(entry, _prior_sha)
+                        _action = self._record_cache_reuse(entry, _prior_sha)
                         i += 1
+                        if _action is not None:
+                            return _action
                         continue
             elif _policy == "cached":
                 _cache_hit = self._try_cache_reuse(entry.name)
                 if _cache_hit is not None:
                     _reason, _prior_sha = _cache_hit
-                    self._record_cache_reuse(entry, _prior_sha)
+                    _action = self._record_cache_reuse(entry, _prior_sha)
                     i += 1
+                    if _action is not None:
+                        return _action
                     continue
 
             # Parallel-batch detection: if this gate is in a parallel group
@@ -1048,6 +1098,12 @@ class GatePipeline:
                     except Exception:
                         _head_sha = ""
 
+                # Build a name → verdict map from this run's results so
+                # we can persist last_verdict faithfully per gate.
+                _verdicts_this_run: dict[str, str] = {
+                    r.gate_name: r.status for r in self.results if r.gate_name
+                }
+
                 _tracking = dict(c.gate_retry_tracking or {})
                 for gate_name in self._gate_full_ran_this_run:
                     _entry = _tracking.get(gate_name) or GateRetryEntry()
@@ -1057,6 +1113,11 @@ class GatePipeline:
                     _entry.last_run_retry_index = int(
                         self.change.verify_retry_index or 0,
                     )
+                    # Record the actual verdict so future cache reuses
+                    # replay the correct outcome (not an assumed pass).
+                    _v = _verdicts_this_run.get(gate_name)
+                    if _v:
+                        _entry.last_verdict = _v
                     _tracking[gate_name] = _entry
                 for gate_name in self._gate_cached_this_run:
                     _entry = _tracking.get(gate_name) or GateRetryEntry()

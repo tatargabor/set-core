@@ -333,6 +333,136 @@ def test_scoped_gate_uses_subset_when_filter_returns_list(tmp_path):
     assert pipeline._gate_scoped_subset.get("e2e") == ["tests/e2e/cart.spec.ts"]
 
 
+def test_cache_reuse_replays_prior_fail_verdict(tmp_path):
+    """CRITICAL-2 regression: if the last full run failed, the cache
+    reuse MUST report fail — not silently pass.
+
+    Without this guarantee, a review gate that failed on retry N would
+    cache a pass on retry N+1 when the diff is out-of-scope, hiding the
+    failure and potentially letting the change merge.
+    """
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    baseline_sha = _init_repo(wt, {"src/a.tsx": "a"})
+    # Commit something outside the review cache-scope
+    _commit(wt, {"README.md": "docs"}, "docs-only")
+
+    change = Change(
+        name="c7", scope="x",
+        worktree_path=str(wt),
+        gate_retry_tracking={
+            "review": GateRetryEntry(
+                consecutive_cache_uses=0,
+                last_verdict_sha=baseline_sha,
+                last_verdict="fail",  # prior run failed
+                last_run_retry_index=0,
+            ),
+        },
+        verify_retry_index=2,
+        verify_retry_count=1,
+    )
+    gc = _FakeGateConfig({"review": True})
+    profile = _FakeProfile(
+        policy={"review": "cached"},
+        cache_scopes={"review": ["src/**"]},
+    )
+    bus = _FakeEventBus()
+    called = {"review": 0}
+
+    def exec_review():
+        called["review"] += 1
+        return GateResult("review", "pass", duration_ms=1)
+
+    pipeline = GatePipeline(
+        gc, _make_state_file(tmp_path, change), "c7", change,
+        max_retries=5, event_bus=bus, profile=profile,
+    )
+    pipeline.register("review", exec_review)
+    action = pipeline.run()
+
+    # Cache reuse happened but reported the prior FAIL, stopping the pipeline.
+    assert called["review"] == 0
+    assert any(ev[0] == "GATE_CACHED" for ev in bus.emitted)
+    assert action in ("retry", "failed")
+    # The cached replay surfaced a fail result, not a pass.
+    replayed = [r for r in pipeline.results if r.gate_name == "review"]
+    assert len(replayed) == 1
+    assert replayed[0].status == "fail"
+
+
+def test_cache_invalidated_on_git_diff_failure(tmp_path):
+    """CRITICAL-1 regression: if git diff cannot be computed (bad
+    baseline sha, missing worktree), the cache MUST be invalidated and
+    the gate MUST run fully — never reuse a cache based on an unknown
+    diff state.
+    """
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    _init_repo(wt, {"src/a.tsx": "a"})
+
+    # Deliberately nonsense baseline sha → git diff will fail
+    bogus_sha = "deadbeef" * 5  # 40 chars but doesn't exist as a commit
+    change = Change(
+        name="c8", scope="x",
+        worktree_path=str(wt),
+        gate_retry_tracking={
+            "review": GateRetryEntry(
+                consecutive_cache_uses=0,
+                last_verdict_sha=bogus_sha,
+                last_verdict="pass",
+                last_run_retry_index=0,
+            ),
+        },
+        verify_retry_index=1,
+    )
+    gc = _FakeGateConfig({"review": True})
+    profile = _FakeProfile(
+        policy={"review": "cached"},
+        cache_scopes={"review": ["src/**"]},
+    )
+    bus = _FakeEventBus()
+    called = {"review": 0}
+
+    def exec_review():
+        called["review"] += 1
+        return GateResult("review", "pass", duration_ms=1)
+
+    pipeline = GatePipeline(
+        gc, _make_state_file(tmp_path, change), "c8", change,
+        max_retries=2, event_bus=bus, profile=profile,
+    )
+    pipeline.register("review", exec_review)
+    pipeline.run()
+
+    # Cache was invalidated because the diff could not be computed.
+    assert called["review"] == 1
+    assert not any(ev[0] == "GATE_CACHED" for ev in bus.emitted)
+
+
+def test_retry_diff_files_distinguishes_none_from_empty(tmp_path):
+    """Unit: `_retry_diff_files` returns None on git failure and [] on
+    a successful diff with zero file changes (same commit)."""
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    baseline_sha = _init_repo(wt, {"src/a.tsx": "a"})
+
+    change = Change(name="c9", scope="x", worktree_path=str(wt))
+    gc = _FakeGateConfig({})
+    pipeline = GatePipeline(
+        gc, _make_state_file(tmp_path, change), "c9", change,
+        max_retries=2, event_bus=_FakeEventBus(), profile=None,
+    )
+
+    # Empty baseline → None (safe default).
+    assert pipeline._retry_diff_files("") is None
+
+    # Valid baseline == HEAD → empty list (zero changes).
+    assert pipeline._retry_diff_files(baseline_sha) == []
+
+    # Bogus baseline → None (git fails).
+    assert pipeline._retry_diff_files("deadbeef" * 5) is None
+
+
 def test_cache_full_run_resets_consecutive_counter(tmp_path):
     """commit_results: after a full run, consecutive_cache_uses resets to 0."""
     wt = tmp_path / "wt"

@@ -196,6 +196,11 @@ class GateRetryEntry:
     Referenced by cache-reuse events (`GATE_CACHED`) and injected into the
     retry prompt under the `## Cached Gates` section.
 
+    last_verdict — verdict status from the most recent FULL run
+    (`"pass"` | `"fail"` | `"warn-fail"` | `"skipped"`). Required so a cache
+    reuse can faithfully replay the prior outcome instead of silently
+    reporting pass — see the review of commit 869792fb (CRITICAL-2).
+
     last_run_retry_index — the `verify_retry_index` value at which the
     last full run happened. Used to distinguish "full run this retry" from
     "full run some retries ago".
@@ -203,12 +208,15 @@ class GateRetryEntry:
 
     consecutive_cache_uses: int = 0
     last_verdict_sha: Optional[str] = None
+    last_verdict: Optional[str] = None
     last_run_retry_index: Optional[int] = None
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {"consecutive_cache_uses": self.consecutive_cache_uses}
         if self.last_verdict_sha is not None:
             d["last_verdict_sha"] = self.last_verdict_sha
+        if self.last_verdict is not None:
+            d["last_verdict"] = self.last_verdict
         if self.last_run_retry_index is not None:
             d["last_run_retry_index"] = self.last_run_retry_index
         return d
@@ -218,6 +226,7 @@ class GateRetryEntry:
         return cls(
             consecutive_cache_uses=int(data.get("consecutive_cache_uses", 0)),
             last_verdict_sha=data.get("last_verdict_sha"),
+            last_verdict=data.get("last_verdict"),
             last_run_retry_index=data.get("last_run_retry_index"),
         )
 
