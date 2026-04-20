@@ -1401,6 +1401,102 @@ def _has_commits_since_gate(wt_path: str, last_gate_commit: str) -> bool:
         return True  # on error, assume progress (safe: triggers re-gate not stall)
 
 
+def _apply_token_runaway_check(
+    state_file: str,
+    change_name: str,
+    threshold: int,
+    event_bus: Any,
+) -> bool:
+    """Per-change token runaway circuit breaker.
+
+    Triggered after a VERIFY_GATE event (i.e. once the verifier has written
+    `last_gate_fingerprint`). Logic:
+
+      - If `token_runaway_baseline is None` → first gate run: capture the
+        current `input_tokens` as baseline and record the fingerprint.
+      - If fingerprint is unchanged: check whether `input_tokens - baseline
+        > threshold`; if so, mark the change `failed:token_runaway`, emit
+        `TOKEN_RUNAWAY`, and escalate to fix-iss.
+      - If fingerprint changed: reset baseline to current input_tokens.
+
+    Returns True iff the breaker fired (change hard-failed + escalated).
+    """
+    escalate = False
+    with locked_state(state_file) as state:
+        change = None
+        for c in state.changes:
+            if c.name == change_name:
+                change = c
+                break
+        if change is None or not change.last_gate_fingerprint:
+            return False
+
+        cur_fp = change.last_gate_fingerprint
+        prior_fp = change.extras.get("token_runaway_fingerprint") if change.extras else None
+        cur_in = int(change.input_tokens or 0)
+
+        if change.token_runaway_baseline is None:
+            change.token_runaway_baseline = cur_in
+            change.extras["token_runaway_fingerprint"] = cur_fp
+            logger.info(
+                "token-runaway baseline captured for %s: %d tokens @ %s",
+                change_name, cur_in, cur_fp,
+            )
+            return False
+
+        if prior_fp != cur_fp:
+            # Gate state changed — reset baseline.
+            old_base = change.token_runaway_baseline
+            change.token_runaway_baseline = cur_in
+            change.extras["token_runaway_fingerprint"] = cur_fp
+            logger.info(
+                "token-runaway baseline reset for %s: %d → %d tokens (fingerprint %s → %s)",
+                change_name, old_base, cur_in, prior_fp, cur_fp,
+            )
+            return False
+
+        delta = cur_in - change.token_runaway_baseline
+        if delta > threshold:
+            change.status = "failed:token_runaway"
+            logger.error(
+                "Token-runaway circuit breaker FIRED for %s: input_tokens "
+                "grew by %d (baseline %d → %d, threshold %d) with unchanged "
+                "fingerprint %s — escalating to fix-iss",
+                change_name, delta, change.token_runaway_baseline, cur_in,
+                threshold, cur_fp,
+            )
+            if event_bus:
+                event_bus.emit(
+                    "TOKEN_RUNAWAY",
+                    change=change_name,
+                    data={
+                        "baseline": change.token_runaway_baseline,
+                        "current": cur_in,
+                        "delta": delta,
+                        "threshold": threshold,
+                        "fingerprint": cur_fp,
+                    },
+                )
+            escalate = True
+    if escalate:
+        try:
+            from .issues.manager import escalate_change_to_fix_iss
+            escalate_change_to_fix_iss(
+                state_file=state_file,
+                change_name=change_name,
+                stop_gate="",
+                findings=[],
+                escalation_reason="token_runaway",
+                event_bus=event_bus,
+            )
+        except Exception:
+            logger.warning(
+                "escalate_change_to_fix_iss failed for %s (token_runaway)",
+                change_name, exc_info=True,
+            )
+    return escalate
+
+
 def _apply_stuck_loop_counter(
     state_file: str,
     change_name: str,
@@ -1697,6 +1793,23 @@ def _poll_active_changes(
             )
         except Exception:
             logger.warning("Poll failed for %s", change.name, exc_info=True)
+
+        # Token-runaway circuit breaker — runs after each monitor poll.
+        # Reads `last_gate_fingerprint` (written by verifier on VERIFY_GATE)
+        # and input_tokens (accumulated on every poll_change). Captures
+        # baseline on first gate run, resets on fingerprint change, and
+        # trips when delta exceeds `per_change_token_runaway_threshold`
+        # with a stable fingerprint.
+        try:
+            _apply_token_runaway_check(
+                state_file, change.name,
+                d.per_change_token_runaway_threshold,
+                event_bus,
+            )
+        except Exception:
+            logger.warning(
+                "token-runaway check failed for %s", change.name, exc_info=True,
+            )
 
 
 def _poll_suspended_changes(

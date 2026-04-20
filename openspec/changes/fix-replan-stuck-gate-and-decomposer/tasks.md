@@ -29,11 +29,11 @@
 
 ## 4. Engine — Token-Runaway Circuit Breaker (Layer 1)
 
-- [ ] 4.1 In the monitor poll after a `VERIFY_GATE` event, if `token_runaway_baseline is None`, set it to current `input_tokens` and record current `last_gate_fingerprint` [REQ: per-change-token-runaway-circuit-breaker]
-- [ ] 4.2 If fingerprint unchanged, check `input_tokens - token_runaway_baseline > threshold`; if so, emit `TOKEN_RUNAWAY` event and set `status='failed:token_runaway'` [REQ: per-change-token-runaway-circuit-breaker]
-- [ ] 4.3 If fingerprint changed, reset `token_runaway_baseline` to current `input_tokens` [REQ: per-change-token-runaway-circuit-breaker]
-- [ ] 4.4 Add directive `per_change_token_runaway_threshold: int = 20_000_000` [REQ: per-change-token-runaway-circuit-breaker]
-- [ ] 4.5 Integration test: simulate same-fingerprint iterations pushing `input_tokens` over threshold → change transitions to `failed:token_runaway` [REQ: per-change-token-runaway-circuit-breaker]
+- [x] 4.1 In the monitor poll after a `VERIFY_GATE` event, if `token_runaway_baseline is None`, set it to current `input_tokens` and record current `last_gate_fingerprint` [REQ: per-change-token-runaway-circuit-breaker]
+- [x] 4.2 If fingerprint unchanged, check `input_tokens - token_runaway_baseline > threshold`; if so, emit `TOKEN_RUNAWAY` event and set `status='failed:token_runaway'` [REQ: per-change-token-runaway-circuit-breaker]
+- [x] 4.3 If fingerprint changed, reset `token_runaway_baseline` to current `input_tokens` [REQ: per-change-token-runaway-circuit-breaker]
+- [x] 4.4 Add directive `per_change_token_runaway_threshold: int = 20_000_000` [REQ: per-change-token-runaway-circuit-breaker]
+- [x] 4.5 Integration test: simulate same-fingerprint iterations pushing `input_tokens` over threshold → change transitions to `failed:token_runaway` [REQ: per-change-token-runaway-circuit-breaker]
 
 ## 5. Supervisor — Exponential Back-off (Layer 1)
 
