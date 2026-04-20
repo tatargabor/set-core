@@ -783,14 +783,28 @@ def get_requirements(project: str):
     then overlays current change status from orchestration state.
     """
     project_path = _resolve_project(project)
+
+    # Preferred locations in order:
+    #   1. project_root/orchestration-plan.json           — live active plan
+    #   2. project_root/set/orchestration/plans/*.json    — archived versions
+    # The dashboard's "Reqs (N)" count was stuck at 0 because this
+    # endpoint only looked at (2), but most single-lineage projects only
+    # ever have (1) populated. Read the live plan as plan_version="live"
+    # and layer archived versions on top if they exist.
+    plan_files: list[Path] = []
+    live_plan = project_path / "orchestration-plan.json"
+    if live_plan.is_file():
+        plan_files.append(live_plan)
+
     plans_dir = project_path / "set" / "orchestration" / "plans"
     has_plans_dir = plans_dir.is_dir()
-
-    # Load all plans in order
-    plan_files = sorted(
-        (f for f in plans_dir.iterdir() if f.is_file() and f.suffix == ".json"),
-        key=lambda f: f.name,
-    ) if has_plans_dir else []
+    if has_plans_dir:
+        plan_files.extend(
+            sorted(
+                (f for f in plans_dir.iterdir() if f.is_file() and f.suffix == ".json"),
+                key=lambda f: f.name,
+            )
+        )
 
     if not plan_files:
         # Fallback: build change list from live state even without plan files
