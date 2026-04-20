@@ -3275,6 +3275,24 @@ def _archive_completed_to_jsonl(state_file: str) -> None:
                     # Tokens / LLM-calls APIs can render this change after
                     # the worktree has been cleaned up.
                     "session_summary": _compute_session_summary(c.worktree_path),
+                    # Preserve gate summary fields so the Changes tab's Gates
+                    # column + the per-row DAG stay populated after the live
+                    # entry is dropped from state.json on replan.  Timings +
+                    # attempt counters round out the picture for learnings.
+                    "build_result": c.build_result,
+                    "test_result": c.test_result,
+                    "e2e_result": c.e2e_result,
+                    "review_result": c.review_result,
+                    "smoke_result": c.smoke_result,
+                    "spec_coverage_result": c.spec_coverage_result,
+                    "gate_build_ms": c.gate_build_ms,
+                    "gate_test_ms": c.gate_test_ms,
+                    "gate_e2e_ms": c.gate_e2e_ms,
+                    "gate_review_ms": c.gate_review_ms,
+                    "gate_verify_ms": c.gate_verify_ms,
+                    "gate_total_ms": c.gate_total_ms,
+                    "verify_retry_count": c.verify_retry_count,
+                    "redispatch_count": c.redispatch_count,
                 }
                 f.write(json.dumps(entry) + "\n")
         logger.info("Archived %d completed changes to %s", len(new_completed), archive_path)

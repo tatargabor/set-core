@@ -1026,19 +1026,55 @@ def get_activity_timeline(
                 lid = entry.get("spec_lineage_id")
                 if lid and entry.get("name") not in change_lineage:
                     change_lineage[entry["name"]] = lid
+
+            # Compute the lineage's active time window from change-attributed
+            # spans.  Project-wide spans (no `change` field) — typically idle
+            # gaps, planner ticks, cross-lineage daemon events — are only
+            # kept when they fall INSIDE the lineage's own activity window.
+            # Without this filter, a v2-only view inherits v1's idle periods
+            # and the timeline's wall-time stretches to cover both lineages.
+            lineage_span_starts: list[str] = []
+            lineage_span_ends: list[str] = []
+            for s in spans:
+                ch = s.get("change")
+                if not ch:
+                    continue
+                if change_lineage.get(ch, "__legacy__") != effective_lineage:
+                    continue
+                st = s.get("start")
+                en = s.get("end")
+                if st:
+                    lineage_span_starts.append(st)
+                if en:
+                    lineage_span_ends.append(en)
+            window_start = min(lineage_span_starts) if lineage_span_starts else None
+            window_end = max(lineage_span_ends) if lineage_span_ends else None
+
+            def _in_window(span: dict) -> bool:
+                if window_start is None or window_end is None:
+                    return False
+                st = span.get("start") or ""
+                en = span.get("end") or st
+                # Keep the span when it overlaps the window on either side.
+                return not (en < window_start or st > window_end)
+
             filtered: list[dict] = []
             for s in spans:
                 ch = s.get("change")
-                # Spans with no change are project-wide (pass-through) OR
-                # session_boundary markers that already carry a lineage.
                 if not ch:
+                    # session_boundary markers carry their own lineage tag
+                    # — respect it first, otherwise fall back to the
+                    # activity-window overlap check so we do not drag in
+                    # cross-lineage idle / planner spans.
                     detail_l = (s.get("detail") or {}).get("spec_lineage_id")
-                    if detail_l and detail_l != effective_lineage:
+                    if detail_l:
+                        if detail_l == effective_lineage:
+                            filtered.append(s)
                         continue
-                    filtered.append(s)
+                    if _in_window(s):
+                        filtered.append(s)
                     continue
-                ch_lineage = change_lineage.get(ch, "__legacy__")
-                if ch_lineage == effective_lineage:
+                if change_lineage.get(ch, "__legacy__") == effective_lineage:
                     filtered.append(s)
             spans = filtered
         except Exception:
