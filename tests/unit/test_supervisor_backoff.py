@@ -149,6 +149,33 @@ def test_backoff_tuple_keyed_by_change(executor):
     assert _backoff_tuple_key(t1) != _backoff_tuple_key(t2)
 
 
+def test_backoff_key_is_stable_across_variable_numeric_reasons():
+    """Regression: log_silence reasons embed a changing counter
+    ("silent for 605s" → "silent for 620s"); without normalization each
+    poll produced a new reason_hash and the back-off never applied.
+    Observed on craftbrew-run-20260421-0025 where 30+ skipped events
+    were emitted at 15s intervals despite a live trigger_backoffs entry.
+    """
+    from set_orch.supervisor.triggers import (
+        _normalize_reason,
+        _reason_hash,
+    )
+
+    t1 = AnomalyTrigger(
+        type="log_silence", change="",
+        reason="orchestration.log silent for 605s", priority=35,
+    )
+    t2 = AnomalyTrigger(
+        type="log_silence", change="",
+        reason="orchestration.log silent for 1046s", priority=35,
+    )
+
+    # Numeric literals collapse to a sentinel; hash stable across them.
+    assert "<N>" in _normalize_reason(t1.reason)
+    assert _reason_hash(t1.reason) == _reason_hash(t2.reason)
+    assert _backoff_tuple_key(t1) == _backoff_tuple_key(t2)
+
+
 def test_emits_exactly_one_event_in_first_60s_window(executor):
     """Spec scenario: 15s polling produces exactly 1 event in first 60s."""
     trig = AnomalyTrigger(type="log_silence", change="", reason="x", priority=5)

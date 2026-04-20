@@ -23,6 +23,7 @@ log and the spawn subprocess.
 from __future__ import annotations
 
 import hashlib
+import re
 import logging
 import time
 from dataclasses import dataclass, field
@@ -43,15 +44,35 @@ from .state import SupervisorStatus
 BACKOFF_STEPS_SECONDS: tuple[int, ...] = (60, 120, 240, 480, 600)
 
 
+_REASON_NUMERIC_RE = re.compile(r"(?<!\w)\d+(?:\.\d+)?")
+
+
+def _normalize_reason(reason: str) -> str:
+    """Strip variable numeric runs from a reason string.
+
+    Detector reasons often embed a live counter (e.g. "orchestration.log
+    silent for 605s" → "silent for 620s" → "silent for 635s"). Hashing
+    the raw reason string makes every poll produce a different back-off
+    tuple_key, defeating the suppression window (observed on
+    craftbrew-run-20260421-0025 where the supervisor re-emitted
+    `skipped: retry_budget_exhausted` every 15s because each poll had a
+    new reason_hash). Normalize by collapsing all numeric literals to a
+    sentinel `<N>` before hashing, so the stable part of the reason
+    drives the tuple_key.
+    """
+    return _REASON_NUMERIC_RE.sub("<N>", reason or "")
+
+
 def _reason_hash(reason: str) -> str:
     """Stable 12-char hex of a trigger's reason string.
 
     Used in the back-off tuple key so the same trigger+change but a
-    different reason (e.g. retry budget of 1 vs retry_budget_exhausted)
-    gets its own back-off window.
+    different reason category (e.g. budget-exhausted vs rate-limited)
+    gets its own back-off window. Variable numeric runs in the reason
+    are collapsed to a sentinel first (see `_normalize_reason`).
     """
     return hashlib.sha1(
-        (reason or "").encode("utf-8", errors="replace"),
+        _normalize_reason(reason).encode("utf-8", errors="replace"),
     ).hexdigest()[:12]
 
 
