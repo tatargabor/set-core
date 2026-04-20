@@ -2077,7 +2077,7 @@ def _phase1_planning_brief(
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 1 (planning brief) failed (exit {result.exit_code})")
 
-    brief = _parse_plan_response(result.stdout)
+    brief = _parse_plan_response(result.stdout, require_key="domain_priorities")
     if not brief:
         raise RuntimeError("Phase 1: could not parse planning brief JSON")
 
@@ -2730,15 +2730,33 @@ def _extract_globals_root_block(css_path: Path) -> str:
     return m.group(0) if m else ""
 
 
-def _parse_plan_response(response_text: str) -> dict | None:
-    """Extract plan JSON from Claude response text."""
+def _parse_plan_response(
+    response_text: str, *, require_key: str = "changes",
+) -> dict | None:
+    """Extract plan JSON from Claude response text.
+
+    `require_key` selects which top-level key must be present for a match:
+      - `"changes"` — Phase 2 plan (or single-call fallback)
+      - `"domain_priorities"` — Phase 1 planning brief (different shape,
+        no `changes` array)
+
+    Calling with the wrong key caused the Phase 1 brief to be silently
+    rejected and the planner to fall back to the slower single-call
+    pipeline — fixed by threading `require_key` through all three
+    parse strategies.
+    """
     text = response_text.strip()
+
+    def _accept(candidate: dict) -> bool:
+        return require_key in candidate
 
     # Direct parse
     try:
         data = json.loads(text)
-        if "changes" in data:
-            logger.debug("Plan response parsed: direct JSON (%d changes)", len(data.get("changes", [])))
+        if _accept(data):
+            logger.debug(
+                "Plan response parsed: direct JSON (key=%s)", require_key,
+            )
             return data
     except json.JSONDecodeError:
         pass
@@ -2748,8 +2766,11 @@ def _parse_plan_response(response_text: str) -> dict | None:
     if match:
         try:
             data = json.loads(match.group(1))
-            if "changes" in data:
-                logger.debug("Plan response parsed: markdown fence (%d changes)", len(data.get("changes", [])))
+            if _accept(data):
+                logger.debug(
+                    "Plan response parsed: markdown fence (key=%s)",
+                    require_key,
+                )
                 return data
         except json.JSONDecodeError:
             pass
@@ -2760,11 +2781,16 @@ def _parse_plan_response(response_text: str) -> dict | None:
     if first >= 0 and last > first:
         try:
             data = json.loads(text[first:last + 1])
-            if "changes" in data:
-                logger.debug("Plan response parsed: brace scan (%d changes)", len(data.get("changes", [])))
+            if _accept(data):
+                logger.debug(
+                    "Plan response parsed: brace scan (key=%s)", require_key,
+                )
                 return data
         except json.JSONDecodeError:
             pass
 
-    logger.warning("Plan response parse failed: no valid JSON with 'changes' key (response length=%d)", len(text))
+    logger.warning(
+        "Plan response parse failed: no valid JSON with %r key (response length=%d)",
+        require_key, len(text),
+    )
     return None
