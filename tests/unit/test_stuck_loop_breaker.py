@@ -113,6 +113,21 @@ def test_threshold_fires_on_third_stuck_same_fingerprint(state_file):
     assert "FIX_ISS_ESCALATED" in event_types
 
 
+def test_first_observation_never_fires_even_with_max_one(state_file):
+    """With max_stuck_loops=1, a brand-new observation must NOT trip the
+    breaker on the FIRST stuck exit — we have no evidence of repeated
+    failure yet. The breaker fires on the SECOND exit with the same
+    fingerprint.
+    """
+    bus = _FakeBus()
+    _set_fingerprint(state_file, "foo", "sha256:aaa")
+    fired = _apply_stuck_loop_counter(state_file, "foo", 1, bus)
+    assert fired is False  # baseline capture only
+
+    fired = _apply_stuck_loop_counter(state_file, "foo", 1, bus)
+    assert fired is True  # second same-fp observation → trip
+
+
 def test_ordering_fingerprint_change_wins_over_threshold(state_file):
     """Simultaneous threshold-reached AND fingerprint-changed → threshold
     does NOT fire. Per tasks.md 3.7: 'check the threshold BEFORE evaluating

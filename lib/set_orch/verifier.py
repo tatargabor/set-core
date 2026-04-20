@@ -3884,15 +3884,25 @@ def handle_change_done(
     action = pipeline.run()
     _pipeline_wall_ms = int(time.monotonic() * 1000) - _pipeline_start_ms
 
-    # Update the change's cumulative retry wall time BEFORE checking
-    # against the budget so the final retry's wall time still counts.
-    _new_wall_total = int(change.retry_wall_time_ms or 0) + _pipeline_wall_ms
-    update_change_field(state_file, change_name, "retry_wall_time_ms", _new_wall_total)
+    # Atomically increment the cumulative retry wall time. Doing the
+    # read-modify-write inside `locked_state` prevents a race with any
+    # other poll cycle that might have bumped the same field while the
+    # pipeline ran. Also read `max_retry_wall_time_ms` from the latest
+    # state snapshot.
+    _new_wall_total = 0
+    _wall_budget = 0
+    with locked_state(state_file) as _st_lock:
+        _wall_budget = int(
+            (_st_lock.extras.get("directives", {}) or {}).get(
+                "max_retry_wall_time_ms", 1_800_000,
+            ) or 0,
+        )
+        for _c in _st_lock.changes:
+            if _c.name == change_name:
+                _c.retry_wall_time_ms = int(_c.retry_wall_time_ms or 0) + _pipeline_wall_ms
+                _new_wall_total = _c.retry_wall_time_ms
+                break
 
-    # Read budget from directives; 0/None disables the check.
-    _state_for_dir = load_state(state_file)
-    _dir = _state_for_dir.extras.get("directives", {}) if _state_for_dir.extras else {}
-    _wall_budget = int(_dir.get("max_retry_wall_time_ms", 1_800_000) or 0)
     if _wall_budget > 0 and _new_wall_total >= _wall_budget:
         logger.error(
             "retry wall-time budget exhausted for %s: %d >= %d ms — escalating to fix-iss",

@@ -1600,12 +1600,20 @@ def _apply_stuck_loop_counter(
         prior_count = int(change.stuck_loop_count or 0)
 
         # Threshold-first ordering (tasks.md 3.3): if the fingerprint has
-        # changed THIS iteration, reset wins — the breaker does not fire even
-        # if counter would otherwise reach max. If fingerprint is unchanged
-        # (or no prior recorded), increment; fire when we reach the max.
+        # changed THIS iteration, reset wins — the breaker does not fire
+        # even if counter would otherwise reach max. Otherwise increment.
+        # `prior_fp is None` is treated as "stable with prior_count=0" so
+        # the first-ever observation becomes count=1, not a trip (avoids
+        # firing max_stuck_loops=1 breakers on the baseline-capture poll).
         fingerprint_stable = prior_fp is None or prior_fp == current_fp
         new_count = (prior_count + 1) if fingerprint_stable else 0
-        would_trip = fingerprint_stable and new_count >= max_stuck_loops
+        # When prior_fp is None we MUST NOT trip the breaker on this poll
+        # — we have no evidence of repeated failure yet, only a baseline.
+        would_trip = (
+            fingerprint_stable
+            and prior_fp is not None
+            and new_count >= max_stuck_loops
+        )
 
         change.stuck_loop_count = new_count
         change.extras["stuck_fingerprint"] = current_fp

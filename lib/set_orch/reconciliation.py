@@ -207,10 +207,14 @@ def _list_change_branches(project_dir: str) -> list[str]:
     return out
 
 
-def _archived_change_names(project_dir: str) -> set[str]:
+def _archived_change_names(project_dir: str) -> Optional[set[str]]:
     """Parse `state-archive.jsonl` for names we must NOT delete.
 
     Each line is a JSON record containing `name`. Missing file → empty set.
+    Returns `None` if the archive file exists but cannot be read — the
+    caller is expected to abort the destructive reconciliation rather
+    than proceed with a potentially empty "archived" set that would let
+    real archived changes be deleted.
     """
     archive_path = os.path.join(project_dir, "state-archive.jsonl")
     if not os.path.isfile(archive_path):
@@ -229,7 +233,12 @@ def _archived_change_names(project_dir: str) -> set[str]:
                 except json.JSONDecodeError:
                     continue
     except OSError as exc:
-        logger.debug("archive parse failed %s: %s", archive_path, exc)
+        logger.warning(
+            "archive parse failed %s: %s — reconciliation will abort "
+            "rather than risk deleting archived changes",
+            archive_path, exc,
+        )
+        return None
     return names
 
 
@@ -281,6 +290,15 @@ def reconcile_divergent_plan(
     summary = ReconciliationSummary(dry_run=dry_run)
     new_plan_set = set(new_plan_names)
     archived_set = _archived_change_names(project_dir)
+    if archived_set is None:
+        # Archive parse failed — refuse to proceed with deletions. Return
+        # an empty summary so the caller knows nothing was touched.
+        logger.error(
+            "reconcile_divergent_plan aborted: could not read "
+            "state-archive.jsonl — refusing to delete stale state without "
+            "a reliable archive whitelist"
+        )
+        return summary
 
     # 1) Enumerate worktrees + branches + change dirs not in the new plan.
     worktrees = _list_worktrees(project_dir)
