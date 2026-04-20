@@ -45,18 +45,18 @@
 
 ## 6. Replan Reconciliation (Layer 1)
 
-- [ ] 6.1 Add `force_dirty: bool = False` parameter to `lib/set_orch/recovery.py::cleanup_orphans()` (or wherever orphan_cleanup actually lives; grep for the function and add there) [REQ: clean-orphaned-worktrees-on-startup]
-- [ ] 6.2 When `force_dirty=True` AND the worktree's change name is NOT in the currently-active plan, run `git stash push -u -m "auto-stash: divergent-replan <ts>"` inside the worktree; then archive + `git worktree remove --force` [REQ: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
-- [ ] 6.3 Stash-failure fallback: create rescue branch `wip/<name>-<epoch>`, `git add -A && git commit --no-verify`, log WARNING with branch name + owning repo path [REQ: stash-failure-falls-back-to-rescue-branch]
-- [ ] 6.4 Return a structured dict with fields `worktrees_removed, dirty_skipped, dirty_forced, pids_cleared, steps_fixed, artifacts_collected, merge_queue_entries_restored, issues_released` [REQ: orphan-cleanup-returns-structured-summary]
-- [ ] 6.5 Update the cleanup summary log line to include `, <M> dirty forced` when `dirty_forced > 0` [REQ: conservative-safety-rules]
-- [ ] 6.6 In `lib/set_orch/planner.py::auto_replan_cycle()`, detect divergence: `old ^ new != ∅` (symmetric-diff of change-name sets from prior plan vs new plan) [REQ: divergent-plan-state-reconciliation]
-- [ ] 6.7 On divergence, after plan validation succeeds: (a) write cleanup manifest; (b) call `cleanup_orphans(force_dirty=True)`; (c) delete `change/<name>` branches not in the new plan; (d) remove `openspec/changes/<name>/` dirs not in the new plan AND not in `state-archive.jsonl`. Honor `divergent_plan_dir_cleanup=dry-run` directive: write manifest but skip destructive ops [REQ: divergent-plan-state-reconciliation, reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
-- [ ] 6.7b Write manifest file `orchestration-cleanup-<epoch>.log` BEFORE any destructive op, listing each branch/dir path with operation and rationale [REQ: reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
-- [ ] 6.7c Add directive `divergent_plan_dir_cleanup: str = "enabled"` (values: `enabled`, `dry-run`) in `lib/set_orch/config.py` defaults [REQ: reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
-- [ ] 6.8 Assert the sequence: `collect_replan_context()` snapshot taken BEFORE reconciliation so archived dirs don't leak into the prompt [REQ: replan-context-captured-before-reconciliation]
+- [x] 6.1 Add `force_dirty: bool = False` parameter to `lib/set_orch/recovery.py::cleanup_orphans()` (or wherever orphan_cleanup actually lives; grep for the function and add there) [REQ: clean-orphaned-worktrees-on-startup]
+- [x] 6.2 When `force_dirty=True` AND the worktree's change name is NOT in the currently-active plan, run `git stash push -u -m "auto-stash: divergent-replan <ts>"` inside the worktree; then archive + `git worktree remove --force` [REQ: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
+- [x] 6.3 Stash-failure fallback: create rescue branch `wip/<name>-<epoch>`, `git add -A && git commit --no-verify`, log WARNING with branch name + owning repo path [REQ: stash-failure-falls-back-to-rescue-branch]
+- [x] 6.4 Return a structured dict with fields `worktrees_removed, dirty_skipped, dirty_forced, pids_cleared, steps_fixed, artifacts_collected, merge_queue_entries_restored, issues_released` [REQ: orphan-cleanup-returns-structured-summary]
+- [x] 6.5 Update the cleanup summary log line to include `, <M> dirty forced` when `dirty_forced > 0` [REQ: conservative-safety-rules]
+- [x] 6.6 In `lib/set_orch/planner.py::auto_replan_cycle()`, detect divergence: `old ^ new != ∅` (symmetric-diff of change-name sets from prior plan vs new plan) [REQ: divergent-plan-state-reconciliation]
+- [x] 6.7 On divergence, after plan validation succeeds: (a) write cleanup manifest; (b) call `cleanup_orphans(force_dirty=True)`; (c) delete `change/<name>` branches not in the new plan; (d) remove `openspec/changes/<name>/` dirs not in the new plan AND not in `state-archive.jsonl`. Honor `divergent_plan_dir_cleanup=dry-run` directive: write manifest but skip destructive ops [REQ: divergent-plan-state-reconciliation, reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
+- [x] 6.7b Write manifest file `orchestration-cleanup-<epoch>.log` BEFORE any destructive op, listing each branch/dir path with operation and rationale [REQ: reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
+- [x] 6.7c Add directive `divergent_plan_dir_cleanup: str = "enabled"` (values: `enabled`, `dry-run`) in `lib/set_orch/config.py` defaults [REQ: reconciler-writes-a-cleanup-manifest-and-honors-dry-run]
+- [x] 6.8 Assert the sequence: `collect_replan_context()` snapshot taken BEFORE reconciliation so archived dirs don't leak into the prompt [REQ: replan-context-captured-before-reconciliation]
 - [ ] 6.9 Reset `SupervisorStatus.rapid_crashes` to 0 when all current-plan changes reach terminal status AND no replan is pending [REQ: supervisor-rapid_crashes-reset-on-clean-plan-completion]
-- [ ] 6.10 Integration test: simulate a divergent replan with dirty worktrees → verify stash refs created, worktrees archived, branches deleted, state reconciled [REQ: divergent-plan-state-reconciliation, worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
+- [x] 6.10 Integration test: simulate a divergent replan with dirty worktrees → verify stash refs created, worktrees archived, branches deleted, state reconciled [REQ: divergent-plan-state-reconciliation, worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
 
 ## 7. Content-Aware Gate Selection (Layer 1 + Web module)
 

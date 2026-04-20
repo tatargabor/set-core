@@ -3097,6 +3097,41 @@ def _auto_replan_cycle(
         logger.info("Replan: all %d new changes are duplicates of failed ones — no new work", len(new_names))
         return "no_new_work"
 
+    # 7b. Divergent-plan reconciliation — compare old vs new change-name
+    # sets and archive/remove stale state before the new plan is persisted.
+    # The replan context was captured in step 2, BEFORE this step, so the
+    # snapshot doesn't leak archived-as-stale dirs into the prompt.
+    try:
+        from .reconciliation import (
+            divergent_names, reconcile_divergent_plan,
+        )
+        existing_names = {c.name for c in state.changes}
+        new_plan_names = {c.get("name", "") for c in new_changes if c.get("name")}
+        divergence = divergent_names(existing_names, new_plan_names)
+        if divergence:
+            project_dir = os.path.dirname(os.path.abspath(state_file))
+            # Walk up to repo root (state_file may live under set/…)
+            for _ in range(8):
+                if os.path.isdir(os.path.join(project_dir, ".git")):
+                    break
+                parent = os.path.dirname(project_dir)
+                if parent == project_dir:
+                    break
+                project_dir = parent
+            dry_run = (d.divergent_plan_dir_cleanup == "dry-run")
+            summary = reconcile_divergent_plan(
+                project_dir, new_plan_names, dry_run=dry_run,
+            )
+            logger.warning(
+                "Divergent replan reconciliation: %d name(s) differ, "
+                "summary=%s", len(divergence), summary.to_dict(),
+            )
+    except Exception:
+        logger.warning(
+            "Divergent-plan reconciliation failed — continuing with replan",
+            exc_info=True,
+        )
+
     # 8. Write updated plan
     plan_data["changes"] = new_changes
     plan_data["replan_cycle"] = cycle
