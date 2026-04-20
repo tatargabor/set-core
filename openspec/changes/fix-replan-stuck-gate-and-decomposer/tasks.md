@@ -161,32 +161,32 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 ## Acceptance Criteria (from spec scenarios)
 
 ### REQ: divergent-plan-state-reconciliation
-- [ ] AC-1: WHEN the prior plan's change set has zero intersection with the new plan THEN reconciliation archives all old worktrees, deletes old branches, and removes orphan `openspec/changes/` dirs [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]
-- [ ] AC-2: WHEN there is partial overlap THEN reconciliation touches only non-overlapping artifacts [REQ: divergent-plan-state-reconciliation, scenario: partial-overlap-preserves-shared-names]
-- [ ] AC-3: WHEN auto_replan_cycle() runs THEN the sequence is context-snapshot → generate → validate → reconcile → init-state [REQ: divergent-plan-state-reconciliation, scenario: replan-context-captured-before-reconciliation]
+- [x] AC-1: WHEN the prior plan's change set has zero intersection with the new plan THEN reconciliation archives all old worktrees, deletes old branches, and removes orphan `openspec/changes/` dirs [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]
+- [x] AC-2: WHEN there is partial overlap THEN reconciliation touches only non-overlapping artifacts [REQ: divergent-plan-state-reconciliation, scenario: partial-overlap-preserves-shared-names]
+- [x] AC-3: WHEN auto_replan_cycle() runs THEN the sequence is context-snapshot → generate → validate → reconcile → init-state [REQ: divergent-plan-state-reconciliation, scenario: replan-context-captured-before-reconciliation]
 
 ### REQ: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation
-- [ ] AC-4: WHEN force_dirty=True and a dirty worktree is not in the new plan THEN stash, archive, and `git worktree remove --force` [REQ: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation, scenario: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
-- [ ] AC-5: WHEN stash fails THEN create `wip/<name>-<epoch>` rescue branch with non-verified commit [REQ: stash-failure-falls-back-to-rescue-branch, scenario: stash-failure-falls-back-to-rescue-branch]
+- [x] AC-4: WHEN force_dirty=True and a dirty worktree is not in the new plan THEN stash, archive, and `git worktree remove --force` [REQ: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation, scenario: worktree-has-uncommitted-changes-during-divergent-plan-reconciliation]
+- [x] AC-5: WHEN stash fails THEN create `wip/<name>-<epoch>` rescue branch with non-verified commit [REQ: stash-failure-falls-back-to-rescue-branch, scenario: stash-failure-falls-back-to-rescue-branch]
 
 ### REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits
 - [ ] AC-6: WHEN loop_status=stuck and new commits exist THEN engine runs verify pipeline directly; verifier does NOT write status=stalled [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits, scenario: stuck-exit-with-new-commits-re-enters-gate]
 - [ ] AC-7: WHEN loop_status=stuck and no new commits THEN verifier writes status=stalled (existing behavior retained) [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits, scenario: stuck-exit-with-no-new-commits-stalls-normally]
 
 ### REQ: stuck-loop-circuit-breaker
-- [ ] AC-8: WHEN same fingerprint twice THEN stuck_loop_count increments [REQ: stuck-loop-circuit-breaker, scenario: counter-increments-on-identical-fingerprint]
-- [ ] AC-9: WHEN fingerprint changes THEN stuck_loop_count resets to 0 [REQ: stuck-loop-circuit-breaker, scenario: counter-resets-on-progress]
-- [ ] AC-10: WHEN stuck_loop_count reaches max_stuck_loops AND fingerprint unchanged THEN status=failed:stuck_no_progress + STUCK_LOOP_ESCALATED event + fix-iss triggered [REQ: stuck-loop-circuit-breaker, scenario: max-stuck-loops-triggers-hard-fail]
+- [x] AC-8: WHEN same fingerprint twice THEN stuck_loop_count increments [REQ: stuck-loop-circuit-breaker, scenario: counter-increments-on-identical-fingerprint]
+- [x] AC-9: WHEN fingerprint changes THEN stuck_loop_count resets to 0 [REQ: stuck-loop-circuit-breaker, scenario: counter-resets-on-progress]
+- [x] AC-10: WHEN stuck_loop_count reaches max_stuck_loops AND fingerprint unchanged THEN status=failed:stuck_no_progress + STUCK_LOOP_ESCALATED event + fix-iss triggered [REQ: stuck-loop-circuit-breaker, scenario: max-stuck-loops-triggers-hard-fail]
 
 ### REQ: exponential-back-off-on-retry_budget_exhausted
-- [ ] AC-11: WHEN first retry_budget_exhausted THEN back_off_until = now + 60s; no further event for 60s [REQ: exponential-back-off-on-retry_budget_exhausted, scenario: first-retry-budget-exhausted-records-back-off-start]
-- [ ] AC-12: WHEN subsequent exhaustion THEN back-off grows 60 → 120 → 240 → 480 → 600 (cap) [REQ: exponential-back-off-on-retry_budget_exhausted, scenario: back-off-grows-on-repeated-exhaustion]
-- [ ] AC-13: WHEN detector's condition no longer holds THEN back-off clears [REQ: exponential-back-off-on-retry_budget_exhausted, scenario: back-off-resets-on-transition]
+- [x] AC-11: WHEN first retry_budget_exhausted THEN back_off_until = now + 60s; no further event for 60s [REQ: exponential-back-off-on-retry_budget_exhausted, scenario: first-retry-budget-exhausted-records-back-off-start]
+- [x] AC-12: WHEN subsequent exhaustion THEN back-off grows 60 → 120 → 240 → 480 → 600 (cap) [REQ: exponential-back-off-on-retry_budget_exhausted, scenario: back-off-grows-on-repeated-exhaustion]
+- [x] AC-13: WHEN detector's condition no longer holds THEN back-off clears [REQ: exponential-back-off-on-retry_budget_exhausted, scenario: back-off-resets-on-transition]
 
 ### REQ: per-change-token-runaway-circuit-breaker
-- [ ] AC-14: WHEN first gate run THEN baseline captured [REQ: per-change-token-runaway-circuit-breaker, scenario: baseline-captured-at-first-gate-run]
-- [ ] AC-15: WHEN same fingerprint and delta ≥ threshold THEN status=failed:token_runaway + TOKEN_RUNAWAY event [REQ: per-change-token-runaway-circuit-breaker, scenario: delta-exceeds-threshold-triggers-circuit-breaker]
-- [ ] AC-16: WHEN fingerprint changes THEN baseline resets [REQ: per-change-token-runaway-circuit-breaker, scenario: baseline-resets-on-gate-state-change]
+- [x] AC-14: WHEN first gate run THEN baseline captured [REQ: per-change-token-runaway-circuit-breaker, scenario: baseline-captured-at-first-gate-run]
+- [x] AC-15: WHEN same fingerprint and delta ≥ threshold THEN status=failed:token_runaway + TOKEN_RUNAWAY event [REQ: per-change-token-runaway-circuit-breaker, scenario: delta-exceeds-threshold-triggers-circuit-breaker]
+- [x] AC-16: WHEN fingerprint changes THEN baseline resets [REQ: per-change-token-runaway-circuit-breaker, scenario: baseline-resets-on-gate-state-change]
 
 ### REQ: content-aware-gate-selector
 - [ ] AC-17: WHEN change_type=infrastructure but scope has UI globs THEN design-fidelity + e2e + i18n_check in gate set [REQ: content-aware-gate-selector, scenario: foundation-change-with-ui-content-activates-design-plus-e2e]
@@ -206,58 +206,58 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [ ] AC-24: WHEN spec_verify fails while review is running THEN review completes AND both findings sets surfaced to retry agent [REQ: spec_verify-and-review-run-in-parallel, scenario: both-gates-allowed-to-complete-stop_gate-is-earliest-by-order]
 
 ### REQ: granularity-budget-with-auto-split
-- [ ] AC-25: WHEN proposed change has 15 requirements THEN split into ≥3 changes chained via depends_on, pre-split name never on disk [REQ: granularity-budget-with-auto-split, scenario: change-with-15-requirements-auto-splits-before-persistence]
+- [x] AC-25: WHEN proposed change has 15 requirements THEN split into ≥3 changes chained via depends_on, pre-split name never on disk [REQ: granularity-budget-with-auto-split, scenario: change-with-15-requirements-auto-splits-before-persistence]
 
 ### REQ: skip_test-guarded-by-scope-file-path-content
-- [ ] AC-26: WHEN scope has server-path files AND skip_test=true THEN validator rejects [REQ: skip_test-guarded-by-scope-file-path-content, scenario: scope-with-validators-rejects-skip_test]
+- [x] AC-26: WHEN scope has server-path files AND skip_test=true THEN validator rejects [REQ: skip_test-guarded-by-scope-file-path-content, scenario: scope-with-validators-rejects-skip_test]
 
 ### REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion
-- [ ] AC-27: WHEN review gate fails 5/5 THEN `escalate_change_to_fix_iss()` invoked; parent status=failed:retry_budget_exhausted; fix_iss_child populated [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion, scenario: review-gate-5-5-fail-triggers-fix-iss]
-- [ ] AC-27b: WHEN stuck-loop circuit fires THEN `escalate_change_to_fix_iss()` invoked with escalation_reason=stuck_no_progress; parent status=failed:stuck_no_progress; fix_iss_child populated [REQ: stuck-loop-circuit-breaker-also-triggers-fix-iss, scenario: stuck-loop-circuit-breaker-also-triggers-fix-iss]
-- [ ] AC-27c: WHEN token-runaway fires THEN `escalate_change_to_fix_iss()` invoked with escalation_reason=token_runaway and runaway metadata in proposal; parent status=failed:token_runaway; fix_iss_child populated [REQ: token-runaway-also-triggers-fix-iss, scenario: token-runaway-also-triggers-fix-iss]
-- [ ] AC-28: WHEN findings are framework paths THEN Fix Target: framework [REQ: fix-iss-change-gets-a-diagnostic-proposal, scenario: framework-findings-produce-target-framework]
-- [ ] AC-28b: WHEN findings are consumer paths THEN Fix Target: consumer [REQ: fix-iss-change-gets-a-diagnostic-proposal, scenario: consumer-findings-produce-target-consumer]
+- [x] AC-27: WHEN review gate fails 5/5 THEN `escalate_change_to_fix_iss()` invoked; parent status=failed:retry_budget_exhausted; fix_iss_child populated [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion, scenario: review-gate-5-5-fail-triggers-fix-iss]
+- [x] AC-27b: WHEN stuck-loop circuit fires THEN `escalate_change_to_fix_iss()` invoked with escalation_reason=stuck_no_progress; parent status=failed:stuck_no_progress; fix_iss_child populated [REQ: stuck-loop-circuit-breaker-also-triggers-fix-iss, scenario: stuck-loop-circuit-breaker-also-triggers-fix-iss]
+- [x] AC-27c: WHEN token-runaway fires THEN `escalate_change_to_fix_iss()` invoked with escalation_reason=token_runaway and runaway metadata in proposal; parent status=failed:token_runaway; fix_iss_child populated [REQ: token-runaway-also-triggers-fix-iss, scenario: token-runaway-also-triggers-fix-iss]
+- [x] AC-28: WHEN findings are framework paths THEN Fix Target: framework [REQ: fix-iss-change-gets-a-diagnostic-proposal, scenario: framework-findings-produce-target-framework]
+- [x] AC-28b: WHEN findings are consumer paths THEN Fix Target: consumer [REQ: fix-iss-change-gets-a-diagnostic-proposal, scenario: consumer-findings-produce-target-consumer]
 
 ### REQ: content-hints-for-gate-selection
-- [ ] AC-29: WHEN scope mentions UI files THEN touched_file_globs includes both explicit paths AND wildcard parents [REQ: content-hints-for-gate-selection, scenario: scope-mentions-ui-files]
+- [x] AC-29: WHEN scope mentions UI files THEN touched_file_globs includes both explicit paths AND wildcard parents [REQ: content-hints-for-gate-selection, scenario: scope-mentions-ui-files]
 - [ ] AC-30: WHEN scope mentions only server files THEN touched_file_globs has NO UI-route globs [REQ: content-hints-for-gate-selection, scenario: scope-mentions-only-server-files]
 
 ### REQ: divergent-plan-dir-cleanup-safety
-- [ ] AC-31: WHEN reconciler deletes branches and `openspec/changes/` dirs THEN a manifest file `orchestration-cleanup-<epoch>.log` is written first listing every removed path [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]
-- [ ] AC-32: WHEN `divergent_plan_dir_cleanup=dry-run` directive is set THEN the reconciler logs planned deletes but takes no destructive action [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]
+- [x] AC-31: WHEN reconciler deletes branches and `openspec/changes/` dirs THEN a manifest file `orchestration-cleanup-<epoch>.log` is written first listing every removed path [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]
+- [x] AC-32: WHEN `divergent_plan_dir_cleanup=dry-run` directive is set THEN the reconciler logs planned deletes but takes no destructive action [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]
 
 ### REQ: size-estimate-formula-for-change-sizing
-- [ ] AC-33: WHEN estimated_loc < threshold THEN change passes through unchanged [REQ: size-estimate-formula-for-change-sizing, scenario: small-change-under-threshold-passes-through]
-- [ ] AC-34: WHEN estimated_loc > threshold THEN planner auto-splits into ≥2 siblings [REQ: size-estimate-formula-for-change-sizing, scenario: large-change-triggers-sibling-split]
-- [ ] AC-35: WHEN active profile is web AND path matches `src/app/admin/**/page.tsx` THEN loc_weight = 350 [REQ: size-estimate-formula-for-change-sizing, scenario: profile-supplies-web-specific-weights]
+- [x] AC-33: WHEN estimated_loc < threshold THEN change passes through unchanged [REQ: size-estimate-formula-for-change-sizing, scenario: small-change-under-threshold-passes-through]
+- [x] AC-34: WHEN estimated_loc > threshold THEN planner auto-splits into ≥2 siblings [REQ: size-estimate-formula-for-change-sizing, scenario: large-change-triggers-sibling-split]
+- [x] AC-35: WHEN active profile is web AND path matches `src/app/admin/**/page.tsx` THEN loc_weight = 350 [REQ: size-estimate-formula-for-change-sizing, scenario: profile-supplies-web-specific-weights]
 
 ### REQ: linked-sibling-split-strategy
-- [ ] AC-36: WHEN admin-operations (est 3760) splits THEN three siblings appear with sequential depends_on chain, same phase=2 [REQ: linked-sibling-split-strategy, scenario: admin-operations-splits-into-3-linked-siblings]
-- [ ] AC-37: WHEN promotions-engine (est 2000) splits THEN two siblings split by directory prefix (server vs admin) [REQ: linked-sibling-split-strategy, scenario: promotions-engine-splits-by-concern]
-- [ ] AC-38: WHEN any auto-split runs THEN the pre-split name NEVER appears in orchestration-plan.json [REQ: linked-sibling-split-strategy, scenario: pre-split-name-never-persists]
+- [x] AC-36: WHEN admin-operations (est 3760) splits THEN three siblings appear with sequential depends_on chain, same phase=2 [REQ: linked-sibling-split-strategy, scenario: admin-operations-splits-into-3-linked-siblings]
+- [x] AC-37: WHEN promotions-engine (est 2000) splits THEN two siblings split by directory prefix (server vs admin) [REQ: linked-sibling-split-strategy, scenario: promotions-engine-splits-by-concern]
+- [x] AC-38: WHEN any auto-split runs THEN the pre-split name NEVER appears in orchestration-plan.json [REQ: linked-sibling-split-strategy, scenario: pre-split-name-never-persists]
 
 ### REQ: profile-declares-per-gate-retry-policy
-- [ ] AC-39: WHEN CoreProfile.gate_retry_policy() is invoked THEN returns empty dict (all gates default to always) [REQ: profile-declares-per-gate-retry-policy, scenario: core-profile-default-is-always]
-- [ ] AC-40: WHEN WebProjectType.gate_retry_policy() is invoked THEN returns the declared mapping with cached=review/spec_verify/design-fidelity and scoped=e2e [REQ: profile-declares-per-gate-retry-policy, scenario: web-profile-declares-policy-per-gate]
+- [x] AC-39: WHEN CoreProfile.gate_retry_policy() is invoked THEN returns empty dict (all gates default to always) [REQ: profile-declares-per-gate-retry-policy, scenario: core-profile-default-is-always]
+- [x] AC-40: WHEN WebProjectType.gate_retry_policy() is invoked THEN returns the declared mapping with cached=review/spec_verify/design-fidelity and scoped=e2e [REQ: profile-declares-per-gate-retry-policy, scenario: web-profile-declares-policy-per-gate]
 
 ### REQ: cached-policy-reuses-prior-verdict-with-invalidation
-- [ ] AC-41: WHEN retry commit touches only i18n JSON AND review is cached-policy THEN GATE_CACHED event emitted + no review LLM call [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: cached-review-reused-when-retry-diff-is-small]
-- [ ] AC-42: WHEN retry diff touches `.tsx` THEN design-fidelity cache invalidated with reason diff-touches-scope [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: cache-invalidated-by-scope-overlap]
-- [ ] AC-43: WHEN 3rd consecutive cache use THEN cache invalidated with reason cache-use-cap-reached, gate runs fully [REQ: cache-use-cap-reached, scenario: cache-use-cap-reached]
+- [x] AC-41: WHEN retry commit touches only i18n JSON AND review is cached-policy THEN GATE_CACHED event emitted + no review LLM call [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: cached-review-reused-when-retry-diff-is-small]
+- [x] AC-42: WHEN retry diff touches `.tsx` THEN design-fidelity cache invalidated with reason diff-touches-scope [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: cache-invalidated-by-scope-overlap]
+- [x] AC-43: WHEN 3rd consecutive cache use THEN cache invalidated with reason cache-use-cap-reached, gate runs fully [REQ: cache-use-cap-reached, scenario: cache-use-cap-reached]
 - [ ] AC-44: WHEN retry diff adds new exported function THEN cache invalidated with reason new-api-surface-detected [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: new-api-surface-invalidates-cache]
 
 ### REQ: scoped-policy-shards-gate-by-retry-diff
-- [ ] AC-45: WHEN retry touches cart page AND e2e is scoped THEN Playwright runs only cart.spec.ts; VERIFY_GATE.scoped_subset present [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: e2e-scoped-to-affected-test-files]
+- [x] AC-45: WHEN retry touches cart page AND e2e is scoped THEN Playwright runs only cart.spec.ts; VERIFY_GATE.scoped_subset present [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: e2e-scoped-to-affected-test-files]
 - [ ] AC-46: WHEN gate_scope_filter returns None THEN gate falls through to cached policy [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: e2e-no-overlap-falls-through-to-cached]
 - [ ] AC-47: WHEN scoped gate has been filtered for 2 consecutive retries THEN 3rd retry runs full suite [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: scoped-filter-still-subject-to-cache-use-cap]
 
 ### REQ: verify-pipeline-honors-per-gate-retry-policy
-- [ ] AC-48: WHEN verify_retry_index == 0 THEN every gate runs fully regardless of policy, no GATE_CACHED events [REQ: verify-pipeline-honors-per-gate-retry-policy, scenario: first-verify-run-ignores-retry-policy]
-- [ ] AC-49: WHEN verify_retry_index >= 1 THEN policy consulted and applied per gate [REQ: verify-pipeline-honors-per-gate-retry-policy, scenario: second-verify-run-applies-retry-policy]
+- [x] AC-48: WHEN verify_retry_index == 0 THEN every gate runs fully regardless of policy, no GATE_CACHED events [REQ: verify-pipeline-honors-per-gate-retry-policy, scenario: first-verify-run-ignores-retry-policy]
+- [x] AC-49: WHEN verify_retry_index >= 1 THEN policy consulted and applied per gate [REQ: verify-pipeline-honors-per-gate-retry-policy, scenario: second-verify-run-applies-retry-policy]
 
 ### REQ: retry-prompt-references-cached-verdicts
-- [ ] AC-50: WHEN retry dispatched with some cached gates THEN retry prompt contains ## Cached Gates section listing them with SHAs [REQ: retry-prompt-references-cached-verdicts, scenario: retry-prompt-lists-cached-gates]
+- [x] AC-50: WHEN retry dispatched with some cached gates THEN retry prompt contains ## Cached Gates section listing them with SHAs [REQ: retry-prompt-references-cached-verdicts, scenario: retry-prompt-lists-cached-gates]
 
 ### REQ: aggregate-retry-wall-time-budget
-- [ ] AC-51: WHEN cumulative retry_wall_time_ms exceeds max_retry_wall_time_ms THEN RETRY_WALL_TIME_EXHAUSTED event + status=failed:retry_wall_time_exhausted + fix-iss escalation [REQ: aggregate-retry-wall-time-budget, scenario: wall-time-budget-tripped-on-5th-retry]
-- [ ] AC-52: WHEN retries are fast (5 × 60s) THEN no wall-time-exhausted event fires [REQ: aggregate-retry-wall-time-budget, scenario: wall-time-budget-never-tripped-on-fast-retries]
+- [x] AC-51: WHEN cumulative retry_wall_time_ms exceeds max_retry_wall_time_ms THEN RETRY_WALL_TIME_EXHAUSTED event + status=failed:retry_wall_time_exhausted + fix-iss escalation [REQ: aggregate-retry-wall-time-budget, scenario: wall-time-budget-tripped-on-5th-retry]
+- [x] AC-52: WHEN retries are fast (5 × 60s) THEN no wall-time-exhausted event fires [REQ: aggregate-retry-wall-time-budget, scenario: wall-time-budget-never-tripped-on-fast-retries]

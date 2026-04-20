@@ -439,6 +439,48 @@ def test_cache_invalidated_on_git_diff_failure(tmp_path):
     assert not any(ev[0] == "GATE_CACHED" for ev in bus.emitted)
 
 
+def test_retry_prompt_renders_cached_gates_section():
+    """AC-50: retry prompt contains `## Cached Gates` section listing
+    cached gate names and their SHAs when consecutive_cache_uses > 0.
+    """
+    from set_orch.verifier import _render_cached_gates_section
+
+    # No cached gates → empty section
+    c = Change(name="x", scope="y")
+    assert _render_cached_gates_section(c) == ""
+
+    # Zero consecutive uses → still no entry (only reused counts)
+    c = Change(name="x", scope="y", gate_retry_tracking={
+        "review": GateRetryEntry(
+            consecutive_cache_uses=0,
+            last_verdict_sha="deadbeef1234",
+        ),
+    })
+    assert _render_cached_gates_section(c) == ""
+
+    # Mixed: review cached, spec_verify cached, build full-ran
+    c = Change(name="x", scope="y", gate_retry_tracking={
+        "review": GateRetryEntry(
+            consecutive_cache_uses=1,
+            last_verdict_sha="abc1234567890def",
+            last_verdict="pass",
+        ),
+        "spec_verify": GateRetryEntry(
+            consecutive_cache_uses=2,
+            last_verdict_sha="fedcba987654321",
+            last_verdict="pass",
+        ),
+        "build": GateRetryEntry(consecutive_cache_uses=0),
+    })
+    out = _render_cached_gates_section(c)
+    assert "## Cached Gates" in out
+    assert "review" in out
+    assert "spec_verify" in out
+    assert "abc12345" in out  # 8-char SHA prefix
+    assert "fedcba98" in out
+    assert "build" not in out  # only reused gates listed
+
+
 def test_retry_diff_files_distinguishes_none_from_empty(tmp_path):
     """Unit: `_retry_diff_files` returns None on git failure and [] on
     a successful diff with zero file changes (same commit)."""
