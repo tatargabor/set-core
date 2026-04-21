@@ -769,7 +769,15 @@ def recover_orphaned_changes(
     reconciled = 0
 
     for change in state.changes:
-        if change.status not in ("running", "verifying", "stalled"):
+        # `dispatched` is the post-bootstrap / pre-running state: the
+        # engine has created the worktree and written input.md, but
+        # hasn't observed the ralph spawn yet. If dispatch raised an
+        # exception between those steps (e.g. dict-shape reqs in the
+        # e2e manifest on craftbrew-run-20260421-0025), the change
+        # gets stranded there and no further recovery fires. Treat it
+        # like `running` for reconciliation so orphaned dispatches
+        # can be reset to pending and re-tried.
+        if change.status not in ("running", "verifying", "stalled", "dispatched"):
             continue
 
         pid = change.ralph_pid or 0
