@@ -2663,6 +2663,58 @@ def _is_serialized(name: str, state: Any, triggers: list[str]) -> bool:
     return False
 
 
+def _iss_owned_change_names(state_path: str) -> set[str]:
+    """Return the set of change names currently owned by the ISS pipeline.
+
+    A change is "owned" when an active Issue (not in terminal/pending
+    state) carries it as `change_name`. The engine must skip these so
+    the ISS investigator + fix runner can drive the /opsx:ff and
+    /opsx:apply steps without colliding with a parallel worktree
+    dispatch on the same openspec change.
+
+    Returns an empty set when `.set/issues/registry.json` is missing,
+    empty, or unreadable — ISS is optional; absence means engine
+    dispatches everything as before.
+    """
+    try:
+        import json as _json
+        from os import path as _p
+        # The registry lives alongside the state file, not inside set/.
+        # Resolve: state_path may be at project-root or lineage variant;
+        # `.set/issues/registry.json` is always at project root.
+        project_dir = _p.dirname(_p.abspath(state_path))
+        # Walk up if the state file is nested (e.g. under a lineage dir).
+        for _ in range(3):
+            candidate = _p.join(project_dir, ".set", "issues", "registry.json")
+            if _p.isfile(candidate):
+                reg_path = candidate
+                break
+            parent = _p.dirname(project_dir)
+            if parent == project_dir:
+                return set()
+            project_dir = parent
+        else:
+            return set()
+        with open(reg_path) as fh:
+            data = _json.load(fh)
+        # States where the ISS owns the change — matches ACTIVE_STATES
+        # minus NEW (which has not yet claimed ownership).
+        active = {
+            "investigating", "diagnosed", "awaiting_approval",
+            "fixing", "verifying", "deploying", "failed",
+        }
+        out: set[str] = set()
+        for i in data.get("issues", []):
+            if (i.get("state") or "").lower() not in active:
+                continue
+            cn = (i.get("change_name") or "").strip()
+            if cn:
+                out.add(cn)
+        return out
+    except (OSError, ValueError, KeyError):
+        return set()
+
+
 def dispatch_ready_changes(
     state_path: str,
     max_parallel: int,
@@ -2713,6 +2765,7 @@ def dispatch_ready_changes(
     current_phase = state.extras.get("current_phase", 999)
 
     # Collect ready changes
+    iss_owned = _iss_owned_change_names(state_path)
     ready_names: list[str] = []
     for name in order:
         change = _find_change(state, name)
@@ -2720,6 +2773,16 @@ def dispatch_ready_changes(
             continue
         # Phase gate
         if change.phase > current_phase:
+            continue
+        # ISS pipeline owns this change end-to-end — an active Issue is
+        # investigating or fixing it via /opsx:ff + /opsx:apply in the
+        # set-core directory. Dispatching it again through the engine's
+        # worktree pipeline would run two agents concurrently on the
+        # same openspec change, with predictable git conflicts.
+        if name in iss_owned:
+            logger.debug(
+                "Skipping dispatch for %s — owned by active ISS pipeline", name,
+            )
             continue
         if deps_satisfied(state, name):
             ready_names.append(name)
