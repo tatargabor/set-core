@@ -500,6 +500,44 @@ class TestDepsSatisfied:
         state = OrchestratorState(changes=[])
         assert deps_satisfied(state, "ghost") is True
 
+    def test_failed_parent_with_fix_iss_child_satisfies_dep(self):
+        """Section 10 fix-iss escalation: a parent that hit a hard-fail
+        circuit breaker (failed:stuck_no_progress, etc.) and pointed to
+        the auto-generated fix-iss child via fix_iss_child counts as
+        satisfied for THAT child only. Without this, the fix-iss change
+        is permanently un-dispatchable.
+        Observed on craftbrew-run-20260421-0025 where the engine sat at
+        '29 changes tracked, 0 running' for 7+ minutes after FIX_ISS
+        escalation.
+        """
+        state = OrchestratorState(changes=[
+            Change(
+                name="parent",
+                status="failed:stuck_no_progress",
+                fix_iss_child="fix-iss-001-parent",
+            ),
+            Change(
+                name="fix-iss-001-parent",
+                depends_on=["parent"],
+            ),
+        ])
+        assert deps_satisfied(state, "fix-iss-001-parent") is True
+
+    def test_failed_parent_without_fix_iss_link_blocks_unrelated_dep(self):
+        """A failed:* parent only counts as satisfied for the change it
+        explicitly handed off to (fix_iss_child). Other dependents are
+        still blocked.
+        """
+        state = OrchestratorState(changes=[
+            Change(
+                name="parent",
+                status="failed:stuck_no_progress",
+                fix_iss_child="fix-iss-001-parent",
+            ),
+            Change(name="unrelated", depends_on=["parent"]),
+        ])
+        assert deps_satisfied(state, "unrelated") is False
+
 
 class TestDepsFailed:
     def test_no_deps(self):

@@ -888,6 +888,19 @@ def _find_change(state: OrchestratorState, name: str) -> Change | None:
 def deps_satisfied(state: OrchestratorState, change_name: str) -> bool:
     """Check if all depends_on for a change are merged or skipped.
 
+    Section 10 of fix-replan-stuck-gate-and-decomposer: a fix-iss change
+    auto-created via `escalate_change_to_fix_iss()` declares
+    depends_on=[parent], where the parent has been transitioned to
+    `failed:stuck_no_progress` / `failed:retry_budget_exhausted` /
+    `failed:token_runaway` / `failed:retry_wall_time_exhausted`. Those
+    are TERMINAL states for the parent, but they're also the trigger
+    that spawned this fix-iss — so for *this child*, the dependency is
+    semantically satisfied (the parent has handed off). Without this
+    relaxation the fix-iss is permanently un-dispatchable and the
+    plan stalls (observed on craftbrew-run-20260421-0025 where the
+    engine sat at "29 changes tracked, 0 running" for 7+ minutes
+    after FIX_ISS_ESCALATED fired).
+
     Migrated from: state.sh deps_satisfied() L167-184
     """
     change = _find_change(state, change_name)
@@ -896,8 +909,19 @@ def deps_satisfied(state: OrchestratorState, change_name: str) -> bool:
 
     for dep_name in change.depends_on:
         dep = _find_change(state, dep_name)
-        if dep is None or dep.status not in ("merged", "skipped"):
+        if dep is None:
             return False
+        if dep.status in ("merged", "skipped"):
+            continue
+        # Allow escalation parents: a `failed:*` parent that points to
+        # this child via `fix_iss_child` has handed off — treat it as
+        # satisfied so the fix-iss can dispatch.
+        if (
+            dep.status.startswith("failed:")
+            and dep.fix_iss_child == change.name
+        ):
+            continue
+        return False
     return True
 
 
