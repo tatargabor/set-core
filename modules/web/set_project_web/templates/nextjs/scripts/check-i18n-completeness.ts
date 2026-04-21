@@ -83,26 +83,59 @@ const RE_VAR_CALL = /\b(\w+)\(\s*['"`]([^'"`${}]+)['"`]/g;
 
 type Reference = { file: string; line: number; namespace: string; key: string };
 
+type Binding = { line: number; var: string; ns: string };
+
+/** Return the namespace of the nearest binding `{var === varName, line <= callLine}`
+ * or undefined if no such binding exists in this file.
+ *
+ * Resolving by proximity (rather than by a file-global Map) makes the checker
+ * correct when the same variable name is rebound in a later function scope:
+ * each call site gets the namespace of the binding it syntactically follows.
+ * Without this, sibling function scopes that both `const t = useTranslations(...)`
+ * silently steal each other's keys — the craftbrew-run-20260421-0025 bug where
+ * `generateMetadata`'s `t("title")` resolved against the Page function's `nav`
+ * binding (reported as bogus `nav.title` missing).
+ *
+ * This is not full scope analysis (closures that capture outer `t` after an
+ * inner rebind would fool it), but covers every real-world Next.js pattern
+ * observed in practice. For a proper fix a TypeScript AST walk would be
+ * cleaner — deferred until the regex approach proves insufficient.
+ */
+function nearestNamespace(
+  bindings: Binding[], varName: string, callLine: number,
+): string | undefined {
+  let best: Binding | undefined;
+  for (const b of bindings) {
+    if (b.var !== varName) continue;
+    if (b.line > callLine) continue;
+    if (!best || b.line > best.line) best = b;
+  }
+  return best?.ns;
+}
+
 function extractRefs(file: string): Reference[] {
   const source = fs.readFileSync(file, "utf8");
   const lines = source.split("\n");
   const refs: Reference[] = [];
 
-  // Map of <variable> → <namespace>. Populated by scanning for
-  // `const X = useTranslations('ns')` / `getTranslations('ns')` bindings.
-  // When we see a call `X('key')`, the full key is `<ns>.<key>`.
-  const varToNs = new Map<string, string>();
+  // Pass 1: collect EVERY binding with its source line. A single file may
+  // contain multiple bindings that share a variable name across function
+  // scopes (common Next.js pattern: generateMetadata + Page).
+  const bindings: Binding[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     RE_VAR_BINDING.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = RE_VAR_BINDING.exec(line)) !== null) {
-      varToNs.set(m[1], m[2]);
+      bindings.push({ line: i + 1, var: m[1], ns: m[2] });
     }
   }
 
-  if (varToNs.size === 0) return refs;
+  if (bindings.length === 0) return refs;
 
+  // Pass 2: resolve each call against the nearest preceding binding of the
+  // same variable name. Reject calls whose template literal is dynamic
+  // (`${…}`) since we can't determine the key statically.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     RE_VAR_CALL.lastIndex = 0;
@@ -110,7 +143,7 @@ function extractRefs(file: string): Reference[] {
     while ((m = RE_VAR_CALL.exec(line)) !== null) {
       const varName = m[1];
       const rawKey = m[2];
-      const ns = varToNs.get(varName);
+      const ns = nearestNamespace(bindings, varName, i + 1);
       if (!ns) continue; // not a translation call — skip
       if (rawKey.includes("${") || rawKey.includes("{")) continue;
       const key = `${ns}.${rawKey}`;
