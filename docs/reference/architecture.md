@@ -118,6 +118,10 @@ done -> dep-install -> build -> test -> e2e -> code-review -> merge
 
 Each gate is profile-driven: the active `ProjectType` determines what commands run. If a gate fails, the change moves to `merge-blocked` and the agent can fix and retry.
 
+### E2E gate self-heal marker
+
+When the web e2e gate detects a `MODULE_NOT_FOUND` crash for a package declared in `package.json` (e.g. the agent added a dep to `package.json` but forgot `pnpm install`), the gate runs install and reruns Playwright once in-gate. Successful self-heal prepends `[self-heal: installed <pkg>]` to `GateResult.output` -- forensics (`set-run-logs`) and the web dashboard use this marker to distinguish healed runs from natural passes. Self-heal does NOT consume a `verify_retry_count` slot, and runs at most once per gate invocation. Implementation: `modules/web/set_project_web/gates.py`. Spec: `e2e-dep-drift-guard`.
+
 ## Technologies
 
 | Component | Technology | Why |

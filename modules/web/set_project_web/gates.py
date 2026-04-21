@@ -2,6 +2,16 @@
 
 Moved from lib/set_orch/verifier.py as part of profile-driven-gate-registry.
 These executors are registered by WebProjectType.register_gates().
+
+Dep-drift defense (two layers, see OpenSpec change: e2e-auto-install-on-dep-drift):
+  1. Pre-gate drift check — `_ensure_deps_synced` runs before Playwright boots.
+     Compares package.json mtime to node_modules install marker; runs
+     `pnpm/npm install` if drift detected. Cheap on warm cache.
+  2. Self-heal — `_self_heal_missing_module` catches Playwright crashes on
+     `Cannot find module` + MODULE_NOT_FOUND for a package declared in
+     package.json. Runs install + one in-gate rerun without consuming a
+     `verify_retry_count` slot. Result is flagged with `[self-heal: installed <pkg>]`
+     in GateResult.output so forensics can tell healed runs from real passes.
 """
 
 from __future__ import annotations
@@ -64,6 +74,232 @@ def _check_e2e_runtime_errors(output: str) -> list[str]:
 
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+# ─── Dep-drift defense helpers (e2e-auto-install-on-dep-drift) ───────
+
+_DEP_INSTALL_TIMEOUT_S = 120
+
+_MODULE_NOT_FOUND_RE = re.compile(r"Cannot find module '([^']+)'")
+
+
+def _install_marker_path(wt_path: str, package_manager: str) -> str:
+    """Return the install marker file that pnpm/npm writes at the end of install.
+
+    These files are updated atomically when the package manager finishes
+    installing. Comparing their mtime to `package.json` mtime is a reliable
+    drift signal: if package.json is newer, the install is out of date.
+    """
+    nm = os.path.join(wt_path, "node_modules")
+    if package_manager == "pnpm":
+        return os.path.join(nm, ".modules.yaml")
+    if package_manager == "npm":
+        return os.path.join(nm, ".package-lock.json")
+    if package_manager == "yarn":
+        return os.path.join(nm, ".yarn-integrity")
+    # Unknown PM → use node_modules dir mtime as a weaker signal
+    return nm
+
+
+def _deps_drift_reason(wt_path: str, package_manager: str) -> str | None:
+    """Return a drift reason string, or None if node_modules is in sync.
+
+    Drift reasons:
+      - "node_modules_missing" — node_modules dir does not exist
+      - "marker_missing"       — node_modules exists but install marker is absent
+      - "mtime"                — package.json mtime > install marker mtime
+    """
+    pkg_json = os.path.join(wt_path, "package.json")
+    if not os.path.isfile(pkg_json):
+        return None  # Not a JS project — nothing to drift
+    nm = os.path.join(wt_path, "node_modules")
+    if not os.path.isdir(nm):
+        return "node_modules_missing"
+    marker = _install_marker_path(wt_path, package_manager)
+    if not os.path.exists(marker):
+        return "marker_missing"
+    try:
+        pkg_mtime = os.path.getmtime(pkg_json)
+        marker_mtime = os.path.getmtime(marker)
+    except OSError:
+        return None
+    if pkg_mtime > marker_mtime:
+        return "mtime"
+    return None
+
+
+def _run_dep_install(wt_path: str, profile, timeout: int = _DEP_INSTALL_TIMEOUT_S) -> tuple[int, int, bool]:
+    """Run the profile's dep-install command in wt_path.
+
+    Returns (exit_code, duration_ms, timed_out). exit_code == -1 on timeout
+    or when the profile does not expose detect_dep_install_command.
+    """
+    from set_orch.subprocess_utils import run_command
+
+    if not (profile and hasattr(profile, "detect_dep_install_command")):
+        return (-1, 0, False)
+    cmd = profile.detect_dep_install_command(wt_path)
+    if not cmd:
+        return (-1, 0, False)
+    start = time.monotonic()
+    r = run_command(["bash", "-c", cmd], cwd=wt_path, timeout=timeout)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    return (r.exit_code, duration_ms, r.timed_out)
+
+
+def _ensure_deps_synced(wt_path: str, profile, change_name: str) -> None:
+    """Pre-e2e drift check: run install if package.json is newer than the install marker.
+
+    No-op when the profile can't detect a package manager, or when node_modules
+    is already fresh. Best-effort: on install timeout or failure we log and
+    proceed — the self-heal path acts as a safety net.
+    """
+    if not (profile and hasattr(profile, "detect_package_manager")):
+        return
+    try:
+        pm = profile.detect_package_manager(wt_path)
+    except Exception:
+        logger.debug("detect_package_manager raised for %s", wt_path, exc_info=True)
+        return
+    if not pm:
+        return
+    reason = _deps_drift_reason(wt_path, pm)
+    if reason is None:
+        return
+    logger.info(
+        "e2e_deps_drift_detected change=%s wt=%s package_manager=%s reason=%s",
+        change_name, wt_path, pm, reason,
+    )
+    exit_code, duration_ms, timed_out = _run_dep_install(wt_path, profile)
+    if timed_out:
+        logger.warning(
+            "e2e_dep_install_timeout change=%s wt=%s package_manager=%s timeout_s=%d",
+            change_name, wt_path, pm, _DEP_INSTALL_TIMEOUT_S,
+        )
+        return
+    logger.info(
+        "e2e_dep_install_completed change=%s wt=%s package_manager=%s exit_code=%d duration_ms=%d",
+        change_name, wt_path, pm, exit_code, duration_ms,
+    )
+
+
+def _extract_missing_module(e2e_output: str) -> str | None:
+    """Extract the missing module name from Playwright output.
+
+    Requires BOTH a `Cannot find module 'X'` regex match AND the literal
+    `MODULE_NOT_FOUND` in output. This pair is the Node.js signature for
+    a declared-but-not-installed dep; alone, either can match unrelated
+    noise.
+    """
+    if "MODULE_NOT_FOUND" not in e2e_output:
+        return None
+    m = _MODULE_NOT_FOUND_RE.search(e2e_output)
+    if not m:
+        return None
+    return m.group(1)
+
+
+def _resolve_package_name(module_path: str) -> str:
+    """Map a Node require path to its package name.
+
+    Examples:
+      - "dotenv/config"                → "dotenv"
+      - "@radix-ui/react-slot"         → "@radix-ui/react-slot"
+      - "@radix-ui/react-slot/dist/x"  → "@radix-ui/react-slot"
+      - "./relative-file"              → "./relative-file"  (unchanged — not a package)
+      - "/abs/path"                    → "/abs/path"        (unchanged — not a package)
+    """
+    if not module_path or module_path.startswith((".", "/")):
+        return module_path
+    parts = module_path.split("/")
+    if parts[0].startswith("@") and len(parts) >= 2:
+        return "/".join(parts[:2])  # scoped: @scope/name
+    return parts[0]
+
+
+def _is_declared_in_package_json(wt_path: str, pkg_name: str) -> bool:
+    """Return True if pkg_name is a key in dependencies or devDependencies."""
+    pkg_json_path = os.path.join(wt_path, "package.json")
+    if not os.path.isfile(pkg_json_path):
+        return False
+    try:
+        with open(pkg_json_path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    for section in ("dependencies", "devDependencies"):
+        section_data = data.get(section)
+        if isinstance(section_data, dict) and pkg_name in section_data:
+            return True
+    return False
+
+
+def _self_heal_missing_module(
+    wt_path: str,
+    profile,
+    e2e_output: str,
+    change_name: str,
+    env: dict,
+    actual_e2e_cmd: str,
+    e2e_timeout: int,
+) -> tuple[bool, str, object] | None:
+    """Detect + self-heal a declared-but-not-installed dep crash.
+
+    Returns None if the output doesn't match the MODULE_NOT_FOUND signature
+    or the missing package is not declared in package.json (in which case
+    the caller should proceed with the normal failure flow).
+
+    Otherwise runs install + reruns e2e once and returns
+    (healed, pkg_name, rerun_cmd_result). `healed` indicates whether the
+    rerun actually passed (exit 0, no flaky, no runtime errors); the caller
+    can still use `rerun_cmd_result` to do baseline comparison when the
+    rerun produced parseable failures.
+    """
+    from set_orch.subprocess_utils import run_command
+
+    missing = _extract_missing_module(e2e_output)
+    if not missing:
+        return None
+    pkg_name = _resolve_package_name(missing)
+    if pkg_name.startswith((".", "/")):
+        # Relative/absolute require — not a declared package, real app bug
+        return None
+    if not _is_declared_in_package_json(wt_path, pkg_name):
+        return None
+    logger.info(
+        "e2e_self_heal_start change=%s missing_pkg=%s wt=%s",
+        change_name, pkg_name, wt_path,
+    )
+    exit_code, install_ms, timed_out = _run_dep_install(wt_path, profile)
+    if timed_out or exit_code != 0:
+        logger.warning(
+            "e2e_self_heal_install_failed change=%s missing_pkg=%s exit_code=%d timed_out=%s",
+            change_name, pkg_name, exit_code, timed_out,
+        )
+        # Fall through — rerun anyway, it will likely crash the same way.
+    rerun_result = run_command(
+        ["bash", "-c", actual_e2e_cmd],
+        timeout=e2e_timeout, cwd=wt_path, env=env,
+        max_output_size=_E2E_CAPTURE_MAX_BYTES,
+    )
+    rerun_output = rerun_result.stdout + rerun_result.stderr
+    rerun_flaky = _count_flaky_tests(rerun_output) if env.get("PW_FLAKY_FAILS") else 0
+    rerun_runtime_errors = _check_e2e_runtime_errors(rerun_output)
+    healed = (
+        rerun_result.exit_code == 0
+        and not rerun_result.timed_out
+        and rerun_flaky == 0
+        and not rerun_runtime_errors
+    )
+    logger.info(
+        "e2e_self_heal_installed_and_rerun change=%s missing_pkg=%s install_duration_ms=%d "
+        "rerun_exit_code=%d rerun_outcome=%s",
+        change_name, pkg_name, install_ms, rerun_result.exit_code,
+        "pass" if healed else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable"),
+    )
+    return (healed, pkg_name, rerun_result)
 
 
 def _extract_e2e_failure_ids(output: str) -> set[str]:
@@ -531,6 +767,12 @@ def execute_e2e_gate(
     elif profile and hasattr(profile, "worktree_port"):
         port = int(profile.worktree_port(change_name) or 0)
 
+    # Pre-gate dep-drift check (e2e-auto-install-on-dep-drift): if the
+    # agent modified package.json without running `pnpm install`, node_modules
+    # is stale. Playwright would crash on config load with MODULE_NOT_FOUND.
+    # Detect drift via mtime and run install proactively — no-op on warm cache.
+    _ensure_deps_synced(wt_path, profile, change_name)
+
     # Pre-emptively kill any process bound to our assigned port BEFORE
     # Playwright boots its webServer. globalSetup runs AFTER the webServer
     # start, so the "kill stale port" logic in tests/e2e/global-setup.ts
@@ -604,6 +846,13 @@ def execute_e2e_gate(
                 "E2E gate: scoped to %d spec file(s) for %s",
                 len(_effective_specs), change_name,
             )
+
+    # Self-heal marker — prepended to GateResult.output when the gate self-heals
+    # a MODULE_NOT_FOUND crash. Kept in the first ~30 bytes of the output so the
+    # smart-truncation at gate_runner's 32KB boundary cannot strip it.
+    self_heal_marker = ""
+    self_heal_pkg: str | None = None
+    self_heal_attempted = False
 
     # Run E2E tests.
     # Capture up to 4MB of output — _extract_e2e_failure_ids needs to see
@@ -758,27 +1007,66 @@ def execute_e2e_gate(
     # means Playwright crashed or the formatter output was garbled — the
     # baseline comparison cannot help here, and would mask the failure as PASS.
     if not wt_failures:
-        logger.warning(
-            "E2E gate failed for %s with exit_code=%d but no parseable failure list "
-            "— marking fail (no baseline comparison)",
-            change_name, e2e_cmd_result.exit_code,
-        )
-        return GateResult(
-            "e2e", "fail",
-            output=(
-                f"E2E exited with code {e2e_cmd_result.exit_code} but no parseable "
-                f"failure list — likely crash, OOM, or formatter issue\n\n"
-                + e2e_output
-            ),
-            retry_context=(
+        # Self-heal (e2e-auto-install-on-dep-drift): if the crash is a
+        # declared-but-not-installed dep (MODULE_NOT_FOUND for a package
+        # in package.json), run install + one in-gate rerun — no retry
+        # slot consumed. Cap at one attempt per gate call.
+        if not self_heal_attempted:
+            self_heal_attempted = True
+            _sh = _self_heal_missing_module(
+                wt_path, profile, e2e_output, change_name,
+                env=e2e_env, actual_e2e_cmd=actual_e2e_cmd, e2e_timeout=e2e_timeout,
+            )
+            if _sh is not None:
+                healed, self_heal_pkg, rerun_result = _sh
+                self_heal_marker = f"[self-heal: installed {self_heal_pkg}]\n\n"
+                # Replace outer state with rerun values for downstream logic.
+                e2e_cmd_result = rerun_result
+                e2e_output = rerun_result.stdout + rerun_result.stderr
+                wt_failures = _extract_e2e_failure_ids(e2e_output)
+                if healed:
+                    logger.info(
+                        "e2e_self_heal_succeeded change=%s missing_pkg=%s — returning pass",
+                        change_name, self_heal_pkg,
+                    )
+                    return GateResult(
+                        "e2e", "pass",
+                        output=self_heal_marker + e2e_output,
+                        stats=parse_test_output(e2e_output) if e2e_output else None,
+                    )
+                # Rerun produced parseable failures → fall through to baseline path
+                # (wt_failures is non-empty now, so the `if not wt_failures:` check
+                # below will not re-enter this block).
+
+        if not wt_failures:
+            logger.warning(
+                "E2E gate failed for %s with exit_code=%d but no parseable failure list "
+                "— marking fail (no baseline comparison)",
+                change_name, e2e_cmd_result.exit_code,
+            )
+            retry_ctx = (
                 f"E2E gate failed with exit_code={e2e_cmd_result.exit_code} but "
                 f"Playwright did not emit a failure list. This usually means the "
                 f"suite crashed before completing — check the worktree for stack "
                 f"traces, OOM kills, webServer startup errors, or a Playwright "
                 f"reporter that differs from the default."
-            ),
-            stats=parse_test_output(e2e_output) if e2e_output else None,
-        )
+            )
+            if self_heal_pkg:
+                retry_ctx += (
+                    f"\n\nself-heal attempted for '{self_heal_pkg}' — "
+                    f"rerun also crashed, not a dep-drift issue"
+                )
+            return GateResult(
+                "e2e", "fail",
+                output=(
+                    self_heal_marker +
+                    f"E2E exited with code {e2e_cmd_result.exit_code} but no parseable "
+                    f"failure list — likely crash, OOM, or formatter issue\n\n"
+                    + e2e_output
+                ),
+                retry_context=retry_ctx,
+                stats=parse_test_output(e2e_output) if e2e_output else None,
+            )
 
     # Detect the main worktree via a strict helper that returns None when
     # git topology is unreliable. When None, skip baseline comparison and
@@ -812,7 +1100,7 @@ def execute_e2e_gate(
         if not new_failures:
             return GateResult(
                 "e2e", "pass",
-                output=f"E2E: {len(pre_existing)} pre-existing failures on main (no new regressions)\n\n"
+                output=self_heal_marker + f"E2E: {len(pre_existing)} pre-existing failures on main (no new regressions)\n\n"
                        + e2e_output[:3000],
                 stats=parse_test_output(e2e_output) if e2e_output else None,
             )
@@ -826,7 +1114,7 @@ def execute_e2e_gate(
         e2e_output = e2e_output_header + e2e_output
 
     result = GateResult(
-        "e2e", "fail", output=e2e_output,
+        "e2e", "fail", output=self_heal_marker + e2e_output,
         stats=parse_test_output(e2e_output) if e2e_output else None,
     )
     scope = change.scope or ""
