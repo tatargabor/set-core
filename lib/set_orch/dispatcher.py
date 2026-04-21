@@ -752,6 +752,87 @@ def resolve_change_model(
 # ─── Recovery ────────────────────────────────────────────────────────
 
 
+def _cleanup_stale_change_artifacts(project_dir: str, change_name: str) -> None:
+    """Remove the `change/<name>` branch + its worktree if 0 commits ahead of main.
+
+    Called from `recover_orphaned_changes` Case 2 (orphan without recorded
+    worktree_path). A crashed dispatch can leave a worktree+branch on disk
+    that state.json doesn't know about; without cleanup the next dispatch
+    hits `_unique_worktree_name`'s collision-suffix path and produces a `-N`
+    pair that the merger's hardcoded branch lookup can't see — the root of
+    the craftbrew-run-20260421-0025 ghost-merge bug.
+
+    Preserves branches with committed work (>0 commits ahead) — those are
+    the legitimate redispatch-resume case, handled elsewhere.
+    """
+    stale_branch = f"change/{change_name}"
+    br_check = run_git(
+        "rev-parse", "--verify", stale_branch,
+        cwd=project_dir, best_effort=True,
+    )
+    if br_check.exit_code != 0:
+        return  # no stale branch — nothing to clean
+
+    main_branch = detect_default_branch(project_dir)
+    ahead_r = run_git(
+        "rev-list", "--count", f"{main_branch}..{stale_branch}",
+        cwd=project_dir, best_effort=True,
+    )
+    try:
+        ahead = int(ahead_r.stdout.strip() or "0") if ahead_r.exit_code == 0 else 0
+    except ValueError:
+        ahead = 0
+
+    if ahead > 0:
+        logger.warning(
+            "recovery: stale branch %s has %d commits ahead of %s — preserving "
+            "(next dispatch will use -N suffix)",
+            stale_branch, ahead, main_branch,
+        )
+        return
+
+    # Find the worktree registered against this branch
+    stale_wt_path = ""
+    wt_list_r = run_git("worktree", "list", "--porcelain", cwd=project_dir)
+    if wt_list_r.exit_code == 0:
+        last_wt = ""
+        for line in wt_list_r.stdout.splitlines():
+            if line.startswith("worktree "):
+                last_wt = line[len("worktree "):]
+            elif line == f"branch refs/heads/{stale_branch}":
+                stale_wt_path = last_wt
+                break
+
+    if stale_wt_path and os.path.isdir(stale_wt_path):
+        rm_r = run_git(
+            "worktree", "remove", "--force", stale_wt_path,
+            cwd=project_dir, best_effort=True,
+        )
+        if rm_r.exit_code != 0:
+            logger.warning(
+                "recovery: `git worktree remove` failed for %s (%s) — falling back to rmtree",
+                stale_wt_path, rm_r.stderr.strip()[:200],
+            )
+            shutil.rmtree(stale_wt_path, ignore_errors=True)
+            run_git("worktree", "prune", cwd=project_dir, best_effort=True)
+        logger.info(
+            "recovery: removed stale worktree %s (branch=%s, 0 commits ahead)",
+            stale_wt_path, stale_branch,
+        )
+
+    del_r = run_git("branch", "-D", stale_branch, cwd=project_dir, best_effort=True)
+    if del_r.exit_code == 0:
+        logger.info(
+            "recovery: deleted stale empty branch %s (0 commits ahead of %s)",
+            stale_branch, main_branch,
+        )
+    else:
+        logger.warning(
+            "recovery: failed to delete stale branch %s: %s",
+            stale_branch, del_r.stderr.strip()[:200],
+        )
+
+
 def recover_orphaned_changes(
     state_path: str,
     event_bus: EventBus | None = None,
@@ -808,6 +889,13 @@ def recover_orphaned_changes(
 
         # Orphaned (no worktree, dead PID) — reset to pending
         logger.info("recovering orphaned change: %s (was %s)", change.name, change.status)
+        # Clean up any stale worktree+branch the crashed dispatch left on disk
+        # but didn't persist in state. Without this, _unique_worktree_name sees
+        # the orphan branch, generates `-N`, and the merger's hardcoded
+        # `change/<name>` lookup fires Case 2 "already merged" on the empty
+        # original branch — silently discarding the agent's work. Observed in
+        # craftbrew-run-20260421-0025 (email-dispatch-library ghost merge).
+        _cleanup_stale_change_artifacts(os.path.dirname(state_path), change.name)
         update_change_field(state_path, change.name, "status", "pending", event_bus=event_bus)
         update_change_field(state_path, change.name, "worktree_path", None, event_bus=event_bus)
         update_change_field(state_path, change.name, "ralph_pid", None, event_bus=event_bus)

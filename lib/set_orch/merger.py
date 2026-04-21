@@ -901,6 +901,41 @@ def _clean_untracked_merge_conflicts(change_name: str) -> None:
 # ─── Merge Pipeline ────────────────────────────────────────────────
 
 # Source: merger.sh merge_change() L56-476
+def _resolve_source_branch(wt_path: str, change_name: str) -> str:
+    """Return the branch to merge for `change_name`.
+
+    Derives the branch from the worktree's HEAD rather than hardcoding
+    `change/<change_name>`. When the dispatcher has generated a `-N` suffix
+    (via `_unique_worktree_name` after a crashed/recovered dispatch), the
+    actual branch is `change/<name>-N` while `change.name` stays bare.
+    Using the bare name lands us on an empty sibling branch and triggers
+    Case 2 "already merged" against 0 commits — the ghost-merge bug from
+    craftbrew-run-20260421-0025.
+
+    Falls back to `change/<change_name>` when the worktree is missing or
+    HEAD is detached.
+    """
+    fallback = f"change/{change_name}"
+    if not wt_path or not os.path.isdir(wt_path):
+        return fallback
+    head_r = run_command(
+        ["git", "-C", wt_path, "rev-parse", "--abbrev-ref", "HEAD"],
+        timeout=10,
+    )
+    if head_r.exit_code != 0:
+        return fallback
+    actual = head_r.stdout.strip()
+    if not actual or actual == "HEAD":
+        return fallback
+    resolved = actual if actual.startswith("change/") else f"change/{actual}"
+    if resolved != fallback:
+        logger.info(
+            "merge %s: using source_branch=%s from worktree HEAD (suffix via _unique_worktree_name)",
+            change_name, resolved,
+        )
+    return resolved
+
+
 def merge_change(
     change_name: str,
     state_file: str,
@@ -935,7 +970,7 @@ def merge_change(
     if event_bus:
         event_bus.emit("MERGE_ATTEMPT", change=change_name)
 
-    source_branch = f"change/{change_name}"
+    source_branch = _resolve_source_branch(wt_path or "", change_name)
 
     # Check branch existence
     branch_check = run_command(
