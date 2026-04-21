@@ -980,7 +980,16 @@ def merge_change(
             update_change_field(state_file, change_name, "smoke_result", "skip_merged")
             update_change_field(state_file, change_name, "smoke_status", "skipped")
             cleanup_worktree(change_name, wt_path or "", project_path=os.path.dirname(state_file))
+            update_change_field(state_file, change_name, "current_step", "archiving")
             archive_change(change_name)
+            # Matching Cases 1 and 3: current_step must reach "done" so
+            # the engine's post-merge gate (`1 changes still in post-merge
+            # processing (not yet step=done)`) releases and the next
+            # dispatch cycle runs. Observed on
+            # craftbrew-run-20260421-0025 where email-dispatch-library
+            # merged via this branch and the orchestrator sat idle for
+            # 9+ minutes waiting for current_step=done.
+            update_change_field(state_file, change_name, "current_step", "done")
             _remove_from_merge_queue(state_file, change_name)
             try:
                 from .digest import update_coverage_status
