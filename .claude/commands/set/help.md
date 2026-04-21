@@ -19,6 +19,7 @@ When the user asks about set-core features, use this quick reference to answer. 
 | `set-config <command>` | Configure set-core settings |
 | `set-add [path]` | Add an existing git repo to set-core |
 | `set-focus <change-id>` | Focus the editor window for a worktree |
+| `set-run-logs <run-id>` | Forensic analysis of a completed orchestration run (discover/digest/session/grep/orchestration) |
 | `set-version` | Display set-core version |
 
 ## Skills (Slash Commands)
@@ -54,6 +55,7 @@ When the user asks about set-core features, use this quick reference to answer. 
 | `/set:msg` | Send a directed message to another agent |
 | `/set:inbox` | Read incoming messages |
 | `/set:memory` | Interact with project memory system |
+| `/set:forensics` | Post-run debugging — error triage on a completed orchestration run |
 | `/set:help` | This quick reference |
 
 ## MCP Tools

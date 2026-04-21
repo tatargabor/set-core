@@ -24,6 +24,7 @@ This project is **set-core** — an orchestration framework for Claude Code that
 | Merge worktree | `/set:merge <id>` | Merge via integration gates |
 | Close worktree | `/set:close <id>` | Clean up finished work |
 | Check project health | `/set:audit` | Diagnose config/setup issues |
+| Forensics on a finished run | `/set:forensics` | Post-run debugging / error triage |
 | See agent activity | `/set:status` | What's everyone working on |
 | Send message to agent | `/set:msg` | Cross-agent communication |
 | Check inbox | `/set:inbox` | Read messages from other agents |
@@ -71,6 +72,7 @@ Read run logs → fix set-core bugs → `set-project init` to redeploy
 | `set-memory` | Memory CLI (remember/recall/forget) |
 | `set-status` | Show orchestration status |
 | `set-audit scan` | Project health scan |
+| `set-run-logs <run-id>` | Forensic analysis of a completed orchestration run |
 | `openspec` | OpenSpec CLI (list/status/new) |
 
 ## MCP Tools (programmatic)

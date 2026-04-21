@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""set-run-logs — forensic analysis of a completed orchestration run.
+
+Thin shim over `set_orch.forensics.cli:main`. Adds the in-tree `lib/` to
+sys.path so the script works from a development checkout without `pip install`.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve()
+_LIB = _HERE.parent.parent / "lib"
+if _LIB.is_dir() and str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+
+from set_orch.forensics.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -57,6 +57,7 @@ Issues = "https://github.com/tatargabor/set-core/issues"
 set-control = "gui.main:main"
 set-orch-core = "set_orch.cli:main"
 set-manager = "set_orch.manager.cli:main"
+set-run-logs = "set_orch.forensics.cli:main"
 
 [project.entry-points."set_tools.plugins"]
 # Plugins register themselves here
