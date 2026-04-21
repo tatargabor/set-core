@@ -417,11 +417,36 @@ class TestStateStall:
             project_path=tmp_project,
             state={"status": "running"},
             orchestrator_alive=False,
-            state_mtime=now - 1000,
-            last_state_change_at=now - 1000,
+            state_mtime=now - 2000,
+            last_state_change_at=now - 2000,
             now=now,
         )
         assert detect_state_stall(ctx) == []
+
+    def test_threshold_accommodates_slow_llm_gates(self, tmp_project):
+        """Regression for craftbrew-run-20260421-0025: spec_verify took 412s.
+
+        An LLM gate that legitimately runs ~400s must NOT trip state_stall.
+        This test locks the threshold at ≥ 600s so any future tightening
+        below that point requires deliberate revisit.
+        """
+        assert DEFAULT_STATE_STALL_SECS >= 600, (
+            "state_stall threshold must not drop below 600s — that would "
+            "false-alarm on legitimate LLM gates (spec_verify, review) which "
+            "routinely take 5-7 minutes during synchronous Anthropic API calls."
+        )
+
+        # And the positive case: a 450s stall (typical slow LLM gate) must NOT fire.
+        now = time.time()
+        ctx = make_ctx(
+            project_path=tmp_project,
+            state={"status": "running"},
+            state_mtime=now - 450,
+            last_state_change_at=now - 450,
+            now=now,
+        )
+        assert detect_state_stall(ctx) == [], \
+            "450s stall (normal slow LLM gate) triggered state_stall false alarm"
 
 
 # ─── token_stall ─────────────────────────────────────────

@@ -85,8 +85,18 @@ TERMINAL_STATUSES: frozenset[str] = frozenset({
 })
 
 # Tunables (also overrideable per-run via the daemon, future work).
-DEFAULT_STATE_STALL_SECS = 300        # 5 min
-DEFAULT_LOG_SILENCE_SECS = 300        # 5 min
+#
+# Stall thresholds are set wide enough to accommodate the longest legitimate
+# synchronous LLM gate. Observed in craftbrew-run-20260421-0025:
+# spec_verify took 412s on auth-core-and-admin-shell (cached 2M input tokens,
+# ~20k output) — during that call both state.json and orchestration.log are
+# idle because the orchestrator thread is blocked on the Anthropic API.
+# With the previous 5 min threshold the sentinel fired false-alarm
+# state_stall / log_silence events on every heavy LLM gate. 15 min gives
+# ~3x headroom over the observed p95 LLM gate latency while still catching
+# genuinely hung orchestrators in a bounded window.
+DEFAULT_STATE_STALL_SECS = 900        # 15 min
+DEFAULT_LOG_SILENCE_SECS = 900        # 15 min
 DEFAULT_TOKEN_STALL_LIMIT = 500_000   # tokens
 DEFAULT_TOKEN_STALL_SECS = 1800       # 30 min
 DEFAULT_ERROR_BASELINE_MULTIPLIER = 3
