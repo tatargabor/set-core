@@ -1117,6 +1117,36 @@ class TestMergeE2eManifest:
         assert result["spec_files"] == ["tests/e2e/x.spec.ts"]
         assert result["requirements_by_change"] == {"x": ["REQ-X-001"]}
 
+    def test_legacy_dict_shape_normalized_to_ids(self):
+        """Regression: historic manifests stored requirements as a list
+        of dicts (`[{"id": "REQ-X", ...}]`); new dispatches pass a list of
+        strings. dict.fromkeys on the mixed list raised TypeError and
+        blocked dispatch (observed on craftbrew-run-20260421-0025 where
+        email-dispatch-library got stuck in `dispatched` status because
+        foundation-setup's manifest had dict-shape requirements).
+
+        The merger must accept either shape and emit a clean string list.
+        """
+        existing = {
+            "requirements": [
+                {"id": "REQ-FOUND-001", "change": "foundation-setup"},
+                {"id": "REQ-FOUND-002", "change": "foundation-setup"},
+            ],
+            "requirements_by_change": {
+                "foundation-setup": ["REQ-FOUND-001", "REQ-FOUND-002"],
+            },
+        }
+        result = _merge_e2e_manifest(
+            existing=existing,
+            change_name="email-dispatch-library",
+            change_reqs=["REQ-EMAIL-001"],
+        )
+        assert result["requirements"] == [
+            "REQ-FOUND-001", "REQ-FOUND-002", "REQ-EMAIL-001",
+        ]
+        assert all(isinstance(r, str) for r in result["requirements"])
+
+
     def test_caller_dict_not_mutated(self):
         """Pure function — caller's existing dict must not be mutated."""
         existing = {

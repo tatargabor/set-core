@@ -471,7 +471,20 @@ def _merge_e2e_manifest(
     prior_reqs = existing.get("requirements") or []
     if not isinstance(prior_reqs, list):
         prior_reqs = []
-    merged_reqs = list(dict.fromkeys(list(prior_reqs) + list(change_reqs)))
+    # Historic manifests stored requirements as `[{"id": ..., ...}, ...]`;
+    # the current schema stores `["REQ-X-001", ...]`. Normalize before
+    # dedup — dict.fromkeys on mixed types raises TypeError: unhashable
+    # type 'dict' and blocks dispatch (observed on
+    # craftbrew-run-20260421-0025: foundation-setup merged a dict-shape
+    # manifest into main, next dispatch for email-dispatch-library
+    # raised at the merge and the change got stuck in `dispatched`).
+    def _req_id(r):
+        if isinstance(r, dict):
+            return r.get("id") or r.get("req_id") or ""
+        return str(r) if r else ""
+    normalized_prior = [rid for rid in (_req_id(r) for r in prior_reqs) if rid]
+    normalized_new = [rid for rid in (_req_id(r) for r in change_reqs) if rid]
+    merged_reqs = list(dict.fromkeys(normalized_prior + normalized_new))
 
     prior_spec_files = existing.get("spec_files") or []
     if not isinstance(prior_spec_files, list):
