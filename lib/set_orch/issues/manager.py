@@ -72,6 +72,18 @@ class IssueManager:
             case IssueState.NEW:
                 if self.registry.matches_mute(issue.error_summary, issue.error_detail):
                     self._transition(issue, IssueState.MUTED)
+                elif (issue.source or "").startswith("circuit-breaker:"):
+                    # Circuit-breaker escalations (retry_budget_exhausted,
+                    # stuck_no_progress, token_runaway, retry_wall_time_exhausted)
+                    # already have a fix-iss change registered in state by
+                    # escalate_change_to_fix_iss(). Spawning /opsx:ff here
+                    # would generate a SECOND change with a different name
+                    # derived from the error_summary slug — a ghost orphan
+                    # that sits pending and eats dispatch slots. The circuit
+                    # breaker IS the diagnosis, so skip INVESTIGATING and
+                    # go straight to DIAGNOSED; the engine is already
+                    # dispatching the existing fix-iss change.
+                    self._transition(issue, IssueState.DIAGNOSED)
                 elif self.policy.should_auto_investigate(issue):
                     if self._can_spawn_investigation():
                         self._spawn_investigation(issue)
@@ -741,7 +753,7 @@ slot is released to this fix-iss.
         from pathlib import Path as _Path
         from .registry import IssueRegistry as _IssueRegistry
         issue_reg = _IssueRegistry(_Path(project_root))
-        issue_reg.register(
+        registered = issue_reg.register(
             source=f"circuit-breaker:{escalation_reason}",
             error_summary=(
                 f"{change_name} escalated to {fix_iss_name} "
@@ -757,6 +769,18 @@ slot is released to this fix-iss.
             environment_path=project_root,
             affected_files=finding_paths[:20],
         )
+        # Link the issue to the existing fix-iss change. Without this
+        # link, IssueManager._process sees a NEW issue and spawns
+        # /opsx:ff, which generates a DIFFERENT change_name from the
+        # error_summary slug — producing a GHOST duplicate fix-iss
+        # change and a dead investigation. Observed on
+        # craftbrew-run-20260421-0025 backfill where each circuit-breaker
+        # issue spawned a second orphan fix-iss with a mangled name
+        # (fix-iss-001-catalog-listings-and-homepage vs the real
+        # fix-iss-001-catalog-listings-and).
+        if registered is not None:
+            registered.change_name = fix_iss_name
+            issue_reg.save()
     except Exception:
         logger.warning(
             "Could not register circuit-breaker issue for %s — issues tab "

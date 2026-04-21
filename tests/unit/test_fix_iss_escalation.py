@@ -146,3 +146,33 @@ def test_escalation_idempotent_on_repeat_call(state_file):
     st2 = load_state(state_file)
     count2 = sum(1 for c in st2.changes if c.name == n1)
     assert count2 == 1
+
+
+def test_escalation_links_issue_change_name_to_existing_fix_iss(state_file, tmp_path):
+    """The IssueRegistry entry created by the escalation must carry
+    `change_name = <the real fix-iss name>` so a downstream
+    IssueManager tick cannot spawn /opsx:ff against a ghost duplicate
+    change derived from the error_summary slug.
+
+    Observed bug: without the link, when IssueManager processes the
+    NEW issue and auto-investigates, `investigator.spawn()` generates
+    change_name = f"fix-{issue.id}-{_slugify(issue.error_summary)}"
+    which drifts from the real fix-iss name, leaving a dead
+    investigation AND a useless orphan change in state.changes.
+    """
+    from set_orch.issues.registry import IssueRegistry
+
+    fix_iss_name = escalate_change_to_fix_iss(
+        state_file=state_file, change_name="parent",
+        stop_gate="review", findings=[],
+        escalation_reason="stuck_no_progress",
+    )
+
+    reg = IssueRegistry(tmp_path)
+    issues = reg.all_issues()
+    assert len(issues) == 1
+    # Source marks this as a circuit-breaker escalation.
+    assert issues[0].source == "circuit-breaker:stuck_no_progress"
+    # And the issue is linked to the REAL fix-iss change, not a slug.
+    assert issues[0].change_name == fix_iss_name
+    assert issues[0].affected_change == "parent"

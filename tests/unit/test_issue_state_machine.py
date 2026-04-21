@@ -96,6 +96,28 @@ class TestTickProcessing:
         manager.tick()
         assert registry.get("ISS-001").state == IssueState.DIAGNOSED  # waiting state
 
+    def test_circuit_breaker_issue_skips_auto_investigation(self, manager, registry):
+        """Regression guard: a NEW issue whose source starts with
+        `circuit-breaker:` must NOT trigger /opsx:ff auto-investigation.
+
+        The circuit breaker in escalate_change_to_fix_iss() already
+        created a fix-iss change in state.changes and linked
+        issue.change_name to it. Spawning an investigator here would
+        derive a DIFFERENT change_name from the error_summary slug and
+        produce a ghost orphan fix-iss that eats a dispatch slot and
+        confuses the plan graph. Observed as a duplicate-change bug
+        when backfilling circuit-breaker issues into IssueRegistry.
+        """
+        registry.register(
+            source="circuit-breaker:stuck_no_progress",
+            error_summary="catalog escalated to fix-iss-001-catalog",
+            affected_change="catalog",
+            environment="e",
+        )
+        manager.tick()
+        # Went straight to DIAGNOSED — no investigation spawned.
+        assert registry.get("ISS-001").state == IssueState.DIAGNOSED
+
 
 class TestTimeoutApproval:
     def test_timeout_expires_triggers_fix(self, manager, registry):
