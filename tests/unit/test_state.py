@@ -748,6 +748,29 @@ class TestPhaseManagement:
         state.changes[1].status = "running"
         assert all_phase_changes_terminal(state, 1) is False
 
+    def test_all_phase_changes_terminal_with_failed_suffixed(self):
+        """Section 10: failed:* suffixed statuses must be treated as terminal.
+
+        Regression observed in multi-phase runs: phase stalled with
+        changes in failed:stuck_no_progress / failed:retry_budget_exhausted
+        because all_phase_changes_terminal only accepted bare "failed",
+        preventing advance to the next phase even though fix-iss children
+        were in flight covering the work. Engine sits at "N changes
+        tracked, 0 running" until manually unstuck.
+        """
+        state = self._make_phased_state()
+        state.changes[0].status = "merged"
+        state.changes[1].status = "failed:stuck_no_progress"
+        assert all_phase_changes_terminal(state, 1) is True
+
+        state.changes[0].status = "failed:retry_budget_exhausted"
+        state.changes[1].status = "failed:token_runaway"
+        assert all_phase_changes_terminal(state, 1) is True
+
+        # Suffixed failed + pending sibling → still not terminal.
+        state.changes[1].status = "pending"
+        assert all_phase_changes_terminal(state, 1) is False
+
     def test_advance_phase(self):
         state = self._make_phased_state()
         init_phase_state(state)

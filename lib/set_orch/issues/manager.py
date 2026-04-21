@@ -734,6 +734,35 @@ slot is released to this fix-iss.
             "operator must add it manually", fix_iss_name, exc_info=True,
         )
 
+    # Surface the escalation in the web Issues tab. Without this, operators
+    # see the fix-iss change in the plan but the Issues list stays empty
+    # even though a circuit breaker tripped — a confusing signal.
+    try:
+        from pathlib import Path as _Path
+        from .registry import IssueRegistry as _IssueRegistry
+        issue_reg = _IssueRegistry(_Path(project_root))
+        issue_reg.register(
+            source=f"circuit-breaker:{escalation_reason}",
+            error_summary=(
+                f"{change_name} escalated to {fix_iss_name} "
+                f"({escalation_reason}, target={target})"
+            ),
+            error_detail=(
+                f"Parent change `{change_name}` hit a circuit breaker on "
+                f"stop_gate=`{stop_gate or '—'}`. A diagnostic fix-iss change "
+                f"was created: openspec/changes/{fix_iss_name}/. The parent "
+                f"is marked `failed:{escalation_reason}`."
+            ),
+            affected_change=change_name,
+            environment_path=project_root,
+            affected_files=finding_paths[:20],
+        )
+    except Exception:
+        logger.warning(
+            "Could not register circuit-breaker issue for %s — issues tab "
+            "will not reflect the escalation", change_name, exc_info=True,
+        )
+
     if event_bus is not None:
         event_bus.emit(
             "FIX_ISS_ESCALATED",

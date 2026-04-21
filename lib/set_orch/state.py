@@ -1047,6 +1047,22 @@ def topological_sort(changes: list[Change] | list[dict]) -> list[str]:
 
 _TERMINAL_STATUSES = frozenset({"merged", "failed", "skipped", "done"})
 
+
+def is_terminal_status(status: str) -> bool:
+    """Terminal = change will not transition further without external action.
+
+    Accepts the base set (`merged`/`failed`/`skipped`/`done`) and any
+    suffixed `failed:*` variant introduced by Section 10 of
+    fix-replan-stuck-gate-and-decomposer (`failed:stuck_no_progress`,
+    `failed:retry_budget_exhausted`, `failed:token_runaway`,
+    `failed:retry_wall_time_exhausted`). Without this, phase-3 stalls on
+    a failed:*-only residue even though all remaining work has a
+    recovering fix-iss child and no retries will ever re-run the parent.
+    """
+    if status in _TERMINAL_STATUSES:
+        return True
+    return status.startswith("failed:")
+
 # Statuses that count as NOT in-flight for dispatch parallel-limit purposes.
 # A change is "in flight" (counts toward the running total) UNLESS it is in
 # one of these states. We use a whitelist (not a blacklist of in-flight states)
@@ -1142,7 +1158,7 @@ def all_phase_changes_terminal(state: OrchestratorState, phase: int) -> bool:
     phase_changes = [c for c in state.changes if c.phase == phase]
     if not phase_changes:
         return True
-    return all(c.status in _TERMINAL_STATUSES for c in phase_changes)
+    return all(is_terminal_status(c.status) for c in phase_changes)
 
 
 def advance_phase(

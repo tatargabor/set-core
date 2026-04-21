@@ -119,6 +119,8 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [x] 10.8 Integration test: a change that exhausts review budget → fix-iss proposal appears in `openspec/changes/fix-iss-*/proposal.md` with correct `Target` [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
 - [x] 10.9 Integration test: stuck-loop escalation produces fix-iss with `escalation_reason=stuck_no_progress` and parent `fix_iss_child` populated [REQ: stuck-loop-circuit-breaker-also-triggers-fix-iss]
 - [x] 10.10 Integration test: token-runaway escalation produces fix-iss with runaway metadata in proposal body [REQ: token-runaway-also-triggers-fix-iss]
+- [x] 10.11 In `lib/set_orch/state.py` extract `is_terminal_status(status)` helper (accepts base set + any `failed:*` prefix) and use it in `all_phase_changes_terminal()`; also fix the inline `change_terminal` set in `lib/set_orch/supervisor/daemon.py:694` to accept `failed:*` prefix. Without this the phase-advance guard blocks the next phase when a failed:* residue remains even though fix-iss children already cover the work [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
+- [x] 10.12 In `lib/set_orch/issues/manager.py:escalate_change_to_fix_iss()` also call `IssueRegistry.register(source="circuit-breaker:<reason>", affected_change=<parent>, ...)` so the escalation surfaces in the web `Issues` tab. Without this `/.set/issues/registry.json` stays empty and operators see `[]` from `/api/{project}/issues` even after multiple circuit-breaker trips [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
 
 ## 12. Gate-Retry-Policy — Scoped Re-Gate (Layer 1 + Web module)
 

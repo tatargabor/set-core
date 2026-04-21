@@ -697,7 +697,7 @@ class SupervisorDaemon:
             return
         for c in changes:
             status = (c.get("status") or "").lower()
-            if status not in change_terminal:
+            if status not in change_terminal and not status.startswith("failed:"):
                 return
         if int(state.get("replan_attempt") or 0) > 0:
             return
