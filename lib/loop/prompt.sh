@@ -248,7 +248,7 @@ Do NOT write any files. Do NOT create any commits. Simply stop.
     if [[ "$change_action" != "done" ]]; then
         reflection_section="
 # Reflection (MANDATORY — last step before finishing)
-Before you stop, write .claude/reflection.md with 3-5 bullet points:
+Before you stop, write .set/reflection.md with 3-5 bullet points:
 - Errors you encountered and how you fixed them
 - Non-obvious things you learned about this codebase
 - Workarounds or gotchas the next iteration should know about

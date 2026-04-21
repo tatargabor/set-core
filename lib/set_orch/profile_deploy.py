@@ -44,9 +44,12 @@ def _target_path(template_rel: str, target_dir: Path) -> Path:
             return set_knowledge / template_rel
         return target_dir / template_rel
 
-    # reflection.md → .claude/reflection.md (agent learning file)
+    # reflection.md → .set/reflection.md (agent learning file).
+    # Lives in .set/ because Claude Code's sensitive-file policy blocks writes
+    # under .claude/, which used to cause a permission-denial storm per agent
+    # iteration (observed in craftbrew-run-20260421-0025: ~100 such events).
     if template_rel == "reflection.md":
-        return target_dir / ".claude" / "reflection.md"
+        return target_dir / ".set" / "reflection.md"
 
     # Apply path mappings (e.g., rules/ → .claude/rules/)
     for prefix, target_prefix in _PATH_MAPPINGS.items():

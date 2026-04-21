@@ -206,10 +206,47 @@ class TestContextHelpers:
         assert "Proposal" in get_proposal_context(wt, "ch")
 
     def test_previous_iteration_summary(self, wt):
-        with open(os.path.join(wt, ".claude", "reflection.md"), "w") as f:
+        """Canonical path: .set/reflection.md (not blocked by Claude Code
+        sensitive-file policy, unlike .claude/reflection.md)."""
+        os.makedirs(os.path.join(wt, ".set"))
+        with open(os.path.join(wt, ".set", "reflection.md"), "w") as f:
             f.write("- Found a bug\n- Fixed it\n")
         result = get_previous_iteration_summary(wt)
         assert "Found a bug" in result
 
+    def test_previous_iteration_legacy_fallback(self, wt):
+        """Fallback: pre-migration worktrees may still have .claude/reflection.md."""
+        with open(os.path.join(wt, ".claude", "reflection.md"), "w") as f:
+            f.write("- Legacy note\n")
+        result = get_previous_iteration_summary(wt)
+        assert "Legacy note" in result
+
+    def test_previous_iteration_prefers_set_over_claude(self, wt):
+        """If both exist, .set/reflection.md (canonical) wins."""
+        os.makedirs(os.path.join(wt, ".set"))
+        with open(os.path.join(wt, ".set", "reflection.md"), "w") as f:
+            f.write("- canonical\n")
+        with open(os.path.join(wt, ".claude", "reflection.md"), "w") as f:
+            f.write("- legacy\n")
+        result = get_previous_iteration_summary(wt)
+        assert "canonical" in result
+        assert "legacy" not in result
+
     def test_previous_iteration_missing(self, wt):
         assert get_previous_iteration_summary(wt) == ""
+
+
+class TestPromptTextReflection:
+    """Guard against regression to .claude/reflection.md — writes there are
+    blocked by Claude Code's sensitive-file policy and caused ~100 permission
+    denials per run in craftbrew-run-20260421-0025."""
+
+    def test_prompt_instructs_set_reflection_path(self, wt):
+        os.makedirs(os.path.join(wt, ".set"))
+        prompt = build_claude_prompt(
+            task="noop", iteration=1, max_iter=10, wt_path=wt,
+        )
+        assert ".set/reflection.md" in prompt, \
+            "agent prompt must direct reflection write to .set/ (non-sensitive dir)"
+        assert ".claude/reflection.md" not in prompt, \
+            "agent prompt must NOT reference .claude/reflection.md (sensitive, blocked)"

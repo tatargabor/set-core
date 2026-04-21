@@ -471,8 +471,13 @@ cmd_run() {
         local new_commits
         new_commits=$(get_new_commits "$wt_path" "$iter_start")
 
-        # Process reflection file (agent writes learnings here)
-        local reflection_file="$wt_path/.claude/reflection.md"
+        # Process reflection file (agent writes learnings here).
+        # Canonical path is .set/reflection.md; fall back to legacy
+        # .claude/reflection.md for pre-migration worktrees.
+        local reflection_file="$wt_path/.set/reflection.md"
+        if [[ ! -f "$reflection_file" && -f "$wt_path/.claude/reflection.md" ]]; then
+            reflection_file="$wt_path/.claude/reflection.md"
+        fi
         if [[ -f "$reflection_file" ]]; then
             local reflection_content
             reflection_content=$(cat "$reflection_file" 2>/dev/null)

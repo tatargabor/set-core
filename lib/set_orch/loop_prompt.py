@@ -101,7 +101,7 @@ def build_claude_prompt(
     if change_action != "done":
         reflection_section = (
             "\n# Reflection (MANDATORY — last step before finishing)\n"
-            "Before you stop, write .claude/reflection.md with 3-5 bullet points:\n"
+            "Before you stop, write .set/reflection.md with 3-5 bullet points:\n"
             "- Errors you encountered and how you fixed them\n"
             "- Non-obvious things you learned about this codebase\n"
             "- Workarounds or gotchas the next iteration should know about\n"
@@ -211,13 +211,15 @@ def get_proposal_context(wt_path: str, change_name: str) -> str:
 
 
 def get_previous_iteration_summary(wt_path: str) -> str:
-    """Read .claude/reflection.md if exists."""
-    path = os.path.join(wt_path, ".claude", "reflection.md")
-    try:
-        with open(path, "r") as f:
-            return f.read()
-    except OSError:
-        return ""
+    """Read .set/reflection.md (canonical) or .claude/reflection.md (legacy fallback)."""
+    for rel in (".set/reflection.md", ".claude/reflection.md"):
+        path = os.path.join(wt_path, rel)
+        try:
+            with open(path, "r") as f:
+                return f.read()
+        except OSError:
+            continue
+    return ""
 
 
 # ─── Internal helpers ─────────────────────────────────────────
