@@ -246,12 +246,12 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [x] AC-41: WHEN retry commit touches only i18n JSON AND review is cached-policy THEN GATE_CACHED event emitted + no review LLM call [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: cached-review-reused-when-retry-diff-is-small]
 - [x] AC-42: WHEN retry diff touches `.tsx` THEN design-fidelity cache invalidated with reason diff-touches-scope [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: cache-invalidated-by-scope-overlap]
 - [x] AC-43: WHEN 3rd consecutive cache use THEN cache invalidated with reason cache-use-cap-reached, gate runs fully [REQ: cache-use-cap-reached, scenario: cache-use-cap-reached]
-- [ ] AC-44: WHEN retry diff adds new exported function THEN cache invalidated with reason new-api-surface-detected [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: new-api-surface-invalidates-cache]
+- [x] AC-44: WHEN retry diff adds new exported function THEN cache invalidated with reason new-api-surface-detected [REQ: cached-policy-reuses-prior-verdict-with-invalidation, scenario: new-api-surface-invalidates-cache]
 
 ### REQ: scoped-policy-shards-gate-by-retry-diff
 - [x] AC-45: WHEN retry touches cart page AND e2e is scoped THEN Playwright runs only cart.spec.ts; VERIFY_GATE.scoped_subset present [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: e2e-scoped-to-affected-test-files]
-- [ ] AC-46: WHEN gate_scope_filter returns None THEN gate falls through to cached policy [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: e2e-no-overlap-falls-through-to-cached]
-- [ ] AC-47: WHEN scoped gate has been filtered for 2 consecutive retries THEN 3rd retry runs full suite [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: scoped-filter-still-subject-to-cache-use-cap]
+- [x] AC-46: WHEN gate_scope_filter returns None THEN gate falls through to cached policy [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: e2e-no-overlap-falls-through-to-cached]
+- [x] AC-47: WHEN scoped gate has been filtered for 2 consecutive retries THEN 3rd retry runs full suite [REQ: scoped-policy-shards-gate-by-retry-diff, scenario: scoped-filter-still-subject-to-cache-use-cap]
 
 ### REQ: verify-pipeline-honors-per-gate-retry-policy
 - [x] AC-48: WHEN verify_retry_index == 0 THEN every gate runs fully regardless of policy, no GATE_CACHED events [REQ: verify-pipeline-honors-per-gate-retry-policy, scenario: first-verify-run-ignores-retry-policy]

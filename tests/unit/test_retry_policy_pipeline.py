@@ -9,7 +9,10 @@ Covers:
   AC-41 (cached reuse when diff is out-of-scope)
   AC-42 (cache invalidated by scope overlap)
   AC-43 (cache-use cap reached forces full run)
+  AC-44 (new-api-surface invalidates cache)
   AC-45 (scoped e2e returns subset, VERIFY_GATE scoped_subset present)
+  AC-46 (scoped filter returns None falls through to cached)
+  AC-47 (scoped cache-use cap forces full suite)
   AC-48 (first verify run ignores policy)
 """
 from __future__ import annotations
@@ -603,3 +606,160 @@ def test_cache_full_run_resets_consecutive_counter(tmp_path):
     tr = updated["changes"][0]["gate_retry_tracking"]["review"]
     assert tr["consecutive_cache_uses"] == 0
     assert tr["last_verdict_sha"] != baseline_sha  # got new HEAD
+
+
+def test_cache_invalidated_by_new_api_surface(tmp_path):
+    """AC-44: retry diff adds a new exported function → cache must be
+    invalidated with reason `new-api-surface-detected`, even when the
+    diff would otherwise be within the gate's cache scope.
+    """
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    baseline_sha = _init_repo(wt, {"src/utils/noop.ts": "export {};\n"})
+    # Append a new exported function — exactly what _diff_has_new_api_surface
+    # is meant to catch. The file is in src/** (review scope) AND out of
+    # review cache-scope's src/** — so scope alone would invalidate. We need
+    # the test to tease out the API-surface path, so we pick a path outside
+    # the declared cache scope but matching the API-surface regex.
+    _commit(
+        wt,
+        {"lib/new_api.ts": "export async function newHandler(req: any) { return req; }\n"},
+        "new-api",
+    )
+
+    change = Change(
+        name="c_api", scope="x",
+        worktree_path=str(wt),
+        gate_retry_tracking={
+            "review": GateRetryEntry(
+                consecutive_cache_uses=0,
+                last_verdict_sha=baseline_sha,
+                last_verdict="pass",
+                last_run_retry_index=0,
+            ),
+        },
+        verify_retry_index=1,
+    )
+    gc = _FakeGateConfig({"review": True})
+    # Narrow cache scope so the diff path `lib/new_api.ts` is out-of-scope —
+    # if API-surface detection did not fire, the cache WOULD reuse.
+    profile = _FakeProfile(
+        policy={"review": "cached"},
+        cache_scopes={"review": ["src/**"]},
+    )
+    bus = _FakeEventBus()
+    called = {"review": 0}
+
+    def exec_review():
+        called["review"] += 1
+        return GateResult("review", "pass", duration_ms=1)
+
+    pipeline = GatePipeline(
+        gc, _make_state_file(tmp_path, change), "c_api", change,
+        max_retries=2, event_bus=bus, profile=profile,
+    )
+    pipeline.register("review", exec_review)
+    pipeline.run()
+
+    # API surface tripped → gate ran fully, no GATE_CACHED emitted.
+    assert called["review"] == 1
+    assert not any(ev[0] == "GATE_CACHED" for ev in bus.emitted)
+
+
+def test_scoped_gate_falls_through_to_cached_when_filter_returns_none(tmp_path):
+    """AC-46: when `gate_scope_filter` returns None the gate falls
+    through to the cached policy rather than running fully.
+    """
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    baseline_sha = _init_repo(wt, {"src/app/cart/page.tsx": "c"})
+    # Commit something the profile's filter will not map (returns None).
+    _commit(wt, {"README.md": "doc"}, "docs-only")
+
+    change = Change(
+        name="c_ft", scope="x",
+        worktree_path=str(wt),
+        gate_retry_tracking={
+            "e2e": GateRetryEntry(
+                consecutive_cache_uses=0,
+                last_verdict_sha=baseline_sha,
+                last_verdict="pass",
+                last_run_retry_index=0,
+            ),
+        },
+        verify_retry_index=1,
+    )
+    gc = _FakeGateConfig({"e2e": True})
+    # scope_filter_result=None → filter returns None → fall through to cached.
+    # Empty cache_scope so the diff is out-of-scope → cache HIT.
+    profile = _FakeProfile(
+        policy={"e2e": "scoped"},
+        cache_scopes={"e2e": ["src/**"]},
+        scope_filter_result=None,
+    )
+    bus = _FakeEventBus()
+    called = {"e2e": 0}
+
+    def exec_e2e():
+        called["e2e"] += 1
+        return GateResult("e2e", "pass", duration_ms=1)
+
+    pipeline = GatePipeline(
+        gc, _make_state_file(tmp_path, change), "c_ft", change,
+        max_retries=2, event_bus=bus, profile=profile,
+    )
+    pipeline.register("e2e", exec_e2e)
+    pipeline.run()
+
+    # Scoped fell through to cached; diff was out of cache-scope → cache HIT.
+    assert called["e2e"] == 0
+    assert any(ev[0] == "GATE_CACHED" for ev in bus.emitted)
+
+
+def test_scoped_gate_respects_cache_use_cap(tmp_path):
+    """AC-47: after `max_consecutive_cache_uses` consecutive scoped
+    runs, the next retry must run the full suite even if the filter
+    would still return a subset.
+    """
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    baseline_sha = _init_repo(wt, {"src/app/cart/page.tsx": "c"})
+    _commit(wt, {"src/app/cart/page.tsx": "edit"}, "cart edit")
+
+    change = Change(
+        name="c_cap", scope="x",
+        worktree_path=str(wt),
+        gate_retry_tracking={
+            "e2e": GateRetryEntry(
+                consecutive_cache_uses=2,  # at cap
+                last_verdict_sha=baseline_sha,
+                last_verdict="pass",
+                last_run_retry_index=0,
+            ),
+        },
+        verify_retry_index=3,
+    )
+    gc = _FakeGateConfig({"e2e": True})
+    profile = _FakeProfile(
+        policy={"e2e": "scoped"},
+        scope_filter_result=["tests/e2e/cart.spec.ts"],
+    )
+    bus = _FakeEventBus()
+    called = {"e2e": 0}
+
+    def exec_e2e():
+        called["e2e"] += 1
+        return GateResult("e2e", "pass", duration_ms=1)
+
+    pipeline = GatePipeline(
+        gc, _make_state_file(tmp_path, change), "c_cap", change,
+        max_retries=2, event_bus=bus, profile=profile,
+        max_consecutive_cache_uses=2,
+    )
+    pipeline.register("e2e", exec_e2e)
+    pipeline.run()
+
+    # Cap reached → ran the full suite, not the scoped subset.
+    assert called["e2e"] == 1
+    # The gate ran fully, so scoped_subset for it must be absent/empty.
+    assert not pipeline._gate_scoped_subset.get("e2e")
