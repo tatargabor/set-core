@@ -1070,8 +1070,23 @@ def count_in_flight_changes(state: "OrchestratorState") -> int:
     verifying, integrating, integration-failed, integration-e2e-failed,
     integration-coverage-failed, fixing, merge-blocked, stalled, paused,
     stopped, waiting:human, waiting:budget, and any future intermediate state.
+
+    Section 10 of fix-replan-stuck-gate-and-decomposer introduced suffixed
+    failure statuses (`failed:stuck_no_progress`,
+    `failed:retry_budget_exhausted`, `failed:token_runaway`,
+    `failed:retry_wall_time_exhausted`). These are TERMINAL — the change
+    won't retry — so they MUST be treated as not-in-flight; otherwise a
+    `max_parallel=1` plan stalls forever after the first circuit-breaker
+    trip (observed on craftbrew-run-20260421-0025 where the engine sat at
+    "29 changes tracked, 0 running" for 7+ minutes after FIX_ISS escalation
+    but count_in_flight returned 1 because the failed:* parent stayed
+    counted). Match by prefix so future failed:* variants Just Work.
     """
-    return sum(1 for c in state.changes if c.status not in _NOT_IN_FLIGHT_STATUSES)
+    return sum(
+        1 for c in state.changes
+        if c.status not in _NOT_IN_FLIGHT_STATUSES
+        and not c.status.startswith("failed:")
+    )
 
 
 def init_phase_state(state: OrchestratorState) -> None:

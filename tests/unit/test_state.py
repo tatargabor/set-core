@@ -539,6 +539,35 @@ class TestDepsSatisfied:
         assert deps_satisfied(state, "unrelated") is False
 
 
+class TestCountInFlight:
+    def test_failed_suffix_status_not_counted(self):
+        """Section 10 introduced failed:stuck_no_progress, failed:retry_budget_exhausted,
+        failed:token_runaway, failed:retry_wall_time_exhausted — all terminal.
+        These MUST be treated as not-in-flight or max_parallel=1 plans stall
+        after the first circuit-breaker trip.
+        """
+        from set_orch.state import count_in_flight_changes
+        state = OrchestratorState(changes=[
+            Change(name="a", status="failed:stuck_no_progress"),
+            Change(name="b", status="failed:retry_budget_exhausted"),
+            Change(name="c", status="failed:token_runaway"),
+            Change(name="d", status="failed:retry_wall_time_exhausted"),
+            Change(name="e", status="failed"),  # legacy
+            Change(name="f", status="merged"),
+            Change(name="g", status="pending"),
+        ])
+        assert count_in_flight_changes(state) == 0
+
+    def test_running_status_counted(self):
+        from set_orch.state import count_in_flight_changes
+        state = OrchestratorState(changes=[
+            Change(name="a", status="running"),
+            Change(name="b", status="merged"),
+            Change(name="c", status="failed:stuck_no_progress"),
+        ])
+        assert count_in_flight_changes(state) == 1
+
+
 class TestDepsFailed:
     def test_no_deps(self):
         state = OrchestratorState(changes=[
