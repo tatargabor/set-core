@@ -1559,6 +1559,28 @@ def _apply_token_runaway_check(
     return escalate
 
 
+def _read_head_sha_for_change(change: Any) -> str:
+    """Return the short HEAD SHA of the change's worktree, or '' on any error.
+
+    Used by the stuck-loop circuit breaker: when the worktree HEAD has moved
+    since the last recorded fingerprint, the agent committed new code even if
+    the gate's output-derived fingerprint collided. The breaker then resets
+    the counter instead of escalating.
+    """
+    wt_path = getattr(change, "worktree_path", "") or ""
+    if not wt_path or not os.path.isdir(wt_path):
+        return ""
+    try:
+        from .subprocess_utils import run_command
+        r = run_command(
+            ["git", "-C", wt_path, "rev-parse", "--short=12", "HEAD"],
+            timeout=5,
+        )
+        return r.stdout.strip() if r.exit_code == 0 else ""
+    except Exception:
+        return ""
+
+
 def _apply_stuck_loop_counter(
     state_file: str,
     change_name: str,
@@ -1599,13 +1621,28 @@ def _apply_stuck_loop_counter(
         prior_fp = change.extras.get("stuck_fingerprint") if change.extras else None
         prior_count = int(change.stuck_loop_count or 0)
 
+        # HEAD-SHA guard (belt-and-suspenders on top of HEAD-folded fingerprint).
+        # If the worktree's HEAD has moved since the last recorded fingerprint,
+        # the agent DID commit new code this iteration even if the gate wasn't
+        # re-run and its output-derived fingerprint looks identical. Reset the
+        # counter — don't escalate on a repeat fingerprint that just reflects
+        # stale verify_gate output. Observed in craftbrew-run-20260421-0025 on
+        # catalog-listings-and-homepage: 3 CHANGE_DONE events with only 1
+        # verify_gate run between them, stuck_loop fired on unchanged
+        # fingerprint even though two additional commits had landed.
+        prior_head = change.extras.get("stuck_head_sha") if change.extras else None
+        current_head = _read_head_sha_for_change(change)
+        head_moved = bool(
+            prior_head and current_head and prior_head != current_head
+        )
+
         # Threshold-first ordering (tasks.md 3.3): if the fingerprint has
         # changed THIS iteration, reset wins — the breaker does not fire
         # even if counter would otherwise reach max. Otherwise increment.
         # `prior_fp is None` is treated as "stable with prior_count=0" so
         # the first-ever observation becomes count=1, not a trip (avoids
         # firing max_stuck_loops=1 breakers on the baseline-capture poll).
-        fingerprint_stable = prior_fp is None or prior_fp == current_fp
+        fingerprint_stable = (prior_fp is None or prior_fp == current_fp) and not head_moved
         new_count = (prior_count + 1) if fingerprint_stable else 0
         # When prior_fp is None we MUST NOT trip the breaker on this poll
         # — we have no evidence of repeated failure yet, only a baseline.
@@ -1617,6 +1654,8 @@ def _apply_stuck_loop_counter(
 
         change.stuck_loop_count = new_count
         change.extras["stuck_fingerprint"] = current_fp
+        if current_head:
+            change.extras["stuck_head_sha"] = current_head
 
         _escalate_pending = False
         if would_trip:
@@ -1641,6 +1680,12 @@ def _apply_stuck_loop_counter(
             logger.info(
                 "stuck-loop counter for %s: %d/%d (fingerprint unchanged %s)",
                 change_name, new_count, max_stuck_loops, current_fp,
+            )
+        elif head_moved:
+            logger.info(
+                "stuck-loop counter for %s: reset to 0 (HEAD moved %s → %s, "
+                "gate output fingerprint would have collided)",
+                change_name, prior_head, current_head,
             )
         else:
             logger.info(

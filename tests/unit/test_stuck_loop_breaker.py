@@ -128,6 +128,58 @@ def test_first_observation_never_fires_even_with_max_one(state_file):
     assert fired is True  # second same-fp observation → trip
 
 
+def test_head_moved_resets_counter_even_with_same_fingerprint(tmp_path, monkeypatch):
+    """Regression for craftbrew-run-20260421-0025: the agent commits a fix
+    between iterations but the gate isn't re-run, so the cached fingerprint
+    still reflects the pre-fix verdict. Without this guard, stuck_loop would
+    trip on the 3rd repeat of a fingerprint that's stale, discarding agent
+    progress. With it, a moved HEAD SHA triggers a counter reset.
+    """
+    import subprocess
+    # Create a real git worktree for HEAD reads
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    subprocess.run(["git", "init", "-q", str(wt)], check=True)
+    subprocess.run(["git", "-C", str(wt), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(wt), "config", "user.name", "t"], check=True)
+    (wt / "f.txt").write_text("v1")
+    subprocess.run(["git", "-C", str(wt), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "c1"], check=True)
+
+    os.makedirs(tmp_path / "openspec" / "changes", exist_ok=True)
+    sf = tmp_path / "state.json"
+    st = OrchestratorState(status="running", changes=[
+        Change(name="foo", worktree_path=str(wt), status="running"),
+    ])
+    save_state(st, str(sf))
+
+    bus = _FakeBus()
+
+    # First stuck: captures fingerprint + HEAD baseline.
+    _set_fingerprint(str(sf), "foo", "sha256:aaa")
+    _apply_stuck_loop_counter(str(sf), "foo", 3, bus)
+
+    # Second stuck: counter -> 2 (baseline HEAD matches).
+    _apply_stuck_loop_counter(str(sf), "foo", 3, bus)
+    loaded = load_state(str(sf))
+    assert next(c for c in loaded.changes if c.name == "foo").stuck_loop_count == 2
+
+    # Agent commits a fix. HEAD moves. Fingerprint still "aaa" because the
+    # gate wasn't re-run — this is the catalog-listings scenario.
+    (wt / "f.txt").write_text("v2")
+    subprocess.run(["git", "-C", str(wt), "commit", "-aq", "-m", "agent fix"], check=True)
+
+    # Third call: must RESET, not trip.
+    fired = _apply_stuck_loop_counter(str(sf), "foo", 3, bus)
+    assert fired is False, "stuck_loop tripped despite HEAD moving (new commit present)"
+
+    loaded = load_state(str(sf))
+    change = next(c for c in loaded.changes if c.name == "foo")
+    assert change.stuck_loop_count == 0, "counter must reset when HEAD moves"
+    assert change.status == "running", "change must not be marked failed"
+    assert "STUCK_LOOP_ESCALATED" not in [e[0] for e in bus.events]
+
+
 def test_ordering_fingerprint_change_wins_over_threshold(state_file):
     """Simultaneous threshold-reached AND fingerprint-changed → threshold
     does NOT fire. Per tasks.md 3.7: 'check the threshold BEFORE evaluating

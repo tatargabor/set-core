@@ -61,6 +61,38 @@ class TestComputeGateFingerprint:
         fp_dup = _compute_gate_fingerprint("review", finding_ids=["x", "x", "x"])
         assert fp_unique == fp_dup
 
+    def test_head_sha_changes_fingerprint(self, tmp_path):
+        """Regression for craftbrew-run-20260421-0025: identical gate output
+        plus different HEAD SHA must produce different fingerprints, so
+        stuck_loop does not fire after a fix commit that happens to keep
+        the same gate failing (or that lands between verify runs).
+        """
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "t"], check=True)
+        (tmp_path / "f.txt").write_text("v1")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-q", "-m", "c1"], check=True)
+
+        r = [SimpleNamespace(status="fail", gate_name="i18n_check", stats=None)]
+        fp1 = _compute_gate_fingerprint("i18n_check", r, wt_path=str(tmp_path))
+
+        (tmp_path / "f.txt").write_text("v2")
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-aq", "-m", "c2"], check=True)
+        fp2 = _compute_gate_fingerprint("i18n_check", r, wt_path=str(tmp_path))
+
+        assert fp1 != fp2, \
+            "HEAD moved — fingerprint must differ even though gate output is identical"
+
+    def test_missing_wt_path_matches_legacy(self):
+        """Backwards-compat: omitting wt_path yields the pre-fix fingerprint
+        (so external callers not yet passing wt_path are unaffected)."""
+        r = [SimpleNamespace(status="fail", gate_name="review", stats=None)]
+        fp_no_wt = _compute_gate_fingerprint("review", r)
+        fp_empty = _compute_gate_fingerprint("review", r, wt_path="")
+        fp_bad_path = _compute_gate_fingerprint("review", r, wt_path="/nonexistent/path")
+        assert fp_no_wt == fp_empty == fp_bad_path
+
 
 class TestHasCommitsSinceStall:
     @pytest.fixture

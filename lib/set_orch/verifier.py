@@ -2151,18 +2151,42 @@ def run_phase_end_e2e(
 # Source: verifier.sh poll_change (lines 597-778)
 
 
+def _read_head_sha(wt_path: str) -> str:
+    """Return the short HEAD SHA of the worktree, or '' on any git error."""
+    if not wt_path or not os.path.isdir(wt_path):
+        return ""
+    try:
+        import subprocess as _sp
+        r = _sp.run(
+            ["git", "-C", wt_path, "rev-parse", "--short=12", "HEAD"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, Exception):
+        return ""
+
+
 def _compute_gate_fingerprint(
     stop_gate: str,
     results: list[Any] | None = None,
     finding_ids: list[str] | None = None,
+    wt_path: str = "",
 ) -> str:
-    """Return a stable short SHA of (stop_gate, sorted(finding_ids)).
+    """Return a stable short SHA of (stop_gate, sorted(finding_ids), HEAD_sha).
 
     The circuit breakers (stuck-loop + token-runaway) compare fingerprints
     across iterations: identical fingerprints across N stuck exits mean the
     gate signature is unchanged — nothing has been fixed. If callers pass
     raw `GateResult` objects via `results`, we derive finding_ids from
     failing gate names so pass→pass vs fail→fail stay distinguishable.
+
+    When `wt_path` is provided and refers to a git worktree, the current
+    HEAD SHA is folded into the fingerprint. This closes a loophole where
+    an agent commits a fix between iterations but the gate output happens
+    to be identical (same failing gate, same finding ids) — the old
+    fingerprint would collide and stuck_loop would fire even though the
+    code genuinely moved forward (observed in craftbrew-run-20260421-0025
+    on catalog-listings-and-homepage, 3 commits, 1 verify_gate run).
     """
     ids: list[str] = list(finding_ids or [])
     for r in results or []:
@@ -2174,10 +2198,11 @@ def _compute_gate_fingerprint(
         for f in (stats.get("findings") or []):
             if isinstance(f, dict) and f.get("fingerprint"):
                 ids.append(f"find:{f['fingerprint']}")
-    payload = json.dumps(
-        [stop_gate or "pass", sorted(set(ids))],
-        sort_keys=True, ensure_ascii=False,
-    )
+    head_sha = _read_head_sha(wt_path)
+    payload_parts: list[Any] = [stop_gate or "pass", sorted(set(ids))]
+    if head_sha:
+        payload_parts.append(f"head:{head_sha}")
+    payload = json.dumps(payload_parts, sort_keys=True, ensure_ascii=False)
     return "sha256:" + hashlib.sha256(
         payload.encode("utf-8", errors="replace"),
     ).hexdigest()[:16]
@@ -4020,7 +4045,7 @@ def handle_change_done(
         from .dispatcher import resume_change
         resume_change(state_file, change_name)
         pipeline.commit_results()
-        fingerprint = _compute_gate_fingerprint(pipeline.stop_gate, pipeline.results)
+        fingerprint = _compute_gate_fingerprint(pipeline.stop_gate, pipeline.results, wt_path=wt_path)
         update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
@@ -4043,7 +4068,7 @@ def handle_change_done(
 
     if action == "failed":
         pipeline.commit_results()
-        fingerprint = _compute_gate_fingerprint(pipeline.stop_gate, pipeline.results)
+        fingerprint = _compute_gate_fingerprint(pipeline.stop_gate, pipeline.results, wt_path=wt_path)
         update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
@@ -4103,7 +4128,7 @@ def handle_change_done(
     # Pass path — compute + persist fingerprint too so the circuit breakers
     # can distinguish "passed" signatures across iterations ("pass" vs "pass
     # with warn-fails" are different gate states).
-    pass_fingerprint = _compute_gate_fingerprint("", pipeline.results)
+    pass_fingerprint = _compute_gate_fingerprint("", pipeline.results, wt_path=wt_path)
     update_change_field(state_file, change_name, "last_gate_fingerprint", pass_fingerprint)
 
     if event_bus:
