@@ -156,11 +156,11 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 ## 11. End-to-End Validation
 
 - [ ] 11.1 Re-run the problematic E2E scenario (replan mid-run with different decomposition) using `tests/e2e/runners/run-craftbrew.sh`: verify no tangled state post-replan [REQ: divergent-plan-state-reconciliation]
-- [ ] 11.2 Seed an artificial stuck-loop: inject a change whose agent always exits `stuck` → verify `max_stuck_loops=3` escalates to fix-iss [REQ: stuck-loop-circuit-breaker]
-- [ ] 11.3 Seed a gate-failure cycle: change that can't pass review → verify budget exhaustion triggers fix-iss auto-creation [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
-- [ ] 11.4 Verify supervisor event log during a quiet startup: max 1 `log_silence` event per 60s window (then 120s, 240s...) [REQ: exponential-back-off-on-retry_budget_exhausted]
-- [ ] 11.5 Decomposer regression: generate a plan for a medium-complexity web spec → confirm all changes meet caps (6/20/12) or are split [REQ: granularity-budget-with-auto-split]
-- [ ] 11.6 Gate selection regression: run a foundation-style change with UI files → confirm `design-fidelity`, `e2e`, `i18n_check` are in the active gate set [REQ: content-aware-gate-selector]
+- [x] 11.2 Seed an artificial stuck-loop: inject a change whose agent always exits `stuck` → verify `max_stuck_loops=3` escalates to fix-iss [REQ: stuck-loop-circuit-breaker]
+- [x] 11.3 Seed a gate-failure cycle: change that can't pass review → verify budget exhaustion triggers fix-iss auto-creation [REQ: auto-escalate-to-fix-iss-on-retry-budget-exhaustion]
+- [x] 11.4 Verify supervisor event log during a quiet startup: max 1 `log_silence` event per 60s window (then 120s, 240s...) [REQ: exponential-back-off-on-retry_budget_exhausted]
+- [x] 11.5 Decomposer regression: generate a plan for a medium-complexity web spec → confirm all changes meet caps (6/20/12) or are split [REQ: granularity-budget-with-auto-split]
+- [x] 11.6 Gate selection regression: run a foundation-style change with UI files → confirm `design-fidelity`, `e2e`, `i18n_check` are in the active gate set [REQ: content-aware-gate-selector]
 
 ## Acceptance Criteria (from spec scenarios)
 
