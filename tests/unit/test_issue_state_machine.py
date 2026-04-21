@@ -96,17 +96,14 @@ class TestTickProcessing:
         manager.tick()
         assert registry.get("ISS-001").state == IssueState.DIAGNOSED  # waiting state
 
-    def test_circuit_breaker_issue_skips_auto_investigation(self, manager, registry):
-        """Regression guard: a NEW issue whose source starts with
-        `circuit-breaker:` must NOT trigger /opsx:ff auto-investigation.
-
-        The circuit breaker in escalate_change_to_fix_iss() already
-        created a fix-iss change in state.changes and linked
-        issue.change_name to it. Spawning an investigator here would
-        derive a DIFFERENT change_name from the error_summary slug and
-        produce a ghost orphan fix-iss that eats a dispatch slot and
-        confuses the plan graph. Observed as a duplicate-change bug
-        when backfilling circuit-breaker issues into IssueRegistry.
+    def test_circuit_breaker_issue_investigates_normally(self, manager, registry):
+        """Per investigation-runner spec: ALL active NEW issues get the
+        full investigation pipeline. Circuit-breaker escalations
+        (stuck_no_progress, retry_budget_exhausted, token_runaway,
+        retry_wall_time_exhausted) are the issues that MOST benefit
+        from deep investigation — a circuit breaker means the agent
+        was stuck, which usually indicates a framework bug that needs
+        set-core-level analysis. Do not short-circuit the pipeline.
         """
         registry.register(
             source="circuit-breaker:stuck_no_progress",
@@ -115,8 +112,7 @@ class TestTickProcessing:
             environment="e",
         )
         manager.tick()
-        # Went straight to DIAGNOSED — no investigation spawned.
-        assert registry.get("ISS-001").state == IssueState.DIAGNOSED
+        assert registry.get("ISS-001").state == IssueState.INVESTIGATING
 
 
 class TestTimeoutApproval:

@@ -72,18 +72,6 @@ class IssueManager:
             case IssueState.NEW:
                 if self.registry.matches_mute(issue.error_summary, issue.error_detail):
                     self._transition(issue, IssueState.MUTED)
-                elif (issue.source or "").startswith("circuit-breaker:"):
-                    # Circuit-breaker escalations (retry_budget_exhausted,
-                    # stuck_no_progress, token_runaway, retry_wall_time_exhausted)
-                    # already have a fix-iss change registered in state by
-                    # escalate_change_to_fix_iss(). Spawning /opsx:ff here
-                    # would generate a SECOND change with a different name
-                    # derived from the error_summary slug — a ghost orphan
-                    # that sits pending and eats dispatch slots. The circuit
-                    # breaker IS the diagnosis, so skip INVESTIGATING and
-                    # go straight to DIAGNOSED; the engine is already
-                    # dispatching the existing fix-iss change.
-                    self._transition(issue, IssueState.DIAGNOSED)
                 elif self.policy.should_auto_investigate(issue):
                     if self._can_spawn_investigation():
                         self._spawn_investigation(issue)

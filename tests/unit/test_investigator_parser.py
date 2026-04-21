@@ -224,3 +224,82 @@ The user login redirects to the wrong page after password reset.
 """
         diag = runner._parse_proposal(proposal, has_tasks=True, classifier_enabled=False)
         assert diag.fix_target == "consumer"
+
+
+class TestChangeNameReuse:
+    """spawn() must honour `issue.change_name` when pre-populated by a
+    circuit-breaker escalation — otherwise `/opsx:ff` runs against a
+    DIFFERENT change than the one the escalation pre-created, leaving
+    a ghost orphan entry in `state.changes`.
+    """
+
+    def test_spawn_reuses_existing_change_name(self, tmp_path, monkeypatch):
+        from set_orch.issues.investigator import InvestigationRunner
+        from set_orch.issues.models import Issue, IssueState
+        import subprocess as _subprocess
+
+        runner = _make_runner(tmp_path)
+
+        issue = Issue(
+            id="ISS-001",
+            environment="e",
+            environment_path=str(tmp_path),
+            source="circuit-breaker:stuck_no_progress",
+            state=IssueState.NEW,
+            severity="unknown",
+            error_summary="catalog-listings-and-homepage escalated to fix-iss-001-catalog-listings-and",
+            error_detail="",
+            fingerprint="abc",
+            change_name="fix-iss-001-catalog-listings-and",  # already pinned by circuit breaker
+        )
+
+        captured: dict = {}
+
+        class _StubProc:
+            def __init__(self, pid=12345):
+                self.pid = pid
+            def poll(self):
+                return 0
+
+        def _fake_popen(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return _StubProc()
+
+        monkeypatch.setattr(_subprocess, "Popen", _fake_popen)
+        runner.spawn(issue)
+
+        # issue.change_name must NOT have been rewritten to a slug-derived
+        # name — the investigation targets the EXISTING fix-iss change.
+        assert issue.change_name == "fix-iss-001-catalog-listings-and"
+        # The rendered prompt (last arg of cmd) must mention the real name.
+        assert any("fix-iss-001-catalog-listings-and" in arg for arg in captured["cmd"])
+
+    def test_spawn_derives_slug_when_change_name_unset(self, tmp_path, monkeypatch):
+        from set_orch.issues.investigator import InvestigationRunner
+        from set_orch.issues.models import Issue, IssueState
+        import subprocess as _subprocess
+
+        runner = _make_runner(tmp_path)
+        issue = Issue(
+            id="ISS-002",
+            environment="e",
+            environment_path=str(tmp_path),
+            source="gate",
+            state=IssueState.NEW,
+            severity="unknown",
+            error_summary="typescript compile error",
+            error_detail="",
+            fingerprint="abc",
+            change_name="",  # not pre-populated
+        )
+
+        class _StubProc:
+            pid = 12346
+            def poll(self): return 0
+
+        monkeypatch.setattr(_subprocess, "Popen", lambda *a, **k: _StubProc())
+        runner.spawn(issue)
+
+        # Derived slug from summary: "fix-iss-002-typescript-compile-error".
+        assert issue.change_name.startswith("fix-iss-002-")
+        assert "typescript" in issue.change_name

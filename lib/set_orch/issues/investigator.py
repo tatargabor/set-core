@@ -46,8 +46,19 @@ class InvestigationRunner:
         self._change_names: dict[str, str] = {}
 
     def spawn(self, issue: Issue):
-        """Start investigation via /opsx:ff — creates proposal + design + tasks."""
-        change_name = f"fix-{issue.id.lower()}-{_slugify(issue.error_summary)}"
+        """Start investigation via /opsx:ff — creates proposal + design + tasks.
+
+        The investigation targets a specific `change_name` under
+        `openspec/changes/`. If the issue already has `change_name` set
+        (e.g. a circuit-breaker escalation pre-created a fix-iss change
+        via `escalate_change_to_fix_iss()`), REUSE that name so the
+        investigator's `/opsx:ff` extends the existing change rather
+        than spawning a ghost duplicate with a slug-derived name. When
+        the slot is empty, derive a slug from the issue summary.
+        """
+        change_name = (issue.change_name or "").strip()
+        if not change_name:
+            change_name = f"fix-{issue.id.lower()}-{_slugify(issue.error_summary)}"
         self._change_names[issue.id] = change_name
         issue.change_name = change_name
 
