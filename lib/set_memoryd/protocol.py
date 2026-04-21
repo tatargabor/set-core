@@ -19,8 +19,10 @@ from typing import Any
 SUPPORTED_METHODS = frozenset({
     # Core
     "recall", "remember", "proactive_context", "list", "get", "forget", "forget_by_tags",
+    # Bulk forget
+    "forget_all", "forget_by_age", "forget_by_pattern", "forget_by_date",
     # Introspection
-    "context_summary", "brain", "stats", "index_health", "verify_index",
+    "context_summary", "brain", "stats", "index_health", "verify_index", "repair_index",
     # Time-based
     "recall_by_date",
     # Maintenance

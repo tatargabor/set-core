@@ -146,13 +146,28 @@ cmd_cleanup() {
     run_with_lock run_shodh_python -c "
 import sys; sys._shodh_star_shown = True
 import json, os
-from shodh_memory import Memory
-m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+
 threshold = float(os.environ['_SHODH_THRESHOLD'])
 min_length = int(os.environ.get('_SHODH_MIN_LENGTH', '20'))
 dry_run = os.environ.get('_SHODH_DRY_RUN', 'false') == 'true'
 
-memories = m.list_memories()
+# Daemon-first to avoid RocksDB LOCK conflict.
+_daemon = None
+_direct = None
+try:
+    from set_memoryd.client import MemoryClient
+    _daemon = MemoryClient.for_project()
+    memories = _daemon.list_memories(limit=100000)
+except Exception:
+    _daemon = None
+    from shodh_memory import Memory
+    _direct = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+    memories = _direct.list_memories()
+
+def _forget(mid):
+    if _daemon is not None:
+        return _daemon.forget(mid)
+    return _direct.forget(mid)
 
 # Phase 1: remove garbage (content too short to be useful)
 garbage = [r for r in memories if len(r.get('content', '')) < min_length]
@@ -167,7 +182,7 @@ else:
     deleted = 0
     for r in garbage + low_value:
         try:
-            m.forget(r['id'])
+            _forget(r['id'])
             deleted += 1
         except Exception:
             pass
@@ -186,15 +201,43 @@ import sys; sys._shodh_star_shown = True
 import json, os
 from difflib import SequenceMatcher
 from collections import defaultdict
-from shodh_memory import Memory
 
 storage = os.environ["_SHODH_STORAGE"]
 threshold = float(os.environ.get("_SHODH_THRESHOLD", "0.75"))
 mode = os.environ.get("_SHODH_MODE", "audit")
 dry_run = os.environ.get("_SHODH_DRY_RUN", "false") == "true"
 
-m = Memory(storage_path=storage)
-memories = m.list_memories()
+# Daemon-first to avoid RocksDB LOCK conflict with a running set-memoryd.
+# Wraps list_memories/forget/remember to dispatch to whichever backend is active.
+_daemon = None
+_direct = None
+try:
+    from set_memoryd.client import MemoryClient
+    _daemon = MemoryClient.for_project()
+    memories = _daemon.list_memories(limit=100000)
+except Exception:
+    _daemon = None
+    from shodh_memory import Memory
+    _direct = Memory(storage_path=storage)
+    memories = _direct.list_memories()
+
+class _Backend:
+    def forget(self, memory_id):
+        if _daemon is not None:
+            return _daemon.forget(memory_id)
+        return _direct.forget(memory_id)
+    def remember(self, **kwargs):
+        if _daemon is not None:
+            # Daemon exposes content/type/tags/metadata; other kwargs are dropped.
+            return _daemon.remember(
+                content=kwargs.get("content", ""),
+                memory_type=kwargs.get("memory_type", "Learning"),
+                tags=",".join(kwargs.get("tags", [])) if isinstance(kwargs.get("tags"), list) else kwargs.get("tags", ""),
+                metadata=kwargs.get("metadata") or None,
+            )
+        return _direct.remember(**kwargs)
+
+m = _Backend()
 
 if not memories:
     if mode == "audit":
@@ -416,10 +459,14 @@ cmd_audit() {
 
     local raw_json
     local rc=0
+    local set_lib_dir="${_wt_memory_bin_dir}/../lib"
+    local log_file
+    log_file=$(get_log_path)
     raw_json=$(_SHODH_STORAGE="$storage_path" \
         _SHODH_THRESHOLD="$threshold" \
         _SHODH_MODE="audit" \
-        run_with_lock timeout --kill-after=5 25 run_shodh_python -c "$_DEDUP_PYTHON") || rc=$?
+        PYTHONPATH="${set_lib_dir}${PYTHONPATH:+:$PYTHONPATH}" \
+        run_with_lock timeout --kill-after=5 25 "$SHODH_PYTHON" -c "$_DEDUP_PYTHON" 2>>"$log_file") || rc=$?
 
     if [[ $rc -eq 124 ]]; then
         if [[ "$json_mode" == "true" ]]; then
@@ -504,11 +551,15 @@ cmd_dedup() {
     fi
 
     local rc=0
+    local set_lib_dir="${_wt_memory_bin_dir}/../lib"
+    local log_file
+    log_file=$(get_log_path)
     _SHODH_STORAGE="$storage_path" \
     _SHODH_THRESHOLD="$threshold" \
     _SHODH_MODE="$mode" \
     _SHODH_DRY_RUN="$shodh_dry_run" \
-    run_with_lock timeout --kill-after=5 25 run_shodh_python -c "$_DEDUP_PYTHON" || rc=$?
+    PYTHONPATH="${set_lib_dir}${PYTHONPATH:+:$PYTHONPATH}" \
+    run_with_lock timeout --kill-after=5 25 "$SHODH_PYTHON" -c "$_DEDUP_PYTHON" 2>>"$log_file" || rc=$?
 
     if [[ $rc -eq 124 ]]; then
         echo '{"error": "timeout", "deleted_count": 0, "merged_count": 0}'

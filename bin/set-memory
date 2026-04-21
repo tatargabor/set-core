@@ -202,7 +202,9 @@ get_log_path() {
 run_shodh_python() {
     local log_file
     log_file=$(get_log_path)
-    "$SHODH_PYTHON" "$@" 2>>"$log_file"
+    local set_lib_dir="${_wt_memory_bin_dir}/../lib"
+    PYTHONPATH="${set_lib_dir}${PYTHONPATH:+:$PYTHONPATH}" \
+        "$SHODH_PYTHON" "$@" 2>>"$log_file"
 }
 
 # Check if a lock directory is stale (owner dead or too old).
@@ -305,7 +307,7 @@ try_daemon() {
 
     # Only route core commands through daemon (the hot-path ones)
     case "$command" in
-        recall|proactive|remember|list|get|forget|context|brain|stats|flush|verify|consolidation|graph-stats|health)
+        recall|proactive|remember|list|get|forget|context|brain|stats|flush|verify|repair|consolidation|graph-stats|health)
             ;;
         *)
             return 1
@@ -358,17 +360,26 @@ try_daemon() {
             params="{\"context\":$(printf '%s' "$context" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),\"limit\":$limit}"
             ;;
         remember)
-            local mem_type="Learning" tags="" content
+            local mem_type="Learning" tags="" metadata="" content
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --type) mem_type="$2"; shift 2 ;;
                     --tags) tags="$2"; shift 2 ;;
-                    --metadata|--failure|--anomaly) shift ;; # skip unsupported for daemon
+                    --metadata) metadata="$2"; shift 2 ;;
+                    --failure|--anomaly) shift ;; # flags not yet routed via daemon
                     *) shift ;;
                 esac
             done
             content=$(cat)
-            params="{\"content\":$(printf '%s' "$content" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),\"type\":\"$mem_type\",\"tags\":\"$tags\"}"
+            local metadata_json="null"
+            if [[ -n "$metadata" ]]; then
+                # Validate as JSON object; if invalid, fall back to direct path
+                if ! echo "$metadata" | python3 -c "import sys,json; d=json.load(sys.stdin); assert isinstance(d,dict)" 2>/dev/null; then
+                    return 1
+                fi
+                metadata_json="$metadata"
+            fi
+            params="{\"content\":$(printf '%s' "$content" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),\"type\":\"$mem_type\",\"tags\":\"$tags\",\"metadata\":$metadata_json}"
             ;;
         list)
             local mem_type="" limit="20"
@@ -386,11 +397,50 @@ try_daemon() {
             params="{\"id\":\"$id\"}"
             ;;
         forget)
-            # Simple single-ID forget only via daemon
-            if [[ $# -eq 1 && "$1" != --* ]]; then
-                params="{\"id\":\"$1\"}"
+            # Route both simple (by ID) and complex forget (--all/--older-than/--tags/--pattern/--since/--until) via daemon
+            local forget_id="" forget_all=false forget_confirm=false
+            local forget_older="" forget_tags="" forget_pattern=""
+            local forget_since="" forget_until=""
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --all) forget_all=true; shift ;;
+                    --confirm) forget_confirm=true; shift ;;
+                    --older-than) forget_older="$2"; shift 2 ;;
+                    --tags) forget_tags="$2"; shift 2 ;;
+                    --pattern) forget_pattern="$2"; shift 2 ;;
+                    --since) forget_since="$2"; shift 2 ;;
+                    --until) forget_until="$2"; shift 2 ;;
+                    -*) return 1 ;;  # unknown flag → direct fallback
+                    *) [[ -z "$forget_id" ]] && forget_id="$1"; shift ;;
+                esac
+            done
+
+            if [[ "$forget_all" == "true" ]]; then
+                # cmd_forget validates --confirm before touching DB; let it handle missing --confirm.
+                [[ "$forget_confirm" != "true" ]] && return 1
+                method="forget_all"
+                params="{}"
+            elif [[ -n "$forget_older" ]]; then
+                method="forget_by_age"
+                params="{\"days\":$forget_older}"
+            elif [[ -n "$forget_tags" ]]; then
+                method="forget_by_tags"
+                local tags_json
+                tags_json=$(printf '%s' "$forget_tags" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+                params="{\"tags\":$tags_json}"
+            elif [[ -n "$forget_pattern" ]]; then
+                method="forget_by_pattern"
+                local pattern_json
+                pattern_json=$(printf '%s' "$forget_pattern" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+                params="{\"pattern\":$pattern_json}"
+            elif [[ -n "$forget_since" || -n "$forget_until" ]]; then
+                [[ "$forget_confirm" != "true" ]] && return 1
+                method="forget_by_date"
+                params="{\"since\":\"$forget_since\",\"until\":\"$forget_until\"}"
+            elif [[ -n "$forget_id" ]]; then
+                params="{\"id\":\"$forget_id\"}"
             else
-                return 1  # complex forget (--tags, --all, etc.) → fallback
+                return 1  # no args → fallback for usage error
             fi
             ;;
         context)
@@ -398,8 +448,9 @@ try_daemon() {
             local topic="${1:-}"
             params="{\"topic\":\"$topic\"}"
             ;;
-        brain|stats|flush|verify|graph-stats)
+        brain|stats|flush|verify|repair|graph-stats)
             [[ "$command" == "verify" ]] && method="verify_index"
+            [[ "$command" == "repair" ]] && method="repair_index"
             [[ "$command" == "graph-stats" ]] && method="graph_stats"
             params="{}"
             ;;
@@ -415,9 +466,16 @@ try_daemon() {
             params="{\"since\":\"$since\"}"
             ;;
         health)
-            # Only simple health (no --index) via daemon
-            if [[ $# -gt 0 ]]; then return 1; fi
-            params="{}"
+            # Simple health returns "ok" (no DB touch, handled below).
+            # --index routes to daemon's index_health method.
+            if [[ $# -eq 0 ]]; then
+                params="{}"
+            elif [[ "$1" == "--index" ]]; then
+                method="index_health"
+                params="{}"
+            else
+                return 1
+            fi
             ;;
     esac
 

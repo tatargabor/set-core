@@ -71,35 +71,52 @@ cmd_todo_add() {
         tags="$tags,change:$change_name"
     fi
 
-    # Save using remember with metadata
     local storage_path
     storage_path=$(get_storage_path)
     local branch
     branch=$(get_current_branch)
+    if [[ -n "$branch" ]]; then
+        tags="$tags,branch:$branch"
+    fi
 
-    local tags_py
-    tags_py=$(echo "$tags" | tr ',' '\n' | jq -R . | jq -s .)
-
+    # Daemon-first: avoids RocksDB LOCK conflict with a running set-memoryd.
+    # Falls back to direct Memory() only if the daemon module/socket is unreachable.
     _SHODH_STORAGE="$storage_path" \
     _SHODH_CONTENT="$content" \
-    _SHODH_TAGS="$tags_py" \
-    _SHODH_BRANCH="$branch" \
+    _SHODH_TAGS_CSV="$tags" \
     run_with_lock run_shodh_python -c "
 import sys; sys._shodh_star_shown = True
-import json, os
-from shodh_memory import Memory
-m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
-tags = json.loads(os.environ['_SHODH_TAGS'])
-branch = os.environ.get('_SHODH_BRANCH', '')
-if branch:
-    tags.append('branch:' + branch)
-m.remember(
-    os.environ['_SHODH_CONTENT'],
-    memory_type='Context',
-    tags=tags,
-    metadata={'todo_status': 'open'}
-)
-print('Todo saved: \"' + os.environ['_SHODH_CONTENT'][:80] + '\"')
+import os
+
+content = os.environ['_SHODH_CONTENT']
+tags_csv = os.environ['_SHODH_TAGS_CSV']
+tags_list = [t.strip() for t in tags_csv.split(',') if t.strip()]
+
+saved = False
+try:
+    from set_memoryd.client import MemoryClient
+    client = MemoryClient.for_project()
+    client.remember(
+        content=content,
+        memory_type='Context',
+        tags=tags_csv,
+        metadata={'todo_status': 'open'},
+    )
+    saved = True
+except Exception:
+    pass
+
+if not saved:
+    from shodh_memory import Memory
+    m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+    m.remember(
+        content,
+        memory_type='Context',
+        tags=tags_list,
+        metadata={'todo_status': 'open'},
+    )
+
+print('Todo saved: \"' + content[:80] + '\"')
 " || echo "Error: failed to save todo" >&2
 
     return 0
@@ -135,15 +152,26 @@ cmd_todo_list() {
     run_with_lock run_shodh_python -c "
 import sys; sys._shodh_star_shown = True
 import json, os
-from shodh_memory import Memory
-m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+
 json_mode = os.environ.get('_SHODH_JSON', 'false') == 'true'
 
-# Get all memories tagged with 'todo'
-if hasattr(m, 'recall_by_tags'):
-    results = m.recall_by_tags(['todo'], limit=100)
-else:
-    results = m.recall('todo', limit=100, tags=['todo'])
+results = None
+try:
+    from set_memoryd.client import MemoryClient
+    client = MemoryClient.for_project()
+    # Daemon has no recall_by_tags; fetch bulk via list_memories and filter.
+    all_mems = client.list_memories(limit=10000)
+    results = [r for r in all_mems if 'todo' in (r.get('tags') or [])]
+except Exception:
+    results = None
+
+if results is None:
+    from shodh_memory import Memory
+    m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+    if hasattr(m, 'recall_by_tags'):
+        results = m.recall_by_tags(['todo'], limit=100)
+    else:
+        results = m.recall('todo', limit=100, tags=['todo'])
 
 # Filter to open todos only
 todos = []
@@ -201,18 +229,30 @@ cmd_todo_done() {
     _SHODH_ID="$todo_id" \
     run_with_lock run_shodh_python -c "
 import sys; sys._shodh_star_shown = True
-import json, os
-from shodh_memory import Memory
-m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+import os
+
 prefix = os.environ['_SHODH_ID']
 
-# Get all todos to find prefix match
-if hasattr(m, 'recall_by_tags'):
-    results = m.recall_by_tags(['todo'], limit=200)
-else:
-    results = m.recall('todo', limit=200, tags=['todo'])
+client = None
+results = None
+try:
+    from set_memoryd.client import MemoryClient
+    client = MemoryClient.for_project()
+    all_mems = client.list_memories(limit=10000)
+    results = [r for r in all_mems if 'todo' in (r.get('tags') or [])]
+except Exception:
+    client = None
+    results = None
 
-# Find matching todo by ID prefix
+m = None
+if results is None:
+    from shodh_memory import Memory
+    m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+    if hasattr(m, 'recall_by_tags'):
+        results = m.recall_by_tags(['todo'], limit=200)
+    else:
+        results = m.recall('todo', limit=200, tags=['todo'])
+
 matches = [r for r in results if r.get('id', '').startswith(prefix)]
 
 if len(matches) == 0:
@@ -225,7 +265,12 @@ elif len(matches) > 1:
 todo = matches[0]
 full_id = todo['id']
 content = todo.get('content', todo.get('description', ''))
-m.forget(full_id)
+
+if client is not None:
+    client.forget(full_id)
+else:
+    m.forget(full_id)
+
 print(f'Todo done: \"{content[:80]}\"')
 " || { echo "Error: failed to complete todo" >&2; return 1; }
 
@@ -261,10 +306,21 @@ cmd_todo_clear() {
     _SHODH_STORAGE="$storage_path" \
     run_with_lock run_shodh_python -c "
 import sys; sys._shodh_star_shown = True
-import json, os
-from shodh_memory import Memory
-m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
-count = m.forget_by_tags(['todo'])
+import os
+
+count = None
+try:
+    from set_memoryd.client import MemoryClient
+    client = MemoryClient.for_project()
+    count = client.forget_by_tags('todo')
+except Exception:
+    count = None
+
+if count is None:
+    from shodh_memory import Memory
+    m = Memory(storage_path=os.environ['_SHODH_STORAGE'])
+    count = m.forget_by_tags(['todo'])
+
 print(f'Cleared {count} todos.')
 " || echo "Error: failed to clear todos" >&2
 

@@ -173,6 +173,25 @@ class MemoryDaemon:
                 tags = [t.strip() for t in tags.split(",") if t.strip()]
             return m.forget_by_tags(tags)
 
+        if method == "forget_all":
+            return m.forget_all()
+
+        if method == "forget_by_age":
+            return m.forget_by_age(int(params.get("days", 0)))
+
+        if method == "forget_by_pattern":
+            return m.forget_by_pattern(params.get("pattern", ""))
+
+        if method == "forget_by_date":
+            since = params.get("since") or "2000-01-01T00:00:00Z"
+            until = params.get("until") or ""
+            if not until:
+                from datetime import datetime, timezone
+                until = datetime.now(timezone.utc).isoformat()
+            if hasattr(m, "forget_by_date"):
+                return m.forget_by_date(since, until)
+            raise RuntimeError("forget_by_date not available in this shodh-memory version")
+
         if method == "context_summary":
             kwargs = {}
             topic = params.get("topic")
@@ -191,6 +210,11 @@ class MemoryDaemon:
 
         if method == "verify_index":
             return _serialize(m.verify_index())
+
+        if method == "repair_index":
+            if hasattr(m, "repair_index"):
+                return _serialize(m.repair_index())
+            raise RuntimeError("repair_index not available — upgrade shodh-memory to >=0.1.81")
 
         if method == "recall_by_date":
             kwargs = {"limit": params.get("limit", 20)}
