@@ -35,7 +35,7 @@ detected an anomaly in the orchestration run and spawned you to:
   4. Respond with a single VERDICT line at the end.
 
 Allowed actions (call as Bash commands):
-  - set-sentinel-finding add  --severity <low|med|high|critical> --change <name> --message "..."
+  - set-sentinel-finding add  --severity <bug|observation|pattern|regression> --change <name> --summary "..." [--detail "..."]
   - set-sentinel-finding update <id> --status <fixed|wont-fix|escalated>
   - set-sentinel-status heartbeat
   - git log / git status / git diff   (read-only investigation)
@@ -122,8 +122,8 @@ def _build_process_crash(*, reason, change, context, project_path, spec) -> str:
         "Steps:\n"
         "  1. tail -200 of orchestration.log under the runtime logs/ dir\n"
         "  2. Inspect the most recent ERROR or stack trace\n"
-        "  3. If the cause is a known recoverable bug, log a finding (severity=med)\n"
-        "  4. If unknown, log a finding (severity=high) and VERDICT: escalate\n"
+        "  3. If the cause is a known recoverable bug, log a finding (severity=bug)\n"
+        "  4. If unknown, log a finding (severity=bug) and VERDICT: escalate\n"
     )
 
 
@@ -135,8 +135,8 @@ def _build_integration_failed(*, reason, change, context, project_path, spec) ->
         "failure. Read the most recent VERIFY_GATE / INTEGRATION events for "
         "this change and the agent's last log lines, then decide:\n"
         "  - obvious one-line fix → make it, log finding=fixed\n"
-        "  - non-obvious → log finding=high, VERDICT: escalate\n"
-        "  - flaky / retry-worthy → VERDICT: noted with severity=low\n"
+        "  - non-obvious → log severity=bug, VERDICT: escalate\n"
+        "  - flaky / retry-worthy → VERDICT: noted with severity=observation\n"
     )
 
 
@@ -160,7 +160,7 @@ def _build_token_stall(*, reason, change, context, project_path, spec) -> str:
         f"Change is at {tokens} tokens with no progress for {stall}s. Look "
         "at the agent's loop iterations — is it spinning on the same failing "
         "test? Same lint error? If yes, log a finding describing the spin "
-        "pattern. Bias toward severity=med, VERDICT: noted."
+        "pattern. Bias toward severity=pattern, VERDICT: noted."
     )
 
 
@@ -172,7 +172,7 @@ def _build_non_periodic_checkpoint(*, reason, change, context, project_path, spe
         "orchestrator chose to mark this point as significant. Read the "
         "events around the checkpoint and decide if user attention is "
         "needed. Most checkpoints are informational — bias toward "
-        "VERDICT: noted with severity=low."
+        "VERDICT: noted with severity=observation."
     )
 
 
