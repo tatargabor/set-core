@@ -172,8 +172,8 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [x] AC-5: WHEN stash fails THEN create `wip/<name>-<epoch>` rescue branch with non-verified commit [REQ: stash-failure-falls-back-to-rescue-branch, scenario: stash-failure-falls-back-to-rescue-branch]
 
 ### REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits
-- [ ] AC-6: WHEN loop_status=stuck and new commits exist THEN engine runs verify pipeline directly; verifier does NOT write status=stalled [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits, scenario: stuck-exit-with-new-commits-re-enters-gate]
-- [ ] AC-7: WHEN loop_status=stuck and no new commits THEN verifier writes status=stalled (existing behavior retained) [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits, scenario: stuck-exit-with-no-new-commits-stalls-normally]
+- [x] AC-6: WHEN loop_status=stuck and new commits exist THEN engine runs verify pipeline directly; verifier does NOT write status=stalled [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits, scenario: stuck-exit-with-new-commits-re-enters-gate]
+- [x] AC-7: WHEN loop_status=stuck and no new commits THEN verifier writes status=stalled (existing behavior retained) [REQ: single-handler-path-for-stuck-fix-loop-exits-with-new-commits, scenario: stuck-exit-with-no-new-commits-stalls-normally]
 
 ### REQ: stuck-loop-circuit-breaker
 - [x] AC-8: WHEN same fingerprint twice THEN stuck_loop_count increments [REQ: stuck-loop-circuit-breaker, scenario: counter-increments-on-identical-fingerprint]
@@ -191,21 +191,21 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 - [x] AC-16: WHEN fingerprint changes THEN baseline resets [REQ: per-change-token-runaway-circuit-breaker, scenario: baseline-resets-on-gate-state-change]
 
 ### REQ: content-aware-gate-selector
-- [ ] AC-17: WHEN change_type=infrastructure but scope has UI globs THEN design-fidelity + e2e + i18n_check in gate set [REQ: content-aware-gate-selector, scenario: foundation-change-with-ui-content-activates-design-plus-e2e]
-- [ ] AC-18: WHEN server-only globs THEN unit test gate in gate set, no design-fidelity [REQ: content-aware-gate-selector, scenario: server-only-change-activates-unit-tests]
-- [ ] AC-19: WHEN gate_hints has "require" THEN that gate included regardless of content scan [REQ: content-aware-gate-selector, scenario: gate_hints-wins-over-content-scan]
+- [x] AC-17: WHEN change_type=infrastructure but scope has UI globs THEN design-fidelity + e2e + i18n_check in gate set [REQ: content-aware-gate-selector, scenario: foundation-change-with-ui-content-activates-design-plus-e2e]
+- [x] AC-18: WHEN server-only globs THEN unit test gate in gate set, no design-fidelity [REQ: content-aware-gate-selector, scenario: server-only-change-activates-unit-tests]
+- [x] AC-19: WHEN gate_hints has "require" THEN that gate included regardless of content scan [REQ: content-aware-gate-selector, scenario: gate_hints-wins-over-content-scan]
 
 ### REQ: re-detection-on-first-commit-poll
-- [ ] AC-20: WHEN first commit observed on monitor poll AND gate_recheck_done=False THEN redetect runs before verify pipeline; flag set to True [REQ: re-detection-on-first-commit-poll, scenario: monitor-poll-observes-first-commit]
-- [ ] AC-21: WHEN re-detection flags UI content not in original scope THEN GATE_SET_EXPANDED event emitted with added_gates [REQ: re-detection-on-first-commit-poll, scenario: agent-commits-ui-file-not-in-original-scope]
+- [x] AC-20: WHEN first commit observed on monitor poll AND gate_recheck_done=False THEN redetect runs before verify pipeline; flag set to True [REQ: re-detection-on-first-commit-poll, scenario: monitor-poll-observes-first-commit]
+- [x] AC-21: WHEN re-detection flags UI content not in original scope THEN GATE_SET_EXPANDED event emitted with added_gates [REQ: re-detection-on-first-commit-poll, scenario: agent-commits-ui-file-not-in-original-scope]
 
 ### REQ: i18n_check-is-a-hard-fail-gate
-- [ ] AC-22: WHEN missing translation key detected THEN i18n_check returns fail AND VERIFY_GATE stop_gate=i18n_check [REQ: i18n_check-is-a-hard-fail-gate, scenario: missing-hungarian-translation-key-fails-gate]
-- [ ] AC-22b: WHEN every `t(...)` call has a key in both hu.json and en.json THEN i18n_check returns pass [REQ: i18n_check-is-a-hard-fail-gate, scenario: both-locales-match]
+- [x] AC-22: WHEN missing translation key detected THEN i18n_check returns fail AND VERIFY_GATE stop_gate=i18n_check [REQ: i18n_check-is-a-hard-fail-gate, scenario: missing-hungarian-translation-key-fails-gate]
+- [x] AC-22b: WHEN every `t(...)` call has a key in both hu.json and en.json THEN i18n_check returns pass [REQ: i18n_check-is-a-hard-fail-gate, scenario: both-locales-match]
 
 ### REQ: spec_verify-and-review-run-in-parallel
-- [ ] AC-23: WHEN both gates active THEN VERIFY_GATE includes parallel_group field [REQ: spec_verify-and-review-run-in-parallel, scenario: parallel-execution-records-both-gate_ms]
-- [ ] AC-24: WHEN spec_verify fails while review is running THEN review completes AND both findings sets surfaced to retry agent [REQ: spec_verify-and-review-run-in-parallel, scenario: both-gates-allowed-to-complete-stop_gate-is-earliest-by-order]
+- [x] AC-23: WHEN both gates active THEN VERIFY_GATE includes parallel_group field [REQ: spec_verify-and-review-run-in-parallel, scenario: parallel-execution-records-both-gate_ms]
+- [x] AC-24: WHEN spec_verify fails while review is running THEN review completes AND both findings sets surfaced to retry agent [REQ: spec_verify-and-review-run-in-parallel, scenario: both-gates-allowed-to-complete-stop_gate-is-earliest-by-order]
 
 ### REQ: granularity-budget-with-auto-split
 - [x] AC-25: WHEN proposed change has 15 requirements THEN split into ≥3 changes chained via depends_on, pre-split name never on disk [REQ: granularity-budget-with-auto-split, scenario: change-with-15-requirements-auto-splits-before-persistence]
@@ -222,7 +222,7 @@ The investigation machinery already lives under `lib/set_orch/issues/` (`investi
 
 ### REQ: content-hints-for-gate-selection
 - [x] AC-29: WHEN scope mentions UI files THEN touched_file_globs includes both explicit paths AND wildcard parents [REQ: content-hints-for-gate-selection, scenario: scope-mentions-ui-files]
-- [ ] AC-30: WHEN scope mentions only server files THEN touched_file_globs has NO UI-route globs [REQ: content-hints-for-gate-selection, scenario: scope-mentions-only-server-files]
+- [x] AC-30: WHEN scope mentions only server files THEN touched_file_globs has NO UI-route globs [REQ: content-hints-for-gate-selection, scenario: scope-mentions-only-server-files]
 
 ### REQ: divergent-plan-dir-cleanup-safety
 - [x] AC-31: WHEN reconciler deletes branches and `openspec/changes/` dirs THEN a manifest file `orchestration-cleanup-<epoch>.log` is written first listing every removed path [REQ: divergent-plan-state-reconciliation, scenario: new-plan-introduces-entirely-new-change-names]

@@ -25,6 +25,9 @@ class FakeGateConfig:
         mode = self._gates.get(name, "run")
         return mode == "run"
 
+    def get(self, name, default="?"):
+        return self._gates.get(name, default)
+
 
 def _make_state(tmp_path, changes=None, **kwargs):
     state_file = str(tmp_path / "state.json")

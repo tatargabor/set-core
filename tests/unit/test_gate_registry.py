@@ -181,3 +181,139 @@ def test_core_profile_default_tag_map_present():
     assert "test" in m.get("server", set())
     assert "build" in m.get("schema", set())
     assert "i18n_check" in m.get("i18n_catalog", set())
+
+
+def test_server_only_change_does_not_add_design_fidelity():
+    """AC-18: server-only globs → unit test gate in set, design-fidelity
+    stays skipped. Content scan must not sweep in UI gates when the
+    diff contains zero src/app/**/*.tsx files.
+    """
+    gc = GateConfig(gates={
+        "test": "skip",  # will be added
+        "design-fidelity": "skip",  # must stay skipped
+        "i18n_check": "skip",  # must stay skipped
+    })
+    change = Change(
+        name="c_srv",
+        change_type="feature",
+        touched_file_globs=["src/server/orders.ts", "src/server/auth.ts"],
+    )
+    added = augment_gate_config_with_content(gc, change, _FakeProfile())
+    assert "test" in added
+    assert "design-fidelity" not in added
+    assert "i18n_check" not in added
+    assert gc.get("design-fidelity") == "skip"
+    assert gc.get("i18n_check") == "skip"
+
+
+def test_first_commit_redetect_sets_flag_and_emits_event(tmp_path):
+    """AC-20 + AC-21: on the first monitor poll that sees commits AND
+    `gate_recheck_done=False`, engine runs `redetect()`, sets the flag
+    True, and emits `GATE_SET_EXPANDED` with `added_gates` when the
+    content scan produces any new gate.
+    """
+    import json
+    import subprocess
+    from set_orch.engine import _first_commit_gate_redetect
+    from set_orch.state import save_state, OrchestratorState
+
+    # Minimal git worktree with one commit whose diff touches a UI file.
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(wt)], check=True)
+    subprocess.run(["git", "-C", str(wt), "config", "user.email", "x@y.z"], check=True)
+    subprocess.run(["git", "-C", str(wt), "config", "user.name", "x"], check=True)
+    # Baseline empty commit on main so `main..HEAD` is meaningful.
+    subprocess.run(
+        ["git", "-C", str(wt), "commit", "--allow-empty", "-q", "-m", "base"],
+        check=True,
+    )
+    # Agent works on a feature branch so `main..HEAD` shows the new files.
+    subprocess.run(
+        ["git", "-C", str(wt), "checkout", "-q", "-b", "change/feature"], check=True,
+    )
+    (wt / "src" / "app" / "cart").mkdir(parents=True)
+    (wt / "src" / "app" / "cart" / "page.tsx").write_text("export default () => null;\n")
+    subprocess.run(["git", "-C", str(wt), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "agent: cart ui"], check=True)
+
+    change = Change(
+        name="c_redetect",
+        scope="x",
+        worktree_path=str(wt),
+        change_type="feature",
+        touched_file_globs=[],  # original scope had no UI globs
+        gate_recheck_done=False,
+    )
+    state = OrchestratorState(changes=[change])
+    state_file = str(tmp_path / "state.json")
+    save_state(state, state_file)
+
+    events: list[tuple[str, dict]] = []
+
+    class _Bus:
+        def emit(self, ev: str, change: str = "", data=None, **_):
+            events.append((ev, {"change": change, "data": data or {}}))
+
+    # Monkey-patch load_profile so redetect() has rules to classify against —
+    # tmp_path is not a project dir, so the real loader returns NullProfile.
+    # The engine imports load_profile lazily inside the function, so we patch
+    # the source module.
+    import set_orch.profile_loader as _pl
+    _orig_loader = _pl.load_profile
+    _pl.load_profile = lambda *a, **k: _FakeProfile()
+    try:
+        _first_commit_gate_redetect(state_file, change, _Bus())
+    finally:
+        _pl.load_profile = _orig_loader
+
+    # Flag persisted.
+    updated = json.loads(open(state_file).read())
+    assert updated["changes"][0]["gate_recheck_done"] is True
+    # touched_file_globs grew to include the UI file path.
+    assert any(
+        "src/app/cart/page.tsx" in g
+        for g in updated["changes"][0].get("touched_file_globs", [])
+    )
+    # GATE_SET_EXPANDED emitted with added_gates non-empty.
+    expanded = [e for e in events if e[0] == "GATE_SET_EXPANDED"]
+    assert len(expanded) == 1
+    assert expanded[0][1]["data"]["added_gates"]
+
+
+def test_redetect_is_one_shot_when_flag_already_true(tmp_path):
+    """AC-20 guard: `gate_recheck_done=True` makes the function a no-op
+    even if new commits appeared since the prior redetect.
+    """
+    import subprocess
+    from set_orch.engine import _first_commit_gate_redetect
+    from set_orch.state import save_state, OrchestratorState
+
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(wt)], check=True)
+    subprocess.run(["git", "-C", str(wt), "config", "user.email", "x@y.z"], check=True)
+    subprocess.run(["git", "-C", str(wt), "config", "user.name", "x"], check=True)
+    subprocess.run(
+        ["git", "-C", str(wt), "commit", "--allow-empty", "-q", "-m", "base"],
+        check=True,
+    )
+
+    change = Change(
+        name="c_guard", scope="x",
+        worktree_path=str(wt),
+        gate_recheck_done=True,  # already done
+    )
+    state = OrchestratorState(changes=[change])
+    state_file = str(tmp_path / "state.json")
+    save_state(state, state_file)
+
+    events: list[tuple[str, dict]] = []
+
+    class _Bus:
+        def emit(self, ev: str, **kw):
+            events.append((ev, kw))
+
+    _first_commit_gate_redetect(state_file, change, _Bus())
+    # No events — function returned early on the flag guard.
+    assert events == []

@@ -72,6 +72,26 @@ def test_populate_touched_file_globs():
     assert "src/app/cart/**" in globs  # wildcard parent added
 
 
+def test_populate_touched_file_globs_server_only_has_no_ui_globs():
+    """AC-30: a scope that mentions only server paths must NOT produce
+    any src/app/** or src/components/** globs. If the content hints
+    carried UI-route globs, the selector would wrongly activate
+    design-fidelity + i18n_check on a backend-only change.
+    """
+    change = {
+        "scope": (
+            "Add validators/cart.ts and src/server/orders.ts with "
+            "bcryptjs password hashing. Touches prisma/schema.prisma too."
+        ),
+    }
+    globs = populate_touched_file_globs(change)
+    assert all("src/app/" not in g for g in globs)
+    assert all("src/components/" not in g for g in globs)
+    # Sanity: the server paths are there.
+    assert "src/server/orders.ts" in globs
+    assert "prisma/schema.prisma" in globs
+
+
 def test_validate_plan_rejects_skip_test_on_server(tmp_path):
     plan = {
         "plan_version": 1, "brief_hash": "a",
