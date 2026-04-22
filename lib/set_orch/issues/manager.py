@@ -130,6 +130,7 @@ class IssueManager:
                         issue.resolved_at = now_iso()
                         self._transition(issue, IssueState.RESOLVED)
                         self._mark_source_finding_resolved(issue)
+                        self._retry_parent_after_resolved(issue)
                         if self.notifier:
                             self.notifier.on_resolved(issue)
                     else:
@@ -226,6 +227,78 @@ class IssueManager:
                        error=str(result) if result else "unknown")
         if self.notifier:
             self.notifier.on_failed(issue)
+
+    def _retry_parent_after_resolved(self, issue: Issue) -> None:
+        """After a circuit-breaker fix-iss resolves, reset the parent change
+        back to `pending` so the orchestrator picks it up again.
+
+        Without this, the parent stays `failed:<reason>` (terminal) forever —
+        the fix-iss child merged its focused fix, but the parent's own scope
+        (which was aborted mid-run by the breaker) is never retried. The
+        orchestrator's dispatcher only picks up `pending` changes, so we have
+        to actively un-fail the parent.
+
+        Scope is intentionally narrow:
+        - only for `source.startswith("circuit-breaker:")` issues
+        - only if the parent is in a `failed:*` terminal state
+        - uses `reset_change_to_pending()` so all gate cache/stuck-loop
+          residuals are cleared — a fresh dispatch after the child's fix has
+          been merged into main sees the updated code and a clean slate.
+        """
+        if not issue.source.startswith("circuit-breaker:"):
+            return
+        parent_name = issue.affected_change
+        if not parent_name:
+            return
+        env_path = issue.environment_path
+        if not env_path:
+            return
+        try:
+            from pathlib import Path
+            from ..state import locked_state
+            from ..recovery import reset_change_to_pending
+            state_file = Path(env_path) / "orchestration-state.json"
+            if not state_file.is_file():
+                logger.warning(
+                    "Cannot retry parent %s for %s: state file missing at %s",
+                    parent_name, issue.id, state_file,
+                )
+                return
+            reset_done = False
+            with locked_state(str(state_file)) as s:
+                for ch in s.changes:
+                    if ch.name != parent_name:
+                        continue
+                    if not ch.status.startswith("failed:"):
+                        logger.info(
+                            "Parent %s is %s (not failed:*) — skipping auto-retry",
+                            parent_name, ch.status,
+                        )
+                        break
+                    prior_status = ch.status
+                    reset_change_to_pending(ch)
+                    reset_done = True
+                    self.audit.log(
+                        issue.id,
+                        "parent_retry_requested",
+                        parent=parent_name,
+                        prior_status=prior_status,
+                    )
+                    logger.info(
+                        "Reset parent %s (%s → pending) after %s resolved",
+                        parent_name, prior_status, issue.id,
+                    )
+                    break
+            if not reset_done:
+                logger.info(
+                    "No failed parent found for %s (affected_change=%s)",
+                    issue.id, parent_name,
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to reset parent %s after %s: %s",
+                parent_name, issue.id, e,
+            )
 
     def _deploy(self, issue: Issue):
         if self.deployer:
