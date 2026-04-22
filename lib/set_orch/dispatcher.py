@@ -2785,9 +2785,17 @@ def _iss_owned_change_names(state_path: str) -> set[str]:
             return set()
         with open(reg_path) as fh:
             data = _json.load(fh)
-        # States where the ISS owns the change — matches ACTIVE_STATES
-        # minus NEW (which has not yet claimed ownership).
+        # States where the ISS owns the change — matches ACTIVE_STATES.
+        # `new` is included so the engine backs off between a fresh escalation
+        # (filesystem registry write) and the set-web tick-loop picking it up
+        # and spawning the investigator (≤30s). Without this, the engine's
+        # 15s dispatcher loop can fire first, creating a parallel Ralph worktree
+        # on the same openspec change — predictable git conflicts. If the ISS
+        # pipeline fails to transition the issue out of `new`, that is a bug
+        # we want visible (stalled pending change + NEW issue in the UI)
+        # rather than masked by a double-dispatch.
         active = {
+            "new",
             "investigating", "diagnosed", "awaiting_approval",
             "fixing", "verifying", "deploying", "failed",
         }

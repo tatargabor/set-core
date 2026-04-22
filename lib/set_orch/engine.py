@@ -3996,8 +3996,20 @@ def _check_phase_completion(
     from .state import deps_failed
     phase_changes = [c for c in state.changes if c.phase == current_phase]
     terminal_statuses = {"merged", "done", "skipped", "failed", "merge-blocked", "integration-failed", "awaiting_confirmation"}
+
+    def _is_terminal(c) -> bool:
+        # `failed:<reason>` variants (failed:stuck_no_progress,
+        # failed:retry_budget_exhausted, failed:token_runaway) are terminal.
+        # Exact-match check missed them pre-fix, leaving the dispatcher
+        # waiting forever on a change that would never transition.
+        if c.status in terminal_statuses:
+            return True
+        if c.status.startswith("failed:"):
+            return True
+        return False
+
     all_terminal = all(
-        (c.status in terminal_statuses
+        (_is_terminal(c)
          # "merged" with step != done means post-merge work still running
          and not (c.status == "merged" and c.current_step not in ("done", None)))
         or (c.status == "pending" and deps_failed(state, c.name))

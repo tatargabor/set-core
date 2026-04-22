@@ -69,6 +69,31 @@ class IssueRegistry:
             except (json.JSONDecodeError, KeyError):
                 pass
 
+    def reload_from_disk(self) -> bool:
+        """Re-read registry.json so external writers (the sentinel-side
+        `escalate_change_to_fix_iss`, recovery-tool purges) are picked up.
+
+        Without this, the set-web-hosted IssueManager keeps its startup-time
+        snapshot and cannot see NEW issues created mid-run — investigator
+        never spawns and the fix-iss pipeline hangs.
+
+        Returns True if the on-disk mtime changed since the last load.
+        """
+        try:
+            mtime = self.registry_path.stat().st_mtime if self.registry_path.exists() else 0.0
+        except OSError:
+            mtime = 0.0
+        last = getattr(self, "_last_registry_mtime", None)
+        if last is not None and mtime == last:
+            return False
+        self._issues.clear()
+        self._groups.clear()
+        self._next_issue_num = 1
+        self._next_group_num = 1
+        self._load()
+        self._last_registry_mtime = mtime
+        return True
+
         if self.mutes_path.exists():
             try:
                 data = json.loads(self.mutes_path.read_text())

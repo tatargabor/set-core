@@ -458,6 +458,126 @@ def render_preview(plan: RecoveryPlan, project_path: Path) -> str:
     return "\n".join(lines)
 
 
+# ─── State reset helper ─────────────────────────────────────────────────────
+
+
+def reset_change_to_pending(ch: Change) -> None:
+    """Return a `Change` to its pre-dispatch state.
+
+    Clears everything produced by a prior dispatch/verify/integrate cycle:
+    - worktree/agent pointers and timestamps
+    - token counters
+    - gate outputs, results, stats, screenshots
+    - per-gate timing
+    - retry counters (verify, merge, redispatch) and wall-clock retry budget
+    - gate-retry cache (`gate_retry_tracking`, `last_gate_fingerprint`,
+      `verify_retry_index`, `gate_recheck_done`) — without this, the next
+      dispatch can hit a stale `last_verdict_sha` that points to a commit the
+      recovery's `git reset --hard` just discarded.
+    - stuck-loop breaker state (both top-level `stuck_loop_count` and the
+      `stuck_fingerprint` / `stuck_head_sha` entries in `extras`).
+    - context-token baselines and fix-iss parent pointer.
+
+    Preserves the change's *identity*: name, scope, phase, depends_on,
+    requirements, gate_hints, model, skip flags.
+    """
+    ch.status = "pending"
+    ch.current_step = None
+    ch.worktree_path = None
+    ch.ralph_pid = None
+    ch.started_at = None
+    ch.completed_at = None
+
+    # Tokens
+    ch.tokens_used = 0
+    ch.tokens_used_prev = 0
+    ch.input_tokens = 0
+    ch.output_tokens = 0
+    ch.cache_read_tokens = 0
+    ch.cache_create_tokens = 0
+    ch.input_tokens_prev = 0
+    ch.output_tokens_prev = 0
+    ch.cache_read_tokens_prev = 0
+    ch.cache_create_tokens_prev = 0
+
+    # Gate results
+    for attr in (
+        "build_result", "test_result", "e2e_result", "review_result",
+        "smoke_result", "scope_check_result", "rules_result",
+        "e2e_coverage_result", "test_coverage",
+    ):
+        if hasattr(ch, attr):
+            setattr(ch, attr, None)
+    for attr in ("test_stats", "smoke_stats"):
+        if hasattr(ch, attr):
+            setattr(ch, attr, None)
+
+    # Gate outputs
+    for attr in (
+        "build_output", "test_output", "e2e_output", "smoke_output",
+        "review_output", "scope_check_output", "rules_output",
+        "e2e_coverage_output",
+    ):
+        if hasattr(ch, attr):
+            setattr(ch, attr, None)
+
+    # Screenshot bookkeeping
+    for attr in ("smoke_screenshot_dir", "e2e_screenshot_dir"):
+        if hasattr(ch, attr):
+            setattr(ch, attr, "")
+    for attr in ("smoke_screenshot_count", "e2e_screenshot_count"):
+        if hasattr(ch, attr):
+            setattr(ch, attr, 0)
+
+    # Gate timing
+    for attr in (
+        "gate_total_ms", "gate_build_ms", "gate_test_ms", "gate_e2e_ms",
+        "gate_review_ms", "gate_smoke_ms", "gate_scope_check_ms",
+        "gate_rules_ms", "gate_e2e_coverage_ms", "gate_verify_ms",
+    ):
+        if hasattr(ch, attr):
+            setattr(ch, attr, 0)
+
+    # Retry counters and cache
+    for attr in (
+        "verify_retry_count", "verify_retry_index",
+        "redispatch_count", "merge_retry_count", "stuck_loop_count",
+        "retry_wall_time_ms",
+    ):
+        if hasattr(ch, attr):
+            setattr(ch, attr, 0)
+    for attr in ("last_gate_fingerprint", "token_runaway_baseline",
+                 "fix_iss_child", "assigned_e2e_port"):
+        if hasattr(ch, attr):
+            setattr(ch, attr, None)
+    if hasattr(ch, "gate_recheck_done"):
+        ch.gate_recheck_done = False
+    if hasattr(ch, "gate_retry_tracking"):
+        ch.gate_retry_tracking = {}
+    if hasattr(ch, "touched_file_globs"):
+        ch.touched_file_globs = []
+
+    # Context-token baselines
+    for attr in ("context_tokens_start", "context_tokens_end",
+                 "context_breakdown_start"):
+        if hasattr(ch, attr):
+            setattr(ch, attr, None)
+
+    # Watchdog
+    if hasattr(ch, "watchdog"):
+        ch.watchdog = None
+
+    # Extras — clear every key that tracks a prior dispatch. Keep any keys
+    # not listed here (user-extensions, unknown future fields).
+    for k in (
+        "merge_retry_count", "integration_retry_count",
+        "integration_e2e_retry_count", "retry_context",
+        "merge_rebase_pending", "stalled_at",
+        "stuck_fingerprint", "stuck_head_sha",
+    ):
+        ch.extras.pop(k, None)
+
+
 # ─── Execution ──────────────────────────────────────────────────────────────
 
 
@@ -554,34 +674,7 @@ def _execute_plan(project_path: Path, plan: RecoveryPlan, state: OrchestratorSta
         with locked_state(str(state_file)) as s:
             for ch in s.changes:
                 if ch.name in plan.state_changes_to_reset:
-                    ch.status = "pending"
-                    ch.ralph_pid = None
-                    ch.worktree_path = None
-                    ch.completed_at = None
-                    ch.started_at = None
-                    ch.tokens_used = 0
-                    ch.input_tokens = 0
-                    ch.output_tokens = 0
-                    ch.cache_read_tokens = 0
-                    ch.cache_create_tokens = 0
-                    ch.tokens_used_prev = 0
-                    ch.input_tokens_prev = 0
-                    ch.output_tokens_prev = 0
-                    ch.build_result = None
-                    ch.test_result = None
-                    ch.e2e_result = None
-                    ch.review_result = None
-                    ch.test_coverage = None
-                    ch.gate_total_ms = 0
-                    ch.gate_build_ms = 0
-                    ch.gate_test_ms = 0
-                    ch.gate_e2e_ms = 0
-                    for k in (
-                        "merge_retry_count", "integration_retry_count",
-                        "integration_e2e_retry_count", "retry_context",
-                        "merge_rebase_pending", "stalled_at",
-                    ):
-                        ch.extras.pop(k, None)
+                    reset_change_to_pending(ch)
             if fix_iss_set:
                 before = len(s.changes)
                 s.changes = [c for c in s.changes if c.name not in fix_iss_set]

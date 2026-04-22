@@ -55,6 +55,16 @@ class IssueManager:
 
     def tick(self):
         """Called every N seconds. Pure state machine — no LLM calls."""
+        # Pick up external writers (sentinel's escalate_change_to_fix_iss,
+        # recovery-tool purges) — without this the cached snapshot from
+        # startup never sees new issues.
+        try:
+            changed = self.registry.reload_from_disk()
+            if changed:
+                logger.info("Registry reloaded from disk; %d active issue(s)",
+                            sum(1 for _ in self.registry.active()))
+        except Exception as e:
+            logger.warning("Registry reload failed: %s", e)
         for issue in self.registry.active():
             # Auto-resolve if orchestrator already merged the affected change
             if self._check_affected_change_merged(issue):
