@@ -2465,8 +2465,24 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
             branch_name = f"change/{name}"
             try:
                 from .subprocess_utils import run_command
-                run_command(["git", "worktree", "add", wt_path, branch_name], timeout=30)
-                logger.info("Recreated worktree for %s at %s", name, wt_path)
+                result = run_command(
+                    ["git", "worktree", "add", wt_path, branch_name], timeout=30,
+                )
+                if result.exit_code == 0 and os.path.isdir(wt_path):
+                    logger.info("Recreated worktree for %s at %s", name, wt_path)
+                else:
+                    # Non-zero exit OR directory still missing (git reported
+                    # "already registered" without actually materialising the
+                    # dir). Do not fabricate "Recreated" — real failure mode,
+                    # often means worktree registry + filesystem are out of
+                    # sync (prior run removed the dir but not the registry).
+                    logger.error(
+                        "Failed to recreate worktree for %s: "
+                        "exit=%d stdout=%r stderr=%r — merging without gates",
+                        name, result.exit_code,
+                        (result.stdout or "")[:200],
+                        (result.stderr or "")[:200],
+                    )
             except Exception as e:
                 logger.error("Failed to recreate worktree for %s: %s — merging without gates", name, e)
 

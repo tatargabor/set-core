@@ -3742,6 +3742,15 @@ def _count_by_status(state_file: str, status: str) -> int:
     return sum(1 for c in state.changes if c.status == status)
 
 
+# Consecutive-empty-digest tracker. Keyed by state_file so multiple
+# projects in the same process don't share one counter. Reset to 0 as
+# soon as a non-empty digest shows up. When it reaches the threshold
+# we halt dispatch with an ERROR instead of silently dispatching agents
+# without their Required Tests section.
+_EMPTY_DIGEST_COUNTS: dict[str, int] = {}
+_EMPTY_DIGEST_HALT_THRESHOLD = 3
+
+
 def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None:
     """Dispatch ready changes (exception-safe wrapper)."""
     try:
@@ -3761,9 +3770,33 @@ def _dispatch_ready_safe(state_file: str, d: Directives, event_bus: Any) -> None
         if not os.path.isdir(_digest_dir):
             _digest_dir = ""
         if not _digest_dir:
-            logger.warning(
-                "digest_dir is empty for dispatch — agents won't get Required Tests section"
-            )
+            count = _EMPTY_DIGEST_COUNTS.get(state_file, 0) + 1
+            _EMPTY_DIGEST_COUNTS[state_file] = count
+            if count >= _EMPTY_DIGEST_HALT_THRESHOLD:
+                # Halt dispatch — agents without Required Tests write freehand
+                # tests and burn retries on missing coverage. Surface once per
+                # cycle until the digest lands; avoid per-poll log spam.
+                if count == _EMPTY_DIGEST_HALT_THRESHOLD:
+                    logger.error(
+                        "Dispatch halted: digest_dir empty for %d consecutive "
+                        "cycles. Run `set-orch-core digest run --spec <path>` "
+                        "from %s to regenerate, then dispatcher will resume.",
+                        count, _project_dir,
+                    )
+                return
+            # Below threshold: log once per transition into the empty state
+            if count == 1:
+                logger.warning(
+                    "digest_dir is empty for dispatch — agents won't get "
+                    "Required Tests section (will halt after %d consecutive "
+                    "cycles)",
+                    _EMPTY_DIGEST_HALT_THRESHOLD,
+                )
+        else:
+            # Digest appeared (or was always there) — clear the counter so
+            # the threshold logic is ready for a future regression.
+            if _EMPTY_DIGEST_COUNTS.pop(state_file, 0) >= _EMPTY_DIGEST_HALT_THRESHOLD:
+                logger.info("Dispatch resumed: digest_dir now populated")
         logger.debug("Dispatch: digest_dir=%s, exists=%s", _digest_dir, os.path.isdir(_digest_dir) if _digest_dir else False)
         dispatch_ready_changes(
             state_file, d.max_parallel,
