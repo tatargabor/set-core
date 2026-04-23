@@ -201,6 +201,10 @@ class Issue:
     resolved_at: Optional[str] = None
     diagnosed_at: Optional[str] = None
 
+    # Extensible key-value store for watchdog flags and similar one-off markers
+    # (e.g., `stalled_notification_sent` to prevent duplicate DIAGNOSED alerts).
+    extras: dict = field(default_factory=dict)
+
     def to_dict(self) -> dict:
         d = {
             "id": self.id,
@@ -232,6 +236,7 @@ class Issue:
             "updated_at": self.updated_at,
             "resolved_at": self.resolved_at,
             "diagnosed_at": self.diagnosed_at,
+            "extras": self.extras,
         }
         return d
 

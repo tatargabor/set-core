@@ -78,7 +78,7 @@ class InvestigationRunner:
 
         cmd = [
             "claude", "-p",
-            "--max-turns", "20",
+            "--max-turns", str(self.config.investigation.max_turns),
             "--model", "claude-sonnet-4-6",
             "--verbose", "--output-format", "stream-json",
             "--dangerously-skip-permissions",
@@ -428,6 +428,19 @@ This project uses **set-core orchestration**:
   - vitest "no test files" → add `passWithNoTests: true` to vitest.config.ts
   - build fail → check deps installed, type errors
   - e2e fail → playwright needs install + dev server
+
+## Source corruption recognition
+
+If you read a source file and notice:
+- duplicate top-level imports (the same `import` statement appearing 2 or more times)
+- repeated blocks of code (the same function body, JSX block, switch case, or route definition appearing back-to-back)
+- merge conflict markers left in the file (`<<<<<<<`, `=======`, `>>>>>>>`)
+
+Do NOT keep re-reading the file hoping to make sense of it — you will burn turns on noise. Emit your diagnosis immediately:
+- root cause: **source corruption (duplicate blocks from bad merge/auto-fix)**
+- recommended fix: run `git diff HEAD~1 -- <file>` to see what changed, remove the duplicates, then retry the parent
+
+A partial diagnosis with a clear fix path beats burning your remaining turns on a corrupted file. This rule overrides the usual "investigate thoroughly" guidance when the file is clearly mechanically corrupted.
 
 ## Instructions
 

@@ -72,6 +72,17 @@ class IssueManager:
             self._process(issue)
         for group in self.registry.active_groups():
             self._process_group(group)
+        # DIAGNOSED-stall watchdog — one-time notification for issues stuck in
+        # DIAGNOSED beyond diagnosed_stall_hours. Isolated in try/except so a
+        # watchdog crash cannot break the rest of the tick (timeout reminders
+        # still need to run).
+        try:
+            self._check_diagnosed_stalls()
+        except Exception:
+            logger.warning(
+                "DIAGNOSED stall watchdog raised — skipping this tick",
+                exc_info=True,
+            )
         self._check_timeout_reminders()
 
     def _process(self, issue: Issue):
@@ -464,6 +475,94 @@ class IssueManager:
             return elapsed >= backoff
         except ValueError:
             return True
+
+    def _check_diagnosed_stalls(self):
+        """One-time watchdog for issues stuck in DIAGNOSED with no transition path.
+
+        Fires when an issue has been in DIAGNOSED for longer than the
+        configured `diagnosed_stall_hours` threshold AND has not previously
+        received a stall notification. Records an audit entry and, if the
+        notifier implements `on_stalled_diagnosis`, calls it. Sets an extras
+        flag on the issue so subsequent ticks do not re-fire.
+
+        This is a backstop for issues that `_apply_post_diagnosis_policy`
+        routed to neither FIXING (confidence too low) nor AWAITING_APPROVAL
+        (no timeout configured for below-threshold diagnoses). Without this,
+        such issues sit indefinitely with no operator signal.
+        """
+        threshold_hours = getattr(self.policy.config, "diagnosed_stall_hours", 2)
+        if threshold_hours <= 0:
+            return
+        threshold = timedelta(hours=threshold_hours)
+
+        for issue in self.registry.by_state(IssueState.DIAGNOSED):
+            if issue.extras.get("stalled_notification_sent"):
+                continue
+            if not issue.diagnosed_at:
+                continue
+            try:
+                diagnosed = datetime.fromisoformat(issue.diagnosed_at)
+            except ValueError:
+                continue
+            elapsed = datetime.now(timezone.utc) - diagnosed
+            if elapsed < threshold:
+                continue
+
+            elapsed_seconds = int(elapsed.total_seconds())
+            self.audit.log(
+                issue.id,
+                "diagnosis_stalled_notification_sent",
+                elapsed_seconds=elapsed_seconds,
+                threshold_hours=threshold_hours,
+            )
+            if self.notifier is not None:
+                hook = getattr(self.notifier, "on_stalled_diagnosis", None)
+                if callable(hook):
+                    try:
+                        hook(issue, elapsed_seconds)
+                    except Exception:
+                        logger.warning(
+                            "on_stalled_diagnosis raised for %s — continuing",
+                            issue.id, exc_info=True,
+                        )
+
+            issue.extras["stalled_notification_sent"] = True
+
+            # Opt-in low-confidence auto-fix escape. Fires when:
+            #   - config has `auto_fix_conditions.low_confidence_after_hours > 0`
+            #   - issue has been DIAGNOSED for longer than that threshold
+            #   - diagnosis confidence is >= 0.4 (not hopelessly low)
+            # Default is disabled (key absent or None) so baseline behavior
+            # is preserved for operators who haven't opted in.
+            escape_hours = self.policy.config.auto_fix_conditions.get(
+                "low_confidence_after_hours"
+            )
+            if (
+                escape_hours
+                and escape_hours > 0
+                and elapsed >= timedelta(hours=escape_hours)
+                and issue.diagnosis is not None
+                and issue.diagnosis.confidence >= 0.4
+                and issue.state == IssueState.DIAGNOSED
+            ):
+                self.audit.log(
+                    issue.id,
+                    "low_confidence_auto_fix_approved",
+                    confidence=issue.diagnosis.confidence,
+                    elapsed_seconds=elapsed_seconds,
+                    escape_hours=escape_hours,
+                )
+                issue.auto_fix = True
+                issue.policy_matched = f"low-confidence-escape-{escape_hours}h"
+                self._start_fix(issue)
+
+            try:
+                self.registry.save()
+            except Exception:
+                logger.debug(
+                    "Registry save after stall notification failed for %s",
+                    issue.id, exc_info=True,
+                )
 
     def _check_timeout_reminders(self):
         """Send notifications at 50% and 80% of timeout window."""

@@ -26,6 +26,9 @@ class InvestigationConfig:
     timeout_seconds: int = 0  # 0 = no timeout — let agent finish, PID check detects death
     template: str = "default"
     auto_investigate: bool = True
+    max_turns: int = 40  # --max-turns passed to claude CLI. Higher than Anthropic's
+                         # default of 20 to survive multi-file diagnoses + corrupt-file
+                         # re-reads without exhausting the budget.
 
 
 @dataclass
@@ -63,6 +66,11 @@ class IssuesPolicyConfig:
     # Auto-fix severity lists per mode
     auto_fix_severity: list[str] = field(default_factory=lambda: ["low", "medium", "high"])
 
+    # Watchdog: notify operators when an issue has been in DIAGNOSED for longer
+    # than this many hours with no forward transition. One-time notification per
+    # issue. Default 2 hours balances noise vs. visibility.
+    diagnosed_stall_hours: int = 2
+
     @classmethod
     def from_dict(cls, data: dict) -> IssuesPolicyConfig:
         cfg = cls()
@@ -93,7 +101,11 @@ class IssuesPolicyConfig:
                 timeout_seconds=inv.get("timeout_seconds", 300),
                 template=inv.get("template", "default"),
                 auto_investigate=inv.get("auto_investigate", True),
+                max_turns=inv.get("max_turns", 40),
             )
+
+        if "diagnosed_stall_hours" in data:
+            cfg.diagnosed_stall_hours = int(data["diagnosed_stall_hours"])
 
         if "retry" in data:
             r = data["retry"]

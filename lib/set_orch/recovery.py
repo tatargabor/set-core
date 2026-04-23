@@ -455,7 +455,65 @@ def render_preview(plan: RecoveryPlan, project_path: Path) -> str:
     lines.append(f"    - {_state_base} → {_state_base}.bak.{plan.backup_tag.split('-', 2)[-1]}")
     lines.append(f"    - git tag {plan.backup_tag}")
 
+    # Warnings: active fix-iss pipelines whose affected_change is OUTSIDE
+    # the rollback scope. The rollback still proceeds; the warning surfaces
+    # collateral so operators can manually dismiss orphaned issues first.
+    outside_active_issues = _active_issues_outside_rollback(
+        project_path, set(plan.rollback_changes),
+    )
+    if outside_active_issues:
+        lines.append("")
+        lines.append("  ⚠ Active fix-iss pipelines outside rollback scope:")
+        for entry in outside_active_issues:
+            child_info = f" child={entry['child']}" if entry.get("child") else ""
+            lines.append(
+                f"      - {entry['id']}  state={entry['state']}  "
+                f"affected={entry['affected']}{child_info}"
+            )
+
     return "\n".join(lines)
+
+
+_ACTIVE_ISSUE_STATES = frozenset({
+    "investigating", "diagnosed", "awaiting_approval", "fixing",
+})
+
+
+def _active_issues_outside_rollback(
+    project_path: Path, rollback_scope: set[str],
+) -> list[dict]:
+    """Return a list of active issues whose affected_change is NOT in scope.
+
+    Each entry: {"id", "state", "affected", "child"}. Returns empty list
+    if registry is missing or malformed.
+    """
+    registry_path = project_path / ".set" / "issues" / "registry.json"
+    if not registry_path.is_file():
+        return []
+    try:
+        with open(registry_path) as f:
+            reg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        logger.debug("render_preview: could not read issues registry", exc_info=True)
+        return []
+
+    out: list[dict] = []
+    for issue in reg.get("issues", []):
+        if not isinstance(issue, dict):
+            continue
+        state = (issue.get("state") or "").lower()
+        if state not in _ACTIVE_ISSUE_STATES:
+            continue
+        affected = issue.get("affected_change")
+        if not affected or affected in rollback_scope:
+            continue
+        out.append({
+            "id": issue.get("id", "<no-id>"),
+            "state": state,
+            "affected": affected,
+            "child": issue.get("change_name"),
+        })
+    return out
 
 
 # ─── State reset helper ─────────────────────────────────────────────────────
