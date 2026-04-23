@@ -3868,16 +3868,44 @@ def _recover_merge_blocked_safe(state_file: str, event_bus: Any) -> None:
                 old_ff = change.extras.get("ff_retry_count", 0)
                 # Only reset ff_retry if an issue was actually resolved (meaning something changed).
                 # If no issues existed at all, the ff failure cause hasn't changed — don't retry.
-                if change_issues:
+                # Guard against infinite toggle: a long-resolved issue must
+                # NOT keep triggering reset on every poll. Track the
+                # timestamp of the most recent resolution we credited — only
+                # reset when a genuinely newer terminal transition has
+                # happened since. This caught a 29h stall where one
+                # long-resolved issue re-fired the reset branch ~95 times
+                # (FF limit reached → reset to 0 → retry → FF limit → ...).
+                last_recover_ts = str(change.extras.get("last_recover_ts", "") or "")
+                latest_terminal_ts = max(
+                    (
+                        str(i.get("resolved_at") or i.get("updated_at") or "")
+                        for i in change_issues
+                    ),
+                    default="",
+                )
+                if change_issues and latest_terminal_ts > last_recover_ts:
                     # Issue was resolved — give fresh ff attempts
                     if old_ff:
                         update_change_field(state_file, change.name, "ff_retry_count", 0, event_bus=event_bus)
                     update_change_field(state_file, change.name, "merge_retry_count", merge_retry + 1, event_bus=event_bus)
                     update_change_field(state_file, change.name, "status", "done", event_bus=event_bus)
-                    logger.info(
-                        "Recovered merge-blocked %s — blocking issues resolved (ff_retry_count %d→0, merge_retry_count %d→%d)",
-                        change.name, old_ff, merge_retry, merge_retry + 1,
+                    # Remember which resolution timestamp we just credited so
+                    # the next poll doesn't re-credit the same issue.
+                    update_change_field(
+                        state_file, change.name, "last_recover_ts",
+                        latest_terminal_ts, event_bus=event_bus,
                     )
+                    logger.info(
+                        "Recovered merge-blocked %s — blocking issues resolved (ff_retry_count %d→0, merge_retry_count %d→%d, last_recover_ts=%s)",
+                        change.name, old_ff, merge_retry, merge_retry + 1, latest_terminal_ts,
+                    )
+                elif change_issues:
+                    # All resolutions already credited — don't re-reset.
+                    logger.debug(
+                        "merge-blocked %s has no NEW resolutions (last_recover_ts=%s, latest_terminal_ts=%s) — holding",
+                        change.name, last_recover_ts, latest_terminal_ts,
+                    )
+                    continue
                 else:
                     # No issues existed — ff failure is structural (worktree gone, branch conflict).
                     # Don't reset ff_retry, just mark integration-failed to stop the loop.

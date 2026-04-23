@@ -2114,6 +2114,20 @@ def dispatch_change(
     ):
         update_change_field(state_path, change_name, field, 0, event_bus=event_bus)
 
+    # Reset per-dispatch retry counters. A change that exhausted its
+    # verify/gate/build budget on a prior dispatch (or had its counters
+    # persisted across a restart) must start fresh — otherwise the first
+    # verify failure trips `retries exhausted` in one iteration.
+    # `merge_stall_attempts` is deliberately NOT reset: it is monotonic
+    # across re-dispatches to drive the merge-stall circuit-breaker.
+    # `ff_retry_count` is reset by `_recover_merge_blocked_safe` on
+    # *new* issue resolutions only (engine.py) — leaving it here would
+    # double-reset and re-enable the old toggle bug.
+    for field in (
+        "verify_retry_count", "gate_retry_count", "build_fix_attempt_count",
+    ):
+        update_change_field(state_path, change_name, field, 0, event_bus=event_bus)
+
     # Create or reuse worktree
     project_path = os.getcwd()
 
