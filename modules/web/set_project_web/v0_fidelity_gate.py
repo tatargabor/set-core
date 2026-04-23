@@ -554,9 +554,22 @@ def _run_gate(
     # 1. Skeleton check (fast, no build). Scope-aware: only routes matched
     # to this change's scope via manifest scope_keywords are required.
     change_scope = getattr(change, "scope", "") if change is not None else ""
+    # Compute routes inherited from the base commit so extra-route does
+    # not flag them against the current agent. Without this, routes like
+    # /admin/login or /bundles (created by foundation/auth siblings that
+    # already merged) flood every subsequent UI change's retry_context.
+    inherited_routes: set[str] = set()
+    try:
+        from set_orch.verifier import _get_merge_base
+        base_sha = _get_merge_base(str(Path(wt_path))) or ""
+        if base_sha:
+            inherited_routes = _enumerate_routes_at_ref(Path(wt_path), base_sha)
+    except Exception:
+        logger.debug("inherited-routes lookup failed for skeleton check", exc_info=True)
     skel = run_skeleton_check(
         Path(wt_path), project_path / "v0-export", manifest,
         change_scope=change_scope,
+        base_routes=inherited_routes,
     )
     # Only structural-absence violations are blocking. `extra-route` is
     # informational — Next.js framework pages (/403, /404, /500, error.tsx),
@@ -708,6 +721,7 @@ def run_skeleton_check(
     v0_export: Path,
     manifest,
     change_scope: str = "",
+    base_routes: set[str] | None = None,
 ) -> list[SkeletonViolation]:
     """Structural check — runs BEFORE any build/screenshot.
 
@@ -745,7 +759,13 @@ def run_skeleton_check(
     # (not the same as "belongs to a sibling change" — those ARE in manifest).
     # Routes listed in deferred_design_routes are exempt — they exist in the
     # app but have no v0-export counterpart (e.g. error pages, auth gates).
-    for p in agent_routes - manifest_routes - deferred:
+    # Routes inherited from the base commit (already on main) are also
+    # exempt — the current agent cannot be held responsible for routes
+    # foundation/auth/other siblings created. Without this, `/admin/login`,
+    # `/bundles`, `/coffees`, `/equipment` etc. get flagged on every
+    # subsequent UI change and flood the retry_context.
+    inherited = base_routes or set()
+    for p in agent_routes - manifest_routes - deferred - inherited:
         violations.append(SkeletonViolation(
             "extra-route",
             f"route {p} exists in agent worktree but not in manifest",
@@ -802,6 +822,44 @@ def run_skeleton_check(
             ))
 
     return violations
+
+
+def _enumerate_routes_at_ref(worktree: Path, ref: str) -> set[str]:
+    """Return route set present at `ref` (typically merge-base with main).
+
+    Uses `git ls-tree -r --name-only` to read the tree without touching
+    the working directory. The normalisation (dropping `(group)` /
+    `[locale]` segments) matches `_enumerate_agent_routes`.
+    """
+    import subprocess
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(worktree), "ls-tree", "-r", "--name-only", ref],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if res.returncode != 0:
+        return set()
+    routes: set[str] = set()
+    for line in res.stdout.splitlines():
+        if not line.endswith("page.tsx"):
+            continue
+        # Strip leading app/ or src/app/ prefix
+        parts = line.split("/")
+        if parts and parts[0] == "src" and len(parts) > 1 and parts[1] == "app":
+            segs = parts[2:-1]  # drop src/app and the page.tsx filename
+        elif parts and parts[0] == "app":
+            segs = parts[1:-1]
+        else:
+            continue
+        segs = [
+            s for s in segs
+            if not (s.startswith("(") and s.endswith(")"))
+            and s != "[locale]"
+        ]
+        routes.add("/" + "/".join(segs) if segs else "/")
+    return routes
 
 
 def _enumerate_agent_routes(agent: Path) -> set[str]:

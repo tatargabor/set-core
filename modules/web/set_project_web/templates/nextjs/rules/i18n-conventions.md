@@ -9,6 +9,23 @@ paths:
 ---
 # i18n Conventions
 
+## 🔴 MANDATORY pre-submit self-check
+
+Before declaring your change done (i.e. before `complete` / last commit), you MUST run:
+
+```bash
+pnpm tsx scripts/check-i18n-completeness.ts
+```
+
+The script exits non-zero if ANY `t('key')` call in the code you touched has no matching entry in BOTH `messages/en.json` AND `messages/hu.json` (or the change's per-locale sidecar `messages/<locale>.<change>.json`). The verify gate runs the same check — if it fails there, you lose a retry slot AND ~3 minutes of wall clock per cycle. Catch it locally in ~5 seconds instead.
+
+**If the script reports missing keys:**
+1. Open the referenced sidecar files (or create them with the `messages/<locale>.<change>.json` naming)
+2. Add every missing key with a human translation for each locale (en + hu)
+3. Re-run the script — it must exit 0 before you hand off
+
+**Common cause of this failure**: writing `const t = useTranslations('myNamespace')` then `t('foo.bar')` without ever appending `foo.bar` to the messages files. Treating translations as "add later" burns a full verify cycle on every change.
+
 ## Translation Keys
 
 - **Every** user-visible string (labels, buttons, messages, errors, empty states, tooltips) MUST use `t('key')` or the framework's equivalent — never hardcoded strings
