@@ -1825,11 +1825,13 @@ def _poll_active_changes(
                             "— marking stalled",
                             change.name, ls_status,
                         )
+                        _stall_reason = f"fix_loop_no_progress_{ls_status}"
                         update_change_field(state_file, change.name, "status", "stalled")
                         update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                        update_change_field(state_file, change.name, "stall_reason", _stall_reason)
                         if event_bus:
                             event_bus.emit("CHANGE_STALLED", change=change.name,
-                                           data={"reason": f"fix_loop_no_progress_{ls_status}"})
+                                           data={"reason": _stall_reason})
                         continue
 
                 else:
@@ -1837,11 +1839,13 @@ def _poll_active_changes(
                         "Change %s running but agent dead (pid=%d, loop_status=%s) — marking stalled",
                         change.name, ralph_pid, ls_status or "unknown",
                     )
+                    _stall_reason = f"dead_running_agent_{ls_status or 'unknown'}"
                     update_change_field(state_file, change.name, "status", "stalled")
                     update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    update_change_field(state_file, change.name, "stall_reason", _stall_reason)
                     if event_bus:
                         event_bus.emit("CHANGE_STALLED", change=change.name,
-                                       data={"reason": f"dead_running_agent_{ls_status or 'unknown'}"})
+                                       data={"reason": _stall_reason})
                     continue
 
         if change.status == "verifying":
@@ -1856,6 +1860,7 @@ def _poll_active_changes(
                     )
                     update_change_field(state_file, change.name, "status", "stalled")
                     update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    update_change_field(state_file, change.name, "stall_reason", "verify_timeout")
                     if event_bus:
                         event_bus.emit("CHANGE_STALLED", change=change.name,
                                        data={"reason": "verify_timeout"})
@@ -1873,6 +1878,7 @@ def _poll_active_changes(
                     )
                     update_change_field(state_file, change.name, "status", "stalled")
                     update_change_field(state_file, change.name, "stalled_at", int(time.time()))
+                    update_change_field(state_file, change.name, "stall_reason", reason)
                     if event_bus:
                         event_bus.emit("CHANGE_STALLED", change=change.name,
                                        data={"reason": reason})

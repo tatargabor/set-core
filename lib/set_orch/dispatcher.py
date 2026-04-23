@@ -3119,6 +3119,35 @@ def resume_change(
     is_merge_retry = change.extras.get("merge_rebase_pending", False)
     is_review_retry = "REVIEW FEEDBACK" in retry_ctx or "review" in retry_ctx.lower()[:50]
 
+    # Stall recovery guard: if this resume is the fallout of a dead-agent /
+    # context-overflow stall, the preserved session CARRIES the context that
+    # killed the agent. Resuming it loads the same poisoned context back in
+    # → overflow again → stall again → circular. The reasons that imply a
+    # poisoned context are: the ralph process died with no commits, the
+    # verify agent was found dead mid-gate, or the fix loop ran itself empty.
+    # Token runaway / capacity_limit_pct also mean "context was already huge".
+    # In all those cases we MUST force a fresh session even when everything
+    # else about resume looks clean.
+    _stall_reason = ""
+    try:
+        _st = load_state(state_path)
+        _ch = _find_change(_st, change_name)
+        if _ch is not None:
+            _stall_reason = str(_ch.extras.get("stall_reason") or "")
+    except Exception:
+        pass
+    _poisoned_stall_prefixes = (
+        "dead_running_agent_",
+        "dead_verify_agent",
+        "verify_timeout",
+        "fix_loop_no_progress_",
+        "token_runaway",
+        "context_overflow",
+    )
+    is_poisoned_stall_recovery = bool(_stall_reason) and any(
+        _stall_reason.startswith(p) for p in _poisoned_stall_prefixes
+    )
+
     # Check if a Claude session can be SAFELY resumed. Session resume keeps the
     # prompt cache warm and avoids re-reading files, but it also carries over
     # prior conversation history which can "poison" the fix if the context changed
@@ -3131,10 +3160,14 @@ def resume_change(
     #      delayed resumes increase hallucination risk.
     #   3. Too many prior resume failures → fresh start (existing behavior).
     #   4. Change name must match (already enforced in init_loop_state).
+    #   5. Poisoned-stall recovery → fresh start (agent was killed BY the
+    #      preserved context — reusing it just re-triggers the failure).
     has_resumable_session = False
     resume_skip_reason = ""
     if is_merge_retry:
         resume_skip_reason = "merge_rebase_pending (main branch changed)"
+    elif is_poisoned_stall_recovery:
+        resume_skip_reason = f"poisoned_stall_recovery ({_stall_reason})"
     elif os.path.isfile(loop_state_path):
         try:
             with open(loop_state_path) as f:
@@ -3172,9 +3205,12 @@ def resume_change(
 
     if has_resumable_session:
         logger.info("resume_change %s: session resume ELIGIBLE — cache stays warm", change_name)
-    elif retry_ctx:
+    elif retry_ctx or is_poisoned_stall_recovery:
         logger.info("resume_change %s: fresh session (%s)", change_name, resume_skip_reason)
-        # Clear the preserved session_id so init_loop_state won't reuse it
+        # Clear the preserved session_id so init_loop_state won't reuse it.
+        # Poisoned-stall recovery hits this branch EVEN without retry_ctx,
+        # because the cause of the stall (context overflow / dead agent)
+        # lives inside that session — reusing it guarantees a repeat stall.
         try:
             with open(loop_state_path) as f:
                 _ls = json.load(f)
@@ -3185,6 +3221,13 @@ def resume_change(
             logger.debug("cleared preserved session_id for %s (unsafe to resume)", change_name)
         except (json.JSONDecodeError, OSError, ValueError):
             pass
+        # Clear stall_reason once we're acting on it — next stall will set it
+        # again with its own cause, so we don't carry a stale signal forward.
+        if is_poisoned_stall_recovery:
+            update_change_field(
+                state_path, change_name, "stall_reason", None,
+                event_bus=event_bus,
+            )
 
     if retry_ctx:
         if has_resumable_session:
