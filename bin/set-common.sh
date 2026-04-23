@@ -334,39 +334,101 @@ get_main_branch() {
     fi
 }
 
-# Find existing worktree by name (matches any pattern containing the change-id)
+# Find existing worktree by change-id.
+#
+# Matches basenames EXACTLY against both naming conventions:
+#   - `{repo}-{change}`            (Python dispatcher direct `git worktree add`)
+#   - `{repo}-{change}-N`          (Python convention with numeric suffix)
+#   - `{repo}-wt-{change}`         (bash `set-new` default)
+#   - `{repo}-wt-{change}-N`       (bash convention with numeric suffix)
+#   - `{change}`                   (detached worktree named only for the change)
+#
+# When multiple candidates match (collision-suffix leftovers from a failed
+# reset-without-cleanup, mixed-convention remnants, etc.), the highest
+# numeric suffix wins — the most recently created variant is almost always
+# the live one; unsuffixed older leftovers are typically stale.
+#
+# On ambiguity, a WARNING is emitted listing all candidates and the selected
+# path, so operators can audit the resolution. Ambiguity is NOT an error:
+# the function still echoes a valid path and returns 0.
+#
+# Returns the matched path on stdout (or empty string if no match).
 find_existing_worktree() {
     local project_path="$1"
     local change_id="$2"
     local repo_name
     repo_name=$(basename "$project_path")
 
-    # Get all worktrees
     local worktrees
     worktrees=$(git -C "$project_path" worktree list --porcelain 2>/dev/null)
 
+    # Collect all matches as "<rank>|<path>" lines for deterministic sorting.
+    # rank 0 = unsuffixed, 2/3/... = numeric suffix.
+    local matches=()
+
     while IFS= read -r line; do
-        if [[ "$line" =~ ^worktree\ (.+)$ ]]; then
-            local wt_path="${BASH_REMATCH[1]}"
-            local wt_name
-            wt_name=$(basename "$wt_path")
+        [[ "$line" =~ ^worktree\ (.+)$ ]] || continue
+        local wt_path="${BASH_REMATCH[1]}"
+        local wt_name
+        wt_name=$(basename "$wt_path")
 
-            # Skip main repo
-            [[ "$wt_path" == "$project_path" ]] && continue
+        # Skip main repo
+        [[ "$wt_path" == "$project_path" ]] && continue
 
-            # Match: exact name, or repo-name-change-id, or repo-wt-change-id
-            # Also match with collision-avoidance suffix (-2, -3, etc.)
-            if [[ "$wt_name" == "$change_id" ]] || \
-               [[ "$wt_name" == "${repo_name}-${change_id}" ]] || \
-               [[ "$wt_name" == "${repo_name}-wt-${change_id}" ]] || \
-               [[ "$wt_name" =~ ^${repo_name}-wt-${change_id}-[0-9]+$ ]]; then
-                echo "$wt_path"
-                return 0
-            fi
+        local rank=""
+
+        # Try each pattern family, extracting suffix rank:
+        if [[ "$wt_name" == "$change_id" ]]; then
+            rank=0
+        elif [[ "$wt_name" == "${repo_name}-wt-${change_id}" ]]; then
+            rank=0
+        elif [[ "$wt_name" == "${repo_name}-${change_id}" ]]; then
+            rank=0
+        elif [[ "$wt_name" =~ ^${repo_name}-wt-${change_id}-([0-9]+)$ ]]; then
+            rank="${BASH_REMATCH[1]}"
+        elif [[ "$wt_name" =~ ^${repo_name}-${change_id}-([0-9]+)$ ]]; then
+            rank="${BASH_REMATCH[1]}"
+        fi
+
+        if [[ -n "$rank" ]]; then
+            matches+=("${rank}|${wt_path}")
         fi
     done <<< "$worktrees"
 
-    echo ""
+    local count="${#matches[@]}"
+    if (( count == 0 )); then
+        echo ""
+        return 0
+    fi
+
+    if (( count == 1 )); then
+        echo "${matches[0]#*|}"
+        return 0
+    fi
+
+    # Ambiguity: sort descending by rank, pick highest. `sort -t'|' -k1,1 -nr`
+    # gives numeric descending on the rank field.
+    local sorted
+    sorted=$(printf '%s\n' "${matches[@]}" | sort -t'|' -k1,1 -nr)
+    local selected
+    selected=$(echo "$sorted" | head -n1)
+    local selected_path="${selected#*|}"
+
+    # Emit WARNING listing all candidates so operators can audit which was picked.
+    {
+        warn "find_existing_worktree: ${count} candidate worktrees matched '${change_id}':"
+        while IFS= read -r entry; do
+            local r="${entry%%|*}" p="${entry#*|}"
+            if [[ "$p" == "$selected_path" ]]; then
+                warn "  [SELECTED rank=${r}] ${p}"
+            else
+                warn "  [rank=${r}]          ${p}"
+            fi
+        done <<< "$sorted"
+    } >&2
+
+    echo "$selected_path"
+    return 0
 }
 
 # Find a worktree across ALL registered projects.

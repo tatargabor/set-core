@@ -470,6 +470,9 @@ def reset_change_to_pending(ch: Change) -> None:
     - gate outputs, results, stats, screenshots
     - per-gate timing
     - retry counters (verify, merge, redispatch) and wall-clock retry budget
+    - merge-stall counter (`merge_stall_attempts`) and its companions
+      (`ff_retry_count`, `total_merge_attempts`) — so a re-dispatched change
+      starts with a fresh merge-stall circuit-breaker budget.
     - gate-retry cache (`gate_retry_tracking`, `last_gate_fingerprint`,
       `verify_retry_index`, `gate_recheck_done`) — without this, the next
       dispatch can hit a stale `last_verdict_sha` that points to a commit the
@@ -480,6 +483,23 @@ def reset_change_to_pending(ch: Change) -> None:
 
     Preserves the change's *identity*: name, scope, phase, depends_on,
     requirements, gate_hints, model, skip flags.
+
+    IMPORTANT: this helper does NOT touch on-disk artifacts. The `change/<name>`
+    branch and `{project}-wt-<name>` worktree directory are left intact even
+    though `ch.worktree_path` is cleared. Callers that want a clean re-dispatch
+    MUST pair this reset with artifact removal:
+
+    - The circuit-breaker path (`IssueManager._retry_parent_after_resolved`)
+      calls `set_orch.change_cleanup.cleanup_change_artifacts(name, project_path)`
+      before the reset.
+    - The recovery CLI's `_execute_plan` iterates `plan.worktrees_to_remove`
+      and `plan.branches_to_delete` with its own idempotent git calls (the
+      plan may reference archived-suffix paths that the canonical helper
+      would not find).
+
+    Skipping artifact cleanup seeds a `{name}-N` collision on the next
+    dispatch — the exact failure mode that fix-merge-worktree-collision
+    addresses.
     """
     ch.status = "pending"
     ch.current_step = None
@@ -574,6 +594,7 @@ def reset_change_to_pending(ch: Change) -> None:
         "integration_e2e_retry_count", "retry_context",
         "merge_rebase_pending", "stalled_at",
         "stuck_fingerprint", "stuck_head_sha",
+        "merge_stall_attempts", "ff_retry_count", "total_merge_attempts",
     ):
         ch.extras.pop(k, None)
 

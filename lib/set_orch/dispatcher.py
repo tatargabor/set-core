@@ -1109,18 +1109,77 @@ def _unique_worktree_name(project_path: str, change_name: str) -> str:
 def _find_existing_worktree(project_path: str, change_name: str) -> str:
     """Find existing worktree path for a change.
 
-    Tries the conventional path: <project_path>-<change_name>
+    Matches basenames EXACTLY against both naming conventions:
+    - `{project}-{change}` (Python direct `git worktree add`)
+    - `{project}-wt-{change}` (bash `set-new` default)
+    Plus their numeric-suffix variants (`-2`, `-3`, ...).
+
+    When multiple candidates match (collision-suffix leftovers), the
+    highest-numbered suffix wins — this is the most recently created
+    worktree and almost always the live one. Stale unsuffixed leftovers
+    from a failed reset-without-cleanup would be older.
+
+    Returns the conventional path `{project}-{change}` when no worktree
+    matches, matching the prior behavior of callers that use the return
+    value as a would-be path for a fresh `git worktree add`.
     """
-    wt_path = f"{project_path}-{change_name}"
-    if os.path.isdir(wt_path):
-        return wt_path
-    # Fallback: check git worktree list
-    r = run_git("worktree", "list", "--porcelain", cwd=project_path)
+    project_name = os.path.basename(project_path.rstrip("/"))
+
+    # Collect candidates: (suffix_rank, path). suffix=0 means unsuffixed.
+    candidates: list[tuple[int, str]] = []
+    r = run_git("worktree", "list", "--porcelain", cwd=project_path, best_effort=True)
     if r.exit_code == 0:
         for line in r.stdout.splitlines():
-            if line.startswith("worktree ") and change_name in line:
-                return line.split(" ", 1)[1]
-    return wt_path
+            if not line.startswith("worktree "):
+                continue
+            wt_path = line.split(" ", 1)[1].strip()
+            basename = os.path.basename(wt_path)
+            rank = _match_worktree_basename(basename, project_name, change_name)
+            if rank is not None:
+                candidates.append((rank, wt_path))
+
+    if not candidates:
+        # No git-registered worktree matches; return the conventional
+        # would-be path so the caller can treat this as "does not exist
+        # yet" via a downstream os.path.isdir check.
+        return f"{project_path}-{change_name}"
+
+    if len(candidates) > 1:
+        logger.debug(
+            "_find_existing_worktree: %d candidates for %s: %s",
+            len(candidates), change_name,
+            [(r_, p) for r_, p in candidates],
+        )
+
+    # Highest suffix wins (max by rank, stable on tie)
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    return candidates[0][1]
+
+
+def _match_worktree_basename(
+    basename: str, project_name: str, change_name: str,
+) -> int | None:
+    """Return suffix rank if `basename` matches the change, else None.
+
+    Matches exactly against four pattern families:
+    - `{project}-{change}`            → rank 0
+    - `{project}-{change}-N`          → rank N
+    - `{project}-wt-{change}`         → rank 0
+    - `{project}-wt-{change}-N`       → rank N
+
+    The caller adds project-prefix-free patterns separately if needed.
+    """
+    for prefix in (f"{project_name}-wt-", f"{project_name}-"):
+        if not basename.startswith(prefix):
+            continue
+        tail = basename[len(prefix):]
+        if tail == change_name:
+            return 0
+        if tail.startswith(f"{change_name}-"):
+            suffix = tail[len(change_name) + 1:]
+            if suffix.isdigit():
+                return int(suffix)
+    return None
 
 
 # ─── Read-First & Conventions Helpers ────────────────────────────────

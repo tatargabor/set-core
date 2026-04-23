@@ -16,6 +16,7 @@ Arguments:
 Options:
   -p, --project <name>    Use specific project (default: auto-detect)
   --to <branch>           Target branch (default: auto-detect main/master)
+  --worktree <path>       Use this explicit worktree path instead of discovering by name
   --squash                Squash commits into one
   --no-delete             Keep source branch after merge
   --no-push               Don't push after merge (default: push)
@@ -1025,6 +1026,7 @@ main() {
     local llm_resolve=false
     local ff_only=false
     local conservation_check=true
+    local explicit_worktree=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1034,6 +1036,10 @@ main() {
                 ;;
             --to)
                 target_branch="$2"
+                shift 2
+                ;;
+            --worktree)
+                explicit_worktree="$2"
                 shift 2
                 ;;
             --squash)
@@ -1095,13 +1101,30 @@ main() {
     local project_path
     project_path=$(get_project_path "$resolved_project")
 
-    # Find existing worktree
+    # Determine worktree path: explicit --worktree flag wins, otherwise discover.
+    # Explicit passthrough is used by the orchestrator merger (merger.py) which
+    # already knows the authoritative path from state.changes[i].worktree_path.
+    # This bypasses find_existing_worktree's ambiguity-resolution heuristics
+    # for cases where the caller holds the ground-truth path.
     local wt_path
-    wt_path=$(find_existing_worktree "$project_path" "$change_id")
-
-    if [[ -z "$wt_path" || ! -d "$wt_path" ]]; then
-        error "Worktree not found for: $change_id"
-        exit 1
+    if [[ -n "$explicit_worktree" ]]; then
+        if [[ ! -d "$explicit_worktree" ]]; then
+            error "Explicit --worktree path does not exist: $explicit_worktree"
+            exit 1
+        fi
+        # Verify the path is a registered git worktree of the project
+        if ! git -C "$project_path" worktree list --porcelain 2>/dev/null | \
+                grep -Fxq "worktree $explicit_worktree"; then
+            error "Explicit --worktree path is not a registered worktree of $resolved_project: $explicit_worktree"
+            exit 1
+        fi
+        wt_path="$explicit_worktree"
+    else
+        wt_path=$(find_existing_worktree "$project_path" "$change_id")
+        if [[ -z "$wt_path" || ! -d "$wt_path" ]]; then
+            error "Worktree not found for: $change_id"
+            exit 1
+        fi
     fi
 
     # Get branch name from worktree

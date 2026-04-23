@@ -148,6 +148,7 @@ def _final_token_collect(state_file: str, change_name: str, wt_path: str) -> Non
 MAX_MERGE_RETRIES = 3
 MAX_TOTAL_MERGE_ATTEMPTS = 10  # hard cap — never retry beyond this regardless of counter resets
 DEFAULT_MERGE_TIMEOUT = 300  # 5 min (no post-merge smoke — just ff + deps + hooks)
+DEFAULT_MERGE_STALL_THRESHOLD = 6  # FF failures that escalate to failed:merge_stalled + fix-iss
 
 
 
@@ -1050,10 +1051,27 @@ def merge_change(
         event_bus.emit("MERGE_START", change=change_name)
     update_change_field(state_file, change_name, "current_step", "merging")
     pre_merge_sha = run_command(["git", "rev-parse", "HEAD"], timeout=10).stdout.strip()
-    merge_result = run_command(
-        ["set-merge", change_name, "--no-push", "--ff-only"],
-        timeout=120,
-    )
+
+    # Build the set-merge command. Pass --worktree explicitly when we have
+    # the authoritative path from state — avoids name-based discovery
+    # rediscovering a stale `-N` collision leftover (see change
+    # fix-merge-worktree-collision). Omit the flag when the path is unknown
+    # or missing so set-merge's discovery fallback still runs.
+    merge_cmd = ["set-merge", change_name, "--no-push", "--ff-only"]
+    if wt_path and os.path.isdir(wt_path):
+        merge_cmd.extend(["--worktree", wt_path])
+    elif wt_path:
+        logger.warning(
+            "merge_change: change.worktree_path set but directory missing (%s) — "
+            "omitting --worktree, falling back to discovery", wt_path,
+        )
+    else:
+        logger.warning(
+            "merge_change: change.worktree_path unavailable for %s — "
+            "omitting --worktree, falling back to discovery", change_name,
+        )
+
+    merge_result = run_command(merge_cmd, timeout=120)
 
     if merge_result.exit_code == 0:
         # FF merge succeeded — verify the branch is actually in main's history
@@ -1075,6 +1093,9 @@ def merge_change(
 
         update_change_field(state_file, change_name, "status", "merged")
         _set_completed_at_if_missing(state_file, change_name)
+        # Clear the stall counter — merge succeeded, stall (if any) broke.
+        if change and change.extras.get("merge_stall_attempts", 0):
+            update_change_field(state_file, change_name, "merge_stall_attempts", 0)
         logger.info("Merged %s (ff-only, git-verified)", change_name)
         if event_bus:
             event_bus.emit("MERGE_COMPLETE", change=change_name, data={"result": "success"})
@@ -1265,6 +1286,55 @@ def merge_change(
                 change_name, head_sha[:12], source_sha[:12], mb_sha[:12], ahead, behind,
             )
 
+        # Increment the persistent merge-stall counter. This tracks FF
+        # failures across retry cycles (distinct from per-cycle ff_retry_count
+        # and from the overall total_merge_attempts), so a change whose
+        # underlying problem is a stale collision-suffixed worktree can be
+        # escalated to fix-iss rather than looping silently through
+        # merge-blocked → retry_merge_queue → merge-blocked.
+        stall_attempts = int(change.extras.get("merge_stall_attempts") or 0) if change else 0
+        stall_attempts += 1
+        update_change_field(state_file, change_name, "merge_stall_attempts", stall_attempts)
+
+        # Read threshold from directives with safe chained .get() — tolerates
+        # missing directives/extras without KeyError.
+        stall_threshold = int(
+            (state.extras.get("directives", {}) or {}).get("merge_stall_threshold")
+            or DEFAULT_MERGE_STALL_THRESHOLD
+        )
+
+        if stall_attempts >= stall_threshold:
+            # Emit ERROR log BEFORE escalation so the post-mortem has a single
+            # anchor entry with all the diagnostic context.
+            logger.error(
+                "MERGE-STALL circuit-breaker fired for %s: "
+                "merge_stall_attempts=%d >= threshold=%d; "
+                "last_exit=%d stdout_head=%r stderr_head=%r",
+                change_name, stall_attempts, stall_threshold,
+                merge_result.exit_code,
+                (merge_result.stdout or "")[:500],
+                (merge_result.stderr or "")[:500],
+            )
+            update_change_field(
+                state_file, change_name, "status", "failed:merge_stalled",
+            )
+            _remove_from_merge_queue(state_file, change_name)
+            try:
+                from .issues.manager import escalate_change_to_fix_iss
+                escalate_change_to_fix_iss(
+                    state_file=state_file,
+                    change_name=change_name,
+                    stop_gate="merge",
+                    escalation_reason="merge_stalled",
+                    event_bus=event_bus,
+                )
+            except Exception:
+                logger.warning(
+                    "escalate_change_to_fix_iss failed for %s (non-blocking); "
+                    "parent remains failed:merge_stalled", change_name, exc_info=True,
+                )
+            return MergeResult(success=False, status="failed:merge_stalled")
+
         # Re-integrate main into branch and re-trigger gate pipeline.
         ff_retry_count = change.extras.get("ff_retry_count", 0) if change else 0
         max_ff_retries = 3
@@ -1276,8 +1346,9 @@ def merge_change(
             return MergeResult(success=False, status="merge-blocked")
 
         logger.warning(
-            "FF merge failed for %s — main advanced, re-integrating (attempt %d/%d)",
+            "FF merge failed for %s — main advanced, re-integrating (attempt %d/%d, stall=%d/%d)",
             change_name, ff_retry_count + 1, max_ff_retries,
+            stall_attempts, stall_threshold,
         )
         update_change_field(state_file, change_name, "ff_retry_count", ff_retry_count + 1)
         total = int(change.extras.get("total_merge_attempts") or 0) if change else 0

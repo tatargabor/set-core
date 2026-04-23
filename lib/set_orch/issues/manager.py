@@ -257,6 +257,7 @@ class IssueManager:
             from pathlib import Path
             from ..state import locked_state
             from ..recovery import reset_change_to_pending
+            from ..change_cleanup import cleanup_change_artifacts
             state_file = Path(env_path) / "orchestration-state.json"
             if not state_file.is_file():
                 logger.warning(
@@ -264,6 +265,39 @@ class IssueManager:
                     parent_name, issue.id, state_file,
                 )
                 return
+
+            # Clean up on-disk artifacts BEFORE the in-memory reset. If we
+            # reset first, the dispatcher's next cycle sees the dangling
+            # branch+worktree, bumps to `<name>-2`, and we've just seeded the
+            # very collision this path was meant to prevent. Cleanup failure
+            # is non-blocking: we still reset so the parent exits the terminal
+            # failed:* state — a half-reset is worse than a degraded-cleanup
+            # reset because it leaves the state machine stuck.
+            project_path = str(Path(env_path).resolve())
+            cleanup_result = None
+            cleanup_error = None
+            try:
+                cleanup_result = cleanup_change_artifacts(parent_name, project_path)
+                if cleanup_result.warnings:
+                    self.audit.log(
+                        issue.id,
+                        "parent_retry_cleanup_degraded",
+                        parent=parent_name,
+                        warnings=cleanup_result.warnings,
+                    )
+            except Exception as _ce:
+                cleanup_error = str(_ce)
+                logger.warning(
+                    "cleanup_change_artifacts failed for parent %s: %s",
+                    parent_name, _ce, exc_info=True,
+                )
+                self.audit.log(
+                    issue.id,
+                    "parent_retry_cleanup_degraded",
+                    parent=parent_name,
+                    error=cleanup_error,
+                )
+
             reset_done = False
             with locked_state(str(state_file)) as s:
                 for ch in s.changes:
@@ -283,10 +317,19 @@ class IssueManager:
                         "parent_retry_requested",
                         parent=parent_name,
                         prior_status=prior_status,
+                        cleanup_worktree_removed=(
+                            cleanup_result.worktree_removed if cleanup_result else False
+                        ),
+                        cleanup_branch_removed=(
+                            cleanup_result.branch_removed if cleanup_result else False
+                        ),
                     )
                     logger.info(
-                        "Reset parent %s (%s → pending) after %s resolved",
+                        "Reset parent %s (%s → pending) after %s resolved "
+                        "(cleanup: wt=%s branch=%s)",
                         parent_name, prior_status, issue.id,
+                        cleanup_result.worktree_removed if cleanup_result else "skipped",
+                        cleanup_result.branch_removed if cleanup_result else "skipped",
                     )
                     break
             if not reset_done:
