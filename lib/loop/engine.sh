@@ -330,12 +330,18 @@ cmd_run() {
         # dispatcher-level restarts) and resume_failures are below the threshold.
         # This keeps Claude's prompt cache warm across gate retries and avoids
         # re-reading files + rebuilding context on every fix iteration.
-        if [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 3 ]]; then
+        #
+        # Threshold was 3 but that let two cycles of poisoned-context resume
+        # burn through ~20M tokens before dropping to fresh (observed in
+        # craftbrew-run-20260423). Lowered to 2: one failed resume already
+        # means the preserved context cost us a cycle, a second one doubles
+        # the waste without adding diagnostic value.
+        if [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 2 ]]; then
             # No session or too many resume failures: new session
             session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
             session_flags="--session-id $session_id"
             update_loop_state "$state_file" "session_id" "\"$session_id\""
-            if [[ "$resume_failures" -ge 3 ]]; then
+            if [[ "$resume_failures" -ge 2 ]]; then
                 echo "⚠️  Too many resume failures ($resume_failures), using fresh session"
                 update_loop_state "$state_file" "resume_failures" "0"
             fi

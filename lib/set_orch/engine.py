@@ -63,7 +63,7 @@ class Directives:
     auto_replan: bool = False
     max_replan_cycles: int = MAX_REPLAN_CYCLES
     test_timeout: int = 600
-    max_verify_retries: int = 4
+    max_verify_retries: int = 6
     e2e_retry_limit: int = DEFAULT_E2E_RETRY_LIMIT
     integration_smoke_blocking: bool = True  # Smoke failures block the merge by default
     integration_smoke_timeout: int = 300  # Per-change smoke run timeout (sibling specs)

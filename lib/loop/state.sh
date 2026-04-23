@@ -67,6 +67,19 @@ init_loop_state() {
     # This allows Claude --resume to reuse the cached prefix across dispatcher-level
     # restarts (e.g. gate retry fixes), avoiding cold cache rebuilds on every retry.
     # If no prior state exists or session_id was never set, defaults to null/0.
+    #
+    # POISONED-STALL GUARD (mirrors the Python resume_change guard — F5):
+    # If the caller signals via env var that the last agent died BECAUSE of the
+    # preserved context (dead_running_agent_*, verify_timeout, token_runaway,
+    # etc.), reusing the session_id would re-poison the new agent. In that case
+    # null out session_id even when change name matches — a fresh session is
+    # mandatory for recovery. The Python path already clears session_id in
+    # loop-state.json, so this env check is belt-and-suspenders for any caller
+    # invoking set-loop directly (CLI, consumer scripts, future recovery paths).
+    #
+    # AGE GUARD: sessions older than 60 min get dropped to match the Python
+    # guardrail — Claude's auto-compaction may have summarised away detail and
+    # long-delayed resumes compound hallucination risk.
     local preserved_session_id="null"
     local preserved_resume_failures="0"
     if [[ -f "$state_file" ]]; then
@@ -74,13 +87,38 @@ init_loop_state() {
         prior_change=$(jq -r '.change // ""' "$state_file" 2>/dev/null || echo "")
         local prior_sid
         prior_sid=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null || echo "")
+        local prior_started
+        prior_started=$(jq -r '.started_at // ""' "$state_file" 2>/dev/null || echo "")
         # Only preserve if same change name (avoid cross-change cache poisoning)
         if [[ -n "$prior_sid" ]] && [[ "$prior_change" == "$change" ]]; then
-            preserved_session_id="\"$prior_sid\""
-            preserved_resume_failures=$(jq -r '.resume_failures // 0' "$state_file" 2>/dev/null || echo "0")
-            # Validate resume_failures is an integer
-            if ! [[ "$preserved_resume_failures" =~ ^[0-9]+$ ]]; then
-                preserved_resume_failures="0"
+            # Poisoned-stall env signal wins over everything — caller knows the
+            # agent died from context overload.
+            local poisoned="${SET_LOOP_FRESH_SESSION:-}"
+            if [[ -n "$poisoned" ]]; then
+                : # leave preserved_session_id=null
+            else
+                # Age check — > 60 min means likely context is stale.
+                local age_ok=1
+                if [[ -n "$prior_started" ]]; then
+                    local prior_epoch
+                    prior_epoch=$(date -d "$prior_started" +%s 2>/dev/null || echo 0)
+                    if [[ "$prior_epoch" -gt 0 ]]; then
+                        local now_epoch
+                        now_epoch=$(date +%s)
+                        local age_sec=$((now_epoch - prior_epoch))
+                        if [[ "$age_sec" -gt 3600 ]]; then
+                            age_ok=0
+                        fi
+                    fi
+                fi
+                if [[ "$age_ok" == "1" ]]; then
+                    preserved_session_id="\"$prior_sid\""
+                    preserved_resume_failures=$(jq -r '.resume_failures // 0' "$state_file" 2>/dev/null || echo "0")
+                    # Validate resume_failures is an integer
+                    if ! [[ "$preserved_resume_failures" =~ ^[0-9]+$ ]]; then
+                        preserved_resume_failures="0"
+                    fi
+                fi
             fi
         fi
     fi

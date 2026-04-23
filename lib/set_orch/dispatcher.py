@@ -877,6 +877,17 @@ def recover_orphaned_changes(
                         change.name, change.status, reason)
             update_change_field(state_path, change.name, "status", "stopped", event_bus=event_bus)
             update_change_field(state_path, change.name, "ralph_pid", None, event_bus=event_bus)
+            # Poisoned-context signal: the agent we're reconciling died. F5's
+            # guard in resume_change keys off stall_reason to decide whether
+            # to reuse the session_id. Without this marker, a silent orphan
+            # recovery path (crash between poll_active's stall-write and the
+            # recovery) would skip F5 entirely and rehydrate the same poisoned
+            # session.
+            update_change_field(
+                state_path, change.name, "stall_reason",
+                f"dead_running_agent_orphan_{reason}",
+                event_bus=event_bus,
+            )
             if event_bus:
                 event_bus.emit("CHANGE_RECONCILED", change=change.name, data={"reason": reason})
             reconciled += 1
@@ -3251,13 +3262,13 @@ def resume_change(
         update_change_field(state_path, change_name, "current_step", "fixing", event_bus=event_bus)
         if is_merge_retry:
             done_criteria = "merge"
-            max_iter = 5
+            max_iter = 7
         elif is_review_retry:
             done_criteria = "test"
-            max_iter = 5  # review fixes need more iterations (fix + re-test)
+            max_iter = 7  # review fixes need more iterations (fix + re-test)
         else:
             done_criteria = "test"
-            max_iter = 3
+            max_iter = 5
     else:
         # No retry_context — normal resume. BUT if the change was previously
         # in a fix loop (verify_retry_count > 0 and current_step was "fixing"),
@@ -3274,7 +3285,7 @@ def resume_change(
                 logger.warning("resume %s: last_retry_context empty — agent gets generic fix prompt", change_name)
             task_desc = last_ctx or f"Continue fixing {change_name}: {change.scope[:200]}"
             done_criteria = "test"
-            max_iter = 3
+            max_iter = 5
         else:
             task_desc = f"Continue {change_name}: {change.scope[:200]}"
             done_criteria = "openspec"
