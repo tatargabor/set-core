@@ -597,23 +597,48 @@ def _run_gate(
         logger.debug("merge-base lookup failed for token guard", exc_info=True)
     token_violations = run_token_guard_check(Path(wt_path), diff_base) if diff_base else []
 
-    # 3. className preservation — for files the agent copied from v0-export,
-    # the className vocabulary should be mostly preserved. A big drop in
-    # overlap signals a "rewrite" instead of an "adapt", which v0-driven
-    # design cannot recover from.
+    # 3. className preservation — INFORMATIONAL ONLY.
+    #
+    # The design is a *guideline*, not a literal template — if we wanted
+    # byte-for-byte fidelity we would ship v0's generated code unchanged.
+    # The agent is allowed (and expected) to refactor: server/client split,
+    # shadcn prefab swaps, new subfolder components, synonym classnames.
+    # The Jaccard token-overlap metric conflates "changed code layout" with
+    # "changed design", and in craftbrew-run-20260421-0025 it produced
+    # ~47 violations of which ~90% were false positives (agent used
+    # <Button> instead of inline classes, split page.tsx into _components/,
+    # extended v0 layouts — agent=71 > v0=20 still flagged "only 35%").
+    # We still run the check so operators can see drift signals in the
+    # retry_context, but a low overlap alone no longer blocks the merge.
+    # Real design-drift protection comes from:
+    #   - token_guard (hardcoded colors — strict)
+    #   - skeleton_check (missing routes / components — strict)
+    #   - pixel_diff (opt-in, visual ground truth for critical routes)
     classname_violations = run_classname_preservation_check(
         Path(wt_path), project_path / "v0-export", manifest,
         change_scope=change_scope,
     )
 
-    static_violations = token_violations + classname_violations
-    if static_violations:
-        # Combine with non-blocking skeleton info (e.g. extra-route) so the
-        # agent sees context around the required fix.
+    # token_guard still blocks; classname findings surface as context only.
+    if token_violations:
         return GateOutcome(
             status="fail",
-            skeleton_violations=static_violations + [v for v in skel if v not in blocking],
+            skeleton_violations=(
+                token_violations
+                + classname_violations
+                + [v for v in skel if v not in blocking]
+            ),
             message="design-drift",
+        )
+
+    # classname findings alone do not block, but log them so forensic
+    # review can spot systemic drift patterns across the run.
+    if classname_violations:
+        logger.info(
+            "design-fidelity: %d classname-preservation finding(s) recorded "
+            "(informational — not blocking merge). Sample: %s",
+            len(classname_violations),
+            classname_violations[0].detail[:200],
         )
 
     # 4. Screenshot + pixel diff (OPT-IN). Expensive (dual server build +
@@ -626,6 +651,9 @@ def _run_gate(
         outcome = GateOutcome(status="pass")
         outcome.checked_routes = [r.path for r in scoped_routes]
         outcome.message = "static-checks-only (pixel_diff disabled)"
+        # Preserve classname findings in the outcome so gate_runner stats
+        # / forensic tools can see them even when the gate passes.
+        outcome.skeleton_violations = classname_violations
         return outcome
 
     # Fixtures — REQUIRED when pixel_diff is on.
