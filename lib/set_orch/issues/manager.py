@@ -379,6 +379,33 @@ class IssueManager:
                     issue.resolved_at = now_iso()
                     self._transition(issue, IssueState.RESOLVED)
                     self._mark_source_finding_resolved(issue)
+
+                    # Purge the orphan fix-iss child that was never needed —
+                    # the parent resolved its own issue by merging. Without
+                    # this, the linked child sits pending on disk, gets
+                    # picked up by the dispatcher next cycle, and an agent
+                    # spawns against a stale proposal.
+                    try:
+                        purge_result = _purge_fix_iss_child(
+                            issue,
+                            str(state_path),
+                            issue.environment_path,
+                            reason="parent_merged",
+                        )
+                        if purge_result["state_removed"] or purge_result["dir_removed"]:
+                            self.audit.log(
+                                issue.id, "fix_iss_orphan_purged",
+                                child_name=issue.change_name,
+                                state_removed=purge_result["state_removed"],
+                                dir_removed=purge_result["dir_removed"],
+                                reason="parent_merged",
+                            )
+                    except Exception as _pe:
+                        logger.warning(
+                            "%s: orphan fix-iss purge failed for parent=%s: %s",
+                            issue.id, issue.affected_change, _pe, exc_info=True,
+                        )
+
                     if self.notifier:
                         self.notifier.on_resolved(issue)
                     return True
@@ -661,6 +688,264 @@ def _classify_fix_target(finding_paths: list[str]) -> str:
     return "consumer"
 
 
+_ACTIVE_CHILD_STATUSES = frozenset({
+    "dispatched", "running", "verifying", "integrating",
+})
+
+_TERMINAL_FAILURE_STATUSES = frozenset({
+    "integration-failed", "merge-failed",
+})
+
+_RESOLVED_ISSUE_STATES = frozenset({
+    "resolved", "dismissed", "muted", "cancelled", "skipped",
+})
+
+
+def scan_fix_iss_orphans(project_path: str) -> list[dict]:
+    """Enumerate orphan fix-iss artifacts across state, registry, and filesystem.
+
+    An entry is an orphan if any of:
+    1. Parent change status is `merged` AND linked fix-iss child state entry
+       still exists with non-terminal status.
+    2. Issue is RESOLVED/DISMISSED/MUTED/CANCELLED AND linked fix-iss child
+       state entry exists with non-terminal status.
+    3. openspec `fix-iss-*` directory exists with NO corresponding
+       state.changes entry AND NO active issue in the registry referencing it.
+
+    Returns a list of orphan records; each is a dict with:
+        child_name, parent_name, parent_status, issue_id, issue_state,
+        state_entry_present, dir_present, reason (which criterion matched),
+        safe_to_remove (bool — False if child is actively dispatched).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    project = _Path(project_path).resolve()
+    state_file = project / "orchestration-state.json"
+    registry_file = project / ".set" / "issues" / "registry.json"
+    openspec_changes = project / "openspec" / "changes"
+
+    # Load state (if present)
+    state_changes: dict[str, dict] = {}
+    if state_file.is_file():
+        try:
+            with open(state_file) as f:
+                _s = _json.load(f)
+            for c in _s.get("changes", []):
+                if isinstance(c, dict) and c.get("name"):
+                    state_changes[c["name"]] = c
+        except (OSError, ValueError):
+            pass
+
+    # Load registry (if present)
+    issues: list[dict] = []
+    if registry_file.is_file():
+        try:
+            with open(registry_file) as f:
+                _r = _json.load(f)
+            issues = [i for i in _r.get("issues", []) if isinstance(i, dict)]
+        except (OSError, ValueError):
+            pass
+
+    # Index issues by linked change_name for fast cross-lookup
+    issues_by_child: dict[str, dict] = {}
+    for i in issues:
+        cn = i.get("change_name")
+        if cn:
+            issues_by_child[cn] = i
+
+    # Index openspec fix-iss dirs
+    existing_dirs: set[str] = set()
+    if openspec_changes.is_dir():
+        for entry in openspec_changes.iterdir():
+            if entry.is_dir() and entry.name.startswith("fix-iss-"):
+                existing_dirs.add(entry.name)
+
+    orphans: list[dict] = []
+    seen: set[str] = set()
+
+    # Criteria 1 & 2: state-entry-based scan
+    for name, ch in state_changes.items():
+        if not name.startswith("fix-iss-"):
+            continue
+        status = ch.get("status", "")
+        if status in _ACTIVE_CHILD_STATUSES or status == "merged":
+            continue
+        if status in _TERMINAL_FAILURE_STATUSES:
+            continue
+
+        # Find the parent: first via issue registry, fall back to the
+        # fix-iss state entry's `depends_on` field (which _register_fix_iss_in_state
+        # populates with `[parent_name]`).
+        issue = issues_by_child.get(name)
+        parent_name = issue.get("affected_change") if issue else None
+        if not parent_name:
+            deps = ch.get("depends_on") or []
+            if isinstance(deps, list) and deps:
+                parent_name = deps[0]
+        parent = state_changes.get(parent_name) if parent_name else None
+        parent_status = parent.get("status") if parent else "<unknown>"
+        issue_state = (issue.get("state") or "").lower() if issue else ""
+
+        reason = None
+        if parent and parent.get("status") == "merged":
+            reason = "parent_merged"
+        elif issue_state in _RESOLVED_ISSUE_STATES:
+            reason = "issue_resolved"
+
+        if reason is None:
+            continue
+
+        orphans.append({
+            "child_name": name,
+            "parent_name": parent_name or "<unknown>",
+            "parent_status": parent_status,
+            "issue_id": issue.get("id") if issue else None,
+            "issue_state": issue_state,
+            "state_entry_present": True,
+            "dir_present": name in existing_dirs,
+            "reason": reason,
+            "safe_to_remove": True,
+        })
+        seen.add(name)
+
+    # Criterion 3: dir-only divergence (dir present, no state entry, no live issue)
+    for dir_name in existing_dirs - seen:
+        if dir_name in state_changes:
+            continue  # state entry exists, handled above
+        issue = issues_by_child.get(dir_name)
+        issue_state = (issue.get("state") or "").lower() if issue else ""
+        if issue and issue_state not in _RESOLVED_ISSUE_STATES:
+            # Live issue still references this child — not an orphan
+            continue
+        orphans.append({
+            "child_name": dir_name,
+            "parent_name": (issue.get("affected_change") if issue else "<unknown>"),
+            "parent_status": "<no-state>",
+            "issue_id": issue.get("id") if issue else None,
+            "issue_state": issue_state,
+            "state_entry_present": False,
+            "dir_present": True,
+            "reason": "fs_state_divergence",
+            "safe_to_remove": True,
+        })
+
+    return orphans
+
+
+def _purge_fix_iss_child(
+    issue: Issue,
+    state_file: str,
+    project_path: str,
+    *,
+    reason: str,
+) -> dict:
+    """Remove an orphan fix-iss child's state entry and openspec directory.
+
+    Safe-by-default: skip removal when the child is actively being worked on.
+    Idempotent: a no-op when both state entry and directory are already gone.
+
+    Args:
+        issue: The parent issue whose `change_name` links the fix-iss child.
+        state_file: Path to `orchestration-state.json`.
+        project_path: Project root (used to derive `openspec/changes/` path).
+        reason: Short string recorded in the INFO log (e.g. "parent_merged",
+            "issue_resolved_manually", "cli_cleanup").
+
+    Returns:
+        {"state_removed": bool, "dir_removed": bool, "skipped_reason": str|None}
+    """
+    import shutil
+    from ..state import locked_state
+
+    result = {"state_removed": False, "dir_removed": False, "skipped_reason": None}
+
+    child_name = issue.change_name or ""
+    if not child_name or not child_name.startswith("fix-iss-"):
+        result["skipped_reason"] = "not_a_fix_iss_child"
+        logger.debug(
+            "_purge_fix_iss_child: issue %s has no fix-iss child_name (%r), skipping",
+            issue.id, child_name,
+        )
+        return result
+
+    parent_name = issue.affected_change or "<unknown>"
+    changes_dir = os.path.join(project_path, "openspec", "changes", child_name)
+
+    # Read current state to decide safety
+    child_status: Optional[str] = None
+    if os.path.isfile(state_file):
+        try:
+            import json
+            with open(state_file) as f:
+                state = json.load(f)
+            for c in state.get("changes", []):
+                if c.get("name") == child_name:
+                    child_status = c.get("status")
+                    break
+        except (OSError, ValueError):
+            logger.debug("_purge_fix_iss_child: could not read %s", state_file)
+
+    # Safety: active dispatches must not be yanked out from under an agent
+    if child_status in _ACTIVE_CHILD_STATUSES:
+        result["skipped_reason"] = "active_dispatch"
+        logger.warning(
+            "_purge_fix_iss_child: %s has active status=%s — skipping cleanup "
+            "(reason=%s, parent=%s). Use the orphan-cleanup CLI to force.",
+            child_name, child_status, reason, parent_name,
+        )
+        return result
+
+    # Already merged — not an orphan, no-op
+    if child_status == "merged":
+        result["skipped_reason"] = "already_merged"
+        logger.debug(
+            "_purge_fix_iss_child: %s already merged — no orphan to clean",
+            child_name,
+        )
+        return result
+
+    # Remove state entry if present
+    if child_status is not None:
+        try:
+            with locked_state(state_file) as s:
+                before = len(s.changes)
+                s.changes = [c for c in s.changes if c.name != child_name]
+                if len(s.changes) < before:
+                    result["state_removed"] = True
+        except Exception as _e:
+            logger.warning(
+                "_purge_fix_iss_child: state removal failed for %s: %s",
+                child_name, _e,
+            )
+
+    # Remove openspec dir if present
+    if os.path.isdir(changes_dir):
+        try:
+            shutil.rmtree(changes_dir)
+            result["dir_removed"] = True
+        except OSError as _e:
+            logger.warning(
+                "_purge_fix_iss_child: shutil.rmtree failed for %s: %s",
+                changes_dir, _e,
+            )
+
+    if result["state_removed"] or result["dir_removed"]:
+        logger.info(
+            "_purge_fix_iss_child: removed %s (reason=%s, parent=%s, "
+            "state_removed=%s, dir_removed=%s)",
+            child_name, reason, parent_name,
+            result["state_removed"], result["dir_removed"],
+        )
+    else:
+        logger.debug(
+            "_purge_fix_iss_child: no artifacts found for %s (reason=%s)",
+            child_name, reason,
+        )
+
+    return result
+
+
 def _next_fix_iss_name(openspec_root: str, slug_hint: str) -> str:
     """Pick the next fix-iss-NNN slug. Scans existing `openspec/changes/`
     for the highest fix-iss-<N> and increments.
@@ -773,7 +1058,7 @@ def escalate_change_to_fix_iss(
     import os as _os
     import re as _re
     from datetime import datetime as _dt
-    from ..state import locked_state, update_change_field
+    from ..state import load_state, locked_state, update_change_field
 
     # Resolve openspec root from state_file path (state lives alongside
     # openspec/ under a project root).
@@ -787,6 +1072,54 @@ def escalate_change_to_fix_iss(
             break
         project_root = parent
     openspec_root = _os.path.join(project_root, "openspec")
+
+    # Idempotency: if the parent already has a linked fix-iss child that is
+    # still live, return the existing name instead of creating a duplicate.
+    # This handles two scenarios:
+    # 1. Legitimate re-escalation racing (two circuit-breakers firing close
+    #    together on the same parent).
+    # 2. Operator-driven purge then re-trigger: the state link points at a
+    #    gone child, and we auto-repair by clearing the stale link.
+    try:
+        _current_state = load_state(state_file)
+        _parent = next(
+            (c for c in _current_state.changes if c.name == change_name), None,
+        )
+        _prior_link = getattr(_parent, "fix_iss_child", None) if _parent else None
+        if _prior_link:
+            _prior_entry = next(
+                (c for c in _current_state.changes if c.name == _prior_link), None,
+            )
+            _prior_dir = _os.path.join(openspec_root, "changes", _prior_link)
+            _prior_status = _prior_entry.status if _prior_entry else None
+            _entry_ok = (
+                _prior_entry is not None
+                and _prior_status not in _TERMINAL_FAILURE_STATUSES
+                and _prior_status != "merged"
+            )
+            _dir_ok = _os.path.isdir(_prior_dir)
+            if _entry_ok and _dir_ok:
+                logger.info(
+                    "escalate_change_to_fix_iss: parent %s already has live "
+                    "fix-iss child %s (status=%s) — returning existing name, "
+                    "skipping re-escalation (reason=%s)",
+                    change_name, _prior_link, _prior_status, escalation_reason,
+                )
+                return _prior_link
+            # Stale link — auto-repair and proceed with fresh claim
+            logger.warning(
+                "escalate_change_to_fix_iss: parent %s has stale fix_iss_child "
+                "link to %s (entry_status=%s, dir_ok=%s) — clearing and "
+                "re-escalating (reason=%s)",
+                change_name, _prior_link, _prior_status, _dir_ok, escalation_reason,
+            )
+            update_change_field(state_file, change_name, "fix_iss_child", None)
+    except Exception:
+        # Never let idempotency-check prevent escalation on unexpected error
+        logger.debug(
+            "Idempotency check failed for parent=%s; proceeding with fresh "
+            "escalation", change_name, exc_info=True,
+        )
 
     finding_paths: list[str] = []
     for f in findings or []:

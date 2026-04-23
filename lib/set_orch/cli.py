@@ -1974,6 +1974,18 @@ def main():
     e_mon.add_argument("--checkpoint-auto-approve", action="store_true", help="Auto-approve checkpoints")
     e_mon.add_argument("--checkpoint-timeout", type=int, default=0, help="Auto-resume checkpoint after N seconds (0=disabled)")
 
+    # --- issues ---
+    iss_parser = subparsers.add_parser("issues", help="Issue registry / fix-iss lifecycle operations")
+    iss_sub = iss_parser.add_subparsers(dest="issues_cmd", required=True)
+
+    iss_cleanup = iss_sub.add_parser(
+        "cleanup-orphans",
+        help="Scan + remove orphan fix-iss children (parent merged, but child still pending)",
+    )
+    iss_cleanup.add_argument("--project", required=True, help="Project root path")
+    iss_cleanup.add_argument("--dry-run", action="store_true", help="List orphans without modifying")
+    iss_cleanup.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
+
     args = parser.parse_args()
 
     if args.command == "process":
@@ -2012,6 +2024,93 @@ def main():
         cmd_audit(args)
     elif args.command == "build":
         cmd_build(args)
+    elif args.command == "issues":
+        cmd_issues(args)
+
+
+def cmd_issues(args):
+    """Dispatch issue-registry CLI subcommands."""
+    if args.issues_cmd == "cleanup-orphans":
+        _cmd_issues_cleanup_orphans(args)
+
+
+def _cmd_issues_cleanup_orphans(args):
+    """Scan for orphan fix-iss children and optionally purge them."""
+    import os
+    from pathlib import Path
+    from set_orch.issues.manager import (
+        scan_fix_iss_orphans,
+        _purge_fix_iss_child,
+    )
+    from set_orch.issues.models import Issue, IssueState
+
+    project_path = os.path.abspath(args.project)
+    if not os.path.isdir(project_path):
+        print(f"Error: project path does not exist: {project_path}", file=sys.stderr)
+        sys.exit(1)
+
+    orphans = scan_fix_iss_orphans(project_path)
+
+    if not orphans:
+        print(f"No orphan fix-iss children found in {project_path}")
+        sys.exit(0)
+
+    # Display table
+    print(f"Found {len(orphans)} orphan fix-iss child(ren) in {project_path}:")
+    print()
+    print(f"{'CHILD NAME':<40} {'PARENT':<30} {'PARENT STATUS':<12} "
+          f"{'ISSUE':<12} {'STATE':<6} {'DIR':<6} REASON")
+    print("-" * 120)
+    for o in orphans:
+        print(
+            f"{o['child_name']:<40} {o['parent_name']:<30} "
+            f"{o['parent_status']:<12} {o['issue_state'] or '-':<12} "
+            f"{'yes' if o['state_entry_present'] else 'no':<6} "
+            f"{'yes' if o['dir_present'] else 'no':<6} {o['reason']}"
+        )
+    print()
+
+    if args.dry_run:
+        print(f"(dry-run: {len(orphans)} orphan(s) listed; no changes made)")
+        sys.exit(0)
+
+    # Confirmation gate
+    if not args.yes:
+        try:
+            resp = input(f"Remove {len(orphans)} orphan(s)? [y/N] ").strip().lower()
+        except EOFError:
+            resp = ""
+        if resp != "y":
+            print("Aborted.")
+            sys.exit(0)
+
+    # Execute purges
+    state_file = os.path.join(project_path, "orchestration-state.json")
+    purged = 0
+    skipped = 0
+    for o in orphans:
+        # Build a minimal Issue-like shim for the purge helper
+        shim = Issue(
+            id=(o.get("issue_id") or "CLI-cleanup"),
+            environment="cli",
+            environment_path=project_path,
+            source="cli:cleanup-orphans",
+            state=IssueState.RESOLVED,
+            change_name=o["child_name"],
+            affected_change=o["parent_name"],
+        )
+        result = _purge_fix_iss_child(
+            shim, state_file, project_path, reason="cli_cleanup",
+        )
+        if result["state_removed"] or result["dir_removed"]:
+            purged += 1
+            print(f"  purged: {o['child_name']}")
+        else:
+            skipped += 1
+            print(f"  skipped: {o['child_name']} ({result.get('skipped_reason')})")
+
+    print()
+    print(f"Done: {purged} purged, {skipped} skipped, {len(orphans)} total.")
 
 
 if __name__ == "__main__":

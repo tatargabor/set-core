@@ -92,7 +92,10 @@ def test_escalation_token_runaway_includes_runaway_section(state_file, tmp_path)
     assert "delta" in text
 
 
-def test_successive_escalations_increment_number(state_file):
+def test_successive_escalations_are_idempotent(state_file):
+    """Per fix-iss-lifecycle-hardening: one parent → one active fix-iss child.
+    Re-escalating while the first child is still live returns the same name
+    (no duplicate escalations)."""
     n1 = escalate_change_to_fix_iss(
         state_file=state_file, change_name="parent",
         stop_gate="review", findings=[],
@@ -103,9 +106,37 @@ def test_successive_escalations_increment_number(state_file):
         stop_gate="review", findings=[],
         escalation_reason="retry_budget_exhausted",
     )
-    # First starts at fix-iss-001, second at fix-iss-002
-    assert n1 != n2
-    assert n1 < n2  # lexical ordering of the zero-padded number
+    # Idempotent: second call returns the existing child name
+    assert n1 == n2
+
+
+def test_escalation_increments_when_prior_child_gone(state_file, tmp_path):
+    """When the prior fix-iss child is purged (state entry removed + dir gone),
+    re-escalation auto-repairs the stale link and creates a fresh child."""
+    import shutil
+    from set_orch.state import load_state, locked_state
+
+    n1 = escalate_change_to_fix_iss(
+        state_file=state_file, change_name="parent",
+        stop_gate="review", findings=[],
+        escalation_reason="retry_budget_exhausted",
+    )
+    # Simulate an operator-driven purge: remove the dir and the state entry.
+    shutil.rmtree(tmp_path / "openspec" / "changes" / n1)
+    with locked_state(state_file) as s:
+        s.changes = [c for c in s.changes if c.name != n1]
+
+    n2 = escalate_change_to_fix_iss(
+        state_file=state_file, change_name="parent",
+        stop_gate="review", findings=[],
+        escalation_reason="retry_budget_exhausted",
+    )
+    # Fresh escalation produces a new child (same NNN reused since dir is gone)
+    assert n2.startswith("fix-iss-")
+    # Parent's fix_iss_child link updated to the new name
+    st = load_state(state_file)
+    parent = next(c for c in st.changes if c.name == "parent")
+    assert parent.fix_iss_child == n2
 
 
 def test_escalation_registers_fix_iss_in_state(state_file):
