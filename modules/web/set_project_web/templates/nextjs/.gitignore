@@ -35,6 +35,13 @@ coverage/
 # Orchestration runtime (managed by set-core)
 /.set/
 
+# Orchestration runtime journals (written at project root by dispatcher/merger)
+journals/
+orchestration-events-*.jsonl
+set/orchestration/activity-detail-*.jsonl
+set/orchestration/spec-coverage-history.jsonl
+set/orchestration/e2e-manifest-history.jsonl
+
 # OS
 .DS_Store
 Thumbs.db

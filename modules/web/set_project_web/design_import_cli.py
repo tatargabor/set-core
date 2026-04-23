@@ -11,12 +11,62 @@ When neither flag is given, reads `design_source` block from
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("set-design-import")
+
+# Exclude patterns that MUST be present in consumer tsconfig.json so the v0
+# import rotation (v0-export → v0-export.bak.<ts>) does not poison tsc.
+REQUIRED_TSCONFIG_EXCLUDES: tuple[str, ...] = (
+    "v0-export",
+    "v0-export.*",
+    "*.bak",
+    "*.bak.*",
+)
+
+
+def _patch_tsconfig_excludes(scaffold: Path) -> list[str]:
+    """Ensure tsconfig.json exclude covers v0-export + backup patterns.
+
+    Idempotent. Appends missing entries preserving pre-existing order.
+    On parse failure: WARNs and returns []. On missing file: DEBUGs and returns [].
+    """
+    ts = scaffold / "tsconfig.json"
+    if not ts.is_file():
+        logger.debug("tsconfig-patch: no tsconfig.json at %s — skipping", ts)
+        return []
+    try:
+        raw = ts.read_text()
+        data = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(
+            "tsconfig-patch: could not parse %s (%s) — skipping patch; "
+            "operator may need to add %s manually",
+            ts, e, list(REQUIRED_TSCONFIG_EXCLUDES),
+        )
+        return []
+
+    current = data.get("exclude")
+    if not isinstance(current, list):
+        logger.warning(
+            "tsconfig-patch: %s has no list-valued 'exclude' — skipping patch",
+            ts,
+        )
+        return []
+
+    missing = [p for p in REQUIRED_TSCONFIG_EXCLUDES if p not in current]
+    if not missing:
+        logger.debug("tsconfig-patch: %s already up to date (no-op)", ts)
+        return []
+
+    data["exclude"] = list(current) + missing
+    ts.write_text(json.dumps(data, indent=2) + "\n")
+    logger.info("tsconfig-patch: added %s to %s", missing, ts)
+    return missing
 
 
 def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -126,6 +176,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             manifest_path = scaffold / "docs" / "design-manifest.yaml"
             manifest_path.parent.mkdir(parents=True, exist_ok=True)
             generate_manifest_from_tree(v0_dir, manifest_path)
+            _patch_tsconfig_excludes(scaffold)
             print(f"manifest regenerated: {manifest_path}")
             return 0
 
@@ -161,6 +212,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "unsupported scaffold.yaml design_source.type: %r (expected 'v0-git' or 'v0-zip')", t,
                 )
                 return 2
+
+        _patch_tsconfig_excludes(scaffold)
 
         # Quality validation (v0_validator) — run post-hoc when module is present.
         try:
