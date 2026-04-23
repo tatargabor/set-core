@@ -106,3 +106,16 @@ def test_substring_change_not_matched(repo: Path) -> None:
     result = _find_existing_worktree(str(repo), "foo")
     # No match for "foo" — return the conventional would-be path
     assert result == str(repo) + "-foo"
+
+
+def test_mixed_convention_rank0_tie_wt_wins(repo: Path) -> None:
+    """When `{project}-wt-{name}` and `{project}-{name}` both exist at rank 0,
+    prefer the `-wt-` convention (set-new's default). Plain-convention paths
+    are less-common direct-`git worktree add` leftovers."""
+    wt_bash = repo.parent / "acme-wt-mixed"
+    wt_plain = repo.parent / "acme-mixed"
+    _add_worktree(repo, wt_bash, "change/mixed")
+    _add_worktree(repo, wt_plain, "change/mixed-plain")
+
+    result = _find_existing_worktree(str(repo), "mixed")
+    assert result == str(wt_bash), f"expected -wt- convention winner, got {result}"

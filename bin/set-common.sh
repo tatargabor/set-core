@@ -406,10 +406,33 @@ find_existing_worktree() {
         return 0
     fi
 
-    # Ambiguity: sort descending by rank, pick highest. `sort -t'|' -k1,1 -nr`
-    # gives numeric descending on the rank field.
+    # Ambiguity: sort descending by rank first. On a rank tie (e.g.
+    # mixed-convention rank-0: both `{repo}-wt-{change}` and `{repo}-{change}`
+    # exist at the unsuffixed rank), the secondary tie-break is "prefer the
+    # `-wt-` convention" because `set-new` produces it by default. The
+    # Python-convention variant is a less-common direct-`git worktree add`
+    # leftover. We implement this by tagging each match with a tie-break key:
+    # "1" for `-wt-` paths, "0" for plain paths. `sort -k1,1 -nr -k2,2 -nr`
+    # then gives us: highest rank wins, ties broken by highest tie-break key
+    # (i.e. `-wt-` wins).
+    local tagged=()
+    local m
+    for m in "${matches[@]}"; do
+        local mp="${m#*|}"
+        local mname
+        mname=$(basename "$mp")
+        local tiebreak=0
+        if [[ "$mname" == "${repo_name}-wt-"* ]]; then
+            tiebreak=1
+        fi
+        # Format: <rank>|<tiebreak>|<path>
+        tagged+=("${m%%|*}|${tiebreak}|${mp}")
+    done
+    local sorted_raw
+    sorted_raw=$(printf '%s\n' "${tagged[@]}" | sort -t'|' -k1,1 -nr -k2,2 -nr)
+    # Strip tiebreak column back out before downstream consumers see it
     local sorted
-    sorted=$(printf '%s\n' "${matches[@]}" | sort -t'|' -k1,1 -nr)
+    sorted=$(echo "$sorted_raw" | awk -F'|' 'BEGIN{OFS="|"} {print $1, $3}')
     local selected
     selected=$(echo "$sorted" | head -n1)
     local selected_path="${selected#*|}"

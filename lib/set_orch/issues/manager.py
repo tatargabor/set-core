@@ -323,6 +323,9 @@ class IssueManager:
                         cleanup_branch_removed=(
                             cleanup_result.branch_removed if cleanup_result else False
                         ),
+                        cleanup_warnings=(
+                            cleanup_result.warnings if cleanup_result else []
+                        ),
                     )
                     logger.info(
                         "Reset parent %s (%s → pending) after %s resolved "

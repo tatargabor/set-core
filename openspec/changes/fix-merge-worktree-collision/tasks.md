@@ -4,20 +4,20 @@
 - [x] 1.2 Implement `cleanup_change_artifacts(change_name, project_path) -> CleanupResult` with idempotent worktree removal: try both `{project}-wt-{name}` and `{project}-{name}` paths, `git worktree remove --force` when registered, `rm -rf` fallback when unregistered, always run `git worktree prune` [REQ: shared-cleanup-helper-for-change-artifacts]
 - [x] 1.3 Implement idempotent branch deletion: `git branch -D change/{name}` with non-zero-exit tolerance when branch is absent [REQ: shared-cleanup-helper-for-change-artifacts]
 - [x] 1.4 Add structured logging: INFO for each successful removal (worktree path / branch name), WARN for unregistered-worktree rm-rf fallback, WARN for unexpected git failures, DEBUG for no-op paths [REQ: shared-cleanup-helper-for-change-artifacts]
-- [x] 1.5 Add unit tests in `tests/orch/test_change_cleanup.py` covering: both present, only worktree, only branch, neither present, repeated-call idempotency, unregistered-worktree fallback, both naming conventions (with and without `-wt-` infix) [REQ: shared-cleanup-helper-for-change-artifacts]
+- [x] 1.5 Add unit tests in `tests/unit/test_change_cleanup.py` covering: both present, only worktree, only branch, neither present, repeated-call idempotency, unregistered-worktree fallback, both naming conventions (with and without `-wt-` infix) [REQ: shared-cleanup-helper-for-change-artifacts]
 
 ## 2. Dispatcher discovery fix
 
 - [x] 2.1 Rewrite `_find_existing_worktree` in `lib/set_orch/dispatcher.py:1109` to exact-match basenames against `{project_name}-{name}` and `{project_name}-wt-{name}` instead of substring `in line` [REQ: python-_find_existing_worktree-uses-exact-basename-match]
 - [x] 2.2 Collect all candidate matches across both conventions and suffix variants, return highest-numbered suffix when multiple, log at DEBUG listing candidates [REQ: python-_find_existing_worktree-uses-exact-basename-match]
-- [x] 2.3 Add unit tests in `tests/orch/test_dispatcher.py` verifying: no false-positive substring matches, ambiguity tie-breaking by suffix across both conventions [REQ: python-_find_existing_worktree-uses-exact-basename-match]
+- [x] 2.3 Add unit tests in `tests/unit/test_dispatcher.py` verifying: no false-positive substring matches, ambiguity tie-breaking by suffix across both conventions [REQ: python-_find_existing_worktree-uses-exact-basename-match]
 
 ## 3. Bash discovery hardening
 
 - [x] 3.1 Refactor `find_existing_worktree` in `bin/set-common.sh:338` to collect ALL matches across every pattern variant (including `{repo}-{change}-N` Python-convention suffixes, currently unmatched) into an array instead of returning on first hit [REQ: find_existing_worktree-resolves-ambiguity-deterministically]
 - [x] 3.2 Extract suffix number from each candidate (treat unsuffixed as rank 0) and return the highest-ranked path; WARN via `warn()` helper listing all candidates and the selected one [REQ: find_existing_worktree-resolves-ambiguity-deterministically]
 - [x] 3.3 Document the ambiguity-resolution policy in a comment block above the function (why highest-suffix wins, when WARN fires, both naming conventions accepted) [REQ: find_existing_worktree-resolves-ambiguity-deterministically]
-- [x] 3.4 Add a bats test (or shell-based test) in `tests/bash/` exercising: single match, two-level ambiguity (bash convention), Python-convention suffix match, mixed-convention ambiguity, three-level suffix, no match [REQ: find_existing_worktree-resolves-ambiguity-deterministically]
+- [x] 3.4 Add a bats test (or shell-based test) in `tests/` exercising: single match, two-level ambiguity (bash convention), Python-convention suffix match, mixed-convention ambiguity, three-level suffix, no match [REQ: find_existing_worktree-resolves-ambiguity-deterministically]
 
 ## 4. set-merge `--worktree` flag
 
@@ -52,9 +52,9 @@
 
 ## 8. Integration validation
 
-- [x] 8.1 Add an integration test in `tests/orch/test_merge_collision_regression.py` that reproduces the failure mode: seed a change with `worktree_path=None`, pre-existing `change/foo` branch and `{project}-wt-foo` dir, then call `_retry_parent_after_resolved` and verify artifacts are gone and the next `_unique_worktree_name` returns `foo` (not `foo-2`) [REQ: parent-retry-cleans-artifacts-before-state-reset] [REQ: shared-cleanup-helper-for-change-artifacts]
+- [x] 8.1 Add an integration test in `tests/unit/test_merge_collision_regression.py` that reproduces the failure mode: seed a change with `worktree_path=None`, pre-existing `change/foo` branch and `{project}-wt-foo` dir, then call `_retry_parent_after_resolved` and verify artifacts are gone and the next `_unique_worktree_name` returns `foo` (not `foo-2`) [REQ: parent-retry-cleans-artifacts-before-state-reset] [REQ: shared-cleanup-helper-for-change-artifacts]
 - [x] 8.2 Add an integration test that seeds a stuck merge scenario (mock `set-merge` always returns non-zero), calls `merge_change` up to threshold+1 times, verifies status transitions to `failed:merge_stalled`, fix-iss is created, and an issue with source `circuit-breaker:merge_stalled` is registered [REQ: persistent-merge-stall-circuit-breaker] [REQ: circuit-breaker-source-merge_stalled-integrates-with-existing-pipeline]
-- [x] 8.3 Manual verification: run the existing test suite in `tests/orch/` to ensure no regression in merger/recovery/issue tests [REQ: merger-passes-authoritative-worktree-path-to-set-merge]
+- [x] 8.3 Manual verification: run the existing test suite in `tests/unit/` to ensure no regression in merger/recovery/issue tests [REQ: merger-passes-authoritative-worktree-path-to-set-merge]
 
 ## Acceptance Criteria (from spec scenarios)
 

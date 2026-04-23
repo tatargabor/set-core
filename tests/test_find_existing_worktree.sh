@@ -90,6 +90,13 @@ add_wt "$TMP_ROOT/acme-pyambig-2" change/pyambig-2
 result=$(find_existing_worktree "$REPO" "pyambig" 2>/dev/null)
 assert_equals "$TMP_ROOT/acme-pyambig-2" "$result"
 
+# ---- Scenario: mixed-convention rank-0 tie — -wt- wins ----
+test_start "mixed-convention rank-0 tie — -wt- convention wins"
+add_wt "$TMP_ROOT/acme-wt-mixed" change/mixed
+add_wt "$TMP_ROOT/acme-mixed" change/mixed-plain
+result=$(find_existing_worktree "$REPO" "mixed" 2>/dev/null)
+assert_equals "$TMP_ROOT/acme-wt-mixed" "$result"
+
 # ---- Scenario: substring false positives excluded ----
 test_start "substring not matched (foo vs foobar)"
 add_wt "$TMP_ROOT/acme-wt-foobar" change/foobar

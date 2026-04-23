@@ -1151,8 +1151,19 @@ def _find_existing_worktree(project_path: str, change_name: str) -> str:
             [(r_, p) for r_, p in candidates],
         )
 
-    # Highest suffix wins (max by rank, stable on tie)
-    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    # Highest suffix wins (max by rank). Tie-break on rank collision (e.g.
+    # mixed-convention rank-0: both `{project}-wt-{name}` and `{project}-{name}`
+    # at rank 0): prefer the `-wt-` convention because `set-new` creates it
+    # by default — plain-convention paths are less-common direct-add leftovers.
+    wt_prefix = f"{project_name}-wt-"
+
+    def _sort_key(pair: tuple[int, str]) -> tuple[int, int]:
+        rank, path = pair
+        basename = os.path.basename(path)
+        tiebreak = 1 if basename.startswith(wt_prefix) else 0
+        return (rank, tiebreak)
+
+    candidates.sort(key=_sort_key, reverse=True)
     return candidates[0][1]
 
 
