@@ -128,9 +128,17 @@ class Directives:
     max_stuck_loops: int = 3
     # Per-change token-runaway breaker: cumulative input_token growth above
     # this delta without a gate-fingerprint change trips the breaker.
-    per_change_token_runaway_threshold: int = 20_000_000
+    # Raised from 20M to 50M (2.5x) after craftbrew-run-20260423-2223 showed
+    # auth-user-registration-and-login bursting at 20.3M with sibling-spec
+    # pollution work-in-progress — give the agent more headroom to converge
+    # before escalating to fix-iss.
+    per_change_token_runaway_threshold: int = 50_000_000
     # Cumulative verify-pipeline wall time budget per change (ms).
-    max_retry_wall_time_ms: int = 1_800_000
+    # Raised from 30 min (1.8M ms) to 90 min (5.4M ms, 3x) after
+    # catalog-product-detail hit failed:retry_wall_time_exhausted with the
+    # implementation already passing — the (B) sibling-spec retries were
+    # eating the budget. 90 min covers ~6 retry rounds at ~15 min each.
+    max_retry_wall_time_ms: int = 5_400_000
     # Cap on consecutive cached verdicts before forcing a full gate run.
     max_consecutive_cache_uses: int = 2
     # Decomposer granularity budget.

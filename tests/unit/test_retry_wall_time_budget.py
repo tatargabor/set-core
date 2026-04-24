@@ -113,3 +113,36 @@ def test_exhaustion_is_persistent_across_loads(state_file):
 
     # And the cumulative counter reflects all ticks.
     assert c.retry_wall_time_ms >= 1_800_000
+
+
+def test_default_wall_time_budget_is_generous():
+    """Regression guard: default wall-time budget must stay >= 90 min (5.4M ms).
+
+    Raised from the original 30 min after craftbrew-run-20260423-2223 showed
+    catalog-product-detail hitting failed:retry_wall_time_exhausted while the
+    implementation was already complete — the (B) sibling-spec retries were
+    eating the budget. 90 min covers ~6 retry rounds at ~15 min each.
+    """
+    from set_orch.engine import Directives
+
+    d = Directives()
+    assert d.max_retry_wall_time_ms >= 5_400_000, (
+        f"max_retry_wall_time_ms must stay >= 5.4M ms (90 min), got {d.max_retry_wall_time_ms}"
+    )
+
+
+def test_default_token_runaway_threshold_is_generous():
+    """Regression guard: token-runaway threshold must stay >= 50M tokens.
+
+    Raised from the original 20M after craftbrew-run-20260423-2223 showed
+    auth-user-registration-and-login bursting at 20.3M with sibling-spec
+    pollution work-in-progress — give the agent more headroom (~50 Opus
+    calls' worth) before escalating to fix-iss.
+    """
+    from set_orch.engine import Directives
+
+    d = Directives()
+    assert d.per_change_token_runaway_threshold >= 50_000_000, (
+        f"per_change_token_runaway_threshold must stay >= 50M, "
+        f"got {d.per_change_token_runaway_threshold}"
+    )
