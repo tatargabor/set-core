@@ -1970,22 +1970,56 @@ def _run_integration_gates(
                                     "status", "integration-e2e-failed",
                                 )
 
-                                # Smoke-specific retry context
-                                sibling_list = "\n".join(
-                                    f"- {os.path.relpath(s, wt_path)}" for s in inherited_specs
-                                )
+                                # Smoke-specific retry context. Parse the smoke output
+                                # to identify the ACTUALLY failing spec files instead of
+                                # blaming every inherited spec — listing all 11 when only
+                                # 2 fail mis-scopes the agent's investigation and burns
+                                # tokens chasing non-existent issues.
+                                import re as _re
+                                _failed_specs: set[str] = set()
+                                # Playwright lines look like:
+                                #   ✘ N [chromium] › tests/e2e/<name>.spec.ts:LINE:COL › ...
+                                for m in _re.finditer(
+                                    r"✘\s+\d+\s+\[[^\]]+\]\s+›\s+(tests/e2e/[\w./-]+\.spec\.ts)",
+                                    _smoke_output,
+                                ):
+                                    _failed_specs.add(m.group(1))
+                                if _failed_specs:
+                                    sibling_list = "\n".join(f"- {s}" for s in sorted(_failed_specs))
+                                    diag_header = (
+                                        f"Integration smoke gate FAILED: {len(_failed_specs)} of "
+                                        f"{len(inherited_specs)} inherited sibling spec(s) failed."
+                                    )
+                                else:
+                                    # Could not parse failure markers — fall back to listing all,
+                                    # but mark this so the agent knows the list is unscoped.
+                                    sibling_list = "\n".join(
+                                        f"- {os.path.relpath(s, wt_path)}" for s in inherited_specs
+                                    )
+                                    diag_header = (
+                                        "Integration smoke gate FAILED: could not parse failure "
+                                        "markers from output; listing all inherited specs."
+                                    )
                                 retry_ctx = (
-                                    "Integration smoke tests FAILED. These tests belong to "
-                                    "sibling changes that are already merged on main. Your "
-                                    "change is likely polluting shared state (DB rows, .next/ "
-                                    "cache, session cookies) in a way that breaks tests you "
-                                    "do not own.\n\n"
-                                    f"Failing sibling spec files:\n{sibling_list}\n\n"
+                                    f"{diag_header}\n\n"
+                                    "These sibling specs are merged on main and exercise UI / DB "
+                                    "contracts your change may have altered. Investigate WHY they "
+                                    "fail — common causes (in priority order):\n"
+                                    "  1. UI contract drift: your change replaced a page or "
+                                    "component the sibling test asserts on; the test's "
+                                    "data-testid / locator no longer resolves. Read the test, "
+                                    "see what locator it waits for, ensure your component still "
+                                    "renders that testid (you can render BOTH old + new testids).\n"
+                                    "  2. Server contract drift: a route, API, or schema field "
+                                    "changed. Look for 404, 500, schema validation errors.\n"
+                                    "  3. Cross-spec state pollution: DB rows, .next/ cache, or "
+                                    "session cookies leaked from a prior test. Check test.afterEach "
+                                    "in your spec; see testing-conventions.md.\n\n"
+                                    f"Failing spec files:\n{sibling_list}\n\n"
                                     f"Smoke output:\n{_smoke_output}\n\n"
-                                    "Fix: ensure your tests clean up (test.afterEach), use "
-                                    "unique names per test (see testing-conventions.md for "
-                                    "the Cross-Spec DB Pollution rule), and avoid writing to "
-                                    "shared tables without cleanup."
+                                    "Read each failing test's source to pinpoint the missing locator "
+                                    "or contract; fix the contract on YOUR side rather than editing "
+                                    "the merged sibling spec."
                                 )
                                 update_change_field(
                                     state_file, change_name, "retry_context", retry_ctx,
