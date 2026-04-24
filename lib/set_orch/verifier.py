@@ -3807,8 +3807,17 @@ def handle_change_done(
 
         if integration_result == "conflict":
             if integration_retry_count < max_integration_retries:
-                # Dispatch agent to resolve conflict on branch
+                # Dispatch agent to resolve conflict on branch.
+                # IMPORTANT: set `merge_rebase_pending=True` so dispatcher picks
+                # `done_criteria="merge"` (checks `_check_merge_done` — branch
+                # merges cleanly with main). Without this flag the dispatcher
+                # falls through to `done_criteria="test"`, which never matches
+                # a merge resolution, so the loop runs to max_iterations
+                # while the agent no-ops in iter 2+ saying "merge already
+                # done" — eventually the engine marks it stalled even though
+                # the work was completed in iter 1.
                 update_change_field(state_file, change_name, "integration_retry_count", integration_retry_count + 1)
+                update_change_field(state_file, change_name, "merge_rebase_pending", True)
                 update_change_field(state_file, change_name, "status", "verify-failed")
                 update_change_field(state_file, change_name, "retry_context",
                     f"Integration merge conflict: main has diverged from your branch.\n\n"
