@@ -1827,6 +1827,48 @@ def _run_integration_gates(
                     if event_bus:
                         event_bus.emit("VERIFY_GATE", change=change_name, data={
                             "gate": "test", "result": "fail", "phase": "integration"})
+                    # Dispatch agent to fix the integration test failure with
+                    # a scoped retry_context — mirrors the e2e-fail path. Without
+                    # this, the change loops in the merge queue: merger returns
+                    # False, _recover_merge_blocked_safe recovers status=done,
+                    # queue retries, same test fails again — no progress and no
+                    # agent involvement. Bounded by integration_e2e_retry_count
+                    # (reuses e2e budget; a single counter for both gates is
+                    # acceptable since they share the redispatch semantics).
+                    e2e_retry = change.extras.get("integration_e2e_retry_count", 0)
+                    if e2e_retry < e2e_retry_limit:
+                        update_change_field(
+                            state_file, change_name,
+                            "integration_e2e_retry_count", e2e_retry + 1,
+                        )
+                        update_change_field(state_file, change_name, "status", "integration-e2e-failed")
+                        retry_ctx = (
+                            f"Integration test gate FAILED after merging main into your branch.\n\n"
+                            f"Test output:\n{output[-2500:]}\n\n"
+                            "Investigate what changed: did main introduce a schema change "
+                            "(prisma/schema.prisma) that breaks your test setup? Does your test "
+                            "rely on a column / FK constraint / cascade behaviour that main has "
+                            "altered? Foreign-key violations during truncateAll() typically mean "
+                            "the delete order is wrong relative to the current schema — fix the "
+                            "test's cleanup order, or use the schema's actual cascade rules.\n\n"
+                            f"This is integration retry {e2e_retry + 1}/{e2e_retry_limit}."
+                        )
+                        update_change_field(state_file, change_name, "retry_context", retry_ctx)
+                        from .dispatcher import resume_change
+                        try:
+                            resume_change(state_file, change_name)
+                            logger.info(
+                                "Integration test fail: dispatched agent to fix %s (attempt %d/%d)",
+                                change_name, e2e_retry + 1, e2e_retry_limit,
+                            )
+                        except Exception:
+                            logger.warning("resume_change for %s after test-fail raised", change_name, exc_info=True)
+                    else:
+                        logger.error(
+                            "Integration test fail: exhausted retries for %s (%d/%d) — escalating",
+                            change_name, e2e_retry, e2e_retry_limit,
+                        )
+                        update_change_field(state_file, change_name, "status", "integration-failed")
                     return False
 
     # TODO count warning — check if agent left unfilled test skeletons
