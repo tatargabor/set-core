@@ -2875,10 +2875,51 @@ def _recover_from_raised_limits(
                 state_file, change.name, "stall_reason", None,
                 event_bus=event_bus,
             )
+            # Honour the docstring contract: "30 min spent + raised to 90 min
+            # = 60 min of fresh budget". For retry_wall_time, debit the OLD
+            # budget from the accumulated value so the agent gets exactly the
+            # delta of fresh budget, not 0. Without this debit, an accumulated
+            # value > old_budget (the typical failure state) consumes most of
+            # the new budget immediately and the next pipeline run re-fails.
+            if recover_reason == "wall_time_budget_raised":
+                old_budget = int(recover_data.get("old_budget", 0) or 0)
+                accumulated = int(change.retry_wall_time_ms or 0)
+                # Leave at most `old_budget` worth of consumption against
+                # the new budget — older history is "paid off" by the raise.
+                debited = max(0, accumulated - old_budget)
+                if debited != accumulated:
+                    update_change_field(
+                        state_file, change.name, "retry_wall_time_ms",
+                        debited, event_bus=event_bus,
+                    )
+                    logger.info(
+                        "Recovery debited retry_wall_time_ms for %s: "
+                        "%d → %d (old_budget=%d)",
+                        change.name, accumulated, debited, old_budget,
+                    )
             # Bump the recovery counter (visibility + cap enforcement).
             update_change_field(
                 state_file, change.name, "limit_raised_auto_retry_count",
                 recovery_count + 1, event_bus=event_bus,
+            )
+            # Clear the failure-time snapshot so a future failure records its
+            # own current snapshot (not the stale one from a prior raise).
+            if recover_reason == "wall_time_budget_raised":
+                update_change_field(
+                    state_file, change.name, "wall_time_budget_at_failure",
+                    0, event_bus=event_bus,
+                )
+            elif recover_reason == "token_runaway_limit_raised":
+                update_change_field(
+                    state_file, change.name, "token_runaway_threshold_at_failure",
+                    0, event_bus=event_bus,
+                )
+            # Clear any halt-blocker that was raised by the same failure,
+            # so the dispatcher's halt-on-fail check doesn't re-trip on a
+            # stale `integration_gate_fail` value once status flips back.
+            update_change_field(
+                state_file, change.name, "integration_gate_fail",
+                "", event_bus=event_bus,
             )
             # Finally flip status — dispatcher will pick this up next cycle.
             update_change_field(
