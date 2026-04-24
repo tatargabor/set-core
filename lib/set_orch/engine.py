@@ -1197,6 +1197,14 @@ def monitor_loop(
         # between attempts.
         _recover_integration_failed_safe(state_file, d, event_bus)
 
+        # Limit-raise auto-recovery: when the operator bumps
+        # per_change_token_runaway_threshold or max_retry_wall_time_ms and
+        # restarts the engine, previously-failed:* changes whose failure
+        # snapshot is now strictly under the new directive get reset to
+        # pending — preserving worktree, accumulated wall time, and partial
+        # work. Bounded per change by _LIMIT_RAISE_RECOVERY_MAX.
+        _recover_from_raised_limits(state_file, d, event_bus)
+
         # Note: no cascade_failed_deps() — pending changes with failed deps
         # simply stay pending (never dispatched because deps_met() returns False).
         # _check_all_done() and _check_phase_milestone() treat them as terminal.
@@ -1535,6 +1543,12 @@ def _apply_token_runaway_check(
         delta = cur_in - change.token_runaway_baseline
         if delta > threshold:
             change.status = "failed:token_runaway"
+            # Snapshot the threshold that was active at the failure point —
+            # _recover_from_raised_limits uses this to decide whether the
+            # operator's later limit-raise is enough to give this change
+            # another shot. Without this snapshot we'd either re-recover
+            # forever or never recover at all.
+            change.extras["token_runaway_threshold_at_failure"] = threshold
             logger.error(
                 "Token-runaway circuit breaker FIRED for %s: input_tokens "
                 "grew by %d (baseline %d → %d, threshold %d) with unchanged "
@@ -2743,6 +2757,149 @@ def _recover_integration_failed_safe(
         logger.warning(
             "integration-failed auto-recovery raised", exc_info=True,
         )
+
+
+# Cap on how many times a single change can be limit-raise-recovered. Without
+# a cap, an operator who keeps bumping limits to chase a genuinely broken
+# agent would loop forever. 5 ≈ "we tried hard enough".
+_LIMIT_RAISE_RECOVERY_MAX = 5
+
+
+def _recover_from_raised_limits(
+    state_file: str, d: Any, event_bus: Any,
+) -> int:
+    """Auto-recover failed:* changes when the operator has raised the limit.
+
+    Background: `failed:token_runaway` and `failed:retry_wall_time_exhausted`
+    are terminal — once a change hits them, the only path forward is the
+    fix-iss escalation. But if the original failure was just "the limit was
+    too tight for this kind of work", the cleanest recovery is to bump the
+    limit and let the change continue from where it stopped.
+
+    Trigger: at every monitor cycle, scan for failed:* changes whose
+    failure-time limit snapshot is now strictly less than the current
+    directive. The snapshot was taken at the failure point
+    (`token_runaway_threshold_at_failure` / `wall_time_budget_at_failure`),
+    so we can compare precisely — no risk of recovering a change whose
+    limit hasn't actually been raised.
+
+    What we preserve when recovering:
+      - `worktree_path` — the agent picks up its in-progress work
+      - `retry_wall_time_ms` — accumulated time counts toward the new
+        (higher) cap, so the agent gets the difference, not a full reset.
+        E.g. 30 min spent + raised to 90 min = 60 min of fresh budget.
+      - `verify_retry_count`, partial `extras` — debugging context kept
+
+    What we reset:
+      - `status` → `pending` (dispatcher picks up)
+      - `token_runaway_baseline` + `_fingerprint` → None (breaker
+        re-captures fresh on the next gate run; no immediate re-trip)
+      - `fix_iss_child` → None (any spawned fix-iss is now decoupled;
+        operator can dismiss the issue or let the apply complete in
+        parallel — nothing in the parent's path depends on it)
+      - `stall_reason` → None (poisoned-stall guard reset)
+
+    Bounded by `_LIMIT_RAISE_RECOVERY_MAX` per change. After that many
+    auto-recoveries the change is left terminal — operator can manually
+    reset if they really want to keep trying.
+
+    Returns the number of changes recovered (for visibility / tests).
+    """
+    recovered = 0
+    try:
+        state = load_state(state_file)
+        for change in state.changes:
+            recovery_count = int(
+                change.extras.get("limit_raised_auto_retry_count", 0) or 0
+            )
+            if recovery_count >= _LIMIT_RAISE_RECOVERY_MAX:
+                continue
+
+            recover_reason: str | None = None
+            recover_data: dict = {}
+
+            if change.status == "failed:token_runaway":
+                old_limit = int(
+                    change.extras.get("token_runaway_threshold_at_failure", 0) or 0
+                )
+                if old_limit > 0 and d.per_change_token_runaway_threshold > old_limit:
+                    recover_reason = "token_runaway_limit_raised"
+                    recover_data = {
+                        "old_limit": old_limit,
+                        "new_limit": d.per_change_token_runaway_threshold,
+                    }
+
+            elif change.status == "failed:retry_wall_time_exhausted":
+                old_budget = int(
+                    change.extras.get("wall_time_budget_at_failure", 0) or 0
+                )
+                if old_budget > 0 and d.max_retry_wall_time_ms > old_budget:
+                    recover_reason = "wall_time_budget_raised"
+                    recover_data = {
+                        "old_budget": old_budget,
+                        "new_budget": d.max_retry_wall_time_ms,
+                    }
+
+            if recover_reason is None:
+                continue
+
+            logger.info(
+                "Recovering %s from %s — limit raised (%s); preserving "
+                "worktree=%s and retry_wall_time_ms=%d",
+                change.name, change.status,
+                ", ".join(f"{k}={v}" for k, v in recover_data.items()),
+                change.worktree_path or "<none>",
+                int(change.retry_wall_time_ms or 0),
+            )
+
+            # Reset breaker state so the new headroom actually applies.
+            update_change_field(
+                state_file, change.name, "token_runaway_baseline", None,
+                event_bus=event_bus,
+            )
+            update_change_field(
+                state_file, change.name, "token_runaway_fingerprint", None,
+                event_bus=event_bus,
+            )
+            # Detach any fix-iss the failure spawned. The fix-iss change
+            # itself stays in the plan; if it ends up landing first, that's
+            # fine — its commits will merge cleanly because the parent's
+            # worktree branch is independent.
+            update_change_field(
+                state_file, change.name, "fix_iss_child", None,
+                event_bus=event_bus,
+            )
+            # Clear any poisoned-stall reason so the dispatcher's resume
+            # path doesn't trip the F5 guard for the old failure.
+            update_change_field(
+                state_file, change.name, "stall_reason", None,
+                event_bus=event_bus,
+            )
+            # Bump the recovery counter (visibility + cap enforcement).
+            update_change_field(
+                state_file, change.name, "limit_raised_auto_retry_count",
+                recovery_count + 1, event_bus=event_bus,
+            )
+            # Finally flip status — dispatcher will pick this up next cycle.
+            update_change_field(
+                state_file, change.name, "status", "pending",
+                event_bus=event_bus,
+            )
+
+            recovered += 1
+            if event_bus:
+                event_bus.emit(
+                    "LIMIT_RAISE_RECOVERY",
+                    change=change.name,
+                    data={
+                        "reason": recover_reason,
+                        "recovery_count": recovery_count + 1,
+                        **recover_data,
+                    },
+                )
+    except Exception:
+        logger.warning("limit-raise auto-recovery raised", exc_info=True)
+    return recovered
 
 
 # ─── Completion Detection ──────────────────────────────────────────

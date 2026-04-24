@@ -4011,6 +4011,12 @@ def handle_change_done(
             "retry wall-time budget exhausted for %s: %d >= %d ms — escalating to fix-iss",
             change_name, _new_wall_total, _wall_budget,
         )
+        # Snapshot the budget that was active at the failure point —
+        # engine._recover_from_raised_limits compares this to the current
+        # directive to decide whether to give the change another shot.
+        update_change_field(
+            state_file, change_name, "wall_time_budget_at_failure", _wall_budget,
+        )
         update_change_field(state_file, change_name, "status", "failed:retry_wall_time_exhausted")
         if event_bus:
             event_bus.emit(
