@@ -938,7 +938,7 @@ def deps_failed(state: OrchestratorState, change_name: str) -> bool:
 
     for dep_name in change.depends_on:
         dep = _find_change(state, dep_name)
-        if dep and dep.status == "failed":
+        if dep and (dep.status == "failed" or dep.status.startswith("failed:")):
             return True
     return False
 
@@ -966,7 +966,7 @@ def cascade_failed_deps(
         failed_dep = ""
         for dep_name in change.depends_on:
             dep = _find_change(state, dep_name)
-            if dep and dep.status == "failed":
+            if dep and (dep.status == "failed" or dep.status.startswith("failed:")):
                 failed_dep = dep_name
                 break
 

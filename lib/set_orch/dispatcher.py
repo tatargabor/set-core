@@ -2926,18 +2926,28 @@ def dispatch_ready_changes(
     """
     state = load_state(state_path)
 
-    # Fail-fast halt: if any change has reached terminal "failed" status, do
+    # Fail-fast halt: if any change has reached a terminal failure status, do
     # not dispatch further work. The operator must investigate (fix scope,
     # reset status, bump retries) before new changes start. Prevents sibling
     # changes from silently burning tokens while a peer is broken and also
     # avoids wasting work when the failed change is likely a blocker for
     # reviewers. To resume: reset the failed change's status (e.g. pending).
-    failed_names = [c.name for c in state.changes if c.status == "failed"]
+    #
+    # Matches both the bare `failed` and prefixed `failed:<reason>` variants
+    # (failed:retry_wall_time_exhausted, failed:merge_stalled,
+    # failed:token_runaway, failed:stuck_no_progress, failed:retry_budget_exhausted).
+    # Prior to this fix only the bare `failed` was caught — the prefixed
+    # statuses, which are the actual circuit-breaker outputs, slipped past
+    # and let the dispatcher continue burning tokens on unrelated peers.
+    failed_names = [
+        c.name for c in state.changes
+        if c.status == "failed" or c.status.startswith("failed:")
+    ]
     if failed_names:
         logger.warning(
-            "Halt on failure: %s failed — suppressing new dispatches "
+            "Halt on failure: %s — suppressing new dispatches "
             "(reset status to pending to resume)",
-            ", ".join(failed_names),
+            ", ".join(f"{n} ({_find_change(state, n).status})" for n in failed_names),
         )
         return 0
 

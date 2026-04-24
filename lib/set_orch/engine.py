@@ -3325,7 +3325,10 @@ def _auto_replan_cycle(
 
     # 7. Novelty check — skip if all changes duplicate previously failed ones
     state = load_state(state_file)
-    failed_names = {c.name for c in state.changes if c.status == "failed"}
+    failed_names = {
+        c.name for c in state.changes
+        if c.status == "failed" or c.status.startswith("failed:")
+    }
     new_names = {c.get("name", "") for c in new_changes}
     if new_names and new_names.issubset(failed_names):
         logger.info("Replan: all %d new changes are duplicates of failed ones — no new work", len(new_names))
