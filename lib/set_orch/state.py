@@ -1069,12 +1069,17 @@ def is_terminal_status(status: str) -> bool:
 # so that adding a new intermediate state in the future fails safe — it will
 # be treated as in-flight and block new dispatches until classified.
 _NOT_IN_FLIGHT_STATUSES = frozenset({
-    "merged",       # successfully merged to main
-    "skipped",      # skipped by merge policy
-    "skip_merged",  # skipped via merge policy + recorded as merged
-    "failed",       # terminal failure, will not retry
-    "pending",      # not yet dispatched
-    "dep-blocked",  # waiting for dependency, not yet dispatched
+    "merged",             # successfully merged to main
+    "skipped",            # skipped by merge policy
+    "skip_merged",        # skipped via merge policy + recorded as merged
+    "failed",             # terminal failure, will not retry
+    "integration-failed", # terminal — merger exhausted retries; no auto-recovery
+                          # path exists, so it must NOT hold a parallel slot.
+                          # Auto-recovery (_recover_integration_failed_safe)
+                          # only fires once and moves the change back to
+                          # pending before it can re-enter this status.
+    "pending",            # not yet dispatched
+    "dep-blocked",        # waiting for dependency, not yet dispatched
 })
 
 
@@ -1083,9 +1088,18 @@ def count_in_flight_changes(state: "OrchestratorState") -> int:
 
     A change is in-flight if it has been dispatched and has not yet reached
     a terminal/pending state. This includes: dispatched, running, done,
-    verifying, integrating, integration-failed, integration-e2e-failed,
-    integration-coverage-failed, fixing, merge-blocked, stalled, paused,
-    stopped, waiting:human, waiting:budget, and any future intermediate state.
+    verifying, integrating, integration-e2e-failed, integration-coverage-failed,
+    fixing, merge-blocked, stalled, paused, stopped, waiting:human,
+    waiting:budget, and any future intermediate state.
+
+    Note: `integration-failed` is TERMINAL (no auto-recovery loops back to
+    running from it — see _recover_integration_failed_safe which resets
+    to pending exactly once). It is therefore excluded from in-flight so
+    it does not hold a max_parallel slot indefinitely. Craftbrew-run-
+    20260423-2223 deadlocked on this: catalog-product-detail hit
+    integration-failed after 3 integration-e2e retries, counted as 1
+    in-flight at max_parallel=1, and blocked all 18 remaining pending
+    changes for 30+ minutes.
 
     Section 10 of fix-replan-stuck-gate-and-decomposer introduced suffixed
     failure statuses (`failed:stuck_no_progress`,

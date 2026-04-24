@@ -43,7 +43,9 @@ DEFAULT_MONITOR_IDLE_TIMEOUT = 1800
 DEFAULT_MAX_REPLAN_RETRIES = 3
 MAX_REPLAN_CYCLES = 5
 VERIFY_TIMEOUT = 600  # 10 min max for verify gate
-DEFAULT_E2E_RETRY_LIMIT = 3  # max integration-e2e redispatches per change
+DEFAULT_E2E_RETRY_LIMIT = 5  # max integration-e2e redispatches per change
+                             # (raised from 3 — sibling-test pollution
+                             # convergence often needs more rounds)
 
 
 # ─── Directives ────────────────────────────────────────────────────
@@ -1181,6 +1183,11 @@ def monitor_loop(
 
         # Integration e2e failed recovery (redispatch agent to fix)
         _recover_integration_e2e_failed(state_file, d, event_bus)
+
+        # Integration failed (merger-side retry exhausted) auto-recovery —
+        # bounded by _INTEGRATION_FAILED_MAX_AUTO_RETRY, one cooldown cycle
+        # between attempts.
+        _recover_integration_failed_safe(state_file, d, event_bus)
 
         # Note: no cascade_failed_deps() — pending changes with failed deps
         # simply stay pending (never dispatched because deps_met() returns False).
@@ -2634,6 +2641,100 @@ def _recover_integration_e2e_failed(
                            data={"reason": "integration_e2e_failed", "retry": e2e_retry})
 
         resume_change(state_file, change.name, event_bus=event_bus)
+
+
+# Cooldown before we auto-retry an integration-failed change. Mirrors
+# STALL_COOLDOWN_SECONDS so the agent's last artifacts (logs, reports) are
+# fully flushed before we redispatch.
+_INTEGRATION_FAILED_COOLDOWN_SECONDS = 120
+# How many times a change can auto-recover from integration-failed.
+# Raised to 5: sibling-test pollution / shared state issues often need
+# multiple iterations of the agent figuring out what state it's
+# touching. Between each retry the agent gets a fresh session (F5
+# guard) + retry_context carrying the sibling failure details; some
+# rounds surface new clues (which specific sibling spec + line).
+_INTEGRATION_FAILED_MAX_AUTO_RETRY = 5
+
+
+def _recover_integration_failed_safe(
+    state_file: str, d: Any, event_bus: Any,
+) -> None:
+    """Auto-recover changes stuck in `integration-failed`.
+
+    Craftbrew-run-20260423-2223 showed that once a change hit
+    `integration-failed` (merger exhausted the `integration_e2e_retry_count`
+    budget), no code path brought it back to life. The change sat in that
+    state forever, blocking the max_parallel slot. The earlier `state.py`
+    fix (excluding `integration-failed` from in-flight) unblocks
+    concurrency, but the change itself still never gets another chance.
+
+    This function gives each integration-failed change **one** automatic
+    retry: after _INTEGRATION_FAILED_COOLDOWN_SECONDS elapsed since the
+    last failure, it's promoted back to `pending`, the
+    `integration_e2e_retry_count` is cleared so the merger's budget
+    resets, `retry_context` is preserved (so the agent sees the prior
+    smoke output), and `integration_auto_retry_count` is incremented so
+    we don't loop forever.
+
+    On the second integration-failed (`integration_auto_retry_count`
+    already == _INTEGRATION_FAILED_MAX_AUTO_RETRY), we log DEBUG and
+    leave the change terminal. `_NOT_IN_FLIGHT_STATUSES` now excludes
+    `integration-failed`, so the dispatcher continues with remaining
+    pending changes regardless.
+    """
+    try:
+        state = load_state(state_file)
+        now = int(time.time())
+        for change in state.changes:
+            if change.status != "integration-failed":
+                continue
+            auto_retry = int(change.extras.get("integration_auto_retry_count", 0) or 0)
+            if auto_retry >= _INTEGRATION_FAILED_MAX_AUTO_RETRY:
+                # Already used our one shot — leave terminal.
+                continue
+            stalled_at = int(change.extras.get("integration_failed_at", 0) or 0)
+            if stalled_at == 0:
+                # First time we've seen it in this status — stamp the time
+                # and wait one cooldown cycle before flipping.
+                update_change_field(
+                    state_file, change.name, "integration_failed_at", now,
+                    event_bus=event_bus,
+                )
+                continue
+            if (now - stalled_at) < _INTEGRATION_FAILED_COOLDOWN_SECONDS:
+                continue
+            # Time elapsed and we still have a budget — reset to pending.
+            update_change_field(
+                state_file, change.name, "status", "pending",
+                event_bus=event_bus,
+            )
+            update_change_field(
+                state_file, change.name, "integration_e2e_retry_count", 0,
+                event_bus=event_bus,
+            )
+            update_change_field(
+                state_file, change.name, "integration_auto_retry_count",
+                auto_retry + 1, event_bus=event_bus,
+            )
+            update_change_field(
+                state_file, change.name, "integration_failed_at", None,
+                event_bus=event_bus,
+            )
+            logger.info(
+                "Auto-recovering integration-failed %s — status→pending "
+                "(auto_retry=%d/%d, retry_context preserved)",
+                change.name, auto_retry + 1, _INTEGRATION_FAILED_MAX_AUTO_RETRY,
+            )
+            if event_bus:
+                event_bus.emit(
+                    "CHANGE_REDISPATCH", change=change.name,
+                    data={"reason": "integration_failed_auto_retry",
+                          "auto_retry": auto_retry + 1},
+                )
+    except Exception:
+        logger.warning(
+            "integration-failed auto-recovery raised", exc_info=True,
+        )
 
 
 # ─── Completion Detection ──────────────────────────────────────────
