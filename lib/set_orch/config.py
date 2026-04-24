@@ -81,10 +81,16 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "max_stuck_loops": 3,
     # Per-change token-runaway circuit breaker. If input_tokens grow by more than
     # this delta without the gate fingerprint changing, mark failed:token_runaway.
-    "per_change_token_runaway_threshold": 20_000_000,
+    # Must match the engine.py @dataclass default; divergence makes the limit
+    # silently downgrade to the smaller value (config.py defaults win at runtime).
+    "per_change_token_runaway_threshold": 50_000_000,
     # Aggregate retry wall-time budget per change (ms). Sum of every retry's
-    # verify-pipeline wall time. Exhaustion escalates to fix-iss.
-    "max_retry_wall_time_ms": 1_800_000,
+    # verify-pipeline wall time. Exhaustion escalates to fix-iss. Must match
+    # engine.py @dataclass default — divergence here was the root cause of
+    # craftbrew-run-20260423-2223 catalog-product-detail's spurious
+    # `failed:retry_wall_time_exhausted` after the 30→90 min code default raise:
+    # config.py kept 30m and won at runtime, so the engine.py raise was a no-op.
+    "max_retry_wall_time_ms": 5_400_000,
     # Gate-retry policy cap — after N cache reuses in a row on the same gate,
     # the gate runs fully the next time regardless of scope overlap.
     "max_consecutive_cache_uses": 2,
