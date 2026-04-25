@@ -6,7 +6,20 @@ Your worktree contains a **design source export** — typically `v0-export/` (v0
 
 If no design-source export is present in your worktree, skip this rule.
 
-## Component-mounting rule (NEW — design-binding-completeness)
+## Locale convention: design source = canonical HU, consumer = i18n-aware
+
+**v0-design (and similar design tools) emit HU-only canonical previews by convention.** UI strings are HU literals (`<Button>Kosárba</Button>`) and route paths are HU slugs (`'/belepes'`, `'/kavek'`). This is **not** a bug — the design source is a single-locale preview, not the deployed app.
+
+**The CONSUMER (your orchestrated app) is what makes it locale-aware**, via next-intl:
+- **UI strings:** transform `<Button>Kosárba</Button>` → `<Button>{t('product.addToCart')}</Button>` at implementation. Add the entry to `messages/hu.json` (canonical) AND `messages/en.json` (translation).
+- **Route paths:** import next-intl `<Link>` or `useRouter()`; the design source's HU literal (`/belepes`) is the canonical key, transformed to `/en/login` at render time via the `pathnames` map in `i18n/routing.ts`.
+- **Middleware:** `/` → `/hu` redirect; `[locale]` segment for non-default locales.
+
+**DO NOT propify HU literals back into the design source** (e.g. don't add `labels?: { addToCart: string }` props to `<Button>` — the design source intentionally has the canonical HU string). Translation happens at IMPLEMENTATION time.
+
+The `set-design-hygiene` scanner reports HU literals as INFO severity (not WARN) because of this convention.
+
+## Component-mounting rule (design-binding-completeness)
 
 **If a shell component for your feature exists in the design source's `components/` directory, mount it. DO NOT create a parallel implementation under a different name.**
 

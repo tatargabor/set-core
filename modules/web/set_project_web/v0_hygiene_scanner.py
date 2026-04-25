@@ -59,6 +59,10 @@ def scan_v0_export(
         # the project's design surface.
         if "components/ui/" in str(tsx):
             continue
+        # Skip node_modules / .next / dist — third-party + build artifacts.
+        path_str = str(tsx)
+        if "/node_modules/" in path_str or "/.next/" in path_str or "/dist/" in path_str:
+            continue
         try:
             text = tsx.read_text(encoding="utf-8", errors="replace")
         except OSError as e:
@@ -124,6 +128,16 @@ _JSX_BODY_STRING_RE = re.compile(
 
 
 def _rule_2_hardcoded_strings(rel: str, text: str) -> list[HygieneFinding]:
+    """Hardcoded UI strings in JSX bodies.
+
+    Severity is INFO (not WARN) because v0-design sources are HU-only
+    canonical previews by convention — the consumer agent transforms HU
+    literals into i18n catalog calls at implementation time. The literal
+    is the "source of truth" for the HU translation and is expected.
+
+    This rule still flags so operators can audit i18n coverage, but does
+    not block import or run.
+    """
     out = []
     for m in _JSX_BODY_STRING_RE.finditer(text):
         # Skip if inside an attribute (heuristic: previous char before `>`
@@ -137,10 +151,14 @@ def _rule_2_hardcoded_strings(rel: str, text: str) -> list[HygieneFinding]:
         line = text.count("\n", 0, m.start()) + 1
         out.append(HygieneFinding(
             rule="hardcoded-ui-strings",
-            severity=HygieneSeverity.WARN,
+            severity=HygieneSeverity.INFO,
             file=rel, line=line,
             message=f"Hardcoded UI string in JSX body: {snippet[:40]!r}",
-            suggested_fix="Lift to a prop (e.g. `labels?.{key}`) or use i18n at the consumer",
+            suggested_fix=(
+                "Expected in v0-design HU canonical preview — consumer "
+                "transforms via i18n catalog (`t('key')`). Audit only if "
+                "v0 needs design-time multi-locale rendering."
+            ),
         ))
     # Cap noise: report at most 5 per file.
     return out[:5]
