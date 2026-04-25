@@ -990,6 +990,16 @@ class WebProjectType(CoreProfile):
         """Declare the file-glob scope whose modification invalidates a
         cached-policy gate's verdict. A retry whose diff touches ANY
         matched file forces a full re-run of the gate.
+
+        e2e is a scoped gate but falls through to cached policy when
+        gate_scope_filter cannot derive any specs from the diff. Without
+        a cache_scope, the empty default means EVERY fall-through reuses
+        the prior verdict — so a fix-diff on tests/unit (or any non-
+        spec/non-app file) silently re-cements a failing verdict even
+        though the agent's commit may have addressed the failure (e.g.
+        a cart-merge.test.ts truncation fix that affects shared schema
+        seed state used by e2e). Treat e2e cache as broadly invalidating
+        — any source/test/schema/lock/config change forces a fresh run.
         """
         scopes = {
             "review": ["src/**", "tests/**", "prisma/**"],
@@ -997,6 +1007,12 @@ class WebProjectType(CoreProfile):
             "design-fidelity": [
                 "src/**/*.tsx", "src/**/*.css",
                 "public/design-tokens.json", "tailwind.config.ts",
+            ],
+            "e2e": [
+                "src/**", "tests/**", "prisma/**",
+                "package.json", "pnpm-lock.yaml",
+                "next.config.js", "next.config.ts",
+                "tailwind.config.ts", "postcss.config.mjs",
             ],
         }
         return scopes.get(gate_name, [])
