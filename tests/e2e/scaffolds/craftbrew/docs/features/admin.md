@@ -1,7 +1,5 @@
 # Admin Panel
 
-> **Figma frames:** Admin Dashboard, Admin Products, Admin Orders & Deliveries, Admin Coupons/Promo/Gift/Reviews, Admin Subscriptions — see [design-system.md](../design/design-system.md#frame-mapping)
-
 Admin panel — accessible only to logged-in users with the ADMIN role.
 
 - Admin accounts are created via seed data only (no admin user management in v1)
@@ -10,58 +8,9 @@ Admin panel — accessible only to logged-in users with the ADMIN role.
 
 ## Admin layout
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  CraftBrew Admin                       Admin Name [Logout] │
-├──────────┬──────────────────────────────────────────────────┤
-│          │                                                  │
-│  Home    │  (content appears here)                          │
-│  Products│                                                  │
-│  Orders  │                                                  │
-│  Shipping│                                                  │
-│  Subscr. │                                                  │
-│  Coupons │                                                  │
-│  GiftCard│                                                  │
-│  Reviews │                                                  │
-│  Promo   │                                                  │
-│  Content │                                                  │
-│          │                                                  │
-└──────────┴──────────────────────────────────────────────────┘
-```
-
 On mobile, the sidebar collapses into a hamburger menu (drawer, opens from the left).
 
 ## Dashboard
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Good morning, Admin!                         2026-03-10   │
-│                                                             │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐
-│  │ Today's rev. │ │ Orders       │ │ Active subs. │ │ New users  │
-│  │ 127 450 Ft   │ │ 12 (today)   │ │ 34 users     │ │ 8 (7 days)│
-│  │ ▲ +23%       │ │ ▲ +15%       │ │ ▲ +5          │ │ ▼ -2      │
-│  └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘
-│                                                             │
-│  ┌─ Revenue trend (7 days) ────────────────────────────┐   │
-│  │  ▂▃▅▇█▆▇                                            │   │
-│  │  M  T  W  T  F  S  S                                │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌─ Top 3 products today ─────────────────────────────┐    │
-│  │ 1. Ethiopia Yirgacheffe (250g whole bean) — 8 pcs   │    │
-│  │ 2. Starter bundle — 3 pcs                           │    │
-│  │ 3. Colombia Huila (1kg whole bean) — 2 pcs          │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-│  ┌─ Low stock ───────────────────────────────────────┐     │
-│  │ Rwanda Nyungwe 1kg whole bean — 5 pcs remaining     │    │
-│  │ Fellow Stagg kettle — 8 pcs remaining               │    │
-│  │ Kenya AA Nyeri 1kg whole bean — 8 pcs remaining     │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
 
 KPI cards: percentage change compared to the previous period (today vs yesterday, 7 days vs previous 7 days).
 Low stock: products/variants with stock <= 10 units.
@@ -148,33 +97,6 @@ On click, modal or separate page:
   - Any time: "Cancel order" (with confirmation) → refund → stock restoration
 
 ## Daily Deliveries
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Daily deliveries           [◄ 2026-03-10 ►]               │
-│                                                             │
-│  Morning (6:00-9:00) — 12 deliveries                       │
-│  ┌──────┬───────────┬──────────────┬──────────┬──────────┐ │
-│  │ Time │ Customer  │ Address      │ Product  │ Status   │ │
-│  ├──────┼───────────┼──────────────┼──────────┼──────────┤ │
-│  │ 6:30 │ Smith J.  │ Váci u. 12   │ Eth. 250g│ ☐ Prep.  │ │
-│  │ 7:00 │ Doe J.    │ Dob u. 45    │ Col. 500g│ ☐ Prep.  │ │
-│  └──────┴───────────┴──────────────┴──────────┴──────────┘ │
-│                                                             │
-│  Late morning (9:00-12:00) — 8 deliveries                  │
-│  [...]                                                      │
-│                                                             │
-│  Afternoon (14:00-17:00) — 3 deliveries                    │
-│  [...]                                                      │
-│                                                             │
-│  Summary:                                                   │
-│  Total: 23 │ Subscription: 19 │ One-time: 4               │
-│  Budapest: 18 │ +20km: 5                                   │
-│                                                             │
-│  [☐ All delivered] (bulk status button)                    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
 
 Subscription-generated shipments and one-time orders appear together.
 
@@ -293,22 +215,3 @@ Form fields:
 - **SEO description HU/EN** (auto first 160 characters, editable)
 - **Status** (Draft / Published)
 - **Publication date** (auto now, editable — future date = scheduled)
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Product Detail**: see design-system.md § Page Layouts
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Subscription**: see design-system.md § Page Layouts
-- **Stories**: Uses: figma
-- **Profile**: see design-system.md § Page Layouts
-- **Search**: see design-system.md § Page Layouts

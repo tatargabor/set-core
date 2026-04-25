@@ -1,7 +1,5 @@
 # Reviews & Wishlist Feature
 
-> **Figma frames:** Product Detail (reviews section), User Orders & Profile (favorites), Admin Coupons/Promo/Gift/Reviews — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## Reviews
 
 ### Who Can Write a Review?
@@ -20,36 +18,6 @@ Appears on the product details page, at the top of the reviews section (if the u
 ### Review Display
 
 On the product page, in the "Reviews" section:
-
-```
-── Reviews (4.5★ — 12 reviews) ───────────────────────────
-
-┌─────────────────────────────────────────────────────────┐
-│ ★★★★★  "The best coffee of my life"                     │
-│ John Smith — 2026-03-08                                  │
-│                                                          │
-│ This was my first time ordering specialty coffee and     │
-│ I was completely blown away. The floral aroma is         │
-│ noticeable right from grinding, and the cup tastes       │
-│ like pure jasmine tea. I love it!                        │
-│                                                          │
-│ 💬 CraftBrew replied:                                   │
-│ "Thank you John! The Yirgacheffe is truly special.      │
-│  Try the Rwanda Nyungwe too if you enjoy fruity          │
-│  tasting notes!"                                         │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│ ★★★☆☆  "Good, but not my favorite"                     │
-│ Jane Doe — 2026-03-05                                    │
-│                                                          │
-│ Quality coffee, but a bit too acidic for my taste.       │
-│ I prefer the Brazil Cerrado style. The shipping was      │
-│ fast though, arrived the next day.                       │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
 
 ### Review Moderation
 
@@ -74,20 +42,6 @@ On the product page, in the "Reviews" section:
 ## "What Our Customers Say" Section
 
 On the homepage (bottom section), the highest-rated, approved reviews:
-
-```
-── What Our Customers Say ────────────────────────────────
-
-┌──────────┐ ┌──────────┐ ┌──────────┐
-│ ★★★★★    │ │ ★★★★★    │ │ ★★★★☆    │
-│ "Best    │ │ "Starter │ │ "Always  │
-│ coffee   │ │ bundle   │ │ arrives  │
-│ ever"    │ │ perfect  │ │ fresh"   │
-│          │ │ start"   │ │          │
-│ Smith J. │ │ Brown M. │ │ Davis K. │
-│ Ethiopia │ │ B1 bundle│ │ Subscr.  │
-└──────────┘ └──────────┘ └──────────┘
-```
 
 Selection logic: TOP 3 reviews by rating + recency, minimum 4 stars.
 
@@ -117,20 +71,3 @@ When a product/variant stock is 0:
 - On click: the product is added to the favorites list with a "back in stock notification" flag
 - When admin restocks (stock > 0): email sent to all users who requested notification
 - After sending, the flag is removed (one-time notification)
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Product Detail**: see design-system.md § Page Layouts
-- **Cart**: Uses: Button, figma
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Profile**: see design-system.md § Page Layouts

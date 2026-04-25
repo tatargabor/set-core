@@ -1,7 +1,5 @@
 # Cart & Checkout Feature
 
-> **Figma frames:** Cart, Checkout 3-Step — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## Cart
 
 ### Adding to Cart
@@ -14,46 +12,6 @@
 - Layout header: cart icon with badge (item count)
 
 ### Cart Page
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Your Cart (3 items)                                     │
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │ ░░ │ Ethiopia Yirgacheffe              │            ││
-│  │ ░░ │ Whole bean, 250g                   │            ││
-│  │    │ 2 490 Ft × [- 2 +]  │ Subtotal: 4 980 Ft    [🗑] ││
-│  ├────┼────────────────────────────────────┼────────────┤│
-│  │ ░░ │ Hario V60 Dripper                 │            ││
-│  │    │ 4 990 Ft × [- 1 +]  │ Subtotal: 4 990 Ft    [🗑] ││
-│  ├────┼────────────────────────────────────┼────────────┤│
-│  │ ░░ │ CraftBrew mug                     │            ││
-│  │    │ 3 490 Ft × [- 1 +]  │ Subtotal: 3 490 Ft    [🗑] ││
-│  └────┴────────────────────────────────────┴────────────┘│
-│                                                          │
-│  ┌─ Coupon Code ───────────────────────────────────────┐│
-│  │ [____________coupon code___________] [Redeem]        ││
-│  │ ✅ ELSO10 — 10% discount applied                    ││
-│  └──────────────────────────────────────────────────────┘│
-│                                                          │
-│  ┌─ Gift Card ────────────────────────────────────────┐│
-│  │ [____________GC-XXXX-XXXX____________] [Redeem]     ││
-│  │ ✅ 5 000 Ft deducted (remaining balance: 2 510 Ft) ││
-│  └──────────────────────────────────────────────────────┘│
-│                                                          │
-│  Subtotal:                          13 460 Ft           │
-│  Discount (ELSO10, -10%):          -1 346 Ft           │
-│  Gift Card:                        -5 000 Ft           │
-│  Shipping:          after entering shipping address     │
-│  ─────────────────────────────────────────────           │
-│  Total Due:                         7 114 Ft           │
-│                                                          │
-│  [████████ Proceed to Checkout ████████]                 │
-│                                                          │
-│  🛡️ Secure card payment                                 │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
 
 ### Cart Mobile
 
@@ -79,36 +37,6 @@
 
 ### Step 1: Shipping
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Shipping Details                      1 ● — 2 ○ — 3 ○ │
-│                                                          │
-│  ┌─ Saved Addresses (if any) ─────────────────────────┐│
-│  │ ● Home — Váci u. 12, 1052 Budapest  (Budapest)     ││
-│  │ ○ Office — Kossuth tér 4, 2000 Szentendre (+20km)  ││
-│  │ ○ Add new address                                   ││
-│  └──────────────────────────────────────────────────────┘│
-│                                                          │
-│  OR new address:                                         │
-│  Name:         [_________________________]               │
-│  Postal Code:  [______]  → auto zone detection           │
-│  City:         [_________________________]               │
-│  Street, No.:  [_________________________]               │
-│  Phone:        [_________________________]               │
-│                                                          │
-│  Shipping method:                                        │
-│  ● Home delivery — 990 Ft (Budapest)                    │
-│  ○ In-store pickup — Free                               │
-│    CraftBrew Labor, Kazinczy u. 28, 1075 Budapest       │
-│    Mon-Fri 7:00-18:00, Sat 8:00-14:00                   │
-│                                                          │
-│  ℹ️ Free shipping above 15 000 Ft (Budapest)            │
-│                                                          │
-│  [████████ Continue to Payment ████████]                  │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
 **Automatic zone detection based on postal code:**
 - 1000-1999: Budapest → 990 Ft (free above 15 000 Ft)
 - 2000-2199: +20km → 1 490 Ft (free above 25 000 Ft)
@@ -117,61 +45,9 @@
 
 ### Step 2: Payment
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Payment                               1 ✓ — 2 ● — 3 ○ │
-│                                                          │
-│  ┌─ Order Summary ───────────────────────────────────┐ │
-│  │ 3 items                                 13 460 Ft  │ │
-│  │ Discount (ELSO10)                       -1 346 Ft  │ │
-│  │ Gift Card                               -5 000 Ft  │ │
-│  │ Shipping (Budapest)                        990 Ft  │ │
-│  │ ─────────────────────────────────────────           │ │
-│  │ Total Due:                               8 104 Ft  │ │
-│  └────────────────────────────────────────────────────┘ │
-│                                                          │
-│  ┌─ Card Details ───────────────────────────────────┐ │
-│  │ Card Number:  [4242 4242 4242 4242]                │ │
-│  │ Expiry:       [12/26]  CVC: [123]                  │ │
-│  └────────────────────────────────────────────────────┘ │
-│                                                          │
-│  [████████ Pay and Place Order ████████]                  │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
 **Zero-amount checkout:** If gift card covers the entire order amount (0 Ft payable), Step 2 (Payment) is skipped — checkout goes directly from Step 1 (Shipping) to Step 3 (Confirmation).
 
 ### Step 3: Confirmation
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  ✅ Thank you for your order!          1 ✓ — 2 ✓ — 3 ✓ │
-│                                                          │
-│  Order Number: #1042                                     │
-│  Date: 2026-03-10 14:32                                  │
-│                                                          │
-│  Shipping Address: Váci u. 12, 1052 Budapest            │
-│  Estimated Delivery: 2026-03-12                          │
-│                                                          │
-│  Items:                                                  │
-│  - Ethiopia Yirgacheffe, whole bean 250g × 2 4 980 Ft   │
-│  - Hario V60 Dripper × 1                     4 990 Ft   │
-│  - CraftBrew mug × 1                         3 490 Ft   │
-│                                                          │
-│  Subtotal:                                13 460 Ft     │
-│  Discount (ELSO10, -10%):                -1 346 Ft     │
-│  Gift Card:                              -5 000 Ft     │
-│  Shipping:                                   990 Ft     │
-│  ─────────────────────────────────────────               │
-│  Total:                                   8 104 Ft     │
-│                                                          │
-│  [Download Invoice (PDF)]  [My Orders]                  │
-│                                                          │
-│  📧 Confirmation email sent to: user@example.com        │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
 
 ### Checkout Mobile
 
@@ -278,20 +154,3 @@ Daily delivery restriction: if the user's address zone is +40km, the "Daily" fre
 3. If cart value >= free shipping threshold → shipping fee = 0 Ft
 4. If no free shipping threshold (+40km) → always charged
 5. On the cart page: "Only X Ft more for free shipping!" message (if relevant)
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Product Detail**: see design-system.md § Page Layouts
-- **Cart**: Uses: Button, figma
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Subscription**: see design-system.md § Page Layouts

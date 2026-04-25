@@ -1,7 +1,5 @@
 # User Accounts Feature
 
-> **Figma frames:** Auth Pages, User Orders & Profile, User Profile & Addresses — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## Registration
 
 Form fields:
@@ -36,56 +34,7 @@ Inline validation — errors appear below the fields.
 
 ## Profile Page
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  ┌─ Sidebar ───┐  My Profile                            │
-│  │             │                                         │
-│  │ 👤 Profile  │  ┌─ Personal details ──────────────┐   │
-│  │ 📍 Addresses│  │ Name:   [John Smith          ]   │   │
-│  │ 📦 Orders   │  │ Email:  [john.smith@email.com]   │   │
-│  │ ☕ Subscr.   │  │ Lang:   [English ▼]             │   │
-│  │ ❤️ Favorites │  │                                  │   │
-│  │ ⭐ Reviews   │  │ [Save]                           │   │
-│  │             │  └──────────────────────────────────┘   │
-│  │ [Log out]   │                                         │
-│  └─────────────┘  ┌─ Change password ───────────────┐   │
-│                   │ Old password: [_______________]  │   │
-│                   │ New password: [_______________]  │   │
-│                   │ Confirm:      [_______________]  │   │
-│                   │ [Change password]                │   │
-│                   └──────────────────────────────────┘   │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
 ## My Addresses
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  My saved addresses                                      │
-│                                                          │
-│  ┌─ Home (default) ────────────────────────────────┐    │
-│  │ John Smith                                       │    │
-│  │ Váci utca 12, 3rd floor, apt. 4                  │    │
-│  │ 1052 Budapest                                    │    │
-│  │ Zone: Budapest (990 Ft)                          │    │
-│  │ +36 30 123 4567                                  │    │
-│  │ [Edit] [Delete]                                  │    │
-│  └──────────────────────────────────────────────────┘    │
-│                                                          │
-│  ┌─ Office ────────────────────────────────────────┐    │
-│  │ John Smith                                       │    │
-│  │ Kossuth tér 4.                                   │    │
-│  │ 2000 Szentendre                                  │    │
-│  │ Zone: +20km (1 490 Ft)                           │    │
-│  │ +36 30 123 4567                                  │    │
-│  │ [Edit] [Delete] [Set as default]                 │    │
-│  └──────────────────────────────────────────────────┘    │
-│                                                          │
-│  [+ Add new address]                                     │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
 
 Address fields:
 - Label (e.g., "Home", "Office") — required
@@ -141,21 +90,3 @@ The following static pages must exist (linked from the footer):
 - Cart: session-based, works without login
 - Checkout: login required → redirect to login → after successful login, return to cart
 - Cart merge: anonymous cart transfers to the user's cart on login
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Cart**: Uses: Button, figma
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Stories**: Uses: figma
-- **Profile**: see design-system.md § Page Layouts
-- **Search**: see design-system.md § Page Layouts

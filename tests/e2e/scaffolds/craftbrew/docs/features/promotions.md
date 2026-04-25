@@ -1,7 +1,5 @@
 # Promotions Feature
 
-> **Figma frames:** Cart (coupon/gift card input), Admin Coupons/Promo/Gift/Reviews, Special States (promo banner) — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## Coupons
 
 ### Coupon Types
@@ -42,7 +40,7 @@ Admin-configurable special days when an automatic discount applies. No coupon co
 
 1. Admin configures: name, date, discount %, banner text
 2. On the given day:
-   - **Banner** appears on the homepage (styled per design-system.md)
+   - **Banner** appears on the homepage
    - At checkout, **automatic discount** is applied (shown as a separate line in the order summary: "Store Birthday -20%")
    - **Email** sent to all registered users (if not already sent)
 3. After the day ends, the banner disappears and the discount no longer applies
@@ -84,19 +82,3 @@ At checkout (on the cart page):
 - Admin panel: card list, balances, transaction log
 - Expiry: 1 year from purchase — expired cards cannot be redeemed
 - Gift cards cannot be used to purchase other gift cards
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Cart**: Uses: Button, figma
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Search**: see design-system.md § Page Layouts

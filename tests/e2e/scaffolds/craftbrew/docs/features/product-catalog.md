@@ -1,7 +1,5 @@
 # Product Catalog Feature
 
-> **Figma frames:** Homepage Desktop, Homepage Mobile, Coffee Catalog, Product Detail — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## Homepage
 
 The homepage (`/hu` or `/en`) is the main entry point for customers.
@@ -16,14 +14,6 @@ The homepage (`/hu` or `/en`) is the main entry point for customers.
 6. **Newsletter / promo banner** — if a promo day is active today, the promo banner replaces this section
 
 ### Header (all pages)
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ [LOGO] CraftBrew    [Search...]   [HU/EN] [♡] [🛒 3] [👤] │
-├────────────────────────────────────────────────────────────┤
-│  Coffees  Equipment  Merch  Bundles  Stories  Subscription │
-└────────────────────────────────────────────────────────────┘
-```
 
 - **Logo:** links to homepage
 - **Search:** expands on focus, instant search results dropdown
@@ -73,43 +63,6 @@ Each card contains:
 Individual page for every product.
 
 ### Coffee Product Details
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  ┌──────────────┐  Name (large heading font)              │
-│  │              │  Origin: Ethiopia, 1800-2200m          │
-│  │  PRODUCT IMG │  Roast: ●○○ Light                     │
-│  │   (large)    │  Processing: Washed                    │
-│  │              │                                        │
-│  │              │  Flavor Notes: [floral] [citrusy]      │
-│  │              │                [jasmine] [bergamot]     │
-│  └──────────────┘                                        │
-│                                                          │
-│  Description text (2-3 paragraphs)                      │
-│                                                          │
-│  ┌─ Variant Selector ────────────────────────────┐     │
-│  │ Form:     [Whole Bean ▼]                        │     │
-│  │ Size:       ○ 250g (2490 Ft)                    │     │
-│  │             ● 500g (4680 Ft)                    │     │
-│  │             ○ 1kg  (6580 Ft)                    │     │
-│  │                                                 │     │
-│  │ Grind (if ground): [Filter ▼]                   │     │
-│  │                                                 │     │
-│  │ Stock: 30 pcs                                   │     │
-│  │                                                 │     │
-│  │ Quantity: [- 1 +]                               │     │
-│  │                                                 │     │
-│  │ [████ Add to Cart ████] [♡ Favorite]            │     │
-│  └─────────────────────────────────────────────────┘     │
-│                                                          │
-│  ── Recommended For You ─────────────────────────────   │
-│  [V60 Dripper]  [V60 Filter]  [Starter Bundle]          │
-│                                                          │
-│  ── Reviews (4.5★ — 12 reviews) ────────────────────   │
-│  [review list...]                                        │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
 
 ### Equipment/Merch Details
 
@@ -167,23 +120,3 @@ Bundle product card extra info:
 - "Separate price" crossed out + "Bundle price" highlighted
 - Savings % badge (e.g., "-28%")
 - Bundle stock = minimum stock among components
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Product Detail**: see design-system.md § Page Layouts
-- **Cart**: Uses: Button, figma
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Subscription**: see design-system.md § Page Layouts
-- **Stories**: Uses: figma
-- **Profile**: see design-system.md § Page Layouts
-- **Search**: see design-system.md § Page Layouts

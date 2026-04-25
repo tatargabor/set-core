@@ -6,50 +6,6 @@
 
 This spec is modular. The main file (this one) contains the overview, conventions, and verification checklist. Detailed specs are in subdirectories:
 
-```
-docs/
-├── v1-craftbrew.md              ← You are here (overview + conventions + checklist)
-├── catalog/
-│   ├── coffees.md               ← 8 specialty coffees with variants
-│   ├── equipment.md             ← 7 brewing equipment items
-│   ├── merch.md                 ← 5 merch/promo items
-│   └── bundles.md               ← 4 curated bundles
-├── features/                    ← HOW it should work (business requirements)
-│   ├── product-catalog.md       ← Search, filter, variants, cross-sell
-│   ├── cart-checkout.md         ← Cart, checkout, shipping zones, payment, invoice
-│   ├── subscription.md          ← Coffee subscription + delivery scheduling
-│   ├── user-accounts.md         ← Registration, login, profile, addresses
-│   ├── reviews-wishlist.md      ← Ratings, comments, wishlist, restock alerts
-│   ├── promotions.md            ← Coupons, promo days, gift cards
-│   ├── content-stories.md       ← Blog/stories, origin stories, brew guides
-│   ├── email-notifications.md   ← Transactional emails
-│   ├── admin.md                 ← Dashboard, CRUD, orders, reviews, content
-│   ├── i18n.md                  ← HU/EN internationalization rules
-│   └── seo.md                   ← Meta tags, schema.org, sitemap, canonical URLs
-└── design/                      ← HOW it should look (visual spec)
-    └── design-system.md         ← Colors, fonts, layouts, ASCII mockups
-```
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Product Detail**: see design-system.md § Page Layouts
-- **Cart**: Uses: Button, figma
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Subscription**: see design-system.md § Page Layouts
-- **Stories**: Uses: figma
-- **Profile**: see design-system.md § Page Layouts
-- **Search**: see design-system.md § Page Layouts
-
 ## Business Conventions
 
 - **Currency:** HUF (Hungarian Forint). Integer, no decimals. Display format: `2 490 Ft`. All displayed prices are gross (VAT-inclusive, 27% Hungarian VAT).

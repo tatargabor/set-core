@@ -1,7 +1,5 @@
 # Email Notifications Feature
 
-> **Figma frames:** Email Templates — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## General Rules
 
 - **Language:** Emails are sent according to the user's language preference (HU or EN). If there is no logged-in user (e.g., gift card recipient), the default is HU. All example subjects and CTA text below are shown in English.
@@ -107,19 +105,3 @@ Content:
 - Amount: e.g., "10 000 Ft"
 - CTA: "Redeem in the webshop" → homepage
 - Validity: "Valid for 1 year"
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Homepage**: see design-system.md § Page Layouts
-- **Catalog**: see design-system.md § Page Layouts
-- **Product Detail**: see design-system.md § Page Layouts
-- **Checkout**: Uses: Button
-- **Admin**: see design-system.md § Page Layouts
-- **Auth**: see design-system.md § Page Layouts
-- **Subscription**: see design-system.md § Page Layouts

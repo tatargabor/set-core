@@ -1,7 +1,5 @@
 # Content & Stories Feature
 
-> **Figma frames:** Stories — see [design-system.md](../design/design-system.md#frame-mapping)
-
 ## Stories Section
 
 Blog-like content section, but structured — every article is linked to a category and products.
@@ -18,53 +16,7 @@ Blog-like content section, but structured — every article is linked to a categ
 
 ### Story List Page
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Stories                                                 │
-│                                                          │
-│  [All] [Origin Stories] [Roasting] [Brewing]            │
-│  [Health] [Gift Ideas]                                   │
-│                                                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                │
-│  │ ░░░░░░░░ │ │ ░░░░░░░░ │ │ ░░░░░░░░ │                │
-│  │ ░ COVER  ░│ │ ░ COVER  ░│ │ ░ COVER  ░│                │
-│  │ ░░░░░░░░ │ │ ░░░░░░░░ │ │ ░░░░░░░░ │                │
-│  │          │ │          │ │          │                │
-│  │ Origin   │ │ Brewing  │ │ Health   │                │
-│  │ Yirgach. │ │ V60 pour │ │ The      │                │
-│  │ The      │ │ over     │ │ benefits │                │
-│  │ birth-   │ │ step by  │ │ of       │                │
-│  │ place    │ │ step     │ │ coffee   │                │
-│  │ 2026-03  │ │ 2026-02  │ │ 2026-01  │                │
-│  └──────────┘ └──────────┘ └──────────┘                │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
 ### Story Details Page
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  [Origin Stories]                                        │
-│                                                          │
-│  Yirgacheffe: The Birthplace of Coffee                  │
-│  CraftBrew Team — March 1, 2026                         │
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │                    COVER IMAGE                        ││
-│  │         (Ethiopian coffee plantation landscape)       ││
-│  └─────────────────────────────────────────────────────┘│
-│                                                          │
-│  [Article content — 3-5 paragraphs...]                   │
-│                                                          │
-│  ── Related Products ───────────────────────────────    │
-│  [Ethiopia Yirgacheffe]  [Discover Africa bundle]       │
-│                                                          │
-│  ── Share ─────────────────────────────────────────     │
-│  [Facebook] [Twitter/X] [Copy link]                     │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
 
 ## Mobile
 
@@ -115,15 +67,3 @@ Every story has HU and EN content. Each seed must contain at least 2-3 paragraph
 ### 10. "Coffee Gifts Under 5, 10, and 20 Thousand" (Gift Ideas)
 - **Related products:** B4 Gift for Coffee Lovers, B1 Starter Pack, B3 Pro Barista, M4 Gift Card
 - **Content outline:** Budget-based gift ideas, bundle and gift card combos, what to consider when buying coffee as a gift.
-
-## Design Reference
-
-Use exact values from `docs/design-system.md` — do NOT use framework defaults.
-
-**Key colors**: primary `#78350F`, secondary `#D97706`, background `#FFFBEB`
-**Fonts**: Playfair Display, Inter, JetBrains Mono
-
-**Matched pages:**
-- **Catalog**: see design-system.md § Page Layouts
-- **Stories**: Uses: figma
-- **Search**: see design-system.md § Page Layouts
