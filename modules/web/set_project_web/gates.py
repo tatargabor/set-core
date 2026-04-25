@@ -82,6 +82,30 @@ _DEP_INSTALL_TIMEOUT_S = 120
 
 _MODULE_NOT_FOUND_RE = re.compile(r"Cannot find module '([^']+)'")
 
+# DB env-drift self-heal: signatures that indicate `.env` carries a stale
+# DATABASE_URL whose protocol does not match the schema's declared provider.
+# Each entry is either a single substring or a 2-tuple of substrings that BOTH
+# must be present in e2e_output. See `_extract_db_env_drift` and
+# `_self_heal_db_env_drift` for the recovery contract.
+_DB_ENV_DRIFT_SIGNATURES: tuple = (
+    "[global-setup] DATABASE_URL/schema provider mismatch",
+    ("Error validating datasource", "URL must start with the protocol"),
+    ("Command failed: npx prisma db seed", "PrismaClientInitializationError"),
+)
+
+# Schema provider → URL prefix matcher. Mirrors the TS `expected` map in the
+# template's `validateDatabaseUrl()` so behavior is identical at both layers.
+_SCHEMA_PROVIDER_URL_RE: dict = {
+    "postgresql": re.compile(r"^postgres(ql)?://", re.IGNORECASE),
+    "mysql": re.compile(r"^mysql://", re.IGNORECASE),
+    "sqlite": re.compile(r"^file:", re.IGNORECASE),
+    "sqlserver": re.compile(r"^sqlserver://", re.IGNORECASE),
+}
+
+_PRISMA_DATASOURCE_RE = re.compile(
+    r"datasource\s+\w+\s*\{[^}]*provider\s*=\s*\"([^\"]+)\""
+)
+
 
 def _install_marker_path(wt_path: str, package_manager: str) -> str:
     """Return the install marker file that pnpm/npm writes at the end of install.
@@ -300,6 +324,213 @@ def _self_heal_missing_module(
         "pass" if healed else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable"),
     )
     return (healed, pkg_name, rerun_result)
+
+
+# ─── DB env-drift self-heal (e2e-env-drift-guard) ─────────────────────
+
+
+def _extract_db_env_drift(e2e_output: str) -> bool:
+    """Return True if e2e_output matches any known DB env-drift signature.
+
+    See `_DB_ENV_DRIFT_SIGNATURES` for the full list. Signatures are either
+    single substrings or 2-tuples (both substrings must be present).
+    """
+    if not e2e_output:
+        return False
+    for sig in _DB_ENV_DRIFT_SIGNATURES:
+        if isinstance(sig, str):
+            if sig in e2e_output:
+                return True
+        else:
+            if all(part in e2e_output for part in sig):
+                return True
+    return False
+
+
+def _read_schema_provider(wt_path: str) -> str | None:
+    """Parse `prisma/schema.prisma` for the declared `provider`.
+
+    Returns the provider name (e.g. "postgresql") or None if the schema is
+    missing or unparseable. Mirrors the TS template's regex for parity.
+    """
+    schema_path = os.path.join(wt_path, "prisma", "schema.prisma")
+    if not os.path.isfile(schema_path):
+        return None
+    try:
+        with open(schema_path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return None
+    m = _PRISMA_DATASOURCE_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _resolve_database_url_from_config(project_root: str) -> str | None:
+    """Read `set/orchestration/config.yaml` and return `env_vars.DATABASE_URL`.
+
+    Returns None if:
+      - the config file is missing,
+      - YAML parsing fails (logged at WARNING),
+      - or the `env_vars.DATABASE_URL` key is absent.
+    """
+    config_path = os.path.join(project_root, "set", "orchestration", "config.yaml")
+    if not os.path.isfile(config_path):
+        return None
+    try:
+        import yaml
+
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except Exception as e:
+        logger.warning(
+            "e2e_db_env_config_yaml_parse_failed path=%s error=%s",
+            config_path, e,
+        )
+        return None
+    if not isinstance(data, dict):
+        return None
+    env_vars = data.get("env_vars") or {}
+    if not isinstance(env_vars, dict):
+        return None
+    val = env_vars.get("DATABASE_URL")
+    return val if isinstance(val, str) and val else None
+
+
+def _resync_dotenv_database_url(wt_path: str, new_url: str) -> bool:
+    """Rewrite or append `DATABASE_URL=` in the worktree's `.env`.
+
+    Preserves all other lines; replaces only the FIRST `DATABASE_URL=` line
+    (if multiple are present, only the first is updated — Node uses the first
+    occurrence). Atomic write via `<path>.tmp` + `os.replace`.
+
+    Returns True on success, False on any IO failure (caller logs).
+    Returns False without writing if `new_url` contains a literal double-
+    quote — that would break the quoted `.env` value and silently corrupt
+    every other consumer (Node `dotenv`, `next.config.js`, etc.). Real
+    DB connection strings never include `"`; rejecting them is safer than
+    escaping.
+    """
+    if '"' in new_url:
+        logger.warning(
+            "e2e_db_env_dotenv_resync_refused wt=%s reason=url_contains_double_quote",
+            wt_path,
+        )
+        return False
+    env_path = os.path.join(wt_path, ".env")
+    new_line = f'DATABASE_URL="{new_url}"\n'
+    try:
+        if os.path.isfile(env_path):
+            with open(env_path, encoding="utf-8") as f:
+                lines = f.readlines()
+            replaced = False
+            for i, line in enumerate(lines):
+                if line.lstrip().startswith("DATABASE_URL="):
+                    lines[i] = new_line
+                    replaced = True
+                    break
+            if not replaced:
+                # Ensure trailing newline before appending
+                if lines and not lines[-1].endswith("\n"):
+                    lines[-1] = lines[-1] + "\n"
+                lines.append(new_line)
+            payload = "".join(lines)
+        else:
+            payload = new_line
+        tmp_path = env_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp_path, env_path)
+        return True
+    except OSError as e:
+        logger.warning(
+            "e2e_db_env_dotenv_resync_failed wt=%s error=%s",
+            wt_path, e,
+        )
+        return False
+
+
+def _self_heal_db_env_drift(
+    wt_path: str,
+    profile,
+    e2e_output: str,
+    change_name: str,
+    env: dict,
+    actual_e2e_cmd: str,
+    e2e_timeout: int,
+) -> tuple[bool, str, object] | None:
+    """Detect + self-heal a DATABASE_URL/schema provider mismatch.
+
+    Returns None if the output doesn't match any env-drift signature, the
+    schema is unreadable, or `set/orchestration/config.yaml` lacks a
+    recoverable URL. In those cases the caller proceeds with the normal
+    failure flow.
+
+    Otherwise rewrites `.env` with the recovered URL, reruns e2e once
+    in-gate (with the override also applied to the child process env), and
+    returns (healed, recovered_url, rerun_cmd_result). `healed` is True when
+    the rerun produced a clean pass (exit 0, no flaky, no runtime errors).
+
+    Mirrors `_self_heal_missing_module`'s contract: at most one self-heal
+    per gate invocation; `verify_retry_count` is NOT incremented.
+    """
+    from set_orch.subprocess_utils import run_command
+
+    if not _extract_db_env_drift(e2e_output):
+        return None
+    provider = _read_schema_provider(wt_path)
+    if not provider:
+        logger.info(
+            "e2e_db_env_drift_no_schema change=%s wt=%s — skipping self-heal",
+            change_name, wt_path,
+        )
+        return None
+    matcher = _SCHEMA_PROVIDER_URL_RE.get(provider)
+    recovered = _resolve_database_url_from_config(wt_path)
+    if not recovered:
+        logger.warning(
+            "e2e_db_env_drift_no_config_url change=%s wt=%s provider=%s — config.yaml has no env_vars.DATABASE_URL",
+            change_name, wt_path, provider,
+        )
+        return None
+    if matcher and not matcher.search(recovered):
+        logger.warning(
+            "e2e_db_env_drift_config_url_also_mismatch change=%s provider=%s recovered_url_prefix=%s",
+            change_name, provider, recovered.split(":", 1)[0] if ":" in recovered else recovered[:8],
+        )
+        return None
+    logger.info(
+        "e2e_db_env_drift_detected change=%s wt=%s recovered_url_provider=%s",
+        change_name, wt_path, provider,
+    )
+    t0 = time.monotonic()
+    if not _resync_dotenv_database_url(wt_path, recovered):
+        return None
+    resync_ms = int((time.monotonic() - t0) * 1000)
+    # Override DATABASE_URL in the child process env directly — Node's
+    # `dotenv/config` re-reads .env at startup but defensive layering keeps
+    # the rerun deterministic even if the env-loading order changes.
+    env_with_url = {**env, "DATABASE_URL": recovered}
+    rerun_result = run_command(
+        ["bash", "-c", actual_e2e_cmd],
+        timeout=e2e_timeout, cwd=wt_path, env=env_with_url,
+        max_output_size=_E2E_CAPTURE_MAX_BYTES,
+    )
+    rerun_output = rerun_result.stdout + rerun_result.stderr
+    rerun_flaky = _count_flaky_tests(rerun_output) if env_with_url.get("PW_FLAKY_FAILS") else 0
+    rerun_runtime_errors = _check_e2e_runtime_errors(rerun_output)
+    healed = (
+        rerun_result.exit_code == 0
+        and not rerun_result.timed_out
+        and rerun_flaky == 0
+        and not rerun_runtime_errors
+    )
+    logger.info(
+        "e2e_db_env_self_heal_resynced_and_rerun change=%s resync_duration_ms=%d "
+        "rerun_exit_code=%d rerun_outcome=%s",
+        change_name, resync_ms, rerun_result.exit_code,
+        "pass" if healed else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable"),
+    )
+    return (healed, recovered, rerun_result)
 
 
 def _extract_e2e_failure_ids(output: str) -> set[str]:
@@ -1007,17 +1238,19 @@ def execute_e2e_gate(
     # means Playwright crashed or the formatter output was garbled — the
     # baseline comparison cannot help here, and would mask the failure as PASS.
     if not wt_failures:
-        # Self-heal (e2e-auto-install-on-dep-drift): if the crash is a
-        # declared-but-not-installed dep (MODULE_NOT_FOUND for a package
-        # in package.json), run install + one in-gate rerun — no retry
-        # slot consumed. Cap at one attempt per gate call.
+        # Self-heal probes: try at most ONE recovery per gate invocation, no
+        # `verify_retry_count` increment. Order matters — dep-drift first
+        # (MODULE_NOT_FOUND short-circuits before Prisma init, so it cannot
+        # also produce env-drift output in the same run); env-drift second
+        # as the safety net for projects that lag the template's
+        # `validateDatabaseUrl()` pre-flight.
         if not self_heal_attempted:
-            self_heal_attempted = True
             _sh = _self_heal_missing_module(
                 wt_path, profile, e2e_output, change_name,
                 env=e2e_env, actual_e2e_cmd=actual_e2e_cmd, e2e_timeout=e2e_timeout,
             )
             if _sh is not None:
+                self_heal_attempted = True
                 healed, self_heal_pkg, rerun_result = _sh
                 self_heal_marker = f"[self-heal: installed {self_heal_pkg}]\n\n"
                 # Replace outer state with rerun values for downstream logic.
@@ -1037,6 +1270,35 @@ def execute_e2e_gate(
                 # Rerun produced parseable failures → fall through to baseline path
                 # (wt_failures is non-empty now, so the `if not wt_failures:` check
                 # below will not re-enter this block).
+
+        # Env-drift self-heal (e2e-env-drift-guard): only fires when dep-drift
+        # didn't match. DATABASE_URL/schema provider mismatch caused by a
+        # stale `.env` is a different failure class than MODULE_NOT_FOUND;
+        # the recovery rewrites `.env` from `set/orchestration/config.yaml`
+        # and reruns once.
+        if not self_heal_attempted:
+            _sh_env = _self_heal_db_env_drift(
+                wt_path, profile, e2e_output, change_name,
+                env=e2e_env, actual_e2e_cmd=actual_e2e_cmd, e2e_timeout=e2e_timeout,
+            )
+            if _sh_env is not None:
+                self_heal_attempted = True
+                healed, recovered_url, env_rerun_result = _sh_env
+                self_heal_marker = "[self-heal: synced .env from config.yaml]\n\n"
+                e2e_cmd_result = env_rerun_result
+                e2e_output = env_rerun_result.stdout + env_rerun_result.stderr
+                wt_failures = _extract_e2e_failure_ids(e2e_output)
+                if healed:
+                    logger.info(
+                        "e2e_db_env_self_heal_succeeded change=%s — returning pass",
+                        change_name,
+                    )
+                    return GateResult(
+                        "e2e", "pass",
+                        output=self_heal_marker + e2e_output,
+                        stats=parse_test_output(e2e_output) if e2e_output else None,
+                    )
+                # Fall through to fail path with the rerun output.
 
         if not wt_failures:
             logger.warning(

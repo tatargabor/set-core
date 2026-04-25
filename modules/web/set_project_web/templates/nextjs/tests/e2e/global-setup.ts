@@ -75,6 +75,99 @@ function invalidateStaleBuild(): string | null {
 }
 
 /**
+ * Validate that DATABASE_URL matches the provider declared in
+ * `prisma/schema.prisma`. The orchestrator bootstraps `.env` from
+ * `set/orchestration/config.yaml.env_vars` at worktree dispatch — if the
+ * schema's `provider` is later changed (e.g. SQLite → PostgreSQL) the stale
+ * `.env` carries the wrong URL forward and `npx prisma db push` crashes
+ * deep inside Prisma with no Playwright-parseable failure list. Catch the
+ * mismatch up front with a clear, actionable error instead.
+ *
+ * Recovery: when `.env` carries a wrong provider URL (e.g. the orchestrator
+ * reset it from a stale template), attempt to self-heal from
+ * `set/orchestration/config.yaml env_vars.DATABASE_URL` before throwing.
+ *
+ * Belt-and-suspenders: the gate-runner Python side has a parallel self-heal
+ * (`_self_heal_db_env_drift` in `modules/web/set_project_web/gates.py`) that
+ * fires when this pre-flight is absent or could not recover. The TS pre-flight
+ * is the cheaper path — it runs in the same process as Prisma init so it
+ * catches the bad state before any DB command touches the wrong URL.
+ */
+function validateDatabaseUrl(): void {
+  const schemaPath = join(PROJECT_ROOT, "prisma", "schema.prisma");
+  if (!existsSync(schemaPath)) return;
+
+  const schema = readFileSync(schemaPath, "utf8");
+  const providerMatch = schema.match(
+    // [^}]*? + 's' flag would be cleaner but requires ES2018; the negated
+    // class works on older targets and is sufficient for `datasource X { ... }`
+    /datasource\s+\w+\s*\{[^}]*provider\s*=\s*"([^"]+)"/,
+  );
+  if (!providerMatch) return;
+  const provider = providerMatch[1];
+
+  const expected: Record<string, RegExp> = {
+    postgresql: /^postgres(ql)?:\/\//i,
+    mysql: /^mysql:\/\//i,
+    sqlite: /^file:/i,
+    sqlserver: /^sqlserver:\/\//i,
+  };
+  const matcher = expected[provider];
+
+  let url = process.env.DATABASE_URL;
+
+  // If the URL is missing or mismatches the schema provider, try to recover
+  // from set/orchestration/config.yaml before failing. The orchestrator may
+  // have reset .env from a stale template that still points at the old provider.
+  if (!url || (matcher && !matcher.test(url))) {
+    const configPath = join(PROJECT_ROOT, "set", "orchestration", "config.yaml");
+    if (existsSync(configPath)) {
+      try {
+        const configText = readFileSync(configPath, "utf8");
+        // Simple line-by-line extraction — avoids a YAML parser dependency.
+        // Matches: `  DATABASE_URL: "postgresql://..."` or `  DATABASE_URL: postgresql://...`
+        const match = configText.match(
+          /^\s*DATABASE_URL:\s*["']?([^\s"'\n]+)["']?\s*$/m,
+        );
+        if (match) {
+          const configUrl = match[1];
+          if (!matcher || matcher.test(configUrl)) {
+            warn(
+              `DATABASE_URL in .env ("${(url ?? "").replace(/:[^:@]*@/, ":****@")}") ` +
+                `does not match schema provider="${provider}". ` +
+                `Auto-correcting from set/orchestration/config.yaml.`,
+            );
+            process.env.DATABASE_URL = configUrl;
+            url = configUrl;
+          }
+        }
+      } catch (err) {
+        warn(
+          `failed to read set/orchestration/config.yaml for DATABASE_URL recovery: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  if (!url) {
+    throw new Error(
+      `[global-setup] DATABASE_URL is not set. ` +
+        `prisma/schema.prisma declares provider="${provider}" — ` +
+        `set DATABASE_URL in .env or via set/orchestration/config.yaml env_vars.`,
+    );
+  }
+
+  if (matcher && !matcher.test(url)) {
+    throw new Error(
+      `[global-setup] DATABASE_URL/schema provider mismatch — ` +
+        `schema.prisma provider="${provider}" but DATABASE_URL="${url.replace(/:[^:@]*@/, ":****@")}". ` +
+        `Update .env (or set/orchestration/config.yaml env_vars.DATABASE_URL) to match the schema provider.`,
+    );
+  }
+  log(`DATABASE_URL provider OK (schema="${provider}")`);
+}
+
+/**
  * Persist the current HEAD SHA as the marker for the .next build that
  * Playwright's webServer is about to produce. Called after Prisma setup so
  * Next.js has a chance to rebuild when invalidateStaleBuild() removed .next/.
@@ -98,6 +191,14 @@ async function globalSetup() {
   // Zombie port cleanup lives in the orchestrator gate-runner (Python side)
   // because globalSetup runs AFTER Playwright's webServer has already bound
   // the port — killing anything listening here would kill our own server.
+
+  // Fail fast on DATABASE_URL/schema-provider mismatch. Prevents the silent
+  // crash where `prisma db push --force-reset` dies deep with no Playwright-
+  // parseable failure list (root cause when .env carries a stale provider URL
+  // from worktree bootstrap that no longer matches schema.prisma).
+  // Recovers from set/orchestration/config.yaml.env_vars.DATABASE_URL when
+  // possible; throws an actionable error otherwise.
+  validateDatabaseUrl();
 
   // Stale .next cache causes clientReferenceManifest errors after merges.
   // The BUILD_COMMIT marker replaces the previous "always rm -rf" behavior
