@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from .config import DIRECTIVE_DEFAULTS
 from .root import SET_TOOLS_ROOT
 from .state import (
     OrchestratorState,
@@ -40,12 +41,13 @@ DEFAULT_POLL_INTERVAL = 15
 DEFAULT_TIME_LIMIT = 0  # 0 = no limit; set "5h" or similar in config to enable
 DEFAULT_TOKEN_HARD_LIMIT = 50_000_000
 DEFAULT_MONITOR_IDLE_TIMEOUT = 1800
-DEFAULT_MAX_REPLAN_RETRIES = 3
+# verify-gate-resilience-fixes Phase 3: constants now alias DIRECTIVE_DEFAULTS
+# so module-level imports remain backward-compatible while the canonical value
+# lives in config.py. Raises in DIRECTIVE_DEFAULTS automatically propagate.
+DEFAULT_MAX_REPLAN_RETRIES = DIRECTIVE_DEFAULTS["max_replan_retries"]  # raised 3 → 5
 MAX_REPLAN_CYCLES = 5
 VERIFY_TIMEOUT = 600  # 10 min max for verify gate
-DEFAULT_E2E_RETRY_LIMIT = 5  # max integration-e2e redispatches per change
-                             # (raised from 3 — sibling-test pollution
-                             # convergence often needs more rounds)
+DEFAULT_E2E_RETRY_LIMIT = DIRECTIVE_DEFAULTS["e2e_retry_limit"]  # raised 5 → 8
 
 
 # ─── Directives ────────────────────────────────────────────────────
@@ -65,8 +67,12 @@ class Directives:
     auto_replan: bool = False
     max_replan_cycles: int = MAX_REPLAN_CYCLES
     test_timeout: int = 600
-    max_verify_retries: int = 6
-    e2e_retry_limit: int = DEFAULT_E2E_RETRY_LIMIT
+    # verify-gate-resilience-fixes: read from DIRECTIVE_DEFAULTS so config.py
+    # is the single source of truth. Field-default uses default_factory because
+    # the value should be re-read at instance construction (not class definition)
+    # in case DIRECTIVE_DEFAULTS gets re-imported during testing.
+    max_verify_retries: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["max_verify_retries"])
+    e2e_retry_limit: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["e2e_retry_limit"])
     integration_smoke_blocking: bool = True  # Smoke failures block the merge by default
     integration_smoke_timeout: int = 300  # Per-change smoke run timeout (sibling specs)
     llm_verdict_classifier_enabled: bool = True  # Second Sonnet pass classifies LLM gate outputs into structured verdicts (review/spec-verify/investigator)
@@ -122,23 +128,12 @@ class Directives:
     hook_on_fail: str = ""
 
     # fix-replan-stuck-gate-and-decomposer: circuit breakers + retry policy.
-    # After `max_stuck_loops` consecutive `loop_status=stuck` exits with an
-    # identical `last_gate_fingerprint`, the change is hard-failed and
-    # escalated to fix-iss. See retry-loop-completion spec.
-    max_stuck_loops: int = 3
-    # Per-change token-runaway breaker: cumulative input_token growth above
-    # this delta without a gate-fingerprint change trips the breaker.
-    # Raised from 20M to 50M (2.5x) after craftbrew-run-20260423-2223 showed
-    # auth-user-registration-and-login bursting at 20.3M with sibling-spec
-    # pollution work-in-progress — give the agent more headroom to converge
-    # before escalating to fix-iss.
-    per_change_token_runaway_threshold: int = 50_000_000
-    # Cumulative verify-pipeline wall time budget per change (ms).
-    # Raised from 30 min (1.8M ms) to 90 min (5.4M ms, 3x) after
-    # catalog-product-detail hit failed:retry_wall_time_exhausted with the
-    # implementation already passing — the (B) sibling-spec retries were
-    # eating the budget. 90 min covers ~6 retry rounds at ~15 min each.
-    max_retry_wall_time_ms: int = 5_400_000
+    # verify-gate-resilience-fixes: defaults read from DIRECTIVE_DEFAULTS
+    # (single source of truth). Phase 3 raises ceilings to evidence-based
+    # values; the dataclass picks them up automatically.
+    max_stuck_loops: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["max_stuck_loops"])
+    per_change_token_runaway_threshold: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["per_change_token_runaway_threshold"])
+    max_retry_wall_time_ms: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["max_retry_wall_time_ms"])
     # Cap on consecutive cached verdicts before forcing a full gate run.
     max_consecutive_cache_uses: int = 2
     # Decomposer granularity budget.
@@ -147,6 +142,18 @@ class Directives:
     loc_ambiguity_weight: int = 80
     # Replan divergent-plan reconciliation mode.
     divergent_plan_dir_cleanup: str = "enabled"
+
+    # ─── verify-gate-resilience-fixes: hoisted retry/circuit limits ───
+    # All fields below default to DIRECTIVE_DEFAULTS values (config.py canonical).
+    # Phase 4 will replace hardcoded constants in merger.py / verifier.py /
+    # watchdog.py / issues/models.py with directive lookups against these fields.
+    max_merge_retries: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["max_merge_retries"])
+    max_integration_retries: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["max_integration_retries"])
+    watchdog_timeout_running: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["watchdog_timeout_running"])
+    watchdog_timeout_verifying: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["watchdog_timeout_verifying"])
+    watchdog_timeout_dispatched: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["watchdog_timeout_dispatched"])
+    issue_diagnosed_timeout_secs: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["issue_diagnosed_timeout_secs"])
+    max_replan_retries: int = field(default_factory=lambda: DIRECTIVE_DEFAULTS["max_replan_retries"])
 
 
 def parse_directives(raw: dict) -> Directives:
@@ -187,7 +194,7 @@ def parse_directives(raw: dict) -> Directives:
     d.e2e_mode = _str(raw, "e2e_mode", d.e2e_mode)
     d.e2e_coverage_threshold = float(raw.get("e2e_coverage_threshold", d.e2e_coverage_threshold))
     d.e2e_port_base = _int(raw, "e2e_port_base", d.e2e_port_base)
-    d.token_hard_limit = _int(raw, "token_hard_limit", d.token_hard_limit)
+    # token_hard_limit parsed below in DEPRECATED block (with warning).
     d.events_log = _bool(raw, "events_log", d.events_log)
     d.events_max_size = _int(raw, "events_max_size", d.events_max_size)
     d.watchdog_timeout = _int(raw, "watchdog_timeout", d.watchdog_timeout)
@@ -237,6 +244,28 @@ def parse_directives(raw: dict) -> Directives:
     d.divergent_plan_dir_cleanup = _str(
         raw, "divergent_plan_dir_cleanup", d.divergent_plan_dir_cleanup,
     )
+
+    # verify-gate-resilience-fixes: hoisted retry/circuit limits.
+    d.max_merge_retries = _int(raw, "max_merge_retries", d.max_merge_retries)
+    d.max_integration_retries = _int(raw, "max_integration_retries", d.max_integration_retries)
+    d.watchdog_timeout_running = _int(raw, "watchdog_timeout_running", d.watchdog_timeout_running)
+    d.watchdog_timeout_verifying = _int(raw, "watchdog_timeout_verifying", d.watchdog_timeout_verifying)
+    d.watchdog_timeout_dispatched = _int(raw, "watchdog_timeout_dispatched", d.watchdog_timeout_dispatched)
+    d.issue_diagnosed_timeout_secs = _int(raw, "issue_diagnosed_timeout_secs", d.issue_diagnosed_timeout_secs)
+    d.max_replan_retries = _int(raw, "max_replan_retries", d.max_replan_retries)
+
+    # token_hard_limit: DEPRECATED. Parsed for backward compat (no crash on
+    # existing orchestration.yaml), then RESET TO 0 so runtime checks skip
+    # (see `if d.token_hard_limit > 0` guards in _check_token_hard_limit).
+    # Operators should migrate to per_change_token_runaway_threshold (50M).
+    if "token_hard_limit" in raw:
+        _legacy_val = _int(raw, "token_hard_limit", d.token_hard_limit)
+        logger.warning(
+            "token_hard_limit is DEPRECATED — use per_change_token_runaway_threshold instead. "
+            "The value (%s) was parsed but will be ignored at runtime.",
+            _legacy_val,
+        )
+        d.token_hard_limit = 0  # disable the legacy runtime check
 
     # Parse time limit
     tl = raw.get("time_limit", DEFAULT_TIME_LIMIT)
@@ -1281,9 +1310,15 @@ def monitor_loop(
         if poll_count % 10 == 0:
             try:
                 from .issues.watchdog import check_diagnosed_timeouts
-
+                # verify-gate-resilience-fixes: directive-overridable timeout.
+                _state = load_state(state_file)
+                _issue_timeout = _state.extras.get("directives", {}).get(
+                    "issue_diagnosed_timeout_secs",
+                    d.issue_diagnosed_timeout_secs,
+                )
                 check_diagnosed_timeouts(
                     Path(os.path.dirname(os.path.abspath(state_file))),
+                    timeout_secs=_issue_timeout,
                     event_bus=event_bus,
                 )
             except Exception:
@@ -1530,10 +1565,12 @@ def _apply_token_runaway_check(
             return False
 
         if prior_fp != cur_fp:
-            # Gate state changed — reset baseline.
+            # Gate state changed — reset baseline AND clear pre-warning flag
+            # so the new baseline gets a fresh chance to warn at 80%.
             old_base = change.token_runaway_baseline
             change.token_runaway_baseline = cur_in
             change.extras["token_runaway_fingerprint"] = cur_fp
+            change.extras.pop("token_prewarn_fired", None)
             logger.info(
                 "token-runaway baseline reset for %s: %d → %d tokens (fingerprint %s → %s)",
                 change_name, old_base, cur_in, prior_fp, cur_fp,
@@ -1541,6 +1578,52 @@ def _apply_token_runaway_check(
             return False
 
         delta = cur_in - change.token_runaway_baseline
+
+        # verify-gate-resilience-fixes: 80% pre-warning. One-shot per change
+        # per baseline cycle — surface the squeeze before the kill so the
+        # operator can react. Memory entry surfaces in next-run proactive_context.
+        if (
+            delta >= int(threshold * 0.8)
+            and not change.extras.get("token_prewarn_fired", False)
+        ):
+            change.extras["token_prewarn_fired"] = True
+            pct = int((delta / threshold) * 100) if threshold > 0 else 0
+            logger.warning(
+                "TOKEN_PRESSURE for %s: input_tokens grew by %d (baseline %d → %d, "
+                "%d%% of threshold %d) with unchanged fingerprint %s — runaway imminent",
+                change_name, delta, change.token_runaway_baseline, cur_in,
+                pct, threshold, cur_fp,
+            )
+            try:
+                # Best-effort memory entry. Failure is non-blocking.
+                import subprocess
+                subprocess.run(
+                    [
+                        "set-memory", "remember",
+                        f"Token pressure on {change_name}: {delta} delta ({pct}% of {threshold} threshold) "
+                        f"at fingerprint {cur_fp}. Pre-warning fired before token_runaway breaker.",
+                        "--type", "Learning",
+                        "--tags", f"token-pressure,{change_name},source:framework",
+                    ],
+                    timeout=10,
+                    capture_output=True,
+                )
+            except Exception:
+                logger.debug("token-pressure memory entry failed (non-blocking)", exc_info=True)
+            if event_bus:
+                event_bus.emit(
+                    "TOKEN_PRESSURE",
+                    change=change_name,
+                    data={
+                        "baseline": change.token_runaway_baseline,
+                        "current": cur_in,
+                        "delta": delta,
+                        "threshold": threshold,
+                        "fingerprint": cur_fp,
+                        "percent": pct,
+                    },
+                )
+
         if delta > threshold:
             change.status = "failed:token_runaway"
             # Snapshot the threshold that was active at the failure point —

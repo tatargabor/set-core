@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .events import EventBus
+from .config import DIRECTIVE_DEFAULTS
 from .notifications import send_notification
 from .process import check_pid
 from .state import (
@@ -3799,7 +3800,11 @@ def handle_change_done(
     # ── Step 0.5: Integrate main into branch before gates ──
     if wt_path:
         integration_retry_count = change.extras.get("integration_retry_count", 0)
-        max_integration_retries = 3
+        # verify-gate-resilience-fixes: directive-overridable; default 5 (was 3).
+        _state = load_state(state_file)
+        max_integration_retries = _state.extras.get("directives", {}).get(
+            "max_integration_retries", DIRECTIVE_DEFAULTS["max_integration_retries"],
+        )
 
         integration_result = _integrate_main_into_branch(
             wt_path, change_name, state_file, event_bus,

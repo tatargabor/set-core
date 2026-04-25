@@ -145,7 +145,13 @@ def _final_token_collect(state_file: str, change_name: str, wt_path: str) -> Non
 
 # ─── Constants ──────────────────────────────────────────────────────
 
-MAX_MERGE_RETRIES = 3
+# verify-gate-resilience-fixes: MAX_MERGE_RETRIES is now an alias bound to
+# DIRECTIVE_DEFAULTS["max_merge_retries"] (= 5 after Phase 3, was 3). Module-level
+# import remains backward-compatible. Runtime call sites should prefer
+# `state.extras.get("directives", {}).get("max_merge_retries", MAX_MERGE_RETRIES)`
+# for operator-overridable behavior.
+from .config import DIRECTIVE_DEFAULTS as _DIRECTIVE_DEFAULTS  # noqa: E402
+MAX_MERGE_RETRIES = _DIRECTIVE_DEFAULTS["max_merge_retries"]
 MAX_TOTAL_MERGE_ATTEMPTS = 10  # hard cap — never retry beyond this regardless of counter resets
 DEFAULT_MERGE_TIMEOUT = 300  # 5 min (no post-merge smoke — just ff + deps + hooks)
 DEFAULT_MERGE_STALL_THRESHOLD = 6  # FF failures that escalate to failed:merge_stalled + fix-iss
@@ -2486,17 +2492,21 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
             logger.info("skipping merge for %s — owned by issue pipeline", name)
             continue
 
-        # Check retry counter — skip changes that exhausted merge retries
+        # Check retry counter — skip changes that exhausted merge retries.
+        # verify-gate-resilience-fixes: directive-overridable.
+        _max_merge_retries = state.extras.get("directives", {}).get(
+            "max_merge_retries", MAX_MERGE_RETRIES,
+        )
         retry_count = change.extras.get("merge_retry_count", 0)
-        if retry_count >= MAX_MERGE_RETRIES:
+        if retry_count >= _max_merge_retries:
             logger.warning(
                 "Merge retry limit reached for %s (%d/%d) — marking integration-failed",
-                name, retry_count, MAX_MERGE_RETRIES,
+                name, retry_count, _max_merge_retries,
             )
             update_change_field(state_file, name, "status", "integration-failed", event_bus=event_bus)
             if event_bus:
                 event_bus.emit("CHANGE_INTEGRATION_FAILED", change=name,
-                               data={"retry_count": retry_count, "max_retries": MAX_MERGE_RETRIES})
+                               data={"retry_count": retry_count, "max_retries": _max_merge_retries})
             _remove_from_merge_queue(state_file, name)
             continue
 
@@ -2665,11 +2675,15 @@ def retry_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                 update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
                 continue
 
+            # verify-gate-resilience-fixes: directive-overridable.
+            _max_merge_retries = state.extras.get("directives", {}).get(
+                "max_merge_retries", MAX_MERGE_RETRIES,
+            )
             retry_count = change.extras.get("merge_retry_count", 0)
-            if retry_count >= MAX_MERGE_RETRIES:
+            if retry_count >= _max_merge_retries:
                 logger.warning(
                     "Merge retry limit reached for %s (%d/%d) — marking integration-failed",
-                    change.name, retry_count, MAX_MERGE_RETRIES,
+                    change.name, retry_count, _max_merge_retries,
                 )
                 update_change_field(state_file, change.name, "status", "integration-failed", event_bus=event_bus)
                 continue

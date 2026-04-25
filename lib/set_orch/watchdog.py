@@ -21,10 +21,14 @@ logger = logging.getLogger(__name__)
 # ─── Configuration ───────────────────────────────────────────────
 # Migrated from: watchdog.sh L18-25
 
-# Per-state timeout defaults (seconds). Overridden by watchdog_timeout directive.
-WATCHDOG_TIMEOUT_RUNNING = 600
-WATCHDOG_TIMEOUT_VERIFYING = 300
-WATCHDOG_TIMEOUT_DISPATCHED = 120
+# Per-state timeout defaults (seconds).
+# verify-gate-resilience-fixes: constants now alias DIRECTIVE_DEFAULTS so
+# config.py is the canonical source. Phase 3 raised values: running 600→1800s,
+# verifying 300→1200s, dispatched 120s (unchanged).
+from .config import DIRECTIVE_DEFAULTS as _DD  # noqa: E402
+WATCHDOG_TIMEOUT_RUNNING = _DD["watchdog_timeout_running"]
+WATCHDOG_TIMEOUT_VERIFYING = _DD["watchdog_timeout_verifying"]
+WATCHDOG_TIMEOUT_DISPATCHED = _DD["watchdog_timeout_dispatched"]
 
 # Loop detection: consecutive identical action hashes before declaring stuck
 WATCHDOG_LOOP_THRESHOLD = 5
@@ -139,8 +143,11 @@ def watchdog_check(
     wd["action_hash_ring"] = hash_ring
     wd["consecutive_same_hash"] = consecutive_same
 
-    # Timeout check
-    timeout_secs = _timeout_for_status(status, timeout_override)
+    # Timeout check — directives override the per-state defaults.
+    # verify-gate-resilience-fixes: read state.extras["directives"] for
+    # operator-overridable timeouts (watchdog_timeout_running etc.).
+    _directives = state.get("extras", {}).get("directives", {}) if isinstance(state, dict) else {}
+    timeout_secs = _timeout_for_status(status, timeout_override, _directives)
     idle_secs = now - last_activity
 
     should_escalate = False
@@ -495,17 +502,25 @@ def _compute_action_hash(change: dict[str, Any], state_path: str) -> str:
 def _timeout_for_status(
     status: str,
     override: int | None = None,
+    directives: dict[str, Any] | None = None,
 ) -> int:
     """Get timeout threshold for a given change status.
 
     Migrated from: watchdog.sh:_watchdog_timeout_for_status()
+    verify-gate-resilience-fixes: `directives` parameter (default None) lets
+    callers pass per-run overrides for `watchdog_timeout_running`,
+    `watchdog_timeout_verifying`, `watchdog_timeout_dispatched`. When None,
+    falls back to module constants (which themselves alias DIRECTIVE_DEFAULTS).
     """
     if override:
         return override
+    # verify-gate-resilience-fixes: directives override the module-level
+    # constants. The state's directives dict is the runtime source of truth;
+    # constants serve as backward-compatible defaults if state is unavailable.
     return {
-        "running": WATCHDOG_TIMEOUT_RUNNING,
-        "verifying": WATCHDOG_TIMEOUT_VERIFYING,
-        "dispatched": WATCHDOG_TIMEOUT_DISPATCHED,
+        "running": directives.get("watchdog_timeout_running", WATCHDOG_TIMEOUT_RUNNING) if directives else WATCHDOG_TIMEOUT_RUNNING,
+        "verifying": directives.get("watchdog_timeout_verifying", WATCHDOG_TIMEOUT_VERIFYING) if directives else WATCHDOG_TIMEOUT_VERIFYING,
+        "dispatched": directives.get("watchdog_timeout_dispatched", WATCHDOG_TIMEOUT_DISPATCHED) if directives else WATCHDOG_TIMEOUT_DISPATCHED,
     }.get(status, WATCHDOG_TIMEOUT_RUNNING)
 
 

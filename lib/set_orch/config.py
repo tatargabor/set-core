@@ -33,7 +33,10 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "auto_replan": False,
     "review_before_merge": True,
     "test_timeout": 600,
-    "max_verify_retries": 8,
+    # verify-gate-resilience-fixes Phase 3: raised 8 → 12.
+    # Empirical: order-cancellation-and-returns retried 9 times before
+    # convergence in craftbrew-run-20260423-2223; 12 leaves slack.
+    "max_verify_retries": 12,
     "summarize_model": "haiku",
     "review_model": "opus",
     "default_model": "opus",
@@ -49,6 +52,11 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "monitor_idle_timeout": 1800,
     "merge_timeout": 1800,
     "post_merge_command": "",
+    # DEPRECATED (verify-gate-resilience-fixes): redundant with
+    # `per_change_token_runaway_threshold`. Still parsed for backward compat
+    # but ignored at runtime — engine emits a deprecation WARNING at startup
+    # if set in orchestration.yaml. Operators should migrate to
+    # `per_change_token_runaway_threshold` (50M default).
     "token_hard_limit": 20000000,
     "events_log": True,
     "events_max_size": 1048576,
@@ -78,7 +86,10 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     # fix-replan-stuck-gate-and-decomposer: per-change stuck-loop circuit breaker.
     # After N consecutive `loop_status=stuck` exits with an identical
     # last_gate_fingerprint, the change is hard-failed and escalated to fix-iss.
-    "max_stuck_loops": 3,
+    # Phase 3 (verify-gate-resilience-fixes): raised 3 → 5. False-positive
+    # stuck detections on planner-blamed (but actually-progressing) work seen
+    # in 2 runs — 5 gives more headroom.
+    "max_stuck_loops": 5,
     # Per-change token-runaway circuit breaker. If input_tokens grow by more than
     # this delta without the gate fingerprint changing, mark failed:token_runaway.
     # Must match the engine.py @dataclass default; divergence makes the limit
@@ -101,6 +112,31 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     # Replan divergent-plan reconciliation mode — "enabled" destroys stale
     # branches/dirs, "dry-run" only writes the manifest.
     "divergent_plan_dir_cleanup": "enabled",
+    # ─── verify-gate-resilience-fixes: hoist hardcoded constants to directives ───
+    # These mirror module-level constants (MAX_MERGE_RETRIES, WATCHDOG_TIMEOUT_*,
+    # DEFAULT_ISSUE_DIAGNOSED_TIMEOUT_SECS, DEFAULT_MAX_REPLAN_RETRIES) so all
+    # retry/circuit limits live in a single source of truth. Phase 1 keeps
+    # CURRENT default values (no behavior change). Phase 3 raises them to
+    # evidence-based ceilings.
+    # Phase 3: raised 3 → 5. Three runs hit MAX_MERGE_RETRIES on cross-cutting
+    # changes; 5 unblocks them.
+    "max_merge_retries": 5,
+    # Phase 3: raised 3 → 5. Sibling-spec convergence often needs more rebases.
+    "max_integration_retries": 5,
+    # Phase 3: raised 600s → 1800s (30 min). Agent gondolkodás >10m frequent.
+    "watchdog_timeout_running": 1800,
+    # Phase 3: raised 300s → 1200s (20 min). Empirical: 24-spec Playwright
+    # suite averages 12-15 min; 20 min absorbs flake.
+    "watchdog_timeout_verifying": 1200,
+    # Unchanged (dispatch bootstrap takes 30-60s, 120s sufficient).
+    "watchdog_timeout_dispatched": 120,
+    # Phase 3: raised 3600s → 5400s (90 min). ISS-006 needed ~65 min from
+    # diagnosed → fix-iss-005 dispatch in craftbrew-run; 90 min absorbs chain.
+    "issue_diagnosed_timeout_secs": 5400,
+    # Phase 3: raised 3 → 5.
+    "max_replan_retries": 5,
+    # Phase 3: raised 5 → 8. Sibling-test pollution convergence.
+    "e2e_retry_limit": 8,
 }
 
 
@@ -136,6 +172,7 @@ _VALIDATORS: dict[str, tuple[str, str | None]] = {
     "monitor_idle_timeout": ("int_pos", None),
     "merge_timeout": ("int_pos", None),
     "post_merge_command": ("str", None),
+    # token_hard_limit: DEPRECATED — see DIRECTIVE_DEFAULTS comment.
     "token_hard_limit": ("int", None),
     "events_log": ("bool", None),
     "events_max_size": ("int", None),
@@ -168,6 +205,15 @@ _VALIDATORS: dict[str, tuple[str, str | None]] = {
     "loc_schema_weight": ("int_pos", None),
     "loc_ambiguity_weight": ("int_pos", None),
     "divergent_plan_dir_cleanup": ("enum", r"^(enabled|dry-run)$"),
+    # verify-gate-resilience-fixes: validators for hoisted retry/circuit limits.
+    "max_merge_retries": ("int_pos", None),
+    "max_integration_retries": ("int_pos", None),
+    "watchdog_timeout_running": ("int_pos", None),
+    "watchdog_timeout_verifying": ("int_pos", None),
+    "watchdog_timeout_dispatched": ("int_pos", None),
+    "issue_diagnosed_timeout_secs": ("int_pos", None),
+    "max_replan_retries": ("int_pos", None),
+    "e2e_retry_limit": ("int_pos", None),
 }
 
 

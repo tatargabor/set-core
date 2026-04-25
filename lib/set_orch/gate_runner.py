@@ -533,6 +533,32 @@ class GatePipeline:
         if not subset:
             return None
 
+        # verify-gate-resilience-fixes: filter the candidate paths against
+        # actual filesystem existence BEFORE entering scoped-subset mode.
+        # Without this, the gate logs `Scoped gate: e2e running on N subset
+        # items: [bogus_path]` then falls back to the full suite, wasting
+        # ~30 min per retry on a no-op spawn. If 0 valid paths remain, return
+        # None so the caller falls through to cached/full policy.
+        from pathlib import Path as _Path
+        wt_path = self.change.worktree_path or ""
+        if wt_path:
+            _wt = _Path(wt_path)
+            existing = [s for s in subset if (_wt / s).exists()]
+            dropped = [s for s in subset if (_wt / s).exists() is False]
+            if dropped:
+                logger.info(
+                    "Scoped subset: filtered %d non-existent path(s) for %s/%s: %s",
+                    len(dropped), self.change_name, gate_name, dropped,
+                )
+            if not existing:
+                logger.info(
+                    "Scoped subset: 0 valid paths after existence filter for %s/%s — "
+                    "falling through to cached/full policy",
+                    self.change_name, gate_name,
+                )
+                return None
+            subset = existing
+
         # Scoped runs still respect the cache-use cap — 2 consecutive
         # scoped retries, then the 3rd forces a full run.
         if entry.consecutive_cache_uses >= self.max_consecutive_cache_uses:

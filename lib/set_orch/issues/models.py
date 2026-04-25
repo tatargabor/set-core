@@ -10,7 +10,12 @@ from enum import Enum
 from typing import Optional
 
 
-DEFAULT_ISSUE_DIAGNOSED_TIMEOUT_SECS = 3600  # 1 hour
+# verify-gate-resilience-fixes: aliased to DIRECTIVE_DEFAULTS so config.py
+# is the single source of truth. Phase 3 raised 3600 → 5400 (90 min) — ISS-006
+# in craftbrew-run-20260423-2223 needed ~65 min from diagnosed → fix-iss
+# dispatch; 90 min absorbs the dispatch chain.
+from ..config import DIRECTIVE_DEFAULTS as _DD  # noqa: E402
+DEFAULT_ISSUE_DIAGNOSED_TIMEOUT_SECS = _DD["issue_diagnosed_timeout_secs"]
 
 
 class IssueState(str, Enum):

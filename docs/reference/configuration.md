@@ -66,6 +66,35 @@ plan_method: api            # api | agent
 | `events_max_size` | int | `1048576` | Events log rotation threshold (bytes) |
 | `post_merge_command` | string | `""` | Command after merge (e.g., `pnpm db:generate`) |
 
+### Retry & Circuit Breaker Limits
+
+All retry/circuit-breaker limits live in `config.py DIRECTIVE_DEFAULTS` as the single source of truth (`verify-gate-resilience-fixes`). Defaults reflect evidence from production runs.
+
+| Directive | Default | Description |
+|-----------|---------|-------------|
+| `max_verify_retries` | `12` | Verify-gate retry ceiling (was 8 — raised after `order-cancellation-and-returns` retried 9× before convergence) |
+| `max_merge_retries` | `5` | Merge-queue retry ceiling (was hardcoded 3 in `merger.py`; cross-cutting changes need >3 rebases) |
+| `max_integration_retries` | `5` | Integration-merge-conflict retry ceiling (was hardcoded 3 in `verifier.py`) |
+| `e2e_retry_limit` | `8` | Integration-e2e redispatch ceiling (was 5 — sibling-test pollution convergence) |
+| `max_stuck_loops` | `5` | Consecutive `loop_status=stuck` exits before fix-iss escalation (was 3 — false-positive on planner-blamed work) |
+| `max_replan_retries` | `5` | Replan ceiling before terminal failure (was 3) |
+| `watchdog_timeout_running` | `1800` | Seconds idle in `running` state before watchdog escalates (was 600 — agent gondolkodás >10m frequent) |
+| `watchdog_timeout_verifying` | `1200` | Seconds idle in `verifying` state (was 300 — 24-spec Playwright suite needs ~15-20 min) |
+| `watchdog_timeout_dispatched` | `120` | Seconds idle in `dispatched` state before re-dispatch (unchanged) |
+| `issue_diagnosed_timeout_secs` | `5400` | Seconds an issue may stay in `diagnosed` before timeout watchdog fires (was 3600 — fix-iss dispatch chain takes ~65 min for cross-cutting bugs) |
+| `per_change_token_runaway_threshold` | `50000000` | Token-delta budget per change before runaway breaker fires (50 M); a WARNING + memory entry fires at 80% as pre-warning |
+| `max_retry_wall_time_ms` | `5400000` | Aggregate retry wall-time budget per change (90 min) |
+| `max_consecutive_cache_uses` | `2` | Consecutive gate-cache reuses before forced full run |
+
+#### Deprecated
+
+- **`token_hard_limit`** (was 20 M) — DEPRECATED in `verify-gate-resilience-fixes`. Redundant with `per_change_token_runaway_threshold`. Still parsed for backward compat (no crash on existing configs); a deprecation WARNING is logged at startup if set, and the value is reset to `0` so the legacy runtime check is skipped. Migrate to `per_change_token_runaway_threshold`.
+
+#### Behaviour notes
+
+- The `max_*` retry directives override module-level constants in `merger.py`, `verifier.py`, `watchdog.py`, and `issues/models.py`. Default values come from `DIRECTIVE_DEFAULTS` in `lib/set_orch/config.py`.
+- A pytest parity test (`tests/unit/test_config_engine_parity.py`) prevents silent divergence between `config.py` and the `Directives` dataclass — raising one constant alone is no longer possible.
+
 ### Hooks
 
 | Directive | Description |
