@@ -6,6 +6,17 @@ Admin panel — accessible only to logged-in users with the ADMIN role.
 - Single admin role: full access to all admin features
 - Admin actions are logged: order status changes, review moderation, stock modifications, coupon creation/edit — log entry includes: admin name, timestamp, action type, affected entity
 
+## Access control (route guard rules)
+
+Implementation MUST enforce these exact behaviors in middleware/layout:
+
+- **Anonymous user hits `/admin/*`** → `redirect('/hu/belepes?redirect=/admin/...')` with the original path preserved as a `redirect` query param. After successful login, return them here. Do NOT use `notFound()`/404, as that leaks the existence of the admin route to anyone scanning the site, AND it breaks the post-login return-URL pattern.
+- **Logged-in non-admin (regular customer) hits `/admin/*`** → `redirect('/hu/fiokom')` (their own account home). Do NOT use `notFound()` — the user IS authenticated and the route DOES exist; pretending it doesn't is misleading. Do NOT use `forbidden()`/403 either — there is no recovery action for the user, redirecting them to their account is more useful than a dead-end error page.
+- **Admin user hits `/admin/*`** → render normally.
+- **Logout from admin** → redirect to `/hu` (homepage), not back to `/admin`.
+
+Implementation hint: enforce in a single `app/admin/layout.tsx` server component that reads the session and calls `redirect()` from `next/navigation`. Do NOT duplicate the check per-route. Middleware MAY do an early redirect for anonymous users (cheaper), but the layout MUST still enforce role check (defense-in-depth — middleware can be bypassed in some Next.js edge cases).
+
 ## Admin layout
 
 On mobile, the sidebar collapses into a hamburger menu (drawer, opens from the left).

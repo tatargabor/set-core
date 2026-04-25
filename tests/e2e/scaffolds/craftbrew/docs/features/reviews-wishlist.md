@@ -15,6 +15,15 @@ Appears on the product details page, at the top of the reviews section (if the u
 - **Title:** short summary, max 100 characters (required)
 - **Text:** detailed review, max 1000 characters (required, min 20 characters)
 
+### Review Content Sanitization (security — required)
+
+Review title and text are user-generated content. Implementation MUST:
+- **Escape HTML on render** — render review text as plain text via React's default text-node escaping. NEVER use `dangerouslySetInnerHTML` for review content. Newlines in user input render as `<br/>` (preserve line breaks; nothing else).
+- **Strip control characters** before persistence (zero-width chars, RTL/LTR overrides, NULL).
+- **Reject submissions** that contain HTML-like tags (`<` followed by a letter) on the server side — return 400 with field-level error "HTML and code are not allowed in reviews". This is a server-side check; do NOT trust client-side stripping.
+
+**Test fixtures with intentional XSS payloads.** The seed data and test fixtures include reviews with payloads like `<script>alert(1)</script>`, `"><img src=x onerror=alert(1)>`, javascript: URLs, and SQL-injection-like strings (`'; DROP TABLE reviews;--`). These are intentional and MUST remain in the seed/fixtures unchanged — they verify the sanitization paths work correctly. Do NOT "fix" them by removing the payloads. The test assertion is that the rendered HTML contains the literal escaped string (not executed code).
+
 ### Review Display
 
 On the product page, in the "Reviews" section:

@@ -263,15 +263,48 @@ ATTRS
     mkdir -p set/orchestration
     cat > set/orchestration/config.yaml <<YAML
 # Orchestration config for CraftBrew E2E
+#
+# Most retry/circuit limits are NOT set here — they inherit from
+# lib/set_orch/config.py::DIRECTIVE_DEFAULTS (the canonical defaults raised by
+# the verify-gate-resilience-fixes change). Override only when this scaffold
+# genuinely needs a different value than every other project.
+#
+# Inherited (do NOT override unless there's a scaffold-specific reason):
+#   max_verify_retries: 12          (was 4 — raised after circuit-breaker false positives)
+#   max_merge_retries: 5            (was 3)
+#   max_integration_retries: 5      (was 3)
+#   e2e_retry_limit: 8              (was 5)
+#   max_stuck_loops: 5              (was 3)
+#   max_replan_retries: 5           (was 3)
+#   watchdog_timeout_running: 1800
+#   watchdog_timeout_verifying: 1200
+#   issue_diagnosed_timeout_secs: 5400
+#
+# Scaffold-specific overrides below (each must justify why it deviates):
+
 default_model: opus
 e2e_command: npx playwright test
+
+# CraftBrew has a large Playwright suite (storefront + admin + checkout flows)
+# that takes longer than the framework default. 60 min covers the full sweep
+# even on cold caches.
 e2e_timeout: 3600
+
+# CraftBrew is a 30+ change spec with shared files (schema.prisma, seed.ts,
+# i18n bundle, prisma migrations). Parallel merges cause near-100% conflict
+# rate. Keep at 1 — see feedback memory feedback_e2e_max_parallel_1.md.
 max_parallel: 1
+
 merge_policy: eager
 auto_replan: true
+
+# Replan cycles (whole-plan re-decomposition). 3 is enough for a 30-change run;
+# more than that usually indicates a planner-level problem, not a retryable
+# transient.
 max_replan_cycles: 3
+
 review_before_merge: true
-max_verify_retries: 4
+
 env_vars:
   DATABASE_URL: "file:./dev.db"
 discord:

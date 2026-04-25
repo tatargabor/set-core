@@ -28,6 +28,16 @@ The seed script must populate data from the following sources:
 - 5 story categories + 10 stories (see features/content-stories.md)
 - Admin user: admin@craftbrew.hu / admin123
 
+### Test fixtures with adversarial payloads
+
+Seed data and Playwright fixtures intentionally include adversarial inputs to verify sanitization paths:
+- Reviews with `<script>alert(1)</script>`, `"><img src=x onerror=alert(1)>`, javascript: URLs
+- Story content with HTML-like tags, SQL-injection-like strings (`'; DROP TABLE--`)
+- User names with zero-width characters and RTL/LTR overrides
+- Product flavor notes with control characters
+
+These payloads are **intentional test fixtures**, NOT bugs. Do not "clean up" or remove them — they verify XSS escaping, input rejection, and SQL-injection protection. The expected behavior is that rendered output contains the literal escaped string, server-side validation rejects HTML-tagged submissions with 400, and database queries are parameterized. See `features/reviews-wishlist.md` for review-specific sanitization rules.
+
 ## Verification Checklist
 
 Post-run verification. Each item must be manually or automatically checkable.

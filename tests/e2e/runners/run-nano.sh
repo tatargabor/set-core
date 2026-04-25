@@ -222,7 +222,7 @@ merge_policy: eager
 auto_replan: true
 max_replan_cycles: 2
 review_before_merge: true
-max_verify_retries: 4
+# max_verify_retries inherits raised default (12) from DIRECTIVE_DEFAULTS.
 env_vars:
   DATABASE_URL: "file:./dev.db"
 discord:

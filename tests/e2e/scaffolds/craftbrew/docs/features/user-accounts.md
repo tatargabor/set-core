@@ -1,5 +1,14 @@
 # User Accounts Feature
 
+## Scope Decomposition Hint (for planner)
+
+This feature is large enough that it MUST be split across at least two changes during planning. Implementing it as a single change has historically caused token-budget exhaustion (auth + profile + orders + addresses + notifications in one diff). Suggested split:
+
+- **Change A — Auth entry** (Registration, Login, Password Reset, Cookie Policy banner). Touches: `app/(auth)/*`, `lib/auth/`, `middleware.ts`, login/registration UI, welcome + reset emails. **No profile/orders code.**
+- **Change B — Account management** (Profile page, My Addresses, My Orders list+detail, Notification Preferences, Legal pages content). Depends on Change A (requires session + user model). Touches: `app/(account)/*`, profile UI, address CRUD, order list/detail.
+
+The two changes share the User model and session middleware — Change A defines them, Change B consumes them.
+
 ## Registration
 
 Form fields:
