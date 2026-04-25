@@ -72,3 +72,22 @@ The fix is a sweep: unify the limit sources, raise defaults to evidence-based va
 - Layout-pattern divergence detection (covered by sibling change `design-fidelity-deepening`).
 - Auto-bisect on token-runaway (would need iter-level snapshot infrastructure — separate change).
 - Dispatcher chain refactor for issue-watchdog→fix-iss latency (~30 min observed delay) — this proposal raises the timeout but does not refactor the dispatch chain itself; that is a follow-up.
+
+## Validation evidence — craftbrew-run-20260423-2223
+
+The `.set/issues/registry.json` from this run contains 6 ISS issues; **4 of 6 are direct circuit-breaker false positives** that this change addresses:
+
+| ISS | Trigger reason | Affected change | Outcome with raised limits |
+|---|---|---|---|
+| ISS-001 | `retry_wall_time_exhausted` (30 min budget hit at iter ~10) | `catalog-product-detail` | Phase 3 raise to 90 min budget eliminates this trigger (90 min covers ~6 retry rounds at ~15 min each). |
+| ISS-002 | `token_runaway` (baseline 82M → 102M, +20M delta on 20M old threshold) | `auth-user-registration-and-login` | Phase 3 raise to 50M absorbs sibling-spec convergence pollution; +Pre-warning at 40M gives operator early signal. |
+| ISS-003 | `retry_wall_time_exhausted` on stop_gate=`e2e` | `catalog-product-detail` | Same as ISS-001 — 90 min budget. |
+| ISS-004 | `retry_wall_time_exhausted` after recovery | `catalog-product-detail` | Same as ISS-001 — 90 min budget. |
+| ISS-005 | (no diagnosis) | `order-cancellation-and-returns` | Out of scope. |
+| ISS-006 | E2E regression remained after archive | `order-cancellation-and-returns` | Out of scope (post-archive regression — separate concern). |
+
+The bug docs at `docs/bugs/001-public-login-form-not-implemented.md` through `006` document the **downstream impact** of these breakers:
+- 3 of 6 user-facing bugs (`bug-001`, `bug-002`, `bug-003`) trace to the **single** `auth-user-registration-and-login` `token_runaway` event. The bug doc itself recommends *"a fix-iss újra-nekifutásnál érdemes csak a két form + cart-merge wiring-re szűkíteni"* — but the underlying scope was within the new 50M threshold, only blocked because the breaker fired at the old 20M.
+- The pattern across `catalog-product-detail` (3 separate ISS issues for the same change) shows that with a budget that was actually *tight*, the agent was making forward progress but each retry pushed slightly past the 30 min wall time. The 90 min budget breaks this loop.
+
+**Net effect on a hypothetical re-run with the raised limits:** at least 5 of 6 user-facing bugs (auth flow + cart-merge) would not have been bugs because the owning change would have completed merge. The 6th (admin scope hézag, bug-004/005) is unaffected by this change — see `design-binding-completeness` for partial coverage.

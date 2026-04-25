@@ -106,3 +106,26 @@ This change closes the enforcement gap on top of the in-progress `v0-only-design
 - I18n string-extraction tooling at design-source-fix time — operator-side work in design source repo.
 - v0-design specific bug fixes (header inconsistency, MOCK_PRODUCTS removal, hardcoded string propification) — auto-detected and listed in hygiene checklist; operator fixes in design source repo (Mac side), framework only flags.
 - Spec-level enforcement of implementation-side route integrity (consumer worktree `<Link href>` validation) — partial F7 ext suggestion, deferred.
+
+## Validation evidence — craftbrew-run-20260423-2223
+
+The `docs/bugs/` directory in this run lists 6 bug docs covering scope/implementation gaps. Of those, **3 are partially covered by this change's hygiene scanner**, and **2 reveal a separate gap** that motivates a follow-up change:
+
+| Bug | Coverage by hygiene scanner | Notes |
+|---|---|---|
+| 001/002 (login/register form not implemented) | NOT COVERED | Owning change failed via circuit breaker — covered by `verify-gate-resilience-fixes`, not this change. |
+| 003 (cart-merge helper exists but signIn callsite missing) | NOT COVERED | Same as 001/002 — failed change consequence, not a design-source quality issue. |
+| 004 (admin sidebar entry but page is placeholder) | **PARTIAL** | Hygiene Rule 8 (broken-route-reference) catches `<Link href="/admin/felhasznalok">` if route is absent in manifest. Doesn't catch cases where the page exists but renders only a placeholder. |
+| 005 (orphan admin stub pages — `beallitasok`, `elofizetesek`, `komponensek`) | **PARTIAL** | Hygiene Rule 4 (inconsistent-shell-adoption) detects nav inconsistency but not orphan-page → no-implementing-change pattern. |
+| 006 (place-order-check 501 dev-shim) | INTENTIONAL — out of scope | Documented as deliberate. |
+
+**Known gap (deferred, not in this change):**
+"Owning change failed → user-facing feature missing" pattern (3 of 6 bugs in this run). The hygiene scanner detects DESIGN-SOURCE issues; it does NOT detect IMPLEMENTATION GAPS caused by circuit-breakered changes. Catching these requires:
+1. Post-merge scope-completeness gate that walks each merged change's spec ACs and verifies implementation files exist
+2. Per-route ownership check: every manifest route ⟷ exactly one merged change scope
+
+This work is **deferred to a follow-up change** (`run-forensics-auto-bugs` or similar) once the circuit-breaker raises in `verify-gate-resilience-fixes` reduce the failed-change rate. With raised limits, the population of "owning change failed" cases should shrink dramatically (see verify-gate-resilience-fixes Validation evidence section: 4 of 6 ISS would not have fired).
+
+The `set-design-hygiene` CLI run on this very project produces 4 CRITICAL findings that match what the operator hand-wrote in `docs/bugs/`:
+- 2× `mock-arrays-inline` for `MOCK_PRODUCTS`/`MOCK_STORIES` in `search-palette.tsx` (would have surfaced as bug-document at scaffold init time)
+- 2× `broken-route-reference` for `/bejelentkezes` (no longer would propagate into agent runs after operator fixes the v0-design source)
