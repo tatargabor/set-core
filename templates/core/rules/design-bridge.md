@@ -1,14 +1,41 @@
-# Design Bridge Rule (v0-only pipeline)
+# Design Bridge Rule
 
 ## What you have
 
-Your worktree contains **`v0-export/`** — a symlink (or copy) of the project's v0.app Next.js export. Read any file there as **visual truth**. This is the full design source; your `input.md` may highlight focus files, but you are never limited to those.
+Your worktree contains a **design source export** — typically `v0-export/` (v0.app Next.js export) but the exact directory name depends on the design tool (`claude-design-export/`, `figma-make-export/`, etc.). Read any file there as **visual truth**. This is the full design source; your `input.md` may highlight focus files, but you are never limited to those.
 
-If `v0-export/` is absent in your worktree, skip this rule.
+If no design-source export is present in your worktree, skip this rule.
+
+## Component-mounting rule (NEW — design-binding-completeness)
+
+**If a shell component for your feature exists in the design source's `components/` directory, mount it. DO NOT create a parallel implementation under a different name.**
+
+### Bad
+
+Agent creates `src/components/search-bar.tsx` while v0 already has `components/search-palette.tsx` (modal CommandDialog pattern). The agent ends up with an inline dropdown instead of the design's modal — the fidelity gate flags `decomposition-shadow` violation.
+
+### Good
+
+Agent imports the existing component:
+
+```tsx
+import { SearchPalette } from "@/components/search-palette"  // mounted from v0
+// ... wire data via useQuery, swap MOCK_PRODUCTS for /api/search results
+```
+
+The shell file stays structurally faithful; only data sourcing and i18n strings are adapted.
+
+### Entity-reference markers in spec
+
+The spec.md uses inline markers to bind to design entities:
+- `@component:search-palette` — references a shell component (matches `manifest.shared`)
+- `@route:/kereses` — references a manifest route
+
+These markers are **mandatory references** — you must mount the named component, not invent a new one. The markers also surface in your `input.md` `Focus files for this change` section.
 
 ## Agent contract: integrator, not re-implementer
 
-You **copy** v0's TSX into the project, then adapt the integration layer around it. You do NOT rebuild the UI from a markdown spec.
+You **copy** the design source's TSX into the project, then adapt the integration layer around it. You do NOT rebuild the UI from a markdown spec.
 
 ### Allowed refactors (encouraged)
 

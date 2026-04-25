@@ -74,58 +74,18 @@ IMPORT_RE = re.compile(
 )
 
 
-@dataclass
-class RouteEntry:
-    path: str
-    files: list[str] = field(default_factory=list)
-    component_deps: list[str] = field(default_factory=list)
-    scope_keywords: list[str] = field(default_factory=list)
-    fidelity_threshold: Optional[float] = None
-
-    def to_dict(self) -> dict:
-        d = {
-            "path": self.path,
-            "files": list(self.files),
-            "component_deps": list(self.component_deps),
-            "scope_keywords": list(self.scope_keywords),
-        }
-        if self.fidelity_threshold is not None:
-            d["fidelity_threshold"] = self.fidelity_threshold
-        return d
-
-
-@dataclass
-class Manifest:
-    design_source: str = "v0"
-    v0_export_path: str = "v0-export/"
-    routes: list[RouteEntry] = field(default_factory=list)
-    shared: list[str] = field(default_factory=list)
-    shared_aliases: dict = field(default_factory=dict)
-    deferred_design_routes: list[dict] = field(default_factory=list)
-
-    def route_by_path(self, path: str) -> Optional[RouteEntry]:
-        for r in self.routes:
-            if r.path == path:
-                return r
-        return None
-
-    def to_dict(self) -> dict:
-        return {
-            "design_source": self.design_source,
-            "v0_export_path": self.v0_export_path,
-            "routes": [r.to_dict() for r in self.routes],
-            "shared": list(self.shared),
-            "shared_aliases": dict(self.shared_aliases),
-            "deferred_design_routes": list(self.deferred_design_routes),
-        }
-
-
-class ManifestError(RuntimeError):
-    """Raised on manifest validation failure."""
-
-
-class NoMatchingRouteError(RuntimeError):
-    """Raised when UI-bound scope has no matching route in the manifest."""
+# design-binding-completeness: dataclasses moved to Layer 1 for design-source
+# agnosticism. Re-exported here for backward compat with existing imports
+# (v0_fidelity_gate.py, design_import_cli.py, etc.).
+from set_orch.design_manifest import (  # noqa: F401
+    HygieneFinding,
+    HygieneSeverity,
+    Manifest,
+    ManifestError,
+    NoMatchingRouteError,
+    RouteEntry,
+    ShellComponent,
+)
 
 
 # ─── Parsing ────────────────────────────────────────────────────────
@@ -323,17 +283,118 @@ def _kebab(s: str) -> str:
 
 
 def _collect_shared_files(v0_root: Path) -> list[str]:
-    """Return shared files list under shared: key."""
+    """Return shared files list under shared: key.
+
+    design-binding-completeness: combines two sources:
+      1. Hardcoded SHARED_GLOBS baseline (header/footer/layout/globals.css)
+      2. Auto-detected components imported by ≥2 pages (page-import scan)
+
+    Auto-detect is heuristic — it catches the common case of shell components
+    used across multiple pages (search-palette, product-filters, product-card,
+    cart-item, cookie-consent). Dynamic imports (`React.lazy`, `next/dynamic`)
+    are NOT detected in v1; static `import` statements only.
+    """
     out: list[str] = []
+    seen: set[str] = set()  # dedupe across baseline + auto-detect
+
+    # 1. Baseline (hardcoded)
     for rel in SHARED_GLOBS:
         candidate = v0_root / rel
         if rel.endswith(".tsx") or rel.endswith(".css"):
             if candidate.is_file():
-                out.append(f"{v0_root.name}/{rel}")
+                entry = f"{v0_root.name}/{rel}"
+                if entry not in seen:
+                    out.append(entry)
+                    seen.add(entry)
         else:
             # Directory glob — record with ** suffix
             if candidate.is_dir():
-                out.append(f"{v0_root.name}/{rel}/**")
+                entry = f"{v0_root.name}/{rel}/**"
+                if entry not in seen:
+                    out.append(entry)
+                    seen.add(entry)
+
+    # 2. Auto-detect ≥2 importer components
+    auto_shells = _autodetect_shell_components(v0_root)
+    for entry in auto_shells:
+        if entry not in seen:
+            out.append(entry)
+            seen.add(entry)
+            logger.debug("shell auto-detect: %s (multi-page importer)", entry)
+
+    return out
+
+
+# Regex matches: import { X } from '@/components/x'
+#                import X from '@/components/x'
+#                import X from '../components/x'
+# Captures the component name (last path segment, no extension).
+_COMPONENT_IMPORT_RE = re.compile(
+    r"""from\s+['"](?:@/|\.\.?/)*components/(?!ui/)([\w/-]+?)(?:\.tsx?)?['"]""",
+    re.MULTILINE,
+)
+
+
+def _autodetect_shell_components(v0_root: Path) -> list[str]:
+    """Identify shell components in the design source.
+
+    Two-tier heuristic:
+      Tier A (broad): every `components/*.tsx` at the top level (NOT nested
+        admin/ etc.) is shell — these are the application's reusable surface.
+        `components/ui/*.tsx` shadcn primitives are excluded (they're the
+        component library, always shared transitively via shadcn imports).
+      Tier B (narrow): nested components (e.g. `components/admin/X.tsx`)
+        require ≥2 importer files to qualify as shell.
+
+    Tier A catches the common case where a single-importer component is still
+    a shared shell (e.g. `search-palette.tsx` imported only by `site-header.tsx`,
+    `cart-item.tsx` imported only by `kosar/page.tsx`). v0 author intent: if
+    they put it in `components/`, it's reusable.
+    """
+    components_dir = v0_root / "components"
+    if not components_dir.is_dir():
+        return []
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    # Tier A: top-level components/*.tsx (excluding ui/)
+    for tsx_file in sorted(components_dir.glob("*.tsx")):
+        rel = f"{v0_root.name}/components/{tsx_file.name}"
+        if rel not in seen:
+            out.append(rel)
+            seen.add(rel)
+
+    # Tier B: nested components/*/X.tsx with ≥2 importers
+    importers: dict[str, set[str]] = {}
+    for tsx_file in v0_root.rglob("*.tsx"):
+        if "components/ui/" in str(tsx_file):
+            continue
+        try:
+            text = tsx_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        importer_id = str(tsx_file.relative_to(v0_root))
+        for m in _COMPONENT_IMPORT_RE.finditer(text):
+            comp_name = m.group(1).strip("/")
+            if not comp_name or "/" not in comp_name:
+                # Top-level component already handled by Tier A
+                continue
+            if importer_id.endswith(f"components/{comp_name}.tsx"):
+                continue
+            importers.setdefault(comp_name, set()).add(importer_id)
+
+    for comp_name, importer_set in sorted(importers.items()):
+        if len(importer_set) < 2:
+            continue
+        candidate = v0_root / "components" / f"{comp_name}.tsx"
+        if not candidate.is_file():
+            continue
+        rel = f"{v0_root.name}/components/{comp_name}.tsx"
+        if rel not in seen:
+            out.append(rel)
+            seen.add(rel)
+
     return out
 
 

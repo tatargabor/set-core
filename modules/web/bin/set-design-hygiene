@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""set-design-hygiene — thin launcher for set_project_web.design_hygiene_cli.
+
+Installed as console_script via modules/web/pyproject.toml.
+"""
+import sys
+from set_project_web.design_hygiene_cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())

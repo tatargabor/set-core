@@ -352,6 +352,12 @@ class Change:
     # Optional fields from plan
     requirements: Optional[list] = None
     also_affects_reqs: Optional[list] = None
+    # design-binding-completeness: plan-level fields for design entity binding.
+    # `design_routes` is the manifest route paths the change implements (set
+    # by decompose). `design_components` is the union of route component_deps,
+    # manifest.shared shells, and resolved @component:NAME markers.
+    design_routes: list[str] = field(default_factory=list)
+    design_components: list[str] = field(default_factory=list)
 
     # Lineage + sentinel-session attribution (additive; old states load with None).
     # `spec_lineage_id` survives replan and same-spec restart so historic entries

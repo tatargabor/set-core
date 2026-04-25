@@ -97,7 +97,7 @@ RETENTION_DAYS = 7
 
 @dataclass
 class SkeletonViolation:
-    status: str   # "missing-route" | "extra-route" | "missing-shared-file" | "decomposition-collapsed" | "hardcoded-color" | "classname-rewritten"
+    status: str   # "missing-route" | "extra-route" | "missing-shared-file" | "decomposition-collapsed" | "decomposition-shadow" | "hardcoded-color" | "classname-rewritten"
     detail: str
 
 
@@ -849,7 +849,114 @@ def run_skeleton_check(
                 f"{rel} exists but no default/named component export — may have been inlined",
             ))
 
+    # design-binding-completeness: shell-shadow check — detect parallel
+    # implementations of known shell components. Heuristic: the agent has a
+    # file in src/components/ whose filename token-overlaps with a manifest
+    # shell AND whose imports overlap with the shell's shadcn primitives.
+    # Severity is WARN (not BLOCK) by default; operator can promote via
+    # `gate_overrides.design-fidelity.shell_shadow_severity: critical`.
+    violations.extend(_check_shell_shadow(agent_worktree, manifest, aliases, v0_export))
+
     return violations
+
+
+def _check_shell_shadow(
+    agent_worktree: Path,
+    manifest,
+    aliases: dict,
+    v0_export: Path,
+) -> list[SkeletonViolation]:
+    """Detect agent-created files that shadow existing manifest shells.
+
+    Returns a list of `decomposition-shadow` violations (severity WARN).
+    """
+    out: list[SkeletonViolation] = []
+    # Build a set of legitimate shell base-names (kebab-case identifiers)
+    shell_basenames: dict[str, str] = {}  # base → original path
+    for sh in manifest.shared:
+        if not sh.endswith(".tsx"):
+            continue
+        base = sh.rsplit("/", 1)[-1][:-len(".tsx")]
+        shell_basenames[base] = sh
+
+    if not shell_basenames:
+        return out
+
+    # Scan agent's src/components/**/*.tsx
+    agent_components_dir = agent_worktree / "src" / "components"
+    if not agent_components_dir.is_dir():
+        return out
+
+    aliased_targets = set()
+    if isinstance(aliases, dict):
+        for k, v in aliases.items():
+            aliased_targets.add(k)
+            aliased_targets.add(v)
+
+    for agent_file in agent_components_dir.rglob("*.tsx"):
+        if "components/ui/" in str(agent_file):
+            continue
+        agent_base = agent_file.stem
+        agent_rel = str(agent_file.relative_to(agent_worktree))
+
+        # Skip if the agent file IS the shell (legitimate adoption)
+        if agent_base in shell_basenames:
+            continue
+        # Skip if aliased (operator whitelisted)
+        if any(agent_rel.endswith(a) for a in aliased_targets):
+            continue
+
+        # Heuristic 1: filename token-overlap
+        agent_tokens = set(agent_base.split("-"))
+        for shell_base, shell_path in shell_basenames.items():
+            shell_tokens = set(shell_base.split("-"))
+            if not agent_tokens & shell_tokens:
+                continue
+            # Heuristic 2: imports overlap (≥2 common shadcn primitives)
+            try:
+                agent_text = agent_file.read_text(encoding="utf-8", errors="replace")
+                shell_full_path = v0_export.parent / shell_path
+                if not shell_full_path.is_file():
+                    # Try resolving relative to agent worktree's ancestor
+                    shell_full_path = Path(shell_path)
+                    if not shell_full_path.is_absolute():
+                        shell_full_path = v0_export.parent / shell_path
+                if not shell_full_path.is_file():
+                    continue
+                shell_text = shell_full_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            agent_imports = _extract_shadcn_imports(agent_text)
+            shell_imports = _extract_shadcn_imports(shell_text)
+            common = agent_imports & shell_imports
+            if len(common) >= 2:
+                out.append(SkeletonViolation(
+                    "decomposition-shadow",
+                    f"{agent_rel} appears to shadow {shell_path} "
+                    f"(filename tokens {agent_tokens & shell_tokens}, "
+                    f"shared imports {common}). "
+                    f"Mount the existing component instead — see design-bridge.md.",
+                ))
+                break  # one shadow violation per agent file is enough
+
+    return out
+
+
+def _extract_shadcn_imports(text: str) -> set[str]:
+    """Extract shadcn primitive names imported by a TSX file."""
+    import re as _re
+    out: set[str] = set()
+    # Match `import { X, Y } from '@/components/ui/foo'`
+    for m in _re.finditer(
+        r"import\s+\{([^}]+)\}\s+from\s+['\"](?:@/|\.\.?/)*components/ui/[\w/-]+['\"]",
+        text,
+    ):
+        names = m.group(1)
+        for name in names.split(","):
+            cleaned = name.strip().split(" as ")[0].strip()
+            if cleaned:
+                out.add(cleaned)
+    return out
 
 
 def _enumerate_routes_at_ref(worktree: Path, ref: str) -> set[str]:

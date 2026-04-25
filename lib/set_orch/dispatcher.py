@@ -281,6 +281,9 @@ class DispatchContext:
     pk_context: str = ""
     sibling_context: str = ""
     design_context: str = ""
+    # design-binding-completeness: per-change design source TSX paths.
+    # Populated from `change.design_components` (set by decompose).
+    design_components: list[str] = field(default_factory=list)
     retry_context: str = ""
     read_first_directives: list[str] = field(default_factory=list)
     conventions_summary: str = ""
@@ -1558,6 +1561,18 @@ def _build_input_content(
     if ctx.design_context:
         lines.append(f"\n## Design Context\n{ctx.design_context}")
 
+    # design-binding-completeness: per-change `design_components` from the
+    # plan get listed as Focus files with a directive line. The agent should
+    # mount these existing components rather than reimplementing them.
+    if ctx.design_components:
+        lines.append("\n## Focus files for this change")
+        lines.append(
+            "**Mount these components from the design source. "
+            "DO NOT create parallel implementations under different names.**\n"
+        )
+        for path in ctx.design_components:
+            lines.append(f"- `{path}`")
+
     # Assigned Requirements section (with AC items from digest when available)
     req_lookup: dict[str, dict] = {}
     if change_requirements or also_affects_reqs:
@@ -2563,6 +2578,15 @@ def _setup_change_in_worktree(
     retry_ctx = ""
     if change:
         retry_ctx = change.extras.get("retry_context", "") or ""
+        # design-binding-completeness: pull design_components from Change to
+        # the dispatch context so `## Focus files` gets autopopulated.
+        design_components = getattr(change, "design_components", None) or []
+        if design_components:
+            ctx.design_components = list(design_components)
+            logger.info(
+                "design_components Focus files: %d entries for %s",
+                len(ctx.design_components), change_name,
+            )
 
     # Populate read-first directives based on worktree contents
     ctx.read_first_directives = _detect_read_first_directives(wt_path)

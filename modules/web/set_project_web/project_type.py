@@ -1623,6 +1623,47 @@ class WebProjectType(CoreProfile):
         p = Path(project_path) / "v0-export"
         return "v0" if p.is_dir() else "none"
 
+    def scan_design_hygiene(self, project_path: Path) -> list:
+        """Delegate to V0DesignSourceProvider when v0-export/ is present.
+
+        Added by `design-binding-completeness`. Returns list of
+        `HygieneFinding` dataclasses. Empty list when no design source.
+        """
+        if self.detect_design_source(project_path) != "v0":
+            return []
+        try:
+            from .v0_design_source import V0DesignSourceProvider
+            return V0DesignSourceProvider().scan_hygiene(Path(project_path))
+        except Exception:
+            logger = __import__("logging").getLogger(__name__)
+            logger.warning(
+                "scan_design_hygiene failed for %s (non-blocking)",
+                project_path, exc_info=True,
+            )
+            return []
+
+    def get_shell_components(self, project_path: Path) -> list[str]:
+        """Return the manifest's shared shell-component paths.
+
+        Reads `<project>/docs/design-manifest.yaml` and returns the
+        `shared` list. Empty list when no manifest.
+        """
+        try:
+            from pathlib import Path as _P
+            from .v0_manifest import load_manifest
+            manifest_path = _P(project_path) / "docs" / "design-manifest.yaml"
+            if not manifest_path.is_file():
+                return []
+            m = load_manifest(manifest_path)
+            return list(m.shared)
+        except Exception:
+            logger = __import__("logging").getLogger(__name__)
+            logger.warning(
+                "get_shell_components failed for %s (non-blocking)",
+                project_path, exc_info=True,
+            )
+            return []
+
     def get_design_dispatch_context(
         self, change_name: str, scope: str, project_path: Path,
     ) -> str:

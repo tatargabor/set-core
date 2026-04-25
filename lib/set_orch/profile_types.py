@@ -191,6 +191,34 @@ class ProjectType(ABC):
         """
         return ""
 
+    # ─── design-binding-completeness: provider-side hygiene + shell APIs ───
+    # Default implementations return empty results so non-design profiles
+    # (CLI tools, Python packages, etc.) work without override. Web profiles
+    # delegate to their DesignSourceProvider when detect_design_source != "none".
+
+    def scan_design_hygiene(self, project_path: Path) -> list:
+        """Scan the design source for quality issues (mock data, hardcoded
+        strings, broken routes, etc.). Returns a list of HygieneFinding
+        dataclasses.
+
+        Default: empty list. Web profile delegates to V0DesignSourceProvider
+        when v0-export/ is present.
+        """
+        return []
+
+    def get_shell_components(self, project_path: Path) -> list[str]:
+        """Return the manifest's shared shell-component paths.
+
+        These are components used by ≥2 routes (auto-detected) plus a
+        baseline set (header/footer/layout/globals.css). Used by the
+        decompose skill to populate per-change `design_components` lists
+        and by the fidelity gate's shell-shadow check.
+
+        Default: empty list. Returns paths relative to project root, e.g.
+        `v0-export/components/site-header.tsx`.
+        """
+        return []
+
     def collect_test_artifacts(self, wt_path: str) -> list:
         """Collect test artifacts (screenshots, traces, reports) from worktree.
 

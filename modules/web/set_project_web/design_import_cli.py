@@ -112,6 +112,17 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="promote all quality warnings to blocking errors",
     )
+    # design-binding-completeness: post-import hygiene scan
+    p.add_argument(
+        "--with-hygiene",
+        action="store_true",
+        help="run hygiene scanner after manifest regen (writes docs/design-source-hygiene-checklist.md)",
+    )
+    p.add_argument(
+        "--ignore-critical",
+        action="store_true",
+        help="with --with-hygiene: do not exit non-zero on CRITICAL findings",
+    )
     p.add_argument(
         "-v", "--verbose", action="store_true",
         help="verbose logging",
@@ -178,6 +189,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             generate_manifest_from_tree(v0_dir, manifest_path)
             _patch_tsconfig_excludes(scaffold)
             print(f"manifest regenerated: {manifest_path}")
+            if args.with_hygiene:
+                rc = _run_post_import_hygiene(scaffold, args.ignore_critical)
+                return rc
             return 0
 
         if args.git:
@@ -248,6 +262,40 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"({'ref='+summary.resolved_ref if summary.resolved_ref else 'zip'})"
     )
     print(f"manifest: {summary.manifest_path}")
+    if args.with_hygiene:
+        rc = _run_post_import_hygiene(scaffold, args.ignore_critical)
+        return rc
+    return 0
+
+
+def _run_post_import_hygiene(scaffold: Path, ignore_critical: bool) -> int:
+    """Run the hygiene scanner as a post-import step.
+
+    Writes `docs/design-source-hygiene-checklist.md` and returns exit code 1
+    if any CRITICAL findings exist (unless `ignore_critical` is True).
+    """
+    from .v0_design_source import V0DesignSourceProvider
+    from .v0_hygiene_scanner import render_checklist
+
+    provider = V0DesignSourceProvider()
+    findings = provider.scan_hygiene(scaffold)
+    crit = sum(1 for f in findings if f.severity.value == "critical")
+    warn = sum(1 for f in findings if f.severity.value == "warn")
+    info = sum(1 for f in findings if f.severity.value == "info")
+
+    out_path = scaffold / "docs" / "design-source-hygiene-checklist.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    md = render_checklist(findings, project_id=scaffold.name, source_dir="v0-export/")
+    out_path.write_text(md)
+
+    print(f"hygiene: {len(findings)} findings ({crit} CRITICAL, {warn} WARN, {info} INFO) → {out_path}")
+    if crit > 0 and not ignore_critical:
+        print(
+            f"\nexit 1 due to {crit} CRITICAL finding(s). "
+            f"Fix in design source repo or re-run with --ignore-critical.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
