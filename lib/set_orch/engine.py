@@ -1938,7 +1938,37 @@ def _poll_active_changes(
                         _resolve_issues_for_change(change.name)
                         if event_bus:
                             event_bus.emit("CHANGE_DONE", change=change.name)
-                        # Fall through to poll_change() → handle_change_done() → re-gate
+                        # Re-run the full verify pipeline against new HEAD. The
+                        # earlier `poll_change()` fall-through path was a no-op
+                        # for `loop_status=stuck` (poll_change only routes "done"
+                        # to handle_change_done), so without this explicit call
+                        # the agent would be re-dispatched on the same stale
+                        # `.set/loop-state.json` task and gates would never re-
+                        # evaluate against the new commits — the stuck-loop
+                        # circuit breaker then fired on the unchanged
+                        # last_gate_fingerprint after 3 consecutive `stuck`
+                        # exits with no fresh verifier evidence.
+                        from .verifier import handle_change_done as _hcd
+                        _hcd(
+                            change.name, state_file,
+                            test_command=d.test_command,
+                            merge_policy=d.merge_policy,
+                            test_timeout=d.test_timeout,
+                            max_verify_retries=d.max_verify_retries,
+                            review_before_merge=d.review_before_merge,
+                            review_model=d.review_model,
+                            smoke_command=d.smoke_command,
+                            smoke_timeout=d.smoke_timeout,
+                            smoke_blocking=d.smoke_blocking,
+                            smoke_fix_max_retries=d.smoke_fix_max_retries,
+                            smoke_fix_max_turns=d.smoke_fix_max_turns,
+                            smoke_health_check_url=d.smoke_health_check_url,
+                            smoke_health_check_timeout=d.smoke_health_check_timeout,
+                            e2e_command=d.e2e_command,
+                            e2e_timeout=d.e2e_timeout,
+                            event_bus=event_bus,
+                        )
+                        continue
                     else:
                         logger.warning(
                             "Change %s: agent exited fix loop (loop_status=%s) with NO new commits "
