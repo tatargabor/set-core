@@ -21,7 +21,7 @@
    - "First order only" coupon → user has no previous completed orders
    - Min. cart value is met (if any)
 3. Success: discount applied, shown in summary. Category-filtered coupons (e.g., BUNDLE20) discount only the matching items in the cart, not the entire cart.
-4. Failure: error message (specific reason: "Expired", "First order only", etc.)
+4. Failure: error message with specific machine-readable code — see "Error Code Catalog" in `v1-craftbrew.md` for the canonical list (`COUPON_EXPIRED`, `COUPON_FIRST_ORDER_ONLY`, `COUPON_MAX_USES_REACHED`, `COUPON_MIN_ORDER_NOT_MET`, `COUPON_CATEGORY_MISMATCH`, `COUPON_ALREADY_APPLIED`).
 
 ### Coupon Stacking
 

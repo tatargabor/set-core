@@ -100,12 +100,12 @@ On click, modal or separate page:
 - Grand total
 - Payment identifier
 - Invoice download
-- **Status change buttons**: Advance to the next status
+- **Status change buttons**: see the canonical Order State Machine in `features/cart-checkout.md` for the complete transition table (allowed transitions, side effects, idempotency rules). Buttons map 1:1 to that table:
   - New → Processing (button: "Start processing")
   - Processing → Packed (button: "Packed")
   - Packed → Shipping (button: "Handed to courier") → **email trigger: shipping notification**
   - Shipping → Delivered (button: "Delivered") → **email trigger: delivery + review request**
-  - Any time: "Cancel order" (with confirmation) → refund → stock restoration
+  - "Cancel order" (with confirmation) — only available in NEW/PROCESSING/PACKED. Disabled (greyed out) in SHIPPING/DELIVERED — use Returns flow instead.
 
 ## Daily Deliveries
 

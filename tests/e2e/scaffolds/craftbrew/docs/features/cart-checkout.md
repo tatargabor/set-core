@@ -77,6 +77,39 @@ If any step inside the transaction fails → full rollback (Prisma handles autom
 
 **Stock conflict at checkout:** If any item's requested quantity exceeds available stock at checkout time, an error is shown with current availability. The user returns to cart with updated stock info and can adjust quantities. Items that went out of stock are marked with a warning.
 
+## Order State Machine
+
+`Order.status` is the single source of truth for fulfillment progress. Every transition listed here is the ONLY valid path — implementations MUST reject any other transition with HTTP 409 Conflict.
+
+States (DB enum values, UPPER_SNAKE_CASE):
+
+`NEW` → `PROCESSING` → `PACKED` → `SHIPPING` → `DELIVERED`
+                                                   ↓
+                                              (terminal)
+
+Plus `CANCELLED` reachable from `NEW`, `PROCESSING`, or `PACKED`. Once `SHIPPING` or `DELIVERED`, the order CANNOT be cancelled (the customer must use the Returns flow instead).
+
+### Transition table
+
+| From → To | Trigger | Authorization | Side effects |
+|---|---|---|---|
+| (none) → `NEW` | Successful order placement (post-payment, post-DB-commit) | Customer (own checkout) | Stock decreased; cart cleared; invoice generated; **email: order confirmation** |
+| `NEW` → `PROCESSING` | Admin clicks "Start processing" | ADMIN role | Audit log entry |
+| `PROCESSING` → `PACKED` | Admin clicks "Packed" | ADMIN role | Audit log entry |
+| `PACKED` → `SHIPPING` | Admin clicks "Handed to courier" | ADMIN role | Set `shipped_at`; **email: shipping notification**; audit log |
+| `SHIPPING` → `DELIVERED` | Admin clicks "Delivered" OR daily-deliveries bulk action | ADMIN role | Set `delivered_at`; **email: delivery + review request**; audit log |
+| `NEW` → `CANCELLED` | Admin "Cancel order" OR customer self-cancel from My Orders | ADMIN, or customer for own order | Stripe refund (full); stock restored; coupon `uses_count` decremented; gift card balance restored; audit log |
+| `PROCESSING` → `CANCELLED` | Same as above | Same | Same side effects |
+| `PACKED` → `CANCELLED` | Admin only (customer cannot self-cancel once packed) | ADMIN role only | Same side effects + warehouse-restock task |
+| `SHIPPING` → `CANCELLED` | **NOT ALLOWED** — use Returns flow | — | — |
+| `DELIVERED` → `CANCELLED` | **NOT ALLOWED** — use Returns flow | — | — |
+| any → any non-listed | **NOT ALLOWED** — return HTTP 409 with code `ORDER_INVALID_TRANSITION` | — | — |
+
+### Idempotency
+
+- Re-clicking a status button (or replaying a webhook) MUST be a no-op if the order is already in the target state. Audit log entry NOT duplicated. Email NOT re-sent. Use `email_sent_at` timestamp columns per email type to gate re-sending.
+- Concurrent transitions (two admins click simultaneously) MUST be serialized by a row-level lock (`SELECT ... FOR UPDATE` inside the status-change transaction). The second click sees the new status and either no-ops or returns the 409.
+
 ### Order Cancellation
 
 - Admin cancels order → Stripe refund (for card-paid portion only)
@@ -87,6 +120,18 @@ If any step inside the transaction fails → full rollback (Prisma handles autom
 - Customers may also request cancellation from their "My Orders" page (orders in NEW or PROCESSING status only)
 
 **Customer self-cancellation flow:** the customer endpoint MUST reuse the same admin cancellation pipeline (full Stripe refund + stock + coupon + gift-card reversal, in a transaction). The endpoint differs only by authorization (the customer can cancel only their OWN orders, in NEW/PROCESSING status). This avoids two divergent code paths producing different rollback states.
+
+### `SubscriptionDelivery` state machine (separate)
+
+`SubscriptionDelivery.status` evolves independently of the parent `Subscription.status`:
+
+`SCHEDULED` → `SHIPPED` → `DELIVERED` (terminal)
+              ↓
+         `SKIPPED_OOS` (out of stock at billing time — see `features/subscription.md`)
+         `SKIPPED_USER` (user clicked "Skip the next shipment")
+         `PAUSED` (parent subscription was paused before this delivery shipped)
+
+Marking a `SubscriptionDelivery` as `DELIVERED` does NOT change the parent `Subscription.status` (which stays `ACTIVE`). See `features/admin.md` "Daily Deliveries" for the bulk-action wiring.
 
 ## Returns & Right of Withdrawal
 
