@@ -1908,8 +1908,15 @@ def _poll_active_changes(
                         event_bus.emit("CHANGE_DONE", change=change.name)
                     # Fall through to poll_change() below — do NOT mark done or continue
 
-                elif ls_status in ("stopped", "stuck"):
+                elif ls_status in ("stopped", "stuck", "stalled"):
                     # Agent exited fix loop (not "done" but made an attempt).
+                    # `stalled` is included so the agent's no-op-stall exit
+                    # (set-loop's max_idle_iterations) routes through the
+                    # commits-detected path. Otherwise the agent gets re-
+                    # dispatched on the same stale `last_retry_context` after
+                    # stall cooldown without the verifier ever re-evaluating
+                    # the new HEAD — observed in craftbrew-run-20260425-0700
+                    # foundation-setup at 08:48:49 / 09:00:16.
                     # Check for new commits — if the agent committed fixes,
                     # re-gate immediately instead of waiting for stall timeout.
                     last_gate = (change.extras or {}).get("last_gate_commit", "")
