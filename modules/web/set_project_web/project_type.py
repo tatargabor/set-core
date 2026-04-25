@@ -1787,14 +1787,38 @@ class WebProjectType(CoreProfile):
             pass  # non-fatal — build will fail with clear error if client missing
 
         # Step 2: prisma db push (schema → DB sync)
+        # Surface stdout/stderr to logs on failure so the merger has actionable
+        # context. Without this the merger sees "integration_pre_build FAILED"
+        # with no reason — observed in practice when DATABASE_URL or
+        # node_modules drift between worktree-stage and integration-stage.
         try:
             result = subprocess.run(
                 ["npx", "prisma", "db", "push", "--skip-generate", "--accept-data-loss"],
                 cwd=wt_path, capture_output=True, timeout=60,
-                env=merged_env,
+                env=merged_env, text=True,
             )
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, OSError):
+            if result.returncode != 0:
+                stdout_tail = (result.stdout or "")[-2000:]
+                stderr_tail = (result.stderr or "")[-2000:]
+                logger.error(
+                    "integration_pre_build prisma_db_push FAILED wt=%s exit_code=%d\n"
+                    "--- stdout (last 2000 chars) ---\n%s\n"
+                    "--- stderr (last 2000 chars) ---\n%s",
+                    wt_path, result.returncode, stdout_tail, stderr_tail,
+                )
+                return False
+            return True
+        except subprocess.TimeoutExpired as e:
+            logger.error(
+                "integration_pre_build prisma_db_push TIMEOUT wt=%s timeout=60s",
+                wt_path,
+            )
+            return False
+        except OSError as e:
+            logger.error(
+                "integration_pre_build prisma_db_push OSError wt=%s error=%s",
+                wt_path, e,
+            )
             return False
 
     def e2e_pre_gate(self, wt_path: str, env: dict[str, str]) -> bool:
