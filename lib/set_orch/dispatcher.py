@@ -3306,14 +3306,34 @@ def resume_change(
     # Persist resolved model so verifier uses correct context window size
     update_change_field(state_path, change_name, "model", impl_model)
 
-    # Resolve test command for done=test criteria
+    # Resolve test command for done=test criteria.
+    # If the retry_context embeds an "E2E command:" line (verify-e2e fix path
+    # builds this), prefer that scoped command — the loop's done check should
+    # verify the exact failure the agent was dispatched to fix, not the full
+    # unit-test suite (which may have unrelated inherited failures that block
+    # the loop forever even after the agent's targeted fix lands).
     test_command = ""
     if done_criteria == "test":
-        state = load_state(state_path)
-        test_command = state.extras.get("directives", {}).get("test_command", "")
-        if not test_command:
-            from .config import auto_detect_test_command
-            test_command = auto_detect_test_command(wt_path)
+        # Parse retry_context for an "E2E command: <cmd>" hint first
+        ctx_text = task_desc or ""
+        scoped_cmd = ""
+        for line in ctx_text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("E2E command:"):
+                scoped_cmd = stripped[len("E2E command:"):].strip()
+                break
+        if scoped_cmd:
+            test_command = scoped_cmd
+            logger.info(
+                "resume %s: scoped test_command from retry_context (%.80s%s)",
+                change_name, scoped_cmd, "..." if len(scoped_cmd) > 80 else "",
+            )
+        else:
+            state = load_state(state_path)
+            test_command = state.extras.get("directives", {}).get("test_command", "")
+            if not test_command:
+                from .config import auto_detect_test_command
+                test_command = auto_detect_test_command(wt_path)
 
     # Same 90m iteration timeout as initial dispatch — set-loop's CLI default
     # (45m) SIGTERM's the agent mid-solution on web E2E retries. Without this
