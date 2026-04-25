@@ -1772,6 +1772,56 @@ class WebProjectType(CoreProfile):
             except OSError:
                 pass
 
+        # Env-drift recovery (mirrors e2e-env-drift-guard contract):
+        # If `.env` carries a DATABASE_URL whose protocol does not match the
+        # schema's declared provider, prefer the value from
+        # `set/orchestration/config.yaml.env_vars.DATABASE_URL`. The agent's
+        # global-setup.ts pre-flight only mutates `process.env` in-process —
+        # it does NOT rewrite `.env` — so a fresh subprocess hitting `prisma
+        # db push` (this code path) sees the stale file content. Without this
+        # recovery, the integration_pre_build crashes with Prisma P1012:
+        # "URL must start with protocol postgresql://".
+        try:
+            schema_text = prisma_schema.read_text()
+            import re as _re
+            m = _re.search(
+                r'datasource\s+\w+\s*\{[^}]*provider\s*=\s*"([^"]+)"',
+                schema_text,
+            )
+            provider = m.group(1) if m else None
+            url_matchers = {
+                "postgresql": _re.compile(r"^postgres(ql)?://", _re.IGNORECASE),
+                "mysql": _re.compile(r"^mysql://", _re.IGNORECASE),
+                "sqlite": _re.compile(r"^file:", _re.IGNORECASE),
+                "sqlserver": _re.compile(r"^sqlserver://", _re.IGNORECASE),
+            }
+            matcher = url_matchers.get(provider) if provider else None
+            current_url = env.get("DATABASE_URL", "")
+            if matcher and (not current_url or not matcher.search(current_url)):
+                config_path = Path(wt_path) / "set" / "orchestration" / "config.yaml"
+                if config_path.is_file():
+                    try:
+                        import yaml as _yaml
+                        with open(config_path, encoding="utf-8") as cf:
+                            cfg = _yaml.safe_load(cf) or {}
+                        recovered = ((cfg.get("env_vars") or {}).get("DATABASE_URL") or "")
+                        if isinstance(recovered, str) and matcher.search(recovered):
+                            logger.info(
+                                "integration_pre_build env_drift_recovered wt=%s "
+                                "schema_provider=%s old_url_prefix=%s recovered_url_provider=%s",
+                                wt_path, provider,
+                                (current_url.split(":", 1)[0] if ":" in current_url else current_url[:8]) or "<empty>",
+                                provider,
+                            )
+                            env["DATABASE_URL"] = recovered
+                    except Exception as _yerr:
+                        logger.warning(
+                            "integration_pre_build config_yaml_parse_failed wt=%s error=%s",
+                            wt_path, _yerr,
+                        )
+        except OSError:
+            pass
+
         # Prisma 7+ blocks destructive ops when invoked by AI agents
         env["PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION"] = "true"
         merged_env = {**subprocess.os.environ, **env}
