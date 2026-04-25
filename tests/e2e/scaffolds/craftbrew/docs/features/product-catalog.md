@@ -102,10 +102,12 @@ Left-side filter panel on the coffee list (slide-up drawer on mobile):
 
 Each product has a maximum of 3 "Recommended For You" products:
 - Admin manually configures the related products
-- Seed data contains the default cross-sell pairs:
-  - For coffees: relevant equipment + filter + bundle
-  - For equipment: best-matching coffee
-  - For bundles: complementary equipment or coffee
+- Seed data contains the **explicit default cross-sell pairs** (see `docs/catalog/cross-sell-pairs.md` for the full table; if absent, use the rules below):
+  - **Coffees → 1 brewer + 1 grinder/scale + 1 bundle.** Pour-over coffees (Ethiopia, Kenya) recommend V60 + scale + Africa-bundle. Espresso-friendly (Brazil) recommends AeroPress + grinder + Pro-Barista bundle. Single-origin recommends matching origin's bundle.
+  - **Equipment → 1 best-matching coffee + 1 complementary tool.** V60 → Ethiopia + V60 paper filter. AeroPress → Kenya + Timemore grinder. Chemex → Colombia + scale.
+  - **Bundles → 1 complementary equipment + 1 cross-category coffee.** Africa-bundle → V60 + Brazil. Pro-Barista → AeroPress + Costa Rica.
+
+The seed file/section MUST list each pair as `<product-id> → [<recommended-id-1>, <recommended-id-2>, <recommended-id-3>]`. If the explicit table is missing for a product, the agent infers from the rules above. The cross-sell list is sorted in the order configured (most-relevant first).
 
 ## Mobile
 

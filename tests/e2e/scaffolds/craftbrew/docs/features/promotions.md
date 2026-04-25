@@ -30,6 +30,13 @@
 - **Coupon + promo day:** Yes, combinable. Promo day discount is automatic, the coupon is applied on top.
 - **Order:** Promo day discount → Coupon discount → Gift card deduction → Card payment
 
+### Discount calculation base
+
+- **Unrestricted coupon (no category filter):** computes against the cart subtotal AFTER promo-day discounts (i.e. discounted subtotal). Example: cart 10 000 Ft, promo-day −10% → 9 000 Ft, then 1 000 Ft coupon → final 8 000 Ft.
+- **Category-filtered coupon (e.g. BUNDLE20: bundles only):** computes against the per-item subtotal of matching items only, AFTER promo-day discounts on those items. Example: cart has 6 000 Ft bundle + 4 000 Ft coffee, promo-day −10% applies to all → 5 400 + 3 600 = 9 000. BUNDLE20 (20% on bundles) computes against the 5 400 Ft (post-promo) bundle subtotal → 1 080 Ft coupon discount. Final cart total: 9 000 − 1 080 = 7 920 Ft.
+- **Item-level promo days (e.g. coffee-only −10%):** discount applies to coffee line items individually before the cart subtotal is computed. Coupon then computes against the (already-discounted) cart subtotal per its own filter.
+- **Rounding:** all monetary intermediate values are rounded to the nearest forint at each step (no fractional Ft persisted).
+
 ## Promo Days
 
 ### Concept

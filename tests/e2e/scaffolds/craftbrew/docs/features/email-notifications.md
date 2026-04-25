@@ -4,6 +4,14 @@
 
 - **Language:** Emails are sent according to the user's language preference (HU or EN). If there is no logged-in user (e.g., gift card recipient), the default is HU. All example subjects and CTA text below are shown in English.
 
+## Mock mode (development)
+
+In development (`NODE_ENV !== 'production'` AND `EMAIL_MOCK=1`), no real emails are sent — instead the system writes a JSON record to `runtime/email-outbox/<timestamp>-<type>.json` containing the rendered template + recipient.
+
+**Critical:** mocked emails MUST still set the same one-time/state flags as real emails (`RestockNotification.sent_at`, `Subscription.delivery.delivered_email_at`, `PromoDay.email_sent`, `GiftCard.delivery_email_sent`) so the development pipeline mirrors production behavior exactly. Otherwise tests that observe these flags would diverge between dev and prod.
+
+The flag-setting condition is: **after the email's render+enqueue path returns successfully** — regardless of whether `EMAIL_MOCK` was on. If render fails (template error), the flag is NOT set and the trigger is preserved for retry.
+
 ## Email Types
 
 ### 1. Welcome (registration)

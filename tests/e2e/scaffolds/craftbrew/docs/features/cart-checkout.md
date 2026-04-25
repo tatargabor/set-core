@@ -60,16 +60,20 @@
 Order processing is transactional — the following steps happen atomically:
 1. Fetch cart items
 2. Stock check for every item
-3. Process payment
-4. Create order (price snapshot!)
-5. Decrease stock
-6. Increment coupon usage (if applicable)
-7. Decrease gift card balance (if applicable)
-8. Clear cart
-9. Generate invoice (mock)
-10. Send email (order confirmation)
+3. Process payment **(OUTSIDE the DB transaction — Stripe API call cannot be rolled back; if step 3 fails, abort before opening the transaction)**
+4. Open DB transaction
+5. Create order (price snapshot!)
+6. Decrease stock
+7. Increment coupon usage (if applicable)
+8. Decrease gift card balance (if applicable)
+9. Clear cart
+10. Generate invoice (mock)
+11. Commit transaction
+12. Send email (order confirmation) **(OUTSIDE the transaction — email failure does not roll back the order)**
 
-If any step fails → full rollback.
+**Transaction boundary:** steps 4–11 run inside a single Prisma `$transaction`. Steps 3 (payment) and 12 (email) are external side-effects and stay outside. If payment succeeds but the DB transaction fails, the system MUST issue a Stripe refund as compensation (logged + retried by a background job).
+
+If any step inside the transaction fails → full rollback (Prisma handles automatically). The compensation refund for failed transactions after successful payment is the operator's responsibility via the failed-order recovery cron.
 
 **Stock conflict at checkout:** If any item's requested quantity exceeds available stock at checkout time, an error is shown with current availability. The user returns to cart with updated stock info and can adjust quantities. Items that went out of stock are marked with a warning.
 
@@ -82,6 +86,8 @@ If any step fails → full rollback.
 - Orders in SHIPPING or DELIVERED status cannot be cancelled
 - Customers may also request cancellation from their "My Orders" page (orders in NEW or PROCESSING status only)
 
+**Customer self-cancellation flow:** the customer endpoint MUST reuse the same admin cancellation pipeline (full Stripe refund + stock + coupon + gift-card reversal, in a transaction). The endpoint differs only by authorization (the customer can cancel only their OWN orders, in NEW/PROCESSING status). This avoids two divergent code paths producing different rollback states.
+
 ## Returns & Right of Withdrawal
 
 - EU 14-day right of withdrawal applies to all physical products
@@ -90,6 +96,8 @@ If any step fails → full rollback.
 - Admin reviews return requests: approve → provide return shipping instructions, or reject with reason
 - Approved returns: once product received back → Stripe refund processed, stock restored
 - Food safety: **opened coffee packages cannot be returned** (hygiene exception per EU rules). Only sealed/unopened coffee is eligible.
+
+**Opened vs sealed determination:** the customer self-declares the package state when filing the return request via a required radio button (`sealed` / `opened`). If `opened` is selected for any coffee item, the system displays an inline notice (i18n key `returns.coffee_opened_blocked`) and prevents that item from being added to the return — the customer can still return other items. The system does NOT verify the actual state until physical receipt; if admin discovers an opened package on inspection, they reject the affected line item with reason `food_safety_violation`. Trust-based UX, audit-trail-recorded.
 - Equipment and merch: standard 14-day returns, must be unused and in original packaging
 - Gift cards: non-refundable
 

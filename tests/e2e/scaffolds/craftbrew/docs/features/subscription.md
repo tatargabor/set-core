@@ -32,6 +32,8 @@ On the logged-in user's dashboard:
 - Change address
 - Modification takes effect from the NEXT shipment
 
+**Pricing on modification:** the price difference is applied to the NEXT billing cycle only. The current in-progress cycle (already paid for) ships at the OLD price/coffee — modifications never trigger partial refunds or partial reshipments. The subscription record stores both `current_cycle_snapshot` (paid + shipping) and `next_cycle_config` (modified) until the next billing date, when `next_cycle_config` becomes the active config and a fresh snapshot is taken. Frequency change resets the next-billing date based on the new frequency from the modification timestamp.
+
 ### Pause
 - Specify from-date to to-date
 - No shipments are generated during the pause
@@ -81,7 +83,16 @@ On the logged-in user's dashboard:
 
 ## Out-of-Stock Handling
 
-If the subscribed coffee goes out of stock, the system should handle it gracefully and notify the customer.
+If the subscribed coffee goes out of stock at billing time:
+1. **Skip the delivery** for this cycle (no charge, no shipment)
+2. **Email the customer** (i18n key `subscription.delivery_skipped_oos`) explaining the skip and offering 3 actions:
+   - **Wait** (default — auto-retry next cycle when stock returns)
+   - **Substitute** (admin-curated alternative coffee for next cycle, link in email)
+   - **Pause** (subscription paused until customer reactivates)
+3. **Do NOT auto-pause** the subscription — the cycle is just skipped. Auto-pause requires explicit customer action.
+4. **Admin alert** (one-time per subscription, until restocked): `subscription.admin_oos_alert` so they can prioritize restocking.
+
+The skipped delivery is recorded in `SubscriptionDelivery` table with status `SKIPPED_OOS` for analytics.
 
 ## Subscriptions and Promotions
 

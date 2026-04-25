@@ -98,7 +98,16 @@ On click, modal or separate page:
 
 ## Daily Deliveries
 
-Subscription-generated shipments and one-time orders appear together.
+Subscription-generated shipments and one-time orders appear together, grouped by time window (Morning / Afternoon / Evening). Each row represents a single shipment.
+
+### Bulk "All delivered" action
+
+Marking a row (or a window via "All delivered" button) transitions the underlying record:
+- For a one-time order: `Order.status` → `DELIVERED`, `Order.delivered_at` set to now()
+- For a subscription delivery: `SubscriptionDelivery.status` → `DELIVERED`, `delivered_at` set to now(); the parent `Subscription` status is NOT touched (subscription continues to next cycle as scheduled)
+- Both transitions trigger the corresponding email (order-delivered / subscription-delivery-delivered) via the email queue
+
+Idempotent: marking already-DELIVERED rows is a no-op (no second email, no audit duplicate). Audit log records the admin who marked it and the timestamp.
 
 ## Subscription Management
 
