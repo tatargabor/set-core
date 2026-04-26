@@ -164,6 +164,10 @@ class TestCoverage:
     smoke_failed: int = 0
     own_passed: int = 0
     own_failed: int = 0
+    # Tests with empty/stub bodies (zero `expect()` calls) — they pass
+    # trivially under Playwright but provide no assertions. Reported as
+    # "file::name" strings so the gate output surfaces the count + names.
+    stub_tests: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -189,7 +193,85 @@ class TestCoverage:
             smoke_failed=d.get("smoke_failed", 0),
             own_passed=d.get("own_passed", 0),
             own_failed=d.get("own_failed", 0),
+            stub_tests=d.get("stub_tests", []),
         )
+
+
+# ─── Stub Test Detection ─────────────────────────────────────────
+
+
+_TEST_DECL_RE = re.compile(r"\btest(?:\.\w+)?\s*\(\s*['\"`]([^'\"`]+)['\"`]")
+
+
+def detect_stub_tests(spec_path) -> set[tuple[str, str]]:
+    """Identify ``test(...)`` blocks whose body has zero ``expect(`` calls.
+
+    A stub test like ``test('foo', () => { /* TODO: implement */ })``
+    passes trivially under Playwright/vitest — there are no assertions
+    to fail. A coverage gate that only checks "does a test exist for
+    REQ-X" would treat such a stub as covering the REQ, letting a
+    change merge with no real verification. Witnessed in
+    ``micro-web-run-20260426-1704`` contact-wizard-form: 18/18 tests
+    were ``// TODO: implement`` stubs, all "passed", coverage gate
+    reported 100% — yet the contact page rendered blank because the
+    component was never mounted and nothing actually verified it.
+
+    Returns a set of ``(file_basename, inner_test_name)`` keys. Compare
+    against runtime ``test_results`` keys with ``_is_stub_match`` since
+    Playwright prefixes ``describe``-block titles before the inner
+    ``test(...)`` name.
+    """
+    p = Path(spec_path)
+    if not p.is_file():
+        return set()
+    try:
+        content = p.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+
+    file_basename = p.name
+    matches = list(_TEST_DECL_RE.finditer(content))
+    if not matches:
+        return set()
+
+    stubs: set[tuple[str, str]] = set()
+    for i, m in enumerate(matches):
+        name = m.group(1)
+        body_start = m.end()
+        body_end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        body = content[body_start:body_end]
+        # Strip line + block comments so commented-out `expect(` doesn't count
+        body_stripped = re.sub(r"//[^\n]*", "", body)
+        body_stripped = re.sub(r"/\*.*?\*/", "", body_stripped, flags=re.DOTALL)
+        if "expect(" not in body_stripped:
+            stubs.add((file_basename, name))
+    return stubs
+
+
+def _is_stub_match(
+    result_file: str,
+    result_name: str,
+    stubs: set[tuple[str, str]],
+) -> bool:
+    """Match a Playwright runtime ``(file, name)`` key against the stub set.
+
+    Playwright reports tests as ``describe-prefix › inner-test-name``,
+    while ``detect_stub_tests`` returns just the inner ``test(...)``
+    name. Match on file basename + name suffix so the two forms align.
+    """
+    if not stubs:
+        return False
+    result_basename = Path(result_file).name if result_file else ""
+    for stub_file, stub_name in stubs:
+        if result_basename != stub_file:
+            continue
+        if (
+            result_name == stub_name
+            or result_name.endswith(f" › {stub_name}")
+            or result_name.endswith(stub_name)
+        ):
+            return True
+    return False
 
 
 # Format A: strict — ## REQ-XXX: Title [HIGH]
@@ -395,6 +477,7 @@ def build_test_coverage(
     test_results: dict[tuple[str, str], str],
     digest_req_ids: list[str],
     plan_file: str = "",
+    stub_tests: set[tuple[str, str]] | None = None,
 ) -> TestCoverage:
     """Build TestCoverage by cross-referencing plan, results, and digest.
 
@@ -404,7 +487,31 @@ def build_test_coverage(
         test_results: {(file, name): "pass"|"fail"} from profile.parse_test_results()
         digest_req_ids: All REQ IDs from the digest
         plan_file: Path to the plan file
+        stub_tests: Optional ``(file_basename, inner_test_name)`` set
+            for tests with empty bodies (zero ``expect()`` calls). When
+            supplied, these tests are excluded from coverage so a
+            change with all-stub tests fails the gate instead of
+            sliding through with a vacuous 100% pass rate.
     """
+    stub_tests = stub_tests or set()
+
+    # Filter stub tests out of runtime results — they "passed" but
+    # provide no assertions, so they cover nothing.
+    if stub_tests and test_results:
+        kept = {}
+        skipped = 0
+        for key, result in test_results.items():
+            if _is_stub_match(key[0], key[1], stub_tests):
+                skipped += 1
+                continue
+            kept[key] = result
+        if skipped:
+            logger.warning(
+                "Coverage: filtered %d stub test(s) — no expect() in body",
+                skipped,
+            )
+        test_results = kept
+
     unbound_tests: list[str] = []
 
     # Build lookups from test_cases
@@ -493,18 +600,30 @@ def build_test_coverage(
     non_testable_set = set(non_testable)
     testable_reqs = [r for r in digest_req_ids if r not in non_testable_set]
 
-    # Merge sources: plan-based req_ids + deterministic bindings
-    reqs_with_tests = {tc.req_id for tc in test_cases if tc.test_file}
+    # Merge sources: plan-based req_ids + deterministic bindings.
+    # A plan-bound test_case only counts as covering its REQ if its body
+    # is non-stub — otherwise the gate slides through on vacuous tests.
+    reqs_with_tests = {
+        tc.req_id for tc in test_cases
+        if tc.test_file and not _is_stub_match(tc.test_file, tc.test_name, stub_tests)
+    }
     reqs_with_deterministic = set(deterministic_bindings.keys())
     all_covered_reqs = reqs_with_tests | reqs_with_deterministic
 
     covered = [r for r in testable_reqs if r in all_covered_reqs]
     uncovered = [r for r in testable_reqs if r not in all_covered_reqs]
 
-    # If no direct match but we have test cases with files, the plan used
-    # journey names instead of REQ IDs. Count test files as evidence of coverage.
-    if not covered and test_cases and any(tc.test_file for tc in test_cases):
-        test_files = {tc.test_file for tc in test_cases if tc.test_file}
+    # If no direct match but we have test cases with non-stub files,
+    # the plan used journey names instead of REQ IDs. Count those as
+    # evidence of coverage (stubs explicitly excluded — see above).
+    if not covered and test_cases and any(
+        tc.test_file and not _is_stub_match(tc.test_file, tc.test_name, stub_tests)
+        for tc in test_cases
+    ):
+        test_files = {
+            tc.test_file for tc in test_cases
+            if tc.test_file and not _is_stub_match(tc.test_file, tc.test_name, stub_tests)
+        }
         covered = list(testable_reqs)
         uncovered = []
         logger.info(
@@ -537,6 +656,7 @@ def build_test_coverage(
         coverage_pct=round(coverage_pct, 1),
         unbound_tests=unbound_tests,
         parsed_at=datetime.now(timezone.utc).astimezone().isoformat(),
+        stub_tests=sorted(f"{f}::{n}" for f, n in stub_tests),
     )
     logger.info("Test coverage: %.1f%% (%d/%d reqs), %d passed, %d failed, %d unbound tests",
                  coverage_pct, len(covered), total_testable, passed, failed, len(unbound_tests))

@@ -1558,6 +1558,40 @@ def _count_skeleton_todos(wt_path: str, change_name: str) -> int:
         return 0
 
 
+def _scan_stub_tests(wt_path: str) -> set[tuple[str, str]]:
+    """Walk ``<wt>/tests/e2e/`` for ``*.spec.{ts,js}`` and detect stub tests.
+
+    Returns a ``(file_basename, inner_test_name)`` set the coverage
+    gate uses to filter out vacuously-passing tests (empty body, no
+    ``expect()``). Empty/unreadable directory returns an empty set so
+    the coverage path stays robust.
+    """
+    from .test_coverage import detect_stub_tests as _detect
+
+    e2e_dir = os.path.join(wt_path, "tests", "e2e")
+    if not os.path.isdir(e2e_dir):
+        return set()
+    stubs: set[tuple[str, str]] = set()
+    try:
+        entries = os.listdir(e2e_dir)
+    except OSError:
+        return set()
+    for fn in entries:
+        if not fn.endswith((".spec.ts", ".spec.js", ".spec.tsx")):
+            continue
+        try:
+            stubs |= _detect(os.path.join(e2e_dir, fn))
+        except Exception:  # noqa: BLE001 — defensive; never block coverage
+            logger.debug("stub-detect raised on %s", fn, exc_info=True)
+    if stubs:
+        logger.warning(
+            "Stub-test scan: %d test(s) with empty body in %s — "
+            "coverage gate will treat them as missing implementation",
+            len(stubs), e2e_dir,
+        )
+    return stubs
+
+
 def _detect_own_spec_files(wt_path: str) -> list[str]:
     """Detect which E2E spec files were added/modified by this change branch.
 
@@ -2319,12 +2353,14 @@ def _run_integration_gates(
                                     ac_id=_entry.ac_id,
                                 ))
                             _non_testable = _plan.non_testable
+                        _stub_tests = _scan_stub_tests(wt_path)
                         _coverage = build_test_coverage(
                             test_cases=_test_cases,
                             non_testable=_non_testable,
                             test_results=_test_results,
                             digest_req_ids=list(_req_set),
                             plan_file=_plan_path,
+                            stub_tests=_stub_tests,
                         )
 
                         _cov_pct = _coverage.coverage_pct / 100.0 if _coverage.coverage_pct > 1 else _coverage.coverage_pct
@@ -3176,13 +3212,16 @@ def _parse_test_coverage_if_applicable(change_name: str, state_file: str) -> Non
                 change_name, len(coverage_req_ids), change_type or "no-own-reqs",
             )
 
-        # Build coverage
+        # Build coverage — scan for stub tests so empty `// TODO: implement`
+        # bodies don't slide through as covered.
+        stub_tests = _scan_stub_tests(str(project_root))
         coverage = build_test_coverage(
             test_cases=test_cases,
             non_testable=non_testable,
             test_results=test_results,
             digest_req_ids=coverage_req_ids,
             plan_file=str(plan_path),
+            stub_tests=stub_tests,
         )
 
         # Run coverage validation against test plan if available

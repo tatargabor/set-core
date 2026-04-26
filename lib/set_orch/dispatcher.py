@@ -1961,7 +1961,12 @@ def _build_input_content(
             "Tag SMOKE tests with: "
             "`test('REQ-HOME-001: ...', { tag: '@smoke' }, async ({ page }) => { ... })`\n"
             f"Minimum test count: {len(test_plan_entries)} "
-            f"(coverage gate blocks below {_threshold_pct}%)."
+            f"(coverage gate blocks below {_threshold_pct}%).\n"
+            "**Stub detection: every test body MUST contain ≥1 `expect(...)` "
+            "call.** Empty bodies (`// TODO: implement` only) pass trivially "
+            "in Playwright but are flagged as stubs and EXCLUDED from "
+            "coverage — leaving any stub will drop coverage % and block "
+            "the gate."
         )
         for entry in test_plan_entries:
             cats = ", ".join(entry.categories)
