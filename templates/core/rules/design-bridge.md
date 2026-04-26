@@ -23,6 +23,27 @@ The `set-design-hygiene` scanner reports HU literals as INFO severity (not WARN)
 
 **If a shell component for your feature exists in the design source's `components/` directory, mount it. DO NOT create a parallel implementation under a different name.**
 
+### Strict mounting rules (the fidelity gate enforces these)
+
+For every top-level shell `v0-export/components/<X>.tsx` (anything NOT under `components/ui/`):
+
+1. **Mount at the canonical filename** — `src/components/<X>.tsx` MUST exist with the same kebab-case name. Different filenames are a `shell-not-mounted` violation (CRITICAL, blocks merge), even if a similarly-purposed file exists under another name.
+2. **No aliasing to a sibling local file** — A file like:
+   ```tsx
+   // src/components/site-header.tsx
+   import { Navbar } from "./Navbar";
+   export const SiteHeader = Navbar;       // ← shadow-alias, BLOCKS MERGE
+   export default Navbar;                    // ← also shadow-alias
+   ```
+   This pattern games the skeleton check while bypassing the v0 design entirely. The gate flags `shadow-alias` (CRITICAL).
+3. **Re-exporting v0 directly is fine** — if you want to keep `components/ui/` simple imports while "mounting" the shell:
+   ```tsx
+   // src/components/site-header.tsx
+   export { default } from "@/v0-export/components/site-header";   // OK
+   ```
+4. **Forking the v0 file is fine** — copy the v0 contents into `src/components/<X>.tsx` and adapt them (server-component conversion, i18n, real data). The kebab-case filename is what matters.
+5. **Different filename requires a waiver** — operators can list mappings in `gate_overrides.design-fidelity.aliases` in orchestration config to suppress per shell.
+
 ### Bad
 
 Agent creates `src/components/search-bar.tsx` while v0 already has `components/search-palette.tsx` (modal CommandDialog pattern). The agent ends up with an inline dropdown instead of the design's modal — the fidelity gate flags `decomposition-shadow` violation.
@@ -37,6 +58,50 @@ import { SearchPalette } from "@/components/search-palette"  // mounted from v0
 ```
 
 The shell file stays structurally faithful; only data sourcing and i18n strings are adapted.
+
+## No UX pattern reinterpretation
+
+**If the v0 design uses a specific shadcn primitive, the implementation MUST use the same primitive.** Pattern divergence — even when "the alternative is more accessible" or "easier to implement" — is FORBIDDEN unless explicitly waived in `proposal.md`.
+
+This is not a stylistic preference. The v0 design is the visual contract; reinterpreting `<CommandDialog>` as a "dropdown anchored to the input" is a design change, not an implementation detail.
+
+### Caught by the fidelity gate
+
+The `shadcn-primitive-missing` check tracks distinctive primitives — `CommandDialog`, `Sheet`, `HoverCard`, `Combobox`, `Drawer`, `ResizablePanel`, `ScrollArea`, `Stepper`, etc. If the v0 export imports one but **no file under `src/`** does, the gate emits `shadcn-primitive-missing` (WARN). Frequent offenders:
+
+| v0 uses | Agent often substitutes | Why it's wrong |
+|---|---|---|
+| `CommandDialog` (Cmd+K modal palette) | Plain `Input` with a `Card` dropdown | Different keyboard model, different a11y, different visual hierarchy |
+| `Sheet` (slide-in drawer) | `Dialog` (modal centered) | Wrong mobile UX — Sheet is the "edge drawer" pattern, Dialog is the "center modal" pattern |
+| `HoverCard` (rich preview on hover) | `Tooltip` (label-only) | HoverCard supports rich content (avatar, links, badges); Tooltip is single-line text only |
+| `Combobox` (search + select fused) | Two separate `Select`s, or `Input` + dropdown | Combobox is a single accessible widget with type-ahead filtering |
+| `Drawer` (mobile-up modal sheet) | `Sheet` or `Dialog` | Drawer animation/direction differs |
+| `ResizablePanel` | Static grid | User can't resize |
+| `Stepper` (custom shadcn-blocks step UI) | `<div>Step 1/3</div>` | Stepper has a11y semantics + visual distinctiveness |
+
+### If you genuinely need to diverge
+
+Add a waiver in your `proposal.md`:
+
+```yaml
+design:
+  primitive_waivers:
+    - primitive: CommandDialog
+      reason: "Mobile-first design — modal is too large on small viewports; using anchored dropdown instead"
+      approved_by: "<operator name or @scaffold-author>"
+```
+
+The waiver is reviewed by the operator. Without it, divergence is a DESIGN BUG.
+
+### What NOT to do
+
+> "shadcn-style command palette layout, but rendered as a dropdown anchored to the input — not a modal `CommandDialog`"
+
+This kind of phrasing in `design.md` is a red flag. You're announcing the divergence ahead of implementing it, which proves it's a deliberate design decision (not an accidental simplification). Either:
+- (a) Use the v0 primitive as-is, OR
+- (b) Get a waiver BEFORE writing this in design.md.
+
+Never (c) "decide for the design" by yourself.
 
 ### Entity-reference markers in spec
 

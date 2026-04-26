@@ -97,8 +97,35 @@ RETENTION_DAYS = 7
 
 @dataclass
 class SkeletonViolation:
-    status: str   # "missing-route" | "extra-route" | "missing-shared-file" | "decomposition-collapsed" | "decomposition-shadow" | "hardcoded-color" | "classname-rewritten"
+    status: str   # "missing-route" | "extra-route" | "missing-shared-file" | "decomposition-collapsed" | "decomposition-shadow" | "shell-not-mounted" | "shadow-alias" | "shadcn-primitive-missing" | "hardcoded-color" | "classname-rewritten"
     detail: str
+
+
+# Distinctive shadcn primitives. These have HIGH agent-temptation to replace
+# with simpler vanilla equivalents (Dialog → modal, dropdown anchored to input
+# instead of CommandDialog, plain Select instead of Combobox, etc.). When the
+# v0 design source uses one of these, the implementation MUST also use it
+# (or carry an explicit waiver). Adding to this list is cheap; primitives
+# that don't appear in any v0 export simply don't trigger the parity check.
+_DISTINCTIVE_SHADCN_PRIMITIVES = frozenset({
+    # Command palette family — frequently substituted with plain dropdown
+    "CommandDialog", "Command", "CommandInput", "CommandItem",
+    "CommandGroup", "CommandList", "CommandEmpty", "CommandSeparator",
+    # Sheet drawer — frequently substituted with Dialog modal
+    "Sheet", "SheetContent", "SheetTrigger", "SheetHeader", "SheetTitle",
+    # Hover/Popover patterns — frequently substituted with Tooltip or inline
+    "HoverCard", "HoverCardContent", "HoverCardTrigger",
+    # Drawer — frequently substituted with Sheet or Dialog
+    "Drawer", "DrawerContent", "DrawerTrigger",
+    # Combobox — frequently substituted with plain Select or two separate fields
+    "Combobox",
+    # Resizable panels — frequently substituted with plain grid
+    "ResizablePanel", "ResizablePanelGroup", "ResizableHandle",
+    # Scroll-area — frequently substituted with overflow CSS
+    "ScrollArea", "ScrollBar",
+    # Stepper / multi-step indicator — frequently inlined as text
+    "Stepper", "Step",
+})
 
 
 # ─── Static design-drift checks (no build required) ──────────────────
@@ -577,6 +604,8 @@ def _run_gate(
     # produce extras that the agent cannot delete without breaking the app.
     blocking_statuses = {
         "missing-route", "missing-shared-file", "decomposition-collapsed",
+        # design-fidelity-shell-hardening: hard fail on missing/aliased shells
+        "shell-not-mounted", "shadow-alias",
     }
     blocking = [v for v in skel if v.status in blocking_statuses]
     if blocking:
@@ -857,6 +886,20 @@ def run_skeleton_check(
     # `gate_overrides.design-fidelity.shell_shadow_severity: critical`.
     violations.extend(_check_shell_shadow(agent_worktree, manifest, aliases, v0_export))
 
+    # design-fidelity-shell-hardening: stricter shell mounting check — every
+    # top-level v0 shell MUST be mounted at its canonical filename in
+    # src/components/. Catches the "different-name shadow" pattern that
+    # filename-token heuristics miss (e.g. `Navbar.tsx` shadowing
+    # `site-header.tsx`) and the shadow-alias re-export trick that games
+    # the skeleton check.
+    violations.extend(_check_shell_mounting(agent_worktree, manifest, aliases, v0_export))
+
+    # design-fidelity-shell-hardening: shadcn primitive parity — distinctive
+    # primitives present in v0 (CommandDialog, Sheet, HoverCard, Combobox,
+    # ...) must also be imported somewhere under src/. Catches the "agent
+    # reinterpreted the UX pattern" failure mode (WARN severity).
+    violations.extend(_check_shadcn_primitive_parity(agent_worktree, manifest, v0_export))
+
     return violations
 
 
@@ -956,6 +999,233 @@ def _extract_shadcn_imports(text: str) -> set[str]:
             cleaned = name.strip().split(" as ")[0].strip()
             if cleaned:
                 out.add(cleaned)
+    return out
+
+
+def _check_shell_mounting(
+    agent_worktree: Path,
+    manifest,
+    aliases: dict,
+    v0_export: Path,
+) -> list[SkeletonViolation]:
+    """Verify each top-level v0 shell is mounted under its canonical filename.
+
+    For each `v0-export/components/<X>.tsx` (top-level only, excluding `ui/`):
+      1. `src/components/<X>.tsx` MUST exist (CRITICAL `shell-not-mounted` if not).
+      2. If it exists, it MUST NOT be a shadow alias — i.e. the file's only real
+         content is `export const Foo = LocalSibling` re-exporting another
+         agent-authored sibling file. That pattern games the skeleton check
+         while bypassing the v0 design source. CRITICAL `shadow-alias`.
+
+    Both new statuses are blocking. Operators can still waive a specific shell
+    via `gate_overrides.design-fidelity.aliases` (already-existing path → path
+    map): listing the v0 path as either key or value skips the mount check.
+    """
+    import re as _re
+    out: list[SkeletonViolation] = []
+
+    src_components = agent_worktree / "src" / "components"
+    if not src_components.is_dir():
+        # No src/components/ at all — earlier missing-shared-file check fires
+        # for individual shells; don't double-report here.
+        return out
+
+    aliased_paths: set[str] = set()
+    if isinstance(aliases, dict):
+        for k, v in aliases.items():
+            aliased_paths.add(k)
+            aliased_paths.add(v)
+
+    for shared_path in manifest.shared:
+        if not shared_path.endswith(".tsx"):
+            continue
+        if "components/ui/" in shared_path:
+            continue
+        # Top-level shell only — `components/foo.tsx`, not `components/foo/bar.tsx`
+        if "components/" not in shared_path:
+            continue
+        rel = shared_path.split("components/", 1)[1]
+        if "/" in rel:
+            continue
+
+        if any(shared_path.endswith(a) for a in aliased_paths):
+            continue
+        base = rel[: -len(".tsx")]
+        target = src_components / f"{base}.tsx"
+
+        if not target.is_file():
+            out.append(SkeletonViolation(
+                "shell-not-mounted",
+                f"v0 shell `{shared_path}` is not mounted at "
+                f"`src/components/{base}.tsx`. Mount the v0 component there "
+                f"directly, or re-export it: "
+                f"`export {{ default }} from '@/v0-export/components/{base}'`. "
+                f"If a different filename is intentional, add it to "
+                f"`gate_overrides.design-fidelity.aliases` in orchestration config.",
+            ))
+            continue
+
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        if _is_shadow_alias(content):
+            out.append(SkeletonViolation(
+                "shadow-alias",
+                f"`src/components/{base}.tsx` re-exports a sibling local file "
+                f"instead of the v0 design source. This bypasses the v0 shell "
+                f"`{shared_path}`. Either copy the v0 shell content here OR "
+                f"re-export from `@/v0-export/components/{base}`. Aliasing to "
+                f"a custom local file (e.g. `export const Foo = CustomBar`) "
+                f"defeats the design-fidelity check.",
+            ))
+    return out
+
+
+def _is_shadow_alias(content: str) -> bool:
+    """Detect shadow alias pattern: a near-empty file whose only purpose is to
+    re-export a sibling LOCAL file (not a v0-export import).
+
+    Triggers on:
+      - `export const Foo = LocalY` where Y is from `./Y` (sibling)
+      - `export default LocalY` where Y is from `./Y` (sibling)
+      - `export { Y as default }` where Y is from `./Y`
+    AND the file has < 5 non-trivial lines (no real implementation).
+    """
+    import re as _re
+
+    # Collect names imported from sibling local files (./X). Imports from
+    # `@/v0-export/...` are LEGITIMATE — those are intentional v0 re-exports.
+    sibling_names: set[str] = set()
+    for m in _re.finditer(
+        r"import\s+(?:\{([^}]+)\}|(\w+))\s+from\s+['\"]\.\/([\w-]+)['\"]",
+        content,
+    ):
+        if m.group(2):
+            sibling_names.add(m.group(2))
+        elif m.group(1):
+            for name in m.group(1).split(","):
+                cleaned = name.strip().split(" as ")[0].strip()
+                if cleaned:
+                    sibling_names.add(cleaned)
+
+    if not sibling_names:
+        return False
+
+    # Look for re-export of a sibling-imported name
+    has_reexport = False
+    for sib in sibling_names:
+        sib_re = _re.escape(sib)
+        if (
+            _re.search(rf"export\s+(?:const|let|var|default)\s+\w+\s*=\s*{sib_re}\b", content)
+            or _re.search(rf"export\s+default\s+{sib_re}\b", content)
+            or _re.search(rf"export\s*\{{[^}}]*\b{sib_re}\b[^}}]*\}}", content)
+        ):
+            has_reexport = True
+            break
+
+    if not has_reexport:
+        return False
+
+    # Count "real" lines — anything that's not blank, comment, import, or export
+    real_lines = 0
+    for raw in content.split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(("//", "/*", "*", "*/")):
+            continue
+        if line.startswith("import "):
+            continue
+        if line.startswith("export "):
+            continue
+        real_lines += 1
+
+    return real_lines < 5
+
+
+def _check_shadcn_primitive_parity(
+    agent_worktree: Path,
+    manifest,
+    v0_export: Path,
+) -> list[SkeletonViolation]:
+    """Detect distinctive shadcn primitives present in v0 shells but absent
+    from the implementation.
+
+    Catches the "agent reinterpreted the UX pattern" failure mode where v0
+    uses `<CommandDialog>` and the implementation silently substitutes a
+    `<Card>` dropdown. Severity is WARN — not all primitive substitutions
+    are wrong (e.g. `Sheet` → `Drawer` for mobile may be valid design
+    nuance), but every flagged miss is a divergence the operator should
+    look at.
+    """
+    out: list[SkeletonViolation] = []
+
+    # Collect distinctive primitives used across ALL v0 shell files (top-level
+    # components and pages — anything in v0-export's app/ or top-level
+    # components/ directories).
+    v0_primitives: set[str] = set()
+    v0_root = v0_export
+
+    for shared_path in manifest.shared:
+        if not shared_path.endswith(".tsx"):
+            continue
+        full = v0_root / shared_path.split("v0-export/", 1)[-1] if "v0-export/" in shared_path else None
+        if full is None or not full.is_file():
+            # Try resolving as relative path under the worktree
+            cand = agent_worktree / shared_path
+            if cand.is_file():
+                full = cand
+        if full is None or not full.is_file():
+            continue
+        try:
+            text = full.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        v0_primitives |= (_extract_shadcn_imports(text) & _DISTINCTIVE_SHADCN_PRIMITIVES)
+
+    # Also walk v0-export app/ pages (route entries are in manifest as routes,
+    # but their files contain UX patterns we want to check)
+    v0_app = v0_root / "app"
+    if v0_app.is_dir():
+        for f in v0_app.rglob("*.tsx"):
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            v0_primitives |= (_extract_shadcn_imports(text) & _DISTINCTIVE_SHADCN_PRIMITIVES)
+
+    if not v0_primitives:
+        return out
+
+    # Walk implementation src/ for the same primitives
+    src = agent_worktree / "src"
+    if not src.is_dir():
+        return out
+
+    impl_primitives: set[str] = set()
+    for f in src.rglob("*.tsx"):
+        if "/components/ui/" in str(f):
+            continue  # primitives' own definitions
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        impl_primitives |= _extract_shadcn_imports(text)
+
+    missing = v0_primitives - impl_primitives
+    for prim in sorted(missing):
+        out.append(SkeletonViolation(
+            "shadcn-primitive-missing",
+            f"v0 design uses `<{prim}>` (a distinctive shadcn pattern) but "
+            f"no file under `src/` imports it. This usually means the "
+            f"implementation replaced the v0 UX pattern with a simpler "
+            f"alternative (e.g. CommandDialog → plain dropdown, Sheet → "
+            f"Dialog modal, HoverCard → Tooltip). If intentional, add "
+            f"a waiver in proposal.md under "
+            f"`design.primitive_waivers: [{prim}]` with the reason.",
+        ))
     return out
 
 

@@ -428,3 +428,282 @@ def test_classname_token_includes_bracket_modifier(tmp_path: Path):
     toks = _extract_classname_tokens('<div className="text-[1.125rem] leading-[1.5]" />')
     assert "text-[1.125rem]" in toks
     assert "leading-[1.5]" in toks
+
+
+# ─── design-fidelity-shell-hardening: stricter shell mounting ───────────
+
+
+def _make_shell_test_layout(tmp_path: Path):
+    """Build a fake worktree + v0-export with one shell that requires mounting."""
+    agent = tmp_path / "agent"
+    v0 = tmp_path / "agent" / "v0-export"
+    (v0 / "components").mkdir(parents=True)
+    # Realistic v0 shell with multiple shadcn imports
+    (v0 / "components" / "site-header.tsx").write_text(
+        "import { Button } from '@/components/ui/button'\n"
+        "import { CommandDialog, CommandInput } from '@/components/ui/command'\n"
+        "export function SiteHeader() { return <header /> }\n"
+    )
+    (v0 / "app").mkdir(parents=True)
+    (v0 / "app" / "layout.tsx").write_text("export default function L(){return null}")
+    (agent / "app").mkdir(parents=True, exist_ok=True)
+    (agent / "app" / "page.tsx").write_text("export default function P(){return null}")
+    (agent / "app" / "layout.tsx").write_text("export default function L(){return null}")
+    return agent, v0
+
+
+def test_shell_mounting_missing_canonical_filename(tmp_path: Path):
+    """If v0 has site-header.tsx but src/components/ has only Navbar.tsx
+    (different name), the gate must emit shell-not-mounted (CRITICAL/blocking).
+    """
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    # Agent created their own custom Navbar.tsx (PascalCase) — the exact
+    # craftbrew-run-20260425-2328 failure pattern
+    (src_components / "Navbar.tsx").write_text(
+        "import { Button } from '@/components/ui/button'\n"
+        "export function Navbar() { return <nav /> }\n"
+    )
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    assert any(v.status == "shell-not-mounted" for v in violations), \
+        f"Expected shell-not-mounted, got: {[(v.status, v.detail) for v in violations]}"
+
+
+def test_shell_mounting_shadow_alias_blocks(tmp_path: Path):
+    """If src/components/site-header.tsx exists but only re-exports a sibling
+    local Navbar.tsx, the gate must emit shadow-alias (CRITICAL/blocking).
+    This is the exact pattern from craftbrew-run-20260425-2328.
+    """
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    (src_components / "Navbar.tsx").write_text(
+        "export function Navbar() { return <nav /> }\n"
+    )
+    # The shadow-alias trick — site-header.tsx exists but only re-exports Navbar
+    (src_components / "site-header.tsx").write_text(
+        'import { Navbar } from "./Navbar";\n'
+        '// Manifest shell mounts here.\n'
+        'export const SiteHeader = Navbar;\n'
+        'export default SiteHeader;\n'
+    )
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    assert any(v.status == "shadow-alias" for v in violations), \
+        f"Expected shadow-alias, got: {[(v.status, v.detail) for v in violations]}"
+
+
+def test_shell_mounting_v0_reexport_passes(tmp_path: Path):
+    """A re-export from `@/v0-export/components/X` is a LEGITIMATE shell mount
+    pattern and must NOT be flagged as shadow-alias.
+    """
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    # Legitimate re-export from v0-export
+    (src_components / "site-header.tsx").write_text(
+        "export { SiteHeader } from '@/v0-export/components/site-header';\n"
+        "export { default } from '@/v0-export/components/site-header';\n"
+    )
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    assert not any(v.status == "shadow-alias" for v in violations), \
+        f"Legitimate v0 re-export should pass; got: {[(v.status, v.detail) for v in violations]}"
+    assert not any(v.status == "shell-not-mounted" for v in violations)
+
+
+def test_shell_mounting_forked_content_passes(tmp_path: Path):
+    """A forked v0 shell (copy-paste of the v0 content into src/components/)
+    is a LEGITIMATE pattern. The file has real implementation lines, even
+    though it imports siblings, so shadow-alias must NOT fire.
+    """
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    (src_components / "site-header.tsx").write_text(
+        'import { Button } from "@/components/ui/button";\n'
+        'import { Logo } from "./logo";\n'
+        'export function SiteHeader() {\n'
+        '  return (\n'
+        '    <header className="border-b">\n'
+        '      <Logo />\n'
+        '      <nav>\n'
+        '        <Button>Sign in</Button>\n'
+        '      </nav>\n'
+        '    </header>\n'
+        '  );\n'
+        '}\n'
+    )
+    (src_components / "logo.tsx").write_text(
+        'export function Logo() { return <span>Brand</span> }\n'
+    )
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    assert not any(v.status == "shadow-alias" for v in violations), \
+        f"Forked v0 shell should pass; got: {[(v.status, v.detail) for v in violations]}"
+
+
+def test_shell_mounting_alias_override_skips(tmp_path: Path):
+    """Operators can waive a specific shell via shared_aliases — that path
+    should skip both shell-not-mounted and shadow-alias checks.
+    """
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    (src_components / "Navbar.tsx").write_text("export function Navbar() {}\n")
+    # No site-header.tsx at all — but the alias whitelists it
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+        shared_aliases={"site-header.tsx": "Navbar.tsx"},
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    assert not any(v.status == "shell-not-mounted" for v in violations)
+    assert not any(v.status == "shadow-alias" for v in violations)
+
+
+# ─── design-fidelity-shell-hardening: shadcn primitive parity ────────────
+
+
+def test_shadcn_primitive_parity_command_dialog_missing(tmp_path: Path):
+    """If v0 uses CommandDialog but no src/ file imports it, the gate must
+    emit shadcn-primitive-missing (WARN, non-blocking)."""
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    # Mount the shell properly so other checks pass
+    (src_components / "site-header.tsx").write_text(
+        "export { default } from '@/v0-export/components/site-header';\n"
+    )
+    # Implementation doesn't import CommandDialog anywhere
+    (agent / "src" / "app").mkdir(parents=True, exist_ok=True)
+    (agent / "src" / "app" / "page.tsx").write_text(
+        "import { Card } from '@/components/ui/card'\n"
+        "export default function Page() { return <Card>hi</Card> }\n"
+    )
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    cd_violations = [v for v in violations if v.status == "shadcn-primitive-missing"]
+    assert cd_violations, \
+        f"Expected shadcn-primitive-missing, got: {[(v.status, v.detail) for v in violations]}"
+    # Should specifically call out CommandDialog
+    assert any("CommandDialog" in v.detail for v in cd_violations)
+
+
+def test_shadcn_primitive_parity_present_in_src_passes(tmp_path: Path):
+    """If v0 uses CommandDialog AND some src/ file imports it, no violation."""
+    from set_project_web.v0_fidelity_gate import run_skeleton_check
+
+    agent, v0 = _make_shell_test_layout(tmp_path)
+    src_components = agent / "src" / "components"
+    src_components.mkdir(parents=True)
+    (src_components / "site-header.tsx").write_text(
+        "export { default } from '@/v0-export/components/site-header';\n"
+    )
+    # Implementation DOES import CommandDialog and CommandInput
+    (agent / "src" / "app").mkdir(parents=True, exist_ok=True)
+    (agent / "src" / "app" / "page.tsx").write_text(
+        "import { CommandDialog, CommandInput } from '@/components/ui/command'\n"
+        "export default function Page() { return <CommandDialog open={false} /> }\n"
+    )
+
+    manifest = FakeManifest(
+        routes=[FakeRoute("/")],
+        shared=[
+            "v0-export/components/site-header.tsx",
+            "v0-export/app/layout.tsx",
+        ],
+    )
+    violations = run_skeleton_check(agent, v0, manifest)
+    assert not any(v.status == "shadcn-primitive-missing" for v in violations), \
+        f"CommandDialog is imported in src/, should pass; got: {[(v.status, v.detail) for v in violations]}"
+
+
+def test_is_shadow_alias_pattern_detection():
+    """Direct unit test of _is_shadow_alias pattern recognition."""
+    from set_project_web.v0_fidelity_gate import _is_shadow_alias
+
+    # Pattern 1: export const X = Y where Y from sibling
+    assert _is_shadow_alias(
+        'import { Navbar } from "./Navbar";\n'
+        'export const SiteHeader = Navbar;\n'
+        'export default SiteHeader;\n'
+    )
+
+    # Pattern 2: export default Y where Y from sibling
+    assert _is_shadow_alias(
+        'import Foo from "./Foo";\n'
+        'export default Foo;\n'
+    )
+
+    # Pattern 3: re-export from v0-export — NOT a shadow alias
+    assert not _is_shadow_alias(
+        "export { default } from '@/v0-export/components/site-header';\n"
+    )
+
+    # Pattern 4: real implementation that imports a sibling but has logic
+    assert not _is_shadow_alias(
+        'import { Logo } from "./Logo";\n'
+        'import { Button } from "@/components/ui/button";\n'
+        'export function SiteHeader() {\n'
+        '  return (\n'
+        '    <header>\n'
+        '      <Logo />\n'
+        '      <Button>Sign in</Button>\n'
+        '    </header>\n'
+        '  );\n'
+        '}\n'
+    )
