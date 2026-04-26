@@ -1338,6 +1338,79 @@ def _parse_llm_events_file(events_file: Path, calls: list[dict]) -> None:
         pass
 
 
+def _read_session_iterations(
+    state, change_name: str, session_stem: str,
+) -> list[dict]:
+    """Read `loop-state.json:iterations[]` for a change and project the
+    rows that belong to a specific Claude session file.
+
+    Each Claude session file (named by UUID) typically spans one or more
+    ralph loop iterations: the bash loop opens a fresh `claude` session
+    on the first iter and `--resume`s it on subsequent iters within the
+    same orchestrator dispatch. When `context_too_large` triggers a
+    fresh-restart mid-loop, a NEW session file is created and the
+    following iters belong to it.
+
+    Mapping rule: an iteration belongs to the session whose UUID equals
+    `iter.session_id` (per-iter, written by `add_iteration` since the
+    session_id-on-iter change). When older state files lack per-iter
+    `session_id`, fall back to "everything ran in the current top-level
+    session_id" — the legacy behavior covers single-session changes
+    correctly and only mis-bins iters across fresh-restart boundaries
+    on snapshots written before the upgrade.
+
+    Returns a list of dicts, one per iter, with the fields the frontend
+    renders as expandable sub-rows. Empty list when nothing matches.
+    """
+    if state is None:
+        return []
+    target = next((c for c in state.changes if c.name == change_name), None)
+    if target is None or not target.worktree_path:
+        return []
+    loop_state_path = Path(target.worktree_path) / ".set" / "loop-state.json"
+    if not loop_state_path.is_file():
+        return []
+    try:
+        ls = json.loads(loop_state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    iterations = ls.get("iterations") or []
+    if not isinstance(iterations, list) or not iterations:
+        return []
+    top_sid = str(ls.get("session_id") or "")
+    out: list[dict] = []
+    for entry in iterations:
+        if not isinstance(entry, dict):
+            continue
+        entry_sid = str(entry.get("session_id") or "")
+        # Apply the mapping rule: explicit per-iter session_id wins; fall
+        # back to top-level when the entry doesn't carry one (legacy).
+        effective_sid = entry_sid or top_sid
+        if effective_sid != session_stem:
+            continue
+        try:
+            n = int(entry.get("n") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        out.append({
+            "n": n,
+            "started": entry.get("started", "") or "",
+            "ended": entry.get("ended", "") or "",
+            "session_id": effective_sid,
+            "resumed": bool(entry.get("resumed", False)),
+            "tokens_used": int(entry.get("tokens_used") or 0),
+            "input_tokens": int(entry.get("input_tokens") or 0),
+            "output_tokens": int(entry.get("output_tokens") or 0),
+            "cache_read_tokens": int(entry.get("cache_read_tokens") or 0),
+            "cache_create_tokens": int(entry.get("cache_create_tokens") or 0),
+            "no_op": bool(entry.get("no_op", False)),
+            "ff_exhausted": bool(entry.get("ff_exhausted", False)),
+            "commits": entry.get("commits") or [],
+        })
+    out.sort(key=lambda r: r["n"])
+    return out
+
+
 def _read_session_calls(state, project_path: Path, calls: list[dict], skip_keys: set | None = None) -> None:
     """Read Claude session files for all changes + project-level orchestration sessions."""
     from .sessions import (
@@ -1409,7 +1482,7 @@ def _read_session_calls(state, project_path: Path, calls: list[dict], skip_keys:
                     # the offset suffix — emitting naive UTC here would
                     # cause session rows to render 1-2h earlier than they
                     # actually happened vs event-sourced rows.
-                    calls.append({
+                    call_row = {
                         "timestamp": datetime.fromtimestamp(
                             st.st_mtime, tz=timezone.utc
                         ).astimezone().isoformat(),
@@ -1424,7 +1497,19 @@ def _read_session_calls(state, project_path: Path, calls: list[dict], skip_keys:
                         "cache_tokens": tokens.get("cache_read_tokens", 0),
                         "exit_code": 0,
                         "active": is_active,
-                    })
+                    }
+                    # Iter-level breakdown: only meaningful for ralph agent
+                    # task sessions (the only path that produces a worktree
+                    # `loop-state.json:iterations[]` array). Verifier
+                    # sessions (review/spec_verify/replan/classify) are
+                    # one-shot Claude calls with no iter loop.
+                    if change_name and label.lower() == "task":
+                        iters = _read_session_iterations(
+                            state, change_name, f.stem,
+                        )
+                        if iters:
+                            call_row["iterations"] = iters
+                    calls.append(call_row)
                 except OSError:
                     pass
         except OSError:

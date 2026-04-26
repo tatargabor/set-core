@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Fragment, useState, useEffect, useMemo, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import type { ChangeInfo, LLMCall } from '../lib/api'
 import { getLLMCalls } from '../lib/api'
@@ -94,6 +94,9 @@ export default function TokenChart({ changes, project }: Props) {
   const [calls, setCalls] = useState<LLMCall[]>([])
   const [sortKey, setSortKey] = useState<SortKey>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
+  // Expanded rows by index — clicking the chevron on a session row with
+  // an `iterations` array reveals one sub-row per ralph iteration.
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
 
   const { lineageId } = useSelectedLineage()
   useEffect(() => {
@@ -284,6 +287,7 @@ export default function TokenChart({ changes, project }: Props) {
               <table className="w-full text-xs">
                 <thead className="bg-neutral-900/50 sticky top-0">
                   <tr>
+                    <th className="px-1 py-1.5 w-4"></th>
                     <SortHeader k="timestamp" label="Time" />
                     <SortHeader k="phase" label="Phase" />
                     <SortHeader k="purpose" label="Purpose" />
@@ -303,11 +307,35 @@ export default function TokenChart({ changes, project }: Props) {
                       : call.model.includes('haiku') ? 'haiku'
                       : call.model
                     const modelColor = MODEL_COLOR[modelShort] ?? '#737373'
+                    const iters = call.iterations ?? []
+                    const hasIters = iters.length > 0
+                    const isExpanded = expandedRows.has(i)
+                    const toggle = () => {
+                      if (!hasIters) return
+                      setExpandedRows(prev => {
+                        const next = new Set(prev)
+                        if (next.has(i)) next.delete(i)
+                        else next.add(i)
+                        return next
+                      })
+                    }
                     return (
-                      <tr key={i} className={`border-t border-neutral-800/30 hover:bg-neutral-800/30 ${call.active ? 'bg-green-950/30' : ''}`}>
+                      <Fragment key={i}>
+                      <tr
+                        className={`border-t border-neutral-800/30 hover:bg-neutral-800/30 ${call.active ? 'bg-green-950/30' : ''} ${hasIters ? 'cursor-pointer' : ''}`}
+                        onClick={hasIters ? toggle : undefined}
+                      >
+                        <td className="px-1 py-1.5 text-neutral-500 text-center select-none w-4">
+                          {hasIters ? (isExpanded ? '▼' : '▶') : ''}
+                        </td>
                         <td className="px-3 py-1.5 text-neutral-500 whitespace-nowrap">{formatTime(call.timestamp)}</td>
                         <td className="px-3 py-1.5 text-neutral-400">{getPhase(call.purpose_raw)}</td>
-                        <td className="px-3 py-1.5 text-neutral-300">{call.purpose}</td>
+                        <td className="px-3 py-1.5 text-neutral-300">
+                          {call.purpose}
+                          {hasIters && (
+                            <span className="ml-1.5 text-neutral-600 text-[10px]">({iters.length} iter{iters.length !== 1 ? 's' : ''})</span>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           <span style={{ color: modelColor }} className="font-medium">{modelShort}</span>
                         </td>
@@ -318,10 +346,42 @@ export default function TokenChart({ changes, project }: Props) {
                         <td className="px-3 py-1.5 text-right text-purple-400/80">{call.cache_tokens ? formatK(call.cache_tokens) : '-'}</td>
                         <td className="px-3 py-1.5 text-right text-neutral-500">{formatDuration(call.duration_ms)}</td>
                       </tr>
+                      {isExpanded && iters.map((it) => {
+                        const itEffectiveInput = it.input_tokens + it.cache_read_tokens + it.cache_create_tokens
+                        const itDuration = it.started && it.ended
+                          ? Math.max(0, (Date.parse(it.ended) - Date.parse(it.started)))
+                          : 0
+                        return (
+                          <tr key={`${i}-iter-${it.n}`} className="border-t border-neutral-900/50 bg-neutral-950/40 text-neutral-400">
+                            <td className="px-1 py-1 text-neutral-700 text-center">↳</td>
+                            <td className="px-3 py-1 whitespace-nowrap text-neutral-600">{it.started ? formatTime(it.started) : ''}</td>
+                            <td className="px-3 py-1 text-neutral-600">iter {it.n}</td>
+                            <td className="px-3 py-1 whitespace-nowrap">
+                              {it.resumed ? (
+                                <span className="text-green-500">● resume</span>
+                              ) : (
+                                <span className="text-orange-500">● fresh</span>
+                              )}
+                              {it.session_id && (
+                                <span className="ml-2 text-neutral-700 font-mono text-[10px]">{it.session_id.slice(0, 8)}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1"></td>
+                            <td className="px-3 py-1"></td>
+                            <td className="px-3 py-1 text-neutral-700 text-xs">{it.no_op ? 'no-op' : it.ff_exhausted ? 'ff-exhausted' : ''}</td>
+                            <td className="px-3 py-1 text-right text-blue-400/60">{itEffectiveInput ? formatK(itEffectiveInput) : '-'}</td>
+                            <td className="px-3 py-1 text-right text-green-400/60">{it.output_tokens ? formatK(it.output_tokens) : '-'}</td>
+                            <td className="px-3 py-1 text-right text-purple-400/60">{it.cache_read_tokens ? formatK(it.cache_read_tokens) : '-'}</td>
+                            <td className="px-3 py-1 text-right text-neutral-600">{itDuration ? formatDuration(itDuration) : '-'}</td>
+                          </tr>
+                        )
+                      })}
+                      </Fragment>
                     )
                   })}
                   {/* Summary row */}
                   <tr className="border-t-2 border-neutral-700 bg-neutral-900/70 font-medium">
+                    <td className="px-1 py-2"></td>
                     <td className="px-3 py-2 text-neutral-400" colSpan={5}>Total ({calls.length} calls)</td>
                     <td className="px-3 py-2 text-neutral-500 text-xs"></td>
                     <td className="px-3 py-2 text-right text-blue-400">{formatK(calls.reduce((s, c) => s + c.input_tokens, 0))}</td>

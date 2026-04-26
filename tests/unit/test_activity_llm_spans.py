@@ -327,3 +327,188 @@ class TestVerifyGateSpans:
         build_spans = [s for s in spans if s["category"] == "gate:build"]
         # Exactly one — from GATE_PASS, not duplicated by VERIFY_GATE.
         assert len(build_spans) == 1
+
+
+# ─── Agent session marker spans (fresh vs resume) ────────────────────
+
+
+class TestAgentSessionMarkerSpans:
+    """`AGENT_SESSION_DECISION` and `ITERATION_END` events carry the
+    fresh-vs-resume signal that lets the timeline show where new Claude
+    sessions are started and where prior sessions are warm-resumed."""
+
+    def test_agent_session_decision_fresh_emits_marker(self):
+        """AGENT_SESSION_DECISION with mode=fresh → agent:session-fresh marker."""
+        events = [
+            _ev("AGENT_SESSION_DECISION", _ts(1000), change="c", data={
+                "session_mode": "fresh",
+                "resume_skip_reason": "session too old (84 min > 60 min)",
+                "prior_session_id": "old-uuid",
+                "session_age_min": 84,
+                "is_merge_retry": False,
+                "is_poisoned_stall_recovery": False,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"] == "agent:session-fresh"]
+        assert len(markers) == 1
+        assert markers[0]["change"] == "c"
+        assert markers[0]["duration_ms"] == 0
+        assert markers[0]["start"] == markers[0]["end"]
+        assert markers[0]["detail"]["resume_skip_reason"] == "session too old (84 min > 60 min)"
+        assert markers[0]["detail"]["session_age_min"] == 84
+
+    def test_agent_session_decision_resume_emits_marker(self):
+        """AGENT_SESSION_DECISION with mode=resume → agent:session-resume marker."""
+        events = [
+            _ev("AGENT_SESSION_DECISION", _ts(1000), change="c", data={
+                "session_mode": "resume",
+                "resume_skip_reason": "",
+                "prior_session_id": "uuid-abc",
+                "session_age_min": 12,
+                "is_merge_retry": False,
+                "is_poisoned_stall_recovery": False,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"] == "agent:session-resume"]
+        assert len(markers) == 1
+        assert markers[0]["detail"]["prior_session_id"] == "uuid-abc"
+
+    def test_agent_session_decision_unknown_mode_skipped(self):
+        """An unknown session_mode produces no marker (defensive)."""
+        events = [
+            _ev("AGENT_SESSION_DECISION", _ts(1000), change="c", data={
+                "session_mode": "wat",
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"].startswith("agent:session-")]
+        assert markers == []
+
+    def test_iteration_end_resumed_emits_resume_marker(self):
+        """ITERATION_END with resumed=true → agent:session-resume marker
+        anchored to the iteration's started timestamp."""
+        events = [
+            _ev("DISPATCH", _ts(1000), change="c"),
+            _ev("ITERATION_END", _ts(1300), change="c", data={
+                "iteration": 1,
+                "started": _ts(1000),
+                "ended": _ts(1300),
+                "session_id": "uuid-abc",
+                "resumed": True,
+                "duration_ms": 300_000,
+                "tokens_used": 1234,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"] == "agent:session-resume"]
+        assert len(markers) == 1
+        # Anchor to `started`, not the event ts.
+        assert markers[0]["start"] == _ts(1000)
+        assert markers[0]["end"] == _ts(1000)
+        assert markers[0]["detail"]["iteration"] == 1
+        assert markers[0]["detail"]["session_id"] == "uuid-abc"[:8]
+        assert markers[0]["detail"]["resumed"] is True
+
+    def test_iteration_end_fresh_emits_fresh_marker(self):
+        """ITERATION_END with resumed=false → agent:session-fresh marker."""
+        events = [
+            _ev("DISPATCH", _ts(1000), change="c"),
+            _ev("ITERATION_END", _ts(1300), change="c", data={
+                "iteration": 5,
+                "started": _ts(1000),
+                "ended": _ts(1300),
+                "session_id": "uuid-new",
+                "resumed": False,
+                "duration_ms": 300_000,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"] == "agent:session-fresh"]
+        assert len(markers) == 1
+        assert markers[0]["detail"]["iteration"] == 5
+
+    def test_iteration_end_falls_back_to_ended_when_started_missing(self):
+        """If `started` is empty, the marker prefers `ended` over the event
+        timestamp — both come from the bash loop's clock and are closer to
+        the iteration's actual end than the orchestrator poll time."""
+        events = [
+            _ev("ITERATION_END", _ts(1500), change="c", data={
+                "iteration": 1,
+                "started": "",
+                "ended": _ts(1300),
+                "resumed": False,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"] == "agent:session-fresh"]
+        assert len(markers) == 1
+        # Marker uses `ended`, not the event ts.
+        assert markers[0]["start"] == _ts(1300)
+
+    def test_iteration_end_dropped_when_change_missing(self):
+        """An ITERATION_END without a change name is malformed — drop it
+        rather than emit an unscoped marker."""
+        events = [
+            _ev("ITERATION_END", _ts(1300), change="", data={
+                "iteration": 1,
+                "started": _ts(1300),
+                "resumed": False,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"].startswith("agent:session-")]
+        assert markers == []
+
+    def test_agent_session_decision_dropped_when_change_missing(self):
+        """AGENT_SESSION_DECISION without a change name is malformed."""
+        events = [
+            _ev("AGENT_SESSION_DECISION", _ts(1300), change="", data={
+                "session_mode": "fresh",
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        markers = [s for s in spans if s["category"].startswith("agent:session-")]
+        assert markers == []
+
+    def test_iteration_end_dedups_duplicate_iter_after_restart(self):
+        """A crash between emit + baseline persist re-emits the same iter
+        on restart. The build-spans walk must produce exactly one marker
+        per `(change, iteration)`."""
+        events = [
+            _ev("ITERATION_END", _ts(1300), change="c", data={
+                "iteration": 1, "started": _ts(1000), "resumed": False,
+            }),
+            _ev("ITERATION_END", _ts(1500), change="c", data={
+                "iteration": 1, "started": _ts(1000), "resumed": False,
+            }),
+            _ev("ITERATION_END", _ts(1700), change="c", data={
+                "iteration": 2, "started": _ts(1500), "resumed": True,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        iters = sorted(
+            (s["detail"]["iteration"] for s in spans
+             if s["category"].startswith("agent:session-")),
+        )
+        # Iter 1 emitted twice, iter 2 once → only iter 1 + iter 2 survive.
+        assert iters == [1, 2]
+
+    def test_session_decision_detail_keeps_false_booleans(self):
+        """Boolean flags like `is_merge_retry=False` survive the detail
+        filter — they carry "no" information distinct from a missing
+        field."""
+        events = [
+            _ev("AGENT_SESSION_DECISION", _ts(1000), change="c", data={
+                "session_mode": "fresh",
+                "is_merge_retry": False,
+                "is_poisoned_stall_recovery": False,
+                "session_age_min": 0,
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        m = next(s for s in spans if s["category"] == "agent:session-fresh")
+        assert m["detail"]["is_merge_retry"] is False
+        assert m["detail"]["is_poisoned_stall_recovery"] is False
+        assert m["detail"]["session_age_min"] == 0

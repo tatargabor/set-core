@@ -30,6 +30,11 @@ CATEGORY_ORDER = [
     "gate:e2e", "gate:e2e-smoke", "gate:smoke",
     "gate:scope-check", "gate:rules", "gate:dep-install",
     "merge", "idle", "stall-recovery", "dep-wait", "manual-wait",
+    # Per-iteration Claude session markers (zero-width spans) — show where a
+    # new agent process was launched and whether it `--resume`d the prior
+    # session ("agent:session-resume", warm cache) or started fresh
+    # ("agent:session-fresh", new context window).
+    "agent:session-fresh", "agent:session-resume",
     "sentinel",
     "sentinel:llm:review", "sentinel:llm:spec_verify",
     "sentinel:llm:replan", "sentinel:llm:classify",
@@ -206,6 +211,14 @@ def _build_spans(
     # duplicate spans from a subsequent VERIFY_GATE event covering the same
     # gate run.  key = (change, gate_name).
     finalized_gates: set[tuple[str, str]] = set()
+    # Iteration markers already emitted this walk — `_poll_iteration_events`
+    # may re-emit ITERATION_END after orchestrator crash-restart (the
+    # `last_emitted_iter` field is persisted only AFTER all events for the
+    # tick are written, so a crash in between leaves it unupdated).
+    # Dedup on `(change, iteration)`. Key uses int iteration; `None` from a
+    # malformed event maps to a single sentinel so we still suppress
+    # repeated unscoped emissions.
+    seen_iterations: set[tuple[str, int]] = set()
     # step spans: key = change
     open_steps: dict[str, dict] = {}
     # merge spans: key = change
@@ -505,6 +518,105 @@ def _build_spans(
                 if change in open_implementing:
                     _close_implementing(change, ts)
                 open_implementing[change] = {"start": ts}
+
+        # ── Agent session markers ──
+        # AGENT_SESSION_DECISION is emitted by the orchestrator when it
+        # decides whether to `claude --resume <sid>` or start fresh for a
+        # change. We render it as a zero-width marker on the timeline so
+        # the operator can see WHERE the agent was relaunched and WHY a
+        # fresh session was forced (resume_skip_reason). This is the
+        # orchestrator's *intent*; the bash loop's actual session_id may
+        # still differ if context_too_large triggers fresh mid-loop.
+        elif etype == "AGENT_SESSION_DECISION":
+            # Skip events that didn't carry a change name — the marker would
+            # land on an unscoped lane and confuse the timeline.
+            if not change:
+                continue
+            mode = str(data.get("session_mode") or "").strip()
+            if mode in ("fresh", "resume"):
+                cat = f"agent:session-{mode}"
+                detail = {
+                    "source": "orchestrator-decision",
+                    "resume_skip_reason": data.get("resume_skip_reason"),
+                    "prior_session_id": data.get("prior_session_id"),
+                    "session_age_min": data.get("session_age_min"),
+                    "is_merge_retry": data.get("is_merge_retry"),
+                    "is_poisoned_stall_recovery": data.get(
+                        "is_poisoned_stall_recovery"
+                    ),
+                }
+                # Strip absent values and empty strings only. `False` and
+                # `0` survive (Python: `False != ""` is True) so boolean
+                # flags like `is_merge_retry=False` remain visible in the
+                # tooltip.
+                detail = {k: v for k, v in detail.items() if v is not None and v != ""}
+                spans.append({
+                    "category": cat,
+                    "change": change,
+                    "start": ts,
+                    "end": ts,
+                    "duration_ms": 0,
+                    "detail": detail,
+                })
+
+        # ITERATION_END is emitted by `_poll_iteration_events` when the
+        # bash ralph loop appends a new entry to `loop-state.json`. This
+        # is the *ground truth* session marker — `entry.resumed` reflects
+        # what `claude` actually did (--resume vs fresh) regardless of
+        # what the orchestrator decided. We render the iteration as a
+        # zero-width marker at its `started` timestamp so multiple iters
+        # of the same dispatch each get their own decoration.
+        elif etype == "ITERATION_END":
+            # Per-iteration markers must be scoped to a change. An iteration
+            # event without a `change` field is malformed and would land on
+            # an unscoped lane; drop it and log at debug for diagnosis.
+            if not change:
+                logger.debug(
+                    "ITERATION_END dropped: missing change name (data=%r)", data,
+                )
+                continue
+            iter_n = data.get("iteration")
+            # Dedup: a crash between event emit and the persistence of
+            # `last_emitted_iter` re-emits the same ITERATION_END on the
+            # next orchestrator startup. Suppress duplicates here so the
+            # timeline shows one marker per actual iteration.
+            try:
+                _iter_key = (change, int(iter_n) if iter_n is not None else -1)
+            except (TypeError, ValueError):
+                _iter_key = (change, -1)
+            if _iter_key in seen_iterations:
+                continue
+            seen_iterations.add(_iter_key)
+            resumed = bool(data.get("resumed", False))
+            cat = "agent:session-resume" if resumed else "agent:session-fresh"
+            # Anchor at `started`; if absent, prefer `ended` over the event
+            # ts (the orchestrator poll timestamp). Both `started`/`ended`
+            # come from the bash loop's clock; the event ts is the
+            # orchestrator-side poll time which can be 0–15 s after the
+            # iteration actually finished.
+            started = data.get("started", "") or data.get("ended", "") or ts
+            session_id = str(data.get("session_id") or "")
+            detail = {
+                "source": "ralph-iteration",
+                "iteration": iter_n,
+                "session_id": session_id[:8] if session_id else "",
+                "session_id_full": session_id,
+                "resumed": resumed,
+                "duration_ms": data.get("duration_ms"),
+                "tokens_used": data.get("tokens_used"),
+                "no_op": data.get("no_op"),
+                "ff_exhausted": data.get("ff_exhausted"),
+            }
+            # Keep `False`/`0` values — they're meaningful.
+            detail = {k: v for k, v in detail.items() if v is not None and v != ""}
+            spans.append({
+                "category": cat,
+                "change": change,
+                "start": started,
+                "end": started,
+                "duration_ms": 0,
+                "detail": detail,
+            })
 
         # ── Merge spans ──
         elif etype == "MERGE_START":

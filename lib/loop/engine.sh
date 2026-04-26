@@ -713,7 +713,7 @@ except:
                     # Record this iteration before exiting
                     local idle_iter_end
                     idle_iter_end=$(date -Iseconds)
-                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel" "$ctx_base" "$ctx_memory" "$ctx_prompt" "$ctx_tools"
+                    add_iteration "$state_file" "$iteration" "$iter_start" "$idle_iter_end" "false" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "true" "false" "$iter_log_file" "$is_resumed" "false" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel" "$ctx_base" "$ctx_memory" "$ctx_prompt" "$ctx_tools" "$session_id"
                     exit 0
                 fi
             else
@@ -986,7 +986,7 @@ except:
         fi
 
         # Add iteration to state with token tracking + context breakdown
-        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel" "$ctx_base" "$ctx_memory" "$ctx_prompt" "$ctx_tools"
+        add_iteration "$state_file" "$iteration" "$iter_start" "$iter_end" "$is_done" "$new_commits" "$tokens_used" "$iter_timed_out" "$tokens_estimated" "$iter_no_op" "$iter_ff_exhausted" "$iter_log_file" "$is_resumed" "$iter_ff_recovered" "$in_used" "$out_used" "$cr_used" "$cc_used" "$iter_team_spawned" "$iter_teammates_count" "$iter_team_tasks_parallel" "$ctx_base" "$ctx_memory" "$ctx_prompt" "$ctx_tools" "$session_id"
 
         # Handle ff exhaustion (after recording iteration)
         if $iter_ff_exhausted; then

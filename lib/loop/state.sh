@@ -196,6 +196,12 @@ add_iteration() {
     local ctx_memory="${23:-0}"
     local ctx_prompt="${24:-0}"
     local ctx_tools="${25:-0}"
+    # Per-iteration session_id — defaults to whatever the top-level
+    # session_id field carries today so older callers don't break. New
+    # callers (engine.sh) pass the active claude session UUID so the
+    # orchestration-side iteration poller can attribute each iter to its
+    # own claude session even after the top-level rolls to a fresh one.
+    local session_id="${26:-}"
 
     local tmp
     tmp=$(mktemp)
@@ -223,6 +229,7 @@ add_iteration() {
        --argjson cb_mem "$ctx_memory" \
        --argjson cb_prompt "$ctx_prompt" \
        --argjson cb_tools "$ctx_tools" \
+       --arg session_id "$session_id" \
        '.iterations += [{
          "n": $n,
          "started": $started,
@@ -244,6 +251,7 @@ add_iteration() {
          "team_spawned": $t_spawned,
          "teammates_count": $t_count,
          "team_tasks_parallel": $t_parallel,
+         "session_id": $session_id,
          "context_breakdown": {
            "base_context": $cb_base,
            "memory_injection": $cb_mem,

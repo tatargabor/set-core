@@ -42,6 +42,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   'sentinel:llm:spec_verify': '#475569',  // slate-600
   'sentinel:llm:replan': '#334155',       // slate-700
   'sentinel:llm:classify': '#94a3b8',     // slate-400
+  // Per-iteration agent session markers (zero-width on the main timeline)
+  // — orange = fresh `claude` session, green = `claude --resume` warm cache.
+  'agent:session-fresh': '#f97316',     // orange — new session boundary
+  'agent:session-resume': '#22c55e',    // green — resumed warm session
   // Drilldown sub-spans (used by ActivitySessionDetail)
   'agent:llm-wait': '#22c55e',     // green — Claude API time
   'agent:tool:bash': '#3b82f6',    // blue — shell
@@ -78,6 +82,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   'sentinel:llm:spec_verify': 'Sentinel: Spec Verify',
   'sentinel:llm:replan': 'Sentinel: Replan',
   'sentinel:llm:classify': 'Sentinel: Classify',
+  'agent:session-fresh': 'New Session',
+  'agent:session-resume': 'Resumed Session',
   'agent:llm-wait': 'LLM Work',
   'agent:tool:bash': 'Bash',
   'agent:tool:edit': 'Edit',

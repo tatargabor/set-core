@@ -510,6 +510,141 @@ def _deploy_v0_export_to_worktree(project_path: str, wt_path: str) -> bool:
         return False
 
 
+_POISONED_STALL_PREFIXES: tuple[str, ...] = (
+    "dead_running_agent_",
+    "dead_verify_agent",
+    "verify_timeout",
+    "fix_loop_no_progress_",
+    "token_runaway",
+    "context_overflow",
+)
+
+
+def _decide_session_mode(
+    loop_state_path: str,
+    change_name: str,
+    is_merge_retry: bool = False,
+    stall_reason: str = "",
+) -> dict:
+    """Pure inspection of preserved loop-state.json + flags.
+
+    Returns the orchestrator-side decision about whether to reuse the prior
+    Claude session (`mode="resume"`) or start a fresh one. Mirrors the
+    resume-eligibility logic inlined in `resume_change` so both call sites
+    (the resume itself and the CHANGE_REDISPATCH event emission) see the
+    same answer.
+
+    Args:
+        loop_state_path: absolute path to the worktree's `.set/loop-state.json`.
+        change_name: change name; mismatch with loop-state's `change` field
+            forces a fresh session.
+        is_merge_retry: True when the redispatch is a merge-rebase retry —
+            forces fresh because the main branch has moved under the agent.
+        stall_reason: optional `stall_reason` extras field — when it matches
+            a poisoned-context prefix the prior session is suspect and we
+            force fresh to avoid re-loading the context that killed the
+            previous agent.
+
+    Returns:
+        Dict with keys::
+
+            mode:               "fresh" | "resume"
+            reason:             empty if mode=="resume", short string otherwise
+            prior_session_id:   the session_id we'd resume (may be empty)
+            session_age_min:    integer minutes since prior session start
+    """
+    is_poisoned = bool(stall_reason) and any(
+        stall_reason.startswith(p) for p in _POISONED_STALL_PREFIXES
+    )
+    if is_merge_retry:
+        return {
+            "mode": "fresh",
+            "reason": "merge_rebase_pending (main branch changed)",
+            "prior_session_id": "",
+            "session_age_min": 0,
+        }
+    if is_poisoned:
+        return {
+            "mode": "fresh",
+            "reason": f"poisoned_stall_recovery ({stall_reason})",
+            "prior_session_id": "",
+            "session_age_min": 0,
+        }
+    if not os.path.isfile(loop_state_path):
+        return {
+            "mode": "fresh",
+            "reason": "no loop-state.json",
+            "prior_session_id": "",
+            "session_age_min": 0,
+        }
+
+    try:
+        with open(loop_state_path) as f:
+            ls = json.load(f)
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        return {
+            "mode": "fresh",
+            "reason": f"state read error: {e}",
+            "prior_session_id": "",
+            "session_age_min": 0,
+        }
+
+    prior_sid = ls.get("session_id") or ""
+    prior_change = ls.get("change") or ""
+    try:
+        prior_resume_failures = int(ls.get("resume_failures") or 0)
+    except (TypeError, ValueError):
+        prior_resume_failures = 0
+    prior_started = ls.get("started_at", "") or ""
+    session_age_min = 0
+    if prior_started:
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            prior_dt = _dt.fromisoformat(prior_started.replace("Z", "+00:00"))
+            if prior_dt.tzinfo is None:
+                prior_dt = prior_dt.replace(tzinfo=_tz.utc)
+            session_age_min = int(
+                (_dt.now(_tz.utc) - prior_dt).total_seconds() / 60
+            )
+        except (ValueError, TypeError):
+            pass
+
+    if not prior_sid:
+        return {
+            "mode": "fresh",
+            "reason": "no prior session_id",
+            "prior_session_id": "",
+            "session_age_min": session_age_min,
+        }
+    if prior_change != change_name:
+        return {
+            "mode": "fresh",
+            "reason": f"change name mismatch ({prior_change!r} != {change_name!r})",
+            "prior_session_id": prior_sid,
+            "session_age_min": session_age_min,
+        }
+    if prior_resume_failures >= 3:
+        return {
+            "mode": "fresh",
+            "reason": f"too many prior resume failures ({prior_resume_failures})",
+            "prior_session_id": prior_sid,
+            "session_age_min": session_age_min,
+        }
+    if session_age_min > 60:
+        return {
+            "mode": "fresh",
+            "reason": f"session too old ({session_age_min} min > 60 min)",
+            "prior_session_id": prior_sid,
+            "session_age_min": session_age_min,
+        }
+    return {
+        "mode": "resume",
+        "reason": "",
+        "prior_session_id": prior_sid,
+        "session_age_min": session_age_min,
+    }
+
+
 def _build_resume_preamble(change_name: str, wt_path: str) -> str:
     """Build context restoration preamble for resume_change.
 
@@ -2474,6 +2609,22 @@ def dispatch_change(
     logger.info("dispatching change: %s", change_name)
     if event_bus:
         event_bus.emit("DISPATCH", change=change_name, data={"scope": scope})
+        # Initial dispatch is always a fresh Claude session (no prior session
+        # yet). The activity timeline uses this marker to draw "fresh start"
+        # decoration on the implementing span. Mirrors the AGENT_SESSION_DECISION
+        # emitted from resume_change for redispatches.
+        event_bus.emit(
+            "AGENT_SESSION_DECISION",
+            change=change_name,
+            data={
+                "session_mode": "fresh",
+                "resume_skip_reason": "initial_dispatch",
+                "prior_session_id": "",
+                "session_age_min": 0,
+                "is_merge_retry": False,
+                "is_poisoned_stall_recovery": False,
+            },
+        )
 
     # Reset token counters for fresh dispatch
     for field in (
@@ -3590,11 +3741,7 @@ def resume_change(
     # context-overflow stall, the preserved session CARRIES the context that
     # killed the agent. Resuming it loads the same poisoned context back in
     # → overflow again → stall again → circular. The reasons that imply a
-    # poisoned context are: the ralph process died with no commits, the
-    # verify agent was found dead mid-gate, or the fix loop ran itself empty.
-    # Token runaway / capacity_limit_pct also mean "context was already huge".
-    # In all those cases we MUST force a fresh session even when everything
-    # else about resume looks clean.
+    # poisoned context are encoded in `_POISONED_STALL_PREFIXES`.
     _stall_reason = ""
     try:
         _st = load_state(state_path)
@@ -3603,17 +3750,6 @@ def resume_change(
             _stall_reason = str(_ch.extras.get("stall_reason") or "")
     except Exception:
         pass
-    _poisoned_stall_prefixes = (
-        "dead_running_agent_",
-        "dead_verify_agent",
-        "verify_timeout",
-        "fix_loop_no_progress_",
-        "token_runaway",
-        "context_overflow",
-    )
-    is_poisoned_stall_recovery = bool(_stall_reason) and any(
-        _stall_reason.startswith(p) for p in _poisoned_stall_prefixes
-    )
 
     # Check if a Claude session can be SAFELY resumed. Session resume keeps the
     # prompt cache warm and avoids re-reading files, but it also carries over
@@ -3629,46 +3765,38 @@ def resume_change(
     #   4. Change name must match (already enforced in init_loop_state).
     #   5. Poisoned-stall recovery → fresh start (agent was killed BY the
     #      preserved context — reusing it just re-triggers the failure).
-    has_resumable_session = False
-    resume_skip_reason = ""
-    if is_merge_retry:
-        resume_skip_reason = "merge_rebase_pending (main branch changed)"
-    elif is_poisoned_stall_recovery:
-        resume_skip_reason = f"poisoned_stall_recovery ({_stall_reason})"
-    elif os.path.isfile(loop_state_path):
-        try:
-            with open(loop_state_path) as f:
-                _ls = json.load(f)
-            _prior_sid = _ls.get("session_id") or ""
-            _prior_change = _ls.get("change") or ""
-            _prior_resume_failures = int(_ls.get("resume_failures") or 0)
-            _prior_started = _ls.get("started_at", "")
-            # Age check: how old is this session?
-            session_age_min = 0
-            if _prior_started:
-                try:
-                    from datetime import datetime, timezone
-                    prior_dt = datetime.fromisoformat(_prior_started.replace("Z", "+00:00"))
-                    if prior_dt.tzinfo is None:
-                        prior_dt = prior_dt.replace(tzinfo=timezone.utc)
-                    session_age_min = (datetime.now(timezone.utc) - prior_dt).total_seconds() / 60
-                except (ValueError, TypeError):
-                    pass
+    _decision = _decide_session_mode(
+        loop_state_path,
+        change_name,
+        is_merge_retry=bool(is_merge_retry),
+        stall_reason=_stall_reason,
+    )
+    has_resumable_session = _decision["mode"] == "resume"
+    resume_skip_reason = _decision["reason"]
+    session_age_min = _decision["session_age_min"]
+    # Single source of truth: read the poisoned-stall verdict back out of
+    # the helper's reason so any future change to `_POISONED_STALL_PREFIXES`
+    # propagates here automatically. Mirrors the helper's check exactly.
+    is_poisoned_stall_recovery = resume_skip_reason.startswith(
+        "poisoned_stall_recovery"
+    )
 
-            if not _prior_sid:
-                resume_skip_reason = "no prior session_id"
-            elif _prior_change != change_name:
-                resume_skip_reason = f"change name mismatch ({_prior_change!r} != {change_name!r})"
-            elif _prior_resume_failures >= 3:
-                resume_skip_reason = f"too many prior resume failures ({_prior_resume_failures})"
-            elif session_age_min > 60:
-                resume_skip_reason = f"session too old ({session_age_min:.0f} min > 60 min)"
-            else:
-                has_resumable_session = True
-        except (json.JSONDecodeError, OSError, ValueError) as e:
-            resume_skip_reason = f"state read error: {e}"
-    else:
-        resume_skip_reason = "no loop-state.json"
+    # Surface the decision on the events stream so the activity timeline can
+    # show "fresh" vs "resume" markers. Idempotent across redispatch retries
+    # because each redispatch starts a new agent run.
+    if event_bus is not None:
+        event_bus.emit(
+            "AGENT_SESSION_DECISION",
+            change=change_name,
+            data={
+                "session_mode": _decision["mode"],
+                "resume_skip_reason": resume_skip_reason,
+                "prior_session_id": _decision["prior_session_id"],
+                "session_age_min": session_age_min,
+                "is_merge_retry": bool(is_merge_retry),
+                "is_poisoned_stall_recovery": is_poisoned_stall_recovery,
+            },
+        )
 
     if has_resumable_session:
         logger.info("resume_change %s: session resume ELIGIBLE — cache stays warm", change_name)

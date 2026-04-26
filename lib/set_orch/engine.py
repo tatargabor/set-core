@@ -1163,6 +1163,14 @@ def monitor_loop(
         _poll_active_changes(state_file, d, poll_e2e_cmd, event_bus)
         _signal_alive(state_file, event_bus)
 
+        # Surface bash-loop iteration boundaries on the events stream so the
+        # activity timeline can mark fresh-vs-resume Claude sessions.
+        # Failures must not break the monitor cycle.
+        try:
+            _poll_iteration_events(state_file, event_bus)
+        except Exception:
+            logger.warning("iteration-event poll failed", exc_info=True)
+
         # Safety net: check suspended changes
         _poll_suspended_changes(state_file, d, poll_e2e_cmd, event_bus)
 
@@ -2054,6 +2062,135 @@ def _poll_active_changes(
         except Exception:
             logger.warning(
                 "token-runaway check failed for %s", change.name, exc_info=True,
+            )
+
+
+_LOOP_STATE_MTIME_CACHE: dict[str, float] = {}
+
+
+def _poll_iteration_events(state_file: str, event_bus: Any) -> None:
+    """Emit `ITERATION_END` events for ralph iterations newly recorded in each
+    change's `loop-state.json`.
+
+    The bash ralph loop appends one entry to `loop-state.json:iterations[]`
+    per iteration but does not emit an orchestration event itself. We poll
+    the file each tick, compare its iteration count with the per-change
+    baseline `extras.last_emitted_iter`, and emit one `ITERATION_END` event
+    for each new entry. The activity timeline turns these into per-iter
+    markers (fresh vs resume) on the implementing lane.
+
+    Two layers of dedup keep the events stream clean across orchestrator
+    restarts and tight poll cycles:
+
+    1. **Per-change `extras.last_emitted_iter`** persists the highest `n`
+       we've emitted to disk (via `update_change_field`). After a
+       graceful tick this is current; after a crash between event emit
+       and field write, it may lag — the activity API consumer should
+       therefore deduplicate `ITERATION_END` on `(change, iteration)` to
+       absorb the worst-case duplicate (one iter re-emitted on restart).
+    2. **Per-file mtime cache** skips the read entirely when
+       `loop-state.json` hasn't changed since last poll. Cheap protection
+       against re-reading 10+ stable files every 15 s tick.
+    """
+    if event_bus is None:
+        return
+    try:
+        state = load_state(state_file)
+    except Exception:
+        logger.debug("iteration poll: load_state failed", exc_info=True)
+        return
+    for change in state.changes:
+        # Active and just-completed changes both have iterations worth
+        # emitting; finalised statuses (failed/integration-failed) might still
+        # have a tail of unemitted entries from before the orchestrator died.
+        if change.status in ("pending", "blocked"):
+            continue
+        wt_path = change.worktree_path or ""
+        if not wt_path:
+            continue
+        loop_state_path = os.path.join(wt_path, ".set", "loop-state.json")
+        if not os.path.isfile(loop_state_path):
+            continue
+        # mtime-guard: skip the read entirely if the file hasn't changed.
+        # Saves disk I/O on the common case where most worktrees are idle
+        # between ticks. We still re-read after orchestrator restart
+        # because the cache is in-process state.
+        try:
+            mtime = os.path.getmtime(loop_state_path)
+        except OSError:
+            continue
+        if _LOOP_STATE_MTIME_CACHE.get(loop_state_path) == mtime:
+            continue
+        try:
+            with open(loop_state_path) as f:
+                ls = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        # Update the mtime cache only after we successfully read the file.
+        # Avoids a corrupt-write window pinning a stale mtime.
+        _LOOP_STATE_MTIME_CACHE[loop_state_path] = mtime
+        iterations = ls.get("iterations") or []
+        if not isinstance(iterations, list) or not iterations:
+            continue
+        baseline = int(change.extras.get("last_emitted_iter", 0) or 0)
+        ls_session_id = str(ls.get("session_id") or "")
+        new_count = 0
+        missing_ts_count = 0
+        for entry in iterations:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                n = int(entry.get("n") or 0)
+            except (TypeError, ValueError):
+                continue
+            if n <= baseline:
+                continue
+            # `entry.session_id` was added later (set when the bash loop
+            # writes the iteration). Older state files omit it; fall back
+            # to the top-level current `session_id` so the marker still
+            # carries SOME id for grouping.
+            sid = str(entry.get("session_id") or ls_session_id or "")
+            payload = {
+                "iteration": n,
+                "started": entry.get("started", "") or "",
+                "ended": entry.get("ended", "") or "",
+                "session_id": sid,
+                "resumed": bool(entry.get("resumed", False)),
+                "tokens_used": int(entry.get("tokens_used") or 0),
+                "no_op": bool(entry.get("no_op", False)),
+                "ff_exhausted": bool(entry.get("ff_exhausted", False)),
+                "log_file": entry.get("log_file", "") or "",
+            }
+            if not payload["started"] and not payload["ended"]:
+                missing_ts_count += 1
+            # Compute duration from started/ended when both are present.
+            try:
+                started = payload["started"]
+                ended = payload["ended"]
+                if started and ended:
+                    from datetime import datetime as _dt
+                    s_dt = _dt.fromisoformat(started.replace("Z", "+00:00"))
+                    e_dt = _dt.fromisoformat(ended.replace("Z", "+00:00"))
+                    payload["duration_ms"] = max(
+                        0, int((e_dt - s_dt).total_seconds() * 1000)
+                    )
+            except (ValueError, TypeError):
+                pass
+            event_bus.emit("ITERATION_END", change=change.name, data=payload)
+            new_count += 1
+            if n > baseline:
+                baseline = n
+        if missing_ts_count:
+            # Schema-drift hint: bash dropped the started/ended fields.
+            # Surface at debug so the next operator-side log scan catches it.
+            logger.debug(
+                "iteration poll: %d entries for %s lacked started+ended",
+                missing_ts_count, change.name,
+            )
+        if new_count > 0:
+            update_change_field(
+                state_file, change.name, "last_emitted_iter", baseline,
+                event_bus=event_bus,
             )
 
 

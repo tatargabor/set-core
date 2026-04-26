@@ -1071,6 +1071,22 @@ export function getSentinelLog(project: string, tail = 200): Promise<{ lines: st
 
 // --- LLM Calls ---
 
+export interface LLMCallIteration {
+  n: number
+  started: string
+  ended: string
+  session_id: string
+  resumed: boolean
+  tokens_used: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_create_tokens: number
+  no_op: boolean
+  ff_exhausted: boolean
+  commits: string[]
+}
+
 export interface LLMCall {
   timestamp: string
   source: 'orchestration' | 'session'
@@ -1084,6 +1100,11 @@ export interface LLMCall {
   cache_tokens: number
   exit_code: number
   active?: boolean
+  /** Ralph-loop iterations breakdown — present only on agent task session
+   *  rows that map to a worktree's `loop-state.json:iterations[]`. Each
+   *  entry is one ralph iteration; a session may span multiple iters
+   *  via `claude --resume`. */
+  iterations?: LLMCallIteration[]
 }
 
 export function getLLMCalls(project: string, limit = 500, lineage?: string | null): Promise<{ calls: LLMCall[] }> {
