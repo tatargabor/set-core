@@ -1,157 +1,60 @@
-# Design Brief
+# Design Brief — v0 Pattern Map
 
-Per-page visual specifications for implementing agents.
-Uses shadcn/ui components with the default slate theme.
-Each page section describes layout, components, and responsive behavior.
+This file is a **navigator**, not a visual spec. The authoritative visuals
+live in the v0 design source (cloned into `v0-export/` at run time, see
+`scaffold.yaml::design_source`).
 
-## Page: Home
+If `v0-export/` is present in your worktree, treat its files as visual truth
+and follow `.claude/rules/design-bridge.md`. This document only points the
+planner at the distinctive UX patterns the v0 design uses, so spec
+decomposition can plan for them.
 
-Container: 1024px max-width, centered, px-6
-Background: bg-background
+## Distinctive shadcn primitives expected in v0
 
-Sections (top to bottom):
+These are not standard form controls — each one has a specific UX contract
+that the implementation MUST preserve. The fidelity gate's
+`shadcn-primitive-missing` check fails verify if any of these appear in
+`v0-export/` but no `src/` file imports them.
 
-1. Header Component (shared across all pages)
-   - Sticky, z-50, border-b border-border
-   - Height: h-16
-   - Layout: flex justify-between items-center
-   - Left: Site title "Micro Web" as link to /, font-bold text-xl
-   - Right: Navigation links (Home, About, Blog, Contact)
-   - Mobile (< md): hamburger icon → Sheet component with vertical nav links
-   - Active page: text-primary font-medium
+| Primitive | Where it appears | What it replaces |
+|---|---|---|
+| `CommandDialog` (+ `CommandInput`, `CommandItem`, `CommandGroup`) | Global — Cmd+K palette in header (all pages) | Plain `Input` with dropdown |
+| `Sheet` (+ `SheetContent`, `SheetTrigger`) | Mobile nav drawer (header on small viewport) AND newsletter signup CTA on home page | `Dialog` modal |
+| `HoverCard` (+ `HoverCardContent`, `HoverCardTrigger`) | Team member avatars on About page; author avatars on Blog list | `Tooltip` (label-only) |
+| `Dialog` with multi-step content | Contact form ("Get in touch" CTA opens it) — 3 steps inside a single dialog | Sequential pages |
+| `Combobox` | Contact form: Subject field (typed search + category select fused). Blog list: filter bar | Two separate `Select` widgets |
+| `Progress` | Blog detail: reading progress bar (sticky top) | No indicator |
+| `Breadcrumb` | Blog detail: navigation trail | Plain "← Back" link |
+| `Popover` (+ `PopoverContent`, `PopoverTrigger`) | Blog detail: reactions/share button row | Inline buttons |
 
-2. Hero Section
-   - Padding: py-24
-   - Layout: text-center
-   - H1: "Welcome to Micro Web" — text-4xl font-bold tracking-tight
-   - Subtitle: text-muted-foreground text-lg, max-w-2xl mx-auto
-   - CTA: Button variant="default" size="lg" → links to /about
+## Page → primitive map
 
-3. Features Grid
-   - Padding: py-16
-   - Grid: 3 columns (md:grid-cols-3), gap-6, single column on mobile
-   - Each item: Card component
-     * CardHeader: icon (lucide-react) + CardTitle
-     * CardContent: CardDescription text
-   - Items: "Fast", "Reliable", "Simple" (placeholder features)
+Per page, the implementation MUST mount these primitives. If you don't see
+them in the v0 source, escalate as a scaffold-author bug; do not invent a
+substitute.
 
-4. Footer
-   - Border-t border-border, py-8
-   - text-center text-sm text-muted-foreground
-   - "Built with Next.js and shadcn/ui"
+- **Home (`/`):** Header with Cmd+K trigger button, hero, features grid
+  (3× `Card`), newsletter Sheet trigger, footer
+- **About (`/about`):** Header, page title, team grid with `HoverCard` per
+  member, footer
+- **Contact (`/contact`):** Header, "Get in touch" CTA → Dialog wizard
+  (3 steps with stepper + Combobox in step 2 + Toast on submit), footer
+- **Blog (`/blog`):** Header, page title, Combobox filter bar, post list
+  (`Card` + `Badge` + `HoverCard` for author), footer
+- **Blog detail (`/blog/[slug]`):** Header, sticky `Progress`, `Breadcrumb`,
+  article content, reactions row (`Popover`), back link, footer
 
-## Page: About
+## Data still hardcoded — no schema work
 
-Container: 1024px max-width, centered, px-6
+The functional contract is unchanged from `spec.md`: 3 hardcoded blog posts,
+3 hardcoded team members, contact form is `console.log` + toast. The point
+of this scaffold is to test design-fidelity tracking with minimal functional
+distraction. Don't add a database, don't wire up real forms — just mount the
+v0 components and pass through the hardcoded data.
 
-Sections:
+## Tokens
 
-1. Header (shared component)
-
-2. Page Title
-   - Padding: py-12
-   - H1: "About Us" — text-3xl font-bold
-
-3. Description
-   - max-w-prose
-   - text-muted-foreground leading-relaxed
-   - 2-3 paragraphs about the company
-
-4. Team Section
-   - Padding: py-12
-   - H2: "Our Team" — text-2xl font-semibold mb-8
-   - Grid: 3 columns (md:grid-cols-3), gap-6, single column on mobile
-   - Each team member: Card component
-     * Avatar placeholder: div w-16 h-16 rounded-full bg-muted mx-auto
-     * CardHeader: CardTitle = name (centered)
-     * CardContent: CardDescription = role (centered)
-   - Members: "Alice Chen — Engineering", "Bob Smith — Design", "Carol Davis — Product"
-
-5. Footer (shared component)
-
-## Page: Contact
-
-Container: 1024px max-width, centered, px-6
-
-Sections:
-
-1. Header (shared component)
-
-2. Page Title
-   - Padding: py-12
-   - H1: "Contact Us" — text-3xl font-bold
-   - Subtitle: text-muted-foreground
-
-3. Contact Form
-   - max-w-lg mx-auto
-   - Card component wrapping the form
-   - CardContent with space-y-4:
-     * Label + Input: "Name" — required
-     * Label + Input: "Email" — required, type="email"
-     * Label + Textarea: "Message" — required, min 10 chars
-   - Validation errors: text-sm text-destructive below each field
-   - CardFooter: Button variant="default" w-full — "Send Message"
-   - On valid submit: console.log data, show success toast or alert
-
-4. Footer (shared component)
-
-## Page: Blog
-
-Container: 1024px max-width, centered, px-6
-
-Sections:
-
-1. Header (shared component)
-
-2. Page Title
-   - Padding: py-12
-   - H1: "Blog" — text-3xl font-bold
-
-3. Blog Post List
-   - space-y-6
-   - 3 hardcoded posts, each as Card component:
-     * CardHeader:
-       - CardTitle: post title as link to /blog/[slug] — hover:underline
-       - CardDescription: date in text-sm text-muted-foreground
-     * CardContent: excerpt text (2-3 lines)
-   - Posts:
-     * "Getting Started with Next.js" — 2024-01-15
-     * "Understanding TypeScript" — 2024-01-10
-     * "Tailwind CSS Tips" — 2024-01-05
-
-4. Footer (shared component)
-
-## Page: BlogDetail
-
-Route: /blog/[slug]
-Container: 1024px max-width, centered, px-6
-
-Sections:
-
-1. Header (shared component)
-
-2. Back Link
-   - py-4
-   - Link to /blog with "← Back to Blog" — text-sm text-muted-foreground hover:text-foreground
-
-3. Article Content
-   - max-w-prose mx-auto
-   - H1: post title — text-3xl font-bold mb-2
-   - Date: text-sm text-muted-foreground mb-8
-   - Body: prose styling (leading-relaxed, space-y-4 paragraphs)
-   - Hardcoded content for each of the 3 slugs
-   - Invalid slug: notFound() → Next.js 404 page
-
-4. Footer (shared component)
-
-## Shared Components
-
-### Header
-- Used on every page
-- Responsive: full nav on md+, Sheet hamburger on mobile
-- Components: NavigationMenu or custom nav, Sheet, Button (ghost, icon-only for hamburger)
-- Icons: Menu (hamburger), X (close)
-
-### Footer
-- Used on every page
-- Minimal: single line centered text
+The v0 export ships its own `app/globals.css` with shadcn theme tokens
+(framework auto-syncs to a generated `design-system.md`). Use those tokens
+exclusively — do NOT hardcode hex/rgb literals in TSX/CSS. The token guard
+will catch literal colors in newly added code.
