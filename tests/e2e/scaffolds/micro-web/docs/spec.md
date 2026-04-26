@@ -8,8 +8,23 @@ Purpose: validate orchestration pipeline + design-fidelity tracking with a small
 - TypeScript
 - Tailwind CSS v4
 - shadcn/ui (slate theme — tokens come from v0-export's `app/globals.css`)
+- `next-themes` for light/dark theme (mounted via `theme-provider.tsx` shell)
+- `sonner` for toast notifications
+- `react-hook-form` + `zod` for form state and validation (used in contact wizard)
 - Playwright for E2E tests
 - Vitest for unit tests
+
+## Out of scope
+
+- **No internationalization.** Micro-web is English-only. Do NOT install
+  `next-intl`, do NOT add a `[locale]/` segment, do NOT wrap strings in
+  `t()`. All UI text is hardcoded English literals. (The web template's
+  `i18n-conventions.md` rule does not apply here — it activates only when
+  `messages/` exists.)
+- **No database, no auth, no API routes.** All data is hardcoded as
+  TypeScript constants. Submit handlers `console.log` and toast.
+- **No SEO metadata customization beyond defaults.** Page titles via
+  the standard `metadata` export.
 
 ## Design Source
 
@@ -104,7 +119,12 @@ shell mounting + primitive parity (`.claude/rules/design-bridge.md`).
     - "Pages" — entries: Home, About, Blog, Contact (each as `CommandItem`,
       navigates on Enter)
     - "Recent posts" — first 3 blog post titles (each navigates to the post)
-    - "Theme" — `CommandItem` "Toggle theme" (placeholder action: toast)
+    - "Theme" — `CommandItem` "Toggle theme" — real toggle via
+      `useTheme()` from `next-themes` (cycles through `light` / `dark` /
+      `system`). The `<ThemeProvider>` shell from
+      `v0-export/components/theme-provider.tsx` MUST be mounted in the
+      root layout (`src/app/layout.tsx`), wrapping `{children}`, with
+      `attribute="class"` and `defaultTheme="system"`.
   - `CommandSeparator` between groups; `CommandEmpty` when typed query
     matches nothing.
 - **Mobile (< md):** the desktop nav links are replaced by a `Sheet` drawer.
@@ -153,15 +173,26 @@ shell mounting + primitive parity (`.claude/rules/design-bridge.md`).
 
 ### Test selectors
 
-Use stable `data-testid` for E2E:
-- `cmdk-trigger` — Cmd+K palette trigger button
-- `cmdk-dialog` — the open palette
-- `mobile-nav-trigger` — hamburger button (mobile)
-- `mobile-nav-drawer` — the open Sheet
-- `newsletter-trigger` — home newsletter Sheet trigger
-- `contact-dialog-trigger` — "Get in touch" button
-- `contact-step-1` / `contact-step-2` / `contact-step-3` — wizard step containers
-- `contact-submit` — submit button (step 3)
-- `blog-filter-combobox` — blog filter combobox
-- `reading-progress` — blog detail progress bar
+The v0 design source has NO `data-testid` attributes — they're a runtime
+testing concern, not a design concern. When porting v0 components into
+`src/components/` (or adapting the page TSX), ADD these `data-testid`
+attributes. Playwright tests reference them by name; missing testids
+cause selector failures, not test errors that reveal the cause.
+
+Required `data-testid` registry:
+
+| `data-testid` | Where | Notes |
+|---|---|---|
+| `cmdk-trigger` | site-header — palette trigger button | Visible button with `⌘K` kbd badge |
+| `cmdk-dialog` | the rendered `CommandDialog` root | Only present when palette is open |
+| `mobile-nav-trigger` | site-header — hamburger button | Visible only `< md` |
+| `mobile-nav-drawer` | the rendered `Sheet` content for mobile nav | Only present when open |
+| `newsletter-trigger` | home — Subscribe button (`SheetTrigger`) | Opens the right-side `Sheet` |
+| `contact-dialog-trigger` | contact page — "Get in touch" button | Opens the wizard `Dialog` |
+| `contact-step-1`, `contact-step-2`, `contact-step-3` | wizard step containers | One is visible at a time |
+| `contact-submit` | wizard step 3 — Send button | Disabled until step 3 is reached |
+| `blog-filter-combobox` | blog page — filter trigger button | Opens the Combobox `Popover` |
+| `reading-progress` | blog detail — sticky `Progress` | Has a `value` prop bound to scroll % |
+
+Tests assert on these selectors; renaming any one breaks E2E.
 
