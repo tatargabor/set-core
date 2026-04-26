@@ -205,28 +205,32 @@ def test_gate_registered_in_web_profile():
     assert "design-fidelity" in names
 
 
-def test_design_fidelity_runs_on_foundational_change_type():
-    """Foundational changes mount the app shell (site-header, site-footer,
-    command-palette, contact-wizard, etc.) — that's exactly when
-    `_check_shell_mounting` and `_check_shadcn_primitive_parity` need to
-    run. If foundational is set to "skip", a foundational change can ship
-    with a stub site-header, then every subsequent feature change's
-    design-fidelity verify fails with shell-not-mounted (witnessed
-    micro-web-run-20260426-1057: shell-foundation merged with only 3/6
-    shells mounted because the gate was skipped on foundational).
+def test_design_fidelity_runs_on_shell_mounting_change_types():
+    """Shell-mounting work appears under either `foundational` or
+    `infrastructure` change_type depending on planner mood — both classes
+    routinely mount site-header, site-footer, theme-provider, etc.
+    The gate MUST run on both so structural checks (shell mounting +
+    primitive parity) catch stub mounts.
+
+    Witnessed regressions:
+    - micro-web-run-20260426-1057: shell-foundation (foundational) merged
+      with 3/6 shells; gate was set to "skip" on foundational.
+    - micro-web-run-20260426-1127: test-and-layout-foundation
+      (infrastructure) merged with 0/2 missing shells (theme-provider,
+      mobile-nav) and 4 missing dependencies (next-themes, sonner,
+      react-hook-form, zod) — gate was set to "skip" on infrastructure.
     """
     from set_project_web.project_type import WebProjectType
 
     wp = WebProjectType()
     gate = next(g for g in wp.register_gates() if g.name == "design-fidelity")
-    assert gate.defaults.get("foundational") == "run", (
-        "design-fidelity gate MUST run for foundational changes — that's "
-        "where shell mounting is validated. If you intentionally need to "
-        "skip the visual diff for foundational, factor the shell-mounting "
-        "check into a separate always-run gate."
-    )
-    # Feature must also run (sanity)
-    assert gate.defaults.get("feature") == "run"
+    for ct in ("foundational", "infrastructure", "feature"):
+        assert gate.defaults.get(ct) == "run", (
+            f"design-fidelity gate MUST run on `{ct}` change_type — shell "
+            "mounting + primitive parity are validated there. If you need "
+            "to skip the visual screenshot diff specifically, factor that "
+            "check into a separate gate, but never skip structural checks."
+        )
 
 
 def test_warn_only_flag_read(tmp_path: Path):

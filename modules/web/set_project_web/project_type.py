@@ -936,18 +936,24 @@ class WebProjectType(CoreProfile):
                 position="end",
                 phase="pre-merge",
                 defaults={
-                    "infrastructure": "skip", "schema": "skip",
-                    # Foundational changes set up the app shell (site-header,
-                    # site-footer, theme-provider, command-palette, etc.).
-                    # The design-fidelity gate's structural checks (shell
-                    # mounting + primitive parity) MUST run here — that's
-                    # where shell mounts get verified. Without this, a
-                    # foundational change that mounts only a subset of v0
-                    # shells (or uses shadow-alias re-exports) merges
-                    # silently and breaks subsequent feature changes that
-                    # rely on the missing shells.
-                    "foundational": "run", "feature": "run",
+                    # Schema-only changes don't touch UI; cleanups run
+                    # against already-validated shells.
+                    "schema": "skip",
                     "cleanup-before": "skip", "cleanup-after": "skip",
+                    # Shell-mounting work shows up under either
+                    # `foundational` (planner uses this for "set up app
+                    # shell") or `infrastructure` (planner uses this for
+                    # "set up scaffold + tooling + shells"). Both classes
+                    # routinely mount site-header, site-footer,
+                    # theme-provider, etc. — we MUST run the structural
+                    # checks (shell mounting + primitive parity) on
+                    # whichever the planner picked. Run on `feature`
+                    # too because feature changes often add new pages
+                    # that are expected to use distinctive shadcn
+                    # primitives from the v0 design source.
+                    "foundational": "run",
+                    "infrastructure": "run",
+                    "feature": "run",
                 },
                 run_on_integration=True,
             ),

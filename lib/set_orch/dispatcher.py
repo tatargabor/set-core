@@ -85,6 +85,138 @@ def _is_generated_file(path: str) -> bool:
         return True
     return any(path.startswith(prefix) for prefix in _AUTO_RESOLVE_PREFIXES)
 
+_MANIFEST_STOPWORDS = frozenset({
+    "and", "the", "with", "for", "via", "from", "into", "use", "all", "any",
+    "etc", "ie", "eg", "as", "to", "of", "or", "in", "on", "at", "by", "no",
+})
+
+
+def _extract_implementation_manifest(scope: str) -> str:
+    """Extract structured manifest from a scope paragraph.
+
+    Why: planner scopes are dense paragraphs that mix install / mount / wrap
+    directives across 600+ chars. Agents have been observed cherry-picking
+    items they grasp and silently dropping the rest from tasks.md (e.g.
+    skipping `next-themes` install while mounting `site-header.tsx`). This
+    extractor surfaces every directive as a bulleted checklist so agents
+    cannot omit them when generating tasks.md.
+
+    Returns formatted manifest section (with leading newline), or "" if the
+    scope yields nothing extractable. Items found:
+      - NPM packages mentioned after `install ...`
+      - Files matching basenames/paths with .ts/.tsx/.js/.jsx/.css/.json/.yml
+      - JSX/TSX components mentioned as `<PascalCaseTag>`
+    """
+    deps: list[str] = []
+    seen_dep: set[str] = set()
+    for m in re.finditer(
+        r"\binstall\b[\s:]+([@a-zA-Z][\w\-\.@\/,\s]*?)"
+        r"(?=[.\n)]|\s+(?:Create|Mount|Configure|wrapping|Install)\b|$)",
+        scope,
+    ):
+        chunk = m.group(1).strip()
+        # Split by `,` first (top-level), then by `/` while preserving
+        # @scoped/name as a single token.
+        for top in re.split(r",\s*", chunk):
+            top = top.strip()
+            if not top:
+                continue
+            parts = top.split("/")
+            i = 0
+            while i < len(parts):
+                tok = parts[i].strip().rstrip(".,;:'`\"")
+                if tok.startswith("@") and i + 1 < len(parts):
+                    tok = f"{tok}/{parts[i+1].strip().rstrip('.,;:')}"
+                    i += 2
+                else:
+                    i += 1
+                if (
+                    tok
+                    and 2 <= len(tok) <= 60
+                    and re.match(r"^@?[\w\-]+(\/[\w\-]+)?$", tok)
+                    and tok.lower() not in _MANIFEST_STOPWORDS
+                    and tok not in seen_dep
+                ):
+                    seen_dep.add(tok)
+                    deps.append(tok)
+
+    files: list[str] = []
+    seen_file: set[str] = set()
+    # Alternation order matters: longer extensions first so `json` wins over
+    # `js` for `package.json`, `tsx` over `ts` for components, etc.
+    for m in re.finditer(
+        r"`?([\w\-\/\[\]\.]+\.(?:tsx|jsx|json|yaml|yml|css|ts|js|md))`?",
+        scope,
+    ):
+        path = m.group(1)
+        if path in seen_file:
+            continue
+        seen_file.add(path)
+        # Test files are covered by the Required Tests section already.
+        if (
+            path.startswith("tests/")
+            or "/test/" in path
+            or path.endswith(".spec.ts")
+            or path.endswith(".spec.tsx")
+            or path.endswith(".test.ts")
+            or path.endswith(".test.tsx")
+        ):
+            continue
+        # Reject framework/library names like "Next.js", "Node.js", "Vue.ts":
+        # single capitalized basename + .js/.ts extension is almost always a
+        # tooling reference, not a real source file.
+        basename = path.rsplit("/", 1)[-1]
+        ext = path.rsplit(".", 1)[-1]
+        stem = basename[: -(len(ext) + 1)] if "." in basename else basename
+        if (
+            ext in ("js", "ts")
+            and "/" not in path
+            and "-" not in stem
+            and "_" not in stem
+            and stem
+            and stem[0].isupper()
+            and stem[1:].islower()
+        ):
+            continue
+        files.append(path)
+
+    mounts: list[str] = []
+    seen_mount: set[str] = set()
+    for m in re.finditer(r"<(/?[A-Z][\w]*)\b[^>]*/?>", scope):
+        tag = m.group(1).lstrip("/")
+        if tag and tag not in seen_mount:
+            seen_mount.add(tag)
+            mounts.append(tag)
+
+    if not (deps or files or mounts):
+        return ""
+
+    out: list[str] = ["", "## Implementation Manifest"]
+    out.append(
+        "**Extracted from Scope above. Every item below MUST appear as a "
+        "discrete task in `tasks.md` AND in the final diff. If you "
+        "intentionally skip one (waiver), document it in `proposal.md` "
+        "with reasoning. Cherry-picking from this list will fail review.**"
+    )
+    if deps:
+        out.append("")
+        out.append("### Required NPM packages")
+        for d in deps:
+            out.append(f"- `{d}` — must appear in `package.json` dependencies")
+    if files:
+        out.append("")
+        out.append("### Required files")
+        for p in files:
+            out.append(f"- `{p}` — must exist in the diff")
+    if mounts:
+        out.append("")
+        out.append("### Required components / JSX (must be imported and rendered)")
+        for t in mounts:
+            out.append(f"- `<{t}>` — must appear in the rendered tree")
+    out.append("")
+    return "\n".join(out)
+
+
 def _build_rule_injection(scope: str, wt_path: str) -> str:
     """Scan scope keywords against rule_keyword_mapping() and return matching rule content.
 
@@ -1545,6 +1677,17 @@ def _build_input_content(
     lines.append(scope)
     if roadmap_item and roadmap_item != scope:
         lines.append(f"\n**Roadmap item:** {roadmap_item}")
+
+    # Surface scope directives (install/mount/wrap) as a bulleted checklist
+    # so agents cannot silently drop items from tasks.md. The extractor is
+    # purely syntactic — it operates on the planner's scope string.
+    manifest = _extract_implementation_manifest(scope)
+    if manifest:
+        lines.append(manifest)
+        logger.info(
+            "implementation manifest injected for %s (deps/files/mounts found)",
+            change_name,
+        )
 
     if input_mode == "digest" and input_path:
         lines.append(f"\n**Spec source:** `{input_path}`")
