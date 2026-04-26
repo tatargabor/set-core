@@ -1,0 +1,70 @@
+design_source: v0
+v0_export_path: v0-export/
+routes:
+- path: /about
+  files:
+  - v0-export/app/about/page.tsx
+  component_deps:
+  - v0-export/components/ui/avatar.tsx
+  - v0-export/components/ui/hover-card.tsx
+  - v0-export/components/ui/button.tsx
+  scope_keywords:
+  - about
+- path: /blog/[slug]
+  files:
+  - v0-export/app/blog/[slug]/page.tsx
+  component_deps:
+  - v0-export/lib/posts.ts
+  - v0-export/components/blog-post-content.tsx
+  scope_keywords:
+  - blog
+  - slug
+- path: /blog
+  files:
+  - v0-export/app/blog/page.tsx
+  component_deps:
+  - v0-export/lib/posts.ts
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/avatar.tsx
+  - v0-export/components/ui/hover-card.tsx
+  - v0-export/components/ui/popover.tsx
+  - v0-export/components/ui/command.tsx
+  - v0-export/lib/utils.ts
+  scope_keywords:
+  - blog
+- path: /contact
+  files:
+  - v0-export/app/contact/page.tsx
+  component_deps:
+  - v0-export/components/contact-wizard.tsx
+  scope_keywords:
+  - contact
+- path: /
+  files:
+  - v0-export/app/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/sheet.tsx
+  - v0-export/components/ui/input.tsx
+  - v0-export/components/ui/label.tsx
+  scope_keywords:
+  - homepage
+  - home
+  - welcome
+  - micro
+  - web
+shared:
+- v0-export/components/ui/**
+- v0-export/components/site-header.tsx
+- v0-export/components/site-footer.tsx
+- v0-export/app/layout.tsx
+- v0-export/app/globals.css
+- v0-export/components/blog-post-content.tsx
+- v0-export/components/command-palette.tsx
+- v0-export/components/contact-wizard.tsx
+- v0-export/components/theme-provider.tsx
+shared_aliases: {}
+deferred_design_routes: []

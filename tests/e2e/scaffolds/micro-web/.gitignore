@@ -1,0 +1,7 @@
+# v0-export is materialized at deploy time (directory in the scaffold,
+# symlink in each worktree); never committed. Pattern without trailing
+# slash so both directories AND symlinks are ignored.
+v0-export
+
+# v0 import quality report — regenerated each import, not a durable artifact.
+docs/v0-import-report.md

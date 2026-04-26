@@ -6,11 +6,7 @@ ui_library: shadcn
 # v0-export/ directory at run time. Keep ref pinned to a tag/commit for
 # reproducibility once the design is stable.
 #
-# UPDATE the repo URL after pushing the micro-web v0 design to GitHub.
-# While the URL is the placeholder below, run-micro-web.sh skips the design
-# import (a soft fallback so the scaffold still works for backwards-compat).
-# For the design-fidelity test, the URL MUST point at the real v0 export.
 design_source:
   type: v0-git
-  repo: https://github.com/PLACEHOLDER/v0-micro-web-design.git
-  ref: main
+  repo: https://github.com/tatargabor/v0-set-e2e-test-micro-web.git
+  ref: micro-web-nextjs-app

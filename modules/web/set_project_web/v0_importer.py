@@ -255,6 +255,34 @@ def _clone_or_fetch(repo_url: str, ref: str, cache_dir: Path) -> str:
                 str(cache_dir),
             ]
         )
+        # The partial clone with `--filter=blob:none` only fetches the default
+        # branch's HEAD. If ref isn't the default branch, the ref isn't
+        # locally resolvable yet. Fetch the specific ref explicitly so
+        # `_resolve_remote_ref` (which tries `origin/<ref>`) can succeed.
+        # Tolerate failure: ref may be a SHA already in the default-branch
+        # history, in which case the explicit fetch is a no-op.
+        try:
+            _run_git(
+                [
+                    "-C", str(cache_dir),
+                    "fetch", "--no-tags", "--filter=blob:none",
+                    "origin",
+                    f"+refs/heads/{ref}:refs/remotes/origin/{ref}",
+                ]
+            )
+        except subprocess.CalledProcessError:
+            # ref isn't a branch name (likely a SHA or tag) — try fetching
+            # by SHA instead (tags are already covered by --no-tags=false elsewhere)
+            try:
+                _run_git(
+                    [
+                        "-C", str(cache_dir),
+                        "fetch", "--no-tags", "--filter=blob:none",
+                        "origin", ref,
+                    ]
+                )
+            except subprocess.CalledProcessError:
+                logger.debug("explicit fetch of ref %s failed; will rely on default-branch contents", ref)
         _write_cache_meta(cache_dir, repo_url)
     else:
         logger.info("Cache hit for %s; fetching", _mask_url(repo_url))
@@ -287,12 +315,16 @@ def _clone_or_fetch(repo_url: str, ref: str, cache_dir: Path) -> str:
 def _resolve_remote_ref(cache_dir: Path, ref: str) -> str:
     """Resolve ref to a checkout-friendly form. Branches → origin/<branch>."""
     # If it's already a SHA or tag, `git rev-parse --verify <ref>^{commit}` works.
+    # `git rev-parse --verify` exits 128 for an unknown ref — that's the
+    # NORMAL signal we should fall through to origin/<ref>, NOT an auth error.
+    # `_run_git` reflexively converts exit 128 to V0ImportError, so we catch
+    # both that and the underlying CalledProcessError.
     try:
         return _run_git(
             ["-C", str(cache_dir), "rev-parse", "--verify", f"{ref}^{{commit}}"],
             capture=True,
         ).strip()
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, V0ImportError):
         pass
     # Otherwise try origin/<ref>
     try:
@@ -300,7 +332,7 @@ def _resolve_remote_ref(cache_dir: Path, ref: str) -> str:
             ["-C", str(cache_dir), "rev-parse", "--verify", f"origin/{ref}^{{commit}}"],
             capture=True,
         ).strip()
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, V0ImportError) as e:
         raise V0ImportError(f"ref '{ref}' not found in clone of {cache_dir}") from e
 
 
