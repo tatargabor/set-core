@@ -202,6 +202,10 @@ def _build_spans(
     # Tracking open spans
     # gate spans: key = (change, gate_name)
     open_gates: dict[tuple[str, str], dict] = {}
+    # Gates already closed via an explicit GATE_PASS — used to suppress
+    # duplicate spans from a subsequent VERIFY_GATE event covering the same
+    # gate run.  key = (change, gate_name).
+    finalized_gates: set[tuple[str, str]] = set()
     # step spans: key = change
     open_steps: dict[str, dict] = {}
     # merge spans: key = change
@@ -336,42 +340,113 @@ def _build_spans(
                     "duration_ms": data.get("elapsed_ms", _ts_diff_ms(start_ev["start"], ts)),
                     "result": "pass",
                 })
+                finalized_gates.add(key)
 
         elif etype == "VERIFY_GATE":
-            # VERIFY_GATE from verifier.py uses "stop_gate" not "gate"
-            gate = (data.get("gate") or data.get("stop_gate", "unknown")).replace("_", "-")
-            result = data.get("result", "unknown")
-            key = (change, gate)
-            if key in open_gates:
-                start_ev = open_gates.pop(key)
-                cat = f"gate:{gate}"
-                retry = sum(1 for s in spans if s["category"] == cat and s["change"] == change)
+            # The verifier emits a single VERIFY_GATE event per pipeline run
+            # carrying:
+            #   • per-gate timings in `gate_ms` (insertion-ordered by
+            #     execution order — Python 3.7+ dict semantics)
+            #   • per-gate verdicts as top-level fields, e.g.
+            #     `"build": "pass", "test": "pass", "e2e": "fail"`
+            #   • the gate that stopped the pipeline as `stop_gate`
+            # We reconstruct one span per gate, laid out back-to-back so they
+            # end at the VERIFY_GATE timestamp. Gates already opened by an
+            # explicit `GATE_START` are skipped (closed below).
+            stop_gate_raw = str(data.get("stop_gate") or data.get("gate") or "")
+            stop_gate = stop_gate_raw.replace("_", "-") if stop_gate_raw else ""
+            overall_result = data.get("result", "unknown")
+            gate_ms_map = data.get("gate_ms") or {}
+
+            def _norm_verdict(raw: object, fallback: str = "unknown") -> str:
+                v = str(raw) if raw is not None else fallback
+                return "fail" if v in ("fail", "failed", "critical") else v
+
+            # (gate_name, duration_ms, verdict) tuples in execution order.
+            timings: list[tuple[str, int, str]] = []
+            seen: set[str] = set()
+            for raw_name, dur in gate_ms_map.items():
+                try:
+                    dur_int = int(dur) if dur else 0
+                except (TypeError, ValueError):
+                    dur_int = 0
+                norm = str(raw_name).replace("_", "-")
+                verdict_raw = (
+                    data.get(raw_name)
+                    if data.get(raw_name) is not None
+                    else data.get(norm)
+                )
+                timings.append((norm, dur_int, _norm_verdict(verdict_raw)))
+                seen.add(norm)
+
+            # The stop_gate often has no entry in `gate_ms` (e.g. the
+            # verifier filters out zero-duration results, or the gate was
+            # cached and short-circuited). Synthesize a small span so the
+            # failing gate is visible on the timeline.
+            if stop_gate and stop_gate not in seen:
+                verdict_raw = (
+                    data.get(stop_gate_raw)
+                    if data.get(stop_gate_raw) is not None
+                    else data.get(stop_gate)
+                )
+                timings.append((stop_gate, 1000, _norm_verdict(verdict_raw, overall_result)))
+
+            # Lay out back-to-back ending at `ts`.
+            total_ms = sum(d for _, d, _ in timings)
+            cursor_start_ts = _ts_shift_ms(ts, -total_ms) if total_ms > 0 else ts
+            for gname, dur_int, verdict in timings:
+                cat = f"gate:{gname}"
+                # If a GATE_START for this gate is still open, defer to the
+                # explicit-pair handling below — emit nothing here.
+                if (change, gname) in open_gates:
+                    cursor_start_ts = _ts_shift_ms(cursor_start_ts, dur_int)
+                    continue
+                # If a GATE_PASS already closed this gate (same pipeline
+                # run), suppress the duplicate from VERIFY_GATE.
+                if (change, gname) in finalized_gates:
+                    cursor_start_ts = _ts_shift_ms(cursor_start_ts, dur_int)
+                    continue
+                if dur_int <= 0:
+                    cursor_start_ts = _ts_shift_ms(cursor_start_ts, dur_int)
+                    continue
+                end_ts_g = _ts_shift_ms(cursor_start_ts, dur_int)
+                retry = sum(
+                    1 for s in spans
+                    if s.get("category") == cat and s.get("change") == change
+                )
+                spans.append({
+                    "category": cat,
+                    "change": change,
+                    "start": cursor_start_ts,
+                    "end": end_ts_g,
+                    "duration_ms": dur_int,
+                    "result": verdict,
+                    "retry": retry,
+                })
+                cursor_start_ts = end_ts_g
+
+            # Close any explicit GATE_START that pairs with the stop_gate.
+            if stop_gate and (change, stop_gate) in open_gates:
+                start_ev = open_gates.pop((change, stop_gate))
+                cat = f"gate:{stop_gate}"
+                verdict_raw = (
+                    data.get(stop_gate_raw)
+                    if data.get(stop_gate_raw) is not None
+                    else data.get(stop_gate)
+                )
+                retry = sum(
+                    1 for s in spans
+                    if s.get("category") == cat and s.get("change") == change
+                )
                 spans.append({
                     "category": cat,
                     "change": change,
                     "start": start_ev["start"],
                     "end": ts,
                     "duration_ms": _ts_diff_ms(start_ev["start"], ts),
-                    "result": "fail" if result in ("fail", "failed", "critical") else result,
+                    "result": _norm_verdict(verdict_raw, overall_result),
                     "retry": retry,
                 })
-            else:
-                # No matching GATE_START (verifier.py doesn't emit them) —
-                # create a span only if we have actual timing data
-                gate_ms_key = f"gate_{gate}_ms"
-                duration = data.get(gate_ms_key, 0) or data.get("elapsed_ms", 0)
-                if gate != "unknown" and duration:
-                    cat = f"gate:{gate}"
-                    retry = sum(1 for s in spans if s["category"] == cat and s["change"] == change)
-                    spans.append({
-                        "category": cat,
-                        "change": change,
-                        "start": ts,
-                        "end": ts,
-                        "duration_ms": int(duration),
-                        "result": "fail" if result in ("fail", "failed", "critical") else result,
-                        "retry": retry,
-                    })
 
         # ── Step spans (implementing, planning, fixing) ──
         elif etype == "STEP_TRANSITION":

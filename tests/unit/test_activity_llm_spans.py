@@ -222,3 +222,108 @@ class TestIdleGapDetection:
         # No idle, the planning span covers the entire pre-dispatch window
         idle = [s for s in spans if s["category"] == "idle"]
         assert idle == []
+
+
+# ─── VERIFY_GATE per-gate span reconstruction ────────────────────────
+
+
+class TestVerifyGateSpans:
+    """The verifier emits a single VERIFY_GATE event with `gate_ms` carrying
+    per-gate timings and per-gate verdicts as top-level fields. The activity
+    timeline must produce one span per gate (build, test, e2e, ...) — not
+    just the stop_gate."""
+
+    def test_verify_gate_emits_span_per_gate_in_gate_ms(self):
+        """gate_ms with build/test/i18n_check timings → 3 passing spans."""
+        events = [
+            _ev("VERIFY_GATE", _ts(1_000_000), change="shell", data={
+                "result": "retry",
+                "stop_gate": "e2e",
+                "build": "pass",
+                "test": "pass",
+                "i18n_check": "skipped",
+                "e2e": "fail",
+                "gate_ms": {"build": 7355, "test": 552, "i18n_check": 1},
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        gate_spans = {s["category"]: s for s in spans if s["category"].startswith("gate:")}
+        assert "gate:build" in gate_spans
+        assert "gate:test" in gate_spans
+        assert "gate:i18n-check" in gate_spans
+        assert gate_spans["gate:build"]["duration_ms"] == 7355
+        assert gate_spans["gate:build"]["result"] == "pass"
+        assert gate_spans["gate:test"]["duration_ms"] == 552
+        assert gate_spans["gate:test"]["result"] == "pass"
+        assert gate_spans["gate:i18n-check"]["result"] == "skipped"
+
+    def test_verify_gate_synthesizes_failing_stop_gate_when_missing_from_gate_ms(self):
+        """stop_gate=e2e with no gate_ms.e2e entry → still emits a fail span."""
+        events = [
+            _ev("VERIFY_GATE", _ts(1_000_000), change="shell", data={
+                "result": "retry",
+                "stop_gate": "e2e",
+                "build": "pass",
+                "e2e": "fail",
+                "gate_ms": {"build": 1000},
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        e2e = [s for s in spans if s["category"] == "gate:e2e"]
+        assert len(e2e) == 1
+        assert e2e[0]["result"] == "fail"
+        assert e2e[0]["change"] == "shell"
+        assert e2e[0]["duration_ms"] > 0  # synthetic non-zero so it's visible
+
+    def test_verify_gate_lays_spans_back_to_back_ending_at_event_ts(self):
+        """Spans should be sequential, ending at the VERIFY_GATE timestamp."""
+        events = [
+            _ev("VERIFY_GATE", _ts(1_000_000), change="c", data={
+                "result": "pass",
+                "build": "pass",
+                "test": "pass",
+                "gate_ms": {"build": 3000, "test": 1000},
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        gate_spans = sorted(
+            [s for s in spans if s["category"].startswith("gate:")],
+            key=lambda s: s["start"],
+        )
+        # Two passing gates, build first then test
+        assert [s["category"] for s in gate_spans] == ["gate:build", "gate:test"]
+        # The sequence ends at the VERIFY_GATE timestamp
+        assert gate_spans[-1]["end"] == _ts(1_000_000)
+        # build.end == test.start (back-to-back layout)
+        assert gate_spans[0]["end"] == gate_spans[1]["start"]
+
+    def test_verify_gate_underscore_normalized_to_dash(self):
+        """gate_ms key 'i18n_check' → category 'gate:i18n-check' (dashes for UI)."""
+        events = [
+            _ev("VERIFY_GATE", _ts(1000), change="c", data={
+                "result": "pass",
+                "i18n_check": "pass",
+                "gate_ms": {"i18n_check": 100},
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        cats = {s["category"] for s in spans if s["category"].startswith("gate:")}
+        assert "gate:i18n-check" in cats
+        assert "gate:i18n_check" not in cats
+
+    def test_verify_gate_skips_when_explicit_gate_start_open(self):
+        """An open GATE_START/GATE_PASS pair takes precedence — no duplicate
+        span from the VERIFY_GATE gate_ms entry."""
+        events = [
+            _ev("GATE_START", _ts(1000), change="c", data={"gate": "build"}),
+            _ev("GATE_PASS", _ts(1005), change="c", data={"gate": "build", "elapsed_ms": 5000}),
+            _ev("VERIFY_GATE", _ts(1010), change="c", data={
+                "result": "pass",
+                "build": "pass",
+                "gate_ms": {"build": 5000},
+            }),
+        ]
+        spans = _build_spans(events, None, None)
+        build_spans = [s for s in spans if s["category"] == "gate:build"]
+        # Exactly one — from GATE_PASS, not duplicated by VERIFY_GATE.
+        assert len(build_spans) == 1
