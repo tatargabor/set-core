@@ -874,8 +874,18 @@ class WebProjectType(CoreProfile):
         r"router\.(?:get|post|put|delete|patch))\b",
         __import__("re").IGNORECASE,
     )
+    # `schema` and `relation` removed — polysemous: `schema` matches
+    # Zod/form/JSON schema (every form change uses one), `relation`
+    # matches generic data relations. Real DB scopes have stronger
+    # markers (`prisma`, `drizzle`, `migration`, `findMany`, `foreign
+    # key`) which still match unambiguously. Witnessed in
+    # micro-web-run-20260426-1704 contact-wizard-form: scope said
+    # "current step's schema validates via form.trigger" → schema
+    # matched → database category triggered → 12.5K of
+    # set-security-patterns.md (IDOR/auth/CSRF) injected into a
+    # form-only change.
     _SCOPE_DB_RE = __import__("re").compile(
-        r"\b(prisma|drizzle|migration|schema|relation|"
+        r"\b(prisma|drizzle|migration|"
         r"\.findMany|\.findFirst|\.update\(|"
         r"foreign[\s-]?key)\b",
         __import__("re").IGNORECASE,
@@ -1512,8 +1522,18 @@ class WebProjectType(CoreProfile):
                 "globs": ["web/set-api-design.md", "web/set-security-patterns.md"],
             },
             "database": {
-                "keywords": ["database", "query", "migration", "schema", "model", "prisma", "drizzle"],
-                "globs": ["web/set-security-patterns.md"],
+                # `schema` removed (polysemous — Zod/form schemas).
+                # `model` kept here for the keyword path because the
+                # generic agent-prompt corpus uses "data model" more
+                # consistently than `_SCOPE_DB_RE`'s strict word-list,
+                # but resolver-driven injection (the post-fix path)
+                # consults categories not keywords, so this entry only
+                # matters for the legacy substring-match fallback.
+                "keywords": ["database", "query", "migration", "model", "prisma", "drizzle"],
+                # set-security-patterns.md was the WRONG mapping — that
+                # file is IDOR/auth/CSRF (~11K) not DB-related. Real
+                # DB rules are db-type-safety + schema-integrity.
+                "globs": ["web/set-db-type-safety.md", "web/set-schema-integrity.md"],
             },
             "catalog": {
                 "keywords": ["catalog", "listing", "category", "browse", "product list", "page.tsx", "grid"],

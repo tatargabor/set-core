@@ -29,7 +29,70 @@ def api_keywords():
     return WebProjectType().rule_keyword_mapping()["api"]["keywords"]
 
 
-# ─── Polysemous-keyword removal ─────────────────────────────────────────
+@pytest.fixture
+def db_keywords():
+    return WebProjectType().rule_keyword_mapping()["database"]["keywords"]
+
+
+# ─── `schema` polysemy regression (micro-web-run-20260426-1704) ────────
+
+
+def test_schema_removed_from_database_keywords(db_keywords):
+    """`schema` matches "form schema" / "Zod schema" / "JSON schema" —
+    every form change. Witnessed in contact-wizard-form: scope
+    mentioned "current step's schema validates via form.trigger" →
+    database category → 12.5K of set-security-patterns.md (IDOR/auth)
+    injected into a form-only change.
+    """
+    assert "schema" not in db_keywords
+
+
+def test_database_keywords_kept_unambiguous_terms(db_keywords):
+    """Removing schema must not gut the category — strong markers
+    (database/prisma/drizzle/migration) still catch real DB scopes."""
+    for kw in ("database", "prisma", "drizzle", "migration"):
+        assert kw in db_keywords, f"strong DB keyword '{kw}' must remain"
+
+
+def test_form_schema_scope_does_not_activate_database():
+    """Witnessed scope: 'schema' meant Zod form validation schema, not
+    DB schema. Scope-detection regex must NOT match this."""
+    web = WebProjectType()
+    scope = (
+        "Multi-step contact form with Zod schema validation per step. "
+        "Next button disabled until current step's schema validates "
+        "via form.trigger."
+    )
+    cats = web.detect_scope_categories(scope)
+    assert "database" not in cats, (
+        f"form-schema scope must NOT activate database; got: {cats}"
+    )
+
+
+def test_real_db_scope_still_activates_database():
+    """Sanity: a scope with strong DB markers must still trigger database."""
+    web = WebProjectType()
+    scope = "Add Prisma migration for User table with email column"
+    cats = web.detect_scope_categories(scope)
+    assert "database" in cats
+
+
+def test_database_globs_point_to_db_rules():
+    """Witnessed bug: database globs were ['web/set-security-patterns.md']
+    which is IDOR/auth/CSRF (~11K) — unrelated to DB. Fix: db-type-safety
+    + schema-integrity (the actual DB rule files).
+    """
+    db_globs = WebProjectType().rule_keyword_mapping()["database"]["globs"]
+    assert "web/set-security-patterns.md" not in db_globs, (
+        "set-security-patterns is auth/IDOR/CSRF — wrong category mapping"
+    )
+    db_specific = {"web/set-db-type-safety.md", "web/set-schema-integrity.md"}
+    assert any(g in db_specific for g in db_globs), (
+        f"database globs must include a DB-specific rule; got {db_globs}"
+    )
+
+
+# ─── Polysemous-keyword removal (existing) ──────────────────────────────
 
 
 def test_token_removed_from_auth_keywords(auth_keywords):
