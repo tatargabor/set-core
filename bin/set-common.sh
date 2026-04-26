@@ -722,21 +722,30 @@ set_model_prefix() {
 }
 
 # Resolve short model name to full model ID using configured prefix.
-# Usage: resolve_model_id haiku|sonnet|opus|<full-id>
+# Usage: resolve_model_id haiku|sonnet|opus|opus-4-6|opus-4-7|<full-id>
 # Examples with prefix "cc/":    haiku → cc/claude-haiku-4-5-20251001
 # Examples with prefix "":       haiku → claude-haiku-4-5-20251001
+#
+# `opus` shorthand currently resolves to 4.7 (the latest release).
+# Operators concerned about token economy can pin `opus-4-6` explicitly
+# (e.g. `default_model: opus-4-6` in orchestration config). Mirrors
+# _MODEL_MAP in lib/set_orch/subprocess_utils.py.
 resolve_model_id() {
     local name="$1"
     local prefix
     prefix=$(get_model_prefix)
 
     case "$name" in
-        haiku)    echo "${prefix}claude-haiku-4-5-20251001" ;;
-        sonnet)   echo "${prefix}claude-sonnet-4-6" ;;
-        opus)     echo "${prefix}claude-opus-4-7" ;;
-        opus-1m)  echo "${prefix}claude-opus-4-7[1m]" ;;
-        sonnet-1m) echo "${prefix}claude-sonnet-4-6[1m]" ;;
-        *)        echo "$name" ;;  # pass through full IDs
+        haiku)        echo "${prefix}claude-haiku-4-5-20251001" ;;
+        sonnet)       echo "${prefix}claude-sonnet-4-6" ;;
+        opus)         echo "${prefix}claude-opus-4-7" ;;
+        opus-1m)      echo "${prefix}claude-opus-4-7[1m]" ;;
+        sonnet-1m)    echo "${prefix}claude-sonnet-4-6[1m]" ;;
+        opus-4-6)     echo "${prefix}claude-opus-4-6" ;;
+        opus-4-7)     echo "${prefix}claude-opus-4-7" ;;
+        opus-4-6-1m)  echo "${prefix}claude-opus-4-6[1m]" ;;
+        opus-4-7-1m)  echo "${prefix}claude-opus-4-7[1m]" ;;
+        *)            echo "$name" ;;  # pass through full IDs
     esac
 }
 
