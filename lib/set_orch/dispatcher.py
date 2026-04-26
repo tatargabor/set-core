@@ -355,11 +355,22 @@ def _extract_implementation_manifest(scope: str) -> str:
     return "\n".join(out)
 
 
-def _build_rule_injection(scope: str, wt_path: str) -> str:
-    """Scan scope keywords against rule_keyword_mapping() and return matching rule content.
+def _build_rule_injection(
+    scope: str,
+    wt_path: str,
+    content_categories: set[str] | None = None,
+) -> str:
+    """Inject rule files matching this change's resolved categories.
 
-    Reads matching rule files from {wt_path}/.claude/rules/, deduplicates,
-    truncates to 4000 chars total. Returns formatted string with header, or "".
+    When ``content_categories`` is supplied (resolver-driven path), globs
+    are looked up directly via ``rule_keyword_mapping()[cat]["globs"]`` —
+    no substring matching against scope text. This avoids polysemous
+    matches like ``border-b`` triggering ``order`` → payment rules, or
+    other unintended hits the keyword approach is prone to.
+
+    When ``content_categories`` is None (legacy fallback for callers that
+    haven't been migrated to the resolver), fall back to substring keyword
+    matching against the scope text.
     """
     from .profile_loader import load_profile
 
@@ -374,16 +385,26 @@ def _build_rule_injection(scope: str, wt_path: str) -> str:
     else:
         from .profile_loader import NullProfile
         mapping = NullProfile().rule_keyword_mapping()
-    scope_lower = scope.lower()
 
     matched_globs: list[str] = []
-    for _category, cfg in mapping.items():
-        keywords = cfg.get("keywords", [])
-        if any(kw.lower() in scope_lower for kw in keywords):
-            matched_globs.extend(cfg.get("globs", []))
+    if content_categories is not None:
+        for cat in content_categories:
+            cfg = mapping.get(cat)
+            if cfg:
+                matched_globs.extend(cfg.get("globs", []))
+        logger.debug(
+            "_build_rule_injection: resolver-driven, categories=%s, globs=%d",
+            sorted(content_categories), len(matched_globs),
+        )
+    else:
+        scope_lower = scope.lower()
+        for _category, cfg in mapping.items():
+            keywords = cfg.get("keywords", [])
+            if any(kw.lower() in scope_lower for kw in keywords):
+                matched_globs.extend(cfg.get("globs", []))
 
     if not matched_globs:
-        logger.debug("_build_rule_injection: no keyword matches in scope for %d categories", len(mapping))
+        logger.debug("_build_rule_injection: no globs for %d categories", len(mapping))
         return ""
 
     seen: set[str] = set()
@@ -2650,7 +2671,7 @@ def dispatch_change(
             change_name=change_name,
             change_type=getattr(change, "change_type", "feature") or "feature",
             scope=scope,
-            req_ids=list(change_reqs or []),
+            req_ids=list(getattr(change, "requirements", []) or []),
             manifest_paths=_manifest_paths,
             deps=list(getattr(change, "depends_on", []) or []),
             profile=_profile_for_resolver,
@@ -2764,8 +2785,11 @@ def dispatch_change(
         except Exception:
             logger.debug("Defensive design context raised (source=none)", exc_info=True)
 
-    # Proactive rule injection (keyword-matched rules from .claude/rules/)
-    rule_injection = _build_rule_injection(scope, wt_path)
+    # Proactive rule injection — resolver-driven category→globs mapping
+    # (no substring matching against scope text; that approach matched
+    # "border" to keyword "order" → injected payment rules on every
+    # foundation change).
+    rule_injection = _build_rule_injection(scope, wt_path, _content_categories)
     if rule_injection:
         if ctx.design_context:
             ctx.design_context += "\n\n" + rule_injection
