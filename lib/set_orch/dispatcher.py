@@ -104,6 +104,68 @@ _MANIFEST_STOPWORDS = frozenset({
 })
 
 
+def _extract_manifest_file_paths(scope: str) -> list[str]:
+    """Return just the file paths portion of the Implementation Manifest.
+
+    Used by the category resolver as one of its input signals (paths
+    classify into categories: ``app/api/`` → api, ``prisma/`` →
+    database, ``.tsx`` → frontend). The full manifest builder
+    (``_extract_implementation_manifest``) returns formatted markdown;
+    this helper returns the raw path list for programmatic consumers.
+
+    Re-uses the same scope preprocessing (backtick strip), profile
+    extension list, test-file exclusion, NO-negation skip, and
+    framework-name reject so the resolver sees the same paths the
+    agent will see in their input.md.
+    """
+    from .profile_loader import load_profile
+    profile = load_profile()
+    extensions = sorted(
+        profile.scope_manifest_extensions() or [],
+        key=lambda e: (-len(e), e),
+    )
+    if not extensions:
+        return []
+    scope = scope.replace("`", "")
+    ext_alternation = "|".join(re.escape(e) for e in extensions)
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in re.finditer(
+        rf"`?([\w\-\/\[\]\.]+\.(?:{ext_alternation}))`?", scope,
+    ):
+        path = m.group(1)
+        if path in seen:
+            continue
+        seen.add(path)
+        if (
+            path.startswith("tests/")
+            or "/test/" in path
+            or path.endswith(".spec.ts")
+            or path.endswith(".spec.tsx")
+            or path.endswith(".test.ts")
+            or path.endswith(".test.tsx")
+        ):
+            continue
+        prefix = scope[max(0, m.start() - 25):m.start()]
+        if re.search(r"\b(?:NO|no|not)\s+$", prefix):
+            continue
+        basename = path.rsplit("/", 1)[-1]
+        ext = path.rsplit(".", 1)[-1]
+        stem = basename[: -(len(ext) + 1)] if "." in basename else basename
+        if (
+            len(ext) <= 3
+            and "/" not in path
+            and "-" not in stem
+            and "_" not in stem
+            and stem
+            and stem[0].isupper()
+            and stem[1:].islower()
+        ):
+            continue
+        out.append(path)
+    return out
+
+
 def _extract_implementation_manifest(scope: str) -> str:
     """Extract structured manifest from a scope paragraph.
 
@@ -2560,16 +2622,75 @@ def dispatch_change(
     if context_pruning:
         prune_worktree_context(wt_path)
 
-    # Classify scope text for content-aware learnings filtering
-    from .templates import classify_diff_content
-    _content_categories = classify_diff_content(scope)
-    if _content_categories:
-        logger.debug("Dispatch %s: content categories from scope: %s", change_name, _content_categories)
+    # Resolve content categories for THIS change via the per-change
+    # multi-layer resolver. Replaces the legacy classify_diff_content
+    # (scope) call which was always empty (the classifier looks for
+    # diff markers, scope text has none) and silently fell through to
+    # "include all". The resolver consults six deterministic layers
+    # plus a Sonnet additive layer; it never raises and the dispatch
+    # gracefully degrades on LLM failure. classify_diff_content stays
+    # available in lib/set_orch/templates.py for verifier-time use on
+    # actual diffs (which is its correct use case).
+    from .paths import LineagePaths as _LP_disp
+    _lp = _LP_disp(os.path.dirname(state_path))
+    _content_categories: set[str] = set()
+    try:
+        from .category_resolver import resolve_change_categories
+        from .insights import load_insights
+        from .profile_loader import load_profile as _load_profile
+
+        _profile_for_resolver = _load_profile()
+        _project_insights = load_insights(_lp.project_insights)
+        # Manifest paths for this change — the dispatcher's manifest
+        # extractor (called on the way to building input.md) is the
+        # source. We re-extract here to feed the resolver. Cheap
+        # (regex on scope text).
+        _manifest_paths = _extract_manifest_file_paths(scope)
+        _resolver_result = resolve_change_categories(
+            change_name=change_name,
+            change_type=getattr(change, "change_type", "feature") or "feature",
+            scope=scope,
+            req_ids=list(change_reqs or []),
+            manifest_paths=_manifest_paths,
+            deps=list(getattr(change, "depends_on", []) or []),
+            profile=_profile_for_resolver,
+            project_path=Path(project_path),
+            audit_log_path=_lp.category_classifications,
+            project_insights=_project_insights,
+        )
+        _content_categories = set(_resolver_result.final_categories)
+        logger.info(
+            "Dispatch %s: resolver categories=%s (cache_hit=%s, llm_added=%s)",
+            change_name, sorted(_content_categories),
+            _resolver_result.cache_hit,
+            _resolver_result.delta.get("added_by_llm", []),
+        )
+    except Exception as e:
+        # Defensive: if the resolver raises despite its internal
+        # graceful-degradation contract, fall back to legacy
+        # classify_diff_content so the dispatch never blocks. Empty
+        # set from that path triggers "include all" via _build_review_
+        # learnings(content_categories=None).
+        logger.warning(
+            "Dispatch %s: category resolver raised %s — falling back",
+            change_name, type(e).__name__, exc_info=True,
+        )
+        try:
+            from .templates import classify_diff_content
+            _content_categories = classify_diff_content(scope) or set()
+        except Exception:
+            _content_categories = set()
 
     # Cross-change review learnings (scope-filtered)
-    from .paths import LineagePaths as _LP_disp
-    findings_path = _LP_disp(os.path.dirname(state_path)).review_findings
-    review_learnings = _build_review_learnings(findings_path, change_name, content_categories=_content_categories)
+    findings_path = _lp.review_findings
+    # Empty set from resolver is a positive "no domain surface" signal
+    # per the modified learnings-scope-filter spec — pass it through
+    # so only `general`-tagged learnings get injected. Pre-resolver
+    # callers passed None to mean "no signal, include all"; the
+    # resolver's empty set means "we resolved cleanly, no domain".
+    review_learnings = _build_review_learnings(
+        findings_path, change_name, content_categories=_content_categories,
+    )
 
     # Profile-based persistent review checklist (cross-run, scope-filtered)
     review_checklist = ""
@@ -2577,7 +2698,7 @@ def dispatch_change(
         from .profile_loader import load_profile
         _profile = load_profile()
         review_checklist = _profile.review_learnings_checklist(
-            project_path, content_categories=_content_categories or None,
+            project_path, content_categories=_content_categories,
         )
     except Exception:
         logger.debug("Failed to load review learnings checklist", exc_info=True)

@@ -270,6 +270,191 @@ class ProjectType(ABC):
         """
         return ["json", "yaml", "yml", "md", "toml"]
 
+    # ──────────────────────────────────────────────────────────────────
+    # Category resolver hooks (consumed by lib/set_orch/category_resolver.py)
+    #
+    # Seven hooks let project types contribute concrete patterns to the
+    # per-change category resolver. Defaults are universal/no-op so a
+    # NullProfile project produces only ``{"general"}`` and a profile
+    # opting into one or two layers (e.g. a Python plugin that only
+    # implements ``categories_from_paths``) still works.
+    #
+    # See lib/set_orch/category_resolver.py for orchestration and
+    # openspec/specs/change-category-resolver/spec.md for the contract.
+    # ──────────────────────────────────────────────────────────────────
+
+    def detect_project_categories(self, project_path) -> set[str]:
+        """Return categories implied by the project's CURRENT state.
+
+        The category resolver consults this hook only as a *fallback* —
+        per-change signals (change_type, requirements, paths, scope
+        intent, depends_on) dominate. This hook bounds what's reasonable
+        for the project as a whole, so a thinly-scoped change in a large
+        multi-domain project doesn't accidentally inject everything.
+
+        Inputs:
+          project_path: pathlib.Path to the project root (worktree or
+                        main checkout).
+
+        Returns:
+          Set of category strings drawn from
+          ``self.category_taxonomy()``. Always include ``"general"``.
+
+        Web example:
+          ``{"general", "frontend", "auth", "database"}`` if the project
+          has next-auth + Prisma installed.
+
+        Default: ``{"general"}`` — no project-wide signal.
+        """
+        return {"general"}
+
+    def detect_scope_categories(self, scope: str) -> set[str]:
+        """Return categories implied by INTENT verbs in the change scope.
+
+        Word-boundary regex on auth verbs (login/oauth/jwt), API verbs
+        (POST /, app.get(), router.post()), DB verbs (prisma, drizzle,
+        migration), payment verbs (checkout, stripe). Scope text is
+        free-form English; the goal is to catch explicit intent without
+        triggering on polysemous nouns ("design tokens" must NOT activate
+        auth, "page routes" must NOT activate api).
+
+        Inputs:
+          scope: The change's scope description string.
+
+        Returns:
+          Set of category strings (subset of taxonomy).
+
+        Web example:
+          scope ``"Add /login page with NextAuth"`` → ``{"auth"}``.
+          scope ``"Configure design tokens"`` → ``set()`` (no false +).
+
+        Default: ``set()`` — no scope-intent inference.
+        """
+        return set()
+
+    def categories_from_paths(self, paths: list[str]) -> set[str]:
+        """Return categories implied by file paths the change will touch.
+
+        Manifest-extracted paths are deterministic: ``app/api/`` → api,
+        ``prisma/`` → database, ``middleware.ts`` → auth. Source-file
+        extensions imply ``frontend`` for web projects.
+
+        Inputs:
+          paths: List of file paths (basenames or repo-relative)
+                 extracted from the scope or planning manifest.
+
+        Returns:
+          Set of category strings.
+
+        Web example:
+          ``["src/app/api/users/route.ts", "prisma/schema.prisma"]``
+          → ``{"api", "database"}``.
+
+        Default: ``set()`` — no path classification.
+        """
+        return set()
+
+    def categories_from_change_type(self, change_type: str) -> set[str]:
+        """Return baseline categories for a change phase.
+
+        Each phase has typical concerns: ``foundational`` includes
+        scaffolding, ``schema`` always touches the DB, ``infrastructure``
+        is CI/build/test territory.
+
+        Inputs:
+          change_type: One of ``foundational | feature | infrastructure
+                       | schema | cleanup-before | cleanup-after``
+                       (planner-assigned).
+
+        Returns:
+          Set of category strings.
+
+        Web example:
+          ``"foundational"`` → ``{"frontend", "scaffolding"}``.
+          ``"schema"`` → ``{"database"}``.
+
+        Default: ``set()`` — no phase-specific defaults.
+        """
+        return set()
+
+    def categories_from_requirements(self, req_ids: list[str]) -> set[str]:
+        """Return categories implied by requirement-ID prefixes.
+
+        Requirements have IDs like ``REQ-AUTH-001:AC-1`` — the prefix
+        token (``AUTH``) is a strong domain signal because the planner
+        assigns IDs based on the spec's domain partitioning.
+
+        Inputs:
+          req_ids: List of requirement IDs (with or without ``:AC-N``
+                   suffix).
+
+        Returns:
+          Set of category strings.
+
+        Web example:
+          ``["REQ-AUTH-001", "REQ-API-USERS-002"]`` → ``{"auth", "api"}``.
+          ``["REQ-NAV-007:AC-1"]`` → ``{"frontend"}``.
+
+        Default: ``set()`` — no REQ-prefix mapping.
+        """
+        return set()
+
+    def category_taxonomy(self) -> list[str]:
+        """Return the canonical list of categories this profile knows.
+
+        The resolver filters LLM output against this list; categories
+        proposed by the LLM that are NOT in the taxonomy get logged to
+        ``uncovered_categories`` (for harvest review) but are NOT
+        injected into learnings.
+
+        Returns:
+          Ordered list. Profiles SHOULD include ``"general"`` first.
+
+        Web example:
+          ``["general", "frontend", "auth", "api", "database",
+            "payment", "scaffolding", "ci-build-test", "refactor",
+            "schema", "i18n"]``.
+
+        Default: ``["general"]`` — universal baseline only.
+        """
+        return ["general"]
+
+    def project_summary_for_classifier(self, project_path) -> str:
+        """Return a one-line project description for the LLM prompt.
+
+        Sonnet uses this to ground its classification in framework
+        context. Keep it terse (≤ 100 chars) — the prompt budget is
+        small.
+
+        Inputs:
+          project_path: pathlib.Path to project root.
+
+        Returns:
+          Short string describing the project's tech stack.
+
+        Web example:
+          ``"Next.js 14 App Router project with Prisma + next-auth."``
+
+        Default: ``""`` — no project context surfaced.
+        """
+        return ""
+
+    @property
+    def llm_classifier_model(self) -> str | None:
+        """Return the LLM model ID for category classification, or
+        ``None``/empty to disable LLM augmentation.
+
+        The resolver invokes this model after the deterministic layers
+        run and unions the result. Returning ``None`` skips the LLM call
+        entirely (purely deterministic resolution).
+
+        Default: ``"claude-sonnet-4-6"`` — Sonnet for additive
+        edge-case detection. Profiles can downgrade to Haiku
+        (``"claude-haiku-4-5-20251001"``) if cost is critical, or set to
+        ``None`` to disable.
+        """
+        return "claude-sonnet-4-6"
+
     def scope_manifest_extras(self, scope: str) -> str:
         """Return additional Implementation Manifest sections (formatted
         markdown, with leading ``###`` headings) extracted from scope, or

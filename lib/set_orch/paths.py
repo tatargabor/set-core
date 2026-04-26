@@ -325,6 +325,27 @@ class SetRuntime:
         return agent_path
 
 
+def append_jsonl(path: str, record: dict) -> None:
+    """Append a single JSON record as one line to ``path``.
+
+    POSIX guarantees atomic writes for ``< PIPE_BUF`` (typically 4096)
+    bytes when a file is opened with ``O_APPEND``, so concurrent
+    appenders interleave at line boundaries rather than corrupting each
+    other's records. Records exceeding PIPE_BUF can theoretically tear,
+    but our category-resolver records run ~500–800 bytes so this is
+    safe in practice.
+
+    The parent directory is created on demand. The file is closed
+    immediately after the write so no fd leaks if the caller is in a
+    long-running loop.
+    """
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, separators=(",", ":"), default=str) + "\n")
+
+
 def _ensure_gitignore(project_path: str) -> None:
     """Append /.set/ to .gitignore if not already present."""
     gitignore_entry = "/.set/"
@@ -605,6 +626,46 @@ class LineagePaths:
     @property
     def issues_registry(self) -> str:
         return os.path.join(self.project_path, ".set", "issues", "registry.json")
+
+    # ---- category resolver state ------------------------------------------
+
+    @property
+    def category_classifications(self) -> str:
+        """Append-only audit log of every category-resolver invocation.
+
+        One JSON line per dispatch (cache hit, cache miss, or LLM
+        failure). Read by ``insights.py`` for project-insights
+        aggregation and by the resolver itself for cache lookups.
+
+        Lives under ``.set/state/`` (per-worktree ephemeral state)
+        because classifications are derived from the worktree's scope
+        and depend on the worktree's project state — they are NOT a
+        cross-worktree shared resource.
+        """
+        return os.path.join(
+            self.project_path, ".set", "state", "category-classifications.jsonl"
+        )
+
+    @property
+    def project_insights(self) -> str:
+        """Aggregated project-level category trends, rewritten after
+        every successful change merge.
+
+        Schema documented in
+        ``openspec/specs/project-insights-aggregator/spec.md``.
+        Consumed by:
+
+        - ``category_resolver.resolve_change_categories`` as a bias for
+          deterministic detection (seeds ``common_categories`` for the
+          current change_type)
+        - The Sonnet prompt as a one-paragraph project-context summary
+
+        Lives under ``.set/state/`` next to ``category-classifications
+        .jsonl`` (same write-domain).
+        """
+        return os.path.join(
+            self.project_path, ".set", "state", "project-insights.json"
+        )
 
     # ---- per-worktree / per-change resolvers -------------------------------
 

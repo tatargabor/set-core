@@ -789,6 +789,262 @@ class WebProjectType(CoreProfile):
             out.append(f"- `<{t}>` — must appear in the rendered tree")
         return "\n".join(out)
 
+    # ──────────────────────────────────────────────────────────────────
+    # Category-resolver hooks (override the seven ABC methods + property
+    # added in lib/set_orch/profile_types.py). Concrete patterns here
+    # live in Layer 2 per modular-architecture.md — the core resolver
+    # in lib/set_orch/category_resolver.py never branches on project
+    # type, only calls these polymorphically.
+    # ──────────────────────────────────────────────────────────────────
+
+    # Auth provider deps (npm). Detection via package.json. Maps to the
+    # `auth` category — triggers IDOR/session/login review-learnings.
+    _AUTH_DEPS = frozenset({
+        "next-auth", "@auth/core", "@auth/nextjs",
+        "lucia", "iron-session", "@clerk/nextjs", "@clerk/clerk-sdk-node",
+        "@auth0/nextjs-auth0",
+    })
+    # Database / ORM deps. Maps to `database` — migration safety,
+    # data scoping, query patterns.
+    _DB_DEPS = frozenset({
+        "@prisma/client", "prisma",
+        "drizzle-orm", "drizzle-kit",
+        "kysely",
+        "@libsql/client", "@neondatabase/serverless",
+        "mongoose", "mongodb",
+        "typeorm", "sequelize",
+    })
+
+    def detect_project_categories(self, project_path) -> set[str]:
+        """Web profile project-state detection.
+
+        ``general`` and ``frontend`` are baked in (web = always
+        frontend). Other categories opt in from concrete signals:
+
+        - middleware.ts at root or src/ → ``auth``
+        - auth provider in package.json deps → ``auth``
+        - ORM/database client in deps → ``database``
+        - app/api or pages/api directory → ``api``
+        """
+        cats: set[str] = {"general", "frontend"}
+        pp = Path(project_path)
+
+        # middleware.ts presence
+        if (pp / "middleware.ts").is_file() or (pp / "src" / "middleware.ts").is_file():
+            cats.add("auth")
+
+        # package.json deps
+        pkg_json = pp / "package.json"
+        if pkg_json.is_file():
+            try:
+                data = json.loads(pkg_json.read_text())
+                deps = {
+                    **(data.get("dependencies") or {}),
+                    **(data.get("devDependencies") or {}),
+                }
+                if any(d in deps for d in self._AUTH_DEPS):
+                    cats.add("auth")
+                if any(d in deps for d in self._DB_DEPS):
+                    cats.add("database")
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        # API route directories (App Router and Pages Router)
+        for sub in ("app/api", "src/app/api", "pages/api", "src/pages/api"):
+            if (pp / sub).is_dir():
+                cats.add("api")
+                break
+
+        return cats
+
+    # Word-boundary regexes — designed to NOT collide with design
+    # vocabulary. `token` excluded (matches "design tokens"),
+    # `middleware` excluded (Next.js middleware is routing, not auth),
+    # `route` excluded (matches "page routes").
+    _SCOPE_AUTH_RE = __import__("re").compile(
+        r"\b(auth|login|signup|signin|password|session|cookie|jwt|oauth|"
+        r"nextauth|clerk|lucia|rbac|authorization|authenticated)\b",
+        __import__("re").IGNORECASE,
+    )
+    _SCOPE_API_RE = __import__("re").compile(
+        r"\b(api[\s\-]?endpoint|api[\s\-]?route|webhook|"
+        r"REST(?:ful)?|"
+        r"POST\s+/|GET\s+/|PUT\s+/|DELETE\s+/|PATCH\s+/|"
+        r"app\.(?:get|post|put|delete|patch)\(|"
+        r"router\.(?:get|post|put|delete|patch))\b",
+        __import__("re").IGNORECASE,
+    )
+    _SCOPE_DB_RE = __import__("re").compile(
+        r"\b(prisma|drizzle|migration|schema|relation|"
+        r"\.findMany|\.findFirst|\.update\(|"
+        r"foreign[\s-]?key)\b",
+        __import__("re").IGNORECASE,
+    )
+    _SCOPE_PAYMENT_RE = __import__("re").compile(
+        r"\b(payment|checkout|cart|order|invoice|stripe|paypal|billing|"
+        r"subscription|refund)\b",
+        __import__("re").IGNORECASE,
+    )
+
+    def detect_scope_categories(self, scope: str) -> set[str]:
+        """Word-boundary intent detection on scope text.
+
+        Conservative regexes — designed to avoid collision with design
+        vocabulary that surfaces in every web scope. See
+        ``rule_keyword_mapping`` for the parallel polysemous-keyword
+        cleanup.
+        """
+        cats: set[str] = set()
+        if self._SCOPE_AUTH_RE.search(scope):
+            cats.add("auth")
+        if self._SCOPE_API_RE.search(scope):
+            cats.add("api")
+        if self._SCOPE_DB_RE.search(scope):
+            cats.add("database")
+        if self._SCOPE_PAYMENT_RE.search(scope):
+            cats.add("payment")
+        return cats
+
+    def categories_from_paths(self, paths: list[str]) -> set[str]:
+        """Path-pattern classification.
+
+        - ``app/api/`` or ``pages/api/`` segment → ``api``
+        - ``prisma/`` or ``drizzle/`` segment → ``database``
+        - ``middleware.ts`` basename → ``auth``
+        - ``.tsx`` / ``.jsx`` / ``.css`` / ``.scss`` extension → ``frontend``
+        """
+        cats: set[str] = set()
+        for p in paths:
+            if not p:
+                continue
+            normalized = p.replace("\\", "/")
+            # Match `app/api/` or `pages/api/` segments anywhere in the
+            # path (not just after a leading `/`) — paths arriving from
+            # the manifest extractor may be relative or repo-rooted.
+            if "app/api/" in normalized or "pages/api/" in normalized:
+                cats.add("api")
+            if "prisma/" in normalized or "drizzle/" in normalized:
+                cats.add("database")
+            if normalized.endswith("middleware.ts") or normalized.endswith("middleware.tsx"):
+                cats.add("auth")
+            if normalized.endswith((".tsx", ".jsx", ".css", ".scss")):
+                cats.add("frontend")
+        return cats
+
+    def categories_from_change_type(self, change_type: str) -> set[str]:
+        """Phase defaults for the web project type.
+
+        Each phase has typical concerns; these defaults seed the
+        deterministic union before per-change signals get evaluated.
+        """
+        return {
+            "foundational": {"frontend", "scaffolding"},
+            "infrastructure": {"ci-build-test"},
+            "schema": {"database"},
+            "feature": {"frontend"},
+            "cleanup-before": {"refactor"},
+            "cleanup-after": {"refactor"},
+        }.get(change_type, set())
+
+    # REQ-prefix mapping. Domain partitioning the planner uses when
+    # decomposing the spec into requirements: `REQ-AUTH-XXX` is auth
+    # surface, `REQ-NAV-XXX` is navigation/frontend, etc.
+    _REQ_DOMAIN_MAP = {
+        # Auth domain
+        "AUTH": "auth", "LOGIN": "auth", "SESSION": "auth",
+        "RBAC": "auth", "PERMISSION": "auth", "ACCESS": "auth",
+        # API domain
+        "API": "api", "ENDPOINT": "api", "WEBHOOK": "api", "ROUTE": "api",
+        # Database domain
+        "DB": "database", "DATA": "database", "DATABASE": "database",
+        "MIGRATION": "database", "SCHEMA": "database", "MODEL": "database",
+        # Payment domain
+        "PAY": "payment", "PAYMENT": "payment", "CHECKOUT": "payment",
+        "CART": "payment", "ORDER": "payment", "INVOICE": "payment",
+        "BILLING": "payment", "SUBSCRIPTION": "payment",
+        # Tests / CI / build
+        "TEST": "ci-build-test", "CI": "ci-build-test",
+        "BUILD": "ci-build-test", "LINT": "ci-build-test",
+        "E2E": "ci-build-test", "SMOKE": "ci-build-test",
+        # Frontend domain (catch-all for UI-shaped requirements)
+        "NAV": "frontend", "PAGE": "frontend", "UI": "frontend",
+        "FORM": "frontend", "FOOT": "frontend", "LAYOUT": "frontend",
+        "COMPONENT": "frontend", "HEADER": "frontend",
+        "BLOG": "frontend", "HOME": "frontend", "ABOUT": "frontend",
+        "CONTACT": "frontend",
+    }
+
+    def categories_from_requirements(self, req_ids: list[str]) -> set[str]:
+        """Map requirement IDs to categories via the prefix lookup.
+
+        The planner assigns IDs like ``REQ-AUTH-001:AC-1``; the prefix
+        token (``AUTH``) is a high-confidence domain signal. We split
+        on both ``-`` and ``:`` so suffixes like ``:AC-N`` don't break
+        the match.
+        """
+        cats: set[str] = set()
+        for rid in req_ids:
+            if not rid:
+                continue
+            # Split on both separators so REQ-AUTH-001:AC-1 → ["REQ", "AUTH", "001", "AC", "1"]
+            parts = rid.replace(":", "-").split("-")
+            for tok in parts:
+                tok_upper = tok.upper()
+                if tok_upper in self._REQ_DOMAIN_MAP:
+                    cats.add(self._REQ_DOMAIN_MAP[tok_upper])
+                    # Continue scanning — a single REQ ID may map to
+                    # multiple categories if the planner uses compound
+                    # prefixes like REQ-AUTH-API-001.
+        return cats
+
+    def category_taxonomy(self) -> List[str]:
+        """The web profile's complete category set.
+
+        Categories the resolver may inject; categories outside this
+        list (proposed by the LLM) get logged to ``uncovered_categories``
+        for harvest review.
+        """
+        return [
+            "general", "frontend",
+            "auth", "api", "database", "payment",
+            "scaffolding", "ci-build-test",
+            "refactor", "schema", "i18n",
+        ]
+
+    def project_summary_for_classifier(self, project_path) -> str:
+        """One-line web-stack summary for the Sonnet prompt context.
+
+        Identifies the framework (Next.js if ``next`` in deps,
+        otherwise generic React) and surfaces presence of ORMs / auth
+        providers in a short tag list. Capped under 100 chars.
+        """
+        pp = Path(project_path)
+        pkg_json = pp / "package.json"
+        framework = "web"
+        tags: list[str] = []
+        if pkg_json.is_file():
+            try:
+                data = json.loads(pkg_json.read_text())
+                deps = {
+                    **(data.get("dependencies") or {}),
+                    **(data.get("devDependencies") or {}),
+                }
+                if "next" in deps:
+                    framework = "Next.js"
+                elif any(d in deps for d in ("react", "@types/react")):
+                    framework = "React"
+                if any(d in deps for d in ("@prisma/client", "prisma")):
+                    tags.append("Prisma")
+                if any(d in deps for d in ("drizzle-orm", "drizzle-kit")):
+                    tags.append("Drizzle")
+                if any(d in deps for d in self._AUTH_DEPS):
+                    tags.append("auth-provider")
+            except (OSError, json.JSONDecodeError):
+                pass
+        if tags:
+            return f"{framework} project with {', '.join(tags)}."
+        return f"{framework} project."
+
     def lockfile_pm_map(self) -> list:
         return [
             ("pnpm-lock.yaml", "pnpm"),
@@ -1216,11 +1472,19 @@ class WebProjectType(CoreProfile):
         """
         return {
             "auth": {
-                "keywords": ["auth", "login", "session", "middleware", "cookie", "password", "token"],
+                # Polysemous keywords removed:
+                #   `token` matches "design tokens" (every shadcn scope)
+                #   `middleware` matches Next.js middleware (routing, not auth)
+                # Kept terms are unambiguously auth-related; co-occurrence
+                # with these implies a real auth surface in scope.
+                "keywords": ["auth", "login", "session", "cookie", "password"],
                 "globs": ["web/set-auth-middleware.md", "web/set-security-patterns.md"],
             },
             "api": {
-                "keywords": ["api", "route", "endpoint", "handler", "REST", "mutation"],
+                # `route` removed — matches "page routes" on every page-adding
+                # change. Real API endpoints get caught by `api`/`endpoint`/
+                # `handler` which planners use specifically for HTTP routes.
+                "keywords": ["api", "endpoint", "handler", "REST", "mutation"],
                 "globs": ["web/set-api-design.md", "web/set-security-patterns.md"],
             },
             "database": {

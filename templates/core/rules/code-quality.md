@@ -28,6 +28,15 @@ logger = logging.getLogger(__name__)
 - Source `set-common.sh` and use `info()`, `warn()`, `error()` for key operations.
 - Log script start, key operations (file copy, git, API calls), and exit status.
 
+### Audit logs (per-project state)
+
+Some subsystems maintain append-only JSONL audit trails under `.set/state/` for telemetry, cache, and post-merge aggregation:
+
+- `category-classifications.jsonl` — every category-resolver invocation (deterministic + LLM breakdown, agreement diff, timing). Inspect with `jq` to debug surprising category injections (`jq 'select(.cache_hit==false) | {change: .change_name, det: .deterministic.categories, llm: .llm.categories}' < .set/state/category-classifications.jsonl`).
+- `project-insights.json` — aggregated trends, rewritten after each merge.
+
+Both files are gitignored under `.set/` and safe to delete; the resolver runs cold on absence.
+
 ## Abstraction layers
 
 When this project uses a modular architecture (core + plugins/modules):

@@ -2633,6 +2633,24 @@ def execute_merge_queue(state_file: str, *, event_bus: Any = None) -> int:
                     _archive_completed_to_jsonl(state_file)
                 except Exception:
                     logger.debug("state-archive append failed (non-critical)", exc_info=True)
+                # Post-merge insights aggregation. Reads
+                # category-classifications.jsonl and rewrites
+                # project-insights.json so the next dispatch's resolver
+                # can bias on this project's emerging pattern. Wrapped
+                # in try/except: aggregator failure must never block a
+                # merge or the next change's dispatch.
+                try:
+                    from .insights import update_insights
+                    from .paths import LineagePaths
+                    project_root = os.path.dirname(state_file)
+                    lp = LineagePaths(project_root)
+                    update_insights(lp.category_classifications, lp.project_insights)
+                except Exception:
+                    logger.warning(
+                        "post-merge insights update failed for %s "
+                        "(merge succeeded; aggregation will retry on next merge)",
+                        name, exc_info=True,
+                    )
         except Exception:
             logger.warning("Merge failed for %s", name, exc_info=True)
 
