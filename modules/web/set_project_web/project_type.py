@@ -937,7 +937,16 @@ class WebProjectType(CoreProfile):
                 phase="pre-merge",
                 defaults={
                     "infrastructure": "skip", "schema": "skip",
-                    "foundational": "skip", "feature": "run",
+                    # Foundational changes set up the app shell (site-header,
+                    # site-footer, theme-provider, command-palette, etc.).
+                    # The design-fidelity gate's structural checks (shell
+                    # mounting + primitive parity) MUST run here — that's
+                    # where shell mounts get verified. Without this, a
+                    # foundational change that mounts only a subset of v0
+                    # shells (or uses shadow-alias re-exports) merges
+                    # silently and breaks subsequent feature changes that
+                    # rely on the missing shells.
+                    "foundational": "run", "feature": "run",
                     "cleanup-before": "skip", "cleanup-after": "skip",
                 },
                 run_on_integration=True,
