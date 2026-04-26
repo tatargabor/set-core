@@ -94,10 +94,14 @@ def test_directive_text_present():
     headers and the first bullet, so the directive must lead."""
     out = _extract_implementation_manifest(FAILING_SCOPE)
     assert "Implementation Manifest" in out
-    assert "MUST" in out  # Strong directive language
     assert "tasks.md" in out  # Tells agent where to enumerate
     assert "diff" in out  # Tells agent the verification surface
-    assert "Cherry-picking" in out or "cherry-pick" in out.lower()
+    # Tells agent to NOT silently drop, and what to do instead
+    assert "proposal.md" in out
+    assert "drop" in out.lower() or "skip" in out.lower() or "correct" in out.lower()
+    # Promises a review/gate flag — must NOT overpromise blocking failure
+    # since the review is currently SUGGESTION-level for this category.
+    assert "flag" in out.lower()
 
 
 def test_empty_scope_returns_empty():

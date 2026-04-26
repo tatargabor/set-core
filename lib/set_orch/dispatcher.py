@@ -193,10 +193,14 @@ def _extract_implementation_manifest(scope: str) -> str:
 
     out: list[str] = ["", "## Implementation Manifest"]
     out.append(
-        "**Extracted from Scope above. Every item below MUST appear as a "
-        "discrete task in `tasks.md` AND in the final diff. If you "
-        "intentionally skip one (waiver), document it in `proposal.md` "
-        "with reasoning. Cherry-picking from this list will fail review.**"
+        "**Auto-extracted from Scope above (syntactic — install / file / "
+        "`<Component>` mentions). Every item must end up as a discrete task "
+        "in `tasks.md` and survive into the final diff. If something here "
+        "is wrong (e.g. the planner abbreviated `tailwind` but the real "
+        "package is `tailwindcss`), correct it in `proposal.md` with one "
+        "sentence of reasoning — don't silently drop it. Code review and "
+        "the design-fidelity gate read this section and will flag missing "
+        "items.**"
     )
     if deps:
         out.append("")
