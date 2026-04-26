@@ -164,3 +164,51 @@ def test_no_jsx_extras_with_default_profile():
     assert "ThemeProvider" not in out
     assert "Toaster" not in out
     assert "Required components" not in out
+
+
+def test_negated_files_excluded():
+    """Scopes routinely write `NO page.tsx, NO layout.tsx, NO header/footer`
+    to mark exclusions. The manifest MUST NOT promote these to required
+    files — that would lead the agent to create files the planner
+    explicitly forbade. Witnessed in foundation-shadcn-theme-shell scope:
+    `NO page.tsx, NO layout.tsx, NO header/footer, NO contact-dialog,
+    NO tests`."""
+    scope = (
+        "Configure components.json. NO page.tsx, NO layout.tsx, "
+        "NO header.tsx — those come later. But DO create utils.json."
+    )
+    out = _extract_implementation_manifest(scope)
+    assert "`components.json`" in out
+    assert "`utils.json`" in out
+    # Negated files MUST be filtered
+    assert "page.tsx" not in out  # Filtered (default profile has no .tsx anyway)
+    assert "layout.tsx" not in out
+    assert "header.tsx" not in out
+
+
+def test_add_dependencies_pattern_extracts_packages():
+    """Planners use multiple phrasings: `install X`, `Add npm dependencies:
+    X, Y, Z`, `Install packages: A, B`. The extractor must handle the
+    common variants — otherwise scope clauses that explicitly enumerate
+    deps via the `Add ... dependencies:` form are silently dropped.
+    Witnessed in foundation-shadcn-theme-shell: only `primitives` got
+    extracted because `Add npm dependencies: next-themes, sonner, ...`
+    didn't match the install-only regex."""
+    scope = (
+        "Add npm dependencies: next-themes, sonner, "
+        "class-variance-authority, clsx, tailwind-merge, lucide-react."
+    )
+    out = _extract_implementation_manifest(scope)
+    for pkg in (
+        "next-themes", "sonner", "class-variance-authority",
+        "clsx", "tailwind-merge", "lucide-react",
+    ):
+        assert f"`{pkg}`" in out, f"missing dependency {pkg}"
+
+
+def test_install_packages_colon_pattern():
+    """Variant: `Install packages: foo, bar, baz`."""
+    scope = "Install packages: alpha, beta, gamma."
+    out = _extract_implementation_manifest(scope)
+    for pkg in ("alpha", "beta", "gamma"):
+        assert f"`{pkg}`" in out

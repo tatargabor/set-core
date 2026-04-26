@@ -124,39 +124,54 @@ def _extract_implementation_manifest(scope: str) -> str:
     )
     deps: list[str] = []
     seen_dep: set[str] = set()
-    # Whitespace-stops the capture: as soon as a space appears in the
-    # scope text after the install verb, capture ends. This keeps the
-    # extractor from absorbing surrounding prose (e.g. "install foo for
-    # the CLI" stops at `foo`) without needing brittle stop-word lookaheads.
-    for m in re.finditer(
+    # Two patterns capture how planners phrase package lists:
+    #
+    #   1. Single-token install: `install foo/bar/baz` — captures the
+    #      whitespace-bounded list. Whitespace-stop avoids absorbing
+    #      narrative ("install foo for the CLI" → captures `foo` only).
+    #
+    #   2. Colon-introduced list: `Add npm dependencies: a, b, c` or
+    #      `Install packages: x, y, z` — captures the comma-separated
+    #      list after the colon, until end-of-sentence. Necessary
+    #      because planners routinely use this longer form (witnessed
+    #      in foundation-shadcn-theme-shell where `Add npm
+    #      dependencies: next-themes, sonner, ...` was silently
+    #      dropped by the install-only regex).
+    install_patterns = [
         r"\binstall\b[\s:]+([@\w][\w\-\.@\/,]*)",
-        scope,
-    ):
-        chunk = m.group(1).strip().rstrip(".,;:")
-        # Split by `,` first (top-level), then by `/` while preserving
-        # @scoped/name as a single token.
-        for top in re.split(r",\s*", chunk):
-            top = top.strip()
-            if not top:
-                continue
-            parts = top.split("/")
-            i = 0
-            while i < len(parts):
-                tok = parts[i].strip().rstrip(".,;:'`\"")
-                if tok.startswith("@") and i + 1 < len(parts):
-                    tok = f"{tok}/{parts[i+1].strip().rstrip('.,;:')}"
-                    i += 2
-                else:
-                    i += 1
-                if (
-                    tok
-                    and 2 <= len(tok) <= 60
-                    and re.match(r"^@?[\w\-]+(\/[\w\-]+)?$", tok)
-                    and tok.lower() not in _MANIFEST_STOPWORDS
-                    and tok not in seen_dep
-                ):
-                    seen_dep.add(tok)
-                    deps.append(tok)
+        r"(?:Add|Install)\s+(?:npm\s+|pip\s+|pnpm\s+|yarn\s+|cargo\s+)?"
+        r"(?:packages?|dependencies|deps)\s*:\s*"
+        r"([@\w][\w\-\.@\/,\s]*?)(?=[.\n]|$)",
+    ]
+    for pat in install_patterns:
+        for m in re.finditer(pat, scope, flags=re.IGNORECASE):
+            chunk = m.group(1).strip().rstrip(".,;:")
+            # Split by `,` first (top-level), then by `/` while preserving
+            # @scoped/name as a single token. Whitespace inside chunks is
+            # collapsed because the colon-list pattern allows internal
+            # spaces between commas (`a, b, c`).
+            for top in re.split(r",\s*", chunk):
+                top = top.strip()
+                if not top:
+                    continue
+                parts = top.split("/")
+                i = 0
+                while i < len(parts):
+                    tok = parts[i].strip().rstrip(".,;:'`\"")
+                    if tok.startswith("@") and i + 1 < len(parts):
+                        tok = f"{tok}/{parts[i+1].strip().rstrip('.,;:')}"
+                        i += 2
+                    else:
+                        i += 1
+                    if (
+                        tok
+                        and 2 <= len(tok) <= 60
+                        and re.match(r"^@?[\w\-]+(\/[\w\-]+)?$", tok)
+                        and tok.lower() not in _MANIFEST_STOPWORDS
+                        and tok not in seen_dep
+                    ):
+                        seen_dep.add(tok)
+                        deps.append(tok)
 
     files: list[str] = []
     seen_file: set[str] = set()
@@ -186,6 +201,16 @@ def _extract_implementation_manifest(scope: str) -> str:
             or path.endswith(".test.ts")
             or path.endswith(".test.tsx")
         ):
+            continue
+        # Negation skip: scopes routinely write `NO page.tsx, NO layout.tsx,
+        # NO header/footer` to mark exclusions. Look back from the match
+        # for `\b(NO|not)\s+` immediately preceding the path. Without
+        # this, exclusions become false positives that mislead the agent
+        # into creating files the planner explicitly forbade. (Witnessed
+        # in foundation-shadcn-theme-shell: `NO page.tsx, NO layout.tsx`
+        # were extracted as Required Files.)
+        prefix = scope[max(0, m.start() - 25):m.start()]
+        if re.search(r"\b(?:NO|no|not)\s+$", prefix):
             continue
         # Reject framework/library names like "Next.js", "Node.js", "Vue.ts",
         # "React.js": a single capitalized word + short extension is almost
