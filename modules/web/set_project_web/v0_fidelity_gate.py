@@ -900,6 +900,15 @@ def run_skeleton_check(
     # reinterpreted the UX pattern" failure mode (WARN severity).
     violations.extend(_check_shadcn_primitive_parity(agent_worktree, manifest, v0_export))
 
+    # design-fidelity-jsx-parity: structural JSX comparison. Closes the
+    # gap between "right primitives imported" and "right composition":
+    # detects collapsed CommandGroups, swapped layout primitives
+    # (space-y → grid-cols), and missing inner trigger contents
+    # (HoverCardTrigger missing <Avatar>). All current statuses are
+    # informational by default — operator can promote via
+    # gate_overrides.design-fidelity once validated.
+    violations.extend(_check_jsx_structural_parity(agent_worktree, v0_export))
+
     return violations
 
 
@@ -1226,6 +1235,249 @@ def _check_shadcn_primitive_parity(
             f"a waiver in proposal.md under "
             f"`design.primitive_waivers: [{prim}]` with the reason.",
         ))
+    return out
+
+
+# ───────────────────────────────────────────────────────────────────────
+# JSX structural parity — checks that compose JSX into the same shape
+# the v0 design uses, not just the same primitive imports.
+#
+# Layered with shell mounting and primitive parity, this completes the
+# "structural design preservation" goal: the agent can refactor file
+# layout (page.tsx → page.tsx + components/X.tsx) but the rendered tree
+# must compose the same elements with the same layout semantics.
+# ───────────────────────────────────────────────────────────────────────
+
+# Layout-determining className tokens. Selected because changing them
+# materially changes the page's visual rhythm:
+#
+#   grid / flex / block / hidden  → display mode
+#   grid-cols-N / grid-rows-N     → column/row count (kept with version)
+#   flex-col / flex-row / flex-wrap → flex direction
+#   space-y / space-x / gap       → spacing rhythm (version stripped —
+#                                   `space-y-4` ≈ `space-y-6` semantically)
+#   items-* / justify-*           → cross-axis alignment
+#
+# Excluded: padding/margin, color, typography, border, shadow — those
+# are tweaks, not structural decisions. The agent is allowed to tune them.
+_LAYOUT_CLASS_RE = re.compile(
+    r"\b("
+    # Longer alternatives MUST come before shorter — regex alternation
+    # is left-to-right, so `flex|flex-col` matches `flex` first when
+    # given `flex-col`. Ordering by length-desc avoids that pitfall.
+    r"items-(?:start|center|end|stretch|baseline)|"
+    r"justify-(?:start|center|end|between|around|evenly)|"
+    r"flex-nowrap|flex-wrap|"
+    r"flex-col|flex-row|"
+    r"grid-cols-\d+|grid-rows-\d+|"  # column/row counts kept
+    r"space-y(?:-\d+)?|space-x(?:-\d+)?|gap(?:-\d+)?|"
+    r"grid|flex|block|hidden"
+    r")\b"
+)
+# Tokens we normalize by dropping the version (semantic equivalence).
+_LAYOUT_NORMALIZE_PREFIXES = ("space-y", "space-x", "gap")
+
+
+def _normalize_layout_token(tok: str) -> str:
+    for prefix in _LAYOUT_NORMALIZE_PREFIXES:
+        if tok == prefix or tok.startswith(prefix + "-"):
+            return prefix
+    return tok
+
+
+# Trigger-style elements where the inner JSX matters: HoverCardTrigger
+# inner <Avatar> is a recurring v0 idiom that agents drop. These
+# anchors pair naturally with their content twin (HoverCardContent etc.)
+# but for divergence detection we only need the trigger inner content —
+# that's where the agent makes the visible compositional choice.
+_ANCHOR_ELEMENTS = (
+    "HoverCardTrigger",
+    "PopoverTrigger",
+    "SheetTrigger",
+    "DialogTrigger",
+    "DropdownMenuTrigger",
+    "TooltipTrigger",
+    "AccordionTrigger",
+    "CollapsibleTrigger",
+)
+
+
+def _extract_jsx_signature(content: str) -> dict:
+    """Build a structural fingerprint of a JSX/TSX file's render tree.
+
+    Returns a dict with four axes:
+
+    - ``element_counts``: ``{TagName: count}`` Counter for every
+      ``<PascalCase>`` element. Lowercase HTML tags excluded.
+    - ``layout_classes``: set of layout-determining className tokens
+      (normalized — see ``_LAYOUT_CLASS_RE``). Catches "v0 uses
+      ``space-y-6`` for a list, agent uses ``grid-cols-3``" drift.
+    - ``command_group_headings``: set of ``CommandGroup heading="X"``
+      values. Catches "v0 has Categories+Posts groups, agent has
+      Categories only" drift.
+    - ``anchor_inner``: ``{AnchorElement: {ChildTagName, ...}}`` for
+      trigger-style elements. Catches "v0 puts ``<Avatar>`` inside
+      ``HoverCardTrigger``, agent has nothing there" drift.
+    """
+    from collections import Counter as _Counter
+
+    elements = re.findall(r"<([A-Z][\w]*)\b", content)
+    element_counts = _Counter(elements)
+
+    layout_classes: set[str] = set()
+    for cn_match in re.finditer(
+        r'className\s*=\s*["\'`{]([^"\'`}]*)["\'`}]', content,
+    ):
+        for tok in _LAYOUT_CLASS_RE.findall(cn_match.group(1)):
+            layout_classes.add(_normalize_layout_token(tok))
+
+    headings: set[str] = set()
+    for h_match in re.finditer(
+        r'<CommandGroup\b[^>]*\bheading\s*=\s*["\']([^"\']+)["\']', content,
+    ):
+        headings.add(h_match.group(1).strip())
+
+    anchor_inner: dict[str, set[str]] = {}
+    for anchor in _ANCHOR_ELEMENTS:
+        # Match `<Anchor ...>...</Anchor>` non-greedily, multiline. We
+        # don't try to handle nested same-name anchors (rare in practice
+        # and would need a real parser to do correctly).
+        pattern = rf"<{anchor}\b[^>]*>(.*?)</{anchor}>"
+        children: set[str] = set()
+        for block in re.findall(pattern, content, flags=re.DOTALL):
+            children.update(re.findall(r"<([A-Z][\w]*)\b", block))
+        if children:
+            anchor_inner[anchor] = children
+
+    return {
+        "element_counts": element_counts,
+        "layout_classes": layout_classes,
+        "command_group_headings": headings,
+        "anchor_inner": anchor_inner,
+    }
+
+
+def _aggregate_jsx_signatures(root: Path, scan_subdirs: tuple[str, ...]) -> dict:
+    """Walk the given subdirectories under ``root`` and merge JSX
+    signatures. Skips ``components/ui/`` (vendored shadcn primitives) and
+    test files."""
+    from collections import Counter as _Counter
+
+    agg = {
+        "element_counts": _Counter(),
+        "layout_classes": set(),
+        "command_group_headings": set(),
+        "anchor_inner": {},
+    }
+    for subdir in scan_subdirs:
+        sub = root / subdir
+        if not sub.is_dir():
+            continue
+        for f in sub.rglob("*.tsx"):
+            sf = str(f)
+            if "/components/ui/" in sf:
+                continue
+            if (
+                f.name.endswith(".spec.tsx")
+                or f.name.endswith(".test.tsx")
+                or "/tests/" in sf
+                or "/__tests__/" in sf
+            ):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            sig = _extract_jsx_signature(text)
+            agg["element_counts"].update(sig["element_counts"])
+            agg["layout_classes"].update(sig["layout_classes"])
+            agg["command_group_headings"].update(sig["command_group_headings"])
+            for anchor, children in sig["anchor_inner"].items():
+                agg["anchor_inner"].setdefault(anchor, set()).update(children)
+    return agg
+
+
+def _check_jsx_structural_parity(
+    agent_worktree: Path,
+    v0_export: Path,
+) -> list[SkeletonViolation]:
+    """Compare the agent's rendered JSX shape to v0's, project-wide.
+
+    The check is intentionally project-level rather than per-file: the
+    agent is allowed to refactor (extract a `BlogList` from v0's inline
+    page logic), but the *aggregate* element multiset, layout-class
+    palette, CommandGroup heading set, and trigger-inner contents must
+    align.
+
+    Witnessed regressions this catches:
+
+    - ``Categories+Posts`` CommandGroups → ``Categories`` only
+    - v0 ``space-y-6`` post list → agent ``grid-cols-3`` post grid
+    - v0 ``HoverCardTrigger`` containing ``<Avatar>`` → agent has none
+
+    Severity: WARN by default (status names not in ``blocking_statuses``).
+    Operator can promote via ``gate_overrides.design-fidelity`` in
+    orchestration config once the check has been validated on a few runs.
+    """
+    out: list[SkeletonViolation] = []
+    if not v0_export.is_dir():
+        return out
+
+    v0_sig = _aggregate_jsx_signatures(v0_export, ("app", "components"))
+    agent_sig = _aggregate_jsx_signatures(agent_worktree / "src", ("app", "components"))
+
+    # 1. CommandGroup heading divergence — clearest structural signal,
+    #    near-zero false-positive rate (heading values are deliberate).
+    missing_headings = v0_sig["command_group_headings"] - agent_sig["command_group_headings"]
+    for heading in sorted(missing_headings):
+        out.append(SkeletonViolation(
+            "jsx-command-group-missing",
+            f"v0 has `<CommandGroup heading=\"{heading}\">` somewhere but "
+            f"no file under `src/` does. The agent likely collapsed two "
+            f"CommandGroups into one, or replaced a Command-driven section "
+            f"with plain markup. Mount the missing group with the same "
+            f"heading text, or document the choice in `proposal.md` under "
+            f"`design.command_group_waivers`.",
+        ))
+
+    # 2. Layout-class divergence — v0 has a layout token agent doesn't.
+    #    Normalized tokens (space-y, gap) are equivalent across versions.
+    missing_layout = v0_sig["layout_classes"] - agent_sig["layout_classes"]
+    if missing_layout:
+        out.append(SkeletonViolation(
+            "jsx-layout-divergence",
+            f"v0 uses layout class(es) {sorted(missing_layout)!r} in some "
+            f"file under `v0-export/`, but no file under `src/` uses them. "
+            f"Common drift: v0 stacks items with `space-y-N` for vertical "
+            f"rhythm, agent rebuilds as `grid grid-cols-N`. Match v0's "
+            f"layout primitive — list semantics differ from grid semantics "
+            f"in screen reader output and responsive behavior.",
+        ))
+
+    # 3. Anchor-inner divergence — for each trigger element where v0
+    #    has child elements that agent doesn't.
+    for anchor, v0_children in sorted(v0_sig["anchor_inner"].items()):
+        agent_children = agent_sig["anchor_inner"].get(anchor, set())
+        missing = v0_children - agent_children
+        # Filter out children that DO appear elsewhere — only flag when
+        # the agent doesn't use them at all in any anchor of this type.
+        # This avoids flagging cosmetic nesting differences.
+        truly_missing = {
+            c for c in missing
+            if c not in agent_children
+        }
+        if truly_missing:
+            out.append(SkeletonViolation(
+                "jsx-anchor-inner-divergence",
+                f"v0 puts {sorted(truly_missing)!r} inside `<{anchor}>` "
+                f"(an idiomatic v0 pattern — e.g. `<Avatar>` next to a name "
+                f"in `<HoverCardTrigger>` so the trigger is visually rich, "
+                f"not just text). Agent's `<{anchor}>` blocks contain only "
+                f"{sorted(agent_children)!r}. Mirror the v0 trigger "
+                f"composition or document the simplification in "
+                f"`proposal.md` under `design.anchor_simplifications`.",
+            ))
+
     return out
 
 
