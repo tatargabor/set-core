@@ -259,3 +259,37 @@ def test_compound_name_noun_fragments_filtered():
     out = _extract_implementation_manifest(scope)
     assert "`ui`" not in out  # fragment, filtered
     # shadcn is acceptable (real CLI tool name)
+
+
+def test_install_primitives_colon_pattern():
+    """`Install shadcn primitives: button, card, input, ...` — planners
+    use `primitives` / `components` / `modules` as the trigger noun for
+    lists of package-like things, not just `packages`/`dependencies`.
+    Without this, scopes that say `Install primitives: ...` silently
+    drop the entire list."""
+    scope = (
+        "Install shadcn primitives: button, card, input, label, sheet, "
+        "hover-card, dialog, popover, progress, breadcrumb, alert, command, "
+        "badge, textarea, avatar, sonner."
+    )
+    out = _extract_implementation_manifest(scope)
+    for prim in (
+        "button", "card", "input", "label", "sheet", "hover-card",
+        "dialog", "popover", "progress", "breadcrumb", "alert", "command",
+        "badge", "textarea", "avatar", "sonner",
+    ):
+        assert f"`{prim}`" in out, f"missing primitive {prim}"
+    # `shadcn` (the qualifier between verb and noun) MUST NOT be
+    # promoted to a package by the colon-list pattern itself
+    # (the install-only pattern still captures it from the same scope,
+    # which is acceptable since `npx shadcn` is a real CLI).
+
+
+def test_components_modules_libs_triggers():
+    """`Install components:`, `Install modules:`, `Install libs:` —
+    parallel triggers, all common."""
+    for noun in ("components", "modules", "libs", "libraries"):
+        scope = f"Install {noun}: alpha, beta, gamma."
+        out = _extract_implementation_manifest(scope)
+        for pkg in ("alpha", "beta", "gamma"):
+            assert f"`{pkg}`" in out, f"missing {pkg} for trigger noun {noun}"

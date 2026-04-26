@@ -160,10 +160,15 @@ def _extract_implementation_manifest(scope: str) -> str:
         r"\binstall\b[\s:]+([@\w][\w\-\.@\/,]*)",
         # Allow 0–3 qualifier words between the verb and the noun
         # (`Install runtime deps:`, `Add npm dev dependencies:`,
-        # `Install core build deps:`). Lazy quantifier prevents the
-        # qualifier section from absorbing the noun itself.
+        # `Install core build deps:`, `Install shadcn primitives:`).
+        # The trigger-noun whitelist covers the common ways planners
+        # introduce package-like lists; relaxing to `\w+` would absorb
+        # unrelated colon-introduced things ("Tasks:", "Notes:", etc.).
+        # Lazy quantifier prevents the qualifier section from absorbing
+        # the noun itself.
         r"(?:Add|Install)\s+(?:\S+\s+){0,3}?"
-        r"(?:packages?|dependencies|deps)\s*:\s*"
+        r"(?:packages?|dependencies|deps|primitives?|components?|modules?|libs?|libraries)"
+        r"\s*:\s*"
         r"([@\w][\w\-\.@\/,\s]*?)(?=[.\n]|$)",
     ]
     for pat in install_patterns:
