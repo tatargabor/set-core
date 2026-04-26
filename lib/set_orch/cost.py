@@ -70,6 +70,21 @@ def _resolve_rates(model: str | None) -> _Rates:
     return _DEFAULT_RATES
 
 
+def _raw_input(input_tokens: int, cache_read_tokens: int) -> int:
+    """Subtract cache reads from total input to get the un-cached
+    portion that gets billed at the full input rate.
+
+    The orchestrator's loop state stores ``input_tokens`` as the
+    dashboard's "Input" column — i.e. RAW + cache_read combined (see
+    ``lib/loop/state.sh:307``: ``input_tokens: ((.input_tokens // 0)
+    + (.cache_read_tokens // 0))``). Subtracting cache_read recovers
+    the actual raw-input portion. Clamped to zero — defensive against
+    edge cases where the two counters drift (e.g. cache_read >
+    aggregated input due to ordering).
+    """
+    return max(0, input_tokens - cache_read_tokens)
+
+
 def estimate_cost_usd(
     *,
     model: str | None,
@@ -80,16 +95,19 @@ def estimate_cost_usd(
 ) -> float:
     """Compute estimated USD cost from token counts.
 
-    ``input_tokens`` here is the RAW input (uncached prefix delta),
-    NOT the dashboard's "Input" column which sums input + cache_read.
-    Anthropic's API returns ``input_tokens`` as the un-cached portion;
-    the consumer's per-change state mirrors that semantics.
+    ``input_tokens`` is treated as the dashboard "Input" column:
+    raw + cache_read combined. We subtract cache_read internally so
+    the input rate ($15/M Opus) is only applied to actually-uncached
+    tokens. Without this subtraction, the cost was inflated 10-100×
+    on cache-heavy sessions because cache_read got billed at the
+    raw rate.
 
     Returns 0.0 if all token counts are zero.
     """
     rates = _resolve_rates(model)
+    raw_input = _raw_input(input_tokens, cache_read_tokens)
     cost = (
-        (input_tokens / 1_000_000.0) * rates.input
+        (raw_input / 1_000_000.0) * rates.input
         + (output_tokens / 1_000_000.0) * rates.output
         + (cache_read_tokens / 1_000_000.0) * rates.cache_read
         + (cache_create_tokens / 1_000_000.0) * rates.cache_create
@@ -105,10 +123,15 @@ def cost_breakdown(
     cache_read_tokens: int,
     cache_create_tokens: int,
 ) -> dict:
-    """Return a per-component breakdown for diagnostic display."""
+    """Return a per-component breakdown for diagnostic display.
+
+    ``input`` reflects only the raw (uncached) portion of input —
+    see ``estimate_cost_usd`` docstring for the input_tokens semantics.
+    """
     rates = _resolve_rates(model)
+    raw_input = _raw_input(input_tokens, cache_read_tokens)
     parts = {
-        "input": round((input_tokens / 1_000_000.0) * rates.input, 4),
+        "input": round((raw_input / 1_000_000.0) * rates.input, 4),
         "output": round((output_tokens / 1_000_000.0) * rates.output, 4),
         "cache_read": round((cache_read_tokens / 1_000_000.0) * rates.cache_read, 4),
         "cache_create": round((cache_create_tokens / 1_000_000.0) * rates.cache_create, 4),

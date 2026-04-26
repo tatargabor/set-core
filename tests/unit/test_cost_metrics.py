@@ -91,17 +91,52 @@ def test_breakdown_sums_to_total():
 
 def test_witnessed_contact_wizard_session_cost():
     """One Implementation session of contact-wizard-form (a8091a4e):
-    9.8M input including 9.4M cache_read, 62K output, 377K cache_create
-    on Opus 4.7 → ~$50."""
+    9,436,420 input_tokens (state semantics: raw 1,252 + cache_read
+    9,435,168), 62,244 output, 377,519 cache_create on Opus 4.7.
+
+    Expected ~$25:
+      raw 1,252  × $15/M = $0.019
+      output 62K × $75/M = $4.67
+      cache_r 9.4M × $1.50/M = $14.15
+      cache_c 377K × $18.75/M = $7.07
+      total ~ $25.91
+    """
     cost = estimate_cost_usd(
         model="claude-opus-4-7",
-        input_tokens=1252,
+        input_tokens=1252 + 9435168,  # state-style: raw + cache_read
         output_tokens=62244,
         cache_read_tokens=9435168,
         cache_create_tokens=377519,
     )
-    assert 20 <= cost <= 30, (
-        f"Expected ~$25 for this session shape; got ${cost}"
+    assert 22 <= cost <= 30, (
+        f"Expected ~$25.9 for this session shape; got ${cost}"
+    )
+
+
+def test_state_semantic_input_tokens_does_not_double_count_cache():
+    """Regression: the orchestrator's state stores input_tokens as
+    raw+cache_read combined (loop/state.sh:307). cost.py must NOT
+    bill the cache_read portion at the raw input rate.
+
+    Witnessed bug in micro-web-run-20260426-2027 shell-foundation:
+    state.input_tokens=36M which is mostly cache_read, BUT my cost
+    calculation reported $635 (input rate × 36M at $15/M = $540) —
+    inflated 10× over the real ~$60 cost.
+    """
+    cost = estimate_cost_usd(
+        model="claude-opus-4-7",
+        input_tokens=36_000_000,         # raw + cache_read combined
+        output_tokens=235_000,
+        cache_read_tokens=39_500_000,    # cache_read alone
+        cache_create_tokens=970_000,
+    )
+    # If raw_input were billed at $15/M, this would be $540. The
+    # correct semantics: raw_input = max(0, 36M - 39.5M) = 0, so
+    # input rate contributes 0. Total ~ output($17.6) + cache_r($59.2)
+    # + cache_c($18.2) ~ $95.
+    assert cost < 110, (
+        f"State-semantic must not double-count cache_read; "
+        f"$540+ would indicate the bug; got ${cost}"
     )
 
 
