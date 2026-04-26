@@ -212,3 +212,50 @@ def test_install_packages_colon_pattern():
     out = _extract_implementation_manifest(scope)
     for pkg in ("alpha", "beta", "gamma"):
         assert f"`{pkg}`" in out
+
+
+def test_backticked_packages_in_colon_list():
+    """Planners write package names in backticks for readability:
+    `Install runtime deps: ``react-hook-form``, ``zod``, ``@hookform/resolvers``
+    Without stripping backticks first, the colon-list regex's
+    ``[@\\w]`` prefix doesn't match the leading backtick → ALL deps are
+    silently missed.
+
+    Witnessed in foundation-shell scope (micro-web-run-20260426-1249):
+    7 real deps lost; only `runtime` (a single-token false positive
+    from the install-only regex) ended up in the manifest."""
+    scope = (
+        "Install runtime deps: `react-hook-form`, `zod`, "
+        "`@hookform/resolvers`, `next-themes`, `sonner`, `cmdk`, "
+        "`lucide-react`."
+    )
+    out = _extract_implementation_manifest(scope)
+    for pkg in (
+        "react-hook-form", "zod", "@hookform/resolvers",
+        "next-themes", "sonner", "cmdk", "lucide-react",
+    ):
+        assert f"`{pkg}`" in out, f"missing backticked dep {pkg}"
+
+
+def test_helper_words_filtered_from_packages():
+    """Helper words used to qualify install verbs (`runtime` in
+    `runtime deps`, `via` in `install X via Y`, `latest` in
+    `shadcn@latest`) must not be promoted to package names."""
+    scope = (
+        "Install runtime deps. Configure things via npm. "
+        "Use latest to get fresh."
+    )
+    out = _extract_implementation_manifest(scope)
+    assert "`runtime`" not in out
+    assert "`via`" not in out
+    assert "`latest`" not in out
+
+
+def test_compound_name_noun_fragments_filtered():
+    """`shadcn/ui` splits to `shadcn` and `ui` by `/`-separator. `ui`
+    is a noun fragment, not a package — filter it. `shadcn` is left
+    because `npx shadcn` is a real CLI tool."""
+    scope = "Install shadcn/ui primitives consumed by every domain."
+    out = _extract_implementation_manifest(scope)
+    assert "`ui`" not in out  # fragment, filtered
+    # shadcn is acceptable (real CLI tool name)

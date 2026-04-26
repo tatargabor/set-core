@@ -86,8 +86,21 @@ def _is_generated_file(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in _AUTO_RESOLVE_PREFIXES)
 
 _MANIFEST_STOPWORDS = frozenset({
+    # Pure connectors and prepositions
     "and", "the", "with", "for", "via", "from", "into", "use", "all", "any",
     "etc", "ie", "eg", "as", "to", "of", "or", "in", "on", "at", "by", "no",
+    # Helper / qualifier words that follow install verbs without being
+    # packages themselves: "Install runtime deps:" / "shadcn@latest" /
+    # "build using ..." / "configure later"
+    "runtime", "latest", "using", "later", "deps", "dep",
+    "packages", "package", "dependencies", "dependency",
+    # Generic install-target placeholders: "install primitives" /
+    # "install components" — captures the noun, not actual package
+    "primitives", "primitive", "components", "component",
+    # Generic noun fragments from compound names like `shadcn/ui` —
+    # `ui` alone is not an installable package. (`shadcn` is left in
+    # because `npx shadcn` is a real CLI invocation.)
+    "ui", "core", "lib", "utils", "src", "app",
 })
 
 
@@ -122,6 +135,12 @@ def _extract_implementation_manifest(scope: str) -> str:
         profile.scope_manifest_extensions() or [],
         key=lambda e: (-len(e), e),
     )
+    # Strip markdown code-fence backticks before pattern matching.
+    # Planners wrap package names and paths in backticks for readability
+    # (`react-hook-form`, `src/app/layout.tsx`); the regex doesn't need
+    # them and backticks would otherwise break the colon-list capture
+    # (which expects `[@\w]` as the first char after `: `).
+    scope = scope.replace("`", "")
     deps: list[str] = []
     seen_dep: set[str] = set()
     # Two patterns capture how planners phrase package lists:
@@ -139,7 +158,11 @@ def _extract_implementation_manifest(scope: str) -> str:
     #      dropped by the install-only regex).
     install_patterns = [
         r"\binstall\b[\s:]+([@\w][\w\-\.@\/,]*)",
-        r"(?:Add|Install)\s+(?:npm\s+|pip\s+|pnpm\s+|yarn\s+|cargo\s+)?"
+        # Allow 0–3 qualifier words between the verb and the noun
+        # (`Install runtime deps:`, `Add npm dev dependencies:`,
+        # `Install core build deps:`). Lazy quantifier prevents the
+        # qualifier section from absorbing the noun itself.
+        r"(?:Add|Install)\s+(?:\S+\s+){0,3}?"
         r"(?:packages?|dependencies|deps)\s*:\s*"
         r"([@\w][\w\-\.@\/,\s]*?)(?=[.\n]|$)",
     ]
