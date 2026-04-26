@@ -11,7 +11,10 @@ paths:
 - Install shadcn components ON DEMAND — only add a component when first needed. Do NOT pre-install unused primitives
 - Base set (always available after foundation change): Button, AlertDialog
 - Icons: use `lucide-react` exclusively
-- When design source files (`docs/figma-raw/*/sources/`) specify particular icons (e.g., `ShoppingBag` for cart, `Package` for products), use those exact icons — design source files override generic icon choices
+- When a design source is present (`v0-export/` for v0 — primary; or
+  `docs/figma-raw/*/sources/` for Figma fallback) and it specifies
+  particular icons (e.g., `ShoppingBag` for cart, `Package` for products),
+  use those exact icons — design source files override generic icon choices
 
 ## Design Tokens — Use Tailwind Classes, Not Inline Hex
 
