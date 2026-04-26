@@ -251,20 +251,10 @@ ATTRS
     source "$SCRIPT_DIR/lib/deploy-shadcn.sh"
     deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"
 
-    step "Orchestration config"
     # `set-project init` already deployed the web template default
-    # config.yaml. We don't overwrite it — defaults are good for a small
-    # scaffold like this. Only thing we add is discord wiring for run
-    # observability (the default has it commented out).
-    if [[ -f set/orchestration/config.yaml ]] && ! grep -q "^discord:" set/orchestration/config.yaml; then
-        cat >> set/orchestration/config.yaml <<'YAML'
-
-discord:
-  enabled: true
-  channel_name: micro-web
-YAML
-        info "Appended discord wiring to set/orchestration/config.yaml"
-    fi
+    # config.yaml at set/orchestration/config.yaml. The default is good
+    # for micro-web as-is — no overrides, no discord append. Operator can
+    # add a discord webhook post-init if desired.
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"
