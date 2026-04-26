@@ -252,25 +252,19 @@ ATTRS
     deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"
 
     step "Orchestration config"
-    mkdir -p set/orchestration
-    cat > set/orchestration/config.yaml << 'YAML'
-# Orchestration config for Micro-Web E2E
-default_model: opus
-e2e_command: npx playwright test
-e2e_timeout: 3600
-max_parallel: 1
-merge_policy: eager
-auto_replan: true
-max_replan_cycles: 2
-review_before_merge: true
-# max_verify_retries inherits raised default (12) from DIRECTIVE_DEFAULTS.
-env_vars:
-  DATABASE_URL: "file:./dev.db"
+    # `set-project init` already deployed the web template default
+    # config.yaml. We don't overwrite it — defaults are good for a small
+    # scaffold like this. Only thing we add is discord wiring for run
+    # observability (the default has it commented out).
+    if [[ -f set/orchestration/config.yaml ]] && ! grep -q "^discord:" set/orchestration/config.yaml; then
+        cat >> set/orchestration/config.yaml <<'YAML'
+
 discord:
   enabled: true
   channel_name: micro-web
 YAML
-    success "Created set/orchestration/config.yaml"
+        info "Appended discord wiring to set/orchestration/config.yaml"
+    fi
 
     git add -A
     git commit -m "chore: set-project init + orchestration config"

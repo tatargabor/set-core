@@ -1,44 +1,38 @@
 # Orchestration config — web project defaults
-# Customize per project. Profile auto-detects test/e2e/build commands if omitted.
+#
+# Most retry/circuit limits are NOT set here — they inherit from
+# `lib/set_orch/config.py::DIRECTIVE_DEFAULTS`. Override only when this
+# project genuinely needs a different value than the framework default.
+#
+# Inherited defaults (do NOT override unless there's a project-specific
+# reason; see `docs/reference/configuration.md` for the full list):
+#   default_model:           opus
+#   max_parallel:            1     (sequential — >1 is experimental)
+#   review_before_merge:     true
+#   merge_policy:            eager
+#   auto_replan:             true
+#   max_replan_retries:      5
+#   max_verify_retries:      12    (raised after circuit-breaker false positives)
+#   max_merge_retries:       5
+#   max_integration_retries: 5
+#   e2e_retry_limit:         8
+#   max_stuck_loops:         5
+#   watchdog_timeout_running:    1800
+#   watchdog_timeout_verifying:  1200
 
-# Model for implementation agents (sonnet|opus|opus-1m)
-default_model: opus
-
-# Commands — override profile auto-detection if needed
-# test_command runs the unit test gate (vitest/jest). No-op when no test
-# files exist, so leaving it on has no cost on scaffolds without tests.
-# Unit tests catch validator/pure-function regressions before they escalate
-# into slow e2e failures.
+# Test command — explicit because vitest auto-detect is not perfect across
+# all package.json scripts shapes. No-op when no test files exist.
 test_command: pnpm test
-# e2e_command: npx playwright test
-# build_command: npx next build
 
-# Parallelism
-max_parallel: 1
-
-# Quality gates
-review_before_merge: true
-max_verify_retries: 4
-
-# LLM verdict classifier — second Sonnet pass that reads review/spec-verify
-# output and extracts a structured verdict. Defends against silent gate
-# passes where the primary LLM emits findings in a format the body-regex
-# parser does not recognise (observed twice in 2026-04 retry reviews).
-# Default True; set to False to disable the extra Sonnet call if cost is a
-# concern (at the price of reopening the silent-pass window).
-# llm_verdict_classifier_enabled: true
-
-# Replanning
-auto_replan: true
-max_replan_cycles: 2
-
-# E2E
-# 600s default — a realistic web suite (100+ tests, Prisma seed, Next.js dev
-# cold start) runs in ~150s on dev hardware. 600s gives ~4x headroom for
-# slower CI runners and test count growth. The e2e gate's timeout guard
-# clause surfaces timeouts as explicit FAILs (no more silent masking), so a
-# value that is too low just wastes wall time instead of hiding regressions.
+# E2E timeout — web suites with Prisma seed + Next.js cold start need more
+# than the framework default. Override raises ceiling without changing the
+# meaning (e2e gate's timeout guard surfaces over-budget runs as FAIL).
 e2e_timeout: 3600
+
+# Replan cycles — kept lower than the framework default (5) because most
+# web scaffolds converge in 1-2 cycles; if more are needed it's usually a
+# planner-level bug, not a transient.
+max_replan_cycles: 2
 
 # Environment variables injected into every worktree .env
 env_vars:

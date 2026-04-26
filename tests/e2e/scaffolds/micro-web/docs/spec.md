@@ -165,11 +165,3 @@ Use stable `data-testid` for E2E:
 - `blog-filter-combobox` — blog filter combobox
 - `reading-progress` — blog detail progress bar
 
-## Orchestrator Directives
-
-```yaml
-max_parallel: 2
-review_before_merge: true
-e2e_mode: per_change
-time_limit: 2h
-```
