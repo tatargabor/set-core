@@ -439,6 +439,36 @@ def _build_rule_injection(
     return "## Relevant Patterns\n\n" + "\n\n".join(parts)
 
 
+def _section_size_breakdown(content: str) -> dict[str, int]:
+    """Split input.md by ``## ``-prefixed headers and return
+    ``{section_title: bytes}``.
+
+    Surfaces which section dominates the prefix so token-attribution
+    audits have a concrete signal. Witnessed in
+    micro-web-run-20260426-1704: 28K input.md, with 12.5K silently
+    eaten by ``set-security-patterns.md`` injection (database
+    polysemy on the word "schema"). Without per-section sizes the
+    bloat was invisible to operators.
+    """
+    import re as _re
+    # Skip the leading content (before first `## `) — usually empty.
+    breakdown: dict[str, int] = {}
+    matches = list(_re.finditer(r"^(## .+)$", content, _re.MULTILINE))
+    if not matches:
+        return breakdown
+    for i, m in enumerate(matches):
+        header = m.group(1).strip()
+        # Strip the `## ` prefix and any trailing parenthesized note
+        # for a clean key (e.g., "Required Tests" not "Required Tests
+        # (MANDATORY...)").
+        title = header.removeprefix("## ").strip()
+        title = _re.sub(r"\s+\([^)]*\)\s*$", "", title)
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        breakdown[title] = end - start
+    return breakdown
+
+
 def _deploy_v0_export_to_worktree(project_path: str, wt_path: str) -> bool:
     """Create a symlink <wt>/v0-export -> <project>/v0-export.
 
@@ -2987,7 +3017,22 @@ def _setup_change_in_worktree(
     os.makedirs(os.path.dirname(input_md_path), exist_ok=True)
     with open(input_md_path, "w") as f:
         f.write(content)
-    logger.info("wrote input.md for %s", change_name)
+    # Per-section size breakdown for token-attribution in the dashboard.
+    # Surfaces which section is eating the prefix so optimizations have
+    # a concrete signal (was input.md=28K → after schema fix → 16K?).
+    _input_breakdown = _section_size_breakdown(content)
+    update_change_field(
+        state_path, change_name, "input_md_breakdown", _input_breakdown,
+    )
+    update_change_field(
+        state_path, change_name, "input_md_total_bytes", len(content),
+    )
+    _top3 = sorted(_input_breakdown.items(), key=lambda x: -x[1])[:3]
+    logger.info(
+        "wrote input.md for %s (%d bytes, top: %s)",
+        change_name, len(content),
+        ", ".join(f"{name}={size}" for name, size in _top3),
+    )
 
     if retry_ctx:
         # Preserve the retry context into extras.last_retry_context BEFORE

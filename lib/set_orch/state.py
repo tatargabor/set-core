@@ -341,6 +341,20 @@ class Change:
     context_tokens_end: Optional[int] = None    # total_cache_create at loop completion
     context_breakdown_start: Optional[dict] = None  # {base_context, memory_injection, prompt_overhead, tool_output} from iter 1
 
+    # Per-section input.md size attribution. Populated by the dispatcher
+    # right after writing input.md. Surfaces which section dominates the
+    # prefix so token-attribution audits have a concrete signal.
+    # Example: {"Scope": 2259, "Design Source": 2147, "Relevant Patterns": 12533}
+    input_md_breakdown: Optional[dict] = None
+    input_md_total_bytes: Optional[int] = None
+
+    # Duplicate file reads detected post-session — when the agent
+    # reads the same file path multiple times within a single Claude
+    # session. {"path/to/file": 3} means it was read 3 times.
+    # Pure waste: each repeat re-injects the same content into the
+    # conversation prefix and inflates cache_read.
+    duplicate_reads: Optional[dict] = None
+
     # Gate timings (ms)
     gate_test_ms: int = 0
     gate_review_ms: int = 0

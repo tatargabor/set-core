@@ -95,6 +95,8 @@ def list_changes(project: str, status: Optional[str] = Query(None)):
     if status:
         changes = [c for c in changes if c.status == status]
 
+    from ..cost import estimate_cost_usd, cost_breakdown
+
     result = []
     for c in changes:
         d = c.to_dict()
@@ -117,6 +119,23 @@ def list_changes(project: str, status: Optional[str] = Query(None)):
                     f.name for f in logs_dir.iterdir()
                     if f.is_file() and f.suffix == ".log"
                 )
+        # Estimated USD cost — surfaces the actual financial impact in
+        # the dashboard, where raw token counts hide the order-of-
+        # magnitude differences between input/output/cache_read/cache_create.
+        d["cost_usd"] = estimate_cost_usd(
+            model=c.model,
+            input_tokens=c.input_tokens or 0,
+            output_tokens=c.output_tokens or 0,
+            cache_read_tokens=c.cache_read_tokens or 0,
+            cache_create_tokens=c.cache_create_tokens or 0,
+        )
+        d["cost_breakdown"] = cost_breakdown(
+            model=c.model,
+            input_tokens=c.input_tokens or 0,
+            output_tokens=c.output_tokens or 0,
+            cache_read_tokens=c.cache_read_tokens or 0,
+            cache_create_tokens=c.cache_create_tokens or 0,
+        )
         result.append(d)
     return result
 
@@ -133,6 +152,8 @@ def get_change(project: str, name: str):
     except StateCorruptionError as e:
         raise HTTPException(500, f"Corrupt state: {e.detail}")
 
+    from ..cost import estimate_cost_usd, cost_breakdown
+
     for c in state.changes:
         if c.name == name:
             d = c.to_dict()
@@ -147,6 +168,20 @@ def get_change(project: str, name: str):
                         d["max_iterations"] = ls.get("max_iterations", 0)
                     except (json.JSONDecodeError, OSError):
                         pass
+            d["cost_usd"] = estimate_cost_usd(
+                model=c.model,
+                input_tokens=c.input_tokens or 0,
+                output_tokens=c.output_tokens or 0,
+                cache_read_tokens=c.cache_read_tokens or 0,
+                cache_create_tokens=c.cache_create_tokens or 0,
+            )
+            d["cost_breakdown"] = cost_breakdown(
+                model=c.model,
+                input_tokens=c.input_tokens or 0,
+                output_tokens=c.output_tokens or 0,
+                cache_read_tokens=c.cache_read_tokens or 0,
+                cache_create_tokens=c.cache_create_tokens or 0,
+            )
             return d
     # Fall back to archive for changes that no longer appear in live state.
     for entry in _load_archived_changes(project_path):

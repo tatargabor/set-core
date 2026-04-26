@@ -54,11 +54,26 @@ def list_projects():
                         )
                         cache_tokens = sum(c.get("cache_read_tokens", 0) or 0 for c in changes)
                         active_secs = state_data.get("active_seconds", 0) or 0
+                        # Cumulative USD across all changes — surfaces the
+                        # actual spend without users having to do mental
+                        # math on token counts.
+                        from ..cost import estimate_cost_usd
+                        total_cost = sum(
+                            estimate_cost_usd(
+                                model=c.get("model"),
+                                input_tokens=c.get("input_tokens", 0) or 0,
+                                output_tokens=c.get("output_tokens", 0) or 0,
+                                cache_read_tokens=c.get("cache_read_tokens", 0) or 0,
+                                cache_create_tokens=c.get("cache_create_tokens", 0) or 0,
+                            )
+                            for c in changes
+                        )
                         entry["changes_merged"] = merged
                         entry["changes_total"] = total
                         entry["total_tokens"] = total_tokens
                         entry["cache_tokens"] = cache_tokens
                         entry["active_seconds"] = active_secs
+                        entry["total_cost_usd"] = round(total_cost, 2)
                     except (json.JSONDecodeError, OSError):
                         pass
                 else:

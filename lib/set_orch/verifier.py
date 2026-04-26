@@ -3732,6 +3732,13 @@ def handle_change_done(
             except Exception as _e:
                 logger.debug("Model resolution from state failed: %s", _e)
         _capture_context_tokens_end(state_file, change_name, _read_loop_state(wt_path), model=_ctx_model)
+        # Detect duplicate file reads across the change's sessions —
+        # surfaces "agent re-read same file N times" waste signals.
+        try:
+            from .session_analysis import update_duplicate_reads
+            update_duplicate_reads(state_file, change_name, wt_path)
+        except Exception:
+            logger.debug("duplicate_reads detection raised", exc_info=True)
 
     # ── Retry token tracking ──
     retry_tokens_start = change.extras.get("retry_tokens_start", 0)
