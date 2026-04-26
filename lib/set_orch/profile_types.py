@@ -248,6 +248,48 @@ class ProjectType(ABC):
     def generated_file_patterns(self) -> list:
         return []
 
+    def scope_manifest_extensions(self) -> list[str]:
+        """Return file extensions the dispatcher should pick up from a
+        change scope when building the Implementation Manifest.
+
+        The core extractor uses this list to build a regex that matches
+        file paths/basenames inside the planner's scope text. Project
+        types contribute their own extension set:
+
+        - web/Next.js: ``tsx jsx ts js css mjs cjs json yaml yml md``
+        - python: ``py pyi cfg toml json yaml yml md``
+        - go: ``go mod sum json yaml yml md``
+
+        Default returns universal config-file extensions only — no
+        source-language extensions, so a NullProfile project doesn't
+        pull in `.js` or `.py` files it doesn't understand.
+
+        Order matters: when one extension is a prefix of another
+        (``js`` and ``json``), put the longer first so the regex
+        alternation captures the full extension.
+        """
+        return ["json", "yaml", "yml", "md", "toml"]
+
+    def scope_manifest_extras(self, scope: str) -> str:
+        """Return additional Implementation Manifest sections (formatted
+        markdown, with leading ``###`` headings) extracted from scope, or
+        ``""`` for none.
+
+        This hook lets project types surface tech-specific scope
+        directives that don't fit the core's generic install/file
+        extraction. Examples:
+
+        - Web profile uses this for ``<PascalCase>`` JSX components
+          mentioned in scope (must be imported and rendered).
+        - A Django profile could surface ``urls.py`` route patterns or
+          model class names.
+        - A Rust profile could surface trait names or feature flags.
+
+        Keep extras lightweight — three sections (deps, files, extras)
+        is the visual budget before the agent stops scanning.
+        """
+        return ""
+
     def lockfile_pm_map(self) -> list:
         return []
 

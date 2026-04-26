@@ -103,18 +103,36 @@ def _extract_implementation_manifest(scope: str) -> str:
 
     Returns formatted manifest section (with leading newline), or "" if the
     scope yields nothing extractable. Items found:
-      - NPM packages mentioned after `install ...`
-      - Files matching basenames/paths with .ts/.tsx/.js/.jsx/.css/.json/.yml
-      - JSX/TSX components mentioned as `<PascalCaseTag>`
+      - Packages mentioned after `install ...` (universal across npm/pip/cargo)
+      - Files matching basenames/paths with extensions from the active
+        project type's `scope_manifest_extensions()` (default: config files)
+      - Project-type-specific extras (e.g. JSX `<Component>` for web) via
+        `profile.scope_manifest_extras(scope)`
+
+    The function is project-type-agnostic at the core: web-, python-, or
+    go-specific patterns flow in through the profile, never hardcoded here.
     """
+    from .profile_loader import load_profile
+    profile = load_profile()
+    # Sort profile-supplied extensions by descending length so the regex
+    # alternation matches the longest first (e.g. `json` before `js` so
+    # `package.json` doesn't get clipped to `package.js`). Profiles can
+    # supply extensions in any order — sorting belongs in core.
+    extensions = sorted(
+        profile.scope_manifest_extensions() or [],
+        key=lambda e: (-len(e), e),
+    )
     deps: list[str] = []
     seen_dep: set[str] = set()
+    # Whitespace-stops the capture: as soon as a space appears in the
+    # scope text after the install verb, capture ends. This keeps the
+    # extractor from absorbing surrounding prose (e.g. "install foo for
+    # the CLI" stops at `foo`) without needing brittle stop-word lookaheads.
     for m in re.finditer(
-        r"\binstall\b[\s:]+([@a-zA-Z][\w\-\.@\/,\s]*?)"
-        r"(?=[.\n)]|\s+(?:Create|Mount|Configure|wrapping|Install)\b|$)",
+        r"\binstall\b[\s:]+([@\w][\w\-\.@\/,]*)",
         scope,
     ):
-        chunk = m.group(1).strip()
+        chunk = m.group(1).strip().rstrip(".,;:")
         # Split by `,` first (top-level), then by `/` while preserving
         # @scoped/name as a single token.
         for top in re.split(r",\s*", chunk):
@@ -142,12 +160,19 @@ def _extract_implementation_manifest(scope: str) -> str:
 
     files: list[str] = []
     seen_file: set[str] = set()
-    # Alternation order matters: longer extensions first so `json` wins over
-    # `js` for `package.json`, `tsx` over `ts` for components, etc.
-    for m in re.finditer(
-        r"`?([\w\-\/\[\]\.]+\.(?:tsx|jsx|json|yaml|yml|css|ts|js|md))`?",
-        scope,
-    ):
+    # Profile contributes the extension list; the alternation order is
+    # caller-supplied (longer first so `json` wins over `js`). If the
+    # profile gives nothing, file extraction is skipped — that keeps the
+    # core agnostic for unknown project types.
+    if not extensions:
+        ext_pattern_match = []
+    else:
+        ext_alternation = "|".join(re.escape(e) for e in extensions)
+        ext_pattern_match = list(re.finditer(
+            rf"`?([\w\-\/\[\]\.]+\.(?:{ext_alternation}))`?",
+            scope,
+        ))
+    for m in ext_pattern_match:
         path = m.group(1)
         if path in seen_file:
             continue
@@ -162,14 +187,16 @@ def _extract_implementation_manifest(scope: str) -> str:
             or path.endswith(".test.tsx")
         ):
             continue
-        # Reject framework/library names like "Next.js", "Node.js", "Vue.ts":
-        # single capitalized basename + .js/.ts extension is almost always a
-        # tooling reference, not a real source file.
+        # Reject framework/library names like "Next.js", "Node.js", "Vue.ts",
+        # "React.js": a single capitalized word + short extension is almost
+        # always a tooling reference, not a source file. This rule is
+        # project-agnostic — it triggers on basename shape, not on which
+        # specific extensions a profile registered.
         basename = path.rsplit("/", 1)[-1]
         ext = path.rsplit(".", 1)[-1]
         stem = basename[: -(len(ext) + 1)] if "." in basename else basename
         if (
-            ext in ("js", "ts")
+            len(ext) <= 3
             and "/" not in path
             and "-" not in stem
             and "_" not in stem
@@ -180,43 +207,35 @@ def _extract_implementation_manifest(scope: str) -> str:
             continue
         files.append(path)
 
-    mounts: list[str] = []
-    seen_mount: set[str] = set()
-    for m in re.finditer(r"<(/?[A-Z][\w]*)\b[^>]*/?>", scope):
-        tag = m.group(1).lstrip("/")
-        if tag and tag not in seen_mount:
-            seen_mount.add(tag)
-            mounts.append(tag)
+    extras = profile.scope_manifest_extras(scope) or ""
 
-    if not (deps or files or mounts):
+    if not (deps or files or extras.strip()):
         return ""
 
     out: list[str] = ["", "## Implementation Manifest"]
     out.append(
         "**Auto-extracted from Scope above (syntactic — install / file / "
-        "`<Component>` mentions). Every item must end up as a discrete task "
-        "in `tasks.md` and survive into the final diff. If something here "
-        "is wrong (e.g. the planner abbreviated `tailwind` but the real "
-        "package is `tailwindcss`), correct it in `proposal.md` with one "
-        "sentence of reasoning — don't silently drop it. Code review and "
-        "the design-fidelity gate read this section and will flag missing "
-        "items.**"
+        "project-type-specific patterns). Every item must end up as a "
+        "discrete task in `tasks.md` and survive into the final diff. If "
+        "something here is wrong (e.g. the planner abbreviated `tailwind` "
+        "but the real package is `tailwindcss`), correct it in "
+        "`proposal.md` with one sentence of reasoning — don't silently "
+        "drop it. Code review and the gates read this section and will "
+        "flag missing items.**"
     )
     if deps:
         out.append("")
-        out.append("### Required NPM packages")
+        out.append("### Required packages")
         for d in deps:
-            out.append(f"- `{d}` — must appear in `package.json` dependencies")
+            out.append(f"- `{d}` — must be installed (in lockfile / manifest)")
     if files:
         out.append("")
         out.append("### Required files")
         for p in files:
             out.append(f"- `{p}` — must exist in the diff")
-    if mounts:
+    if extras.strip():
         out.append("")
-        out.append("### Required components / JSX (must be imported and rendered)")
-        for t in mounts:
-            out.append(f"- `<{t}>` — must appear in the rendered tree")
+        out.append(extras.rstrip())
     out.append("")
     return "\n".join(out)
 

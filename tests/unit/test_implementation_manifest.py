@@ -1,170 +1,166 @@
-"""Unit tests for `_extract_implementation_manifest`.
+"""Unit tests for `_extract_implementation_manifest` — core (project-agnostic).
 
-Why this exists: planner scopes are dense paragraphs (600+ chars) that mix
-NPM installs, file mounts, and JSX wrap directives. Agents have been seen
-cherry-picking items they grasp and silently dropping the rest from
-`tasks.md` (e.g. mounting `site-header.tsx` while skipping the `next-themes`
-install). This extractor surfaces every directive as a bulleted checklist
-in `input.md` so the agent has nowhere to hide them.
+The extractor is project-agnostic at the core: it consumes
+`profile.scope_manifest_extensions()` (file extension list) and
+`profile.scope_manifest_extras(scope)` (project-type-specific section)
+from the active profile. These tests pin the universal behavior with the
+default profile (CoreProfile) — extensions = `json/yaml/yml/md/toml`,
+no JSX extras.
 
-These tests pin the contract on real failure-mode scopes (the
-`test-and-layout-foundation` scope from `micro-web-run-20260426-1127`).
+Project-specific behavior (TSX/JSX files for web, .py files for python,
+JSX `<Component>` extras) is tested in each module's own tests:
+- `modules/web/tests/test_scope_manifest_web.py`
 """
 
 from __future__ import annotations
 
 from set_orch.dispatcher import _extract_implementation_manifest
 
-# Verbatim scope from the run that failed to install next-themes/sonner
-# and skipped theme-provider.tsx mounting.
-FAILING_SCOPE = (
-    "Infrastructure for the entire scaffold. Set up package.json scripts "
-    "('dev', 'build' = 'next build', 'test' = 'vitest run', 'test:e2e' = "
-    "'playwright test'), install next/react/tailwind/shadcn/next-themes/"
-    "sonner/react-hook-form/zod/vitest/@playwright/test. Create "
-    "vitest.config.ts (jsdom env, exclude tests/e2e/**), playwright.config.ts "
-    "(workers:1, reuseExistingServer:false, screenshot:'on', headless:true, "
-    "webServer auto-start). Mount v0-export shells: copy site-header.tsx, "
-    "site-footer.tsx, theme-provider.tsx, mobile-nav.tsx into src/components/ "
-    "and src/app/globals.css. Create src/app/layout.tsx wrapping children "
-    "in <ThemeProvider attribute='class' defaultTheme='system'> + sonner "
-    "<Toaster />. Header is sticky border-b with 'Micro Web' title."
-)
+
+def test_install_clause_extracts_packages_universal():
+    """The `install <list>` pattern is universal across npm/pip/cargo/etc.
+    Even with the default profile (no source-language extensions), the
+    package extraction works."""
+    scope = "Run pip install requests/click/pydantic to add the CLI tools."
+    out = _extract_implementation_manifest(scope)
+    assert "## Implementation Manifest" in out
+    assert "### Required packages" in out
+    assert "`requests`" in out
+    assert "`click`" in out
+    assert "`pydantic`" in out
+    # Whitespace stops the capture — narrative after the package list
+    # must NOT be promoted to a package
+    assert "`to`" not in out
+    assert "`add`" not in out
 
 
-def test_packages_extracted_from_slash_separated_install_clause():
-    out = _extract_implementation_manifest(FAILING_SCOPE)
-    # The four shells the failing run silently dropped MUST be flagged.
-    assert "`next-themes`" in out
-    assert "`sonner`" in out
-    assert "`react-hook-form`" in out
-    assert "`zod`" in out
-    # @scoped packages must stay intact (not split into "@playwright" + "test")
-    assert "`@playwright/test`" in out
-    # Common deps from the same install clause
-    assert "`next`" in out
-    assert "`react`" in out
-    assert "`tailwind`" in out
+def test_scoped_packages_preserved_universal():
+    """`@types/node`-style scoped packages must stay intact across all
+    project types — the slash-rejoin logic is in core."""
+    scope = "install @org/lib/@types/node, plus other-pkg."
+    out = _extract_implementation_manifest(scope)
+    assert "`@org/lib`" in out
+    assert "`@types/node`" in out
 
 
-def test_files_extracted_with_extensions():
-    out = _extract_implementation_manifest(FAILING_SCOPE)
-    # Shell files the agent skipped
-    assert "`theme-provider.tsx`" in out
-    assert "`mobile-nav.tsx`" in out
-    assert "`site-header.tsx`" in out
-    assert "`site-footer.tsx`" in out
-    # Config files explicitly mentioned in scope
-    assert "`vitest.config.ts`" in out
-    assert "`playwright.config.ts`" in out
-    # Path-prefixed files
-    assert "`src/app/layout.tsx`" in out
-    assert "`src/app/globals.css`" in out
-
-
-def test_test_paths_excluded_from_files():
-    """Test paths are covered by the Required Tests section. Don't double-list."""
+def test_config_files_extracted_with_default_profile():
+    """Default profile (no project type) extracts config files only:
+    json, yaml, yml, md, toml. Source files are skipped because the
+    default extension list doesn't include them."""
     scope = (
-        "Mount v0-export/components/foo.tsx and create tests/e2e/smoke.spec.ts "
-        "and src/lib/util.ts."
+        "Edit package.json and pyproject.toml. Update README.md "
+        "and ci.yaml. Also touch src/main.py for the entrypoint."
     )
     out = _extract_implementation_manifest(scope)
-    assert "`src/lib/util.ts`" in out
-    assert "tests/e2e/smoke.spec.ts" not in out
-    assert "smoke.spec.ts" not in out
+    assert "`package.json`" in out
+    assert "`pyproject.toml`" in out
+    assert "`README.md`" in out
+    assert "`ci.yaml`" in out
+    # main.py is NOT in the default extension list — would appear if a
+    # python profile registered .py
+    assert "`src/main.py`" not in out
 
 
-def test_jsx_components_extracted():
-    out = _extract_implementation_manifest(FAILING_SCOPE)
-    assert "`<ThemeProvider>`" in out
-    assert "`<Toaster>`" in out
-
-
-def test_lowercase_html_tags_not_extracted():
-    """`<div>`, `<header>`, `<footer>` etc. are HTML — not user components."""
-    scope = "Wrap content in <div> and <header> and <CustomComponent>."
+def test_package_json_alternation_order():
+    """`json` must be matched before `js` so `package.json` survives
+    intact rather than getting clipped to `package.js`. Profile-supplied
+    extension lists must put longer extensions first; the default core
+    list does."""
+    scope = "Edit package.json to add scripts."
     out = _extract_implementation_manifest(scope)
-    assert "`<CustomComponent>`" in out
-    assert "`<div>`" not in out
-    assert "`<header>`" not in out
+    assert "`package.json`" in out
+    assert "`package.js`" not in out
+
+
+def test_framework_names_rejected_universal():
+    """`Next.js`, `Node.js`, `Vue.ts`, `React.js` — single capitalized
+    word + short extension — are framework references, not source files.
+    The reject heuristic is project-agnostic and triggers on basename
+    shape regardless of which extensions the profile registered."""
+    scope = (
+        "Built on Next.js with Node.js backend. Edit Vue.ts to add "
+        "the route. Update kebab-name.json with new config."
+    )
+    out = _extract_implementation_manifest(scope)
+    # Framework names rejected
+    assert "Next.js" not in out
+    assert "Node.js" not in out
+    assert "Vue.ts" not in out
+    # But real config file with kebab basename survives
+    assert "`kebab-name.json`" in out
+
+
+def test_test_paths_excluded():
+    """Test files are covered by the Required Tests section — never
+    duplicate them in the manifest."""
+    scope = "Edit src.json and tests/e2e/foo.spec.ts and a.test.ts."
+    out = _extract_implementation_manifest(scope)
+    assert "`src.json`" in out
+    assert "spec.ts" not in out
+    assert "test.ts" not in out
 
 
 def test_directive_text_present():
-    """Manifest must include the imperative directive — agents skim section
-    headers and the first bullet, so the directive must lead."""
-    out = _extract_implementation_manifest(FAILING_SCOPE)
+    """Manifest must include the imperative directive — agents skim
+    section headers and the first bullet, so the directive must lead.
+    Wording must be honest: "flag", not "fail review"."""
+    scope = "install foo/bar. Edit config.json."
+    out = _extract_implementation_manifest(scope)
     assert "Implementation Manifest" in out
-    assert "tasks.md" in out  # Tells agent where to enumerate
-    assert "diff" in out  # Tells agent the verification surface
-    # Tells agent to NOT silently drop, and what to do instead
-    assert "proposal.md" in out
-    assert "drop" in out.lower() or "skip" in out.lower() or "correct" in out.lower()
-    # Promises a review/gate flag — must NOT overpromise blocking failure
-    # since the review is currently SUGGESTION-level for this category.
-    assert "flag" in out.lower()
+    assert "tasks.md" in out
+    assert "diff" in out
+    assert "proposal.md" in out  # Tells agent how to handle waivers
+    assert "flag" in out.lower()  # Honest claim, not "fail"
+    assert "fail" not in out.lower()  # No overpromising
 
 
 def test_empty_scope_returns_empty():
     assert _extract_implementation_manifest("") == ""
-    # A purely descriptive paragraph with no installs/files/components yields
-    # nothing actionable.
-    assert _extract_implementation_manifest(
-        "This change adds a small refactor to internal logic."
-    ) == ""
+
+
+def test_purely_descriptive_scope_yields_nothing():
+    """Scope with no install / file / extras directives should produce
+    no manifest — don't render an empty section."""
+    out = _extract_implementation_manifest(
+        "This change refactors internal logic to improve clarity."
+    )
+    assert out == ""
 
 
 def test_stopwords_filtered_from_packages():
-    """Common english words after 'install' (e.g. 'install and configure ...')
-    must not be promoted to package names."""
-    scope = "Run npm install and verify, then create foo.tsx."
+    """Common English words ('and', 'with', 'for') must not promote to
+    package names. The whitespace-stop in the regex keeps narrative out
+    of the capture in the first place; stopwords are the second line of
+    defense for short words that end up in the captured chunk."""
+    # When narrative immediately follows `install`, the whitespace-stop
+    # captures only the next word — which may be a stopword.
+    scope = "install and configure foo/bar later in setup."
     out = _extract_implementation_manifest(scope)
+    # `and` is captured by the regex but filtered as a stopword
     assert "`and`" not in out
-    assert "`verify`" not in out
-
-
-def test_section_ordering_stable():
-    """Packages → Files → Components — matches the agent's natural workflow
-    (install deps, write files, mount components). Don't reorder."""
-    out = _extract_implementation_manifest(FAILING_SCOPE)
-    pkg_idx = out.find("Required NPM packages")
-    file_idx = out.find("Required files")
-    mount_idx = out.find("Required components")
-    assert 0 < pkg_idx < file_idx < mount_idx
+    # `foo`/`bar` are NOT directly after `install` so they don't get
+    # extracted — this is correct conservative behavior.
+    assert "`foo`" not in out
+    assert "`bar`" not in out
 
 
 def test_idempotent_no_duplicates():
-    """If the scope mentions `next-themes` twice, list it once."""
+    scope = "install foo/bar. Then install foo/baz."
+    out = _extract_implementation_manifest(scope)
+    assert out.count("`foo`") == 1
+    assert out.count("`bar`") == 1
+    assert out.count("`baz`") == 1
+
+
+def test_no_jsx_extras_with_default_profile():
+    """Default profile has no `scope_manifest_extras` — JSX components
+    are NOT extracted unless a project-type profile (e.g. WebProjectType)
+    contributes them. This is the project-independence guarantee."""
     scope = (
-        "install next-themes/sonner. Then install next-themes/react. "
-        "Mount theme-provider.tsx and theme-provider.tsx."
+        "Wrap children in <ThemeProvider> and add <Toaster /> to the layout."
     )
     out = _extract_implementation_manifest(scope)
-    assert out.count("`next-themes`") == 1
-    assert out.count("`theme-provider.tsx`") == 1
-
-
-def test_framework_names_not_extracted_as_files():
-    """`Next.js`, `Node.js`, `React.ts` are framework references — never
-    actual source filenames. Rejecting them prevents the manifest from
-    listing impossible-to-create files (which would confuse the agent or
-    block review)."""
-    scope = (
-        "Built on Next.js with Node.js backend and React.ts types. "
-        "Configure tailwind.config.js to add custom colors."
-    )
-    out = _extract_implementation_manifest(scope)
-    assert "Next.js" not in out
-    assert "Node.js" not in out
-    assert "React.ts" not in out
-    # tailwind.config.js IS a real file (kebab-style stem) — must still appear
-    assert "`tailwind.config.js`" in out
-
-
-def test_package_json_not_clipped_to_package_js():
-    """The alternation `tsx|ts|json|js|...` had `js` matching first, so
-    `package.json` was captured as `package.js`. Longer extensions must
-    win the alternation."""
-    scope = "Edit package.json to add the new script."
-    out = _extract_implementation_manifest(scope)
-    assert "`package.json`" in out
-    assert "`package.js`" not in out
+    # Default profile doesn't contribute JSX extras → no JSX section
+    assert "ThemeProvider" not in out
+    assert "Toaster" not in out
+    assert "Required components" not in out

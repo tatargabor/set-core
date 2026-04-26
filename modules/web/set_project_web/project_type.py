@@ -751,6 +751,44 @@ class WebProjectType(CoreProfile):
             ".next/**", "dist/**", "build/**",
         ]
 
+    def scope_manifest_extensions(self) -> List[str]:
+        # Order matters for the dispatcher's regex alternation: longer
+        # extensions must come before their prefixes (`json` before `js`,
+        # `tsx` before `ts`) so e.g. `package.json` doesn't get clipped
+        # to `package.js`. Source first, then config, then docs.
+        return [
+            "tsx", "jsx", "ts", "js", "mjs", "cjs",
+            "css", "scss",
+            "json", "yaml", "yml", "toml", "env",
+            "md", "mdx",
+        ]
+
+    def scope_manifest_extras(self, scope: str) -> str:
+        """Surface React/JSX `<PascalCaseTag>` mentions from scope as a
+        `Required components` section in the Implementation Manifest.
+
+        Web scopes routinely say things like "wrap children in
+        <ThemeProvider>" or "+ sonner <Toaster />". When such tags slip
+        out of `tasks.md` (because the agent paragraph-skimmed scope),
+        the result is a missing mount. This extras section turns each
+        mentioned component into its own bullet so the agent can't drop
+        it.
+        """
+        import re as _re
+        mounts: List[str] = []
+        seen: set[str] = set()
+        for m in _re.finditer(r"<(/?[A-Z][\w]*)\b[^>]*/?>", scope):
+            tag = m.group(1).lstrip("/")
+            if tag and tag not in seen:
+                seen.add(tag)
+                mounts.append(tag)
+        if not mounts:
+            return ""
+        out = ["### Required components / JSX (must be imported and rendered)"]
+        for t in mounts:
+            out.append(f"- `<{t}>` — must appear in the rendered tree")
+        return "\n".join(out)
+
     def lockfile_pm_map(self) -> list:
         return [
             ("pnpm-lock.yaml", "pnpm"),
