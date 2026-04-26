@@ -327,20 +327,44 @@ cmd_run() {
 
         # Decide between new session and --resume. We use --resume whenever a
         # valid session_id is present (preserved by init_loop_state across
-        # dispatcher-level restarts) and resume_failures are below the threshold.
+        # dispatcher-level restarts), resume_failures are below the threshold,
+        # AND the cumulative cached context is below the safety ceiling.
         # This keeps Claude's prompt cache warm across gate retries and avoids
         # re-reading files + rebuilding context on every fix iteration.
         #
-        # Threshold was 3 but that let two cycles of poisoned-context resume
-        # burn through ~20M tokens before dropping to fresh (observed in
-        # craftbrew-run-20260423). Lowered to 2: one failed resume already
-        # means the preserved context cost us a cycle, a second one doubles
-        # the waste without adding diagnostic value.
-        if [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 2 ]]; then
-            # No session or too many resume failures: new session
+        # Resume threshold: 2. One failed resume already means the preserved
+        # context cost us a cycle, a second one doubles the waste without
+        # adding diagnostic value. (Was 3 originally — lowered after
+        # craftbrew-run-20260423 burned ~20M tokens on poisoned-context
+        # resume cycles.)
+        #
+        # Context-size ceiling: total cumulative cache_create across all
+        # iterations of this session. Anthropic models have a 1M window;
+        # we fresh-restart at 700K (70%) to leave headroom for the next
+        # iter's incremental tool results without the model truncating.
+        # Without this ceiling the resume path was running into 1M
+        # overflow → SIGKILL or silent context-trim, both of which are
+        # worse than paying the ~50K fresh-session init cost again.
+        local context_ceiling
+        context_ceiling=$(jq -r '.directives.session_resume_context_threshold // 700000' "$state_file" 2>/dev/null)
+        local total_cache_create
+        total_cache_create=$(jq -r '.total_cache_create // 0' "$state_file" 2>/dev/null)
+        local context_too_large=false
+        if [[ -n "$total_cache_create" ]] && [[ "$total_cache_create" -gt "$context_ceiling" ]]; then
+            context_too_large=true
+        fi
+
+        if [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 2 ]] || [[ "$context_too_large" == "true" ]]; then
+            # No session, too many resume failures, or context near 1M: fresh session
             session_id=$(uuidgen 2>/dev/null || python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
             session_flags="--session-id $session_id"
             update_loop_state "$state_file" "session_id" "\"$session_id\""
+            if [[ "$context_too_large" == "true" ]]; then
+                echo "🔄 Fresh session: cumulative cache exceeded ${context_ceiling} (current: ${total_cache_create}). Avoiding 1M context overflow."
+                # Reset cumulative counter for the new session — it tracks
+                # the just-started session's context, not the lifetime sum.
+                update_loop_state "$state_file" "total_cache_create" "0"
+            fi
             if [[ "$resume_failures" -ge 2 ]]; then
                 echo "⚠️  Too many resume failures ($resume_failures), using fresh session"
                 update_loop_state "$state_file" "resume_failures" "0"
@@ -351,7 +375,7 @@ cmd_run() {
             session_flags="--resume $session_id"
             is_resumed=true
             if [[ $iteration -eq 1 ]]; then
-                echo "♻️  Resuming preserved session ${session_id:0:8} for iteration 1 (retry/redispatch)"
+                echo "♻️  Resuming preserved session ${session_id:0:8} for iteration 1 (retry/redispatch, ctx=${total_cache_create})"
             fi
         fi
 
