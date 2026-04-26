@@ -350,8 +350,14 @@ cmd_run() {
         local total_cache_create
         total_cache_create=$(jq -r '.total_cache_create // 0' "$state_file" 2>/dev/null)
         local context_too_large=false
+        local context_warn_threshold=$((context_ceiling * 80 / 100))
         if [[ -n "$total_cache_create" ]] && [[ "$total_cache_create" -gt "$context_ceiling" ]]; then
             context_too_large=true
+        elif [[ -n "$total_cache_create" ]] && [[ "$total_cache_create" -gt "$context_warn_threshold" ]] && [[ -n "$session_id" ]]; then
+            # Warn at 80% — operators see the cost-vs-overflow tradeoff
+            # building up before the next iter forces a fresh restart.
+            local pct=$((total_cache_create * 100 / context_ceiling))
+            echo "⚠️  Session context at ${total_cache_create} tokens (${pct}% of ${context_ceiling} ceiling). Fresh-restart will trigger above ${context_ceiling}."
         fi
 
         if [[ -z "$session_id" ]] || [[ "$resume_failures" -ge 2 ]] || [[ "$context_too_large" == "true" ]]; then
