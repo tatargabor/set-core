@@ -202,19 +202,52 @@ class TestCoverage:
 
 _TEST_DECL_RE = re.compile(r"\btest(?:\.\w+)?\s*\(\s*['\"`]([^'\"`]+)['\"`]")
 
+# Trivial gaming patterns: ``expect(<literal>).<matcher>(<same-literal>)``.
+# These pass unconditionally and exist only to defeat zero-expect()
+# stub detection. Witnessed in adversarial completions:
+# ``expect(true).toBe(true);``, ``expect(1).toBe(1);``, etc.
+_TRIVIAL_EXPECT_PATTERNS = (
+    re.compile(r"expect\(\s*true\s*\)\s*\.(?:toBe|toEqual|toStrictEqual)\(\s*true\s*\)"),
+    re.compile(r"expect\(\s*false\s*\)\s*\.(?:toBe|toEqual|toStrictEqual)\(\s*false\s*\)"),
+    re.compile(r"expect\(\s*null\s*\)\s*\.(?:toBe|toEqual|toBeNull)\(\s*(?:null\s*)?\)"),
+    re.compile(r"expect\(\s*undefined\s*\)\s*\.(?:toBe|toEqual|toBeUndefined)\(\s*(?:undefined\s*)?\)"),
+    re.compile(r"expect\(\s*\d+\s*\)\s*\.(?:toBe|toEqual|toStrictEqual)\(\s*\d+\s*\)"),
+    re.compile(r"""expect\(\s*['"`]['"`]\s*\)\s*\.(?:toBe|toEqual|toStrictEqual)\(\s*['"`]['"`]\s*\)"""),
+)
+_EXPECT_RE = re.compile(r"\bexpect\s*\(")
+
+
+def _count_meaningful_expects(body: str) -> int:
+    """Count ``expect(...)`` calls that aren't trivial constant-vs-constant
+    gaming patterns. ``expect(true).toBe(true)`` and friends do not
+    qualify; an ``expect(page.url()).toBe('/foo')`` does.
+    """
+    total = sum(1 for _ in _EXPECT_RE.finditer(body))
+    if total == 0:
+        return 0
+    trivials = sum(
+        len(p.findall(body)) for p in _TRIVIAL_EXPECT_PATTERNS
+    )
+    return max(0, total - trivials)
+
 
 def detect_stub_tests(spec_path) -> set[tuple[str, str]]:
-    """Identify ``test(...)`` blocks whose body has zero ``expect(`` calls.
+    """Identify ``test(...)`` blocks whose body has no real assertions.
 
-    A stub test like ``test('foo', () => { /* TODO: implement */ })``
-    passes trivially under Playwright/vitest — there are no assertions
-    to fail. A coverage gate that only checks "does a test exist for
-    REQ-X" would treat such a stub as covering the REQ, letting a
-    change merge with no real verification. Witnessed in
-    ``micro-web-run-20260426-1704`` contact-wizard-form: 18/18 tests
-    were ``// TODO: implement`` stubs, all "passed", coverage gate
-    reported 100% — yet the contact page rendered blank because the
-    component was never mounted and nothing actually verified it.
+    "No real assertions" means either:
+      - zero ``expect(`` calls (the obvious stub: ``// TODO: implement``)
+      - ``expect()`` calls that are ALL trivial constant-vs-constant
+        patterns (``expect(true).toBe(true)`` and friends — gaming
+        patterns that defeat the zero-expect check)
+
+    A stub test passes trivially under Playwright/vitest — there are
+    no real assertions to fail. A coverage gate that only checks "does
+    a test exist for REQ-X" would treat such a stub as covering the
+    REQ, letting a change merge with no real verification. Witnessed
+    in ``micro-web-run-20260426-1704`` contact-wizard-form: 18/18
+    tests were ``// TODO: implement`` stubs, all "passed", coverage
+    gate reported 100% — yet the contact page rendered blank because
+    the component was never mounted and nothing actually verified it.
 
     Returns a set of ``(file_basename, inner_test_name)`` keys. Compare
     against runtime ``test_results`` keys with ``_is_stub_match`` since
@@ -243,7 +276,7 @@ def detect_stub_tests(spec_path) -> set[tuple[str, str]]:
         # Strip line + block comments so commented-out `expect(` doesn't count
         body_stripped = re.sub(r"//[^\n]*", "", body)
         body_stripped = re.sub(r"/\*.*?\*/", "", body_stripped, flags=re.DOTALL)
-        if "expect(" not in body_stripped:
+        if _count_meaningful_expects(body_stripped) == 0:
             stubs.add((file_basename, name))
     return stubs
 

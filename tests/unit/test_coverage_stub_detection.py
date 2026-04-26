@@ -116,7 +116,8 @@ test('stub one', async ({ page }) => {
 });
 
 test('another real', async ({ page }) => {
-    expect(true).toBe(true);
+    await page.goto('/foo');
+    expect(page.url()).toContain('/foo');
 });
 """)
     stubs = detect_stub_tests(spec)
@@ -134,8 +135,9 @@ test.describe('REQ-FORM-001 group', () => {
         // TODO: implement
     });
 
-    test('inner real', async () => {
-        await expect(true).toBe(true);
+    test('inner real', async ({ page }) => {
+        await page.goto('/');
+        await expect(page.locator('h1')).toBeVisible();
     });
 });
 """)
@@ -146,6 +148,84 @@ test.describe('REQ-FORM-001 group', () => {
 
 def test_missing_file_returns_empty_set(tmp_path):
     assert detect_stub_tests(tmp_path / "nope.spec.ts") == set()
+
+
+# ─── Trivial-assertion gaming patterns ──────────────────────────────────
+
+
+def test_expect_true_to_be_true_is_stub(tmp_path):
+    """Most obvious gaming pattern — should be flagged as stub."""
+    spec = tmp_path / "game.spec.ts"
+    spec.write_text("""
+test('gamed', async ({ page }) => {
+    expect(true).toBe(true);
+});
+""")
+    stubs = detect_stub_tests(spec)
+    assert ("game.spec.ts", "gamed") in stubs
+
+
+def test_numeric_literal_trivial_is_stub(tmp_path):
+    spec = tmp_path / "game.spec.ts"
+    spec.write_text("""
+test('numeric gaming', async ({ page }) => {
+    expect(1).toBe(1);
+    expect(42).toEqual(42);
+});
+""")
+    assert ("game.spec.ts", "numeric gaming") in detect_stub_tests(spec)
+
+
+def test_string_literal_trivial_is_stub(tmp_path):
+    spec = tmp_path / "game.spec.ts"
+    spec.write_text("""
+test('string gaming', async ({ page }) => {
+    expect('').toBe('');
+});
+""")
+    assert ("game.spec.ts", "string gaming") in detect_stub_tests(spec)
+
+
+def test_null_undefined_trivials_are_stubs(tmp_path):
+    spec = tmp_path / "game.spec.ts"
+    spec.write_text("""
+test('null gaming', async () => {
+    expect(null).toBeNull();
+});
+
+test('undefined gaming', async () => {
+    expect(undefined).toBeUndefined();
+});
+""")
+    stubs = detect_stub_tests(spec)
+    assert ("game.spec.ts", "null gaming") in stubs
+    assert ("game.spec.ts", "undefined gaming") in stubs
+
+
+def test_real_expect_alongside_trivial_is_not_stub(tmp_path):
+    """If the test has at least one meaningful expect, it's real even
+    if the agent also added a trivial one."""
+    spec = tmp_path / "mixed.spec.ts"
+    spec.write_text("""
+test('real with sanity', async ({ page }) => {
+    expect(true).toBe(true);  // sanity check
+    await page.goto('/');
+    await expect(page).toHaveTitle(/foo/);
+});
+""")
+    assert detect_stub_tests(spec) == set()
+
+
+def test_real_dom_expect_is_not_stub(tmp_path):
+    """A page-state expect counts even without literals."""
+    spec = tmp_path / "real.spec.ts"
+    spec.write_text("""
+test('real navigate', async ({ page }) => {
+    await page.goto('/contact');
+    await expect(page.locator('[data-testid="contact-dialog-trigger"]')).toBeVisible();
+});
+""")
+    assert detect_stub_tests(spec) == set()
 
 
 # ─── _is_stub_match ─────────────────────────────────────────────────────

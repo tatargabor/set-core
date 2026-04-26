@@ -1182,10 +1182,11 @@ class WebProjectType(CoreProfile):
         return ["node_modules", ".next", "dist", "build", ".turbo"]
 
     def register_gates(self) -> list:
-        """Register web-specific gates: i18n_check, e2e, lint, design-fidelity."""
+        """Register web-specific gates: i18n_check, e2e, lint, design-fidelity, required-components."""
         from set_orch.gate_runner import GateDefinition
         from .gates import execute_e2e_gate, execute_i18n_check_gate, execute_lint_gate
         from .v0_fidelity_gate import execute_design_fidelity_gate
+        from .required_components_gate import execute_required_components_gate
 
         return [
             GateDefinition(
@@ -1251,6 +1252,28 @@ class WebProjectType(CoreProfile):
                 },
                 run_on_integration=True,
             ),
+            GateDefinition(
+                # required-components: every <PascalCase> tag the scope
+                # mentions must appear as JSX in some src/ file other
+                # than its own definition file. Catches the witnessed
+                # contact-wizard-form failure where the agent built
+                # ContactDialogTrigger correctly but never mounted it
+                # on /contact — wizard "complete," page blank.
+                "required-components",
+                execute_required_components_gate,
+                position="end",
+                phase="pre-merge",
+                defaults={
+                    "schema": "skip",
+                    "infrastructure": "skip",
+                    "cleanup-before": "skip", "cleanup-after": "skip",
+                    # Foundational + feature changes are the ones that
+                    # actually mount components on routes. Run there.
+                    "foundational": "run",
+                    "feature": "run",
+                },
+                run_on_integration=True,
+            ),
         ]
 
     def gate_overrides(self, change_type: str) -> dict:
@@ -1292,6 +1315,7 @@ class WebProjectType(CoreProfile):
             "review": "cached",
             "spec_verify": "cached",
             "design-fidelity": "cached",
+            "required-components": "always",
             "e2e": "scoped",
         }
 

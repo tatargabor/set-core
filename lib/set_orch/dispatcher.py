@@ -1966,7 +1966,15 @@ def _build_input_content(
             "call.** Empty bodies (`// TODO: implement` only) pass trivially "
             "in Playwright but are flagged as stubs and EXCLUDED from "
             "coverage — leaving any stub will drop coverage % and block "
-            "the gate."
+            "the gate. **Trivial assertions (`expect(true).toBe(true)`, "
+            "`expect(1).toBe(1)`, etc.) defeat the gate's intent and will "
+            "be detected as gaming patterns.** Every test must actually "
+            "exercise the feature: navigate to the route, locate the "
+            "testid, perform the user action, assert the resulting state. "
+            "If a scenario is impossible to test in this change, mark the "
+            "test with `test.skip(...)` and explain why in a comment — "
+            "skipped tests don't count toward coverage but at least "
+            "document the gap honestly."
         )
         for entry in test_plan_entries:
             cats = ", ".join(entry.categories)
