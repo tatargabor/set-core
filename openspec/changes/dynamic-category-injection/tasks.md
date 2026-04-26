@@ -158,5 +158,5 @@
 
 - [x] 9.1 Update `lib/set_orch/dispatcher.py` callsite comment to reference `category_resolver` and remove the comment about `classify_diff_content(scope)` being safe-fallthrough (it's no longer invoked at dispatch).
 - [x] 9.2 Add a short note in `templates/core/rules/code-quality.md` under "Logging — mandatory" explaining that `category_resolver` audits go to `category-classifications.jsonl` and how to inspect.
-- [ ] 9.3 Single commit per phase (Layer 1 ABC + paths + resolver + insights + dispatcher integration; Layer 2 overrides + bug-fix; tests; live-verification artifacts). Keep commits revertible per design.md D9 migration plan.
-- [ ] 9.4 Open a follow-up ticket for: (a) Haiku/Sonnet cascade on low-confidence, (b) cross-project insight export via `set-harvest`, (c) lazy LRU truncation of `category-classifications.jsonl` past 1000 entries.
+- [x] 9.3 Single commit per phase (Layer 1 ABC + paths + resolver + insights + dispatcher integration; Layer 2 overrides + bug-fix; tests; live-verification artifacts). Keep commits revertible per design.md D9 migration plan.
+- [x] 9.4 Open a follow-up ticket for: (a) Haiku/Sonnet cascade on low-confidence, (b) cross-project insight export via `set-harvest`, (c) lazy LRU truncation of `category-classifications.jsonl` past 1000 entries.
