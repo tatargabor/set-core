@@ -39,7 +39,7 @@ Built with set-core, using set-core. This project was developed using its own or
   <img src="docs/images/auto/web/agent-session-scroll.gif" width="90%" alt="Claude agent session — debugging, testing, and fixing code autonomously" />
 </p>
 
-**Input:** A markdown spec + Figma design
+**Input:** A markdown spec + design source (v0.app export, Figma, or shadcn fixtures)
 
 <p align="center">
   <img src="docs/images/auto/cli/spec-preview.png" width="48%" alt="Markdown spec — the input" />
@@ -83,7 +83,7 @@ spec.md ──► digest ──► decompose ──► parallel agents ──►
 <summary>What's actually happening under the hood</summary>
 
 ```
-spec.md + design-snapshot.md (Figma)
+spec.md + design source (v0.app export → manifest, or design-snapshot.md)
   │
   ▼
 ┌───────────────────────────────────────────────────────────┐
@@ -139,7 +139,7 @@ merged, tested, done
 | :clipboard: | **OpenSpec Workflow** | Structured artifact flow (proposal → design → spec → tasks → code) minimizes hallucination. [Guide](docs/guide/openspec.md) |
 | :wrench: | **Self-Healing** | Issue pipeline: detect → investigate → fix → verify. The sentinel diagnoses before it acts. [Guide](docs/guide/sentinel.md) |
 | :jigsaw: | **Plugin System** | Project-type plugins add domain rules, gates, templates, and conventions. [Docs](docs/reference/plugins.md) |
-| :art: | **Design Bridge** | Figma MCP → design-snapshot.md → Tailwind tokens injected into every agent's context. [Guide](docs/guide/openspec.md) |
+| :art: | **Design Bridge** | v0.app export → manifest → per-change design slice → Tailwind tokens + shell components injected into every agent's context. [Guide](docs/guide/design-integration.md) |
 | :chart_with_upwards_trend: | **Cross-Run Learnings** | Review findings and gate failures become rules for the next run. The system gets better with use. [Dashboard](docs/guide/dashboard.md) |
 | :repeat: | **Account Manager** | Manage multiple Claude Code accounts — register, monitor usage, manually switch. [Docs](docs/account-manager.md) |
 
@@ -193,7 +193,7 @@ Active development priorities:
 | **Divergence reduction** | Eliminate remaining nondeterminism through template optimization, scaffold testing, and configuration distribution across core → module → scaffold → project layers | Measurably reduced for simple projects; complex projects still improving — tracked across paired E2E runs |
 | **Build time optimization** | Reduce gate pipeline wall clock time — parallel gate execution, incremental builds, cached test results between changes | Currently sequential (Jest → Build → E2E → Review); exploring parallel gates where safe |
 | **Session context reuse** | Reuse conversation context across Ralph Loop iterations and between related changes — reduce cold-start token overhead | Currently each iteration starts fresh; investigating warm-start from previous iteration's state |
-| **Memory optimization** | Smarter recall — relevance scoring, dedup, consolidation. Convert recurring learnings into deterministic rules automatically | Learnings-to-rules pipeline in development; dedup and consolidation operational |
+| **Memory optimization** | Smarter recall — relevance scoring, dedup, consolidation. Lite-mode hooks for low-context sessions | Dedup, consolidation, and `SET_MEMORY_HOOKS=lite` mode operational; learning-to-rule conversion deferred |
 | **Gate intelligence** | Per-change-type gate profiles that adapt based on historical pass rates and failure patterns | Gate profiles operational; adaptive thresholds planned |
 | **Merge conflict prevention** | Proactive detection of cross-cutting file conflicts before they happen — schedule conflicting changes sequentially | Phase ordering works; file-level conflict prediction in research |
 
@@ -226,13 +226,13 @@ Writing a good spec takes effort. That's intentional — **the quality of the ou
 A good spec for SET includes:
 - **Data model** — entities, fields, relationships, enums (becomes the Prisma schema)
 - **Page layouts** — sections, column counts, component names (not vague descriptions)
-- **Design tokens** — exact hex colors, font families, spacing values (or use [Figma Make](https://www.figma.com/make) + `set-design-sync`)
+- **Design tokens** — exact hex colors, font families, spacing values (or use [v0.app](https://v0.app) + `set-design-import` to pull a working Tailwind/shadcn export)
 - **Auth & roles** — protected routes, user roles, registration flow
 - **Seed data** — realistic names and content, not "Product 1"
 - **i18n** — locales, framework, URL structure (if multilingual)
 - **Business requirements** — what the user should be able to do, with acceptance criteria
 
-Use **`/set:write-spec`** in Claude Code to generate a structured spec interactively — it detects your project type, asks targeted questions per section, and integrates with your Figma design. Works for web apps, APIs, CLI tools, and any project type.
+Use **`/set:write-spec`** in Claude Code to generate a structured spec interactively — it detects your project type, asks targeted questions per section, and integrates with your design source (v0.app export or Figma). Works for web apps, APIs, CLI tools, and any project type.
 
 The [project type templates](docs/reference/plugins.md) handle the rest — framework boilerplate, build config, test setup, linting rules. You focus on _what_ to build. The templates ensure _how_ it gets built is consistent and deterministic.
 
@@ -294,12 +294,14 @@ set-project init --project-type web --template nextjs
 /set:write-spec
 ```
 
-**Sync your Figma design** (optional but recommended) — export your Figma Make design and extract tokens:
+**Sync your design** (optional but recommended) — pull a v0.app export and let set-core scan it for shell components, tokens, and hygiene issues:
 
 ```bash
-cp ~/Downloads/my-design.make docs/design.make
-set-design-sync --input docs/design.make --spec-dir docs/
+set-design-import --git <v0-repo-url> --ref main --scaffold .
+set-design-hygiene                          # report mock arrays, hardcoded strings, broken routes
 ```
+
+The design-fidelity gate runs on every UI change and blocks merge if the agent's output diverges from the v0 export's component structure or tokens.
 
 **Start the orchestration** — use `/set:start` in Claude Code, or start from the dashboard:
 
@@ -307,7 +309,7 @@ set-design-sync --input docs/design.make --spec-dir docs/
 /set:start docs/spec.md
 ```
 
-See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete spec-writing methodology, [docs/guide/design-integration.md](docs/guide/design-integration.md) for the Figma → agent pipeline, and [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full setup walkthrough.
+See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete spec-writing methodology, [docs/guide/design-integration.md](docs/guide/design-integration.md) for the design source → agent pipeline, and [docs/guide/quick-start.md](docs/guide/quick-start.md) for the full setup walkthrough.
 
 ---
 
@@ -323,14 +325,16 @@ See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete 
 | **Engine** | Python, FastAPI, uvicorn |
 | **Dashboard** | React, TypeScript, Tailwind CSS |
 | **Memory** | shodh-memory (RocksDB + vector embeddings) |
-| **Design bridge** | Figma Make → `set-design-sync` → structured design tokens → agent context |
+| **Design bridge** | v0.app export → `set-design-import` → manifest + per-change design slice → agent context, with design-fidelity gate at merge |
 
 **Tooling ecosystem:**
 
 | Tool | Purpose |
 |------|---------|
 | [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
-| set-design-sync | Parse Figma Make `.make` exports → structured `design-system.md` + spec sync |
+| set-design-import | Pull a v0.app export, generate the design manifest, optionally run hygiene scan |
+| set-design-hygiene | Scan a design export for 9 antipatterns (mock arrays, hardcoded strings, broken routes, …) |
+| set-run-logs | Forensic CLI for completed orchestration runs — events, gate timing, agent decisions |
 | set-e2e-report | Generate benchmark reports from orchestration runs |
 | set-router | Manage multiple Claude Code accounts — register, switch, monitor usage ([docs](docs/account-manager.md)) |
 
@@ -348,14 +352,15 @@ The **web project type** (Next.js, Prisma, Playwright) ships built-in and is val
 
 | Metric | Value |
 |--------|-------|
-| Development | 950+ hours across 79 days |
-| Commits | 1,295 (~16/day) |
-| Capability specs | 363 |
-| Codebase | 134K LOC (59K Python, 15K Shell, 14K TypeScript, 23K specs, 22K docs+templates) |
-| Autonomous agent runtime | 720+ hours continuous operation |
+| Commits | 1,870 (across 88 days) |
+| Capability specs | 429 |
+| Active changes | 5 in flight, 424 archived |
+| Codebase | 109K LOC (89K Python, 20K TypeScript) + Shell, specs, docs, templates |
+| Built-in modules | `web` (Next.js + Prisma + Playwright), `example` (reference plugin) |
 | MiniShop benchmark | 6/6 merged, 0 interventions, 1h 45m |
+| Latest milestones | v0.app design pipeline, design-fidelity gate, fix-iss circuit-breaker, forensics CLI, USD cost metrics |
 
-**3 months. 950+ hours. Worth every one.** Full journey, benchmarks, and lessons: [docs/learn/journey.md](docs/learn/journey.md)
+**Worth every hour.** Full journey, benchmarks, and lessons: [docs/learn/journey.md](docs/learn/journey.md)
 
 ---
 

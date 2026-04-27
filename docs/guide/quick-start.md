@@ -54,9 +54,9 @@ Then type:
 run a micro-web E2E test
 ```
 
-Claude will scaffold a simple 5-page website project, register it with the manager, and validate the gate pipeline. Then tell Claude to start the sentinel — the orchestration runs through the manager API at http://localhost:7400.
+Claude will scaffold a simple 5-page website project, register it with the manager, pull the v0.app design export, and validate the gate pipeline. Then tell Claude to start the sentinel — the orchestration runs through the manager API at http://localhost:7400.
 
-Watch the dashboard as the sentinel decomposes the spec, dispatches agents, runs quality gates, and merges results. A micro-web test typically completes in ~20 minutes.
+Watch the dashboard as the sentinel decomposes the spec, dispatches agents, runs quality gates (including the design-fidelity gate that checks the agent's JSX matches the v0 export), and merges results. A micro-web test typically completes in ~20 minutes.
 
 For a more complex test, try:
 
@@ -64,7 +64,7 @@ For a more complex test, try:
 run a minishop E2E test
 ```
 
-This builds a full e-commerce app (products, cart, admin panel, auth) from a [detailed spec](../../tests/e2e/scaffolds/minishop/docs/v1-minishop.md) with [Figma design](../../tests/e2e/scaffolds/minishop/docs/design-snapshot.md). Expect ~1-2 hours.
+This builds a full e-commerce app (products, cart, admin panel, auth) from a [detailed spec](../../tests/e2e/scaffolds/minishop/docs/v1-minishop.md) with a v0.app design source. Expect ~1–2 hours.
 
 ![Manager project list](../images/auto/web/manager-project-list.png)
 
@@ -93,9 +93,9 @@ The dashboard overview shows real-time progress -- active worktrees, agent statu
 
 ![Dashboard overview](../images/auto/web/dashboard-overview.png)
 
-Each change moves through planning, dispatch, implementation, verification, and merge. You can watch agents work in parallel across worktrees. The sentinel handles crashes, retries, and checkpoint approvals automatically.
+Each change moves through planning, dispatch, implementation, verification, and merge. You can watch agents work in parallel across worktrees. The sentinel handles crashes, retries, poisoned-stall recovery, fix-iss circuit-breakers, and checkpoint approvals automatically — operator approval is required only for destructive operations (spec reset, recovery rollback).
 
-### Step 6: See the result
+### See the result
 
 Switch to the **Changes** tab to see every change the engine decomposed from your spec, along with its current status:
 

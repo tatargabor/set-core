@@ -16,12 +16,16 @@ Without structure, agents drift. They skip requirements, make inconsistent decis
 
 | Step | Command | What it does |
 |------|---------|--------------|
-| **Explore** | `/opsx:explore` | Think through the problem before committing |
+| **Explore** | `/opsx:explore` | Think through the problem before committing — research, read code, surface options. No artifacts created. |
 | **New** | `/opsx:new <name>` | Create a change with artifact scaffolding |
-| **Fast-Forward** | `/opsx:ff <name>` | Create all artifacts in one go |
+| **Fast-Forward** | `/opsx:ff <name>` | Create all artifacts in one go (proposal + design + specs + tasks) |
+| **Continue** | `/opsx:continue` | Resume work on the next artifact in sequence |
 | **Apply** | `/opsx:apply` | Implement tasks from the change |
 | **Verify** | `/opsx:verify` | Check implementation matches specs |
 | **Archive** | `/opsx:archive` | Finalize and sync specs |
+| **Bulk archive** | `/opsx:bulk-archive` | Archive multiple completed changes at once |
+| **Sync** | `/opsx:sync` | Sync delta specs to main without archiving |
+| **Onboard** | `/opsx:onboard` | First-time walkthrough of the workflow |
 
 ## Artifacts
 
@@ -105,14 +109,15 @@ When a spec changes, `grep -r "specs:.*verify-gate" docs/` finds all docs that n
 
 ## Design Integration
 
-When a design tool (Figma, Penpot) is connected via MCP, the orchestration pipeline integrates design specs automatically:
+The current design path is **v0.app exports**: `set-design-import` clones a v0 repo, generates `docs/design-manifest.yaml` with shell components, routes, and component bindings, and the dispatcher writes a per-change `openspec/changes/<name>/design.md` slice that the agent reads as `## Design Source` in its `input.md`.
 
-1. **Preflight** -- fetches `design-snapshot.md` with tokens, colors, typography
-2. **Decompose** -- injects design tokens into each change's scope
-3. **Dispatch** -- appends relevant design context to the agent's proposal
-4. **Verify** -- checks design compliance (token mismatches reported as warnings)
+1. **Import** — `set-design-import --git <v0-repo-url> --ref main --scaffold .` pulls the export and generates the manifest.
+2. **Hygiene** (optional) — `set-design-hygiene` scans the export for 9 antipatterns (mock arrays, hardcoded strings, broken routes, locale-prefix mismatches) before adoption.
+3. **Decompose** — the planner attaches `design_components` and `design_routes` to each change based on entity-reference markers (`@component:NAME`, `@route:/PATH`) in spec files.
+4. **Dispatch** — the agent's `input.md` gets a `## Design Source` section pointing to the slice.
+5. **Verify** — the `design-fidelity-gate` runs JSX structural parity at merge time. Token mismatches are warnings; component-structure divergence blocks merge with a diff.
 
-![Design snapshot preview](../images/auto/cli/design-snapshot-preview.png)
+Legacy Figma `.make` flow is removed in `v0-only-design-pipeline`. If a project still uses Figma via MCP, the bridge rule treats `design-snapshot.md` as the fallback source — but new projects should use v0.
 
 ---
 

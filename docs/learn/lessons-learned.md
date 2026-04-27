@@ -2,7 +2,7 @@
 
 # Lessons Learned — Production Insights
 
-Key insights from 30+ autonomous orchestration runs across real projects (MiniShop, CraftBrew, MicroWeb, CraftBazaar). Each lesson was learned the hard way — through failures that cost hours of compute, corrupted branches, or wasted overnight runs.
+Key insights from 60+ autonomous orchestration runs across real projects (MiniShop, CraftBrew, MicroWeb, CraftBazaar). Each lesson was learned the hard way — through failures that cost hours of compute, corrupted branches, wasted overnight runs, or — in one case — a 10× billing inflation that hid in plain sight for weeks.
 
 ---
 
@@ -72,7 +72,7 @@ Bugs found only through E2E runs:
 - **Token tracking overflow** — token counts stored as 32-bit integers overflowed at 10M+ cache read tokens, producing negative values in the dashboard.
 - **Watchdog false positive during pnpm install** — `pnpm install` can take 60+ seconds with no stdout. The watchdog interpreted this as a stall and killed the agent.
 
-**What we did:** Built a full E2E test infrastructure (`tests/e2e/run.sh`) that scaffolds a real project, runs the complete orchestration pipeline, and validates results. Each E2E run produces a benchmark report. We run MiniShop as a regression test before every major release.
+**What we did:** Built a full E2E test infrastructure (`tests/e2e/runners/run-minishop.sh`, `run-micro-web.sh`, `run-craftbrew.sh`) that scaffolds a real project, runs the complete orchestration pipeline, and validates results. Each E2E run produces a benchmark report. We run micro-web (fastest, ~20 min) on every framework change and minishop/craftbrew on release candidates.
 
 ---
 
@@ -120,6 +120,46 @@ The three-layer template system reduced file structure divergence from 63% to 0%
 
 **Before templates:** Agent A puts components in `src/components/`, Agent B puts them in `app/components/`, Agent C puts them in `components/`. Merge conflicts everywhere.
 **After templates:** All agents find `src/components/` already exists with an example component. They follow the established pattern. Zero structural conflicts.
+
+---
+
+## 9. Cost Is a First-Class Metric
+
+For weeks, the dashboard reported orchestration cost in USD using a formula that included `cache_read_input_tokens` in the input total. This was wrong — Anthropic bills `cache_read` at a different rate than fresh input — and the bug inflated reported cost by roughly 10×. It hid because nobody was treating the line as load-bearing; the dashboard rendered it, the line moved when expected, no alarm fired.
+
+**What we did:** Subtracted `cache_read_input_tokens` from the input total before applying the input-rate, added per-section breakdown to `input.md` so the dispatcher's prompt size is visible per section (instructions, scope, design, retry context), wrote a duplicate-read detector that flags the same file being Read twice within one iteration, and surfaced USD per change / per gate / per session as a first-class column on the dashboard. The `set-run-logs` CLI emits the same numbers in JSON for offline analysis.
+
+**The lesson generalizes.** Whenever a metric is computed, displayed, but not actively monitored, it will quietly drift. The fix is not "compute more carefully" — it's "make the metric load-bearing for a decision somewhere." Cost now drives the per-change token-runaway breaker (50M token ceiling, 80% pre-warning); a wrong cost number would now cause a wrong decision and surface immediately.
+
+---
+
+## 10. Circuit-Breakers Beat Retries
+
+Early retry loops were unbounded — "if the gate fails, redispatch the agent" with no global ceiling. Production runs found three pathological loops: a poisoned-stall pattern where the agent re-encountered the same hash; a merge-stalled pattern where ff-only retries kept failing because the branch was rebuilt with the same conflict; and a token-runaway where an agent's session inflated past 50M tokens before anyone noticed.
+
+**What we did:** Wrapped each retry source in a circuit-breaker with an explicit escalation path. `merge_stalled` after 6 FF failures → `failed:merge_stalled` → `escalate_change_to_fix_iss(escalation_reason="merge_stalled")` → `IssueRegistry` registers a circuit-breaker issue → investigator agent diagnoses → resolver fixes → parent change auto-recovers from `failed:*` and re-dispatches on a clean worktree. `token_runaway` and `poisoned_stall` follow the same pattern with their own thresholds. Cleanup of on-disk worktree + `change/<name>` branch happens BEFORE the in-memory state reset, so retry starts on a fresh tree.
+
+The hard part wasn't the circuit-breaker — it was choosing where the escalation went. Sending it to a human creates a backlog. Sending it to an investigator agent creates a self-healing loop, but only if the investigator can produce a structured diagnosis the resolver can act on. The fix-iss pipeline became the universal escalation target because it was already the only path that produced verifiable, scoped fixes.
+
+---
+
+## 11. Design as Code, Not as Image
+
+The Figma `.make` design pipeline shipped in Phase 8 had three real failure modes that no amount of patching could fix. Binary `.make` files were 3.9 MB ZIPs that couldn't be diffed; reviewers couldn't tell why a token changed between revisions. Figma's color naming (`color-muted`) collided with shadcn primitive pairs (`--muted` / `--muted-foreground`); the parser produced identical values for both, causing invisible text in tabs and sidebar labels. Figma frames didn't define interactive states (hover, selected, disabled, focus), so the agent had nothing to bind against.
+
+**What we did:** Replaced the entire upstream. v0.app generates shadcn/ui + Tailwind + Next.js code natively — the export IS the design source. `set-design-import` clones a v0 repo, generates `design-manifest.yaml` with shell components, routes, and component bindings. The dispatcher writes a per-change `design.md` slice into each agent's input. The `design-fidelity-gate` runs a JSX structural parity check on every UI change — if the agent diverges from the v0 export's component structure or tokens, merge is blocked and a diff is emitted.
+
+**The lesson generalizes.** Sources you can't diff hide their semantics. When the agent and the human read different artifacts, the artifact agent reads becomes the truth — make sure that's the artifact you can review.
+
+---
+
+## 12. Manual Override Beats Automation at Destructive Boundaries
+
+The sentinel happily auto-recovers from most failures: stuck states, dead PIDs, integration conflicts. But one early experiment let it auto-reset the entire orchestration when the spec changed mid-run. This deleted 3 hours of completed work because the sentinel decided "spec changed → start over." The reset was reversible only because git history preserved the merged commits.
+
+**What we did:** Drew a hard line: any operation that destroys state (spec reset, recovery rollback, change archive with completed work) requires explicit human approval. The sentinel surfaces a banner; it does not act. Auto-recovery is bounded to in-memory state changes and on-disk artifacts that can be regenerated from spec+main. Anything that touches commits or removes finished work is operator-gated.
+
+**The lesson generalizes.** Automation should expand the floor of competence (the system handles routine failures without you), not the ceiling of authority (the system decides when to throw work away). Match each automation tier to its blast radius.
 
 ---
 

@@ -100,9 +100,11 @@ Token consumption across all 6 MiniShop changes:
 
 The `admin-products` change consumed the most tokens (655K) because it was the last in the dependency chain and required the most context about existing code — it needed to understand the product model, the admin layout, the authentication middleware, and the existing CRUD patterns established by earlier changes.
 
-Cache read tokens (71.4M) reflect prompt caching — the same project context is reused across turns within each agent session, keeping actual billed tokens low. Only input + output tokens are billed; cache reads represent reuse of previously cached context.
+Cache read tokens (71.4M) reflect prompt caching — the same project context is reused across turns within each agent session, keeping actual billed tokens low. Only `input_tokens` (excluding `cache_read_input_tokens`) and `output_tokens` are billed; cache reads are read-only reuse of previously cached context.
 
-Average cost per change: ~450K tokens. For a 6-change project, this is roughly equivalent to 3--4 hours of manual senior developer work compressed into 1h 45m of wall clock time.
+> **Note on historical figures.** A 10× USD-cost inflation bug was found and fixed mid-April 2026: `cache_read_input_tokens` was being included in the `input_tokens` total used for cost computation, so cache hits were billed at full input rate. Token counts shown above are token-level and unaffected. USD figures published before the fix should be treated as upper bounds; current dashboard cost values reflect the corrected formula.
+
+Average cost per change: ~450K billable tokens. For a 6-change project, this is roughly equivalent to 3–4 hours of manual senior developer work compressed into 1h 45m of wall clock time.
 
 ---
 
@@ -151,21 +153,55 @@ The token scaling is super-linear (4x tokens for 2.5x changes) because later cha
 
 ---
 
-## Reproducing Benchmarks
+## Micro-web — Lean v0 Validation
 
-Benchmarks are reproducible using the E2E test infrastructure:
+A minimal 5-page Next.js site (home, about, blog, contact, products) used as the primary regression target for the v0.app design pipeline. Builds in ~20 minutes, exercises the full pipeline end-to-end, and is the working evidence behind the design-fidelity gate.
+
+| Metric | Value |
+|--------|-------|
+| Pages | 5 |
+| Wall clock time | ~20 minutes |
+| Design source | v0.app export (clones from a GitHub URL via `set-design-import`) |
+| Gates exercised | dep-install, build, vitest, Playwright e2e, design-fidelity, review, spec-coverage |
+| Used for | v0 pipeline regression, design-fidelity gate validation, gate-cache scope tests |
+
+The micro-web runner (`tests/e2e/runners/run-micro-web.sh`) is the fastest reproducible path through the framework's full pipeline. Most release-blocking regressions surface here before they reach a multi-change benchmark like CraftBrew.
+
+---
+
+## Forensics
+
+After every run, `set-run-logs <run-id>` summarizes events, gate timing, agent decisions, and per-iteration session attribution into a single forensic report. The `/set:forensics` skill wraps the same data for interactive post-mortem.
 
 ```bash
-# Full automated run: scaffold project, init, register, start orchestration
-./tests/e2e/run.sh minishop
-
-# Or with manual start via the web manager UI
-./tests/e2e/run.sh minishop --no-start
+set-run-logs minishop-run-20260427-1430              # full event timeline
+set-run-logs minishop-run-20260427-1430 --gate e2e   # gate-specific timing
 ```
 
-Each run produces a benchmark report with per-change metrics (tokens, duration, gate results, retry count) stored in the project's orchestration state. The web dashboard reads this state to render the visualizations shown above.
+The activity dashboard adds visual layering: every gate, every LLM call, every sub-agent placed on a real-time axis with click-through to per-tool breakdown.
 
-See [CLAUDE.md](../../CLAUDE.md) for detailed E2E run setup instructions.
+---
+
+## Reproducing Benchmarks
+
+Benchmarks are reproducible using the E2E test runners:
+
+```bash
+./tests/e2e/runners/run-minishop.sh    # full minishop e-commerce app
+./tests/e2e/runners/run-craftbrew.sh   # 15-change brewery app (largest scale)
+./tests/e2e/runners/run-micro-web.sh   # 5-page site (fastest, v0 regression)
+```
+
+Each runner scaffolds the project, calls `set-project init --project-type web --template nextjs`, registers with the manager, and (for micro-web) pulls the v0.app design export. After the runner finishes, start the sentinel via the manager API:
+
+```bash
+curl -X POST http://localhost:7400/api/<project>/sentinel/start \
+  -H 'Content-Type: application/json' -d '{"spec":"docs/spec.md"}'
+```
+
+Each run produces per-change metrics (tokens, USD cost, duration, gate results, retry count) stored in the project's orchestration state. The web dashboard reads this state to render the visualizations shown above. `set-run-logs` and the `/set:forensics` skill provide post-run forensic reports.
+
+See [CLAUDE.md](../../CLAUDE.md) and [`tests/e2e/README.md`](../../tests/e2e/README.md) for detailed E2E run setup.
 
 ---
 

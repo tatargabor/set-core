@@ -2,7 +2,7 @@
 
 # Development Journey
 
-**1,295 commits · 329 archived changes · 363 specs · 79 days**
+**1,870 commits · 424 archived changes · 429 specs · 109 days**
 
 set-core was built with set-core. Every feature was planned through OpenSpec, implemented by agents, and validated through quality gates. The framework bootstrapped itself — by Phase 5, the orchestration engine was building its own next features.
 
@@ -10,18 +10,17 @@ set-core was built with set-core. Every feature was planned through OpenSpec, im
 
 | Metric | Value |
 |--------|-------|
-| Development | 950+ hours across 79 days (Jan 9 -- Mar 28, 2026) |
-| Commits | 1,295 (~16/day) |
-| Capability specifications | 363 |
-| Archived OpenSpec changes | 329 |
-| Total codebase | 134K LOC |
-| -- Python (engine, GUI, modules) | 59,000 |
-| -- Shell scripts (CLI tools) | 15,000 |
-| -- TypeScript (dashboard) | 14,000 |
-| -- OpenSpec specs | 23,000 |
-| -- Docs + templates + rules | 22,000 |
-| Autonomous agent runtime | 720+ hours (~60 days x 12h/day continuous) |
-| Best benchmark | CraftBrew run #7: 14/14 merged (100%) |
+| Development | Jan 9 — Apr 27, 2026 (109 days) |
+| Commits | 1,870 (~17/day) |
+| Capability specifications | 429 |
+| Archived OpenSpec changes | 424 |
+| Active changes in flight | 5 |
+| Python codebase (engine, GUI, modules) | 89,000 LOC |
+| TypeScript codebase (dashboard) | 20,000 LOC |
+| Built-in modules | `web` (Next.js + Prisma + Playwright), `example` (reference plugin) |
+| Latest release | v1.7.1 (Apr 16) — v1.8 in prep |
+| Best multi-change benchmark | CraftBrew run #7: 14/14 merged, 100% completion |
+| Best lean benchmark | MiniShop: 6/6 merged, 0 interventions, 1h 45m |
 
 ## Development Timeline
 
@@ -117,13 +116,31 @@ The three-layer template system reduced file structure divergence from 63% to 0%
 
 **Key insight:** The auto-fix pipeline closed the last gap — when gates fail, the system diagnoses and fixes without human intervention. The framework became truly self-healing.
 
+### Phase 11: v0 Pipeline + Robustness (Mar 28 — Apr 27)
+
+The post-v1.7 era. Two parallel arcs reshaped the framework:
+
+**v0.app design pipeline.** The Figma Make → `set-design-sync` flow shipped in Phase 8 had three real failure modes: opaque binary `.make` files (3.9 MB ZIPs that couldn't be diffed), Figma's color naming colliding with shadcn primitive pairs (causing invisible text), and missing interactive states (hover, selected, disabled). The fix wasn't to patch Figma — it was to swap the entire upstream. **v0.app** generates shadcn/ui + Tailwind + Next.js code natively; the export is the design source. `set-design-import` clones a v0 repo, generates a manifest with shell components, routes, and component bindings, and the dispatcher writes a per-change `design.md` slice into each agent's input. The `design-fidelity-gate` runs a JSX structural parity check on every UI change — if the agent diverges from the v0 export's component structure, merge is blocked with a diff. Layer 1 lost all `build_per_change_design()` and `bridge.sh` references; Layer 2 (`modules/web`) owns the v0-specific logic.
+
+**Engine and issue lifecycle robustness.** Production E2E runs surfaced edge cases that the original design papered over: stuck `dispatched` states, poisoned stalls (agent looping on the same hash), merge-stalled FF retries that never converged, integration-conflict re-dispatch races, ghost duplicate `fix-iss` children, orphaned `_retry_parent_after_resolved` cleanup. Each got its own surgical fix and circuit-breaker. Retry budgets were unified into a single `DIRECTIVE_DEFAULTS` source of truth, with a `tests/unit/test_config_engine_parity.py` parity test that prevents silent divergence between `config.py` and the runtime `Directives` dataclass. The `IssueRegistry` learned to register circuit-breaker escalations (`merge_stalled`, `token_runaway`) as first-class issues so the existing fix-iss pipeline could investigate and resolve them. When a parent change auto-recovers from a `failed:*` terminal state, on-disk worktree and `change/<name>` branch are cleaned up before the in-memory state reset, so re-dispatch starts on a fresh tree.
+
+**Forensics and cost.** A 10× cost inflation bug (input_tokens included `cache_read_input_tokens`, double-counting the cache hit) was found and fixed mid-month — historical USD figures need recompute. `set-run-logs` and the `/set:forensics` skill make post-run debugging a single command instead of a JSONL grep tour. The activity dashboard gained per-iteration session attribution (`AGENT_SESSION_DECISION` events) and per-gate span reconstruction from `VERIFY_GATE` events — every minute of every run is now placed on a real-time axis.
+
+**Spec hygiene.** The `dynamic-category-injection` change wired up multi-layer category resolution (core → module → scaffold → project) so each change's input.md gets the right set of rules without manual config. `design-binding-completeness` added the `set-design-hygiene` CLI with 9 antipattern rules — mock arrays inline, hardcoded UI strings, broken route references, locale-prefix inconsistencies — that operators run before adopting a v0 export.
+
+**Cleanup pass (Apr 27).** A bulk-archive operation closed 35 changes — 7 completed (design-binding-completeness, dynamic-category-injection, fix-iss-lifecycle-hardening, fix-merge-worktree-collision, improve-investigator-robustness, tsconfig-and-gitignore-template-hardening, v0-design-pipeline) and 28 stale or manual-only-remaining (verify-gate-resilience-fixes, review-gate-integration, etc.). Active openspec list dropped from 40 to 6.
+
+**Key insight:** The framework's reliability gradient flipped between Phase 9 and Phase 11. In Phase 9, every E2E run surfaced new bugs that needed fixing in core. In Phase 11, runs surfaced edge cases that already had circuit-breakers and auto-recovery — the system absorbed the failures without operator intervention. The shift wasn't a single feature; it was the cumulative effect of 173 commits worth of surgical resilience work, each fix coming from a real production incident.
+
 ## Architecture Evolution
 
 ```
-Jan:  CLI scripts (bash)           -> "worktree management tools"
-Feb:  GUI + Memory + Ralph Loop    -> "agent development environment"
-Mar:  Orchestration + Sentinel     -> "autonomous development framework"
-      + Gates + Web + Auto-Fix     -> "self-healing orchestration system"
+Jan:  CLI scripts (bash)              -> "worktree management tools"
+Feb:  GUI + Memory + Ralph Loop       -> "agent development environment"
+Mar:  Orchestration + Sentinel        -> "autonomous development framework"
+      + Gates + Web + Auto-Fix        -> "self-healing orchestration system"
+Apr:  v0 design + Issue lifecycle     -> "production-grade orchestration platform"
+      + Forensics + Cost + Hygiene
 ```
 
 Each phase was driven by real failures in real E2E runs — not theoretical design. The CraftBrew and MiniShop benchmarks were the forcing functions that exposed every weakness.
@@ -137,6 +154,9 @@ Each phase was driven by real failures in real E2E runs — not theoretical desi
 5. **E2E is the only real test.** Unit tests pass, orchestration runs fail. The interactions between digest, planner, dispatcher, verifier, and merger create emergent behaviors that only surface in full runs.
 6. **Templates beat conventions.** Pre-deployed files eliminate 63% of output divergence. Telling agents "create a Next.js project" produces wildly different results; giving them a template produces consistent ones.
 7. **The sentinel pays for itself.** 5--10 LLM calls per run saves hours of wasted compute. A single undetected crash at 2 AM wastes the entire overnight run.
+8. **Cost is a first-class metric.** USD per change, USD per gate, USD per agent session — without it, "is this orchestration affordable?" is unanswerable. The 10× inflation bug from `cache_read_input_tokens` double-counting hid for weeks because nothing was watching the line.
+9. **Circuit-breakers beat retries.** A bounded retry budget with an explicit escalation path (failed:* → fix-iss → investigator → resolver → parent retry) is more reliable than uncapped retry loops. The hard part is choosing where the escalation goes.
+10. **Design as code, not as image.** v0.app exports are diffable, reviewable, version-controlled — the agent reads the same source the human did. Binary design files (Figma `.make`) hide their semantics; reviewers can't tell why a token changed.
 
 ---
 

@@ -18,6 +18,16 @@ Each layer is implemented in `lib/set_orch/` with clear module boundaries. The p
 
 ![Dashboard overview showing pipeline state](../images/auto/web/dashboard-overview.png)
 
+## Cross-Cutting Subsystems
+
+Layered alongside the pipeline:
+
+- **Design pipeline** (`set-design-import`, `design-manifest.yaml`, `design-fidelity-gate`) — pulls a v0.app export into a structured manifest, slices a per-change `design.md` into each agent's input, and runs a JSX structural parity check at merge to block visual divergence. Replaces the legacy Figma `.make` flow.
+- **Issue lifecycle** (`fix-iss`, `IssueRegistry`, circuit-breakers) — surfaces gate failures, supervisor anomalies, and circuit-breaker escalations (`merge_stalled`, `token_runaway`, `poisoned_stall`) as first-class issues. The investigator agent diagnoses, the resolver fixes, and the parent change auto-recovers from `failed:*` once the fix-iss child resolves.
+- **Forensics** (`set-run-logs`, `/set:forensics` skill, activity dashboard) — every gate run, agent decision, LLM call, and sub-agent placed on a real-time axis. Per-iteration session attribution via `AGENT_SESSION_DECISION` events; per-gate spans reconstructed from `VERIFY_GATE` events.
+- **Cost tracking** — USD per change / per gate / per session, with `cache_read_input_tokens` correctly excluded from billed input. Drives the per-change token-runaway breaker.
+- **Memory layer** — 5-layer hooks inject context per tool call, save at session boundaries, surface relevant past errors automatically. `SET_MEMORY_HOOKS=lite` mode for low-context sessions.
+
 ## Deep-Dive Chapters
 
 The technical reference is organized into prefatory material (chapters 00) and 12 core pipeline chapters (01--10):
