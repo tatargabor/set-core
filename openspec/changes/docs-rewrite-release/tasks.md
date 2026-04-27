@@ -6,7 +6,7 @@
 - [x] 1.2 Move prose docs to archive: wt-web.md, ralph.md, getting-started.md, project-setup.md, project-knowledge.md, readme-guide.md, planning-guide.md, plan-checklist.md, memory-seeding-guide.md, benchmark-craftbrew-run1.md, benchmark-minishop-run4.md, kiro-comparison.md, research-ruflo-*.md [REQ: archive-old-docs]
 - [x] 1.3 Move docs/research/ to docs/archive/research/ [REQ: archive-old-docs]
 - [x] 1.4 Keep in place: howitworks/, images/, specs/, design/, screenshot-pipeline.md, discord-integration.md, gui.md [REQ: archive-old-docs]
-- [ ] 1.5 Search-replace all internal doc links that point to archived files [REQ: archive-old-docs]
+- [x] 1.5 Search-replace all internal doc links that point to archived files [REQ: archive-old-docs]
 
 ## 2. Create docs structure
 
@@ -26,10 +26,10 @@
 
 ## 4. Reference section (lookup)
 
-- [ ] 4.1 Write docs/reference/cli.md — complete CLI reference with terminal screenshots [REQ: documentation-hierarchy]
-- [ ] 4.2 Write docs/reference/configuration.md — all config files and options [REQ: documentation-hierarchy]
-- [ ] 4.3 Write docs/reference/architecture.md — technical design, layer model, module system [REQ: documentation-hierarchy]
-- [ ] 4.4 Write docs/reference/plugins.md — project type system, creating plugins [REQ: documentation-hierarchy]
+- [x] 4.1 Write docs/reference/cli.md — complete CLI reference with terminal screenshots [REQ: documentation-hierarchy]
+- [x] 4.2 Write docs/reference/configuration.md — all config files and options [REQ: documentation-hierarchy]
+- [x] 4.3 Write docs/reference/architecture.md — technical design, layer model, module system [REQ: documentation-hierarchy]
+- [x] 4.4 Write docs/reference/plugins.md — project type system, creating plugins [REQ: documentation-hierarchy]
 - [x] 4.5 Move docs/screenshot-pipeline.md to docs/reference/screenshot-pipeline.md [REQ: documentation-hierarchy]
 
 ## 5. Learn section (deep dives)
@@ -41,8 +41,8 @@
 
 ## 6. Examples
 
-- [ ] 6.1 Write docs/examples/minishop-walkthrough.md — complete E2E example with app screenshots [REQ: documentation-hierarchy]
-- [ ] 6.2 Write docs/examples/first-project.md — getting started step-by-step [REQ: documentation-hierarchy]
+- [x] 6.1 Write docs/examples/minishop-walkthrough.md — complete E2E example with app screenshots [REQ: documentation-hierarchy]
+- [x] 6.2 Write docs/examples/first-project.md — getting started step-by-step [REQ: documentation-hierarchy]
 
 ## 7. README rewrite
 
@@ -52,9 +52,9 @@
 
 ## 8. Cross-references and integration
 
-- [ ] 8.1 Add spec-doc cross-reference comments to all guide/ and reference/ pages [REQ: spec-doc-cross-references]
+- [x] 8.1 Add spec-doc cross-reference comments to all guide/ and reference/ pages [REQ: spec-doc-cross-references]
 - [ ] 8.2 Add Playwright test report screenshot capture to screenshot pipeline (optional enhancement) [REQ: screenshot-integration]
-- [ ] 8.3 Write CONTRIBUTING.md — short, links to architecture + dev setup [REQ: documentation-hierarchy]
+- [x] 8.3 Write CONTRIBUTING.md — short, links to architecture + dev setup [REQ: documentation-hierarchy]
 - [ ] 8.4 Update docs/howitworks/en/00-meta.md to reference new docs structure [REQ: documentation-hierarchy]
 
 ## 9. Validation
