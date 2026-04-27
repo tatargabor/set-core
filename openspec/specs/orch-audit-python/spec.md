@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Audit Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python audit pipeline
 The system SHALL provide `run_post_phase_audit()` in `lib/set_orch/auditor.py` that replicates the full bash audit pipeline: input JSON construction, Claude API call for gap detection, result parsing, and state update with replan context injection.

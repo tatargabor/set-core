@@ -1,16 +1,22 @@
-## ADDED Requirements
+# Coverage Gate Display Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Display spec_coverage_result as a gate badge in GateBar
 - Show spec coverage details in GateDetail expandable section
 - API endpoint to serve spec-coverage-report.md
 - Coverage report viewer panel/tab in the dashboard
 - Use coverage-merged.json for accurate coverage counts in DigestView overview
 
-## OUT OF SCOPE
+### Out of scope
 - Modifying the verifier or planner backend logic
 - Generating or regenerating coverage reports from the frontend
 - Editing coverage data from the UI
+
+## Requirements
 
 ### Requirement: ChangeInfo type includes spec_coverage_result
 The frontend `ChangeInfo` TypeScript interface SHALL include `spec_coverage_result` as an optional string field (values: "pass", "fail", "timeout", or absent).

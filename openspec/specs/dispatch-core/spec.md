@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Dispatch Core Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Resolve effective model for change
 The system SHALL resolve the implementation model using three-tier priority: (1) explicit per-change model from state, (2) complexity-based routing when enabled, (3) default model from directive. Doc-named changes (doc-*, *-doc-*, *-docs, *-docs-*) SHALL always route to sonnet. Sonnet SHALL be overridden to opus for non-doc code changes.

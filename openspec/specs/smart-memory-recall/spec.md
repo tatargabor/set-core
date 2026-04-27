@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Smart Memory Recall Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Topic-based recall from prompt text
 The recall hook SHALL extract topic keywords from the user's prompt text and use them as the recall query. If an OpenSpec change name is detected (opsx:ff, opsx:apply, opsx:explore, opsx:new, opsx:continue, or openspec- prefixed skills), it SHALL be included in the query. The hook SHALL NOT use change-boundary detection or debounce — it SHALL recall on every prompt.

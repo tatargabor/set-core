@@ -1,14 +1,20 @@
-## ADDED Requirements
+# Heartbeat Pre Emit Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Heartbeat emission before and after each long-running monitor operation
 - State file mtime touch as a secondary sentinel signal
 - Helper function encapsulating heartbeat + touch logic
 
-## OUT OF SCOPE
+### Out of scope
 - Threading or async heartbeat (separate concern, higher complexity)
 - Sentinel timeout tuning (180s threshold stays as-is)
 - Heartbeat frequency changes for the periodic poll-count-based emit (kept as fallback)
+
+## Requirements
 
 ### Requirement: Pre-operation heartbeat emission
 The monitor loop SHALL emit a `WATCHDOG_HEARTBEAT` event and touch the state file mtime before each long-running operation (dispatch, merge queue drain, poll active changes, replan).

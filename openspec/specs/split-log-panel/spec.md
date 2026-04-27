@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Split Log Panel Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Side-by-side orch log and session log
 The log panel displays orchestration log and session log simultaneously when a change is selected.

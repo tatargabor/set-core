@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Test Done Criteria Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Test done criteria runs test command
 The loop system SHALL support `done_criteria = "test"` in `is_done()`. When active, `_check_test_done()` SHALL run the project's test command and return True if tests pass (exit code 0), False otherwise.

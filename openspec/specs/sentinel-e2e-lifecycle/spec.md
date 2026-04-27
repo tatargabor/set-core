@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Sentinel E2e Lifecycle Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Sentinel E2E Lifecycle section in guide
 The E2E-GUIDE.md SHALL contain a `## Sentinel E2E Lifecycle` section describing the four phases: prep, launch, monitor, wrap-up. This section SHALL be read by the sentinel (Claude agent mode) at startup to determine its workflow.

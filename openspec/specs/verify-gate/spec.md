@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Verify Gate Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: VG-PIPELINE — Gate pipeline (handle_change_done)
 Ordered steps: build → test → e2e → scope check → test file check → review → rules → verify → merge queue. Each gate step SHALL resolve a GateConfig via `resolve_gate_config()` at the start of the pipeline and use its `should_run()` and `is_blocking()` methods to determine execution. Gates with mode `"skip"` SHALL NOT execute and SHALL log "SKIPPED (gate_profile)". Gates with mode `"warn"` SHALL execute but failures SHALL NOT consume retry budget or block merge — they SHALL log a warning and continue. Gates with mode `"soft"` (spec_verify only) SHALL execute but failures SHALL be non-blocking if all other gates passed.

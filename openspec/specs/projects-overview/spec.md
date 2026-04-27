@@ -1,8 +1,10 @@
 # Projects Overview
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Project cards showing sentinel/orchestrator status
 - Start/stop/restart controls for sentinel and orchestrator per project
 - Mode badge (E2E/PROD/DEV)
@@ -10,10 +12,12 @@
 - Manager service health bar
 - Auto-refresh every 5 seconds
 
-## OUT OF SCOPE
+### Out of scope
 - Project registration from UI (use CLI: `set-manager project add`)
 - Project deletion from UI
 - Orchestration configuration/plan editing
+
+## Requirements
 
 ### Requirement: Project cards
 The overview page SHALL display a card for each registered project showing: name, mode badge, sentinel status (alive/stopped + uptime), orchestrator status (alive/stopped + uptime), change progress (if orchestrating), and issue summary.

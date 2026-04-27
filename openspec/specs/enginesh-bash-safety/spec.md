@@ -1,16 +1,20 @@
 # Spec: enginesh-bash-safety
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Preventing arithmetic errors from multi-line command substitution output in context tracking
 - Preventing unbound variable crashes in trap handlers under `set -u`
 - Ensuring `grep | wc -c` and `sed | wc -c` pipelines produce single-line numeric output under `pipefail`
 
-## OUT OF SCOPE
+### Out of scope
 - Refactoring the context-tracking algorithm itself
 - Changing the ralph loop iteration logic
 - Modifying `set-common.sh` shell options
+
+## Requirements
 
 ### Requirement: Pipefail-safe grep pipeline
 The context-tracking `grep | wc -c` pipeline in engine.sh SHALL produce a single numeric value even when grep finds no matches under `set -euo pipefail`. The `|| true` fallback MUST be scoped inside `{ ... }` so its output doesn't append to the pipeline result.

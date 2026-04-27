@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Heuristic Guard Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Heuristic memory detection at display time
 The system SHALL detect heuristic/pattern-matching language in memory content during `proactive_and_format()` and visually mark it before injection into the agent's system-reminder.

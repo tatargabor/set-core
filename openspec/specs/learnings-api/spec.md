@@ -1,17 +1,23 @@
-## ADDED Requirements
+# Learnings Api Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - REST API endpoints for review findings, gate stats, reflections, and per-change timeline
 - Unified learnings endpoint aggregating all sources
 - Gate stats aggregation with per-gate and per-change-type breakdowns
 - Reflections aggregation across all worktrees
 - Per-change timeline reconstructed from events.jsonl
 
-## OUT OF SCOPE
+### Out of scope
 - WebSocket streaming for learnings (REST polling is sufficient)
 - Cross-run learnings persistence (handled by orchestrator-memory)
 - Rule suggestion generation from findings (future capability)
 - Learnings export/download
+
+## Requirements
 
 ### Requirement: Review findings API endpoint
 The server SHALL expose `GET /api/{project}/review-findings` returning structured review findings data from the JSONL log. File path: `_resolve_project(project) / "wt" / "orchestration" / "review-findings.jsonl"` (with fallback to `_resolve_project(project) / "orchestration" / "review-findings.jsonl"`). Summary MD at same dir as `review-findings-summary.md`.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Supervisor Transition Triggers Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Transition-based anomaly triggers (not steady-state)
 The supervisor daemon's anomaly detectors that read `change.status` from `orchestration-state.json` SHALL fire ONLY on status TRANSITIONS, never on steady-state values. A change that entered `failed` five minutes ago and has not moved since SHALL NOT re-fire its `integration_failed` trigger on every subsequent poll.

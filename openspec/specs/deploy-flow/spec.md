@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Deploy Flow Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: deploy.sh deploys core rules
 deploy.sh SHALL deploy only top-level `.md` files from `templates/core/rules/` (maxdepth 1). It SHALL NOT traverse subdirectories. Each file is deployed with a `set-` filename prefix. When deploying to the set-core repository itself, rules deployment SHALL be skipped (self-deploy guard via git root comparison).

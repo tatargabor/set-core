@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Smoke Screenshot Collection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Smoke test artifact collection
 After post-merge smoke tests run on main, the orchestrator SHALL collect Playwright artifacts (screenshots, traces) into a persistent directory.

@@ -1,18 +1,22 @@
 # Spec: set-web-docs
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Documentation for set-web dashboard access (local and remote)
 - Automated install instructions (set-web-install)
 - Manual setup instructions (systemd, Tailscale)
 - Configuration reference (.env, environment variables)
 - Troubleshooting section
 
-## OUT OF SCOPE
+### Out of scope
 - API endpoint reference (belongs in separate API docs)
 - Frontend development guide
 - Architecture documentation
+
+## Requirements
 
 ### Requirement: Local access documentation
 

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Dispatch Worktree Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Sync worktree with main branch
 The system SHALL merge the main branch (main) into a worktree branch before dispatch. If the worktree is already up-to-date, no merge SHALL occur. Generated file conflicts (lockfiles, .tsbuildinfo) SHALL be auto-resolved with `--ours` strategy. Real conflicts SHALL cause merge abort and return failure.

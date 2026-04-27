@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Builder Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python base build check
 The system SHALL provide `check_base_build()` in `lib/set_orch/builder.py` that detects the project's package manager (npm/pnpm/yarn/bun), runs the build script, and caches the result for the session.

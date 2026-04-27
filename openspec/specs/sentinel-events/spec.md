@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Sentinel Events Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Structured event logging to `.wt/sentinel/events.jsonl` (append-only JSONL)
 - Event types: poll, crash, restart, decision, escalation, finding, assessment, message_received, message_sent
 - Python API for emitting events (`lib/set_orch/sentinel/events.py`)
@@ -8,10 +12,12 @@
 - Run rotation (archive old events on new run start)
 - `.wt/` directory creation and `.gitignore` entry
 
-## OUT OF SCOPE
+### Out of scope
 - set-web display of events (covered by sentinel-dashboard spec)
 - Findings aggregation (covered by sentinel-findings spec)
 - Inbox/outbox messaging (covered by sentinel-messaging spec)
+
+## Requirements
 
 ### Requirement: Structured event logging
 The system SHALL write sentinel events as newline-delimited JSON to `.wt/sentinel/events.jsonl`. Each event SHALL contain a `ts` field (ISO 8601 timestamp), a `type` field (string enum), and type-specific data fields.

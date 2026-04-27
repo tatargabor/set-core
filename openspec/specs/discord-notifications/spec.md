@@ -1,17 +1,23 @@
-## ADDED Requirements
+# Discord Notifications Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Mapping orchestration events to Discord embeds
 - In-place embed updates for progress (no spam)
 - Main channel summary messages (one-liners)
 - Thread-level detailed status embeds
 - @mention on errors/stuck states
 
-## OUT OF SCOPE
+### Out of scope
 - Custom embed templates or user-configurable message formats
 - File attachments (logs, screenshots)
 - Reaction-based controls (approve/reject from Discord)
 - Webhook-only mode (bot-less) — may be added later as a simpler alternative
+
+## Requirements
 
 ### Requirement: Event-to-Discord mapping
 The system SHALL subscribe to the orchestration event bus and translate events into Discord messages.

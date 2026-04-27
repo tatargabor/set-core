@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Wt Project Scaffolding Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Scaffold wt directory on init
 `set-project init` SHALL create the `wt/` directory structure as part of project initialization, after deploying `.claude/` files.

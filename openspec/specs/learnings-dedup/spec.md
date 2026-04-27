@@ -1,14 +1,20 @@
-## ADDED Requirements
+# Learnings Dedup Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - LLM-based semantic deduplication of learnings entries at merge time
 - Merging semantically identical patterns into single entries with aggregated metadata
 - Fallback behavior when LLM dedup call fails
 
-## OUT OF SCOPE
+### Out of scope
 - Deduplication at query/dispatch time (too costly)
 - Cross-profile deduplication (web.jsonl vs other profiles)
 - User-interactive dedup review
+
+## Requirements
 
 ### Requirement: Semantic dedup at merge time
 After classification and before writing to JSONL, the system SHALL run a Sonnet call to identify semantically equivalent patterns among all entries (existing + new). Equivalent patterns SHALL be merged into a single entry.

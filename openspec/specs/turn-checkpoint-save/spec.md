@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Turn Checkpoint Save Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Turn counter in session dedup cache
 The `handle_user_prompt()` function SHALL increment a `turn_count` integer in the session dedup cache on every UserPromptSubmit event. The counter SHALL start at 1 on the first prompt of the session.

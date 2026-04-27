@@ -1,8 +1,10 @@
 # Unified Navigation
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Single sidebar component replacing both ProjectLayout and ManagerLayout sidebars
 - Two-section layout: global (Control Plane) + per-project (contextual)
 - Pluggable sidebar registry for 3rd party navigation items
@@ -11,10 +13,12 @@
 - Mobile responsive (drawer pattern preserved)
 - Service health footer
 
-## OUT OF SCOPE
+### Out of scope
 - Changing any existing page content (only navigation wrapper changes)
 - Adding new pages (uses existing pages)
 - Authentication or role-based menu visibility
+
+## Requirements
 
 ### Requirement: Unified sidebar layout
 The sidebar SHALL have two sections: a global "Control Plane" section at the top and a per-project section below. Both sections SHALL be visible regardless of current route.

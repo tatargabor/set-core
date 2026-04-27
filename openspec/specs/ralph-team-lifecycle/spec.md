@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Ralph Team Lifecycle Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Inter-iteration team cleanup
 The Ralph engine SHALL instruct Claude to clean up teams (TeamDelete) before finishing each iteration. The prompt MUST include explicit cleanup instructions.

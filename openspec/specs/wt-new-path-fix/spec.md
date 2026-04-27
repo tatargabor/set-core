@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Wt New Path Fix Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: GUI set-new command resolution
 The GUI SHALL invoke `set-new` using its full filesystem path via `SCRIPT_DIR`, not via bare command name PATH lookup.

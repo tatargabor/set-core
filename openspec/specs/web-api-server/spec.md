@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Web Api Server Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Soniox API key endpoint
 The server SHALL expose `GET /api/soniox-key` which returns the Soniox API key from the `SONIOX_API_KEY` environment variable. If the variable is not set, the endpoint SHALL return HTTP 404.

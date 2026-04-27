@@ -1,8 +1,10 @@
 # Investigation Runner
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Spawn claude CLI as investigation agent in set-core directory
 - Pluggable investigation templates (default + profile-provided)
 - Structured diagnosis output parsing (DIAGNOSIS_START/END markers)
@@ -10,10 +12,12 @@
 - Resumable sessions for per-issue chat
 - Investigation report persistence (.set/issues/investigations/)
 
-## OUT OF SCOPE
+### Out of scope
 - Running investigation in project directory (always set-core)
 - Multiple investigation agents per issue
 - Streaming investigation output to UI in real-time
+
+## Requirements
 
 ### Requirement: Investigation agent spawning
 The runner SHALL spawn `claude -p` as a subprocess in the set-core directory with the investigation template as prompt. Output SHALL be captured to a file at `.set/issues/investigations/{issue_id}.md`.

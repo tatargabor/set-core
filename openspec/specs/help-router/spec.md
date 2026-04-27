@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Help Router Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: CLAUDE.md contains help router section
 The project CLAUDE.md SHALL contain a "Help & Documentation" section that tells the LLM where to find answers when users ask about features.

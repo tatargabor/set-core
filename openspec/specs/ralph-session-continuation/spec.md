@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Ralph Session Continuation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Session ID tracking
 The Ralph loop SHALL assign and track a Claude session ID for resume-based continuation across iterations.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Per Change Gate Skip Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: gate_hints field on Change dataclass
 The Change dataclass SHALL include an optional `gate_hints: dict` field (default None). When present, it SHALL contain gate field names as keys and mode strings as values (e.g., `{"smoke": "skip", "e2e": "warn"}`). The field SHALL be serialized to JSON when not None and deserialized via `from_dict()`.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Custom Subagents Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Code reviewer subagent
 The system SHALL provide `.claude/agents/code-reviewer.md` defining a read-only code review subagent with model `sonnet`, tools restricted to `Read, Grep, Glob`, and instructions focused on code quality, pattern consistency (PySide6/Qt, bash conventions), and security review.

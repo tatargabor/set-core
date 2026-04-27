@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Screenshot Gallery Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Screenshot gallery for smoke and E2E results
 Display Playwright screenshots inline in the dashboard, organized by change and attempt.

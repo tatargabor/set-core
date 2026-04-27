@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Ralph Loop Logging Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Per-iteration log files
 The Ralph loop SHALL write each Claude invocation's output to a separate log file for post-mortem analysis.

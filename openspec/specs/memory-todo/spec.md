@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Todo Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Todo add command
 `set-memory todo add <text>` SHALL save the provided text as a memory with `experience_type=Context`, tags `todo,backlog`, and metadata `{todo_status: "open"}`. If an active OpenSpec change is detected, a `change:<name>` tag SHALL be added automatically. The command SHALL print a confirmation line and exit.

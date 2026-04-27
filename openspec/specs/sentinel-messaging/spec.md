@@ -1,17 +1,23 @@
-## ADDED Requirements
+# Sentinel Messaging Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Sentinel inbox polling at 3-5s intervals (lightweight file read)
 - Splitting the sentinel main loop sleep for responsive inbox checks
 - Message receipt logging as events
 - Sentinel status/identity registration in `.wt/sentinel/status.json`
 - Heartbeat updates to status.json
 
-## OUT OF SCOPE
+### Out of scope
 - New messaging transport (uses existing set-control-chat / MCP send_message)
 - set-web message sending UI (covered by sentinel-dashboard)
 - Multi-sentinel coordination (single sentinel per project assumed)
 - Encryption changes (existing NaCl box encryption unchanged)
+
+## Requirements
 
 ### Requirement: Sentinel inbox polling
 The sentinel main loop SHALL check for incoming messages every 3-5 seconds instead of only at state poll intervals.

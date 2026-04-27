@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Lockfile Regeneration On Conflict Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Lock file regeneration after conflict resolution
 When a lock file conflict is resolved by accepting the target branch version, the system SHALL regenerate the lock file by running the appropriate package manager install command. This ensures the merged `package.json` (which may contain dependencies from both branches) produces a consistent lock file.

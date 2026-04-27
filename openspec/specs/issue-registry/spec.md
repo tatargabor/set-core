@@ -1,8 +1,10 @@
 # Issue Registry
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Persistent JSON storage for issues, groups, and mute patterns
 - CRUD operations for issues
 - Deduplication via fingerprinting
@@ -10,10 +12,12 @@
 - Atomic writes with file locking
 - Auto-sequential ID generation (ISS-001, GRP-001, MUTE-001)
 
-## OUT OF SCOPE
+### Out of scope
 - Database backend (JSON files only)
 - Full-text search across error details
 - Issue archival/rotation (future change)
+
+## Requirements
 
 ### Requirement: Issue persistence
 The registry SHALL store issues as a JSON file at `.set/issues/registry.json` within each project's directory. The file SHALL contain issues and groups in a single document. Writes SHALL be atomic (write to temp file, rename).

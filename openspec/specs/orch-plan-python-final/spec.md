@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Plan Python Final Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python plan orchestration
 The system SHALL provide `run_plan()` in `lib/set_orch/planner.py` that replicates the full `cmd_plan()` bash orchestration: digest freshness check, triage gate, design bridge setup, directives resolution, Claude decomposition call, JSON extraction/validation, and coverage mapping.

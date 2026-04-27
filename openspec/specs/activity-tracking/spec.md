@@ -1,3 +1,9 @@
+# Activity Tracking Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: Broadcast Skill
@@ -57,7 +63,7 @@ The system SHALL provide a `/wt:status` skill to display all agents' current act
 - **WHEN** agent runs `/wt:status`
 - **THEN** output shows "No active agents found"
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Idle detection events
 

@@ -1,15 +1,21 @@
-## ADDED Requirements
+# Ac Display Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Display acceptance criteria items inline in requirement tables (DigestView + ProgressView)
 - Cross-cutting AC Coverage sub-tab in DigestView with domain grouping and progress tracking
 - Expandable requirement rows showing AC items as a checklist
 - AC checked state derived from change status (merged = checked) — simple mode
 
-## OUT OF SCOPE
+### Out of scope
 - Per-AC pass/fail from verifier review output parsing (rich mode — future change)
 - Backend modifications to digest.py or verifier.py (already done)
 - AC editing or manual check/uncheck from the UI
+
+## Requirements
 
 ### Requirement: DigestReq type includes acceptance_criteria
 The frontend `DigestReq` TypeScript interface SHALL include an `acceptance_criteria` field of type `string[]`. When the field is absent or null in the API response, consumers SHALL default to an empty array.

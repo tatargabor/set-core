@@ -1,12 +1,18 @@
-## ADDED Requirements
+# Discord E2e Screenshots Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Post E2E test screenshots to the run's Discord thread after phase-end tests
 - Handle both pass and fail cases
 
-## OUT OF SCOPE
+### Out of scope
 - E2E test execution or orchestration
 - Screenshot comparison between cycles
+
+## Requirements
 
 ### Requirement: E2E screenshots posted after phase-end tests
 When phase-end E2E tests complete, the system SHALL post screenshots from the E2E directory to the run's Discord thread.

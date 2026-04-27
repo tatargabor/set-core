@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Ralph Learnings Injection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Ralph loop regenerates input.md on iteration transition
 The dispatcher SHALL regenerate `input.md` for a change before each ralph iteration when the underlying review learnings checklist has been updated since the previous iteration's input was written. Currently `input.md` is written ONCE by `_build_input_content()` at initial dispatch; subsequent ralph iterations reuse the same file, so learnings persisted from a prior change's merge never reach a change that was already dispatched.

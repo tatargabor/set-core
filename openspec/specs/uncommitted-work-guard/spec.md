@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Uncommitted Work Guard Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Detect uncommitted work in worktree
 The system SHALL provide a function `git_has_uncommitted_work(wt_path)` that returns a tuple of `(has_work: bool, summary: str)`. It SHALL run `git -C <wt_path> status --porcelain` with a 10-second timeout. If the output is non-empty, `has_work` SHALL be True and `summary` SHALL contain a human-readable description (e.g., "3 modified, 2 untracked"). If the output is empty, `has_work` SHALL be False and `summary` SHALL be empty string.

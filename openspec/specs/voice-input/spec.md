@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Voice Input Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Microphone toggle button
 The voice input component SHALL display a microphone icon button next to the text input. Clicking the button SHALL start audio recording via the Soniox Web SDK. Clicking again SHALL stop recording. The button SHALL visually indicate recording state (idle: default, recording: red/pulsing).

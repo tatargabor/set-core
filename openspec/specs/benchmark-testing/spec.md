@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Benchmark Testing Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Payout Behavioral Verification
 test-12 Bug 2 (payout rounding) SHALL FAIL when no multi-vendor orders exist in the database. The test MUST NOT auto-pass on missing data.

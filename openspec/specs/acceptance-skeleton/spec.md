@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Acceptance Skeleton Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: FF skill generates acceptance criteria from scenarios
 The ff-change skill SHALL extract WHEN/THEN scenarios from delta specs and generate an Acceptance Criteria section at the bottom of tasks.md. Each acceptance criterion is a checkbox item linked to its source scenario and requirement.

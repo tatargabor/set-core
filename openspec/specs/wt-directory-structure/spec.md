@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Wt Directory Structure Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: wt directory exists in consumer projects
 Every consumer project using set-core SHALL have a `wt/` directory at the project root. This directory is the canonical location for all set-core project-specific artifacts.

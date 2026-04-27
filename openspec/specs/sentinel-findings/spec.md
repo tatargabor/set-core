@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Sentinel Findings Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Structured findings storage in `.wt/sentinel/findings.json`
 - Finding types: bug, observation, pattern, regression
 - Assessment records (phase-level or run-level summaries)
@@ -8,10 +12,12 @@
 - Python API and CLI for CRUD operations
 - Rotation on new run (archive old findings)
 
-## OUT OF SCOPE
+### Out of scope
 - Rendering findings in set-web (covered by sentinel-dashboard)
 - Converting findings to E2E run report markdown (manual or separate tooling)
 - Correlation with git commits (optional metadata, not enforced)
+
+## Requirements
 
 ### Requirement: Structured findings storage
 The system SHALL store sentinel findings in `.wt/sentinel/findings.json` as a JSON object with `run_id`, `findings` array, and `assessments` array.

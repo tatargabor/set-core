@@ -1,6 +1,10 @@
 # AC-ID Pipeline
 
-## MODIFIED Requirements
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: AC-ID generation in digest
 The digest SHALL generate explicit AC-IDs for each acceptance criterion in the format `REQ-XXX-NNN:AC-M` where M is the ordinal position (1-based).

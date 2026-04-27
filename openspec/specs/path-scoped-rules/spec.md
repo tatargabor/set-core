@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Path Scoped Rules Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: GUI rules scoped to GUI paths
 The system SHALL provide `.claude/rules/gui/` directory containing GUI-specific rules that load ONLY when the user is working on files matching `gui/**` or `tests/gui/**` paths.

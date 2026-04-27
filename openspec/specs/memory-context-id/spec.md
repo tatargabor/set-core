@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Context Id Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Context ID generation for injected memories
 Each memory fragment injected by hook output SHALL be prefixed with a unique context ID in the format `[MEM#xxxx]` where `xxxx` is a 4-character lowercase hex string.

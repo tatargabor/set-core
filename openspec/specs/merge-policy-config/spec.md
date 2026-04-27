@@ -1,6 +1,10 @@
 # Merge Policy Config
 
-## MODIFIED Requirements
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Merge queue always receives done changes
 When a change passes all verify gates and reaches "done" status, it SHALL always be added to the merge queue. The previous guard `if merge_policy in ("eager", "checkpoint")` is removed — there is no policy where done changes skip the merge queue.

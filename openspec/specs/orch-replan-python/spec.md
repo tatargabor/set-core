@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Replan Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python auto-replan cycle without bash dependency
 The Python engine SHALL implement `auto_replan_cycle()` entirely in Python, eliminating the circular dependency where Python shells out to bash which shells back to Python.

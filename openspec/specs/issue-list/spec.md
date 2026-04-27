@@ -1,8 +1,10 @@
 # Issue List
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Per-project issue list at /manager/:project/issues
 - Cross-project issue list at /manager/issues
 - Urgency-based sections (needs attention, in progress, done)
@@ -13,11 +15,13 @@
 - Resolved/dismissed section collapsed by default
 - Polling every 2 seconds
 
-## OUT OF SCOPE
+### Out of scope
 - Full-text search across error details
 - Pagination (scroll-based, all issues loaded)
 - Sorting options (fixed: urgency sections)
 - Export to CSV/JSON
+
+## Requirements
 
 ### Requirement: Urgency-based sections
 The issue list SHALL group issues into three collapsible sections: "Needs Attention" (NEW, DIAGNOSED, AWAITING_APPROVAL), "In Progress" (INVESTIGATING, FIXING, VERIFYING, DEPLOYING), and "Done" (RESOLVED, DISMISSED, MUTED, SKIPPED, CANCELLED, FAILED). The Done section SHALL be collapsed by default.

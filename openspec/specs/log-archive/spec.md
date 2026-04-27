@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Log Archive Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Archive worktree logs before cleanup
 Worktree agent iteration logs (`.claude/logs/*.log`) are copied to a persistent location before `git worktree remove`.

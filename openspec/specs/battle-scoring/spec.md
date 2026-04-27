@@ -1,18 +1,22 @@
 # Battle Scoring Specification
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Point scoring derived from real orchestration metrics
 - Achievement system with unlock conditions based on orchestration events
 - Score multipliers for parallel execution and streaks
 - Lives system tied to failure count
 - Persistent high scores per project in localStorage
 
-## OUT OF SCOPE
+### Out of scope
 - Server-side score storage or leaderboards
 - Cross-project score comparison
 - Configurable scoring rules (hardcoded for simplicity)
+
+## Requirements
 
 ### Requirement: Score Calculation
 The scoring system SHALL award points based on real orchestration events:

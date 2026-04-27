@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Plan Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python planning orchestration
 The planning pipeline orchestration (input detection, freshness check, triage gate, Claude invocation, response parsing, plan enrichment) SHALL be available as a Python function callable from `auto_replan_cycle()` and eventually from a `set-orch-core plan run` CLI command.

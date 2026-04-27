@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Wt Memory Integration Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Memory seed file format
 The system SHALL support a `set/knowledge/memory-seed.yaml` file containing project-essential memories to bootstrap new memory stores.

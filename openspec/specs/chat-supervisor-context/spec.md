@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Chat Supervisor Context Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Dynamic system prompt injection
 The chat system SHALL build a dynamic system prompt and pass it via `--append-system-prompt` on every `claude -p --resume` invocation, so the agent receives fresh context with each message.

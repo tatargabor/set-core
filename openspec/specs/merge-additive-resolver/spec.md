@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Merge Additive Resolver Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Enhanced LLM conflict resolution for additive patterns
 The LLM merge conflict resolver SHALL explicitly handle the pattern where both sides add new entries to the same collection.

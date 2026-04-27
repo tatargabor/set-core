@@ -1,13 +1,19 @@
-## ADDED Requirements
+# Verification Rule Integration Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Verifier loads plugin verification rules via profile method
 - Rules evaluated during verify gate alongside existing YAML-based rules
 - NullProfile provides empty default
 
-## OUT OF SCOPE
+### Out of scope
 - Adding new check types beyond existing 6 in SCHEMA.md
 - Changing the VerificationRule dataclass in set-project-base
+
+## Requirements
 
 ### Requirement: NullProfile defines get_verification_rules
 `NullProfile` in `profile_loader.py` SHALL define `get_verification_rules()` returning an empty list.

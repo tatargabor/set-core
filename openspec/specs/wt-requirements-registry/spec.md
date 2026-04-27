@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Wt Requirements Registry Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Requirement file format
 Business requirements SHALL be stored in `wt/requirements/` in one of two formats: structured YAML or rich markdown. Both are valid and the planner reads both.

@@ -1,5 +1,9 @@
-## MODIFIED Requirements
+# Design Dispatch Injection Specification
 
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+## Requirements
 ### Requirement: Design context extraction for dispatch
 
 The dispatcher SHALL extract design context from `design-snapshot.md` when dispatching a change. The `design_snapshot_dir` parameter SHALL be propagated from `dispatch_ready_changes()` to `dispatch_change()`.
@@ -47,3 +51,22 @@ The total design context injected into proposals SHALL respect a 500-line budget
 - **WHEN** tokens are 80 lines, hierarchy is 120 lines, sources are 400 lines
 - **THEN** hierarchy SHALL be truncated to 100 lines and sources to 300 lines
 - **AND** total SHALL NOT exceed 500 lines
+
+### Requirement: design_components autopopulated into Focus files
+The dispatcher SHALL include the change's `design_components` in the `## Focus files for this change` section of the agent's `input.md`. A directive line SHALL precede the listing, instructing the agent to mount these components from the design source rather than reimplementing them.
+
+#### Scenario: Focus files contain design_components paths
+- **WHEN** dispatcher writes `input.md` for a change with `design_components: ["v0-export/components/search-palette.tsx", "v0-export/components/site-header.tsx"]`
+- **THEN** the input.md `## Focus files for this change` section contains both paths
+- **AND** the section is preceded by: "**Mount these components from the design source. DO NOT create parallel implementations under different names.**"
+
+#### Scenario: Empty design_components produces no design Focus mention
+- **WHEN** a change has `design_components: []`
+- **THEN** the input.md does not include design Focus entries
+- **AND** other Focus files (from existing logic) appear normally
+
+#### Scenario: Design_components appended to existing Focus list
+- **GIVEN** existing Focus files logic produces a list including `v0-export/lib/utils.ts`
+- **WHEN** `design_components` adds `v0-export/components/search-palette.tsx`
+- **THEN** the merged Focus files list contains both, deduplicated
+

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Ralph Team Prompt Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Team prompt injection
 The Ralph engine prompt builder SHALL inject Agent Teams usage instructions into the Claude prompt when team mode is enabled in loop-state.json. The instructions SHALL be appended after the existing task/openspec instructions block in `build_prompt()`.

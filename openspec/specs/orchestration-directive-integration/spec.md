@@ -1,13 +1,19 @@
-## ADDED Requirements
+# Orchestration Directive Integration Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Engine loads plugin orchestration directives via profile method
 - Directives influence dispatch serialization and post-merge actions
 - NullProfile provides empty default
 
-## OUT OF SCOPE
+### Out of scope
 - Defining new directive action types
 - Changing the OrchestrationDirective dataclass in set-project-base
+
+## Requirements
 
 ### Requirement: NullProfile defines get_orchestration_directives
 `NullProfile` in `profile_loader.py` SHALL define `get_orchestration_directives()` returning an empty list.

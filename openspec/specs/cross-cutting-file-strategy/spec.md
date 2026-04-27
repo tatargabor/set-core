@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Cross Cutting File Strategy Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: i18n sidecar pattern for parallel agents
 The dispatcher SHALL instruct agents to write i18n keys to per-feature namespace files (e.g., `src/messages/en.<feature>.json`) instead of the canonical merged file. Each sidecar file SHALL own one or more top-level namespaces.

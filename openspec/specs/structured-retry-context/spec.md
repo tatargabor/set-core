@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Structured Retry Context Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Remove truncated raw review output from retry prompt
 The review retry prompt SHALL NOT include `current_review_output[:1500]` when `_extract_review_fixes()` produces non-empty structured output. Raw review output SHALL only be included as a fallback when the parser finds zero issues but `has_critical` is True, and in that case SHALL use `[:3000]` instead of `[:1500]`.

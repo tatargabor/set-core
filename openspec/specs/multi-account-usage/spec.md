@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Multi Account Usage Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Parallel multi-account usage fetching
 The `UsageWorker` SHALL fetch usage data for all configured accounts in a single polling cycle. This includes both web UI session accounts (sessionKey-based) AND Claude Code accounts (OAuth token-based) from the CC account pool.

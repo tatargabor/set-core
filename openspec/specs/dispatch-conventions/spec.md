@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Dispatch Conventions Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Inject read-first instructions in dispatch context
 The dispatcher SHALL include a "read-first" instruction block in the dispatch context telling agents to read relevant source files before writing code. The instruction SHALL reference the actual files present in the project (e.g., `prisma/schema.prisma`, `src/components/`).

@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Auto Memory Hooks Deploy Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Memory hooks included in default deploy config
 The `set-deploy-hooks` script SHALL include `set-hook-memory-recall` (UserPromptSubmit, timeout 15), `set-hook-memory-save` (Stop, timeout 30), `set-hook-memory-warmstart` (SessionStart, timeout 10), `set-hook-memory-pretool` (PreToolUse matcher "Bash", timeout 5), and `set-hook-memory-posttool` (PostToolUseFailure matcher "Bash", timeout 5) in the default hook configuration alongside the existing `set-hook-skill` and `set-hook-stop` hooks.

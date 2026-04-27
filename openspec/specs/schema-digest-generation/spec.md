@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Schema Digest Generation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Auto-parse ORM schema at dispatch time
 The dispatcher SHALL parse the project's ORM schema file (e.g., `prisma/schema.prisma`) at dispatch time and generate a structured digest containing model names, field names with types, relation names, and enum values. The digest SHALL be appended to the worktree's `CLAUDE.md` as a `## Project Schema (auto-generated, readonly)` section.

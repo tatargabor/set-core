@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Retry Loop Completion Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Review retry loop exits on test pass
 When the agent loop runs with `done_criteria = "test"`, the loop SHALL exit with status `"done"` when `is_done("test")` returns True. The change then returns to the verification pipeline for re-review.

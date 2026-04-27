@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Max Parallel Default Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Default max_parallel is 3
 The orchestrator SHALL use 3 as the default max_parallel value instead of 2.

@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Dispatch And Loop Control Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: ff→apply same-iteration chaining
 When an ff iteration successfully creates tasks.md, the loop SHALL chain the apply phase within the same iteration instead of ending and starting a new one.

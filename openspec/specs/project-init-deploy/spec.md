@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Project Init Deploy Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Deploy wt commands to project
 When `set-project init` runs, it SHALL copy all files from the set-core repo's `.claude/commands/wt/` directory to `<project>/.claude/commands/wt/`, creating the directory if it does not exist. Existing files SHALL be overwritten.

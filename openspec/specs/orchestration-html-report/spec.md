@@ -1,3 +1,9 @@
+# Orchestration Html Report Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: Execution section in HTML report
@@ -38,7 +44,7 @@ The report SHALL display real-time execution progress.
 - **WHEN** the report is generated during or after execution
 - **THEN** it SHALL display: elapsed time (wall + active), total tokens used (sum of all changes' tokens_used), changes completed/running/pending/failed/merge-blocked
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Screenshot gallery in execution section
 The report SHALL display an expandable screenshot gallery for changes that have collected Playwright artifacts.

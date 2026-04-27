@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Openspec Header Button Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: OpenSpec [O] button in project header
 The project header row SHALL display an [O] button (22x22px) between the [M] memory button and the team filter button. The button color SHALL be green (`status_running` theme color) when OpenSpec is detected, gray (`status_idle`) when absent.

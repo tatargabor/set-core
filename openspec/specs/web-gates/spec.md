@@ -1,3 +1,9 @@
+# Web Gates Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: E2E baseline regeneration is serialized by a file lock
@@ -71,7 +77,7 @@ On first regeneration after the upgrade, the sidecar `.lock` file SHALL be creat
 - **WHEN** `_get_or_create_e2e_baseline` runs after the upgrade
 - **THEN** it returns the cached result without regenerating
 - **AND** no `.lock` file needs to exist for the happy-path cache hit (the lock is only acquired when regeneration is required)
-## ADDED Requirements
+## Requirements
 
 ### Requirement: E2E gate retry_context preserves error-tail evidence
 

@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Nextjs Template Corrections Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Correct `postcss.config.mjs` for Tailwind CSS v4 in set-project-web nextjs template
 - Correct `jest.config.ts` key name and add Prisma test environment guidance
 - Add common `next.config.js` defaults (images.unoptimized)
@@ -8,10 +12,12 @@
 - Extend `testing-conventions.md` rule with pnpm build blocking fix and node environment
 - Add new `worktree-setup.md` rule covering common worktree setup issues
 
-## OUT OF SCOPE
+### Out of scope
 - spa template (non-Next.js) corrections
 - Runtime enforcement of these conventions (enforcement belongs in verify gate rules)
 - Automated detection of whether a deployed project uses v3 vs v4 Tailwind
+
+## Requirements
 
 ### Requirement: Correct Tailwind v4 PostCSS config
 The `postcss.config.mjs` template SHALL use the `@tailwindcss/postcss` plugin syntax required by Tailwind CSS v4, not the v3 `tailwindcss: {}` syntax.

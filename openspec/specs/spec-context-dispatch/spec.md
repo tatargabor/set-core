@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Spec Context Dispatch Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Spec base directory resolution
 The dispatcher SHALL resolve the spec base directory from `index.json`'s `spec_base_dir` field. This absolute path is used to locate raw spec files for copying.

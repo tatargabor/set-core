@@ -1,8 +1,10 @@
 # Unified Timeline
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Single chronological stream merging audit events and chat messages
 - Three visual styles: system (centered/gray), user (right/blue), agent (left/gray)
 - Chat input at the bottom for sending messages to investigation agent
@@ -10,11 +12,13 @@
 - Auto-scroll to newest entry
 - System event condensation (collapse consecutive similar events)
 
-## OUT OF SCOPE
+### Out of scope
 - Threads (flat timeline only)
 - Message editing or deletion
 - File/image attachments in chat
 - Emoji reactions
+
+## Requirements
 
 ### Requirement: Timeline construction
 The timeline SHALL merge two data sources into one sorted array: audit log entries (as system events) and chat messages (as user/agent entries). Entries SHALL be sorted by timestamp ascending with newest at the bottom.

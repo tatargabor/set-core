@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Post Merge Sync Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Running worktrees sync with main after each merge
 After a successful merge, the orchestrator SHALL sync all running worktrees with the updated main branch. When sync encounters lock file conflicts, it SHALL auto-resolve them with "ours" AND regenerate the lock file via the appropriate install command before committing.

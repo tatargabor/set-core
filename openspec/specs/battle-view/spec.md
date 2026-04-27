@@ -1,8 +1,10 @@
 # Battle View Specification
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Space Invaders style visualization of orchestration change pipeline
 - Spatial mapping of change status to screen zones (orbit/atmosphere/ground)
 - Animated transitions between change states
@@ -11,11 +13,13 @@
 - Responsive layout (desktop + mobile via Tailscale)
 - Tab integration in existing dashboard tab bar
 
-## OUT OF SCOPE
+### Out of scope
 - User-controlled gameplay (Ralph acts autonomously based on data)
 - Sound effects or audio
 - Backend API changes (uses existing state + WebSocket)
 - Persistent leaderboards or server-side score storage
+
+## Requirements
 
 ### Requirement: Spatial Zone Layout
 The battle view SHALL render three horizontal zones representing pipeline stages:

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Scope Boundary Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Spec template includes scope boundary section
 The spec artifact template SHALL include an optional IN SCOPE / OUT OF SCOPE section after the Purpose/preamble and before Requirements. This section declares what the capability covers and what it explicitly excludes.

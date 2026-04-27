@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Gate Profiles Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: GateConfig dataclass
 The system SHALL define a `GateConfig` dataclass with fields for each verification gate: `build`, `test`, `test_files_required`, `e2e`, `scope_check`, `review`, `spec_verify`, `rules`, `smoke`. Each gate field SHALL accept string modes: `"run"`, `"skip"`, `"warn"`, `"soft"`. The dataclass SHALL also include optional `max_retries: int`, `review_model: str`, and `review_extra_retries: int` (default 1) override fields.

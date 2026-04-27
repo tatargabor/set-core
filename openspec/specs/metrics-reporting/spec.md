@@ -1,3 +1,9 @@
+# Metrics Reporting Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: TUI metrics report command
@@ -19,7 +25,7 @@ The `set-memory metrics` command SHALL read the SQLite database and print a form
 - **WHEN** `set-memory metrics` is run and the database is empty or does not exist
 - **THEN** it SHALL print "No metrics data. Enable with: set-memory metrics --enable" and exit 0
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: SQLite schema migration for context IDs
 The metrics SQLite schema SHALL add support for context_id storage and passive match tracking when first accessed after upgrade.

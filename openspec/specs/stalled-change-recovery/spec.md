@@ -1,14 +1,18 @@
 # Stalled Change Recovery
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Recovery of stalled changes whose loop-state shows "done"
 - Adding "stalled" to _poll_suspended_changes() status filter
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the dead agent detector timing or thresholds
 - Auto-retry of stalled changes that are genuinely stalled (loop-state != done)
+
+## Requirements
 
 ### Requirement: Stalled changes with completed work are recovered
 The monitor's `_poll_suspended_changes()` SHALL handle "stalled" status in addition to "paused", "waiting:budget", "budget_exceeded", and "done". When a stalled change has loop-state status "done", the monitor SHALL recover it by setting the change status to "done" and adding it to the merge queue.

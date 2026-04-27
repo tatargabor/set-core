@@ -1,17 +1,21 @@
 # Spec: unified-project-routes
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Single `/p/:name/` URL prefix for all project-specific routes
 - Route tree with app segments (`/p/:name/orch/`, `/p/:name/sentinel/`, etc.)
 - Legacy redirect from `/set/:project/*` and `/manager/:project/*`
 - Project name passed as prop (not useParams) to all page components
 
-## OUT OF SCOPE
+### Out of scope
 - Deep linking to specific issue IDs or worktree names (keep existing behavior)
 - URL-based state persistence (query params for filters, etc.)
 - History/back-button behavior changes beyond what React Router provides
+
+## Requirements
 
 ### Requirement: Unified URL prefix
 

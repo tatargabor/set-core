@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Task Traceability Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Tasks reference requirement IDs
 Each task in tasks.md SHALL include a `[REQ: <requirement-name>]` tag linking it to the spec requirement it implements. The ff-change skill instruction SHALL make this tagging mandatory for all implementation tasks. The requirement name SHALL be a kebab-case slug of the `### Requirement:` header text. Matching SHALL be case-insensitive and whitespace-tolerant.

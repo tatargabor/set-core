@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Project Health Scan Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: CLI entry point
 The system SHALL provide a `bin/set-audit` command with subcommands `scan` and `help`.

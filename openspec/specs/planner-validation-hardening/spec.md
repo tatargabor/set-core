@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Planner Validation Hardening Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 
 - Python hard validation for change count, complexity, model, scope length in `validate_plan()`
 - `planning_rules()` and `cross_cutting_files()` methods on `ProjectType` ABC
@@ -8,11 +12,13 @@
 - Core `_PLANNING_RULES_CORE` trimmed to universal rules only
 - Validation failures trigger LLM retry with error context
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the LLM prompt structure or planning strategy
 - Adding new planning phases or domain-parallel decompose logic
 - Modifying digest, dispatch, or gate pipelines
 - New CLI commands or dashboard changes
+
+## Requirements
 
 ### Requirement: Hard validation of change count
 `validate_plan()` SHALL reject plans where `len(changes) > max_change_target`. The `max_change_target` value SHALL be passed to the validator (from `max_parallel * 2`). Rejection SHALL trigger LLM retry with the specific error.

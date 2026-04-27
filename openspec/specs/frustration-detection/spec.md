@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Frustration Detection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Bilingual emotion detection with simple trigger logic
 The emotion detection module (`lib/frustration.py`) SHALL detect emotionally charged prompts in both English and Hungarian using ~30-35 regex patterns organized in two trigger groups (strong and medium). Hungarian patterns SHALL use character classes (e.g., `[aá]`, `[eé]`, `[oó]`) to match both accented and unaccented input. The module SHALL NOT use numeric scoring, weighted categories, or intensity multipliers.

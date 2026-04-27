@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Responsive Convention Trap Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: TRAP-L convention establishment in C01
 C01 (Product Catalog) change definition SHALL require:

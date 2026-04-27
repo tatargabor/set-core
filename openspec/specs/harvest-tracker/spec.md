@@ -1,15 +1,19 @@
 # Spec: Harvest Tracker
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Per-project tracking of last harvested commit SHA
 - Persistent storage in set-project registry
 - Per-commit reviewed/adopted/skipped state
 
-## OUT OF SCOPE
+### Out of scope
 - Cross-run deduplication of similar fixes (future enhancement)
 - Automatic merging of adopted changes into set-core
+
+## Requirements
 
 ### Requirement: Track harvest state per project
 

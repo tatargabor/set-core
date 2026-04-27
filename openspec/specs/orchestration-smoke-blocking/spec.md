@@ -1,3 +1,9 @@
+# Orchestration Smoke Blocking Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: Scoped smoke fix agent
@@ -52,7 +58,7 @@ State.json SHALL track smoke progress at a granular level.
 - **WHEN** a change is in `smoking` state for more than 15 minutes
 - **THEN** the sentinel poll SHALL be able to detect this via state.json timestamps
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Last successful smoke tracking
 The orchestrator SHALL track the commit SHA of the last successful smoke pass for multi-change regression context.

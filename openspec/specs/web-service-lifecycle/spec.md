@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Web Service Lifecycle Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: CLI serve subcommand
 `set-orch-core serve` SHALL start the FastAPI server with uvicorn. It SHALL accept `--port` (default 7400) and `--host` (default 127.0.0.1) flags. It SHALL serve both the API endpoints and the built SPA static files.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Chrome Session Scanner Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Chrome profile discovery
 The system SHALL discover all Chrome profiles on the local machine by scanning the platform-specific Chrome user data directory.

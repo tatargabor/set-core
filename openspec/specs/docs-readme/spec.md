@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Docs Readme Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: README length constraint
 README.md SHALL be between 150 and 200 lines. Content exceeding this budget SHALL be moved to dedicated doc pages with links.

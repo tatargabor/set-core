@@ -1,14 +1,20 @@
-## ADDED Requirements
+# Dispatch Pid Validation Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Validate terminal_pid is a positive integer before marking a change as "running"
 - Log errors when loop-state.json parsing fails instead of silently swallowing
 - Watchdog fast-path escalation for running changes with null/zero PID
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the set-loop startup mechanism itself
 - Modifying how loop-state.json is written by set-loop
 - Changing the reconciliation logic in recover_orphaned_changes()
+
+## Requirements
 
 ### Requirement: Dispatch PID validation
 The dispatcher SHALL validate that `terminal_pid` extracted from `loop-state.json` is a positive integer (> 0) before marking a change as "running". If the PID is 0, null, or invalid, the dispatcher SHALL mark the change as "failed" and return False.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Build Fix Retry Separation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Build-fix iterations SHALL NOT consume verify retry budget
 When the verify gate detects a build failure and dispatches the agent to fix it, this iteration SHALL NOT increment `verify_retry_count`. The counter SHALL only be incremented when a full verify gate run (test, build, review, scope) completes with a failure result.

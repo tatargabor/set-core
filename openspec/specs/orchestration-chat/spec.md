@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orchestration Chat Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Chat message display
 The orchestration chat SHALL display a scrollable message history with visually distinct user and agent messages. User messages SHALL be right-aligned with a different background color. Agent messages SHALL be left-aligned and support markdown rendering.

@@ -1,8 +1,10 @@
 # Issue Detail
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Slide-out panel (50-60% width) from right side
 - Issue header with ID, severity, state, environment, group
 - Tabbed content: Timeline (default), Diagnosis, Error, Related
@@ -11,10 +13,12 @@
 - Related issues / group view with group actions
 - Panel close on Escape or clicking outside
 
-## OUT OF SCOPE
+### Out of scope
 - Full-page issue detail view (slide-out only, may add full-width toggle later)
 - Issue editing (severity, summary) from detail panel
 - Inline code viewing of affected files
+
+## Requirements
 
 ### Requirement: Slide-out panel
 Clicking an issue in the list SHALL open a slide-out panel from the right occupying 50-60% of the viewport width. The issue list SHALL remain visible behind. Pressing Escape or clicking outside SHALL close the panel.

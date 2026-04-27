@@ -1,17 +1,23 @@
-## ADDED Requirements
+# Gate Pipeline Runner Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - GatePipeline class that orchestrates sequential gate execution with unified retry/fail/skip logic
 - GateResult dataclass capturing per-gate outcome, duration, and output
 - Batch state update — single locked write for all gate results instead of per-field calls
 - Review extra retry configurable via GateConfig (currently hardcoded +1)
 - Screenshot collection unified into a single helper
 
-## OUT OF SCOPE
+### Out of scope
 - Changing gate execution order (the authoritative order lives in `gate-registry`; the pipeline runner executes whatever order is registered)
 - Adding new gate types
 - Changing the retry prompt content or review feedback format
 - Modifying the smoke pipeline (post-merge, stays in merger.py)
+
+## Requirements
 
 ### Requirement: GatePipeline orchestrates gate execution
 The system SHALL provide a `GatePipeline` class in `lib/set_orch/gate_runner.py` that accepts a `GateConfig`, state file path, change name, and execution parameters. The pipeline SHALL execute gates in sequence, collecting `GateResult` objects. Each gate SHALL be invoked via a callable (`GateExecutor`) that returns a `GateResult`.

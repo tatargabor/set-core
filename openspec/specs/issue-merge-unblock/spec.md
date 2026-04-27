@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Issue Merge Unblock Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Issue ownership self-resolves on change merge
 The issue registry SHALL automatically resolve any open issue whose `affected_change` transitions to `merged` (or `skip_merged`), without operator intervention. This prevents the merge queue from being permanently blocked by a `diagnosed` state issue after the underlying fix has landed.

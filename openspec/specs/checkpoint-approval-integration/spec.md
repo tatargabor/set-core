@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Checkpoint Approval Integration Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Monitor loop checks API approval records
 The monitor loop SHALL check the approval record on the latest checkpoint entry when determining whether to resume from checkpoint status. This check is in addition to the existing `checkpoint_auto_approve` directive check.

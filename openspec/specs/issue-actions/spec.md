@@ -1,8 +1,10 @@
 # Issue Actions
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - State-aware action button rendering
 - Action buttons trigger API calls and optimistic UI updates
 - Timeout countdown with progress bar
@@ -10,10 +12,12 @@
 - Mute pattern dialog with auto-generated pattern
 - Extend timeout dialog
 
-## OUT OF SCOPE
+### Out of scope
 - Keyboard shortcuts for actions
 - Undo for actions (transitions are permanent)
 - Batch actions on issue detail (only on list via multi-select)
+
+## Requirements
 
 ### Requirement: State-aware button rendering
 The action bar SHALL show only buttons valid for the current issue state. The mapping SHALL be:

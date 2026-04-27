@@ -1,6 +1,10 @@
 # Spec: Design Dispatch Context (delta)
 
-## MODIFIED Requirements
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Alias externalization
 The `_DESIGN_BRIEF_ALIASES` hardcoded array in bridge.sh SHALL be emptied. Project-specific aliases SHALL be stored in per-scaffold files and loaded via the existing `DESIGN_BRIEF_ALIASES_FILE` environment variable.

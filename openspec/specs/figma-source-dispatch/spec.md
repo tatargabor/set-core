@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Figma Source Dispatch Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Source file discovery from figma-raw directory
 The design bridge SHALL discover Figma source files by searching for `docs/figma-raw/*/sources/` directories relative to the project root. When multiple figma-raw directories exist (multiple design files), all sources directories SHALL be searched.

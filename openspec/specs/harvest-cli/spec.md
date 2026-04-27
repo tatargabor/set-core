@@ -1,8 +1,10 @@
 # Spec: Harvest CLI
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - CLI tool `set-harvest` that scans registered consumer projects for unadopted changes
 - Git log scanning for ISS fix commits and `.claude/` modifications
 - Chronological, per-project, per-commit presentation of changes
@@ -10,11 +12,13 @@
 - Interactive adoption workflow (adopt / skip / view diff)
 - Writing adopted changes to appropriate set-core locations (planning_rules.txt, templates, core code)
 
-## OUT OF SCOPE
+### Out of scope
 - Automatic adoption without user review (always interactive)
 - LLM-based classification (heuristic + keyword-based)
 - Modifying consumer project code
 - Review findings analysis (covered by learnings-to-rules change)
+
+## Requirements
 
 ### Requirement: Scan registered projects for unadopted changes
 

@@ -1,17 +1,21 @@
 # Spec: Per-Change Design Dispatch
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Dispatcher generates per-change `design.md` file at dispatch time
 - Scope-matched extraction from design-brief.md using page name keywords
 - Agent input.md references the per-change design.md file
 - Abstract dispatch mechanism in core (Layer 1), customizable by profile (Layer 2)
 
-## OUT OF SCOPE
+### Out of scope
 - Modifying the verify/review gate design compliance checks
 - Changing how design tokens are extracted from design-system.md
 - Planner-level design token embedding in scope text (existing behavior unchanged)
+
+## Requirements
 
 ### Requirement: Generate per-change design file at dispatch
 

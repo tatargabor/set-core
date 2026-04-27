@@ -1,13 +1,19 @@
-## ADDED Requirements
+# Merge Strategy Integration Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Merger loads plugin merge strategies via profile method
 - Strategies define file-pattern to merge-behavior mappings
 - Protected files get special handling during merge
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the merge_strategies() interface (already defined in NullProfile)
 - Adding new merge strategy types beyond theirs/ours
+
+## Requirements
 
 ### Requirement: Merger calls profile merge_strategies
 `merger.py` SHALL call `profile.merge_strategies()` before executing merge operations and apply the returned strategies to file-level merge decisions.

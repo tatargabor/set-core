@@ -1,14 +1,20 @@
-## ADDED Requirements
+# Learnings Scope Filter Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Category tagging of learnings entries during persistence
 - Scope-aware filtering at dispatch time using diff content categories
 - Filtering for both agent input.md injection and review gate injection
 
-## OUT OF SCOPE
+### Out of scope
 - LLM-based relevance scoring at dispatch time (too costly per dispatch)
 - Per-change custom category definitions
 - Filtering of cross-change within-run learnings (those are already change-scoped)
+
+## Requirements
 
 ### Requirement: Category tagging at persist time
 When persisting a learning entry, the system SHALL assign one or more content categories from the set `{auth, api, database, frontend, general}` based on keyword matching against the pattern text and fix_hint.

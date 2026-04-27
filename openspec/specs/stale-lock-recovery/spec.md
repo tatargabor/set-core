@@ -1,12 +1,18 @@
-## ADDED Requirements
+# Stale Lock Recovery Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Sentinel flock fd not inherited by child orchestrator process
 - Sentinel lock released when sentinel exits, regardless of child process state
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the flock mechanism to a different locking strategy
 - PID file management (already handled in prior fix)
+
+## Requirements
 
 ### Requirement: Close flock fd in child process
 <!-- REQ-FLOCK-FD -->

@@ -1,8 +1,10 @@
 # Capability: manager-project-detail
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Project detail page at `/manager/:project` route
 - Docs directory listing from project path
 - Sentinel control with spec path selection (dropdown/autocomplete)
@@ -10,12 +12,14 @@
 - Issues summary with link to existing issues page
 - Navigation back to tile overview
 
-## OUT OF SCOPE
+### Out of scope
 - Editing docs files from the UI
 - Creating new projects from the UI (use `set-project init` CLI)
 - Real-time log streaming from sentinel stdout
 - Orchestration Gantt chart or token graphs (future)
 - Changes list visualization (future — separate change)
+
+## Requirements
 
 ### Requirement: Project detail page route
 

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Spec Coverage Annotation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Post-planning generates spec coverage report
 After `validate_plan()` succeeds, the planner SHALL generate a spec coverage annotation report that marks each digest requirement as covered, deferred, or uncovered relative to the plan's change assignments.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Help Command Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Help command file exists
 The system SHALL provide a `.claude/commands/wt/help.md` file that serves as a quick reference for all set-core features.

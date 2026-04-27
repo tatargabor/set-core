@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Async State Lock Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Async-safe state file locking
 

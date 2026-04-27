@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Hot Topic Recall Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: PreToolUse hook for hot-topic Bash commands
 A new hook script `set-hook-memory-pretool` SHALL run on `PreToolUse` events matching the `Bash` tool. It SHALL parse the command for hot-topic patterns (generic base + project-discovered) and inject relevant memories via `additionalContext` before the command executes.

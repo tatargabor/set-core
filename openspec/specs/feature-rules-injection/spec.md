@@ -1,16 +1,22 @@
-## ADDED Requirements
+# Feature Rules Injection Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Reading `rules_file` from `project-knowledge.yaml` features at dispatch time
 - Copying matched rule files into the worktree's `.claude/rules/` directory
 - Path-glob matching of change scope against feature `touches` to determine which rules apply
 - Graceful degradation when `project-knowledge.yaml` or `rules_file` is absent
 - Skip injection if rule file already exists in worktree (idempotent dispatch)
 
-## OUT OF SCOPE
+### Out of scope
 - Mid-iteration rule injection (dispatch-time only)
 - Automatic rule content generation (rules files must already exist in the project)
 - Injection into the main project directory (worktree only)
+
+## Requirements
 
 ### Requirement: Feature rules resolved at dispatch
 When dispatching a change, the dispatcher SHALL read `project-knowledge.yaml`, match the change scope against each feature's `touches` globs, and for each matching feature with a `rules_file` field, copy that rule file into the worktree.

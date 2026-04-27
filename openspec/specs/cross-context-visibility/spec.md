@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Cross Context Visibility Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Send message via MCP
 

@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Merge Conservation Check Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Post-LLM diff-based conservation check on every conflicted file
 - Detecting additions lost from either side of a merge
 - Hard-blocking merges where conservation check fails
@@ -8,11 +12,13 @@
 - Tracking which files were LLM-resolved (passed from resolver to check)
 - `--no-conservation-check` escape hatch flag
 
-## OUT OF SCOPE
+### Out of scope
 - Automatic repair of failed merges (block only, no auto-fix)
 - Non-conflicted files (only files that went through LLM resolution)
 - Whitespace-only or formatting-only differences
 - Binary files (detected via `git diff --numstat` null markers)
+
+## Requirements
 
 ### Requirement: Diff-based conservation check after LLM merge
 After `llm_resolve_conflicts()` resolves conflicted files and BEFORE `git commit`, `set-merge` SHALL run a conservation check on every file that was LLM-resolved. The check SHALL verify that additions from both sides of the merge are present in the resolved output. The `llm_resolve_conflicts()` function SHALL record which files it resolved (via a bash array or temp file) so the conservation check knows which files to verify.

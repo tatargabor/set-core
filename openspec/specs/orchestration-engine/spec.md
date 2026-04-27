@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Orchestration Engine Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Change dispatch with dependency ordering
 The orchestrator SHALL dispatch changes respecting the dependency graph and parallelism limits.

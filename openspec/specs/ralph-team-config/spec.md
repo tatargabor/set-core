@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Ralph Team Config Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Team mode CLI flag
 `set-loop start` SHALL accept a `--team` flag that enables Agent Teams mode for the loop. The flag SHALL default to off (disabled).

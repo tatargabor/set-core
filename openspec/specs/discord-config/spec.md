@@ -1,16 +1,22 @@
-## ADDED Requirements
+# Discord Config Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Discord configuration section in orchestration.yaml
 - Bot token via environment variable
 - Guild ID and channel naming configuration
 - Member-to-Discord-user mapping for @mentions
 - Notification event filtering (which events trigger messages)
 
-## OUT OF SCOPE
+### Out of scope
 - Discord bot creation wizard or OAuth2 setup flow
 - Per-change or per-agent notification preferences
 - Configuration UI in the web dashboard
+
+## Requirements
 
 ### Requirement: Project-level Discord configuration
 The system SHALL support a `discord:` section in `orchestration.yaml` for project-level Discord settings.

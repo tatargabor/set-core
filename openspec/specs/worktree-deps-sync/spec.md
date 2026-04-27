@@ -1,14 +1,20 @@
-## ADDED Requirements
+# Worktree Deps Sync Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Detect lockfile/package.json changes during worktree sync with main
 - Automatically run package manager install after sync when deps changed
 - Support pnpm, yarn, npm detection (existing `_detect_package_manager`)
 
-## OUT OF SCOPE
+### Out of scope
 - Initial worktree bootstrap deps install (already handled by `bootstrap_worktree`)
 - Post-merge deps install on main (already handled by `_post_merge_deps_install`)
 - Lock file conflict resolution during sync (handled by generated file auto-resolve)
+
+## Requirements
 
 ### Requirement: Reinstall deps after worktree sync detects dependency changes
 <!-- REQ-DEPS-SYNC -->

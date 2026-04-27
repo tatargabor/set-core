@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Pre Merge Runtime Cleanup Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Pre-merge runtime file removal from git index
 Before merging a worktree branch, the system SHALL remove `.set-core/` runtime files from the git index to prevent them from causing merge conflicts.

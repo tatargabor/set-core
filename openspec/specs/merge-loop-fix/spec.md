@@ -1,14 +1,20 @@
-## ADDED Requirements
+# Merge Loop Fix Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Recovery logic resets ff_retry_count when recovering merge-blocked → done
 - Recovery logic increments merge_retry_count to bound total recovery attempts
 - Logging of recovery state resets for observability
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the ff_retry or merge_retry limits (remain at 3)
 - Modifying the monitor's orphaned-done re-queue logic (already has merge_retry_count guard)
 - Modifying the merger's FF merge command construction
+
+## Requirements
 
 ### Requirement: Recovery resets FF retry state
 

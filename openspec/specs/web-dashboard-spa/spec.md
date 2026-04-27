@@ -1,6 +1,10 @@
 # Capability: web-dashboard-spa (delta)
 
-## MODIFIED Requirements
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Manager overview page
 The manager overview page at `/manager` SHALL display registered projects as clickable summary tiles that link to individual project detail pages.

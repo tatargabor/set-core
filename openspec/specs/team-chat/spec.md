@@ -1,3 +1,9 @@
+# Team Chat Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: Chat CLI
@@ -38,7 +44,7 @@ The system SHALL provide a CLI tool for sending and reading chat messages using 
 - **AND** the original `messages.jsonl` is renamed to `messages.jsonl.migrated`
 - **AND** migration runs only once
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Per-Sender Outbox Storage
 

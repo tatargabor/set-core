@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Checkpoint Resume Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Resume checks both directive and approval record
 The checkpoint resume decision in the monitor loop SHALL check the following sources in order:

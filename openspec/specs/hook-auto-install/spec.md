@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Hook Auto Install Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Reusable hook deployment script
 The system SHALL provide a `bin/set-deploy-hooks` script that deploys Claude Code hooks to a target directory's `.claude/settings.json`.

@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Spec Digest Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Stale digest detection
 The system SHALL detect when the raw spec has changed since last digest by comparing source hashes.

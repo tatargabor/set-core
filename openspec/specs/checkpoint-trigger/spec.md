@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Checkpoint Trigger Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Counter resets after checkpoint trigger
 The `changes_since_checkpoint` counter SHALL be reset to `0` when a checkpoint is triggered, so that the next checkpoint triggers after another `checkpoint_every` changes.

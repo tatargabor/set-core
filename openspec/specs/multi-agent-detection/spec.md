@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Multi Agent Detection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Multi-Agent Detection
 The system SHALL detect ALL Claude agent processes associated with a worktree, not just the first one found.

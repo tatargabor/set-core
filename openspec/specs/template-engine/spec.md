@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Template Engine Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Safe variable escaping for prompt templates
 The system SHALL provide `escape_for_prompt(text)` that neutralizes characters which would break shell heredoc expansion or corrupt structured text output: `$`, backtick, `EOF` markers, and unmatched quotes.

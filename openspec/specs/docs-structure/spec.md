@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Docs Structure Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Documentation site map
 The project SHALL maintain a documentation structure with README.md as the entry point and dedicated pages in `docs/` for each feature group. The complete page inventory:

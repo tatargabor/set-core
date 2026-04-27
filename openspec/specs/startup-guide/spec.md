@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Startup Guide Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Dispatcher appends startup guide to worktree CLAUDE.md
 On dispatch, the dispatcher SHALL check the worktree's CLAUDE.md for an `## Application Startup` section. If absent, it SHALL append a generated startup guide section. If already present, it SHALL NOT overwrite it.

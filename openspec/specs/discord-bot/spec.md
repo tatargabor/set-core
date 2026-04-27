@@ -1,17 +1,23 @@
-## ADDED Requirements
+# Discord Bot Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Discord bot connection lifecycle (connect, disconnect, reconnect)
 - Guild and channel resolution (find or create project channel)
 - Thread creation and management per orchestration run
 - Bot presence/status updates reflecting orchestration state
 - Graceful shutdown on orchestration exit
 
-## OUT OF SCOPE
+### Out of scope
 - Slash commands or interactive Discord UI components
 - User-to-agent chat via Discord (Layer 3 — future change)
 - Discord OAuth2 flows or user authentication
 - Multi-guild support (one guild per project)
+
+## Requirements
 
 ### Requirement: Bot connection lifecycle
 The system SHALL manage a Discord bot connection that starts with the orchestration API server and stops on shutdown.

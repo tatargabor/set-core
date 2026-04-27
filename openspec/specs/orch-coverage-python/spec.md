@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Coverage Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python coverage tracking
 The Python orchestration system SHALL track requirement coverage status, updating it as changes are merged and providing final coverage validation.

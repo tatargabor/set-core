@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orchestrator Restart Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Clear checkpoint-specific state on restart
 The orchestrator SHALL clear checkpoint-specific transient fields from state when resuming from a crashed, stopped, or time-limited state. These fields are meaningful only within a single execution context.

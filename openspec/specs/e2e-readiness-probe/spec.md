@@ -1,4 +1,10 @@
-## ADDED Requirements
+# E2e Readiness Probe Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: E2E gate performs health check before running Playwright
 The verify gate SHALL determine whether Playwright manages its own dev server by checking for a `webServer` block in `playwright.config.ts`/`.js`. When Playwright manages the server, the gate SHALL skip manual health checks and port allocation. When Playwright does NOT manage the server, the existing health check behavior SHALL apply.

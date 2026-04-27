@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Watchdog Grace Period Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### R1: Checkpoint Auto-Approve Directive
 - New directive `checkpoint_auto_approve` (default: `false`)

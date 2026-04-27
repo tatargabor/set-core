@@ -1,8 +1,10 @@
 # Process Supervisor
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Per-project sentinel agent spawning and lifecycle management
 - Per-project orchestration spawning and monitoring
 - Health check with auto-restart for sentinels
@@ -11,11 +13,13 @@
 - Systemd user-level service unit for set-manager
 - CLI for service management (serve, start, stop, status)
 
-## OUT OF SCOPE
+### Out of scope
 - Orchestrator auto-restart (always notify, never auto-restart)
 - Multi-machine deployment
 - Container-based isolation
 - Dynamic systemd unit creation per sentinel
+
+## Requirements
 
 ### Requirement: Sentinel lifecycle management
 The supervisor SHALL spawn sentinel agents as claude CLI subprocesses for registered projects. It SHALL track PIDs and monitor health via `is_alive()` checks every tick.

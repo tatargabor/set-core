@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orchestration Integration Tests Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Integration test infrastructure
 The test suite SHALL provide reusable helpers to set up mock git repos, stub external commands, and assert on orchestrator state.

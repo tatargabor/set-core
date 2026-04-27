@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Overshoot Detection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Verify skill detects implementation overshoot
 The verify-change skill SHALL perform backward verification: checking that new implementation artifacts (routes, endpoints, components, exports, database tables) can be traced back to a spec requirement. Items that cannot be traced SHALL be flagged as potential overshoot.

@@ -1,14 +1,20 @@
-## IN SCOPE
+# profile-hooks Specification
+
+## Purpose
+
+Define the profile-level hook interface (pre-dispatch checks, post-verify hooks) that lets project-type plugins inject lifecycle behavior without modifying core. Hooks compose with directive hooks at each lifecycle point; NullProfile provides no-op defaults so untyped projects work unchanged.
+
+### In scope
 - Profile hook interface: pre_dispatch_checks and post_verify_hooks methods
 - Hook composition: directive hooks + profile hooks at each lifecycle point
 - NullProfile default implementations (no-op)
 
-## OUT OF SCOPE
+### Out of scope
 - Async hook execution
 - Hook priority/ordering customization
 - Concrete web profile hook implementations (belongs in set-project-web)
 - User-facing hook configuration UI
-
+## Requirements
 ### Requirement: Profile shall support pre-dispatch checks
 The profile interface SHALL define `pre_dispatch_checks(change_type: str, wt_path: str) -> list[str]` returning a list of error messages. An empty list means all checks pass. Non-empty list blocks dispatch.
 
@@ -61,3 +67,25 @@ At each lifecycle point (pre-dispatch, post-verify), the engine SHALL run direct
 - **WHEN** gate pipeline returns "continue"
 - **THEN** directive hook SHALL run first
 - **AND** profile hook SHALL run second
+
+### Requirement: Provider exposes scan_design_hygiene method
+The `ProjectType` ABC SHALL expose a `scan_design_hygiene(project_path: Path) -> list[HygieneFinding]` method. The default implementation returns an empty list. Profile implementations (e.g. `WebProjectType`) override to delegate to their `DesignSourceProvider`.
+
+#### Scenario: Web profile delegates to V0 provider
+- **WHEN** `WebProjectType.scan_design_hygiene(project_path)` is called
+- **AND** `detect_design_source(project_path) == "v0"`
+- **THEN** the call delegates to `V0DesignSourceProvider.scan_hygiene(project_path)`
+- **AND** returns the v0-specific findings
+
+#### Scenario: Non-web profile returns empty
+- **WHEN** a profile that does not implement design hygiene is asked
+- **THEN** the call returns `[]` without error
+
+### Requirement: Provider exposes get_shell_components method
+The `ProjectType` ABC SHALL expose a `get_shell_components(project_path: Path) -> list[str]` method returning the manifest's `shared` list (as paths relative to the design source root). Default implementation returns `[]`.
+
+#### Scenario: Reads shared from manifest
+- **WHEN** `WebProjectType.get_shell_components(project_path)` is called
+- **AND** `<project>/docs/design-manifest.yaml` exists with `shared:` list
+- **THEN** the method returns the `shared` paths
+

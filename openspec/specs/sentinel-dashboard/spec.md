@@ -1,5 +1,9 @@
 # Capability: sentinel-dashboard (delta)
 
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: Sentinel tab in Dashboard
@@ -13,7 +17,7 @@ The set-web Dashboard SHALL include a "Sentinel" tab that displays sentinel even
 - **WHEN** the Sentinel tab is active but `status.json` shows `active: false` or `last_event_at` is older than 60 seconds
 - **THEN** the status bar SHALL show "Sentinel not running" with the last activity timestamp
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Sentinel launch uses skill file
 

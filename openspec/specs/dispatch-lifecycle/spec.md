@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Dispatch Lifecycle Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Pause a running change
 The system SHALL send SIGTERM to the Ralph terminal PID (after identity verification via process.check_pid) and set change status to "paused".

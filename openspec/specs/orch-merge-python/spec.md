@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Merge Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python merge pipeline replaces bash
 The Python `merger.py:merge_change()` SHALL be the live merge implementation, called directly by the Python monitor loop (not via set-orch-core CLI subprocess).

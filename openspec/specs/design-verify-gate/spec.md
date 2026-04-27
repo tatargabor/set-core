@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Design Verify Gate Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Design compliance section in code review
 

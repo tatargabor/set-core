@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Change Resume Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: resume_change passes test command to loop
 `resume_change()` SHALL resolve the test command and pass it to `set-loop start` via `--test-command <cmd>` when `done_criteria` is `"test"`.

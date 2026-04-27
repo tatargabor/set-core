@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Watchdog Pid Guard Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Hash loop detection respects PID-alive status
 The watchdog hash loop detection SHALL check whether the Ralph PID is alive before escalating, matching the behavior of timeout detection.

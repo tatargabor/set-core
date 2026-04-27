@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Review Learnings Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Review gate receives learnings checklist
 The review gate SHALL receive the persistent learnings checklist as part of the review prompt, so the reviewer LLM can enforce violations. Currently only the implementation agent sees learnings via input.md.

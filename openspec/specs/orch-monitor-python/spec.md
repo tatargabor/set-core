@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Monitor Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python monitor loop as live engine
 The system SHALL execute the orchestration monitor loop via Python (`engine.py:monitor_loop()`) when `ORCH_ENGINE=python` is set (or when it becomes the default). The Python monitor loop SHALL provide identical behavior to the bash `monitor_loop()` in `monitor.sh`.

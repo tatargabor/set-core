@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Phase Tags Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Phase-based memory tagging convention
 

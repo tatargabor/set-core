@@ -1,13 +1,19 @@
-## ADDED Requirements
+# Decompose Hints Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Profile interface gains decompose_hints() method
 - Hints are natural language strings appended to planning prompt
 - Plugin fully controls hint content
 
-## OUT OF SCOPE
+### Out of scope
 - Structured hint types or registries in core
 - Changing the planning_rules() mechanism (complementary, not replacement)
+
+## Requirements
 
 ### Requirement: NullProfile defines decompose_hints
 `NullProfile` in `profile_loader.py` SHALL define `decompose_hints()` returning an empty list.

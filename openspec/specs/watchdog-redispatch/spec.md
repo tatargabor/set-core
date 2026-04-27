@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Watchdog Redispatch Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Redispatch stuck changes to fresh worktrees
 

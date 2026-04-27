@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Metrics Collection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Per-injection metrics recording
 The hook system SHALL record structured metrics for every memory injection in layers L1-L4. Each metrics record SHALL include: timestamp, session_id, layer identifier, event name, query text, result count (pre-filter), filtered count (post-filter), relevance scores array, duration in milliseconds, estimated token count, dedup hit flag, and context_ids array.

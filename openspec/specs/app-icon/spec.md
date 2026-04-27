@@ -1,4 +1,10 @@
-## ADDED Requirements
+# App Icon Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Icon Source File
 The project SHALL include a vector icon source file at `assets/icon.svg`.

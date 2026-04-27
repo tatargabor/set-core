@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orphan Agent Cleanup Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Editor Window Presence Detection
 The system SHALL detect whether an editor window is open for each worktree during status collection.

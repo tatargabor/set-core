@@ -1,8 +1,10 @@
 # Capability: e2e-bootstrap
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Shell script to bootstrap an E2E test run from a scaffold
 - Create project directory, git init, copy scaffold docs
 - Run `set-project init` with appropriate project type
@@ -10,11 +12,13 @@
 - Start sentinel via manager API with spec path
 - Print monitor URL for web dashboard
 
-## OUT OF SCOPE
+### Out of scope
 - Post-run result collection (separate `set-e2e-collect` — future)
 - Comparing results across runs (future)
 - Creating new scaffold fixtures (manual process)
 - Running without a manager (direct claude -p fallback)
+
+## Requirements
 
 ### Requirement: E2E bootstrap script
 

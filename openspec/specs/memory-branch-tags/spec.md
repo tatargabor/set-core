@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Branch Tags Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Auto-tag memories with current branch
 `set-memory remember` SHALL automatically append a `branch:<current-branch>` tag to every new memory, using `git branch --show-current` to detect the branch name. This tag is added in addition to any user-provided tags.

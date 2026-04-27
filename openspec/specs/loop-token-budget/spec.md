@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Loop Token Budget Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Per-change token budget enforcement
 The Ralph loop SHALL enforce a maximum token budget per change, pausing for human decision when the budget is exceeded.

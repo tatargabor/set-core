@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Execution Model Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Orchestration entry point
 The `set-orchestrate start` command SHALL initialize orchestration state and launch the monitor loop. When `ORCH_ENGINE=python` (or after default cutover), `cmd_start()` SHALL exec to `set-orch-core engine monitor` instead of calling bash `monitor_loop()`.

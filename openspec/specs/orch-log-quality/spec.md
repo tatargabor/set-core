@@ -1,8 +1,10 @@
 # Spec: Orchestration Log Quality
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Spec verify sentinel detection and logging
 - Context window metric correction (model detection + peak vs cumulative)
 - `run_git` best_effort flag and adoption in fetch calls
@@ -10,11 +12,13 @@
 - `parse_test_plan` log level fix
 - Worktree-aware claude project dir derivation
 
-## OUT OF SCOPE
+### Out of scope
 - Planner coverage gap handling (uncovered REQs) — separate change
 - Removing or rewriting the spec_verify gate
 - Changing test plan format (`JOURNEY-TEST-PLAN.md` vs `test-plan.json`)
 - Token usage per-worktree isolation (stays per-repo)
+
+## Requirements
 
 ### Requirement: Spec verify gate detects missing sentinel
 The `spec_verify` gate SHALL distinguish between three outcomes: PASS sentinel found, FAIL sentinel found, and missing sentinel. Missing sentinel SHALL log at WARNING level with text identifying it as a missing sentinel (not "timeout"), and emit an ANOMALY entry tagged for sentinel tracking. Backward compat: missing sentinel still resolves to PASS.

@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Ac Test Binding Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Python-generated test plan from digest scenarios (test-plan.json)
 - ISTQB-inspired risk classification (HIGH/MEDIUM/LOW) driving minimum test count
 - REQ-ID naming convention enforcement in test names
@@ -8,12 +12,14 @@
 - Dispatch injects per-change test plan entries into agent input
 - Post-gate coverage validation (warning, not blocking)
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the Playwright runner or gate pipeline structure
 - Removing JOURNEY-TEST-PLAN.md (agent still writes it, validated against generated plan)
 - Blocking gates on coverage gaps (warning only for now)
 - Modifying digest or planning phase logic
 - Risk classification via ML or LLM (keyword-based only)
+
+## Requirements
 
 ### Requirement: Test plan generation from digest scenarios
 The system SHALL generate `test-plan.json` from `requirements.json` after digest completion. Each requirement's `#### Scenario:` blocks with WHEN/THEN format SHALL become test plan entries. The generator SHALL be a Python function — not LLM-authored — ensuring deterministic, auditable output.

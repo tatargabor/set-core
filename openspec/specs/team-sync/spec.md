@@ -1,3 +1,9 @@
+# Team Sync Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
 ## MODIFIED Requirements
 
 ### Requirement: GUI Team Status Display
@@ -34,7 +40,7 @@ The GUI SHALL display team member status in the main window, including communica
 - **WHEN** the Control Center is displayed
 - **THEN** the team label is hidden
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Communication Activity Indicators on Team Rows
 

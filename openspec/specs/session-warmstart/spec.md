@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Session Warmstart Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: SessionStart hook loads operational cheat sheet
 A new hook script `set-hook-memory-warmstart` SHALL run on the `SessionStart` event and load memories tagged `cheat-sheet` from set-memory into Claude's context via `additionalContext`.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Shodh Api Parity Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Verify index command
 `set-memory verify` SHALL call `verify_index()` and display the result showing total storage count, total indexed count, orphaned count, and health status.

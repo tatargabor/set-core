@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Activity Dashboard Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - New "Activity" tab in the web dashboard
 - Horizontally scrollable Gantt-style timeline with per-category swim lanes
 - Zoomable time axis
@@ -9,12 +13,14 @@
 - Auto-refresh and manual refresh
 - Terminal/text visual style
 
-## OUT OF SCOPE
+### Out of scope
 - Per-worktree separate lanes (aggregated view only)
 - Drag-to-select time ranges
 - Activity data export (CSV, JSON download)
 - Comparison between two runs' activity timelines
 - Mobile-responsive layout (desktop-first)
+
+## Requirements
 
 ### Requirement: Activity tab registration
 

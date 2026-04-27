@@ -1,4 +1,10 @@
-## ADDED Requirements
+# File Archive Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Archive-before-overwrite helper
 The system SHALL provide a reusable helper `archive_and_write(path, content, *, reason=None, max_archives=None)` in `lib/set_orch/archive.py` that snapshots an existing file before writing new content.

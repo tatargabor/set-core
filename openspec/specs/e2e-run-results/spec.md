@@ -1,4 +1,10 @@
-## ADDED Requirements
+# E2e Run Results Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Last Run Results section in E2E-GUIDE.md
 The E2E-GUIDE.md SHALL contain a `## Last Run Results` section with per-project subsections. Each subsection SHALL display the latest run's metrics, set-core commit delta, open regressions, and comparison to the previous run.

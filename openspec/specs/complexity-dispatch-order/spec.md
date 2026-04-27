@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Complexity Dispatch Order Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Dispatch prioritizes larger changes within same dependency level
 When multiple pending changes have satisfied dependencies, `dispatch_ready_changes()` SHALL dispatch larger complexity changes first.

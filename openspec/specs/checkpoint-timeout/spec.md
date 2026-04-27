@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Checkpoint Timeout Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Checkpoint timeout directive
 The orchestrator SHALL support a `checkpoint_timeout` directive (integer, seconds) that auto-resumes from checkpoint status after the specified duration. The default value SHALL be `0` (no timeout / wait indefinitely).

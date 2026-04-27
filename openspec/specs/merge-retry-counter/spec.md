@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Merge Retry Counter Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Merge retry limit enforcement
 

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Change Timeline Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Visual phase timeline for changes
 Each change displays a horizontal timeline bar showing its progression through orchestration phases.

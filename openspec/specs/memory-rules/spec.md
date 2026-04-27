@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Rules Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Rules file format
 The system SHALL support a `.claude/rules.yaml` file at the project root with the following structure:

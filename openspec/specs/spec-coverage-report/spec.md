@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Spec Coverage Report Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Spec coverage report generation
 `generate_coverage_report()` SHALL produce a markdown report mapping requirements (or source items) to changes with their current lifecycle status. The report SHALL be regenerated at orchestration terminal state to reflect final statuses.
@@ -25,13 +31,13 @@
 - **THEN** the function SHALL produce the existing static COVERED/DEFERRED/UNCOVERED report
 - **AND** no error is raised
 
-## IN SCOPE
+### In scope
 - `generate_coverage_report()` state-aware rendering
 - `generate_coverage_report()` single-file mode (source_items)
 - Engine terminal state trigger for report regeneration
 - Summary line with MERGED/FAILED/PENDING counts
 
-## OUT OF SCOPE
+### Out of scope
 - Per-merge incremental report updates (terminal regeneration is sufficient)
 - Report format changes beyond status column (table structure stays the same)
 - Email content changes (email already uses `final_coverage_check()` output)

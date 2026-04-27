@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Design Model Extraction Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Extract data model interfaces from Figma sources for planner
 The `design_prompt_section()` function SHALL extract TypeScript interface definitions from Figma source files (matching `*mockData*`, `*data*`, `*types*`, `*models*` patterns) and append them as a "## Design Data Model" section after the design snapshot content. This gives the planner concrete field names and types for embedding in scope descriptions.

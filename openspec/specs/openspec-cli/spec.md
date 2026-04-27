@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Openspec Cli Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: set-openspec init command
 The `set-openspec init` command SHALL run `openspec init --tools claude` in the main repo path for a given project. It SHALL accept a `--project` flag or auto-detect from `git rev-parse --show-toplevel`. It SHALL exit 0 on success, non-zero on failure.

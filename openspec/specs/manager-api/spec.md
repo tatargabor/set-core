@@ -1,8 +1,10 @@
 # Manager REST API
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Project management endpoints (list, register, status)
 - Sentinel and orchestration control endpoints (start, stop, restart)
 - Issue CRUD and action endpoints
@@ -11,11 +13,13 @@
 - Cross-project aggregated endpoints
 - Service health endpoint
 
-## OUT OF SCOPE
+### Out of scope
 - Authentication/authorization (local service, no auth)
 - WebSocket endpoints (chat goes through set-web's existing chat.py)
 - GraphQL (REST only)
 - API versioning (v1 implicit)
+
+## Requirements
 
 ### Requirement: Project endpoints
 The API SHALL provide endpoints to list all projects with status, register new projects, and get detailed project status including sentinel/orchestrator PIDs and issue stats.

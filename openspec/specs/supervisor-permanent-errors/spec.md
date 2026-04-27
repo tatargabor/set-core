@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Supervisor Permanent Errors Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Supervisor distinguishes permanent errors from transient crashes
 The supervisor daemon's `_restart_orchestrator()` SHALL NOT retry the orchestrator when the previous invocation failed with a permanent error — defined as an error that will recur deterministically on the next invocation regardless of elapsed time or environment changes the supervisor can influence.

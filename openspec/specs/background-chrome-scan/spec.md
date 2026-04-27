@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Background Chrome Scan Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Background Chrome session scanning
 The system SHALL perform Chrome session scanning on a background QThread, never blocking the GUI main thread.

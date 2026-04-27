@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Plan Completeness Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Plan validation checks reverse requirement coverage
 The `validate_plan()` function SHALL verify that every non-removed requirement in the digest is either assigned to a change (via `requirements[]` or `also_affects_reqs[]`) or explicitly listed in `deferred_requirements[]`. Unassigned and non-deferred requirements SHALL be reported as validation errors.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Implementation Drift Traps Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: TRAP-M evaluator notes for pagination UI drift
 Change definitions C01, C03, C06, C11 SHALL include evaluator notes documenting the Pagination UI divergence trap. These notes are invisible to the agent — they only guide evaluators.

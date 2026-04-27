@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Loop Stall Recovery Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Per-Iteration Timeout
 The system SHALL enforce a maximum duration per iteration to prevent stuck iterations from running indefinitely.

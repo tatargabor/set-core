@@ -1,13 +1,19 @@
-## ADDED Requirements
+# Discord Run Screenshot Gallery Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Collect all screenshots from a run and post as gallery on completion
 - Respect Discord file limits (10 per message, 25MB total)
 - Batch into multiple messages if needed
 
-## OUT OF SCOPE
+### Out of scope
 - Thumbnail generation
 - Screenshot deduplication
+
+## Requirements
 
 ### Requirement: Screenshot gallery on run completion
 When an orchestration run completes, the system SHALL collect all smoke and E2E screenshots from the run and post them as a gallery message in the run thread.

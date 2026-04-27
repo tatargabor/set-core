@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Cc Account Manager Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - CLI tool (`set-router`) for adding, removing, listing, and switching CC account credentials
 - Account pool storage in `~/.config/set-core/cc-accounts.json`
 - Credentials file swap (`~/.claude/.credentials.json`) on manual switch
@@ -9,12 +13,14 @@
 - File locking during credentials swap to prevent race conditions
 - ToS compliance warnings in help text and documentation
 
-## OUT OF SCOPE
+### Out of scope
 - Automatic account rotation or scheduling
 - Token refresh (CC handles this internally)
 - Proxy/MITM interception of CC API calls
 - Chrome cookie to OAuth token conversion
 - Web UI sessionKey management (handled by existing multi-account-usage)
+
+## Requirements
 
 ### Requirement: CC account registration
 The system SHALL allow users to register Claude Code account credentials from the current `~/.claude/.credentials.json` as a named account in the account pool.

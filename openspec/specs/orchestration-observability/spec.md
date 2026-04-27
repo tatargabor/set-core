@@ -1,8 +1,10 @@
 # Orchestration Observability
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Python stdlib `logging` instrumentation for all core orchestration modules
 - Structured log messages with contextual fields (change name, gate name, PID, state field)
 - INFO level for operational events (state transitions, gate outcomes, process lifecycle)
@@ -10,13 +12,15 @@
 - WARNING level for anomalies (missing files, fallback paths, unexpected state)
 - Bash script logging via set-common.sh shared functions
 
-## OUT OF SCOPE
+### Out of scope
 - Log aggregation or external log shipping (ELK, Datadog, etc.)
 - Log rotation configuration changes
 - Structured JSON logging format (plain text is sufficient)
 - New logging dependencies (no structlog, loguru, etc.)
 - Web dashboard log viewer changes
 - Performance metrics or tracing (spans, timers)
+
+## Requirements
 
 ### Requirement: State mutation logging
 The system SHALL log every state file mutation with the field name, old value, new value, and change context.

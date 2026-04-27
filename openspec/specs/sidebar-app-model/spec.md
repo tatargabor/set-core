@@ -1,19 +1,23 @@
 # Spec: sidebar-app-model
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Two-level sidebar navigation (app selector + sub-items)
 - App registration API for built-in and 3rd party apps
 - Dynamic sub-item rendering based on selected app
 - Global vs project context switching in sidebar
 - Active state highlighting for apps and sub-items
 
-## OUT OF SCOPE
+### Out of scope
 - Drag-and-drop sidebar reordering
 - User-customizable sidebar layouts
 - Collapsible/pinnable sidebar (keep current responsive behavior)
 - Badge/notification system redesign (keep existing badge props)
+
+## Requirements
 
 ### Requirement: App registration API
 

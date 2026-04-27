@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Process Lifecycle Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: PID verification with process identity check
 The system SHALL verify process identity (command line pattern) when checking PID liveness, not just whether the PID exists. `check_pid(pid, expected_cmdline_pattern)` SHALL return true only if the process exists AND its cmdline matches the expected pattern.

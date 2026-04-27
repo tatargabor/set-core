@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Scoped Change Detection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: set-loop accepts --change flag
 The `set-loop start` command SHALL accept an optional `--change <name>` CLI flag that specifies which OpenSpec change the loop is scoped to. The value SHALL be stored in `loop-state.json` under the `change` key.

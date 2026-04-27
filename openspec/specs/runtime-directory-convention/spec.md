@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Runtime Directory Convention Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - `~/.local/share/set-core/<project>/` as location for all shared runtime data (worktree-independent)
 - `<worktree>/.set/` as minimal location for per-agent ephemeral data only
 - Subdirectory layout: orchestration/, sentinel/, logs/, cache/, screenshots/
@@ -11,13 +15,15 @@
 - Backward-compatible bootstrap (set-project init auto-migration)
 - Worktree retention after merge (configurable, default: keep)
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the behavior of any runtime file (only paths change)
 - Removing the `.claude/` directory (it keeps config: settings, commands, skills, rules, hooks, agents)
 - Changing `set/orchestration/orchestration.yaml` location (config stays in `wt/`)
 - Changing `set/orchestration/specs/` location (specs are artifacts, not runtime)
 - Moving memory or metrics (already in `~/.local/share/set-core/`)
 - Moving daemon PID/socket from `/tmp/` (OS convention)
+
+## Requirements
 
 ### Requirement: Shared runtime directory
 The system SHALL use `~/.local/share/set-core/<project>/` (respecting `XDG_DATA_HOME`) as the location for all shared runtime data. Project name SHALL be resolved from git repo name, consistent with the memory system.

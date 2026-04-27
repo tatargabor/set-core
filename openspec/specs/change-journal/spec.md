@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Change Journal Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Centralized journaled fields list
 The system SHALL maintain a single `_JOURNALED_FIELDS` frozenset in `lib/set_orch/state.py` that enumerates every state.json field whose overwrites are recorded to the change journal.

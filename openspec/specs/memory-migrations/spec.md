@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Migrations Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Migration framework with auto-run
 `set-memory` SHALL include a versioned migration framework. Migrations are numbered functions (001, 002, ...) that transform memory data. Pending migrations SHALL run automatically on the first `set-memory` command that accesses storage, unless `--no-migrate` is passed.

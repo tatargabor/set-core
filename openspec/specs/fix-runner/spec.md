@@ -1,8 +1,10 @@
 # Fix Runner
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Spawn claude CLI as fix agent in set-core directory with opsx workflow
 - Max 1 fix at a time (hard limit)
 - Fix agent runs /opsx:ff → /opsx:apply → /opsx:verify → /opsx:archive
@@ -10,11 +12,13 @@
 - Deploy via `set-project init` to target environments
 - Kill/cancel support for running fixes
 
-## OUT OF SCOPE
+### Out of scope
 - Parallel fixes (always sequential)
 - Worktree-based fixes (always set-core dir)
 - Custom fix workflows (always opsx)
 - Rollback on failed deploy
+
+## Requirements
 
 ### Requirement: Fix agent spawning
 The fix runner SHALL spawn a claude CLI process in the set-core directory with a prompt that instructs the agent to run the full opsx workflow for the issue's change name.

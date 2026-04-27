@@ -1,15 +1,21 @@
-## ADDED Requirements
+# Plugin Rule Deploy Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Plugin controls which framework rules get deployed to consumer projects
 - Framework rules stored in plugin package under `framework-rules/` directory
 - Deploy mechanism applies `set-` prefix to framework rule filenames
 - Re-running `set-project init` updates framework rules from plugin
 
-## OUT OF SCOPE
+### Out of scope
 - Creating new project type plugins
 - Changing the entry_points plugin discovery mechanism
 - Template rule deployment changes (rules/ path mapping already works)
+
+## Requirements
 
 ### Requirement: Plugin package contains framework rules
 The plugin package SHALL store framework rules under `templates/<template-id>/framework-rules/<subdir>/` relative to the plugin's package directory. The subdirectory name (e.g., `web/`) determines the target subdirectory under `.claude/rules/` in the consumer project.

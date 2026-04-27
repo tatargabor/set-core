@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Error Recovery Recall Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: PostToolUseFailure hook for error-based recall
 A new hook script `set-hook-memory-posttool` SHALL run on `PostToolUseFailure` events matching the `Bash` tool. It SHALL parse the error text and recall memories that describe past fixes for similar errors.

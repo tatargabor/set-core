@@ -1,14 +1,18 @@
 # Merge Branch Resolution
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Fixing set-merge --ff-only branch name resolution in worktree context
 - Ensuring the source branch ref is accessible from the main repo before merge
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the overall merge strategy (integrate-then-verify-then-ff)
 - Adding remote push/fetch for worktree branches
+
+## Requirements
 
 ### Requirement: FF-only merge resolves worktree branch correctly
 The `set-merge` script SHALL ensure the source branch (e.g., `change/subscriptions`) is resolvable from the main repo before attempting `git merge --ff-only`. Since worktree branches are shared across the main repo and its worktrees, the branch ref should already exist — but the script MUST verify this and provide a clear error if not.

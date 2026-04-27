@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Proactive Apply Rules Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Dispatcher injects relevant rules into agent context
 The dispatcher SHALL scan task descriptions for keyword patterns and inject matching rule file contents from `.claude/rules/` into the agent's scope enrichment at dispatch time. Rule injection SHALL happen before the agent starts implementation, not reactively during review retries.

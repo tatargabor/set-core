@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Digest Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python digest orchestration
 The system SHALL provide a Python implementation of the full spec digestion pipeline in `lib/set_orch/digest.py`, callable via `set-orch-core digest run`. The implementation SHALL replicate all behavior of `cmd_digest()` in `digest.sh`.

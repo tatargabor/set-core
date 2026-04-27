@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Review Severity Calibration Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Explicit severity rubric in review prompt
 The review template at `lib/set_orch/templates.py::render_review_prompt` SHALL include an explicit severity rubric that defines what qualifies as CRITICAL, HIGH, MEDIUM, and LOW — with concrete examples for each level. Currently the template asks the reviewer to "classify severity" without telling it what the tiers mean, so Opus defaults to an aggressive calibration where UI polish, design-system violations, and stylistic issues all land as CRITICAL.

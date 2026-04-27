@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Feature Worker Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: FeatureWorker background thread
 A `FeatureWorker(QThread)` SHALL poll per-project feature status (memory and openspec) in a background thread. The poll interval SHALL be 15 seconds (configurable). Results SHALL be stored in a dict keyed by project name and emitted via a `features_updated` signal.

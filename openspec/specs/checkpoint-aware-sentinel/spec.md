@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Checkpoint Aware Sentinel Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: sentinel-skips-stuck-detection-during-checkpoint
 The sentinel's `check_orchestrator_liveness()` must not report the orchestrator as stuck when the orchestration state is `checkpoint`, but must enforce a maximum checkpoint wait duration.

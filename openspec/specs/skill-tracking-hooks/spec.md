@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Skill Tracking Hooks Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Stop hook refreshes skill timestamp
 The system SHALL provide a Claude Code `Stop` hook script (`bin/set-hook-stop`) that refreshes the `.set-core/current_skill` timestamp after every agent response.

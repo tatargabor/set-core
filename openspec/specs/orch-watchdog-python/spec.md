@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orch Watchdog Python Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Python watchdog check pipeline
 The system SHALL provide `watchdog_check()` in `lib/set_orch/watchdog.py` that replicates the full bash watchdog pipeline: state init, activity detection, action hash computation, stuck/spinning detection, and escalation.

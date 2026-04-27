@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Modular Source Structure Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Editor library extraction
 The system SHALL extract all editor-related functions from `bin/set-common.sh` into `lib/editor.sh`. Scripts that use editor functions (set-config, set-work, set-new, set-focus) SHALL source `lib/editor.sh` explicitly. `set-common.sh` SHALL NOT contain editor functions after extraction.

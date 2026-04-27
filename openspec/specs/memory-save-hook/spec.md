@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Save Hook Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Unconditional Code Map Generation
 The code-map safety net in `set-hook-memory-save` SHALL fire for every new commit regardless of whether design.md extraction already ran for that change name. The code-map block MUST NOT be gated behind the design-marker `continue` guard.

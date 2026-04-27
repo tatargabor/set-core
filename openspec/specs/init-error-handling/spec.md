@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Init Error Handling Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: MCP registration errors are reported
 When `claude mcp add` fails during `_register_mcp_server`, the function SHALL print a warning message containing the target path and the error output from the command. The function SHALL NOT print a success message on failure.

@@ -1,18 +1,22 @@
 # Spec: process-manager
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - API endpoint to discover all processes related to a project (sentinel, orchestrator, ralph loops, claude agents)
 - Process tree visualization on Settings page
 - Stop individual process or stop all in correct order
 - Process info: PID, uptime, CPU%, memory, command
 
-## OUT OF SCOPE
+### Out of scope
 - Starting processes from this UI (sentinel start is on Sentinel page)
 - Process log viewing (logs are on other pages)
 - Auto-restart or watchdog functionality
 - Cross-project process management
+
+## Requirements
 
 ### Requirement: Process discovery API
 

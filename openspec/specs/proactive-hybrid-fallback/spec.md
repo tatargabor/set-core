@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Proactive Hybrid Fallback Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Hybrid recall fallback when proactive returns insufficient results
 The `set-memory proactive` command SHALL fall back to `recall --mode hybrid` when `proactive_context()` returns fewer than `min(limit, 2)` results with relevance_score >= 0.4. Hybrid results SHALL be appended after proactive results, deduplicated by content prefix (first 50 chars), and assigned a synthetic relevance_score of 0.35.

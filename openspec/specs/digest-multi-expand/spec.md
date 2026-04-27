@@ -1,16 +1,20 @@
 # Spec: digest-multi-expand
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Multi-select expansion in OverviewPanel and RequirementsPanel
 - Expand All / Collapse All buttons in both panels
 - Preserving existing click-to-toggle behavior per row
 
-## OUT OF SCOPE
+### Out of scope
 - Changes to DependencyTree or GroupsView (already uses Set<string>)
 - Persisting expansion state across tab switches or page reloads
 - Keyboard navigation for expand/collapse
+
+## Requirements
 
 ### Requirement: Multi-select expansion
 

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Gate Detail Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Gate output expandable detail
 When a user clicks a gate badge (T/B/R/S) or the Gates cell in the ChangeTable, the row expands inline to show full gate output text.

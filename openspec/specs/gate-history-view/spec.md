@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Gate History View Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Bottom-panel Session tab rename
 The LogPanel SHALL display the bottom-panel session log tab with the label "Session" instead of "Task".

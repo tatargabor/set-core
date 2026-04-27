@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Merge Conflict Resolution Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Post-merge dependency install
 After a successful merge, the orchestrator SHALL check whether `package.json` was modified in the merged diff OR whether a lock file was in the conflict set. If either condition is true, it SHALL run the project's package manager install command (detected via `profile.post_merge_install()` with legacy fallback). The install runs synchronously before the next merge or verify gate. Install failure SHALL be logged as a warning but SHALL NOT revert the merge.

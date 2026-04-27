@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Smoke Result Parsing Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Test output is parsed for structured results
 The verifier SHALL parse test runner output (from unit tests, E2E, and smoke commands) to extract structured pass/fail counts using framework-specific regex patterns. Parsed results SHALL be stored in change state alongside raw output.

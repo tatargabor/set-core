@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Coverage Tracking Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Planner populates coverage mapping
 The planner SHALL include `spec_files[]` and `requirements[]` arrays in each change entry of `orchestration-plan.json`. After plan generation, the system SHALL write `coverage.json` mapping every requirement to its assigned change.

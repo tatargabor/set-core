@@ -1,19 +1,23 @@
 # Spec: Orphan Cleanup
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Detecting and cleaning orphaned worktrees (exist on disk but not in state)
 - Fixing stale ralph_pid references (PID dead but still in state)
 - Fixing stuck current_step values (merged but step != done)
 - Running automatically at orchestrator startup (before poll loop)
 - Conservative approach: never kill processes, never touch dirty worktrees
 
-## OUT OF SCOPE
+### Out of scope
 - Killing orphaned claude processes (too dangerous — could be user sessions)
 - Modifying change status (only step, pid, worktree cleanup)
 - Real-time cleanup during the poll loop (only on startup)
 - Cleaning up worktrees from OTHER projects
+
+## Requirements
 
 ### Requirement: Clean orphaned worktrees on startup
 

@@ -1,6 +1,10 @@
-## ADDED Requirements
+# Merge File Type Strategy Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - File-type-aware merge strategy configuration in project-knowledge.yaml
 - Strategy types: additive (entity-counted), llm_with_conservation (default)
 - Entity counting for "additive" strategy files relative to merge-base
@@ -9,12 +13,14 @@
 - Profile system integration (profiles supply default strategies via line-delimited file)
 - Agent rule for DB type safety (prohibit `any` on DB client parameters)
 
-## OUT OF SCOPE
+### Out of scope
 - Automatic conflict resolution beyond existing LLM mechanism
 - Schema-aware parsing (AST-level analysis of Prisma/TypeScript files)
 - Per-project custom merge scripts (only declarative config)
 - Modifying the JSON deep-merge or lockfile regeneration (already working, runs before LLM)
 - `json_deep_merge` and `regenerate` strategy types (already handled by existing pre-LLM pipeline)
+
+## Requirements
 
 ### Requirement: Merge strategy configuration
 Projects SHALL be able to declare file-type merge strategies in `project-knowledge.yaml` under a `merge_strategies` key. Each strategy maps file patterns to merge behavior. `set-merge` SHALL parse strategy config using `python3 -c` (YAML parsing is not feasible in pure bash; the existing codebase already depends on Python).

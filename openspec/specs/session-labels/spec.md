@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Session Labels Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Meaningful session tab labels
 Session tabs show descriptive labels derived from the session's task content instead of generic `#N HH:MM`.

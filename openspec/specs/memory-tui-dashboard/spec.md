@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Memory Tui Dashboard Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Unified TUI command
 The `set-memory tui` command SHALL display a unified dashboard combining memory DB statistics, hook overhead metrics, and usage signals.

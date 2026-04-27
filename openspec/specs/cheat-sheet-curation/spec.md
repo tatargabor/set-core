@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Cheat Sheet Curation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Auto-promote error fixes to cheat sheet
 The Stop hook's haiku extraction step SHALL evaluate extracted error→fix memories for cheat-sheet worthiness and add the `cheat-sheet` tag to entries that describe reusable operational patterns.

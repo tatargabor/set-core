@@ -1,17 +1,23 @@
-## ADDED Requirements
+# Learnings Web Panel Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - LearningsPanel component as a new Dashboard tab
 - Expandable sections for reflections, review findings, gate performance, sentinel findings
 - Per-change timeline detail view navigable from Changes tab
 - Reflection preview in Worktrees page
 - Drill-down from summary to detail for all sections
 
-## OUT OF SCOPE
+### Out of scope
 - Real-time WebSocket updates for learnings (uses existing REST polling pattern)
 - Learnings filtering by date range
 - Learnings comparison across runs
 - Rule suggestion UI (future capability)
+
+## Requirements
 
 ### Requirement: Learnings tab in dashboard
 The web dashboard SHALL include a "Learnings" tab that displays all orchestration learning data in a unified view with expandable sections.

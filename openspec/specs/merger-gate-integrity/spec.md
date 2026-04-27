@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Merger Gate Integrity Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Integration e2e smoke phase blocks the merge by default
 The merger's two-phase integration e2e gate SHALL treat a smoke-phase failure as blocking when the directive `integration_smoke_blocking` is `True` (the default). A blocking smoke failure SHALL set the change's status to `"integration-e2e-failed"` and trigger a redispatch via the same path that own-test-phase failures use, without running Phase 2 (own tests).

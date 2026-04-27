@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Orchestration Watchdog Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Watchdog uses identity-verified PID checks
 The watchdog SHALL use `set-orch-core process check-pid` with cmdline pattern verification for all process liveness decisions, replacing raw `kill -0` calls. This prevents false-positive "PID alive" results from recycled PIDs.

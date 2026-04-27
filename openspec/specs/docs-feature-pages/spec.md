@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Docs Feature Pages Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Getting Started page
 `docs/getting-started.md` SHALL contain detailed installation instructions, prerequisites with version checks, GUI dependency setup, platform-specific notes (Qt/conda on Linux), project registration walkthrough, and a first-run tutorial that covers creating a worktree, running a Ralph loop, and starting the sentinel.

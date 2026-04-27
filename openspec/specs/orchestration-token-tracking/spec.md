@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Orchestration Token Tracking Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### R1: Token Tracking Resilience
 - `get_current_tokens()` in `lib/loop/state.sh` SHALL return the token count from `set-usage` when available

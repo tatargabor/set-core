@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Dispatch Input Context Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Dispatch context written to input.md
 When dispatching a change, the orchestrator SHALL write all dispatcher-generated context to `openspec/changes/<name>/input.md` in the worktree, separate from `proposal.md`.

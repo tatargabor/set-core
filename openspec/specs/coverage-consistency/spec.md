@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Coverage Consistency Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: reconcile-coverage-on-completion
 Before any terminal decision in `_check_completion()`, the engine must reconcile coverage.json with actual change statuses in the state file. This runs before all three exit paths (dep_blocked, total_failure, normal done/replan).

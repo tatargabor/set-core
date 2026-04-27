@@ -1,16 +1,22 @@
-## ADDED Requirements
+# Dashboard Unified Logs Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Gate outputs (Build, Test, E2E, Review, Smoke) as sub-tabs in the Log tab right pane
 - Merge/archive event log as a sub-tab
 - Remove standalone Gates tab from the detail panel
 - Dynamic sub-tabs: only gates with results shown
 
-## OUT OF SCOPE
+### Out of scope
 - Changing the Timeline tab
 - Changing the left pane orchestration log
 - New API endpoints
 - Changing gate data storage or state format
+
+## Requirements
 
 ### Requirement: Gate outputs as Log sub-tabs
 The Log tab right pane SHALL display gate outputs as sub-tabs alongside the existing Task session tabs. Each gate with a result (Build, Test, E2E, Review, Smoke) SHALL appear as its own sub-tab showing status badge, timing, and full output text.

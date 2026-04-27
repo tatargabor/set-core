@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Audit Skill Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Skill invocation
 The system SHALL provide a `/set:audit` skill invocable from Claude Code.

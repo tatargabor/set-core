@@ -1,8 +1,10 @@
 # Issue Policy Engine
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+Decide how each detected anomaly enters the issue lifecycle: whether it registers as an issue at all, what severity and timeout apply, whether auto-fix is eligible, and which conditions force manual approval. Policy is configured via YAML with mode-based overrides (e2e, production, development); evaluation is deterministic and read-only at runtime.
+
+### In scope
 - Policy configuration via YAML (manager.yaml or orchestration.yaml)
 - Mode-based policy overrides (e2e, production, development)
 - Auto-fix eligibility evaluation (confidence, scope, tags)
@@ -11,11 +13,11 @@
 - Registration filtering (which detection events become issues)
 - Mute pattern matching with TTL
 
-## OUT OF SCOPE
+### Out of scope
 - Runtime policy editing via API (read-only from config)
 - Machine learning-based policy adaptation
 - Per-project custom policies (mode-level is the granularity)
-
+## Requirements
 ### Requirement: Policy configuration loading
 The policy engine SHALL load configuration from YAML under the `issues:` key. Configuration SHALL include timeout_by_severity, modes overrides, auto_fix_conditions, always_manual rules, investigation settings, retry settings, and concurrency limits.
 
@@ -59,3 +61,41 @@ The policy engine SHALL filter which detection events become issues. Sentinel fi
 #### Scenario: Muted error filtered
 - **WHEN** a new error matches a mute pattern
 - **THEN** the mute pattern's match_count is incremented and no issue is registered
+
+### Requirement: Config schema includes investigation.max_turns
+
+`IssuesPolicyConfig.investigation` (dataclass `InvestigationConfig`) SHALL include a `max_turns: int` field with default value 40.
+
+#### Scenario: Default value
+- **WHEN** `InvestigationConfig()` is constructed with no arguments
+- **THEN** the `max_turns` field SHALL equal 40
+
+#### Scenario: Field is loaded from YAML via from_dict
+- **WHEN** `IssuesPolicyConfig.from_dict({"investigation": {"max_turns": 30}})` is called
+- **THEN** the resulting config's `investigation.max_turns` SHALL equal 30
+
+### Requirement: Config schema includes diagnosed_stall_hours
+
+`IssuesPolicyConfig` SHALL include a top-level `diagnosed_stall_hours: int` field with default 2.
+
+#### Scenario: Default value
+- **WHEN** `IssuesPolicyConfig()` is constructed with no arguments
+- **THEN** the `diagnosed_stall_hours` field SHALL equal 2
+
+#### Scenario: Field is loaded from YAML via from_dict
+- **WHEN** `IssuesPolicyConfig.from_dict({"diagnosed_stall_hours": 1})` is called
+- **THEN** the resulting config's `diagnosed_stall_hours` SHALL equal 1
+
+### Requirement: auto_fix_conditions supports low_confidence_after_hours
+
+`IssuesPolicyConfig.auto_fix_conditions` SHALL recognise an optional `low_confidence_after_hours` key. When set to a positive integer N, the policy engine SHALL permit auto-fix of DIAGNOSED issues whose `diagnosed_at` is older than N hours AND whose diagnosis confidence is ≥ 0.4. When absent or None, behavior is unchanged (the escape does not fire).
+
+#### Scenario: Default omits the escape
+- **WHEN** `IssuesPolicyConfig()` is constructed with defaults
+- **THEN** `auto_fix_conditions` SHALL contain the existing keys (`min_confidence`, `max_scope`, `blocked_tags`)
+- **AND** SHALL NOT contain a non-None `low_confidence_after_hours` value (the key may be absent or None)
+
+#### Scenario: Explicit opt-in
+- **WHEN** `from_dict` receives `auto_fix_conditions: {low_confidence_after_hours: 1}`
+- **THEN** the config SHALL store that value and the policy engine SHALL honor it in subsequent decisions
+

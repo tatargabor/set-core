@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# Null Profile Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: NullProfile has no project-type-specific knowledge
 `NullProfile` SHALL return empty values for all methods. It SHALL NOT contain references to specific project types, rule file paths, or domain-specific keywords.

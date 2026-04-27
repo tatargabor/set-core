@@ -1,16 +1,22 @@
-## ADDED Requirements
+# Context Window Metrics Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Capturing context token usage (start and end) per change session from `loop-state.json`
 - Storing `context_tokens_start` and `context_tokens_end` in orchestration state per change
 - Displaying context metrics in the set-web change list
 - Hardcoded 200K context window size constant for Claude 4.x Sonnet/Opus
 
-## OUT OF SCOPE
+### Out of scope
 - Dynamic context window size detection per model
 - Per-iteration context sampling (start and end only)
 - Context metrics in TUI (set-web only for now)
 - Historical context trend charts
+
+## Requirements
 
 ### Requirement: Context tokens captured at first iteration completion
 The monitor SHALL read `context_tokens_start` from `loop-state.json` after the first iteration completes, computed as `cache_create_tokens` from iteration 1.

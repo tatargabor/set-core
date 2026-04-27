@@ -1,13 +1,19 @@
-## ADDED Requirements
+# Discord Smoke Screenshots Specification
 
-## IN SCOPE
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Post smoke test failure screenshots to the run's Discord thread
 - Spoiler-tag images so they don't clutter the thread
 - Skip if no screenshots exist or Discord not connected
 
-## OUT OF SCOPE
+### Out of scope
 - Posting screenshots for successful smoke tests
 - Screenshot diffing or visual regression
+
+## Requirements
 
 ### Requirement: Smoke failure screenshots posted to thread
 When a smoke test fails and screenshots were collected, the system SHALL post the screenshots to the active run's Discord thread as spoiler-tagged file attachments.

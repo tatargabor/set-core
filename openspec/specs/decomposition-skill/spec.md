@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Decomposition Skill Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Decomposition skill for planning agent
 

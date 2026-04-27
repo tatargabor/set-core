@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Subagent Context Injection Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: SubagentStart hook injects memory context
 The system SHALL register a SubagentStart hook (matcher: `""`) that calls `set-hook-memory SubagentStart` to inject relevant project memory context into spawned subagents.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Opensource Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Plugin Architecture
 The system SHALL support optional plugins for extensibility.

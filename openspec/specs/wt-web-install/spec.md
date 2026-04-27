@@ -1,18 +1,22 @@
 # Spec: set-web-install
 
-## ADDED Requirements
+## Purpose
 
-## IN SCOPE
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+### In scope
 - Interactive systemd service installation for set-web
 - Optional Tailscale HTTPS remote access setup
 - Service uninstallation
 - Health check after install
 - Port reference bugfix in setup-tailscale.sh
 
-## OUT OF SCOPE
+### Out of scope
 - Tailscale installation (handled by existing setup-tailscale.sh)
 - Web frontend build (assumes `web/dist/` already exists)
 - Custom reverse proxy configurations (nginx, caddy)
+
+## Requirements
 
 ### Requirement: Service installation
 

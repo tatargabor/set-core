@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Restart State Reconciliation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Reconcile per-change status against live processes on resume
 The orchestrator SHALL check each "running" or "verifying" change for process liveness during the resume path, and reset changes with dead agent processes to "stopped" so they are immediately eligible for re-dispatch.

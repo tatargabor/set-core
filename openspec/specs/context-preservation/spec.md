@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Context Preservation Specification
+
+## Purpose
+
+TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
+
+## Requirements
 
 ### Requirement: Compact instructions in CLAUDE.md
 CLAUDE.md SHALL contain a "Compact Instructions" section that tells Claude what to preserve when context is compacted. This section SHALL list: current change name and task progress, list of modified files, active worktree path, and test commands with their last results.
