@@ -51,15 +51,21 @@ COMMANDS = [
     # ── Project health ──
     ("set-audit-scan", "set-audit scan 2>/dev/null || echo 'No project context'", "Project health audit"),
 
-    # ── Usage & reporting ──
+    # ── Usage & cost ──
     ("set-usage", "set-usage 2>/dev/null || echo 'No usage data'", "Token usage statistics"),
+
+    # ── Forensics (post-run debugging) ──
+    ("set-run-logs-help", "set-run-logs --help 2>/dev/null || echo 'set-run-logs not available'", "set-run-logs forensic CLI usage"),
+
+    # ── Design pipeline (v0.app) ──
+    ("set-design-import-help", "set-design-import --help 2>/dev/null || echo 'set-design-import not available'", "v0.app import CLI usage"),
+    ("set-design-hygiene-help", "set-design-hygiene --help 2>/dev/null || echo 'set-design-hygiene not available'", "Design source hygiene scan CLI"),
 
     # ── Sentinel findings ──
     ("set-sentinel-finding-list", "set-sentinel-finding list --open-only 2>/dev/null || echo 'No findings'", "Sentinel findings"),
 
-    # ── Spec & design showcase ──
+    # ── Spec showcase ──
     ("spec-preview", "head -35 tests/e2e/scaffolds/minishop/docs/v1-minishop.md", "Spec file preview"),
-    ("design-snapshot-preview", "head -40 tests/e2e/scaffolds/minishop/docs/design-snapshot.md", "Design snapshot preview"),
 ]
 
 # ── HTML template (dark terminal theme) ──
