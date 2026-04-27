@@ -3,9 +3,7 @@
 ## Purpose
 
 TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
-
 ## Requirements
-
 ### Requirement: Soniox API key endpoint
 The server SHALL expose `GET /api/soniox-key` which returns the Soniox API key from the `SONIOX_API_KEY` environment variable. If the variable is not set, the endpoint SHALL return HTTP 404.
 
@@ -18,23 +16,47 @@ The server SHALL expose `GET /api/soniox-key` which returns the Soniox API key f
 - **THEN** the response is HTTP 404 with `{ "error": "Soniox API key not configured" }`
 
 ### Requirement: Chat WebSocket endpoint
-The server SHALL expose `WS /ws/{project}/chat` that manages an interactive agent subprocess. On first connection, it SHALL spawn a `claude --output-format stream-json` process in the project directory. Messages from the browser SHALL be written to the subprocess stdin. Subprocess stdout SHALL be parsed and forwarded to the browser as JSON events.
+The server SHALL expose `WS /ws/{project}/chat` that manages an interactive agent subprocess. Messages from the browser SHALL be written to the subprocess stdin. Subprocess stdout SHALL be parsed and forwarded to the browser as JSON events.
 
-#### Scenario: Client connects and sends message
-- **WHEN** a WebSocket client connects to `/ws/{project}/chat` and sends `{ "type": "message", "content": "list worktrees" }`
-- **THEN** the server spawns a claude subprocess (if not already running), writes the message to stdin, and streams response events back to the client
+**The server MUST NOT spawn the agent subprocess automatically on WebSocket connect or on `new_session`.** A subprocess SHALL only be spawned in response to an explicit client message: either a user `{type: "message", content: ...}` or a new `{type: "start"}` message (defined below). On connect, the server SHALL replay history and current status only.
 
-#### Scenario: Subprocess already running
-- **WHEN** a client connects and a claude subprocess for this project is already running (from a previous connection)
-- **THEN** the existing subprocess is reused — no new process is spawned
+#### Scenario: Client connects with empty history
+- **WHEN** a WebSocket client connects to `/ws/{project}/chat` and the session has no prior messages
+- **THEN** the server sends `{"type": "history_replay", "messages": [], "status": "idle"}`
+- **AND** the server does NOT spawn a claude subprocess
+- **AND** no greeting is generated until the client sends a `start` or `message`
+
+#### Scenario: Client connects with existing history
+- **WHEN** a WebSocket client connects and the session already has messages
+- **THEN** the server sends `{"type": "history_replay", "messages": [...], "status": "idle"}`
+- **AND** the server does NOT spawn a claude subprocess
+
+#### Scenario: Client sends start
+- **WHEN** the client sends `{"type": "start"}` and `session.status == "idle"`
+- **THEN** the server spawns a claude subprocess with an English greeting prompt ("Say hi and give a short orchestration status summary.")
+- **AND** the agent response is streamed back via normal `assistant_text` / `tool_use` / `assistant_done` events
+
+#### Scenario: Client sends start while already running
+- **WHEN** the client sends `{"type": "start"}` and `session.status == "running"`
+- **THEN** the server sends `{"type": "error", "message": "Already processing a message, please wait"}` and does not spawn another subprocess
+
+#### Scenario: Client sends message
+- **WHEN** a WebSocket client sends `{"type": "message", "content": "list worktrees"}`
+- **THEN** the server spawns a claude subprocess, writes the message to stdin, and streams response events back to the client
 
 #### Scenario: Client sends stop
-- **WHEN** the client sends `{ "type": "stop" }`
-- **THEN** the server sends SIGTERM to the claude subprocess, waits for exit, and sends `{ "type": "status", "status": "idle" }` to the client
+- **WHEN** the client sends `{"type": "stop"}`
+- **THEN** the server sends SIGTERM to the claude subprocess, waits for exit, and sends `{"type": "status", "status": "idle"}` to the client
+
+#### Scenario: Client sends new_session
+- **WHEN** the client sends `{"type": "new_session"}`
+- **THEN** the server stops any running subprocess, clears `session.messages` and `session.session_id`, and broadcasts `{"type": "session_cleared"}`
+- **AND** the server does NOT automatically spawn a greeting subprocess after clearing
+- **AND** the client must send a fresh `{"type": "start"}` or `{"type": "message"}` to begin a new conversation
 
 #### Scenario: Subprocess exits on its own
 - **WHEN** the claude subprocess exits (context exhaustion, error)
-- **THEN** the server sends `{ "type": "error", "message": "Agent session ended" }` and closes the WebSocket connection with a descriptive close reason
+- **THEN** the server sends `{"type": "error", "message": "Agent session ended"}` and closes the WebSocket connection with a descriptive close reason
 
 ### Requirement: Agent subprocess lifecycle management
 The server SHALL maintain at most one agent subprocess per project. On server shutdown, all agent subprocesses SHALL be terminated via SIGTERM with a 5-second grace period before SIGKILL. Subprocess stderr SHALL be logged to the server log.
@@ -76,3 +98,4 @@ The server SHALL expose `GET /api/{project}/coverage-report` which reads and ret
 #### Scenario: Invalid project
 - **WHEN** the project name cannot be resolved
 - **THEN** the endpoint returns HTTP 404
+
