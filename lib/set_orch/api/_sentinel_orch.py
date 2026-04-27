@@ -175,8 +175,10 @@ async def completion_action(project: str, body: dict):
     # accept transitions either to the user-confirmed terminal "accepted".
     transitioned = False
     if action == "accept":
-        from ..paths import LineagePaths
-        state_file = Path(LineagePaths(str(pp)).state_file)
+        # Use _state_path so legacy project-local writers (orchestration-state.json
+        # at the project root or under <orch_rel>/) are also found — matches the
+        # GET /state and other read endpoints.
+        state_file = _state_path(pp)
         if state_file.exists():
             import fcntl
             try:
