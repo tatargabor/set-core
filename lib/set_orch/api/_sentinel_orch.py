@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +13,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .helpers import _resolve_project, _sentinel_dir, _state_path
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -167,7 +170,10 @@ async def completion_action(project: str, body: dict):
     with open(inbox_file, "a") as f:
         f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
-    # Accept action: transition state to 'accepted' so the UI stops showing the banner
+    # Accept action: transition state to 'accepted' so the UI stops showing the banner.
+    # Both "done" and the (currently unused) "awaiting_confirmation" trigger the banner —
+    # accept transitions either to the user-confirmed terminal "accepted".
+    transitioned = False
     if action == "accept":
         from ..paths import LineagePaths
         state_file = Path(LineagePaths(str(pp)).state_file)
@@ -177,15 +183,36 @@ async def completion_action(project: str, body: dict):
                 with open(state_file, "r+") as sf:
                     fcntl.flock(sf, fcntl.LOCK_EX)
                     state = json.load(sf)
-                    if state.get("status") == "done":
+                    current = state.get("status")
+                    if current in {"done", "awaiting_confirmation"}:
                         state["status"] = "accepted"
                         sf.seek(0)
                         sf.truncate()
                         json.dump(state, sf, ensure_ascii=False, indent=2)
+                        transitioned = True
+                    elif current == "accepted":
+                        # Already accepted — idempotent no-op (operator may have double-clicked).
+                        transitioned = True
+                    else:
+                        logger.warning(
+                            "Completion accept for project=%s skipped: state.status=%r is not a banner-trigger status",
+                            project,
+                            current,
+                        )
                     fcntl.flock(sf, fcntl.LOCK_UN)
-            except Exception:
-                pass  # non-critical — banner just stays visible
+            except Exception as exc:
+                logger.exception(
+                    "Failed to transition state.status to 'accepted' for project=%s: %s",
+                    project,
+                    exc,
+                )
+        else:
+            logger.warning(
+                "Completion accept for project=%s skipped: state file missing at %s",
+                project,
+                state_file,
+            )
 
-    return {"status": "sent", "action": action}
+    return {"status": "sent", "action": action, "transitioned": transitioned}
 
 

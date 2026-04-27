@@ -780,10 +780,26 @@ def update_state_field(
 ) -> None:
     """Update a top-level field in state (locked + validated).
 
+    Special-case: state.status == "accepted" is a user-confirmed terminal
+    state (set by the dashboard's "Accept & Stop" button). Engine paths that
+    re-derive status as "done" or "stopped" SHALL NOT overwrite it; otherwise
+    the completion banner would re-appear after the operator dismissed it.
+
     Migrated from: state.sh update_state_field() L73-77
     """
     with locked_state(path) as state:
         old_value = getattr(state, field_name, state.extras.get(field_name))
+        if (
+            field_name == "status"
+            and old_value == "accepted"
+            and value in {"done", "stopped"}
+        ):
+            logger.debug(
+                "State update skipped: status=%r (user-confirmed terminal); refused to overwrite with %r",
+                old_value,
+                value,
+            )
+            return
         if field_name in {f.name for f in fields(OrchestratorState) if f.name != "extras"}:
             setattr(state, field_name, value)
         else:
@@ -1327,11 +1343,14 @@ def reconstruct_state_from_events(
             change.status = "stalled"
 
     # 4. Derive overall orchestration status
+    # Preserve user-confirmed "accepted" terminal — operator dismissed the
+    # completion banner and we must not flip back to "done" on reconstruction.
     all_done = all(
         c.status in ("done", "merged", "completed", "archived", "skipped")
         for c in state.changes
     )
-    state.status = "done" if all_done else "stopped"
+    if state.status != "accepted":
+        state.status = "done" if all_done else "stopped"
 
     # 5. Save reconstructed state
     save_state(state, state_path)
