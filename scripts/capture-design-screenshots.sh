@@ -94,6 +94,9 @@ SERVER_PID=$!
 
 cleanup() {
     if [[ -n "${SERVER_PID:-}" ]]; then
+        # pnpm spawns next-server as a child; killing pnpm alone leaves the
+        # listener orphaned holding the port. Kill descendants first.
+        pkill -P "$SERVER_PID" 2>/dev/null || true
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi

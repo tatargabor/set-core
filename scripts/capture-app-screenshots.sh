@@ -182,6 +182,10 @@ echo "Capturing screenshots..."
 
 echo ""
 echo "Stopping dev server..."
+# pnpm spawns next-server as a child; killing pnpm alone leaves the listener
+# orphaned holding port 3100, which then fails the next capture run with
+# "address already in use".
+pkill -P "$SERVER_PID" 2>/dev/null || true
 kill "$SERVER_PID" 2>/dev/null || true
 wait "$SERVER_PID" 2>/dev/null || true
 

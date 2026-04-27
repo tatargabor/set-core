@@ -39,12 +39,12 @@ Built with set-core, using set-core. This project was developed using its own or
   <img src="docs/images/auto/web/agent-session-scroll.gif" width="90%" alt="Claude agent session — debugging, testing, and fixing code autonomously" />
 </p>
 
-**Input:** A markdown spec + design source (v0.app export, Figma, or shadcn fixtures)
+**Input:** A markdown spec + a v0.app design export (or any Next.js-shaped design source)
 
 <p align="center">
   <img src="docs/images/auto/cli/spec-preview.png" width="48%" alt="Markdown spec — the input" />
   &nbsp;
-  <img src="docs/images/auto/figma/storefront-design.png" width="48%" alt="Figma Make design — page structure and navigation" />
+  <img src="docs/images/auto/design/home.png" width="48%" alt="v0.app design source — the home page as it ships in the export, before any agent has touched the project" />
 </p>
 
 **Orchestration:** Phased execution, dependency DAG, quality gates on every change
@@ -62,14 +62,14 @@ Built with set-core, using set-core. This project was developed using its own or
 </p>
 <p align="center"><em>Activity timeline (top) — every change as a row, every gate and LLM call placed in time. Drilldown (below) — one implementing span expanded into per-tool, per-LLM-call, per-sub-agent breakdown with the longest operations called out.</em></p>
 
-**Output:** Running application — built entirely from the spec
+**Output:** Running application — built entirely from the spec, faithful to the design source
 
 <p align="center">
-  <img src="docs/images/auto/app/products.png" width="48%" alt="MiniShop storefront" />
+  <img src="docs/images/auto/design/blog.png" width="48%" alt="v0 design source — blog page as it ships in the v0.app export" />
   &nbsp;
-  <img src="docs/images/auto/figma/product-detail-design.png" width="48%" alt="Product detail — Figma design realized" />
+  <img src="docs/images/auto/app/blog.png" width="48%" alt="Built result — same blog page after the agent implemented data binding, routing, and integration tests, blocked by the design-fidelity gate from drifting from the source" />
 </p>
-<p align="center"><em>Spec + Figma → parallel agents → quality gates → working app. Zero intervention.</em></p>
+<p align="center"><em>Spec + v0 design → parallel agents → quality gates (including design-fidelity) → working app. Zero intervention.</em></p>
 
 ---
 
