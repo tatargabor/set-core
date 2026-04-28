@@ -211,9 +211,9 @@ ATTRS
     source "$SCRIPT_DIR/lib/deploy-shadcn.sh"
     deploy_shadcn_overlay "$SCAFFOLD_DIR" "$TEST_DIR"
 
-    # NOTE: Figma MCP registration removed — OAuth requires interactive auth
-    # which blocks `claude -p` (pipe mode) used by the orchestrator.
-    # Design data is available via static design-snapshot.md files.
+    # NOTE: No design assets in scaffold — design-system.md / design-brief.md
+    # / per-change design.md are produced by the orchestration design pipeline
+    # from a v0.app export when one is dropped into the project root.
 
     step "Orchestration config"
     # Overwrite template config.yaml with E2E-specific values
@@ -235,15 +235,6 @@ discord:
   channel_name: minishop
 YAML
 
-    # Extract Figma design URL from spec if present
-    local design_file_url=""
-    if [[ -f "docs/v1-minishop.md" ]]; then
-        design_file_url=$(grep -oP 'https://www\.figma\.com/(design|make)/[^\s)]+' docs/v1-minishop.md | head -1 || true)
-    fi
-    if [[ -n "$design_file_url" ]]; then
-        echo "design_file: \"$design_file_url\"" >> set/orchestration/config.yaml
-        success "Design file reference: $design_file_url"
-    fi
     success "Created set/orchestration/config.yaml"
 
     git add -A

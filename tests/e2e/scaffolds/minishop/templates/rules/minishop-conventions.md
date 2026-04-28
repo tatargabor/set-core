@@ -9,32 +9,38 @@ globs:
 
 ## Recommended Change Decomposition
 
-The minishop spec covers 7 functional areas. Ideal decomposition:
+The minishop spec covers 6 functional areas. Ideal decomposition:
 
-1. **foundation-setup** (Phase 1) — Prisma schema (Order.userId is REQUIRED, not optional), seed data, package.json deps, Playwright/Vitest config, globals.css, layout
-2. **auth-navigation** (Phase 1, after foundation) — NextAuth v5 Credentials + JWT, `/login` + `/register` (customer), `/admin` + `/admin/register` (admin), middleware for `/admin/*` + role gating (USER → 403 on admin), storefront Navbar with signed-in/signed-out variants, Orders link visibility rule
-3. **product-catalog** (Phase 2) — Product grid, detail page, variant selector, catalog E2E tests
-4. **shopping-cart** (Phase 2) — Cart session (httpOnly `session_id` cookie), add/remove/update, cart page, cart E2E tests. **Cart browsing is anonymous; checkout is login-gated (handled in checkout-orders, not here).**
-5. **checkout-orders** (Phase 3) — `placeOrder` server action asserts auth → creates Order with `userId`, clears cart. `/cart` "Place Order" button swaps to "Sign in to checkout" for anonymous users. Customer `/orders` + `/orders/[id]` with ownership check. On login, the existing `session_id` cookie is preserved so the anonymous cart lineage carries over.
-6. **admin-products** (Phase 3) — Admin CRUD for products/variants, DataTable, admin E2E tests
-7. **admin-orders** (Phase 4, after checkout-orders) — `/admin/orders` list (status filter, sorted by createdAt DESC), `/admin/orders/[id]` detail with customer block + session trace, AdminSidebar "Orders" entry active on descendant routes, Admin Dashboard "Total Orders" card links to /admin/orders
+1. **foundation-setup** (Phase 1) — Prisma schema (Order.userId is REQUIRED, shipping fields all required), seed data, package.json deps, Playwright/Vitest config, globals.css, root layout, `/api/health`. Generate Prisma client and run seed as part of this change.
+2. **auth-navigation** (Phase 1, after foundation) — NextAuth v5 Credentials + JWT, `/login` + `/register`, single-form auth shared by customers and admins (admin redirected to `/admin/orders` after login), middleware for `/admin/*` (returns 403 for USER role, NOT silent redirect), storefront header with signed-in/signed-out variants, Orders link visibility rule.
+3. **product-catalog** (Phase 2) — Product grid, detail page, JSON-attribute variant picker, catalog E2E tests. Products with empty `attributes: {}` show no picker.
+4. **shopping-cart** (Phase 2) — Cart session (httpOnly `session_id` cookie), add/remove/update server actions, cart page with line totals + grand total, cart E2E tests. **Cart browsing is anonymous; checkout is login-gated (handled in checkout-orders, not here).**
+5. **checkout-orders** (Phase 3) — `/checkout` shipping form (zod-validated), `placeOrder` server action asserts auth → creates Order with userId + shipping fields → snapshots variant label/product name/price → decrements stock → clears cart. `/orders/[id]/thanks` confirmation page. `/orders` + `/orders/[id]` with ownership check (404 if not yours). On login, the existing `session_id` cookie is preserved so the anonymous cart lineage carries over.
+6. **admin-orders** (Phase 4, after checkout-orders) — `/admin/orders` list sorted by `createdAt` DESC, `/admin/orders/[id]` read-only detail with customer info + shipping address. `/admin/products` read-only overview (Alert banner + product table with variant count, total stock, status badge — no actions, no forms). AdminSidebar layout with three nav items: Orders, Products, Sign Out. No mutations anywhere on the admin surface.
 
-Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE — login-gating lives in checkout, not cart. Keep admin-products and admin-orders SEPARATE — they share only the AdminSidebar (which auth-navigation owns). This prevents 100K+ token changes that are prone to integration failures.
+Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE — login-gating lives in checkout. The admin-orders change owns BOTH `/admin/orders*` and `/admin/products` — they're tiny, read-only, and share the AdminSidebar layout, so splitting them adds overhead without value.
+
+## Out-of-scope reminders
+
+The spec explicitly excludes Stripe / online payments (cash on delivery only), admin product CRUD, status mutations, search, filters, discounts, password reset, email verification, guest checkout. Do NOT scope-creep these in.
 
 ## Auth-flow contract
 
-- The anonymous `session_id` cookie is NEVER rotated on login — both customer login and register must preserve it so CartItem rows tied to `sessionId` remain visible after sign-in.
+- A single `/login` page handles both audiences. `/register` always creates a `USER` (no admin self-registration).
+- The anonymous `session_id` cookie is NEVER rotated on login — both login and register must preserve it so `CartItem` rows tied to `sessionId` remain visible after sign-in.
 - `placeOrder()` MUST start with `const session = await auth(); if (!session) return { error: "Please sign in to place an order" }` — do NOT create a guest Order with `userId = null` (the schema forbids it).
-- `/orders` and `/orders/[id]` server components MUST redirect to `/login?returnTo=<current>` when unauthenticated — not render an empty state.
-- `/admin/*` middleware MUST return 403 (not redirect to /admin) when a USER-role session hits admin routes — silent redirects hide privilege errors.
+- `/checkout`, `/orders`, `/orders/[id]`, `/orders/[id]/thanks` MUST redirect to `/login?returnTo=<current>` when unauthenticated — not render an empty state.
+- `/admin/*` middleware MUST return 403 (a real page with "Admin access required") when a USER-role session hits admin routes — silent redirects hide privilege errors.
+- After successful login with no `returnTo`, ADMIN role redirects to `/admin/orders`; USER role redirects to `/products`.
 
 ## Product Data
 
-- 6 seed products with variants (e.g., Mechanical Keyboard, Wireless Mouse, 4K Webcam)
-- 3 attribute types: Size, Color, Material — each with 2-4 values
-- Prisma schema: Product → ProductVariant → AttributeType → ProductAttribute → VariantAttributeValue
-- Product basePrice in cents (integer), variant price overrides optional
-- Stock tracked per variant, not per product
+- 5 seed products, 11 variants total. Some products have NO variants (`attributes: {}`) — the UI must not render an empty picker for those.
+- Variant attributes are stored as JSON on `ProductVariant.attributes` — there are NO normalized AttributeType / ProductAttribute / VariantAttributeValue tables.
+- Each variant has a human-readable `label` snapshot ("Black", "Red Switches"). Use `label` directly — do not derive from `attributes` keys.
+- `ProductVariant.price` is nullable; `null` means use `Product.basePrice`. Compute `effectivePrice = variant.price ?? product.basePrice`.
+- Stock tracked per variant. Catalog OOS badge only when ALL variants of the product are stock=0.
+- The `STAND-ROSE` variant is seeded with stock=0 to exercise the per-variant disabled-picker path.
 
 ## Currency & Formatting
 
@@ -52,22 +58,22 @@ Keep foundation and auth SEPARATE. Keep cart and checkout SEPARATE — login-gat
 ## UI Components
 
 - ALL UI components MUST use shadcn/ui: Button, Card, Input, Label, Table, Dialog, Select, etc.
-- Import from `@/components/ui/<component>` — install first with `npx shadcn@latest add <component>`
+- Import from `@/components/ui/<component>` — install first with `pnpm dlx shadcn@latest add <component>`
 - Use `cn()` from `@/lib/utils` for conditional class merging
 - Do NOT use plain HTML `<button>`, `<input>`, `<select>` — always use shadcn equivalents
 - Do NOT delete `components.json` or `src/lib/utils.ts` — these are required
 
 ## Authentication
 
-Single `User` model, role-based. Two audiences share the auth pipeline.
+Single `User` model, role-based. Two audiences share one auth pipeline AND one login page.
 
 - bcrypt for password hashing (devDependency: `bcryptjs`)
 - NextAuth v5 Credentials provider, JWT strategy
 - Customer routes: `/login`, `/register` (creates role=USER)
-- Admin routes: `/admin` (login), `/admin/register` (creates role=ADMIN — v1 demo policy, no hardening)
-- Middleware `src/middleware.ts` handles `/admin/*`: unauthenticated → `/admin`; role=USER → 403 page
-- Server actions that mutate user data (`placeOrder`, all `/admin/*` actions) re-check the session — middleware is not the only line of defense
-- `/orders` + `/orders/[id]` are server components that redirect to `/login?returnTo=…` when unauthenticated
+- Admin sign-in: same `/login` form. After login, ADMIN role lands on `/admin/orders` (when no `returnTo` is set).
+- Middleware `src/middleware.ts` handles `/admin/*`: unauthenticated → `/login?returnTo=<current>`; role=USER → 403 page (a real component, not a redirect)
+- Server actions that mutate user data (`placeOrder`) re-check the session — middleware is not the only line of defense
+- `/checkout`, `/orders`, `/orders/[id]`, `/orders/[id]/thanks` are server components that redirect to `/login?returnTo=…` when unauthenticated
 
 ## Seed auth users
 
@@ -77,8 +83,8 @@ Single `User` model, role-based. Two audiences share the auth pipeline.
 ## Seed Data
 
 - `prisma/seed.ts` using `tsx` runner
-- Idempotent: use `upsert` or check-before-insert
-- Creates: 6 products, 3 attribute types, variants for each product, 1 admin user (admin@example.com / password123)
+- Idempotent: use `upsert` for users; `deleteMany` + `createMany` for products and variants
+- Creates: 5 products, 11 variants, 1 admin user, 1 customer user
 
 ## See also — universal web anti-patterns
 
@@ -86,7 +92,7 @@ The framework-level `rules/web-conventions.md` (deployed by `set-project init`)
 codifies e2e-failure-prone anti-patterns that apply to every web scaffold:
 
 1. Never `navigator.sendBeacon` for cart/order mutations — await `fetch()` instead.
-2. Upsert with composite unique key that includes the owning entity (userId/recipientEmail).
+2. Upsert with composite unique key that includes the owning entity (sessionId/userId).
 3. `data-testid="<feature>-<element>"` naming, kept in sync between component and test.
 4. Use Playwright `storageState` via `lib/auth/storage-state.ts` for admin auth.
 5. Annotate e2e spec files with `// @REQ-...` tags so the orchestrator can
