@@ -14,6 +14,7 @@
 - Multi-change parallel execution (configurable via `max_parallel`)
 - Integration gates: build → test → e2e → review → rules → spec-verify, each with its own retry budget
 - Design pipeline: `design-brief.md` + `design-system.md` scope-matched to per-change `design.md` so agents implement against concrete visual tokens
+- v0.app design source: scaffolds reference an external Next.js / shadcn / Tailwind TSX repo (or ZIP), `set-design-import` materializes it into `v0-export/`, agents mount components instead of reconstructing UI from prose. Authoring guide for external spec producers in `docs/guide/external-spec-author-guide.md`. Working examples: `craftbrew`, `minishop`, `micro-web` scaffolds.
 - Review gate with round-robin retry context: the agent gets the reviewer's findings back on its next iteration
 - Session resume across dispatcher retries (warm Claude cache, keeps token cost down)
 - Consumer project diagnostics via `set-harvest`
@@ -52,14 +53,7 @@ These are tracked and being worked on. We're shipping anyway because the sentine
 **Mitigation:** Set `default_model: sonnet` (or leave the default on a new project — `set-project init` ships a sensible mix). Model routing (`model_routing: on`) auto-escalates only when a gate fails.
 **Fix target:** user configuration, not a bug.
 
-### 5. `minishop` scaffold uses the legacy Figma pattern
-
-**Symptom:** `tests/e2e/scaffolds/minishop/` references `docs/figma-raw/.../design-snapshot.md` instead of the newer `design.make` + `design-brief.md` + `design-system.md` pattern used by `craftbrew`.
-**Root cause:** The scaffold was written before the design-sync pipeline refactor.
-**Mitigation:** It still runs — `set-figma-fetch` is the legacy tool behind it and still works. For new projects, follow the `craftbrew` scaffold as the reference. For examples of the modern design pipeline, see `tests/e2e/scaffolds/craftbrew/docs/`.
-**Fix target:** scaffold rewrite, not a blocker.
-
-### 6. Protected template files need manual sync on re-deploy
+### 5. Protected template files need manual sync on re-deploy
 
 **Symptom:** `playwright.config.ts`, `next.config.js`, `package.json`, `src/app/globals.css`, `.env.example` are marked protected in the web template manifest. `set-project init` skips them on re-deploy, even when the template ships a fix.
 **Root cause:** Protected status is correct for user-edited files, but mid-run harvest fixes to the template can't propagate automatically.

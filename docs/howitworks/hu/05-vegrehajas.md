@@ -4,7 +4,7 @@
 
 Amikor egy change minden függősége teljesült (merged státusz), a `dispatch_ready_changes()` elindítja a végrehajtást. A folyamat:
 
-![A dispatch és Ralph loop teljes folyamata](diagrams/rendered/04-dispatch-ralph.png){width=95%}
+![A dispatch és Ralph loop teljes folyamata](../diagrams/rendered/04-dispatch-ralph.png){width=95%}
 
 ### 1. Worktree létrehozás
 

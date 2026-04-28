@@ -26,7 +26,7 @@ The orchestrator is not a single large LLM call. It is a state machine-based sys
 
 The orchestration consists of five layers that build upon each other:
 
-![The complete orchestration pipeline overview](diagrams/rendered/00-pipeline-overview.png){width=95%}
+![The complete orchestration pipeline overview](../diagrams/rendered/00-pipeline-overview.png){width=95%}
 
 | Layer | Name | Responsibility | Key Modules |
 |-------|------|---------------|-------------|

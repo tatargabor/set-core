@@ -4,7 +4,7 @@
 
 When a Ralph loop finishes its work (`loop-state.status == "done"`), the change is not immediately merged. It must pass through a sequential quality pipeline where every "gate" checks a different aspect of the work.
 
-![The sequential quality gates pipeline](diagrams/rendered/07-verification-gates.png){width=95%}
+![The sequential quality gates pipeline](../diagrams/rendered/07-verification-gates.png){width=95%}
 
 ## Test Gate
 

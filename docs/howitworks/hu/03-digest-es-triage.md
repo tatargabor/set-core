@@ -10,7 +10,7 @@ Ez teszi lehetővé, hogy az orchestrátor:
 - **Ellenőrizze**, hogy minden követelmény le van-e fedve
 - **Felismerje** a kétértelmű pontokat, mielőtt a fejlesztés elindul
 
-![A digest generálás teljes folyamata](diagrams/rendered/02-digest-flow.png){width=90%}
+![A digest generálás teljes folyamata](../diagrams/rendered/02-digest-flow.png){width=90%}
 
 ## A Digest generálás lépései
 

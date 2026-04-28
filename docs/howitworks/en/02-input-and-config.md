@@ -4,7 +4,7 @@
 
 The orchestrator accepts three types of input. These are mutually exclusive.
 
-![Input modes and configuration resolution](diagrams/rendered/01-input-modes.png){width=90%}
+![Input modes and configuration resolution](../diagrams/rendered/01-input-modes.png){width=90%}
 
 ### 1. Specification Mode (`--spec`)
 

@@ -4,7 +4,7 @@
 
 When all of a change's dependencies are satisfied (merged status), `dispatch_ready_changes()` starts execution. The process:
 
-![The complete dispatch and Ralph loop flow](diagrams/rendered/04-dispatch-ralph.png){width=95%}
+![The complete dispatch and Ralph loop flow](../diagrams/rendered/04-dispatch-ralph.png){width=95%}
 
 ### 1. Worktree Creation
 

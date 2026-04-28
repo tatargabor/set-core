@@ -4,7 +4,7 @@
 
 When a change successfully passes all quality gates, it enters the merge queue. The queue is processed according to the `merge_policy` directive.
 
-![The merge pipeline and post-merge flow](diagrams/rendered/08-merge-pipeline.png){width=90%}
+![The merge pipeline and post-merge flow](../diagrams/rendered/08-merge-pipeline.png){width=90%}
 
 ## Merge Policy
 

@@ -26,7 +26,7 @@ Az orchestrátor nem egyetlen nagy LLM hívás. Ez egy állapotgépes rendszer, 
 
 Az orchestráció öt, egymásra épülő rétegből áll:
 
-![A teljes orchestrációs pipeline áttekintése](diagrams/rendered/00-pipeline-overview.png){width=95%}
+![A teljes orchestrációs pipeline áttekintése](../diagrams/rendered/00-pipeline-overview.png){width=95%}
 
 | Réteg | Név | Felelősség | Főbb modulok |
 |-------|-----|-----------|--------------|

@@ -51,7 +51,7 @@ set-orchestrate [globális opciók] <parancs> [parancs opciók]
 
 A change-ek a következő állapotok között mozognak az életciklusuk során:
 
-![A change teljes állapotgépe](diagrams/rendered/09-change-lifecycle.png){width=95%}
+![A change teljes állapotgépe](../diagrams/rendered/09-change-lifecycle.png){width=95%}
 
 ### Állapotok
 

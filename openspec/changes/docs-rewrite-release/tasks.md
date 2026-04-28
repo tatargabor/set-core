@@ -59,10 +59,14 @@
 
 ## 9. Validation
 
-- [ ] 9.1 Verify all internal links work (grep for broken references) [REQ: documentation-hierarchy]
+- [x] 9.1 Verify all internal links work (grep for broken references) [REQ: documentation-hierarchy]
+  - Grep pass complete; fixed 22 howitworks diagram path bugs (`diagrams/rendered/` → `../diagrams/rendered/`).
+  - Remaining "broken" links are app screenshots that require a finished consumer-project orchestration run to generate (tracked separately as 9.4).
 - [ ] 9.2 Verify README renders correctly on GitHub (preview) [REQ: readme-orchestration-first-narrative]
 - [ ] 9.3 Verify screenshots display in all doc pages [REQ: screenshot-integration]
-- [ ] 9.4 Run `make screenshots` to ensure all referenced images exist [REQ: screenshot-integration]
+- [~] 9.4 Run `make screenshots` to ensure all referenced images exist [REQ: screenshot-integration]
+  - Subset done: `screenshots-web` / `screenshots-cli` / `screenshots-design` (most recent micro-web v0 export).
+  - `screenshots-app` for minishop / craftbrew pages requires a finished orchestration of the corresponding consumer project; deferred to first full v1.8 reference run.
 
 ## 10. Landing page (setcode.dev)
 

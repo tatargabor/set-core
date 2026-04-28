@@ -10,7 +10,7 @@ This enables the orchestrator to:
 - **Verify** that every requirement is covered
 - **Identify** ambiguous points before development begins
 
-![The complete digest generation flow](diagrams/rendered/02-digest-flow.png){width=90%}
+![The complete digest generation flow](../diagrams/rendered/02-digest-flow.png){width=90%}
 
 ## Digest Generation Steps
 

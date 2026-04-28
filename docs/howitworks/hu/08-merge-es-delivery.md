@@ -4,7 +4,7 @@
 
 Amikor egy change sikeresen átmegy minden minőségi kapun, a merge queue-ba kerül. A queue feldolgozása a `merge_policy` direktíva szerint történik.
 
-![A merge pipeline és post-merge folyamat](diagrams/rendered/08-merge-pipeline.png){width=90%}
+![A merge pipeline és post-merge folyamat](../diagrams/rendered/08-merge-pipeline.png){width=90%}
 
 ## Merge Policy
 

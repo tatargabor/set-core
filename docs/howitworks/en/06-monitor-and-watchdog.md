@@ -4,7 +4,7 @@
 
 The heart of the orchestrator is the `monitor_loop()` function, which runs indefinitely after the `start` command is issued. Its job: check the status of all active changes every 15 seconds and take the appropriate action.
 
-![The monitor loop cycle](diagrams/rendered/05-monitor-loop.png){width=90%}
+![The monitor loop cycle](../diagrams/rendered/05-monitor-loop.png){width=90%}
 
 ### The Poll Cycle
 
@@ -50,7 +50,7 @@ Active time:  |████████  ████████    ███�
 
 The watchdog's job is detecting and handling "stuck" changes. Every active change has its own watchdog state.
 
-![Watchdog escalation levels](diagrams/rendered/06-watchdog-escalation.png){width=90%}
+![Watchdog escalation levels](../diagrams/rendered/06-watchdog-escalation.png){width=90%}
 
 ### Detection Mechanisms
 

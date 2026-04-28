@@ -4,7 +4,7 @@
 
 Az orchestrátor háromféle bemenetet fogad el. Ezek kölcsönösen kizárják egymást.
 
-![Input módok és konfiguráció feloldás](diagrams/rendered/01-input-modes.png){width=90%}
+![Input módok és konfiguráció feloldás](../diagrams/rendered/01-input-modes.png){width=90%}
 
 ### 1. Specifikáció mód (`--spec`)
 

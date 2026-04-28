@@ -4,7 +4,7 @@
 
 Amikor egy Ralph loop befejezi a munkáját (`loop-state.status == "done"`), a change nem kerül azonnal merge-re. Egy szekvenciális minőségi pipeline-on kell átmennie, ahol minden "gate" (kapu) ellenőrzi a munka egy aspektusát.
 
-![A minőségi kapuk szekvenciális pipeline-ja](diagrams/rendered/07-verification-gates.png){width=95%}
+![A minőségi kapuk szekvenciális pipeline-ja](../diagrams/rendered/07-verification-gates.png){width=95%}
 
 ## Test Gate
 

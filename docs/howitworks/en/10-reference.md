@@ -51,7 +51,7 @@ set-orchestrate [global options] <command> [command options]
 
 Changes move through the following states during their lifecycle:
 
-![The complete change state machine](diagrams/rendered/09-change-lifecycle.png){width=95%}
+![The complete change state machine](../diagrams/rendered/09-change-lifecycle.png){width=95%}
 
 ### States
 

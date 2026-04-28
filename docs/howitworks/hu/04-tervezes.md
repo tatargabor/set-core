@@ -4,7 +4,7 @@
 
 A tervezési fázis a specifikációt (vagy digest-et) **végrehajtható change-ekre** bontja. Minden change egy önálló, jól definiált fejlesztési feladat, amelyet egy AI ágens egy worktree-ben hajt végre.
 
-![Dekompozíció és DAG generálás](diagrams/rendered/03-planning-dag.png){width=90%}
+![Dekompozíció és DAG generálás](../diagrams/rendered/03-planning-dag.png){width=90%}
 
 ## Tervezési módszerek
 

@@ -4,7 +4,7 @@
 
 The planning phase breaks the specification (or digest) into **executable changes**. Each change is a self-contained, well-defined development task that an AI agent executes in a worktree.
 
-![Decomposition and DAG generation](diagrams/rendered/03-planning-dag.png){width=90%}
+![Decomposition and DAG generation](../diagrams/rendered/03-planning-dag.png){width=90%}
 
 ## Planning Methods
 
