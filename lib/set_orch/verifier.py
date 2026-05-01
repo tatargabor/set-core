@@ -2755,8 +2755,25 @@ def _execute_e2e_coverage_gate(
         logger.info("Gate[e2e-coverage] END %s result=pass (no wt_path)", change_name)
         return GateResult("e2e_coverage", "pass")
 
+    # Always run the navigation lint — even when scope-based CRUD checks
+    # are skipped — because the white-screenshot anti-pattern (test() bodies
+    # without page.goto, or readFileSync source-content assertions in
+    # tests/e2e/*.spec.ts) is independent of CRUD scope and produces
+    # blank artifacts in the per-attempt gallery for any change.
+    nav_lint_findings = _lint_e2e_navigation(wt_path)
+
     scope = (change.scope or "").lower()
     if not scope:
+        if nav_lint_findings:
+            logger.warning(
+                "E2E navigation lint for %s: %d test(s) without page.goto",
+                change_name, len(nav_lint_findings),
+            )
+            logger.info("Gate[e2e-coverage] END %s result=warn (nav-lint)", change_name)
+            return GateResult(
+                "e2e_coverage", "warn",
+                output=_format_nav_lint_output(nav_lint_findings),
+            )
         logger.info("Gate[e2e-coverage] END %s result=pass (no scope)", change_name)
         return GateResult("e2e_coverage", "pass")
 
@@ -2795,6 +2812,16 @@ def _execute_e2e_coverage_gate(
             required.append(op)
 
     if not required:
+        if nav_lint_findings:
+            logger.warning(
+                "E2E navigation lint for %s: %d test(s) without page.goto",
+                change_name, len(nav_lint_findings),
+            )
+            logger.info("Gate[e2e-coverage] END %s result=warn (nav-lint)", change_name)
+            return GateResult(
+                "e2e_coverage", "warn",
+                output=_format_nav_lint_output(nav_lint_findings),
+            )
         logger.info("Gate[e2e-coverage] END %s result=pass (no requirements)", change_name)
         return GateResult("e2e_coverage", "pass")
 
@@ -2832,17 +2859,131 @@ def _execute_e2e_coverage_gate(
     except Exception as _e:
         logger.debug("Failed to store e2e_coverage_report: %s", _e)
 
-    if missing:
-        gap_text = ", ".join(f"{op}: NOT TESTED" for op in missing)
-        logger.warning("E2E coverage gaps for %s: %s", change_name, gap_text)
+    if missing or nav_lint_findings:
+        parts = []
+        if missing:
+            gap_text = ", ".join(f"{op}: NOT TESTED" for op in missing)
+            logger.warning("E2E coverage gaps for %s: %s", change_name, gap_text)
+            parts.append(
+                f"E2E coverage gaps: {gap_text}. Tested: {', '.join(tested) or 'none'}."
+            )
+        if nav_lint_findings:
+            logger.warning(
+                "E2E navigation lint for %s: %d test(s) without page.goto",
+                change_name, len(nav_lint_findings),
+            )
+            parts.append(_format_nav_lint_output(nav_lint_findings))
         logger.info("Gate[e2e-coverage] END %s result=warn", change_name)
-        return GateResult(
-            "e2e_coverage", "warn",
-            output=f"E2E coverage gaps: {gap_text}. Tested: {', '.join(tested) or 'none'}.",
-        )
+        return GateResult("e2e_coverage", "warn", output="\n".join(parts))
 
     logger.info("Gate[e2e-coverage] END %s result=pass", change_name)
     return GateResult("e2e_coverage", "pass", stats={"tested": tested})
+
+
+def _lint_e2e_navigation(wt_path: str) -> list[dict]:
+    """Find Playwright tests in tests/e2e/*.spec.ts that never call page.goto.
+
+    Such tests leave the browser tab on about:blank, producing empty/white
+    screenshots in the per-attempt artifact gallery — useless for review and
+    forensic debugging. Source-level assertions like
+    `expect(readFileSync(path)).toContain(...)` are the most common offender:
+    they request the {page} fixture (which boots Chromium) but never navigate.
+    Such checks belong in unit tests (vitest), not Playwright E2E.
+
+    Returns a list of findings, one per offending test().
+    Each finding: {file, test_name, reason, line}.
+    """
+    e2e_dir = os.path.join(wt_path, "tests", "e2e")
+    if not os.path.isdir(e2e_dir):
+        return []
+
+    findings: list[dict] = []
+    test_re = re.compile(
+        r"\btest(?:\.only|\.skip)?\s*\(\s*(['\"])(?P<name>(?:\\.|(?!\1).)*)\1",
+    )
+
+    for fn in sorted(os.listdir(e2e_dir)):
+        if not fn.endswith((".spec.ts", ".spec.js")):
+            continue
+        path = os.path.join(e2e_dir, fn)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                src = f.read()
+        except OSError:
+            continue
+
+        # Walk each test() block: find its opening line, then find its
+        # matching closing brace by counting depth. Naive but adequate for
+        # the standard skeleton output (no nested test() inside test()).
+        i = 0
+        for m in test_re.finditer(src):
+            test_name = m.group("name")
+            block_start = m.end()
+            # Find the start of the test body — first '{' after the match
+            brace_idx = src.find("{", block_start)
+            if brace_idx == -1:
+                continue
+            depth = 1
+            j = brace_idx + 1
+            while j < len(src) and depth > 0:
+                ch = src[j]
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                j += 1
+            body = src[brace_idx + 1: j - 1] if depth == 0 else src[brace_idx + 1:]
+            line_no = src.count("\n", 0, m.start()) + 1
+            i += 1
+
+            has_goto = bool(re.search(r"\bpage\s*\.\s*goto\s*\(", body))
+            uses_fs_read = bool(re.search(r"\b(?:readFileSync|fs\.readFile|readFile)\s*\(", body))
+            is_skipped = bool(re.search(r"\btest\.skip\s*\(", body)) or "test.skip(" in m.group(0)
+
+            if is_skipped:
+                continue
+
+            if uses_fs_read:
+                findings.append({
+                    "file": f"tests/e2e/{fn}",
+                    "test_name": test_name,
+                    "line": line_no,
+                    "reason": "uses readFileSync/fs.readFile — source-content "
+                              "assertion belongs in a unit test (vitest), not "
+                              "Playwright E2E. Will produce blank screenshot.",
+                })
+                continue
+
+            if not has_goto:
+                findings.append({
+                    "file": f"tests/e2e/{fn}",
+                    "test_name": test_name,
+                    "line": line_no,
+                    "reason": "no page.goto() — tab stays on about:blank, "
+                              "screenshot will be blank/white.",
+                })
+
+    return findings
+
+
+def _format_nav_lint_output(findings: list[dict]) -> str:
+    """Render nav-lint findings as a single human-readable warn output."""
+    lines = [
+        f"E2E navigation lint: {len(findings)} test(s) flagged "
+        f"(blank-screenshot anti-pattern):",
+    ]
+    for f in findings[:20]:
+        lines.append(
+            f"  - {f['file']}:{f['line']} '{f['test_name']}' — {f['reason']}"
+        )
+    if len(findings) > 20:
+        lines.append(f"  ... and {len(findings) - 20} more")
+    lines.append(
+        "Fix: add `await page.goto('/path')` + DOM locator assertion. "
+        "If the AC is structural (file content, type signature), move to "
+        "tests/unit/ instead of tests/e2e/."
+    )
+    return "\n".join(lines)
 
 
 def _execute_review_gate(
