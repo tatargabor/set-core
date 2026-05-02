@@ -444,6 +444,11 @@ class TestCheckScopeOverlap:
 
 class TestDetectTestInfra:
     def test_vitest_project(self, tmp_dir):
+        # arch-cleanup-pre-model-config: framework detection routes through
+        # the profile hook now. Pass WebProjectType explicitly since this
+        # test verifies web-stack detection.
+        from set_project_web.project_type import WebProjectType
+
         with open(os.path.join(tmp_dir, "vitest.config.ts"), "w") as f:
             f.write("export default {}")
         with open(os.path.join(tmp_dir, "package.json"), "w") as f:
@@ -454,7 +459,7 @@ class TestDetectTestInfra:
         with open(os.path.join(tmp_dir, "src", "app.test.ts"), "w") as f:
             f.write("")
 
-        infra = detect_test_infra(tmp_dir)
+        infra = detect_test_infra(tmp_dir, profile=WebProjectType())
         assert infra.framework == "vitest"
         assert infra.config_exists is True
         assert infra.test_file_count >= 1
@@ -496,10 +501,15 @@ class TestDetectTestInfra:
         assert infra.test_command == "yarn run test"
 
     def test_jest_detected_from_devdeps(self, tmp_dir):
+        # arch-cleanup-pre-model-config: devDeps fallback now lives in
+        # WebProjectType.detect_test_framework() (Layer 2). Pass it
+        # explicitly since this test verifies web-stack detection.
+        from set_project_web.project_type import WebProjectType
+
         with open(os.path.join(tmp_dir, "package.json"), "w") as f:
             json.dump({"devDependencies": {"jest": "^29.0.0"}, "scripts": {"test": "jest"}}, f)
 
-        infra = detect_test_infra(tmp_dir)
+        infra = detect_test_infra(tmp_dir, profile=WebProjectType())
         assert infra.framework == "jest"
 
     def test_to_dict(self):

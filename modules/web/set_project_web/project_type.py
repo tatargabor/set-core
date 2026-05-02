@@ -482,6 +482,63 @@ class WebProjectType(CoreProfile):
         """Web feature changes own a Playwright spec at this path pattern."""
         return "tests/e2e/<feature>.spec.ts"
 
+    # ─── Architecture detection hooks (Layer-2 overrides) ──────
+
+    def detect_test_framework(self, project_dir: Path) -> Optional[str]:
+        """Detect the project's test framework.
+
+        Resolution order:
+          1. Config-file glob: vitest.config.* → vitest, jest.config.* →
+             jest, .mocharc.* → mocha
+          2. package.json devDependencies fallback: scan for vitest, jest,
+             or mocha keys (some projects ship a framework dep without an
+             explicit config file at the repo root)
+
+        Returns the short name of the first match, or None.
+        """
+        if list(project_dir.glob("vitest.config.*")):
+            return "vitest"
+        if list(project_dir.glob("jest.config.*")):
+            return "jest"
+        if list(project_dir.glob(".mocharc.*")):
+            return "mocha"
+        # devDeps fallback — covers projects without a root-level config file.
+        pkg_path = project_dir / "package.json"
+        if pkg_path.is_file():
+            try:
+                pkg = json.loads(pkg_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                return None
+            dev_deps = pkg.get("devDependencies", {}) if isinstance(pkg, dict) else {}
+            if isinstance(dev_deps, dict):
+                for fw in ("vitest", "jest", "mocha"):
+                    if fw in dev_deps:
+                        return fw
+        return None
+
+    def detect_schema_provider(self, project_dir: Path) -> Optional[str]:
+        """Detect the schema/migration tool. Currently recognizes Prisma."""
+        if (project_dir / "prisma" / "schema.prisma").is_file():
+            return "prisma"
+        return None
+
+    def get_design_globals_path(self, project_dir: Path) -> Optional[Path]:
+        """Return the canonical design-tokens CSS path for this web project.
+
+        Resolution order:
+          1. v0-export/app/globals.css (current v0 pipeline)
+          2. shadcn/globals.css        (legacy pre-v0 layout)
+
+        Returns the first existing path, or None if neither is present.
+        """
+        for candidate in (
+            project_dir / "v0-export" / "app" / "globals.css",
+            project_dir / "shadcn" / "globals.css",
+        ):
+            if candidate.is_file():
+                return candidate
+        return None
+
     def render_test_skeleton(self, entries: list, change_name: str) -> str:
         """Render Playwright test skeleton from test plan entries.
 

@@ -190,6 +190,54 @@ class ProjectType(ABC):
         """
         return ""
 
+    # ─── Architecture detection hooks (Layer-1 ↔ Layer-2 boundary) ──────
+    # The planner needs project-shape signals (test framework, schema
+    # provider, design tokens path) without hardcoding stack-specific
+    # patterns. These three hooks let Layer-1 ask the profile and stay
+    # framework-agnostic; CoreProfile returns None, WebProjectType supplies
+    # concrete glob/path detection.
+
+    def detect_test_framework(self, project_dir: Path) -> Optional[str]:
+        """Return short name of the project's test framework, or None.
+
+        Recognized return values (extensible):
+          - "vitest"  — vitest.config.{ts,js,mts,…}
+          - "jest"    — jest.config.{ts,js,mjs,…}
+          - "mocha"   — .mocharc.{json,yml,js,…}
+          - None      — no recognized framework
+
+        Default: None. Override in project-type modules with stack-specific
+        glob detection. The planner uses the return value to skip test-stub
+        scans on projects without a recognized framework.
+        """
+        return None
+
+    def detect_schema_provider(self, project_dir: Path) -> Optional[str]:
+        """Return short name of the project's schema/migration tool, or None.
+
+        Recognized return values (extensible):
+          - "prisma"  — prisma/schema.prisma present
+          - None      — no recognized schema tool
+
+        Default: None. Override in project-type modules. The planner uses
+        the return value to know whether to expect schema-migration changes
+        and to scope the integration-pre-build self-heal logic.
+        """
+        return None
+
+    def get_design_globals_path(self, project_dir: Path) -> Optional[Path]:
+        """Return path to the canonical design-tokens CSS file, or None.
+
+        For web profile this typically resolves to
+        `<project_dir>/v0-export/app/globals.css` when v0-export is wired up,
+        otherwise None. The planner uses this path to embed design-token
+        references in dispatched change inputs without hardcoding the
+        v0-export layout in Layer 1.
+
+        Default: None — non-design profiles return no path.
+        """
+        return None
+
 
     # --- Design source provider (v0-only pipeline) ---
     #

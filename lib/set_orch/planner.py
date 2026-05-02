@@ -228,8 +228,13 @@ def _auto_detect_test_command(project_dir: str) -> str:
     return ""
 
 
-def detect_test_infra(project_dir: str = ".") -> TestInfra:
+def detect_test_infra(project_dir: str = ".", profile=None) -> TestInfra:
     """Scan project directory for test infrastructure.
+
+    Stack-specific framework detection routes through the profile's
+    `detect_test_framework(project_dir)` hook (see ProjectType ABC).
+    Layer 1 keeps only the host-language (Python) pytest fallback,
+    which is generic enough to be neutral.
 
     Migrated from: planner.sh detect_test_infra() L60-129
     """
@@ -237,14 +242,36 @@ def detect_test_infra(project_dir: str = ".") -> TestInfra:
     framework = ""
     config_exists = False
 
-    # Check for test framework configs
-    if list(p.glob("vitest.config.*")):
-        framework = "vitest"
-        config_exists = True
-    elif list(p.glob("jest.config.*")):
-        framework = "jest"
-        config_exists = True
-    else:
+    # 1. Profile-supplied detection (web → vitest/jest/mocha; future
+    #    plugins → their own framework). CoreProfile returns None.
+    if profile is None:
+        from .profile_loader import load_profile
+        try:
+            profile = load_profile(project_dir)
+        except Exception:
+            logger.warning(
+                "Profile load failed in detect_test_infra; "
+                "skipping profile-supplied framework detection",
+                exc_info=True,
+            )
+            profile = None
+    if profile is not None:
+        try:
+            detected = profile.detect_test_framework(p)
+        except Exception:
+            logger.warning(
+                "profile.detect_test_framework raised; treating as no detection",
+                exc_info=True,
+            )
+            detected = None
+        if detected:
+            framework = detected
+            config_exists = True
+
+    # 2. Host-language (Python) fallback — applies only when no profile
+    #    detection fired. pytest is set-core's own test framework and is
+    #    a reasonable generic fallback for any Python consumer project.
+    if not framework:
         pyproject = p / "pyproject.toml"
         if pyproject.exists():
             try:
@@ -257,20 +284,6 @@ def detect_test_infra(project_dir: str = ".") -> TestInfra:
         if not framework and (p / "pytest.ini").exists():
             framework = "pytest"
             config_exists = True
-
-    # Check package.json for test framework in devDependencies
-    if not framework:
-        pkg_path = p / "package.json"
-        if pkg_path.exists():
-            try:
-                pkg = json.loads(pkg_path.read_text())
-                dev_deps = pkg.get("devDependencies", {})
-                for fw in ("vitest", "jest", "mocha"):
-                    if fw in dev_deps:
-                        framework = fw
-                        break
-            except (json.JSONDecodeError, OSError):
-                pass
 
     # Count test files (excluding node_modules, .git)
     test_file_count = 0
@@ -335,8 +348,11 @@ _SKIP_TEST_GUARDED_PATHS: tuple[str, ...] = (
 # Whitelisted substrings/extensions — if every path mentioned in the scope
 # is under one of these, skip_test=true is accepted.
 _SKIP_TEST_WHITELIST_PREFIXES: tuple[str, ...] = (
-    "scaffolding/", "public/", "messages/", "prisma/", "docs/",
+    "scaffolding/", "public/", "messages/", "docs/",
 )
+# Stack-specific path prefixes (e.g. "prisma/" for web profile schema
+# migrations) belong on the profile, not Layer 1. Profiles can extend
+# this list at validation time via their own hooks.
 _SKIP_TEST_WHITELIST_SUFFIXES: tuple[str, ...] = (
     ".config.", ".json", ".yaml", ".toml",
 )
@@ -417,9 +433,11 @@ def estimate_change_loc(
     for p in paths:
         total += _resolve_loc_weight(p, weights)
 
-    # Schema + ambiguity surcharges — best-effort text scan.
+    # Schema + ambiguity surcharges — best-effort text scan. Tokens are
+    # generic ("model ", "schema"); stack-specific provider names like
+    # "prisma" are intentionally NOT counted here (Layer 1 stays neutral).
     scope = change.get("scope", "")
-    schema_hits = scope.count("model ") + scope.count("prisma") + scope.count("schema")
+    schema_hits = scope.count("model ") + scope.count("schema")
     amb_hits = scope.count("ambiguity") + scope.count("TBD") + scope.count("?")
     total += schema_hits * schema_weight
     total += amb_hits * ambiguity_weight
@@ -2343,27 +2361,42 @@ def _save_domain_plans(
 # stack-specific prefixes.
 
 
+_UNIVERSAL_TEST_PREFIXES: tuple[str, ...] = (
+    "test-", "e2e-", "playwright-", "vitest-",
+)
+
+
 def _assert_no_standalone_test_changes(plan_data: dict, project_path: str = ".") -> None:
     """Raise RuntimeError if the plan contains standalone test-only changes.
 
-    The set of forbidden prefixes is supplied by the active profile via
-    `standalone_test_change_prefixes()`. The exempt change name (the one
-    cross-cutting test-related change) is supplied via
-    `singleton_test_infrastructure_change_name()`.
+    Enforcement is the union of profile-supplied prefixes and the
+    universal backstop `_UNIVERSAL_TEST_PREFIXES`. Profile failure is
+    logged at WARNING and falls back to the universal backstop only —
+    the guard is never silently disabled. The exempt change name (the
+    one cross-cutting test-related change) is supplied via
+    `singleton_test_infrastructure_change_name()` (default
+    `"test-infrastructure-setup"`).
 
-    See openspec/changes/decompose-tests-bundled-with-features/.
+    See openspec/changes/decompose-tests-bundled-with-features/ and
+    openspec/changes/arch-cleanup-pre-model-config/ for the fail-loud +
+    universal-backstop hardening.
     """
+    profile_prefixes: list[str] = []
+    infra_name = "test-infrastructure-setup"
     try:
         from .profile_loader import load_profile
         profile = load_profile(project_path)
-        prefixes = profile.standalone_test_change_prefixes()
-        infra_name = profile.singleton_test_infrastructure_change_name()
+        profile_prefixes = list(profile.standalone_test_change_prefixes() or [])
+        infra_name = profile.singleton_test_infrastructure_change_name() or infra_name
     except Exception:
-        prefixes = []
-        infra_name = "test-infrastructure-setup"
+        logger.warning(
+            "Profile load failed in _assert_no_standalone_test_changes "
+            "(project_path=%r); enforcing universal-prefix backstop only",
+            project_path,
+            exc_info=True,
+        )
 
-    if not prefixes:
-        return  # no profile-supplied prefixes → nothing to enforce
+    prefixes = sorted(set(profile_prefixes) | set(_UNIVERSAL_TEST_PREFIXES))
 
     prefix_re = re.compile(
         r"^(" + "|".join(re.escape(p.rstrip("-")) for p in prefixes) + r")-"
@@ -2376,10 +2409,21 @@ def _assert_no_standalone_test_changes(plan_data: dict, project_path: str = ".")
         if name == infra_name:
             continue
         if prefix_re.match(name):
+            matched_universal = any(
+                name.startswith(p)
+                for p in _UNIVERSAL_TEST_PREFIXES
+                if p not in profile_prefixes
+            )
+            backstop_note = (
+                " (matched by test-bundling backstop — universal prefix)"
+                if matched_universal
+                else ""
+            )
             raise RuntimeError(
                 f"decompose-test-bundling violation: change '{name}' is a "
-                f"standalone test change. Tests must bundle with their feature "
-                f"change. See openspec/changes/decompose-tests-bundled-with-features/."
+                f"standalone test change{backstop_note}. Tests must bundle "
+                f"with their feature change. See "
+                f"openspec/changes/decompose-tests-bundled-with-features/."
             )
 
 
@@ -2797,19 +2841,36 @@ def _fetch_design_context(force: bool = False) -> str:
         except OSError:
             pass
 
-    globals_candidates = [
-        Path("shadcn") / "globals.css",
-        Path("v0-export") / "app" / "globals.css",
-    ]
-    for g in globals_candidates:
-        if g.is_file():
-            try:
-                root_block = _extract_globals_root_block(g)
-                if root_block:
-                    parts.append("## Design Tokens (globals.css :root)\n" + root_block)
-                    break
-            except OSError:
-                continue
+    # Design-tokens CSS path is profile-supplied — Layer 1 stays neutral
+    # about where the canonical globals.css lives (web → v0-export/app/
+    # or shadcn/, future plugins → their own layout).
+    try:
+        from .profile_loader import load_profile
+        _profile = load_profile(".")
+    except Exception:
+        logger.warning(
+            "Profile load failed in _fetch_design_context; "
+            "skipping design-tokens injection",
+            exc_info=True,
+        )
+        _profile = None
+    globals_path = None
+    if _profile is not None:
+        try:
+            globals_path = _profile.get_design_globals_path(Path("."))
+        except Exception:
+            logger.warning(
+                "profile.get_design_globals_path raised; treating as no path",
+                exc_info=True,
+            )
+            globals_path = None
+    if globals_path is not None and globals_path.is_file():
+        try:
+            root_block = _extract_globals_root_block(globals_path)
+            if root_block:
+                parts.append("## Design Tokens (globals.css :root)\n" + root_block)
+        except OSError:
+            pass
 
     brief = Path("docs") / "design-brief.md"
     if brief.is_file():

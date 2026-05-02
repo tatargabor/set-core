@@ -142,6 +142,38 @@ def test_domain_decompose_prompt_falls_back_to_generic_when_profile_has_no_hint(
     assert "spec_files" in out
 
 
+def test_domain_decompose_prompt_requires_explicit_change_type():
+    """arch-cleanup-pre-model-config: prompt MUST instruct the LLM to
+    set change_type to one of the six values, AND explain that the
+    dispatcher's per-change model routing reads this field."""
+    with patch("set_orch.profile_loader.load_profile", return_value=_web_stub()):
+        out = render_domain_decompose_prompt(
+            domain_name="content",
+            domain_summary="x",
+            domain_requirements="REQ-001",
+            planning_brief="{}",
+            conventions="z",
+            max_parallel=3,
+        )
+    # All six change_type values must appear in the rendered prompt body
+    for value in (
+        "infrastructure", "schema", "foundational",
+        "feature", "cleanup-before", "cleanup-after",
+    ):
+        assert value in out, f"change_type value {value!r} missing from prompt"
+    # The literal field name is named
+    assert "change_type" in out
+    # The instruction explains the routing dependency (so the LLM
+    # understands the cost of dropping the field)
+    assert "model routing" in out.lower() or "model" in out.lower()
+    # Mandatory phrasing — at least one of these markers
+    body = out.lower()
+    assert any(
+        marker in body
+        for marker in ("must set", "mandatory", "required")
+    ), "expected mandatory phrasing for change_type"
+
+
 def test_domain_decompose_prompt_forbids_standalone_test_changes():
     with patch("set_orch.profile_loader.load_profile", return_value=_web_stub()):
         out = render_domain_decompose_prompt(
@@ -247,11 +279,103 @@ def test_guard_raises_on_e2e_prefix():
     assert "e2e-coverage-suite" in str(ei.value)
 
 
-def test_guard_skips_when_profile_has_no_prefixes():
-    """Layer 1 (core profile) supplies no prefixes → guard is a no-op."""
+def test_guard_universal_backstop_catches_playwright_on_core_profile():
+    """arch-cleanup-pre-model-config: even when the profile supplies no
+    prefixes, the universal backstop ('test-/e2e-/playwright-/vitest-')
+    still fires. This was previously a silent no-op."""
     plan = {"changes": [{"name": "playwright-anything"}]}
     with patch("set_orch.profile_loader.load_profile", return_value=_core_stub()):
-        _assert_no_standalone_test_changes(plan)  # no raise — core has no prefixes
+        with pytest.raises(RuntimeError) as ei:
+            _assert_no_standalone_test_changes(plan)
+    msg = str(ei.value)
+    assert "playwright-anything" in msg
+    assert "decompose-test-bundling" in msg
+    assert "backstop" in msg.lower()
+
+
+def test_guard_universal_backstop_catches_test_prefix_on_core():
+    """The 'test-' prefix is part of the universal backstop, so even Core
+    profile users get protection against changes named test-*."""
+    plan = {"changes": [{"name": "test-validation-suite"}]}
+    with patch("set_orch.profile_loader.load_profile", return_value=_core_stub()):
+        with pytest.raises(RuntimeError) as ei:
+            _assert_no_standalone_test_changes(plan)
+    assert "test-validation-suite" in str(ei.value)
+
+
+def test_guard_singleton_exception_on_core_profile():
+    """The singleton infra change name (default 'test-infrastructure-setup')
+    is exempt from the guard regardless of profile."""
+    plan = {"changes": [{"name": "test-infrastructure-setup"}]}
+    with patch("set_orch.profile_loader.load_profile", return_value=_core_stub()):
+        _assert_no_standalone_test_changes(plan)  # no raise
+
+
+def test_guard_universal_backstop_e2e_with_partial_profile_prefixes():
+    """Profile supplies playwright-/vitest- but not e2e-. Universal
+    backstop must still catch e2e-* changes (union semantics)."""
+    stub = _StubProfile(prefixes=["playwright-", "vitest-"])
+    plan = {"changes": [{"name": "e2e-coverage-suite"}]}
+    with patch("set_orch.profile_loader.load_profile", return_value=stub):
+        with pytest.raises(RuntimeError) as ei:
+            _assert_no_standalone_test_changes(plan)
+    msg = str(ei.value)
+    assert "e2e-coverage-suite" in msg
+    assert "backstop" in msg.lower()
+
+
+def test_guard_logs_warning_and_enforces_backstop_on_profile_load_failure(caplog):
+    """When load_profile raises, the guard MUST emit a WARNING with
+    exc_info AND still enforce the universal backstop."""
+    import logging
+
+    plan = {"changes": [{"name": "playwright-smoke"}]}
+    caplog.set_level(logging.WARNING, logger="set_orch.planner")
+
+    def boom(*a, **kw):
+        raise RuntimeError("simulated profile load failure")
+
+    with patch("set_orch.profile_loader.load_profile", side_effect=boom):
+        with pytest.raises(RuntimeError) as ei:
+            _assert_no_standalone_test_changes(plan)
+
+    # Universal backstop catches playwright- even with profile load failed
+    assert "playwright-smoke" in str(ei.value)
+
+    # WARNING-level log emitted with exc_info
+    warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any(
+        "Profile load failed in _assert_no_standalone_test_changes" in r.getMessage()
+        for r in warning_records
+    ), f"expected WARNING about profile load failure; got {[r.getMessage() for r in warning_records]}"
+
+
+def test_get_test_bundling_directives_logs_warning_on_profile_failure(caplog):
+    """templates._get_test_bundling_directives must log WARNING with
+    exc_info when load_profile raises, and return neutral defaults."""
+    import logging
+    from set_orch.templates import _get_test_bundling_directives
+
+    caplog.set_level(logging.WARNING, logger="set_orch.templates")
+
+    def boom(*a, **kw):
+        raise RuntimeError("simulated profile load failure")
+
+    with patch("set_orch.profile_loader.load_profile", side_effect=boom):
+        forbidden, infra, hint = _get_test_bundling_directives("/nonexistent")
+
+    # Neutral fallback values
+    assert "testing" in forbidden
+    assert infra == "test-infrastructure-setup"
+    assert hint == ""
+
+    # WARNING-level log emitted
+    warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any(
+        "Profile load failed in templates._get_test_bundling_directives"
+        in r.getMessage()
+        for r in warning_records
+    ), f"expected WARNING; got {[r.getMessage() for r in warning_records]}"
 
 
 def test_guard_handles_empty_plan():

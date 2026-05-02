@@ -6,9 +6,12 @@ preventing variable expansion bugs ($, backtick, EOF markers).
 
 from __future__ import annotations
 
+import logging
 import re
 
 from .truncate import smart_truncate_structured
+
+logger = logging.getLogger(__name__)
 
 # Maximum diff size before truncation
 MAX_DIFF_CHARS = 50_000
@@ -839,6 +842,11 @@ def _get_test_bundling_directives(project_path: str = ".") -> tuple[list[str], s
         infra = profile.singleton_test_infrastructure_change_name()
         hint = profile.feature_e2e_spec_hint()
     except Exception:
+        logger.warning(
+            "Profile load failed in templates._get_test_bundling_directives; "
+            "falling back to neutral defaults",
+            exc_info=True,
+        )
         forbidden = ["testing", "tests", "qa", "validation"]
         infra = "test-infrastructure-setup"
         hint = ""
@@ -961,6 +969,7 @@ def render_domain_decompose_prompt(
 - If you need a resource owned by another domain, declare it in "external_dependencies"
 - Respect the domain_constraints for "{domain_name}" from the brief
 - Each change MUST include "requirements" listing the REQ-* IDs it implements
+- **Each change MUST set `change_type` to one of: `infrastructure`, `schema`, `foundational`, `feature`, `cleanup-before`, `cleanup-after`. The dispatcher's per-change model routing reads this field; if you omit it, the dispatcher falls back to the default model and the per-change routing is lost. This field is mandatory — do not leave it blank.**
 - **Each change in this domain that adds user-facing UI or HTTP routes MUST own at least one e2e spec file.** {e2e_path_clause} Do NOT defer test authoring to a separate test-only change — the implementing agent writes production code AND the e2e spec in the same worktree.
 - Do NOT emit standalone test-only changes. The ONLY allowed test-related change is the cross-cutting `{infra_name}` (declared by the orchestrator's brief, not by this domain agent).
 
@@ -986,6 +995,11 @@ def render_merge_prompt(
         prefixes = profile.standalone_test_change_prefixes()
         infra_name = profile.singleton_test_infrastructure_change_name()
     except Exception:
+        logger.warning(
+            "Profile load failed in templates.render_merge_prompt; "
+            "falling back to generic refold clause",
+            exc_info=True,
+        )
         prefixes = []
         infra_name = "test-infrastructure-setup"
     if prefixes:

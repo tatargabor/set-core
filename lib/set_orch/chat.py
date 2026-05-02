@@ -90,6 +90,28 @@ class ChatSession:
         self.messages = []
         self.status = "idle"
 
+    def _build_claude_cmd(self, text: str, context: str) -> list[str]:
+        """Build the claude subprocess argv.
+
+        Contract: every claude invocation in this codebase passes --model
+        explicitly. Resume does NOT exempt — relying on the CLI's session-
+        side model carry-over creates an implicit dependency that the
+        upcoming model-config rollout cannot audit. --model is appended
+        before --resume so the current `self.model` value wins.
+        """
+        cmd = [
+            "claude", "-p", "--output-format", "stream-json", "--verbose",
+            "--model", self.model,
+        ]
+        if context:
+            cmd.extend(["--append-system-prompt", context])
+        if self.session_id:
+            cmd.extend(["--resume", self.session_id])
+        else:
+            cmd.extend(["--permission-mode", "auto"])
+        cmd.extend(["--", text])
+        return cmd
+
     async def _run_claude(self, text: str, *, _retry: bool = False) -> None:
         """Core subprocess logic — spawn claude, stream JSON, broadcast."""
         gen = self._generation
@@ -99,14 +121,7 @@ class ChatSession:
         # Build dynamic supervisor context (fresh on every message)
         context = build_chat_context(self.project_path)
 
-        cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose"]
-        if context:
-            cmd.extend(["--append-system-prompt", context])
-        if self.session_id:
-            cmd.extend(["--resume", self.session_id])
-        else:
-            cmd.extend(["--model", self.model, "--permission-mode", "auto"])
-        cmd.extend(["--", text])
+        cmd = self._build_claude_cmd(text, context)
 
         logger.info(f"Spawning claude [{self.project_name}]: {' '.join(cmd[:8])}...")
 

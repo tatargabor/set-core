@@ -61,6 +61,11 @@ class CoreProfile(ProjectType):
     regardless of tech stack. All real project-type plugins should
     inherit from CoreProfile instead of ProjectType directly.
 
+    Architecture-detection hooks (`detect_test_framework`,
+    `detect_schema_provider`, `get_design_globals_path`) inherit the
+    ABC's `None` defaults; see `profile_types.ProjectType` for the
+    contract. Stack-specific subclasses override them.
+
     Replaces: set-project-base BaseProjectType
     """
 
