@@ -47,7 +47,13 @@ async def approve_checkpoint(project: str):
 
 @router.post("/api/{project}/stop")
 async def stop_orchestration(project: str):
-    """Stop the orchestration process."""
+    """Stop the orchestration process.
+
+    `safe_kill` blocks up to 10s waiting for SIGTERM to take effect; running it
+    inline in this async handler would freeze the uvicorn event loop and make
+    every other endpoint look dead while the kill is in flight. Offload to a
+    threadpool so the worker stays responsive.
+    """
     project_path = _resolve_project(project)
     sp = _state_path(project_path)
     if not sp.exists():
@@ -61,10 +67,9 @@ async def stop_orchestration(project: str):
     if state.status not in ("running", "checkpoint"):
         raise HTTPException(409, f"Not running (status: {state.status})")
 
-    # Find orchestrator PID from state extras
     orch_pid = state.extras.get("orchestrator_pid") or state.extras.get("pid")
     if orch_pid:
-        result = safe_kill(int(orch_pid), "set-orchestrate")
+        result = await asyncio.to_thread(safe_kill, int(orch_pid), "set-orchestrate")
         kill_result = result.outcome
     else:
         kill_result = "no_pid"
@@ -285,7 +290,7 @@ async def stop_change(project: str, name: str):
 
     kill_result = "no_pid"
     if target.ralph_pid:
-        result = safe_kill(target.ralph_pid, "set-loop")
+        result = await asyncio.to_thread(safe_kill, target.ralph_pid, "set-loop")
         kill_result = result.outcome
 
     def do_stop_change():

@@ -1545,13 +1545,29 @@ def _resolve_shared_alias(agent: Path, rel: Path, aliases: dict) -> bool:
 
 
 def _has_component_export(file: Path) -> bool:
-    """Lightweight AST check — look for export default|export function|export const."""
+    """Lightweight AST check — does the file produce any component export?
+
+    Recognized forms:
+      - export default …
+      - export function/const/class/async function …
+      - export { Name } from "…"          (re-export from another module)
+      - export { Name as default } from "…" (default re-export)
+      - export * from "…"                  (wildcard re-export)
+
+    The re-export forms are documented in the design-bridge skill
+    (`export { default } from '@/v0-export/components/<base>'`) and used
+    by agents to mount v0 shells without inlining the implementation.
+    """
     try:
         text = file.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return False
     pattern = re.compile(
-        r"^\s*export\s+(?:default|function|const|class|async\s+function)",
+        r"^\s*export\s+(?:"
+        r"default|function|const|class|async\s+function"
+        r"|\{[^}]*\}\s*from\s+['\"]"
+        r"|\*\s*from\s+['\"]"
+        r")",
         re.MULTILINE,
     )
     return bool(pattern.search(text))
