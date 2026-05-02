@@ -333,7 +333,7 @@ def _call_llm(
             purpose="classify_categories",
             timeout=_LLM_TIMEOUT_S,
             model=model,
-            extra_args=["--max-turns", "1"],
+            extra_args=[],
         )
     except Exception as e:
         duration_ms = int((time.monotonic() - started) * 1000)

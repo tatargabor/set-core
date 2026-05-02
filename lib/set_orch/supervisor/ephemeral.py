@@ -54,7 +54,7 @@ def spawn_ephemeral_claude(
     project_path: str,
     model: str = "",
     timeout: int = 600,
-    max_turns: int = 25,
+    max_turns: Optional[int] = None,  # None = no cap (timeout is the safety net)
     allow_all_tools: bool = True,
     prior_attempts_summary: Optional[str] = None,
 ) -> EphemeralResult:
@@ -107,7 +107,9 @@ def spawn_ephemeral_claude(
     # CLI ids — claude CLI accepts opus/sonnet/haiku aliases AND full
     # ids, but rejects the explicit short pin names directly.
     from ..subprocess_utils import resolve_model_id
-    cmd = ["claude", "-p", "--model", resolve_model_id(model), "--max-turns", str(max_turns)]
+    cmd = ["claude", "-p", "--model", resolve_model_id(model)]
+    if max_turns is not None:
+        cmd.extend(["--max-turns", str(max_turns)])
     if allow_all_tools:
         cmd.append("--dangerously-skip-permissions")
 

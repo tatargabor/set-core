@@ -391,7 +391,7 @@ def call_digest_api(
             purpose="digest",
             timeout=600,
             model=model,
-            extra_args=["--max-turns", "1", "--tools", ""],
+            extra_args=["--tools", ""],
         )
         if result.exit_code == 0 and result.stdout.strip():
             if not bypass_cache:

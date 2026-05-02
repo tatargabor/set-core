@@ -173,7 +173,10 @@ Do NOT create a worktree — fix directly in the current directory."""
         purpose="build_fix",
         timeout=600,
         model=model,
-        extra_args=["--max-turns", "20"],
+        # No --max-turns: build_fix is an iterative implementation agent;
+        # caps preempt legitimate multi-turn work. Timeout + 5h Anthropic
+        # session window cap any genuine runaway.
+        extra_args=[],
         cwd=project_path,
     )
 

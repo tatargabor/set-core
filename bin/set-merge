@@ -572,7 +572,7 @@ $(cat "$file")
     # (sonnet frequently times out or produces incorrect merges, causing costly retries)
     local llm_output rc=0
     info "Using opus for merge conflict resolution ($total_lines conflict lines)"
-    llm_output=$(export RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(resolve_model_id opus)" --max-turns 1) || rc=$?
+    llm_output=$(export RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(resolve_model_id opus)") || rc=$?
 
     if [[ $rc -ne 0 || -z "$llm_output" ]]; then
         warn "LLM conflict resolution failed with opus (exit code: $rc)"

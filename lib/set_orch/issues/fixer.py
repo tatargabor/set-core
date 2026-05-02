@@ -100,8 +100,10 @@ class FixRunner:
 
         project_cwd, prompt = self._resolve_fix_target(issue)
 
+        # No --max-turns: timeout + 5h Anthropic session window cap any
+        # genuine runaway; preemptive cap blocked legitimate fix work.
         cmd = [
-            "claude", "-p", "--max-turns", "50",
+            "claude", "-p",
             "--dangerously-skip-permissions",
             "--verbose", "--output-format", "stream-json",
             prompt,

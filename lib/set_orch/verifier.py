@@ -1988,10 +1988,11 @@ def smoke_fix_scoped(
         fix_prompt = template_result.stdout
         from .model_config import resolve_model
         fix_prompt_model = resolve_model("review", project_dir=wt_path)
+        # No --max-turns: rely on timeout + 5h Anthropic session window for
+        # runaway protection; preemptive caps blocked legitimate fix work.
         fix_result = run_claude_logged(
             fix_prompt, purpose="smoke_fix", change=change_name,
             model=fix_prompt_model,
-            extra_args=["--max-turns", str(max_turns)],
         )
         if fix_result.exit_code != 0:
             logger.error("Smoke fix agent failed (exit %d) for %s attempt %d", fix_result.exit_code, change_name, attempt)
@@ -3487,13 +3488,12 @@ def _execute_spec_verify_gate(
     from .model_config import resolve_model
     _initial_model = resolve_model("spec_verify", project_dir=wt_path)
     _escalation_model = resolve_model("spec_verify_escalation", project_dir=wt_path)
-    _MAX_TURNS_DEFAULT = 40
-    _MAX_TURNS_RETRY = 80  # doubled budget for the infra-failure retry path
+    # No --max-turns: rely on timeout + 5h Anthropic session window. Previous
+    # 40/80 caps could classify legitimate spec-verify work as "infra" failure.
     verify_cmd_result = run_claude_logged(
         verify_prompt,
         purpose="spec_verify", change=change_name,
         model=_initial_model,
-        extra_args=["--max-turns", str(_MAX_TURNS_DEFAULT)],
         cwd=wt_path,
         timeout=900,
     )
@@ -3519,7 +3519,6 @@ def _execute_spec_verify_gate(
             verify_prompt,
             purpose="spec_verify", change=change_name,
             model=_escalation_model,
-            extra_args=["--max-turns", str(_MAX_TURNS_DEFAULT)],
             cwd=wt_path,
             timeout=900,
         )
@@ -3539,15 +3538,14 @@ def _execute_spec_verify_gate(
         # in the infra bucket, abstain — gate skipped, no retry slot
         # consumed, no impl re-dispatch.
         logger.warning(
-            "Gate[spec-verify] %s: infra failure (reason=%s, exit=%d, timed_out=%s) — retrying %s with max-turns=%d",
+            "Gate[spec-verify] %s: infra failure (reason=%s, exit=%d, timed_out=%s) — retrying %s",
             change_name, terminal_reason, verify_cmd_result.exit_code,
-            verify_cmd_result.timed_out, _escalation_model, _MAX_TURNS_RETRY,
+            verify_cmd_result.timed_out, _escalation_model,
         )
         retry_cmd_result = run_claude_logged(
             verify_prompt,
             purpose="spec_verify", change=change_name,
             model=_escalation_model,
-            extra_args=["--max-turns", str(_MAX_TURNS_RETRY)],
             cwd=wt_path,
             timeout=900,
         )

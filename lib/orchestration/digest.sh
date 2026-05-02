@@ -170,7 +170,9 @@ call_digest_api() {
     local digest_model
     digest_model=$(resolve_model_id --config "$digest_yaml" --role digest opus)
     local output
-    output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$digest_model" --max-turns 1) || {
+    # No --max-turns: digest prompt asks for JSON output, model self-terminates.
+    # Cap blocked I/O exploration when prompts grew (e.g. multi-page specs).
+    output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$digest_model") || {
         log_error "Digest API call failed"
         return 1
     }

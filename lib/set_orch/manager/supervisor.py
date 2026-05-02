@@ -319,7 +319,9 @@ class ProjectSupervisor:
         sup_model = resolve_model_id(
             resolve_model("supervisor", project_dir=str(self.config.path))
         )
-        cmd = ["claude", "-p", "--model", sup_model, "--max-turns", "500",
+        # No --max-turns: 500 was effectively unbounded but still preemptive;
+        # rely on timeout + 5h Anthropic session window for runaway protection.
+        cmd = ["claude", "-p", "--model", sup_model,
                "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]
 

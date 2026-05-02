@@ -86,9 +86,10 @@ class InvestigationRunner:
             resolve_model("supervisor", project_dir=project_cwd)
         )
 
+        # No --max-turns: rely on timeout + 5h Anthropic session window;
+        # the policy.investigation.max_turns knob is intentionally ignored.
         cmd = [
             "claude", "-p",
-            "--max-turns", str(self.config.investigation.max_turns),
             "--model", investigation_model,
             "--verbose", "--output-format", "stream-json",
             "--dangerously-skip-permissions",

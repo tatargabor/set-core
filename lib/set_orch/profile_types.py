@@ -984,7 +984,7 @@ class ProjectType(ABC):
             purpose="classify",
             model=_resolve_model("classifier"),
             timeout=60,
-            extra_args=["--max-turns", "1"],
+            extra_args=[],
             cwd=project_path or None,
         )
 
@@ -1165,7 +1165,7 @@ class ProjectType(ABC):
             purpose="classify",
             model=_resolve_model("classifier"),
             timeout=60,
-            extra_args=["--max-turns", "1"],
+            extra_args=[],
             cwd=project_path or None,
         )
 

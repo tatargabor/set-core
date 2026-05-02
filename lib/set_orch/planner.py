@@ -2135,7 +2135,10 @@ def _phase1_planning_brief(
     )
 
     logger.info("Phase 1: generating planning brief (%d domains)", len(domain_data["domains"]))
-    result = run_claude_logged(prompt, purpose="decompose_brief", timeout=600, model=model, extra_args=["--max-turns", "3"])
+    # No --max-turns: the prompt asks for JSON output, model self-terminates on
+    # end_turn. Hardcoded caps preemptively killed legitimate big-spec runs.
+    # Timeout remains as a silent-hang circuit-breaker.
+    result = run_claude_logged(prompt, purpose="decompose_brief", timeout=1800, model=model)
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 1 (planning brief) failed (exit {result.exit_code})")
 
@@ -2228,7 +2231,10 @@ def _decompose_single_domain(
     )
 
     logger.info("Phase 2: decomposing domain '%s' (%d reqs)", domain["name"], len(domain["requirements"]))
-    result = run_claude_logged(prompt, purpose="decompose_domain", timeout=900, model=model, extra_args=["--max-turns", "5"])
+    # No --max-turns: domains with I/O exploration (admin reading prisma schema,
+    # auth checking existing setup) need >5 turns; cap was the recurring blocker
+    # for craftbrew-scale specs. Timeout 1800s is the silent-hang safety net.
+    result = run_claude_logged(prompt, purpose="decompose_domain", timeout=1800, model=model)
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 2 domain '{domain['name']}' failed (exit {result.exit_code})")
 
@@ -2333,7 +2339,8 @@ def _phase3_merge_plans(
     )
 
     logger.info("Phase 3: merging %d domain plans", len(domain_plans))
-    result = run_claude_logged(prompt, purpose="decompose_merge", timeout=900, model=model, extra_args=["--max-turns", "5"])
+    # No --max-turns: see decompose_brief / decompose_domain rationale.
+    result = run_claude_logged(prompt, purpose="decompose_merge", timeout=1800, model=model)
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 3 (merge) failed (exit {result.exit_code})")
 
@@ -2676,7 +2683,9 @@ def run_planning_pipeline(
             )
             from .templates import render_planning_prompt
             prompt = render_planning_prompt(**context)
-            result = run_claude_logged(prompt, purpose="decompose", timeout=1800, model=model, extra_args=["--max-turns", "10"])
+            # No --max-turns: model self-terminates on JSON output; cap blocked
+            # big specs needing tool exploration before final plan.
+            result = run_claude_logged(prompt, purpose="decompose", timeout=1800, model=model)
             if result.exit_code != 0:
                 raise RuntimeError(f"Claude decomposition failed (exit {result.exit_code})")
             plan_data = _parse_plan_response(result.stdout)
@@ -2695,7 +2704,8 @@ def run_planning_pipeline(
         from .templates import render_planning_prompt
         prompt = render_planning_prompt(**context)
 
-        result = run_claude_logged(prompt, purpose="decompose", timeout=1800, model=model, extra_args=["--max-turns", "10"])
+        # No --max-turns: model self-terminates on JSON output.
+        result = run_claude_logged(prompt, purpose="decompose", timeout=1800, model=model)
         if result.exit_code != 0:
             raise RuntimeError(f"Claude planning call failed (exit {result.exit_code})")
 
