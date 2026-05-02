@@ -823,6 +823,28 @@ _DOMAIN_CHANGES_OUTPUT_SCHEMA = """{
 }"""
 
 
+def _get_test_bundling_directives(project_path: str = ".") -> tuple[list[str], str, str]:
+    """Pull profile-supplied test-bundling tokens for prompt assembly.
+
+    Returns (forbidden_tokens, infra_change_name, e2e_spec_hint). Forbidden
+    tokens come from the resolved profile; modules add stack-specific entries
+    (e.g. web profile adds playwright/vitest/e2e). The infra change name and
+    e2e path hint come from the profile too. All Layer 2 stack specifics
+    flow through these hooks — Layer 1 prompt assembly stays generic.
+    """
+    try:
+        from .profile_loader import load_profile
+        profile = load_profile(project_path)
+        forbidden = profile.forbidden_test_domain_tokens()
+        infra = profile.singleton_test_infrastructure_change_name()
+        hint = profile.feature_e2e_spec_hint()
+    except Exception:
+        forbidden = ["testing", "tests", "qa", "validation"]
+        infra = "test-infrastructure-setup"
+        hint = ""
+    return forbidden, infra, hint
+
+
 def render_brief_prompt(
     domain_summaries: str,
     dependencies: str,
@@ -832,6 +854,7 @@ def render_brief_prompt(
     active_changes: str = "",
     memory_context: str = "",
     max_parallel: int = 3,
+    project_path: str = ".",
 ) -> str:
     """Render Phase 1 planning brief prompt."""
     optional = ""
@@ -841,6 +864,9 @@ def render_brief_prompt(
         optional += f"\n## Existing OpenSpec Specs\n{existing_specs}\n"
     if active_changes and active_changes.strip():
         optional += f"\n## Active Changes (already in progress — skip these)\n{active_changes}\n"
+
+    forbidden, infra_name, _ = _get_test_bundling_directives(project_path)
+    forbidden_list = ", ".join(f"`{t}`" for t in forbidden)
 
     return f"""You are a software architect creating a planning brief for domain-parallel decomposition.
 
@@ -868,6 +894,13 @@ the shared context they all need: priorities, resource ownership, and cross-cutt
 
 Target: {max_parallel} parallel agents, aim for {max_parallel * 2} total changes.
 
+## DOMAIN ENUMERATION RULES (CRITICAL)
+- The `domain_priorities` array MUST list ONLY feature/code domains (e.g. `navigation`, `content`, `forms`, `auth`, `data`, `catalog`, `checkout`).
+- The `domain_priorities` array MUST NOT contain any of these tokens or their variants: {forbidden_list}. Test work is NOT a domain.
+- Test requirements (e2e specs, unit tests, integration tests) belong in the FEATURE domain that owns the code under test. Each feature change owns its own e2e spec and any unit tests for its code.
+- The ONLY allowed test-related cross-cutting change is `{infra_name}` (shared test framework config, global setup, fixtures). It MAY appear in `cross_cutting_changes`. It MUST NOT spawn a separate test-only domain.
+- This rule prevents a regression where standalone test-only changes ship without their feature code, producing false-green feature gates and merge conflicts in test directories.
+
 Output ONLY valid JSON (no markdown, no explanation):
 {_BRIEF_OUTPUT_SCHEMA}"""
 
@@ -881,12 +914,20 @@ def render_domain_decompose_prompt(
     test_infra_context: str = "",
     design_context: str = "",
     max_parallel: int = 3,
+    project_path: str = ".",
 ) -> str:
     """Render Phase 2 per-domain decompose prompt."""
     _PLANNING_RULES = _get_planning_rules()
     max_change_target = max_parallel * 2
     _PLANNING_RULES = _PLANNING_RULES.replace("{max_parallel}", str(max_parallel))
     _PLANNING_RULES = _PLANNING_RULES.replace("{max_change_target}", str(max_change_target))
+
+    _, infra_name, e2e_hint = _get_test_bundling_directives(project_path)
+    e2e_path_clause = (
+        f"List the spec path under `spec_files` (e.g. `{e2e_hint}`) AND mention that spec file path in the change's `scope` text."
+        if e2e_hint
+        else "List the spec path under `spec_files` AND mention it in the change's `scope` text."
+    )
 
     design_section = ""
     if design_context and design_context.strip():
@@ -920,6 +961,8 @@ def render_domain_decompose_prompt(
 - If you need a resource owned by another domain, declare it in "external_dependencies"
 - Respect the domain_constraints for "{domain_name}" from the brief
 - Each change MUST include "requirements" listing the REQ-* IDs it implements
+- **Each change in this domain that adds user-facing UI or HTTP routes MUST own at least one e2e spec file.** {e2e_path_clause} Do NOT defer test authoring to a separate test-only change — the implementing agent writes production code AND the e2e spec in the same worktree.
+- Do NOT emit standalone test-only changes. The ONLY allowed test-related change is the cross-cutting `{infra_name}` (declared by the orchestrator's brief, not by this domain agent).
 
 {_PLANNING_RULES}
 
@@ -934,8 +977,29 @@ def render_merge_prompt(
     ambiguities: str = "",
     coverage_info: str = "",
     replan_ctx: dict | None = None,
+    project_path: str = ".",
 ) -> str:
     """Render Phase 3 merge & resolve prompt."""
+    try:
+        from .profile_loader import load_profile
+        profile = load_profile(project_path)
+        prefixes = profile.standalone_test_change_prefixes()
+        infra_name = profile.singleton_test_infrastructure_change_name()
+    except Exception:
+        prefixes = []
+        infra_name = "test-infrastructure-setup"
+    if prefixes:
+        prefix_clause = ", ".join(f"`{p}`" for p in prefixes)
+        prefix_regex = "|".join(p.rstrip("-") for p in prefixes)
+        refold_clause = (
+            f"if any incoming change name has one of these prefixes: {prefix_clause} "
+            f"(regex: `^({prefix_regex})-`) AND is NOT exactly `{infra_name}`, "
+        )
+    else:
+        refold_clause = (
+            f"if any incoming change name signals a standalone test-only change "
+            f"(test-runner-only, no production code) AND is NOT exactly `{infra_name}`, "
+        )
     replan_section = ""
     if replan_ctx and replan_ctx.get("completed"):
         replan_section = f"""
@@ -985,6 +1049,7 @@ Multiple domain agents have each produced change lists for their domain. Your jo
 - Every REQ-* ID must appear in exactly one change's "requirements" array
 - Uncovered requirements: either assign to existing changes or create new ones
 - Keep change names from domain agents unless there's a conflict
+- **TEST CHANGE FOLDING (CRITICAL):** {refold_clause}REFOLD it: merge its `requirements`, `spec_files`, and `also_affects_reqs` into the corresponding feature change (the change whose code is under test, identifiable by overlapping requirements or scope keywords). DO NOT emit the standalone test-only change in your final `changes[]` output. The ONLY allowed test-related change in the final plan is the singleton `{infra_name}`. This refold rule is enforced by a post-merge code-level guard — emitting a standalone test-only change will fail the planner.
 
 Output ONLY valid JSON (no markdown, no explanation):
 {_SPEC_OUTPUT_JSON_DIGEST}"""

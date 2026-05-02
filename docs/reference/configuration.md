@@ -66,6 +66,21 @@ plan_method: api            # api | agent
 | `events_max_size` | int | `1048576` | Events log rotation threshold (bytes) |
 | `post_merge_command` | string | `""` | Command after merge (e.g., `pnpm db:generate`) |
 
+### Planner directives
+
+Nested under `planner:` in `orchestration.yaml`.
+
+| Directive | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `planner.force_strategy` | string | `auto` | `flat` \| `domain-parallel` \| `auto`. When set to `flat` or `domain-parallel`, the digest-mode planner skips the threshold check and takes the named branch unconditionally. `auto` preserves the requirement-count threshold (≥30 → domain-parallel, otherwise flat). |
+
+```yaml
+planner:
+  force_strategy: flat   # or domain-parallel, or auto (default)
+```
+
+When the knob is set to a non-`auto` value, the planner emits an INFO log naming `source=force_strategy` so forensic review distinguishes operator-forced strategy from threshold-driven choice.
+
 ### Retry & Circuit Breaker Limits
 
 All retry/circuit-breaker limits live in `config.py DIRECTIVE_DEFAULTS` as the single source of truth (`verify-gate-resilience-fixes`). Defaults reflect evidence from production runs.

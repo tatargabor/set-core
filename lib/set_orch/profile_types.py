@@ -142,6 +142,54 @@ class ProjectType(ABC):
         """File patterns needing serialization when touched by multiple changes."""
         return []
 
+    # ─── Test-bundling profile hooks (decompose-tests-bundled-with-features) ───
+    # Layer 1 (core) defines the abstract bundling invariant: "tests bundle
+    # with their feature change." Layer 2 modules supply the concrete tokens
+    # for their stack (Playwright, vitest, …). Core profile returns generic
+    # tokens; web/etc. modules override.
+
+    def forbidden_test_domain_tokens(self) -> List[str]:
+        """Domain-name tokens that MUST NOT appear in Phase 1 `domain_priorities`.
+
+        Test work is not a domain — it belongs to the feature domain that owns
+        the code under test. Modules add stack-specific tokens (e.g. web adds
+        `playwright`, `vitest`).
+        """
+        return ["testing", "tests", "qa", "validation"]
+
+    def standalone_test_change_prefixes(self) -> List[str]:
+        """Change-name prefixes that MUST NOT appear standalone in a final plan.
+
+        A change name matching one of these prefixes (with an exact-match
+        exception for `singleton_test_infrastructure_change_name()`) signals
+        a planner regression where test authoring was extracted from its
+        feature change. The post-Phase-3 guard raises on any such match.
+
+        Modules supply stack-specific prefixes (e.g. web adds `playwright-`,
+        `vitest-`, `e2e-`).
+        """
+        return []
+
+    def singleton_test_infrastructure_change_name(self) -> str:
+        """The one allowed test-related cross-cutting change name.
+
+        This change owns shared test infrastructure (config, global setup,
+        fixtures) that legitimately stands alone. Default is the canonical
+        `test-infrastructure-setup`; modules MAY rename if their stack uses
+        a different convention, but the policy is to keep the canonical name.
+        """
+        return "test-infrastructure-setup"
+
+    def feature_e2e_spec_hint(self) -> str:
+        """Path-pattern hint for feature changes' e2e spec authoring.
+
+        Embedded in Phase 2 prompts so each feature change knows where to put
+        its e2e spec file. Modules supply stack-specific paths (e.g. web
+        returns `tests/e2e/<feature>.spec.ts` for Playwright). Core returns
+        an empty string — generic profiles don't prescribe a path.
+        """
+        return ""
+
 
     # --- Design source provider (v0-only pipeline) ---
     #

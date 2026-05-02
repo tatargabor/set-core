@@ -470,6 +470,18 @@ class WebProjectType(CoreProfile):
             "tailwind.config.ts", "tailwind.config.js",
         ]
 
+    def forbidden_test_domain_tokens(self) -> list:
+        """Web stack uses Playwright + vitest — extend core's generic list."""
+        return super().forbidden_test_domain_tokens() + ["e2e", "playwright", "vitest"]
+
+    def standalone_test_change_prefixes(self) -> list:
+        """Change-name prefixes that signal a standalone test change in this stack."""
+        return ["playwright-", "vitest-", "e2e-"]
+
+    def feature_e2e_spec_hint(self) -> str:
+        """Web feature changes own a Playwright spec at this path pattern."""
+        return "tests/e2e/<feature>.spec.ts"
+
     def render_test_skeleton(self, entries: list, change_name: str) -> str:
         """Render Playwright test skeleton from test plan entries.
 

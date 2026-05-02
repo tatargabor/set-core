@@ -17,7 +17,9 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -238,24 +240,146 @@ def build_digest_prompt(spec_path: str | Path, scan_result: ScanResult) -> str:
     return _DIGEST_PROMPT_TEMPLATE.replace("{{SPEC_CONTENT}}", spec_content)
 
 
+# ─── Digest cache ────────────────────────────────────────────────
+# Content-addressed cache for the raw digest LLM response. Keyed by
+# sha256(prompt + model). Spec: openspec/specs/digest-determinism-cache.
+
+DIGEST_CACHE_DIR = Path.home() / ".cache" / "set-orch" / "digest-cache"
+DIGEST_CACHE_MAX_ENTRIES = 64
+_DIGEST_CACHE_VERSION = 1
+
+
+def _compute_cache_key(prompt: str, model: str) -> str:
+    return hashlib.sha256(prompt.encode("utf-8") + model.encode("utf-8")).hexdigest()
+
+
+def _cache_path(key: str) -> Path:
+    return DIGEST_CACHE_DIR / key[:2] / f"{key}.json"
+
+
+def _read_cache_entry(key: str) -> str | None:
+    path = _cache_path(key)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    raw = data.get("raw_response")
+    if not isinstance(raw, str):
+        return None
+    try:
+        os.utime(path, None)
+    except OSError:
+        pass
+    return raw
+
+
+def _write_cache_entry(key: str, raw_response: str, model: str) -> bool:
+    """Validate that the response parses, then atomically write the cache entry.
+
+    Returns True if written, False if parse failed (no write performed).
+    """
+    try:
+        parse_digest_response(raw_response)
+    except ValueError:
+        return False
+
+    path = _cache_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": _DIGEST_CACHE_VERSION,
+        "key": key,
+        "model": model,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "raw_response": raw_response,
+    }
+    fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp, path)
+    except OSError:
+        if os.path.exists(tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        return False
+    return True
+
+
+def _prune_cache_lru(max_entries: int = DIGEST_CACHE_MAX_ENTRIES) -> None:
+    if not DIGEST_CACHE_DIR.is_dir():
+        return
+    entries: list[Path] = []
+    for shard in DIGEST_CACHE_DIR.iterdir():
+        if shard.is_dir():
+            entries.extend(p for p in shard.iterdir() if p.is_file() and p.suffix == ".json")
+    if len(entries) <= max_entries:
+        return
+    entries.sort(key=lambda p: p.stat().st_mtime)
+    for p in entries[: len(entries) - max_entries]:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
+def _clear_cache() -> None:
+    if not DIGEST_CACHE_DIR.is_dir():
+        return
+    shutil.rmtree(DIGEST_CACHE_DIR, ignore_errors=True)
+
+
 # ─── API Call ────────────────────────────────────────────────────
 # Migrated from: digest.sh:call_digest_api()
 
 
-def call_digest_api(prompt: str, model: str = "opus", max_retries: int = 3) -> str:
-    """Call Claude CLI with the digest prompt.
+def call_digest_api(
+    prompt: str,
+    model: str = "opus",
+    max_retries: int = 3,
+    *,
+    bypass_cache: bool = False,
+) -> str:
+    """Call Claude CLI with the digest prompt, with content-addressed caching.
+
+    The cache is keyed by sha256(prompt + model). On hit, returns the cached
+    raw response without spawning the CLI. On miss, calls the CLI and writes
+    the parseable response to the cache (parse failures are not cached).
 
     Args:
         prompt: The assembled digest prompt.
         model: Model name to use.
         max_retries: Maximum retry attempts.
+        bypass_cache: If True, skip BOTH cache lookup and cache write for this
+            invocation (pure pass-through to the API). Set by the
+            ``--no-digest-cache`` CLI flag.
 
     Returns:
-        Raw LLM response string.
+        Raw LLM response string. The caller is responsible for parsing via
+        ``parse_digest_response``.
 
     Raises:
         RuntimeError: If all retries fail.
     """
+    key = _compute_cache_key(prompt, model)
+
+    if not bypass_cache:
+        cached = _read_cache_entry(key)
+        if cached is not None:
+            try:
+                age_s = time.time() - _cache_path(key).stat().st_mtime
+                age_min = max(0, int(age_s / 60))
+            except OSError:
+                age_min = 0
+            logger.info("digest cache hit (key=%s, age=%dm)", key[:8], age_min)
+            return cached
+        logger.info("digest cache miss → calling API")
+    else:
+        logger.info("digest cache bypass (--no-digest-cache flag)")
+
     for attempt in range(1, max_retries + 1):
         result = run_claude_logged(
             prompt,
@@ -265,6 +389,10 @@ def call_digest_api(prompt: str, model: str = "opus", max_retries: int = 3) -> s
             extra_args=["--max-turns", "1", "--tools", ""],
         )
         if result.exit_code == 0 and result.stdout.strip():
+            if not bypass_cache:
+                if _write_cache_entry(key, result.stdout, model):
+                    logger.info("digest cache write (key=%s)", key[:8])
+                    _prune_cache_lru()
             return result.stdout
         logger.warning(
             "Digest API attempt %d/%d failed (rc=%d)",
@@ -1215,6 +1343,7 @@ def run_digest(
     digest_dir: str = DIGEST_DIR,
     model: str = "opus",
     dry_run: bool = False,
+    bypass_cache: bool = False,
 ) -> DigestRunResult:
     """Run the full digest pipeline: scan → prompt → API call → parse → validate → write.
 
@@ -1225,6 +1354,8 @@ def run_digest(
         digest_dir: Output directory for digest files.
         model: Model name for Claude API call.
         dry_run: If True, parse and validate but don't write files.
+        bypass_cache: If True, skip the digest cache (both lookup and write)
+            for this invocation. Set by the ``--no-digest-cache`` CLI flag.
 
     Returns:
         DigestRunResult with status and counts.
@@ -1244,10 +1375,10 @@ def run_digest(
     # 2. Build prompt
     prompt = build_digest_prompt(spec_path, scan)
 
-    # 3. Call Claude API
+    # 3. Call Claude API (with caching)
     logger.info("Calling Claude for digest generation...")
     try:
-        raw_response = call_digest_api(prompt, model=model)
+        raw_response = call_digest_api(prompt, model=model, bypass_cache=bypass_cache)
     except RuntimeError as e:
         return DigestRunResult(ok=False, error=str(e))
 

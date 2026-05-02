@@ -10,6 +10,10 @@ End-to-end tests for set-core orchestration. Each scaffold is a spec — agents 
 | **minishop** | Medium | ~15 | Standard pipeline test — cart, checkout, admin |
 | **craftbrew** | Complex | ~30 | Full-scale stress test — 15+ changes, multi-phase |
 
+## Digest cache
+
+The digest LLM extraction is content-addressed cached at `~/.cache/set-orch/digest-cache/` (keyed by `sha256(prompt + model)`). Repeated runs of the same scaffold against the same prompt template short-circuit the API call. To force a fresh extraction, pass `--digest-cache-clear` to `set-orch-core digest run` (purges the cache before running) or `--no-digest-cache` (pure pass-through, no read or write).
+
 ## Prerequisites
 
 ```bash

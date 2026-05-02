@@ -157,6 +157,42 @@ def summarize_spec(
     return spec_content[:32000]
 
 
+# ─── Force-strategy knob ───────────────────────────────────────────────
+# Reads orchestration.yaml::planner.force_strategy. Values: flat |
+# domain-parallel | auto. Default (and fallback for unknown values): auto.
+
+_FORCE_STRATEGY_VALID = {"flat", "domain-parallel", "auto"}
+
+
+def _read_force_strategy(project_dir: str | None = None) -> str:
+    """Return the configured planner.force_strategy, or 'auto' if unset/invalid."""
+    cwd = Path(project_dir) if project_dir else Path(os.getcwd())
+    candidates = [cwd / ".claude" / "orchestration.yaml", cwd / "orchestration.yaml"]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            import yaml as _yaml
+            with open(path) as _fh:
+                data = _yaml.safe_load(_fh) or {}
+        except Exception:
+            return "auto"
+        planner_section = data.get("planner") if isinstance(data, dict) else None
+        if not isinstance(planner_section, dict):
+            return "auto"
+        value = planner_section.get("force_strategy")
+        if value is None:
+            return "auto"
+        if not isinstance(value, str) or value not in _FORCE_STRATEGY_VALID:
+            logger.warning(
+                "Unknown planner.force_strategy=%r in %s — falling back to 'auto'",
+                value, path,
+            )
+            return "auto"
+        return value
+    return "auto"
+
+
 # ─── Test Infrastructure Detection ────────────────────────────────────
 # Migrated from: planner.sh detect_test_infra() L60-129, auto_detect_test_command() L131-160
 
@@ -2297,6 +2333,56 @@ def _save_domain_plans(
     logger.info("Saved domain plans to %s", domains_file)
 
 
+# Post-Phase-3 fail-fast guard against standalone test changes (regression
+# from `decompose-tests-bundled-with-features`). The 3-phase pipeline must
+# bundle e2e/unit tests with their feature change; only the cross-cutting
+# infrastructure change (named by the profile) may stand alone. The list of
+# forbidden change-name prefixes comes from the resolved profile —
+# `WebProjectType.standalone_test_change_prefixes()` returns
+# `["playwright-", "vitest-", "e2e-"]`; other profiles may supply different
+# stack-specific prefixes.
+
+
+def _assert_no_standalone_test_changes(plan_data: dict, project_path: str = ".") -> None:
+    """Raise RuntimeError if the plan contains standalone test-only changes.
+
+    The set of forbidden prefixes is supplied by the active profile via
+    `standalone_test_change_prefixes()`. The exempt change name (the one
+    cross-cutting test-related change) is supplied via
+    `singleton_test_infrastructure_change_name()`.
+
+    See openspec/changes/decompose-tests-bundled-with-features/.
+    """
+    try:
+        from .profile_loader import load_profile
+        profile = load_profile(project_path)
+        prefixes = profile.standalone_test_change_prefixes()
+        infra_name = profile.singleton_test_infrastructure_change_name()
+    except Exception:
+        prefixes = []
+        infra_name = "test-infrastructure-setup"
+
+    if not prefixes:
+        return  # no profile-supplied prefixes → nothing to enforce
+
+    prefix_re = re.compile(
+        r"^(" + "|".join(re.escape(p.rstrip("-")) for p in prefixes) + r")-"
+    )
+
+    for ch in plan_data.get("changes", []) or []:
+        name = ch.get("name", "") if isinstance(ch, dict) else ""
+        if not name:
+            continue
+        if name == infra_name:
+            continue
+        if prefix_re.match(name):
+            raise RuntimeError(
+                f"decompose-test-bundling violation: change '{name}' is a "
+                f"standalone test change. Tests must bundle with their feature "
+                f"change. See openspec/changes/decompose-tests-bundled-with-features/."
+            )
+
+
 def _try_domain_parallel_decompose(
     digest_dir: str,
     state_path: str,
@@ -2355,7 +2441,7 @@ def _try_domain_parallel_decompose(
     _save_domain_plans(planning_brief, domain_plans)
 
     # Phase 3: Merge & Resolve
-    return _phase3_merge_plans(
+    plan_data = _phase3_merge_plans(
         domain_plans,
         planning_brief,
         domain_data,
@@ -2363,6 +2449,13 @@ def _try_domain_parallel_decompose(
         replan_ctx=replan_ctx,
         model=model,
     )
+
+    # Fail-fast guard: enforce the test-bundling invariant from
+    # decompose-tests-bundled-with-features. Runs only on the
+    # domain-parallel return path; flat decompose is unaffected.
+    _assert_no_standalone_test_changes(plan_data)
+
+    return plan_data
 
 
 # ─── Planning Pipeline ────────────────────────────────────────────────
@@ -2471,9 +2564,29 @@ def run_planning_pipeline(
         except Exception:
             pass
 
+        force_strategy = _read_force_strategy()
+
+        if force_strategy == "flat":
+            chosen_strategy = "flat"
+            source = "force_strategy"
+        elif force_strategy == "domain-parallel":
+            chosen_strategy = "domain-parallel"
+            source = "force_strategy"
+        else:
+            chosen_strategy = (
+                "domain-parallel"
+                if req_count >= DOMAIN_PARALLEL_MIN_REQS
+                else "flat"
+            )
+            source = "threshold"
+
+        logger.info(
+            "decompose strategy=%s, source=%s, req_count=%d, threshold=%d",
+            chosen_strategy, source, req_count, DOMAIN_PARALLEL_MIN_REQS,
+        )
+
         plan_data = None
-        if req_count >= DOMAIN_PARALLEL_MIN_REQS:
-            # Large spec: try domain-parallel pipeline
+        if chosen_strategy == "domain-parallel":
             try:
                 plan_data = _try_domain_parallel_decompose(
                     digest_dir, state_path, test_infra_context, design_context,
@@ -2481,8 +2594,6 @@ def run_planning_pipeline(
                 )
             except Exception as e:
                 logger.warning("Domain-parallel decompose failed (%s) — falling back to single-call", e)
-        else:
-            logger.info("Small spec (%d reqs < %d threshold) — using single-call decompose", req_count, DOMAIN_PARALLEL_MIN_REQS)
 
         if plan_data is None:
             # Fallback: single-call decompose (same path as brief/spec mode)

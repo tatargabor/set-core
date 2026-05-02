@@ -8,8 +8,11 @@ pyproject.toml [project.scripts] also points here for pip-installed environments
 
 import argparse
 import json
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def _default_plan_output() -> str:
@@ -1077,6 +1080,7 @@ def cmd_engine(args):
 def cmd_digest(args):
     """Dispatch digest subcommands."""
     from .digest import (
+        _clear_cache,
         check_coverage_gaps,
         check_digest_freshness,
         final_coverage_check,
@@ -1096,11 +1100,15 @@ def cmd_digest(args):
         args.dir = _default_digest_dir()
 
     if args.digest_cmd == "run":
+        if getattr(args, "digest_cache_clear", False):
+            _clear_cache()
+            logger.info("digest cache cleared (--digest-cache-clear flag)")
         result = run_digest(
             args.spec,
             model=args.model,
             dry_run=args.dry_run,
             digest_dir=getattr(args, "dir", None) or _default_digest_dir(),
+            bypass_cache=getattr(args, "no_digest_cache", False),
         )
         if result.validation_warnings:
             for w in result.validation_warnings:
@@ -1828,6 +1836,16 @@ def main():
     dig_run.add_argument("--dry-run", action="store_true", help="Print without writing")
     dig_run.add_argument("--model", default="opus", help="Model for digest")
     dig_run.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
+    dig_run.add_argument(
+        "--no-digest-cache",
+        action="store_true",
+        help="skip both cache lookup and cache write for this invocation",
+    )
+    dig_run.add_argument(
+        "--digest-cache-clear",
+        action="store_true",
+        help="purge the digest cache before running",
+    )
 
     dig_val = dig_sub.add_parser("validate", help="Validate existing digest")
     dig_val.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
