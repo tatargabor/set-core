@@ -298,6 +298,15 @@ def _build_tool_spans(entries: list[dict], session_id: str) -> list[dict]:
                             if isinstance(tinput.get(k), str):
                                 detail["preview"] = tinput[k][:60]
                                 break
+                        # Stash the FULL file_path (untruncated) for edit/write tools
+                        # so the sub-phase classifier can accurately distinguish
+                        # OpenSpec artifact edits (spec) from source-code edits (code).
+                        # Truncated previews lose the `openspec/` marker on long
+                        # absolute paths, which would otherwise misclassify all
+                        # consumer-project artifact edits as `code`.
+                        fp = tinput.get("file_path")
+                        if isinstance(fp, str) and fp:
+                            detail["file_path"] = fp
                     # Sub-agent dispatch → distinct top-level category
                     if norm_name in SUBAGENT_TOOL_NAMES:
                         purpose = ""
@@ -725,8 +734,10 @@ def _build_sub_spans_for_change(
     # Per-change cache key — partition cache by change name
     # Cache filename carries a format version suffix so old caches written
     # with a different schema (e.g., the pre-gap-categorization `agent:overhead`
-    # format) are naturally ignored after a code upgrade.
-    cache_for_change = cache.with_name(f"activity-detail-v2-{change_name}.jsonl")
+    # format, or the v2 format which lacks the `detail.file_path` field needed
+    # by the sub-phase classifier for accurate spec/code distinction on
+    # absolute paths) are naturally ignored after a code upgrade.
+    cache_for_change = cache.with_name(f"activity-detail-v3-{change_name}.jsonl")
     if _is_cache_valid(cache_for_change, session_files):
         cached = _load_cache(cache_for_change)
         if cached is not None:
@@ -806,6 +817,147 @@ def _compute_aggregates(sub_spans: list[dict]) -> dict:
         "subagent_count": subagent_count,
         "top_operations": top,
     }
+
+
+# ─── Sub-phase classification (rollup for the main timeline) ───────
+
+SUB_PHASE_TEST_RE = re.compile(
+    r"\b(pytest|jest|vitest|playwright|"
+    r"npm\s+(run\s+)?test|yarn\s+test|pnpm\s+(run\s+)?test|"
+    r"go\s+test|cargo\s+test)\b",
+    re.IGNORECASE,
+)
+
+SUB_PHASE_BUILD_RE = re.compile(
+    r"\b(npm\s+run\s+build|next\s+build|tsc|"
+    r"cargo\s+build|make\s+(build|all)|bun\s+build)\b",
+    re.IGNORECASE,
+)
+
+SUB_PHASE_EXCLUDED_CATEGORIES: frozenset[str] = frozenset({
+    "agent:llm-wait",
+    "agent:gap",
+    "agent:hook-overhead",
+    "agent:loop-restart",
+    "agent:review-wait",
+    "agent:verify-wait",
+})
+
+_SPEC_PATH_PREFIXES: tuple[str, ...] = ("openspec/changes/", "openspec/specs/")
+# Substring markers used for absolute paths (which never startswith the relative
+# prefix above). `/openspec/changes/` matches both `/foo/openspec/changes/...`
+# and longer absolute paths.
+_SPEC_PATH_SUBSTRINGS: tuple[str, ...] = ("/openspec/changes/", "/openspec/specs/")
+_EDIT_TOOL_SUFFIXES: frozenset[str] = frozenset({"edit", "write", "multiedit"})
+
+_SUB_PHASE_MERGE_GAP_MS = 30_000
+
+
+def _classify_sub_span(span: dict) -> Optional[str]:
+    """Classify one drilldown sub-span into the operator-facing taxonomy.
+
+    Returns one of `spec`, `code`, `test`, `build`, `subagent`, `other`,
+    or `None` if the sub-span belongs to an excluded category (waits / gaps).
+    """
+    category = span.get("category") or ""
+    if category in SUB_PHASE_EXCLUDED_CATEGORIES:
+        return None
+    if category.startswith("agent:subagent:"):
+        return "subagent"
+    if not category.startswith("agent:tool:"):
+        return "other"
+    tool_suffix = category[len("agent:tool:"):]
+    detail = span.get("detail") or {}
+    if not isinstance(detail, dict):
+        detail = {}
+    preview = detail.get("preview")
+    preview = preview if isinstance(preview, str) else ""
+    if tool_suffix in _EDIT_TOOL_SUFFIXES:
+        # Prefer the untruncated `file_path` (added by `_build_tool_spans` for
+        # newly-built caches). Fall back to the 60-char preview for older
+        # cached entries; substring search covers the absolute-path case
+        # where the truncated preview may not start with `openspec/`.
+        full_path = detail.get("file_path")
+        full_path = full_path if isinstance(full_path, str) else ""
+        if full_path:
+            if full_path.startswith(_SPEC_PATH_PREFIXES) or any(
+                marker in full_path for marker in _SPEC_PATH_SUBSTRINGS
+            ):
+                return "spec"
+            return "code"
+        if preview.startswith(_SPEC_PATH_PREFIXES) or any(
+            marker in preview for marker in _SPEC_PATH_SUBSTRINGS
+        ):
+            return "spec"
+        return "code"
+    if tool_suffix == "bash":
+        if SUB_PHASE_TEST_RE.search(preview):
+            return "test"
+        if SUB_PHASE_BUILD_RE.search(preview):
+            return "build"
+        return "other"
+    return "other"
+
+
+def _merge_consecutive_sub_phases(
+    items: list[dict],
+    max_gap_ms: int = _SUB_PHASE_MERGE_GAP_MS,
+) -> list[dict]:
+    """Collapse adjacent same-category entries with inter-entry gap ≤ max_gap_ms.
+
+    Input MUST be sorted by `start` ascending. The first entry's `trigger_tool`
+    and `trigger_detail` win for the merged range.
+    """
+    if not items:
+        return []
+    merged: list[dict] = []
+    cur = dict(items[0])
+    cur_end_ms = _ts_to_ms(cur.get("end", ""))
+    for nxt in items[1:]:
+        nxt_start_ms = _ts_to_ms(nxt.get("start", ""))
+        nxt_end_ms = _ts_to_ms(nxt.get("end", ""))
+        gap = nxt_start_ms - cur_end_ms
+        if nxt.get("category") == cur.get("category") and gap <= max_gap_ms:
+            cur["end"] = nxt.get("end", cur.get("end"))
+            cur["duration_ms"] = max(0, nxt_end_ms - _ts_to_ms(cur.get("start", "")))
+            cur_end_ms = nxt_end_ms
+            continue
+        merged.append(cur)
+        cur = dict(nxt)
+        cur_end_ms = nxt_end_ms
+    merged.append(cur)
+    return merged
+
+
+def _classify_sub_phases(windowed_sub_spans: list[dict]) -> list[dict]:
+    """Classify already-windowed drilldown sub-spans into the operator taxonomy.
+
+    Caller MUST pass the output of `_clip_and_filter` — this helper does not
+    re-clip. Returns merged ranges in `start`-ascending order with keys
+    `category`, `start`, `end`, `duration_ms`, `trigger_tool`, `trigger_detail`.
+    Excluded categories (waits/gaps) are dropped, so the union of returned
+    ranges may not cover the parent's full duration.
+    """
+    classified: list[dict] = []
+    for span in windowed_sub_spans:
+        category = _classify_sub_span(span)
+        if category is None:
+            continue
+        detail = span.get("detail") or {}
+        if not isinstance(detail, dict):
+            detail = {}
+        trigger_tool = detail.get("tool")
+        trigger_detail = detail.get("preview")
+        classified.append({
+            "category": category,
+            "start": span.get("start", ""),
+            "end": span.get("end", ""),
+            "duration_ms": span.get("duration_ms", 0),
+            "trigger_tool": trigger_tool if isinstance(trigger_tool, str) else None,
+            "trigger_detail": trigger_detail if isinstance(trigger_detail, str) else None,
+        })
+    classified.sort(key=lambda s: s.get("start", ""))
+    return _merge_consecutive_sub_phases(classified)
 
 
 # ─── API endpoint ───────────────────────────────────────────────────

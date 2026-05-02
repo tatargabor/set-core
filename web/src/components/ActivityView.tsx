@@ -14,6 +14,15 @@ interface Props {
 const CATEGORY_COLORS: Record<string, string> = {
   planning: '#a78bfa',       // violet
   implementing: '#22c55e',   // green
+  // Implementing sub-phases (rendered under the parent row when expanded).
+  // Distinct shades within the green family for spec/code/test/build, amber
+  // for subagent (visually distinct — outsourced work), gray for other.
+  'implementing:spec': '#16a34a',      // green-600 (deeper green)
+  'implementing:code': '#22c55e',      // green-500 (parent green)
+  'implementing:test': '#4ade80',      // green-400 (lighter)
+  'implementing:build': '#86efac',     // green-300 (lightest)
+  'implementing:subagent': '#fbbf24',  // amber-400 (distinct, outsourced)
+  'implementing:other': '#6b7280',     // gray-500
   fixing: '#f59e0b',         // amber
   // Orchestrator-side LLM calls (verifier/replanner/classifier) — warm hues
   'llm:review': '#fbbf24',       // amber-400
@@ -74,6 +83,13 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 // Pretty labels for categories that benefit from a longer name in tooltips/labels.
 export const CATEGORY_LABELS: Record<string, string> = {
+  // Implementing sub-phases — short, indented label hint via leading space.
+  'implementing:spec': '  spec',
+  'implementing:code': '  code',
+  'implementing:test': '  test',
+  'implementing:build': '  build',
+  'implementing:subagent': '  subagent',
+  'implementing:other': '  other',
   'llm:review': 'LLM: Review',
   'llm:spec_verify': 'LLM: Spec Verify',
   'llm:replan': 'LLM: Replan',
@@ -160,6 +176,10 @@ export interface GanttSpan {
   result?: string
   retry?: number
   detail?: Record<string, unknown>
+  sub_spans?: Array<{
+    category: string
+    duration_ms: number
+  }> | null
 }
 
 interface GanttProps {
@@ -378,8 +398,49 @@ export function GanttTimeline({
             </div>
           )}
           {tooltip.span.detail && (tooltip.span.detail.preview as string) && (
-            <div className="text-neutral-400">│ {(tooltip.span.detail.preview as string).slice(0, 60)}</div>
+            <div className="text-neutral-400">│ {(tooltip.span.detail.preview as string).slice(0, 80)}</div>
           )}
+          {tooltip.span.detail && (tooltip.span.detail.trigger_tool as string) && (
+            <div className="text-neutral-500">│ via {(tooltip.span.detail.trigger_tool as string)}</div>
+          )}
+          {/* Per-sub-phase percentage breakdown on `implementing` parents.
+              Sub-phases intentionally do not cover the full parent duration
+              (waits/think-time excluded) — show "classified" share too. */}
+          {tooltip.span.category === 'implementing' &&
+            Array.isArray(tooltip.span.sub_spans) &&
+            tooltip.span.sub_spans.length > 0 && (
+              <>
+                {(() => {
+                  const totals: Record<string, number> = {}
+                  let classified = 0
+                  for (const ss of tooltip.span.sub_spans) {
+                    totals[ss.category] = (totals[ss.category] || 0) + ss.duration_ms
+                    classified += ss.duration_ms
+                  }
+                  const parentMs = tooltip.span.duration_ms || 1
+                  const ordered = ['spec', 'code', 'test', 'build', 'subagent', 'other'].filter(
+                    (c) => totals[c] > 0,
+                  )
+                  return (
+                    <>
+                      <div className="text-neutral-500 mt-1">├─ sub-phases:</div>
+                      {ordered.map((c) => (
+                        <div key={c} className="text-neutral-400">
+                          │  {c.padEnd(8)} {Math.round((totals[c] / parentMs) * 100)
+                            .toString()
+                            .padStart(2)}%
+                          {' · '}
+                          {formatDuration(totals[c])}
+                        </div>
+                      ))}
+                      <div className="text-neutral-600">
+                        │  unclassified {Math.max(0, Math.round((1 - classified / parentMs) * 100))}% (wait/think)
+                      </div>
+                    </>
+                  )
+                })()}
+              </>
+            )}
           {!!onSpanClick && tooltip.span.duration_ms > 60_000 && (
             <div className="text-neutral-500 mt-1">└─ click to drill down</div>
           )}
@@ -454,6 +515,34 @@ function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBrea
 
 // ─── Main component ─────────────────────────────────────────────────
 
+// Sub-phase categories shown under the parent `implementing` lane when expanded.
+const SUB_PHASE_CATEGORIES = [
+  'implementing:spec',
+  'implementing:code',
+  'implementing:test',
+  'implementing:build',
+  'implementing:subagent',
+  'implementing:other',
+] as const
+
+const SUB_PHASE_EXPAND_KEY = 'activity-implementing-sub-expanded'
+
+function readSubPhaseExpanded(): boolean {
+  try {
+    return window.localStorage.getItem(SUB_PHASE_EXPAND_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function writeSubPhaseExpanded(v: boolean): void {
+  try {
+    window.localStorage.setItem(SUB_PHASE_EXPAND_KEY, v ? 'true' : 'false')
+  } catch {
+    /* localStorage unavailable — ignore */
+  }
+}
+
 export default function ActivityView({ project, isRunning }: Props) {
   const [data, setData] = useState<ActivityTimelineData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -463,7 +552,21 @@ export default function ActivityView({ project, isRunning }: Props) {
   const [manualZoom, setManualZoom] = useState(false)
   const [containerWidth, setContainerWidth] = useState(0)
   const [expandedSpan, setExpandedSpan] = useState<ActivitySpan | null>(null)
+  const [subPhasesExpanded, setSubPhasesExpanded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Hydrate sub-phase expand state from localStorage on mount.
+  useEffect(() => {
+    setSubPhasesExpanded(readSubPhaseExpanded())
+  }, [])
+
+  const toggleSubPhases = useCallback(() => {
+    setSubPhasesExpanded((prev) => {
+      const next = !prev
+      writeSubPhaseExpanded(next)
+      return next
+    })
+  }, [])
 
   const { lineageId } = useSelectedLineage()
   // Reset timeline data when the lineage selection flips so the prior
@@ -540,10 +643,60 @@ export default function ActivityView({ project, isRunning }: Props) {
     setExpandedSpan(span as ActivitySpan)
   }, [expandedSpan])
 
-  // Compute visible categories (only those with spans)
+  // Detect whether any `implementing` span carries a non-empty `sub_spans`
+  // list, which determines whether the toggle is offered at all and whether
+  // we synthesize sub-phase lane spans.
+  const hasSubPhases = useMemo(() => {
+    if (!data?.spans.length) return false
+    return data.spans.some(
+      (s) => s.category === 'implementing' && Array.isArray(s.sub_spans) && s.sub_spans.length > 0,
+    )
+  }, [data])
+
+  // Synthesize per-sub-phase Gantt spans by flattening every `implementing`
+  // parent's `sub_spans` list into top-level spans whose category is
+  // `implementing:<sub>`. The synthetic spans inherit the parent's `change`
+  // so multi-change views keep attribution. Only computed when the user has
+  // expanded the breakdown — saves the work otherwise.
+  const subPhaseSpans = useMemo<ActivitySpan[]>(() => {
+    if (!subPhasesExpanded || !data?.spans.length) return []
+    const out: ActivitySpan[] = []
+    for (const s of data.spans) {
+      if (s.category !== 'implementing') continue
+      const subs = Array.isArray(s.sub_spans) ? s.sub_spans : []
+      for (const sub of subs) {
+        out.push({
+          category: `implementing:${sub.category}`,
+          change: s.change,
+          start: sub.start,
+          end: sub.end,
+          duration_ms: sub.duration_ms,
+          detail: {
+            trigger_tool: sub.trigger_tool,
+            trigger_detail: sub.trigger_detail,
+            preview: sub.trigger_detail,
+          },
+        })
+      }
+    }
+    return out
+  }, [data, subPhasesExpanded])
+
+  // Effective spans passed to the Gantt — original + synthesized sub-phase
+  // spans. Sub-phase spans are only included when the user has expanded.
+  const effectiveSpans = useMemo<ActivitySpan[]>(() => {
+    if (!data?.spans.length) return []
+    if (!subPhasesExpanded || !subPhaseSpans.length) return data.spans
+    return [...data.spans, ...subPhaseSpans]
+  }, [data, subPhasesExpanded, subPhaseSpans])
+
+  // Compute visible categories (only those with spans).
+  // When sub-phases are expanded, the six `implementing:*` lanes appear
+  // immediately after the parent `implementing` lane in CATEGORY_COLORS
+  // declaration order.
   const { categories, minTime, maxTime } = useMemo(() => {
-    if (!data?.spans.length) return { categories: [] as string[], minTime: 0, maxTime: 0 }
-    const catSet = new Set(data.spans.map((s) => s.category))
+    if (!effectiveSpans.length) return { categories: [] as string[], minTime: 0, maxTime: 0 }
+    const catSet = new Set(effectiveSpans.map((s) => s.category))
     const cats = [...catSet].sort((a, b) => {
       const ai = Object.keys(CATEGORY_COLORS).indexOf(a)
       const bi = Object.keys(CATEGORY_COLORS).indexOf(b)
@@ -551,14 +704,18 @@ export default function ActivityView({ project, isRunning }: Props) {
     })
     let mn = Infinity
     let mx = -Infinity
-    for (const s of data.spans) {
+    for (const s of effectiveSpans) {
       const st = new Date(s.start).getTime()
       const et = new Date(s.end).getTime()
       if (st < mn) mn = st
       if (et > mx) mx = et
     }
     return { categories: cats, minTime: mn, maxTime: mx }
-  }, [data])
+  }, [effectiveSpans])
+
+  // Suppress unused-var warning while keeping the constant exported for
+  // future per-change implementations.
+  void SUB_PHASE_CATEGORIES
 
   // Auto-fit zoom: compute pxPerSecond from container width on data load + resize.
   // Disabled when the user has manually zoomed since the last refresh.
@@ -625,19 +782,34 @@ export default function ActivityView({ project, isRunning }: Props) {
             <div className="flex">
               {/* Fixed category labels */}
               <div className="flex-shrink-0 w-28 pt-7">
-                {categories.map((cat) => (
-                  <div
-                    key={cat}
-                    className="h-6 flex items-center text-neutral-400 text-right pr-2 truncate"
-                    title={getCategoryLabel(cat)}
-                  >
-                    <span
-                      className="inline-block w-2 h-2 mr-1 flex-shrink-0"
-                      style={{ backgroundColor: getCategoryColor(cat) }}
-                    />
-                    {getCategoryLabel(cat)}
-                  </div>
-                ))}
+                {categories.map((cat) => {
+                  const isImplementingParent = cat === 'implementing' && hasSubPhases
+                  return (
+                    <div
+                      key={cat}
+                      className={`h-6 flex items-center text-neutral-400 text-right pr-2 truncate ${
+                        isImplementingParent ? 'cursor-pointer hover:text-neutral-200' : ''
+                      }`}
+                      title={
+                        isImplementingParent
+                          ? `${subPhasesExpanded ? 'Collapse' : 'Expand'} sub-phase breakdown (spec/code/test/build/subagent/other)`
+                          : getCategoryLabel(cat)
+                      }
+                      onClick={isImplementingParent ? toggleSubPhases : undefined}
+                    >
+                      {isImplementingParent && (
+                        <span className="inline-block w-3 text-neutral-500 mr-0.5 flex-shrink-0">
+                          {subPhasesExpanded ? '▼' : '▶'}
+                        </span>
+                      )}
+                      <span
+                        className="inline-block w-2 h-2 mr-1 flex-shrink-0"
+                        style={{ backgroundColor: getCategoryColor(cat) }}
+                      />
+                      <span className="truncate">{getCategoryLabel(cat)}</span>
+                    </div>
+                  )
+                })}
               </div>
 
               {/* Scrollable timeline */}
@@ -647,7 +819,7 @@ export default function ActivityView({ project, isRunning }: Props) {
                 onWheel={handleWheel}
               >
                 <GanttTimeline
-                  spans={data.spans as GanttSpan[]}
+                  spans={effectiveSpans as GanttSpan[]}
                   categories={categories}
                   minTime={minTime}
                   maxTime={maxTime}

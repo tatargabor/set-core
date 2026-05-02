@@ -1139,6 +1139,15 @@ export function submitScore(entry: {
 
 // ─── Activity Timeline ──────────────────────────────────────────
 
+export interface ActivitySubSpan {
+  category: 'spec' | 'code' | 'test' | 'build' | 'subagent' | 'other'
+  start: string
+  end: string
+  duration_ms: number
+  trigger_tool: string | null
+  trigger_detail: string | null
+}
+
 export interface ActivitySpan {
   category: string
   change: string
@@ -1148,6 +1157,13 @@ export interface ActivitySpan {
   result?: string
   retry?: number
   detail?: Record<string, unknown>
+  /**
+   * Present on `category === "implementing"` spans only. Always a list
+   * (empty when no classifiable drilldown sub-spans were available for the
+   * span's window). May be missing on responses from older API versions —
+   * frontend MUST treat missing/null/non-array as `[]`.
+   */
+  sub_spans?: ActivitySubSpan[] | null
 }
 
 export interface ActivityBreakdown {

@@ -1164,6 +1164,7 @@ def get_activity_timeline(
     try:
         from .activity_detail import (
             _build_sub_spans_for_change,
+            _classify_sub_phases,
             _clip_and_filter,
             _compute_aggregates,
         )
@@ -1172,6 +1173,10 @@ def get_activity_timeline(
         for span in spans:
             if span.get("category") != "implementing":
                 continue
+            # Default: every implementing span gets a `sub_spans` field.
+            # Set early so the no-data / failure paths below also satisfy the
+            # API contract that `sub_spans` is always present.
+            span["sub_spans"] = []
             change_name = span.get("change", "")
             if not change_name:
                 continue
@@ -1202,6 +1207,18 @@ def get_activity_timeline(
             detail["tool_calls"] = agg["total_tool_calls"]
             detail["subagent_count"] = agg["subagent_count"]
             span["detail"] = detail
+            # Sub-phase classification — reuses `window` (no re-clip).
+            # Per-span try/except so one change's failure does not block
+            # classification of other changes' spans in the same response.
+            try:
+                span["sub_spans"] = _classify_sub_phases(window)
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "sub-phase classification failed for %s",
+                    change_name,
+                    exc_info=True,
+                )
+                span["sub_spans"] = []
     except Exception:  # noqa: BLE001
         logger.debug("implementing-span enrichment pass failed", exc_info=True)
 
