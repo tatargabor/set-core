@@ -2961,8 +2961,17 @@ def _lint_e2e_navigation(wt_path: str) -> list[dict]:
         for m in test_re.finditer(src):
             test_name = m.group("name")
             block_start = m.end()
-            # Find the start of the test body — first '{' after the match
-            brace_idx = src.find("{", block_start)
+            # Find the start of the test body. Modern Playwright tests
+            # commonly look like
+            #   test('name', { tag: '@smoke' }, async ({ page }) => { body })
+            # or
+            #   test('name', async ({ page }) => { body })
+            # The first '{' after the name is the options object or the
+            # destructured-params pattern, NOT the body. Anchor on the
+            # arrow `=>` and take the first `{` after it.
+            arrow_idx = src.find("=>", block_start)
+            search_from = arrow_idx if arrow_idx != -1 else block_start
+            brace_idx = src.find("{", search_from)
             if brace_idx == -1:
                 continue
             depth = 1
@@ -2981,6 +2990,8 @@ def _lint_e2e_navigation(wt_path: str) -> list[dict]:
             has_goto = bool(re.search(r"\bpage\s*\.\s*goto\s*\(", body))
             uses_fs_read = bool(re.search(r"\b(?:readFileSync|fs\.readFile|readFile)\s*\(", body))
             is_skipped = bool(re.search(r"\btest\.skip\s*\(", body)) or "test.skip(" in m.group(0)
+            has_expect = bool(re.search(r"\bexpect\s*\(", body))
+            uses_wait_for_timeout = bool(re.search(r"\bpage\s*\.\s*waitForTimeout\s*\(", body))
 
             if is_skipped:
                 continue
@@ -3003,6 +3014,37 @@ def _lint_e2e_navigation(wt_path: str) -> list[dict]:
                     "line": line_no,
                     "reason": "no page.goto() — tab stays on about:blank, "
                               "screenshot will be blank/white.",
+                })
+
+            # Vacuously-passing tests: no expect() at all. Such a test only
+            # asserts that no statement in the body throws — almost always
+            # an oversight (the agent forgot the assertion) rather than
+            # intentional. Surfaces as WARN; pair with the goto check so a
+            # truly broken test fires both findings.
+            if not has_expect:
+                findings.append({
+                    "file": f"tests/e2e/{fn}",
+                    "test_name": test_name,
+                    "line": line_no,
+                    "reason": "no expect() — test passes vacuously. Add at "
+                              "least one Playwright `expect(locator).toBe*()` "
+                              "assertion or remove the test.",
+                })
+
+            # Flaky anti-pattern: page.waitForTimeout(N) is a fixed sleep
+            # that always either over- or under-waits relative to actual
+            # state. Playwright docs explicitly say not to use it in real
+            # tests; use `expect(locator).toBeVisible()` /
+            # `page.waitFor*()` with a condition instead.
+            if uses_wait_for_timeout:
+                findings.append({
+                    "file": f"tests/e2e/{fn}",
+                    "test_name": test_name,
+                    "line": line_no,
+                    "reason": "uses page.waitForTimeout — fixed sleeps make "
+                              "tests flaky. Replace with "
+                              "`await expect(locator).toBeVisible()` or "
+                              "`page.waitForLoadState('networkidle')`.",
                 })
 
     return findings
