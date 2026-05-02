@@ -186,6 +186,35 @@ class SupervisorDaemon:
         from .anomaly import TERMINAL_STATUSES
         return (data.get("status") or "").lower() in TERMINAL_STATUSES
 
+    def _all_changes_terminal(self) -> bool:
+        """Per-change view of run completion.
+
+        The top-level `state.status` is sometimes still `running` at the
+        instant the orchestrator subprocess exits — the engine may exit
+        before the final status flip lands on disk. Without a per-change
+        fallback the daemon then misclassifies that exit as a crash and
+        (when the wrapper script's tail-shell happens to exit 127) flags
+        `orchestrator_binary_missing`. Inspecting the changes list directly
+        lets us recognise an actually-finished run regardless of when the
+        top-level flip is persisted.
+        """
+        if not self._state_path or not self._state_path.is_file():
+            return False
+        try:
+            data = json.loads(self._state_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return False
+        changes = data.get("changes") or []
+        if not isinstance(changes, list) or not changes:
+            return False
+        terminal = {"merged", "failed", "skipped", "archived"}
+        for c in changes:
+            if not isinstance(c, dict):
+                return False
+            if (c.get("status") or "").lower() not in terminal:
+                return False
+        return True
+
     def _canonical_state_basename(self) -> str:
         """Project-local state filename — resolver basename + legacy prefix."""
         from ..paths import LineagePaths
@@ -408,6 +437,21 @@ class SupervisorDaemon:
             if self._orch_proc is not None
             else None
         )
+        # Run-complete short-circuit: if every change in state.json is in a
+        # terminal status (merged / failed / skipped) and nothing is pending
+        # or running, the orchestrator's exit is the EXPECTED end of the
+        # run — not a crash. Skip classification and skip the restart so
+        # the daemon doesn't flag a successful run as
+        # `orchestrator_binary_missing` (observed when the wrapper script
+        # exits 127 in a post-merge shell despite no actual error).
+        if self._all_changes_terminal():
+            logger.info(
+                "[supervisor] Orchestrator exited after all changes terminal "
+                "— treating as run-complete, not crash."
+            )
+            self._stop_reason = "run_complete"
+            self._stop_requested = True
+            return False
         reason_code = _classify_exit(stderr_tail or "")
         if reason_code is None and exit_code == 127:
             reason_code = "orchestrator_binary_missing"

@@ -407,3 +407,76 @@ class TestRapidCrashesResetOnPlanCompletion:
         state = {"status": "running", "changes": []}
         daemon._maybe_reset_rapid_crashes(state)
         assert daemon.status.rapid_crashes == 3
+
+
+# ─── _all_changes_terminal — run-complete classification ─────────────
+
+
+class TestAllChangesTerminal:
+    """Per-change terminal-state check used by `_restart_orchestrator` to
+    distinguish a successful run end from a real crash. Without this
+    helper the daemon would misclassify a clean post-merge orchestrator
+    exit (exit 127 from a tail-shell, empty stderr) as
+    `orchestrator_binary_missing`."""
+
+    def _make_daemon_with_state(self, project_dir, payload):
+        """State must be written BEFORE construction so the daemon's
+        `_resolve_runtime_paths()` finds it (it only resolves to existing
+        files; lazy-resolves later if the canonical path materialises)."""
+        if payload is not None:
+            tp.state_file(project_dir).write_text(json.dumps(payload))
+        from set_orch.supervisor.daemon import SupervisorConfig, SupervisorDaemon
+        cfg = SupervisorConfig(project_path=str(project_dir), spec="docs/spec.md")
+        return SupervisorDaemon(cfg)
+
+    def test_returns_true_when_all_merged(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, {
+            "status": "running",  # top-level still flipping — change list is the truth
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "merged"},
+            ],
+        })
+        assert d._all_changes_terminal() is True
+
+    def test_returns_true_with_mixed_terminal(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, {
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "failed"},
+                {"name": "c", "status": "skipped"},
+            ],
+        })
+        assert d._all_changes_terminal() is True
+
+    def test_returns_false_when_any_running(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, {
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "running"},
+            ],
+        })
+        assert d._all_changes_terminal() is False
+
+    def test_returns_false_when_any_pending(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, {
+            "changes": [
+                {"name": "a", "status": "merged"},
+                {"name": "b", "status": "pending"},
+            ],
+        })
+        assert d._all_changes_terminal() is False
+
+    def test_returns_false_on_empty_changes(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, {"changes": []})
+        assert d._all_changes_terminal() is False
+
+    def test_returns_false_when_state_missing(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, None)
+        assert d._all_changes_terminal() is False
+
+    def test_returns_false_on_corrupt_state(self, project_dir):
+        d = self._make_daemon_with_state(project_dir, {"changes": [{"name": "a", "status": "merged"}]})
+        # Corrupt AFTER construction so _state_path is bound but the read fails.
+        tp.state_file(project_dir).write_text("not json {{{")
+        assert d._all_changes_terminal() is False

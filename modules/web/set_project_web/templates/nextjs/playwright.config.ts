@@ -81,8 +81,14 @@ export default defineConfig({
     trace: "retain-on-failure",
     // Action and navigation defaults — Playwright's defaults (no timeout)
     // cause hung tests to consume globalTimeout instead of failing fast.
+    // navigationTimeout is 30s (not the Playwright default 15s) because the
+    // first few page.goto calls in a fresh gate run hit the Next.js dev
+    // server BEFORE it has on-demand-compiled the requested route. 15s
+    // worked on hot caches but reliably blew up on cold compile under
+    // single-worker orchestration runs (observed across multiple consumer
+    // E2E runs; agents otherwise hand-bumped this on first failure).
     actionTimeout: 10_000,
-    navigationTimeout: 15_000,
+    navigationTimeout: 30_000,
   },
   projects: [
     {

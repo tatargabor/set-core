@@ -279,6 +279,13 @@ class Change:
     e2e_result: Optional[str] = None
     review_result: Optional[str] = None
     build_result: Optional[str] = None
+    # spec_coverage gate result. Field was referenced from engine,
+    # verifier, and the archive path before being declared here, causing
+    # AttributeError on every archive_completed_to_jsonl pass — caught
+    # by the merger's try/except as a benign DEBUG, but blocked the
+    # archive entry. Declaring it here resolves the archive failure
+    # without changing observable runtime behaviour.
+    spec_coverage_result: Optional[str] = None
 
     # Gate output logs (last 2000 chars for display)
     build_output: Optional[str] = None
