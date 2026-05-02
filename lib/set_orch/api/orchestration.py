@@ -1296,9 +1296,20 @@ def get_llm_calls(
     effective_lineage = lineage or resolve_lineage_default(project_path)
     if effective_lineage and effective_lineage != "__all__":
         change_lineage = _build_change_lineage_map(project_path, state)
-        # Tag every call with its change's lineage (default __legacy__).
+        # Project-level calls (digest, decompose, supervisor diagnostic)
+        # have no `change`. Inherit the project's current lineage so they
+        # surface under the active spec view; otherwise they fell into the
+        # __legacy__ bucket and disappeared whenever any specific lineage
+        # was selected.
+        project_lineage = (
+            state.spec_lineage_id if state and getattr(state, "spec_lineage_id", "") else "__legacy__"
+        )
         for c in calls:
-            c["spec_lineage_id"] = change_lineage.get(c.get("change", ""), "__legacy__")
+            ch = c.get("change", "")
+            if ch:
+                c["spec_lineage_id"] = change_lineage.get(ch, "__legacy__")
+            else:
+                c["spec_lineage_id"] = project_lineage
         calls = apply_lineage_filter(calls, effective_lineage)
 
     # Sort chronologically (most recent first) and limit
