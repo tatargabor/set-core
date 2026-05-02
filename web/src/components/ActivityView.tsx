@@ -83,13 +83,16 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 // Pretty labels for categories that benefit from a longer name in tooltips/labels.
 export const CATEGORY_LABELS: Record<string, string> = {
-  // Implementing sub-phases — short, indented label hint via leading space.
-  'implementing:spec': '  spec',
-  'implementing:code': '  code',
-  'implementing:test': '  test',
-  'implementing:build': '  build',
-  'implementing:subagent': '  subagent',
-  'implementing:other': '  other',
+  // Implementing sub-phases — box-drawing tree marker shows parent-child
+  // relationship in the labels column. The renderer overrides these for
+  // styled rendering (CHILD_LABEL_PREFIX) but the raw label stays
+  // human-readable for tooltips and other consumers.
+  'implementing:spec': '└─ spec',
+  'implementing:code': '└─ code',
+  'implementing:test': '└─ test',
+  'implementing:build': '└─ build',
+  'implementing:subagent': '└─ subagent',
+  'implementing:other': '└─ other',
   'llm:review': 'LLM: Review',
   'llm:spec_verify': 'LLM: Spec Verify',
   'llm:replan': 'LLM: Replan',
@@ -529,9 +532,14 @@ const SUB_PHASE_EXPAND_KEY = 'activity-implementing-sub-expanded'
 
 function readSubPhaseExpanded(): boolean {
   try {
-    return window.localStorage.getItem(SUB_PHASE_EXPAND_KEY) === 'true'
+    const v = window.localStorage.getItem(SUB_PHASE_EXPAND_KEY)
+    // Default to expanded (true) when no preference is stored — operators
+    // looking at the Activity tab almost always want the breakdown visible
+    // by default; collapsing is the opt-out, not the opt-in.
+    if (v === null) return true
+    return v === 'true'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -552,7 +560,7 @@ export default function ActivityView({ project, isRunning }: Props) {
   const [manualZoom, setManualZoom] = useState(false)
   const [containerWidth, setContainerWidth] = useState(0)
   const [expandedSpan, setExpandedSpan] = useState<ActivitySpan | null>(null)
-  const [subPhasesExpanded, setSubPhasesExpanded] = useState(false)
+  const [subPhasesExpanded, setSubPhasesExpanded] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Hydrate sub-phase expand state from localStorage on mount.
@@ -784,6 +792,14 @@ export default function ActivityView({ project, isRunning }: Props) {
               <div className="flex-shrink-0 w-28 pt-7">
                 {categories.map((cat) => {
                   const isImplementingParent = cat === 'implementing' && hasSubPhases
+                  const isImplementingChild = cat.startsWith('implementing:')
+                  // Pre-split the box-drawing prefix so the connector
+                  // characters render in a dim color and the category name
+                  // stays at default emphasis — gives a visual tree shape.
+                  const childPrefix = isImplementingChild ? '└─ ' : ''
+                  const childName = isImplementingChild
+                    ? getCategoryLabel(cat).replace(/^└─\s*/, '')
+                    : getCategoryLabel(cat)
                   return (
                     <div
                       key={cat}
@@ -802,11 +818,16 @@ export default function ActivityView({ project, isRunning }: Props) {
                           {subPhasesExpanded ? '▼' : '▶'}
                         </span>
                       )}
+                      {isImplementingChild && (
+                        <span className="text-neutral-700 font-mono whitespace-pre flex-shrink-0">
+                          {childPrefix}
+                        </span>
+                      )}
                       <span
                         className="inline-block w-2 h-2 mr-1 flex-shrink-0"
                         style={{ backgroundColor: getCategoryColor(cat) }}
                       />
-                      <span className="truncate">{getCategoryLabel(cat)}</span>
+                      <span className="truncate">{childName}</span>
                     </div>
                   )
                 })}

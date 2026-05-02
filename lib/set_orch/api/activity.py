@@ -1070,6 +1070,80 @@ def _ts_to_ms(ts: str) -> int:
         return 0
 
 
+# ─── Implementing-span enrichment ───────────────────────────────────
+
+
+def _enrich_implementing_spans(spans: list[dict], project_path: Path) -> None:
+    """Mutate `spans` in place: add aggregates + sub_spans to implementing entries.
+
+    Behaviour contract:
+    - Every span with `category == "implementing"` gets a `sub_spans` key
+      (empty list when no classifiable drilldown data — set early so the
+      no-data and failure paths still satisfy the API contract).
+    - The drilldown cache is loaded at most once per change_name via
+      `sub_span_cache`, then reused for both aggregates and classification.
+    - The classifier is wrapped in a per-span try/except so one change's
+      failure does not block classification of other changes.
+
+    Extracted from the inline enrichment block originally at activity.py:1152
+    so the integration tests can exercise this loop without spinning up the
+    FastAPI client.
+    """
+    from .activity_detail import (
+        _build_sub_spans_for_change,
+        _classify_sub_phases,
+        _clip_and_filter,
+        _compute_aggregates,
+    )
+
+    sub_span_cache: dict[str, list[dict]] = {}
+    for span in spans:
+        if span.get("category") != "implementing":
+            continue
+        # Default: every implementing span gets a `sub_spans` field.
+        span["sub_spans"] = []
+        change_name = span.get("change", "")
+        if not change_name:
+            continue
+        if change_name not in sub_span_cache:
+            try:
+                loaded, _hit = _build_sub_spans_for_change(project_path, change_name)
+                sub_span_cache[change_name] = loaded
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "sub-span enrichment failed for %s",
+                    change_name,
+                    exc_info=True,
+                )
+                sub_span_cache[change_name] = []
+        sub_spans = sub_span_cache[change_name]
+        if not sub_spans:
+            continue
+        window = _clip_and_filter(sub_spans, span.get("start"), span.get("end"))
+        if not window:
+            continue
+        agg = _compute_aggregates(window)
+        detail = span.get("detail") or {}
+        if not isinstance(detail, dict):
+            detail = {}
+        detail["llm_calls"] = agg["total_llm_calls"]
+        detail["tool_calls"] = agg["total_tool_calls"]
+        detail["subagent_count"] = agg["subagent_count"]
+        span["detail"] = detail
+        # Sub-phase classification — reuses `window` (no re-clip).
+        # Per-span try/except so one change's failure does not block
+        # classification of other changes' spans in the same response.
+        try:
+            span["sub_spans"] = _classify_sub_phases(window)
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "sub-phase classification failed for %s",
+                change_name,
+                exc_info=True,
+            )
+            span["sub_spans"] = []
+
+
 # ─── API endpoint ───────────────────────────────────────────────────
 
 
@@ -1149,76 +1223,10 @@ def get_activity_timeline(
     except Exception:
         logger.debug("session_boundary extraction failed", exc_info=True)
 
-    # Enrich implementing spans with per-span aggregates (llm calls, tool calls,
-    # subagent count) from the drilldown sub-span data. Without this the
-    # frontend renders a plain "implementing" bar for currently-running changes,
-    # making it look like nothing is happening even when the agent is actively
-    # calling tools. With this enrichment, each implementing span carries
-    # detail.llm_calls / detail.tool_calls / detail.subagent_count that the
-    # frontend can display inline (e.g., "implementing · 37 LLM · 24 tools").
-    #
-    # Perf: _build_sub_spans_for_change is cached per-change, so the sub-spans
-    # are loaded at most once per change regardless of how many implementing
-    # spans that change has. The in-memory filter + aggregate on each span is
-    # O(sub_spans).
+    # Enrich implementing spans with per-span aggregates + sub-phase rollup.
+    # See `_enrich_implementing_spans` (above) for the full contract.
     try:
-        from .activity_detail import (
-            _build_sub_spans_for_change,
-            _classify_sub_phases,
-            _clip_and_filter,
-            _compute_aggregates,
-        )
-
-        sub_span_cache: dict[str, list[dict]] = {}
-        for span in spans:
-            if span.get("category") != "implementing":
-                continue
-            # Default: every implementing span gets a `sub_spans` field.
-            # Set early so the no-data / failure paths below also satisfy the
-            # API contract that `sub_spans` is always present.
-            span["sub_spans"] = []
-            change_name = span.get("change", "")
-            if not change_name:
-                continue
-            if change_name not in sub_span_cache:
-                try:
-                    loaded, _hit = _build_sub_spans_for_change(project_path, change_name)
-                    sub_span_cache[change_name] = loaded
-                except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "sub-span enrichment failed for %s",
-                        change_name,
-                        exc_info=True,
-                    )
-                    sub_span_cache[change_name] = []
-            sub_spans = sub_span_cache[change_name]
-            if not sub_spans:
-                continue
-            window = _clip_and_filter(
-                sub_spans, span.get("start"), span.get("end")
-            )
-            if not window:
-                continue
-            agg = _compute_aggregates(window)
-            detail = span.get("detail") or {}
-            if not isinstance(detail, dict):
-                detail = {}
-            detail["llm_calls"] = agg["total_llm_calls"]
-            detail["tool_calls"] = agg["total_tool_calls"]
-            detail["subagent_count"] = agg["subagent_count"]
-            span["detail"] = detail
-            # Sub-phase classification — reuses `window` (no re-clip).
-            # Per-span try/except so one change's failure does not block
-            # classification of other changes' spans in the same response.
-            try:
-                span["sub_spans"] = _classify_sub_phases(window)
-            except Exception:  # noqa: BLE001
-                logger.debug(
-                    "sub-phase classification failed for %s",
-                    change_name,
-                    exc_info=True,
-                )
-                span["sub_spans"] = []
+        _enrich_implementing_spans(spans, project_path)
     except Exception:  # noqa: BLE001
         logger.debug("implementing-span enrichment pass failed", exc_info=True)
 
