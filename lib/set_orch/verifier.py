@@ -2762,17 +2762,43 @@ def _execute_e2e_coverage_gate(
     # blank artifacts in the per-attempt gallery for any change.
     nav_lint_findings = _lint_e2e_navigation(wt_path)
 
+    # Testdir-drift canary (e2e-testdir-drift-guard): warn at PR-time when
+    # playwright.config.ts testDir does not contain the spec-densest dir.
+    # Complementary to the runtime self-heal in gates.py.
+    testdir_finding = _lint_playwright_testdir_consistency(wt_path)
+    if testdir_finding:
+        logger.info(
+            "playwright_testdir_consistency_warn change=%s stale_testdir=%s "
+            "canonical_candidate=%s stale_spec_count=%d canonical_spec_count=%d",
+            change_name,
+            testdir_finding["declared_testdir"],
+            testdir_finding["canonical_candidate"],
+            testdir_finding["declared_count"],
+            testdir_finding["canonical_count"],
+        )
+
     scope = (change.scope or "").lower()
     if not scope:
-        if nav_lint_findings:
-            logger.warning(
-                "E2E navigation lint for %s: %d test(s) without page.goto",
-                change_name, len(nav_lint_findings),
-            )
-            logger.info("Gate[e2e-coverage] END %s result=warn (nav-lint)", change_name)
+        if nav_lint_findings or testdir_finding:
+            warn_lines = []
+            if nav_lint_findings:
+                logger.warning(
+                    "E2E navigation lint for %s: %d test(s) without page.goto",
+                    change_name, len(nav_lint_findings),
+                )
+                warn_lines.append(_format_nav_lint_output(nav_lint_findings))
+            if testdir_finding:
+                warn_lines.append(
+                    f"[testdir-drift] {testdir_finding['hint']}: "
+                    f"declared testDir=\"{testdir_finding['declared_testdir']}\" "
+                    f"({testdir_finding['declared_count']} specs) vs "
+                    f"densest=\"{testdir_finding['canonical_candidate']}\" "
+                    f"({testdir_finding['canonical_count']} specs)"
+                )
+            logger.info("Gate[e2e-coverage] END %s result=warn (lint)", change_name)
             return GateResult(
                 "e2e_coverage", "warn",
-                output=_format_nav_lint_output(nav_lint_findings),
+                output="\n\n".join(warn_lines),
             )
         logger.info("Gate[e2e-coverage] END %s result=pass (no scope)", change_name)
         return GateResult("e2e_coverage", "pass")
@@ -2964,6 +2990,79 @@ def _lint_e2e_navigation(wt_path: str) -> list[dict]:
                 })
 
     return findings
+
+
+def _lint_playwright_testdir_consistency(wt_path: str) -> dict | None:
+    """Detect playwright.config.ts testDir / spec layout divergence.
+
+    Returns a finding dict (warn-level) or None if no divergence detected.
+    Heuristic: warn when (a) declared testDir has zero specs but specs exist
+    elsewhere, OR (b) another directory has at least 3× the spec count of the
+    declared testDir. Never returns a fail-level finding — this is a canary,
+    not a hard gate.
+
+    Mirrors the runtime self-heal in `modules/web/set_project_web/gates.py`
+    (`_self_heal_testdir_drift`) but fires at PR-time before merge.
+    """
+    config_path = None
+    for name in ("playwright.config.ts", "playwright.config.js"):
+        candidate = os.path.join(wt_path, name)
+        if os.path.isfile(candidate):
+            config_path = candidate
+            break
+    if config_path is None:
+        return None
+
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return None
+
+    m = re.search(
+        r"^\s*testDir\s*:\s*\"(?P<val>[^\"]*)\"",
+        text,
+        flags=re.MULTILINE,
+    )
+    if not m:
+        return None
+    declared = m.group("val").strip()
+    if declared.startswith("./"):
+        declared = declared[2:]
+    declared = declared.rstrip("/") or "."
+
+    skip = {"node_modules", ".next", ".git", "dist", "build", "coverage", ".venv", "__pycache__"}
+    counts: dict[str, int] = {}
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(wt_path):
+        dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
+        for fn in filenames:
+            if fn.endswith((".spec.ts", ".spec.tsx")):
+                rel = os.path.relpath(os.path.join(dirpath, fn), wt_path)
+                parent = os.path.dirname(rel) or "."
+                counts[parent] = counts.get(parent, 0) + 1
+                total += 1
+                if total >= 200:
+                    break
+        if total >= 200:
+            break
+    if not counts:
+        return None
+
+    declared_count = counts.get(declared, 0)
+    densest_dir, densest_count = max(counts.items(), key=lambda kv: kv[1])
+    if declared_count == densest_count:
+        return None
+
+    if declared_count == 0 or densest_count >= 3 * max(declared_count, 1):
+        return {
+            "declared_testdir": declared,
+            "declared_count": declared_count,
+            "canonical_candidate": densest_dir,
+            "canonical_count": densest_count,
+            "hint": "playwright.config.ts testDir vs spec layout divergence",
+        }
+    return None
 
 
 def _format_nav_lint_output(findings: list[dict]) -> str:

@@ -3,15 +3,27 @@
 Moved from lib/set_orch/verifier.py as part of profile-driven-gate-registry.
 These executors are registered by WebProjectType.register_gates().
 
-Dep-drift defense (two layers, see OpenSpec change: e2e-auto-install-on-dep-drift):
-  1. Pre-gate drift check — `_ensure_deps_synced` runs before Playwright boots.
-     Compares package.json mtime to node_modules install marker; runs
-     `pnpm/npm install` if drift detected. Cheap on warm cache.
-  2. Self-heal — `_self_heal_missing_module` catches Playwright crashes on
-     `Cannot find module` + MODULE_NOT_FOUND for a package declared in
-     package.json. Runs install + one in-gate rerun without consuming a
-     `verify_retry_count` slot. Result is flagged with `[self-heal: installed <pkg>]`
-     in GateResult.output so forensics can tell healed runs from real passes.
+Self-heal classes (each runs at most once per gate invocation; the shared
+``self_heal_attempted`` flag enforces ordering and prevents stacking):
+
+  1. Dep-drift (e2e-auto-install-on-dep-drift): `_ensure_deps_synced`
+     pre-gate plus `_self_heal_missing_module` recovery on Playwright
+     `Cannot find module` + MODULE_NOT_FOUND crashes. Marker:
+     ``[self-heal: installed <pkg>]``.
+  2. Env-drift (e2e-env-drift-guard): `_self_heal_db_env_drift` recovers a
+     stale ``DATABASE_URL`` whose protocol does not match the schema's
+     declared provider, by rewriting ``.env`` from
+     ``set/orchestration/config.yaml``. Marker:
+     ``[self-heal: synced .env from config.yaml]``.
+  3. Testdir-drift (e2e-testdir-drift-guard): `_self_heal_testdir_drift`
+     recovers Playwright "No tests found" when the configured testDir does
+     not contain any spec files; rewrites ``playwright.config.ts``
+     ``testDir`` (and ``globalSetup``) to the spec-densest directory.
+     Marker: ``[self-heal: synced playwright.config.ts testDir from <old> to <new>]``.
+
+All self-heals run on the unparseable-fail path, do NOT consume a
+``verify_retry_count`` slot, and tag ``GateResult.output`` so forensics can
+distinguish healed runs from real passes (regex: ``\\[self-heal: ``).
 """
 
 from __future__ import annotations
@@ -105,6 +117,23 @@ _SCHEMA_PROVIDER_URL_RE: dict = {
 _PRISMA_DATASOURCE_RE = re.compile(
     r"datasource\s+\w+\s*\{[^}]*provider\s*=\s*\"([^\"]+)\""
 )
+
+# Testdir-drift self-heal (e2e-testdir-drift-guard): Playwright crashes with
+# "Error: No tests found." when the configured testDir contains no spec
+# files. The recovery rewrites `playwright.config.ts` testDir + globalSetup
+# to the spec-densest directory. See `_extract_testdir_drift` and
+# `_self_heal_testdir_drift`.
+_TESTDIR_MISMATCH_SIGNATURE = "Error: No tests found."
+_CANONICAL_TESTDIR_PREFERENCE = "tests/e2e"
+_PLAYWRIGHT_TESTDIR_RE = re.compile(
+    r"^(?P<lead>\s*)testDir(?P<sep>\s*:\s*)\"(?P<val>[^\"]*)\"(?P<tail>,?\s*(?://.*)?)\s*$",
+    re.MULTILINE,
+)
+_PLAYWRIGHT_GLOBAL_SETUP_RE = re.compile(
+    r"^(?P<lead>\s*)globalSetup(?P<sep>\s*:\s*)\"(?P<val>[^\"]*)\"(?P<tail>,?\s*(?://.*)?)\s*$",
+    re.MULTILINE,
+)
+_TESTDIR_SPEC_WALK_LIMIT = 200
 
 
 def _install_marker_path(wt_path: str, package_manager: str) -> str:
@@ -531,6 +560,255 @@ def _self_heal_db_env_drift(
         "pass" if healed else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable"),
     )
     return (healed, recovered, rerun_result)
+
+
+# ─── Testdir-drift defense helpers (e2e-testdir-drift-guard) ──────────
+
+
+def _read_playwright_config_text(wt_path: str) -> tuple[str, str] | None:
+    """Read playwright.config.ts (or .js) as text. Returns (path, text) or None."""
+    for name in ("playwright.config.ts", "playwright.config.js"):
+        path = os.path.join(wt_path, name)
+        if os.path.isfile(path):
+            try:
+                return path, open(path, encoding="utf-8").read()
+            except OSError:
+                return None
+    return None
+
+
+def _read_declared_testdir(wt_path: str) -> str | None:
+    """Parse testDir value from playwright.config.ts. Returns relative path or None."""
+    cfg = _read_playwright_config_text(wt_path)
+    if not cfg:
+        return None
+    _, text = cfg
+    m = _PLAYWRIGHT_TESTDIR_RE.search(text)
+    if not m:
+        return None
+    val = m.group("val").strip()
+    if val.startswith("./"):
+        val = val[2:]
+    return val.rstrip("/") or None
+
+
+def _scan_spec_files(project_root: str, limit: int = _TESTDIR_SPEC_WALK_LIMIT) -> list[str]:
+    """Walk project_root for *.spec.ts files. Returns relative paths, capped at limit.
+
+    Skips heavy directories (node_modules, .next, .git, dist, build, coverage).
+    """
+    skip = {"node_modules", ".next", ".git", "dist", "build", "coverage", ".venv", "__pycache__"}
+    out: list[str] = []
+    root_path = os.path.abspath(project_root)
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
+        for f in filenames:
+            if f.endswith(".spec.ts") or f.endswith(".spec.tsx"):
+                rel = os.path.relpath(os.path.join(dirpath, f), root_path)
+                out.append(rel)
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+def _extract_testdir_drift(e2e_output: str, project_root: str) -> bool:
+    """Detect Playwright "No tests found" with corroborating spec layout drift.
+
+    Returns True iff: signature present in output, AND spec files exist on disk,
+    AND at least one spec is OUTSIDE the directory currently declared as testDir.
+    """
+    if _TESTDIR_MISMATCH_SIGNATURE not in e2e_output:
+        return False
+    specs = _scan_spec_files(project_root)
+    if not specs:
+        return False
+    declared = _read_declared_testdir(project_root)
+    if declared is None:
+        # No config or unparseable testDir — any spec elsewhere counts as drift
+        return True
+    for rel in specs:
+        if not rel.startswith(declared.rstrip("/") + os.sep) and rel != declared:
+            return True
+    return False
+
+
+def _resolve_canonical_testdir(project_root: str) -> str | None:
+    """Pick the testdir that contains the most spec files.
+
+    Tiebreaker: prefer ``_CANONICAL_TESTDIR_PREFERENCE`` (set-core's canonical
+    `tests/e2e` path). Secondary tiebreaker: shorter path. Returns relative
+    path or None if no specs exist.
+    """
+    specs = _scan_spec_files(project_root)
+    if not specs:
+        return None
+    counts: dict[str, int] = {}
+    for rel in specs:
+        parent = os.path.dirname(rel) or "."
+        counts[parent] = counts.get(parent, 0) + 1
+    best = max(
+        counts.items(),
+        key=lambda kv: (
+            kv[1],
+            1 if kv[0] == _CANONICAL_TESTDIR_PREFERENCE else 0,
+            -len(kv[0]),
+        ),
+    )
+    return best[0]
+
+
+def _resync_playwright_config_testdir(project_root: str, new_testdir: str) -> bool:
+    """Atomically rewrite testDir + globalSetup in playwright.config.ts.
+
+    Also migrates a stale ``<old_testdir>/global-setup.ts`` into the canonical
+    location if and only if no canonical global-setup.ts exists yet.
+
+    Returns True on success, False if the regex did not match either field
+    or the IO failed.
+    """
+    cfg = _read_playwright_config_text(project_root)
+    if not cfg:
+        return False
+    path, text = cfg
+
+    m_td = _PLAYWRIGHT_TESTDIR_RE.search(text)
+    m_gs = _PLAYWRIGHT_GLOBAL_SETUP_RE.search(text)
+    if not m_td and not m_gs:
+        return False
+
+    old_testdir = m_td.group("val").strip() if m_td else None
+    if old_testdir and old_testdir.startswith("./"):
+        old_testdir = old_testdir[2:]
+    old_testdir = old_testdir.rstrip("/") if old_testdir else None
+
+    # Migrate global-setup.ts if needed (BEFORE rewriting config)
+    if old_testdir and old_testdir != new_testdir:
+        old_gs = os.path.join(project_root, old_testdir, "global-setup.ts")
+        new_gs = os.path.join(project_root, new_testdir, "global-setup.ts")
+        if os.path.isfile(old_gs) and not os.path.exists(new_gs):
+            try:
+                os.makedirs(os.path.dirname(new_gs), exist_ok=True)
+                shutil.copy(old_gs, new_gs)
+            except OSError as e:
+                logger.warning(
+                    "global-setup migration failed: %s → %s (%s)",
+                    old_gs, new_gs, e,
+                )
+
+    new_text = text
+    if m_td:
+        new_text = _PLAYWRIGHT_TESTDIR_RE.sub(
+            lambda mm: f'{mm.group("lead")}testDir{mm.group("sep")}"./{new_testdir}"{mm.group("tail")}',
+            new_text,
+            count=1,
+        )
+    if m_gs:
+        new_text = _PLAYWRIGHT_GLOBAL_SETUP_RE.sub(
+            lambda mm: f'{mm.group("lead")}globalSetup{mm.group("sep")}"./{new_testdir}/global-setup.ts"{mm.group("tail")}',
+            new_text,
+            count=1,
+        )
+
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(new_text)
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.warning("playwright.config.ts atomic write failed: %s", e)
+        return False
+    return True
+
+
+def _classify_unparseable_failure(e2e_output: str, project_root: str) -> str:
+    """Return a precise diagnostic for unparseable Playwright failures.
+
+    On testdir-drift signatures, returns a message identifying the config-spec
+    mismatch. Otherwise returns the legacy generic crash message.
+    """
+    if _extract_testdir_drift(e2e_output, project_root):
+        declared = _read_declared_testdir(project_root) or "<unset>"
+        canonical = _resolve_canonical_testdir(project_root) or "<no specs>"
+        return (
+            f"playwright.config.ts testDir vs spec file path mismatch "
+            f"(declared testDir=\"{declared}\", spec-densest dir=\"{canonical}\")"
+        )
+    return (
+        "[no parseable failure list — likely crash, OOM, or formatter issue]"
+    )
+
+
+def _self_heal_testdir_drift(
+    wt_path: str,
+    profile,
+    e2e_output: str,
+    change_name: str,
+    env: dict,
+    actual_e2e_cmd: str,
+    e2e_timeout: int,
+) -> tuple[bool, str, str, object] | None:
+    """Detect + self-heal a Playwright testDir / spec layout mismatch.
+
+    Mirrors `_self_heal_db_env_drift`: returns None if the signature does not
+    match or no recovery is possible; otherwise rewrites playwright.config.ts
+    testDir to the canonical (spec-densest) directory, reruns e2e once
+    in-gate, and returns (healed, old_testdir, new_testdir, rerun_cmd_result).
+    `verify_retry_count` is NOT incremented.
+    """
+    from set_orch.subprocess_utils import run_command
+
+    if not _extract_testdir_drift(e2e_output, wt_path):
+        return None
+    canonical = _resolve_canonical_testdir(wt_path)
+    if not canonical:
+        return None
+    declared = _read_declared_testdir(wt_path)
+    if declared == canonical:
+        return None
+
+    # Spec count for forensic logs
+    specs = _scan_spec_files(wt_path)
+    canonical_count = sum(
+        1 for s in specs if s.startswith(canonical + os.sep) or os.path.dirname(s) == canonical
+    )
+    logger.info(
+        "e2e_testdir_drift_detected change=%s wt=%s stale_testdir=%s canonical_testdir=%s spec_count=%d",
+        change_name, wt_path, declared, canonical, canonical_count,
+    )
+
+    t0 = time.monotonic()
+    if not _resync_playwright_config_testdir(wt_path, canonical):
+        logger.warning(
+            "e2e_testdir_drift_resync_failed change=%s wt=%s — playwright.config.ts unparseable",
+            change_name, wt_path,
+        )
+        return None
+    resync_ms = int((time.monotonic() - t0) * 1000)
+
+    rerun_result = run_command(
+        ["bash", "-c", actual_e2e_cmd],
+        timeout=e2e_timeout, cwd=wt_path, env=env,
+        max_output_size=_E2E_CAPTURE_MAX_BYTES,
+    )
+    rerun_output = rerun_result.stdout + rerun_result.stderr
+    rerun_flaky = _count_flaky_tests(rerun_output) if env.get("PW_FLAKY_FAILS") else 0
+    rerun_runtime_errors = _check_e2e_runtime_errors(rerun_output)
+    healed = (
+        rerun_result.exit_code == 0
+        and not rerun_result.timed_out
+        and rerun_flaky == 0
+        and not rerun_runtime_errors
+    )
+    rerun_outcome = (
+        "pass" if healed
+        else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable")
+    )
+    logger.info(
+        "e2e_testdir_self_heal_resynced_and_rerun change=%s resync_duration_ms=%d "
+        "rerun_exit_code=%d rerun_outcome=%s",
+        change_name, resync_ms, rerun_result.exit_code, rerun_outcome,
+    )
+    return (healed, declared or "<unset>", canonical, rerun_result)
 
 
 def _extract_e2e_failure_ids(output: str) -> set[str]:
@@ -1300,19 +1578,68 @@ def execute_e2e_gate(
                     )
                 # Fall through to fail path with the rerun output.
 
+        # Testdir-drift self-heal (e2e-testdir-drift-guard): only fires when
+        # neither dep-drift nor env-drift matched. Playwright "No tests found"
+        # caused by a playwright.config.ts testDir that does not contain any
+        # spec files. Recovery rewrites testDir + globalSetup to the
+        # spec-densest directory and reruns once.
+        if not self_heal_attempted:
+            _sh_td = _self_heal_testdir_drift(
+                wt_path, profile, e2e_output, change_name,
+                env=e2e_env, actual_e2e_cmd=actual_e2e_cmd, e2e_timeout=e2e_timeout,
+            )
+            if _sh_td is not None:
+                self_heal_attempted = True
+                healed, old_testdir, recovered_testdir, td_rerun_result = _sh_td
+                self_heal_marker = (
+                    f"[self-heal: synced playwright.config.ts testDir from "
+                    f"{old_testdir} to {recovered_testdir}]\n\n"
+                )
+                e2e_cmd_result = td_rerun_result
+                e2e_output = td_rerun_result.stdout + td_rerun_result.stderr
+                wt_failures = _extract_e2e_failure_ids(e2e_output)
+                if healed:
+                    logger.info(
+                        "e2e_testdir_self_heal_succeeded change=%s — returning pass",
+                        change_name,
+                    )
+                    return GateResult(
+                        "e2e", "pass",
+                        output=self_heal_marker + e2e_output,
+                        stats=parse_test_output(e2e_output) if e2e_output else None,
+                    )
+                # Fall through to fail path with the rerun output.
+
         if not wt_failures:
             logger.warning(
                 "E2E gate failed for %s with exit_code=%d but no parseable failure list "
                 "— marking fail (no baseline comparison)",
                 change_name, e2e_cmd_result.exit_code,
             )
-            retry_ctx = (
-                f"E2E gate failed with exit_code={e2e_cmd_result.exit_code} but "
-                f"Playwright did not emit a failure list. This usually means the "
-                f"suite crashed before completing — check the worktree for stack "
-                f"traces, OOM kills, webServer startup errors, or a Playwright "
-                f"reporter that differs from the default."
+            classification = _classify_unparseable_failure(e2e_output, wt_path)
+            is_testdir_drift = (
+                _TESTDIR_MISMATCH_SIGNATURE in e2e_output
+                and "testDir vs spec file path mismatch" in classification
             )
+            if is_testdir_drift:
+                retry_ctx = (
+                    f"E2E gate failed with exit_code={e2e_cmd_result.exit_code}: "
+                    f"{classification}. The configured Playwright testDir does not "
+                    f"contain the spec files at issue. Either the worktree was merged "
+                    f"with a stale playwright.config.ts (testDir points at a directory "
+                    f"with no specs), or the dispatched spec path does not match the "
+                    f"testDir layout. Self-heal attempted to rewrite testDir but the "
+                    f"rerun also failed — manual inspection of playwright.config.ts and "
+                    f"the spec file layout is required."
+                )
+            else:
+                retry_ctx = (
+                    f"E2E gate failed with exit_code={e2e_cmd_result.exit_code} but "
+                    f"Playwright did not emit a failure list. This usually means the "
+                    f"suite crashed before completing — check the worktree for stack "
+                    f"traces, OOM kills, webServer startup errors, or a Playwright "
+                    f"reporter that differs from the default."
+                )
             if self_heal_pkg:
                 retry_ctx += (
                     f"\n\nself-heal attempted for '{self_heal_pkg}' — "
@@ -1322,8 +1649,8 @@ def execute_e2e_gate(
                 "e2e", "fail",
                 output=(
                     self_heal_marker +
-                    f"E2E exited with code {e2e_cmd_result.exit_code} but no parseable "
-                    f"failure list — likely crash, OOM, or formatter issue\n\n"
+                    f"E2E exited with code {e2e_cmd_result.exit_code}: "
+                    f"{classification}\n\n"
                     + e2e_output
                 ),
                 retry_context=retry_ctx,
