@@ -9,6 +9,7 @@ import GateDetail from './GateDetail'
 import ScreenshotGallery from './ScreenshotGallery'
 import ChangeTimeline from './ChangeTimeline'
 import useIsMobile from '../hooks/useIsMobile'
+import { displayModel } from '../lib/formatModel'
 
 interface Props {
   changes: ChangeInfo[]
@@ -181,7 +182,7 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
                       </span>
                     )}
                     {c.session_count && <span>Sessions: {c.session_count}</span>}
-                    {c.model && <span className="text-neutral-500">{c.model}</span>}
+                    {c.model && <span className="text-neutral-500">{displayModel(c.model)}</span>}
                   </div>
 
                   {/* Gates */}

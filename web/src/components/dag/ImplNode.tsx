@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { AttemptNode } from '../../lib/dag/types'
+import { displayModel } from '../../lib/formatModel'
 
 type Props = NodeProps & { data: AttemptNode }
 
@@ -32,21 +33,12 @@ function formatTokens(n?: number): string {
   return String(n)
 }
 
-function shortModel(model?: string): string {
-  if (!model) return ''
-  const m = model.toLowerCase()
-  if (m.includes('opus')) return 'opus'
-  if (m.includes('sonnet')) return 'sonnet'
-  if (m.includes('haiku')) return 'haiku'
-  return model
-}
-
 export default function ImplNode({ data, selected }: Props) {
   // Fixed-size node with a ring on selection; see GateNode for the
   // rationale behind dropping the hover-expand.
   const isRunning = data.result === 'running'
   const hasTokens = (data.inputTokens ?? 0) + (data.outputTokens ?? 0) > 0
-  const model = shortModel(data.model)
+  const model = displayModel(data.model)
 
   return (
     <div

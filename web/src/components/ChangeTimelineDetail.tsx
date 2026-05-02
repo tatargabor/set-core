@@ -11,6 +11,7 @@ import {
 import { journalToAttemptGraph } from '../lib/dag/journalToAttemptGraph'
 import { enrichWithSessions } from '../lib/dag/enrichWithSessions'
 import type { Attempt, AttemptNode, GateResult } from '../lib/dag/types'
+import { displayModel } from '../lib/formatModel'
 
 interface Props {
   project: string
@@ -67,14 +68,8 @@ function formatTokens(n?: number): string {
   return String(n)
 }
 
-function shortModel(model?: string): string {
-  if (!model) return ''
-  const m = model.toLowerCase()
-  if (m.includes('opus')) return 'opus'
-  if (m.includes('sonnet')) return 'sonnet'
-  if (m.includes('haiku')) return 'haiku'
-  return model
-}
+// shortModel was renamed to displayModel and moved to lib/formatModel
+// to keep one source of truth for model-name rendering across the UI.
 
 function formatTime(ts: string): string {
   try {
@@ -120,7 +115,7 @@ function NodeRow({ node, selected, sessionCount, onClick }: RowProps) {
   const hasDowngrade =
     (node.downgrades && node.downgrades.length > 0) ||
     node.verdictSource === 'classifier_downgrade'
-  const model = shortModel(node.model)
+  const model = displayModel(node.model)
   const hasTokens = (node.inputTokens ?? 0) + (node.outputTokens ?? 0) > 0
 
   return (

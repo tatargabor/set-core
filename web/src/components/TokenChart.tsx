@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import type { ChangeInfo, LLMCall } from '../lib/api'
 import { getLLMCalls } from '../lib/api'
 import { useSelectedLineage } from '../lib/lineage'
+import { displayModel, modelFamily } from '../lib/formatModel'
 
 interface Props {
   changes: ChangeInfo[]
@@ -302,11 +303,12 @@ export default function TokenChart({ changes, project }: Props) {
                 </thead>
                 <tbody>
                   {sortedCalls.map((call, i) => {
-                    const modelShort = call.model.includes('opus') ? 'opus'
-                      : call.model.includes('sonnet') ? 'sonnet'
-                      : call.model.includes('haiku') ? 'haiku'
-                      : call.model
-                    const modelColor = MODEL_COLOR[modelShort] ?? '#737373'
+                    // Family is used for the colour key (visual grouping);
+                    // the displayed label keeps the version suffix so
+                    // operators can tell opus-4-6 from opus-4-7 at a glance.
+                    const family = modelFamily(call.model)
+                    const modelLabel = displayModel(call.model)
+                    const modelColor = MODEL_COLOR[family] ?? '#737373'
                     const iters = call.iterations ?? []
                     const hasIters = iters.length > 0
                     const isExpanded = expandedRows.has(i)
@@ -337,7 +339,7 @@ export default function TokenChart({ changes, project }: Props) {
                           )}
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
-                          <span style={{ color: modelColor }} className="font-medium">{modelShort}</span>
+                          <span style={{ color: modelColor }} className="font-medium">{modelLabel}</span>
                         </td>
                         <td className="px-3 py-1.5 text-neutral-400 max-w-[160px] truncate">{call.change || '-'}</td>
                         <td className="px-3 py-1.5 text-neutral-600 text-xs">{call.source === 'orchestration' ? 'event' : 'session'}</td>

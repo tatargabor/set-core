@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AuditResult } from '../lib/api'
+import { displayModel } from '../lib/formatModel'
 
 interface Props {
   results: AuditResult[]
@@ -39,7 +40,7 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
         <span className="text-neutral-500">{open ? '▾' : '▸'}</span>
         <span className="text-neutral-300">Cycle {result.cycle}</span>
         <Badge result={result} />
-        <span className="text-neutral-600 ml-auto">{result.model} | {durationS}s</span>
+        <span className="text-neutral-600 ml-auto">{displayModel(result.model)} | {durationS}s</span>
       </button>
       {open && (
         <div className="px-3 pb-2">

@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { AttemptNode, GateResult } from '../../lib/dag/types'
+import { displayModel } from '../../lib/formatModel'
 
 type Props = NodeProps & { data: AttemptNode }
 
@@ -71,16 +72,6 @@ function formatTokens(n?: number): string {
   return String(n)
 }
 
-function shortModel(model?: string): string {
-  if (!model) return ''
-  // sonnet / opus / haiku — just the family word
-  const m = model.toLowerCase()
-  if (m.includes('opus')) return 'opus'
-  if (m.includes('sonnet')) return 'sonnet'
-  if (m.includes('haiku')) return 'haiku'
-  return model
-}
-
 export default function GateNode({ data, selected }: Props) {
   // Node is fixed-size. Click/selection just adds a blue ring; all the
   // drill-down info (verdict source, downgrades, issue refs, captured
@@ -97,7 +88,7 @@ export default function GateNode({ data, selected }: Props) {
   const showRunBadge = data.runIndexForKind > 1
 
   const hasTokens = (data.inputTokens ?? 0) + (data.outputTokens ?? 0) > 0
-  const model = shortModel(data.model)
+  const model = displayModel(data.model)
 
   return (
     <div
