@@ -990,31 +990,115 @@ def get_requirements(project: str):
     }
 
 
-@router.get("/api/{project}/events")
-def get_events(project: str, type: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=5000)):
-    """Read orchestration state events, optionally filtered by type."""
-    project_path = _resolve_project(project)
-    from ..paths import LineagePaths as _LP_evt
-    events_file = Path(_LP_evt(str(project_path)).state_events_file)
-    if not events_file.exists():
-        return {"events": []}
-    events = []
+def _resolve_events_file(project_path: Path) -> Optional[Path]:
+    """Resolve the canonical events JSONL for a project.
+
+    Order: live → narrow (back-compat) → legacy nested live → legacy nested narrow.
+    Returns the FIRST file that exists, or None if none do. See spec
+    `events-api/events-api-prefers-live-stream` for rationale: most events
+    (STATE_CHANGE, GATE_*, MERGE_*, LLM_CALL, ITERATION_END, heartbeats) live
+    in the LIVE stream; the narrow stream only carries DIGEST_*, MEMORY_HYGIENE,
+    SHUTDOWN_*. Reading the narrow stream alone leaves the dashboard blind.
+
+    Resolves relative to `project_path` (where the orchestrator actually
+    writes the JSONLs), NOT the LineagePaths runtime directory which holds
+    a different short-named events.jsonl.
+    """
+    candidates = [
+        project_path / "orchestration-events.jsonl",
+        project_path / "orchestration-state-events.jsonl",
+        project_path / "set" / "orchestration" / "orchestration-events.jsonl",
+        project_path / "set" / "orchestration" / "orchestration-state-events.jsonl",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
+
+def _read_jsonl_events(path: Path, type_filter: Optional[str]) -> list:
+    """Read a JSONL events file and return parsed events (filtered if type given)."""
+    out: list = []
     try:
-        with open(events_file) as f:
+        with open(path) as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     ev = json.loads(line)
-                    if type and ev.get("type") != type:
+                    if type_filter and ev.get("type") != type_filter:
                         continue
-                    events.append(ev)
+                    out.append(ev)
                 except json.JSONDecodeError:
                     continue
     except OSError:
+        return []
+    return out
+
+
+def _list_rotated_event_files(events_file: Path) -> list:
+    """Return rotated cycle siblings of `events_file`, sorted ascending by cycle.
+
+    Pattern: `<stem>-cycle*.jsonl` next to the resolved live file. Returns []
+    when the resolver picked a non-live file (rotation only applies to the
+    live stream).
+    """
+    if events_file.name != "orchestration-events.jsonl":
+        return []
+    import glob as _glob
+    import re as _re
+    parent = events_file.parent
+    pattern = str(parent / "orchestration-events-cycle*.jsonl")
+
+    def _cycle_key(p: str) -> int:
+        m = _re.search(r"cycle(\d+)", p)
+        return int(m.group(1)) if m else 0
+
+    return sorted(_glob.glob(pattern), key=_cycle_key)
+
+
+@router.get("/api/{project}/events")
+def get_events(project: str, type: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=5000)):
+    """Read orchestration events, optionally filtered by type.
+
+    Resolves the canonical events file (live stream preferred, narrow + legacy
+    paths as fallbacks). When the live tail has fewer events than `limit`,
+    prepends events from rotated cycle siblings (oldest first) until limit is
+    reached or no more cycles remain.
+    """
+    project_path = _resolve_project(project)
+    events_file = _resolve_events_file(project_path)
+    if events_file is None:
         return {"events": []}
-    return {"events": events[-limit:]}
+    logger.debug("events endpoint resolved %s for project %s", events_file, project)
+
+    live_events = _read_jsonl_events(events_file, type)
+
+    # Rotation-aware fill: if live tail < limit AND we resolved the live file,
+    # prepend rotated cycle content (oldest cycle first). Failure here is
+    # non-fatal — log a WARNING and continue with just the live tail.
+    if len(live_events) < limit:
+        try:
+            rotated_paths = _list_rotated_event_files(events_file)
+        except Exception:
+            logger.warning(
+                "rotated_event_files lookup failed for %s — proceeding with live tail",
+                project, exc_info=True,
+            )
+            rotated_paths = []
+
+        rotated_events: list = []
+        needed = limit - len(live_events)
+        for rp in rotated_paths:
+            cycle_events = _read_jsonl_events(Path(rp), type)
+            rotated_events.extend(cycle_events)
+            if len(rotated_events) >= needed:
+                break
+        combined = rotated_events + live_events
+        return {"events": combined[-limit:]}
+
+    return {"events": live_events[-limit:]}
 
 
 @router.get("/api/{project}/settings")

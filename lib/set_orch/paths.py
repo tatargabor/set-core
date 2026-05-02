@@ -498,14 +498,25 @@ class LineagePaths:
 
     @property
     def events_file(self) -> str:
-        # Live event stream — readers also enumerate `rotated_event_files`
-        # to pick up older cycles' content.
+        """Live event stream — primary source for the API and state reconstruction.
+
+        Contains STATE_CHANGE, GATE_*, MERGE_*, LLM_CALL, ITERATION_END,
+        WATCHDOG_HEARTBEAT, MONITOR_HEARTBEAT, and most lifecycle events.
+        Readers also enumerate `rotated_event_files` to pick up older cycles.
+        See spec `events-api`.
+        """
         return os.path.join(
             self._runtime.orchestration_dir, "orchestration-events.jsonl"
         )
 
     @property
     def state_events_file(self) -> str:
+        """Narrow event stream — back-compat source for forensics and migrations.
+
+        Currently receives DIGEST_*, MEMORY_HYGIENE, SHUTDOWN_*,
+        CHANGE_STOPPING/STOPPED. Readers should prefer `events_file`; this
+        path is retained as a fallback for older runs and bash-side tooling.
+        """
         return os.path.join(
             self._runtime.orchestration_dir, "orchestration-state-events.jsonl"
         )

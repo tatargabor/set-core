@@ -1271,10 +1271,32 @@ def reconstruct_state_from_events(
     Returns:
         True if reconstruction succeeded, False if not possible.
     """
-    # Derive events file from state file if not provided
+    # Resolve events file when not provided. Order matches the API endpoint
+    # (events-api spec): live stream → narrow stream → legacy nested live →
+    # legacy nested narrow. The narrow stream alone misses STATE_CHANGE /
+    # GATE_* / MERGE_* events that the live stream actually carries — that
+    # was the symptom diagnosed in the micro-web-run-20260502-0245 audit.
+    # TODO(observability-rotation): also walk rotated cycle siblings so
+    # crashes mid-rotation can replay events from earlier cycles.
     if events_path is None:
-        base = state_path.replace("-state.json", "").replace(".json", "")
-        events_path = base + "-events.jsonl"
+        state_dir = os.path.dirname(state_path) or "."
+        candidates = [
+            os.path.join(state_dir, "orchestration-events.jsonl"),
+            os.path.join(state_dir, "orchestration-state-events.jsonl"),
+            os.path.join(state_dir, "set", "orchestration", "orchestration-events.jsonl"),
+            os.path.join(state_dir, "set", "orchestration", "orchestration-state-events.jsonl"),
+        ]
+        events_path = next((p for p in candidates if os.path.isfile(p)), None)
+        if events_path is None:
+            # Preserve the legacy derived path for the warning so operators
+            # see the original lookup expectation.
+            base = state_path.replace("-state.json", "").replace(".json", "")
+            logger.warning(
+                "Cannot reconstruct state: no events file (looked for live + narrow + legacy nested at %s)",
+                base + "-events.jsonl",
+            )
+            return False
+        logger.info("State reconstruct using events from %s", events_path)
 
     if not os.path.isfile(events_path):
         logger.warning("Cannot reconstruct state: no events file at %s", events_path)

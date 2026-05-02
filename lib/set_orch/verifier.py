@@ -4059,7 +4059,10 @@ def handle_change_done(
                 update_change_field(state_file, change_name, "status", "failed")
 
             if event_bus:
+                # VERIFY_GATE schema: every emit MUST include "gate" and
+                # "result" keys. See spec verify-gate-event-schema.
                 event_bus.emit("VERIFY_GATE", change=change_name, data={
+                    "gate": "uncommitted_check",
                     "result": "fail", "reason": reason,
                     "uncommitted_check": uncommitted_check_result,
                 })
@@ -4337,7 +4340,10 @@ def handle_change_done(
         update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
+            # VERIFY_GATE schema: "gate" and "result" required. "stop_gate"
+            # kept as back-compat alias. See spec verify-gate-event-schema.
             _retry_evt: dict = {
+                "gate": pipeline.stop_gate or "",
                 "result": "retry", "stop_gate": pipeline.stop_gate,
                 "fingerprint": fingerprint,
                 "uncommitted_check": uncommitted_check_result,
@@ -4360,7 +4366,10 @@ def handle_change_done(
         update_change_field(state_file, change_name, "last_gate_fingerprint", fingerprint)
         if event_bus:
             gate_timings = {r.gate_name: r.duration_ms for r in pipeline.results if r.duration_ms}
+            # VERIFY_GATE schema: "gate" and "result" required. "stop_gate"
+            # kept as back-compat alias. See spec verify-gate-event-schema.
             _failed_evt: dict = {
+                "gate": pipeline.stop_gate or "",
                 "result": "failed", "stop_gate": pipeline.stop_gate,
                 "fingerprint": fingerprint,
                 "uncommitted_check": uncommitted_check_result,
@@ -4434,6 +4443,11 @@ def handle_change_done(
             for r in pipeline.results
             if getattr(r, "infra_fail", False)
         ]
+        # VERIFY_GATE schema: "gate" and "result" required. Pass path uses
+        # gate="" (no specific stop gate) and result="pass". Set AFTER
+        # `**summary` so the explicit values cannot be shadowed by a
+        # gate name accidentally registered as "gate"/"result".
+        # See spec verify-gate-event-schema.
         _event_data: dict = {
             **summary,
             "retries": gate_retry_count,
@@ -4444,6 +4458,8 @@ def handle_change_done(
             "gates_warn_only": [g for g in _gate_names if gc.is_warn_only(g)],
             "gate_ms": gate_timings,
             "fingerprint": pass_fingerprint,
+            "gate": "",
+            "result": "pass",
         }
         if _infra_fails:
             _event_data["infra_fail"] = True
