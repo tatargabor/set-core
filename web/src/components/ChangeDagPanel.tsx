@@ -20,10 +20,9 @@ import {
 import { journalToAttemptGraph } from '../lib/dag/journalToAttemptGraph'
 import { enrichWithSessions } from '../lib/dag/enrichWithSessions'
 import { layoutAttemptGraph } from '../lib/dag/layout'
-import type { AttemptGraph, AttemptNode } from '../lib/dag/types'
+import type { AttemptGraph } from '../lib/dag/types'
 import ChangeTimelineDetail from './ChangeTimelineDetail'
 import DagToolbar from './dag/DagToolbar'
-import DagDetailPanel from './dag/DagDetailPanel'
 import GateNode from './dag/GateNode'
 import ImplNode from './dag/ImplNode'
 import TerminalNode from './dag/TerminalNode'
@@ -50,7 +49,6 @@ const EMPTY_GRAPH: AttemptGraph = {
 
 interface InnerProps {
   layout: { nodes: RFNode[]; edges: import('@xyflow/react').Edge[] }
-  onNodeClick: (_: unknown, node: RFNode) => void
   autoFollow: boolean
   changeName: string
 }
@@ -73,7 +71,7 @@ const MAX_ROWS_VISIBLE = 2.5
 // ~0.53 zoom, which is exactly the illegible-smudge case we're preventing.
 const MIN_READABLE_ZOOM = 1.0
 
-function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) {
+function DagCanvas({ layout, autoFollow, changeName }: InnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges)
   const rfApi = useReactFlow()
@@ -188,7 +186,6 @@ function DagCanvas({ layout, onNodeClick, autoFollow, changeName }: InnerProps) 
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
         nodeTypes={NODE_TYPES}
         // NO `fitView` prop — ReactFlow's built-in fit ignores our readable-
         // zoom floor. Instead we fire our own fitBounds from onInit (which
@@ -219,7 +216,6 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
   const [timeline, setTimeline] = useState<ChangeTimelineData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'dag' | 'linear'>('dag')
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -294,23 +290,6 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
 
   const layout = useMemo(() => layoutAttemptGraph(graph), [graph])
 
-  const selectedNode = useMemo<AttemptNode | null>(() => {
-    if (!selectedNodeId) return null
-    for (const attempt of graph.attempts) {
-      for (const node of attempt.nodes) {
-        if (node.id === selectedNodeId) return node
-      }
-    }
-    return null
-  }, [graph, selectedNodeId])
-
-  const onNodeClick = useCallback(
-    (_: unknown, node: RFNode) => {
-      setSelectedNodeId((prev) => (prev === node.id ? null : node.id))
-    },
-    [],
-  )
-
   const toolbar = (
     <DagToolbar
       attemptCount={graph.attempts.length}
@@ -383,13 +362,11 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
         <ReactFlowProvider>
           <DagCanvas
             layout={layout}
-            onNodeClick={onNodeClick}
             autoFollow={autoFollow}
             changeName={changeName}
           />
         </ReactFlowProvider>
       </div>
-      <DagDetailPanel node={selectedNode} onClose={() => setSelectedNodeId(null)} />
     </div>
   )
 }

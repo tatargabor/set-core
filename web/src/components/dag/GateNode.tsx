@@ -73,12 +73,9 @@ function formatTokens(n?: number): string {
 }
 
 export default function GateNode({ data, selected }: Props) {
-  // Node is fixed-size. Click/selection just adds a blue ring; all the
-  // drill-down info (verdict source, downgrades, issue refs, captured
-  // output) lives in DagDetailPanel under the canvas. An earlier version
-  // grew the node on hover to show those fields inline, but that caused
-  // the DAG to visually shift on any mouse movement and duplicated the
-  // detail panel.
+  // Node is fixed-size. Click/selection just adds a blue ring; drill-down
+  // info (verdict source, downgrades, issue refs, captured output) lives
+  // in the LOG tab where it has more room than under the canvas.
   const icon = iconFor(data.result)
   const color = colorFor(data.result)
   const border = borderFor(data.result)

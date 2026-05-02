@@ -422,13 +422,16 @@ export default function Dashboard({ project, initialTab }: Props) {
           )
         )}
 
-        {/* Log tab — orchestration log full height */}
+        {/* Log tab — orchestration log + per-change gate sub-tabs when a
+         * change is selected. Without a selection LogPanel falls back to
+         * the orchestration log full-width. */}
         {activeTab === 'log' && (
           <div className="h-full">
             <LogPanel
               orchLines={logLines}
-              selectedChange={null}
+              selectedChange={changes.find(c => c.name === selectedChange) ?? null}
               project={project}
+              autoFollow={autoFollow}
             />
           </div>
         )}
