@@ -722,19 +722,64 @@ set_model_prefix() {
 }
 
 # Resolve short model name to full model ID using configured prefix.
-# Usage: resolve_model_id haiku|sonnet|opus|opus-4-6|opus-4-7|<full-id>
-# Examples with prefix "cc/":    haiku → cc/claude-haiku-4-5-20251001
-# Examples with prefix "":       haiku → claude-haiku-4-5-20251001
+# Usage:
+#   resolve_model_id <name|fallback>
+#   resolve_model_id --config <yaml> --role <role> [<fallback>]
+#
+# When --config and --role are present, the function delegates to a
+# Python one-liner that calls model_config.resolve_model(role,
+# project_dir=...) so bash and Python honor the same chain
+# (CLI/ENV/yaml/profile/DIRECTIVE_DEFAULTS). Falls through to the
+# positional <fallback> when the Python lookup returns nothing.
 #
 # `opus` shorthand currently resolves to 4.7 (the latest release).
-# Operators concerned about token economy can pin `opus-4-6` explicitly
-# (e.g. `default_model: opus-4-6` in orchestration config). Mirrors
+# `opus-4-6` is the new framework default for the agent role; legacy
+# operators can pin opus-4-7 via models.agent: opus-4-7. Mirrors
 # _MODEL_MAP in lib/set_orch/subprocess_utils.py.
 resolve_model_id() {
-    local name="$1"
+    local config_yaml="" role=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --config)  config_yaml="$2"; shift 2 ;;
+            --role)    role="$2"; shift 2 ;;
+            *)         break ;;
+        esac
+    done
+
     local prefix
     prefix=$(get_model_prefix)
 
+    if [[ -n "$config_yaml" && -n "$role" ]]; then
+        local project_dir="."
+        if [[ -n "$config_yaml" ]]; then
+            project_dir="$(dirname "$config_yaml" 2>/dev/null)"
+            # Strip .claude/ if config lives there (model_config looks for
+            # the project dir, not the config dir specifically).
+            project_dir="${project_dir%/.claude}"
+        fi
+        local set_core_lib
+        set_core_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)"
+        local resolved
+        resolved=$(PYTHONPATH="${set_core_lib}:${PYTHONPATH:-}" \
+            SET_ORCH_RESOLVE_PROJECT_DIR="$project_dir" \
+            python3 -c "
+import os, sys
+try:
+    from set_orch.model_config import resolve_model
+    print(resolve_model('$role', project_dir=os.environ.get('SET_ORCH_RESOLVE_PROJECT_DIR', '.')))
+except Exception:
+    pass
+" 2>/dev/null)
+        if [[ -n "$resolved" ]]; then
+            # Python returned a short name; translate it via the case below
+            # by recursing positionally.
+            resolve_model_id "$resolved"
+            return
+        fi
+        # else fall through to positional fallback below
+    fi
+
+    local name="$1"
     case "$name" in
         haiku)        echo "${prefix}claude-haiku-4-5-20251001" ;;
         sonnet)       echo "${prefix}claude-sonnet-4-6" ;;

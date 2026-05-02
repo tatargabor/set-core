@@ -35,7 +35,10 @@ class ChatSession:
         self.session_id: str | None = None
         self.messages: list[dict[str, Any]] = []
         self.status: str = "idle"  # idle | running
-        self.model: str = "sonnet"
+        # Resolve model via the unified config; falls back to the framework
+        # default (opus-4-6) when no operator override is set.
+        from .model_config import resolve_model
+        self.model: str = resolve_model("agent", project_dir=str(project_path))
         self._current_process: asyncio.subprocess.Process | None = None
         self._clients: set[WebSocket] = set()
         self._generation: int = 0  # Incremented on stop/new_session to invalidate stale tasks

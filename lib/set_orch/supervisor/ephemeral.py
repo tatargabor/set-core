@@ -52,7 +52,7 @@ def spawn_ephemeral_claude(
     prompt: str,
     cwd: str,
     project_path: str,
-    model: str = "sonnet",
+    model: str = "",
     timeout: int = 600,
     max_turns: int = 25,
     allow_all_tools: bool = True,
@@ -69,8 +69,9 @@ def spawn_ephemeral_claude(
         cwd: working directory for the subprocess (usually the project path).
         project_path: the project root — used to place log files under
             `.set/supervisor/claude-logs/`.
-        model: claude model short name. "sonnet" for cheap diagnostics,
-            "opus" for high-stakes decisions.
+        model: claude model short name. Empty string (default) resolves
+            via model_config.resolve_model("supervisor"). Operator can
+            override per-trigger via models.trigger.<type> in the yaml.
         timeout: wall-clock seconds before the subprocess is killed.
         max_turns: maximum `claude -p --max-turns` budget.
         allow_all_tools: pass `--dangerously-skip-permissions` (required
@@ -82,6 +83,9 @@ def spawn_ephemeral_claude(
     Returns:
         EphemeralResult with exit code, elapsed time, and log paths.
     """
+    if not model:
+        from ..model_config import resolve_model
+        model = resolve_model("supervisor", project_dir=project_path)
     started = datetime.datetime.now()
     ts = started.strftime("%Y%m%d-%H%M%S")
     log_dir = Path(project_path) / ".set" / "supervisor" / "claude-logs"

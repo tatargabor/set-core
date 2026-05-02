@@ -106,14 +106,32 @@ DEFAULT_RETRY_BUDGETS: dict[str, int] = {
 DEFAULT_GLOBAL_RATE_LIMIT_PER_HOUR = 20
 RATE_LIMIT_WINDOW_SECONDS = 3600
 
-# Trigger-specific model. Sonnet by default; opus for the high-stakes
-# triggers per the design doc (integration_failed, terminal_state, and
-# non_periodic_checkpoint).
+# Trigger-specific model. Defaults live in DIRECTIVE_DEFAULTS["models"]
+# ["trigger"] and resolve via model_config.resolve_model("trigger.<type>")
+# at dispatch time so operators can override per trigger via
+# orchestration.yaml::models.trigger.<type>.
+#
+# This dict is kept ONLY as a fallback for legacy callers that imported
+# it directly. New code should use `default_model_for_trigger()`.
 DEFAULT_MODEL_BY_TRIGGER: dict[str, str] = {
-    "integration_failed": "opus",
-    "non_periodic_checkpoint": "opus",
-    "terminal_state": "opus",
+    "integration_failed": "opus-4-6",
+    "non_periodic_checkpoint": "opus-4-6",
+    "terminal_state": "opus-4-6",
 }
+
+
+def default_model_for_trigger(trigger_type: str, *, project_dir: str = ".") -> str:
+    """Resolve the model for a trigger via the unified resolver chain.
+
+    Falls back to ``trigger.default`` if the trigger type has no specific
+    entry in ``models.trigger``.
+    """
+    from ..model_config import resolve_model
+    role = f"trigger.{trigger_type}"
+    try:
+        return resolve_model(role, project_dir=project_dir)
+    except ValueError:
+        return resolve_model("trigger.default", project_dir=project_dir)
 
 
 @dataclass
@@ -266,7 +284,7 @@ class TriggerExecutor:
             spec=self.spec,
             prior_attempts_summary=prior,
         )
-        model = DEFAULT_MODEL_BY_TRIGGER.get(trig.type, "sonnet")
+        model = default_model_for_trigger(trig.type, project_dir=str(self.project_path))
         attempt = self.status.trigger_attempts[key]
 
         logger.info(

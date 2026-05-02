@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .subprocess_utils import run_claude_logged
 
@@ -338,10 +338,11 @@ def _clear_cache() -> None:
 
 def call_digest_api(
     prompt: str,
-    model: str = "opus",
+    model: Optional[str] = None,
     max_retries: int = 3,
     *,
     bypass_cache: bool = False,
+    project_dir: str = ".",
 ) -> str:
     """Call Claude CLI with the digest prompt, with content-addressed caching.
 
@@ -351,11 +352,12 @@ def call_digest_api(
 
     Args:
         prompt: The assembled digest prompt.
-        model: Model name to use.
+        model: Model name override; defaults to resolve_model("digest").
         max_retries: Maximum retry attempts.
         bypass_cache: If True, skip BOTH cache lookup and cache write for this
             invocation (pure pass-through to the API). Set by the
             ``--no-digest-cache`` CLI flag.
+        project_dir: Used to read orchestration.yaml for model resolution.
 
     Returns:
         Raw LLM response string. The caller is responsible for parsing via
@@ -364,6 +366,9 @@ def call_digest_api(
     Raises:
         RuntimeError: If all retries fail.
     """
+    if model is None:
+        from .model_config import resolve_model
+        model = resolve_model("digest", project_dir=project_dir)
     key = _compute_cache_key(prompt, model)
 
     if not bypass_cache:
@@ -1341,7 +1346,7 @@ def run_digest(
     spec_path: str,
     *,
     digest_dir: str = DIGEST_DIR,
-    model: str = "opus",
+    model: Optional[str] = None,
     dry_run: bool = False,
     bypass_cache: bool = False,
 ) -> DigestRunResult:

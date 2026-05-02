@@ -101,7 +101,7 @@ def estimate_tokens(file_path: str) -> int:
 def summarize_spec(
     spec_path: str,
     phase_hint: str = "",
-    model: str = "haiku",
+    model: Optional[str] = None,
 ) -> str:
     """Summarize a large spec document for decomposition.
 
@@ -116,6 +116,10 @@ def summarize_spec(
         Summary text, or truncated content on failure.
     """
     from .subprocess_utils import run_claude_logged
+    if model is None:
+        from .model_config import resolve_model
+        # Summarization is a cheap utility — same role as digest.
+        model = resolve_model("digest")
 
     spec_content = Path(spec_path).read_text(errors="replace")
 
@@ -2108,12 +2112,16 @@ def _phase1_planning_brief(
     existing_specs: str = "",
     active_changes: str = "",
     memory_context: str = "",
-    model: str = "opus",
+    model: Optional[str] = None,
     max_parallel: int = 3,
+    project_dir: str = ".",
 ) -> dict:
     """Phase 1: Generate planning brief from domain summaries."""
     from .subprocess_utils import run_claude_logged
     from .templates import render_brief_prompt
+    if model is None:
+        from .model_config import resolve_model
+        model = resolve_model("decompose_brief", project_dir=project_dir)
 
     prompt = render_brief_prompt(
         domain_summaries=domain_data["domain_summaries_text"],
@@ -2197,12 +2205,16 @@ def _decompose_single_domain(
     test_infra_context: str = "",
     design_context: str = "",
     test_plan_context: str = "",
-    model: str = "opus",
+    model: Optional[str] = None,
     max_parallel: int = 3,
+    project_dir: str = ".",
 ) -> dict:
     """Decompose a single domain into changes. Called in parallel."""
     from .subprocess_utils import run_claude_logged
     from .templates import render_domain_decompose_prompt
+    if model is None:
+        from .model_config import resolve_model
+        model = resolve_model("decompose_domain", project_dir=project_dir)
 
     prompt = render_domain_decompose_prompt(
         domain_name=domain["name"],
@@ -2236,10 +2248,14 @@ def _phase2_parallel_decompose(
     test_infra_context: str = "",
     design_context: str = "",
     digest_dir: str = "",
-    model: str = "opus",
+    model: Optional[str] = None,
     max_parallel: int = 3,
+    project_dir: str = ".",
 ) -> dict[str, dict]:
     """Phase 2: Decompose all domains in parallel."""
+    if model is None:
+        from .model_config import resolve_model
+        model = resolve_model("decompose_domain", project_dir=project_dir)
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     domains = domain_data["domains"]
@@ -2286,11 +2302,15 @@ def _phase3_merge_plans(
     *,
     coverage_info: str = "",
     replan_ctx: dict | None = None,
-    model: str = "opus",
+    model: Optional[str] = None,
+    project_dir: str = ".",
 ) -> dict:
     """Phase 3: Merge domain plans into unified orchestration plan."""
     from .subprocess_utils import run_claude_logged
     from .templates import render_merge_prompt
+    if model is None:
+        from .model_config import resolve_model
+        model = resolve_model("decompose_merge", project_dir=project_dir)
 
     # Format domain plans for the prompt
     plan_parts = []
@@ -2510,7 +2530,7 @@ def run_planning_pipeline(
     input_path: str,
     *,
     state_path: str = "",
-    model: str = "opus",
+    model: Optional[str] = None,
     team_mode: bool = False,
     replan_ctx: dict | None = None,
     replan_cycle: int | None = None,
@@ -2536,6 +2556,11 @@ def run_planning_pipeline(
         RuntimeError: If planning fails.
     """
     from .subprocess_utils import run_claude_logged
+    if model is None:
+        from .model_config import resolve_model
+        # The single-call decompose path uses one model for the whole
+        # planning prompt; default to the brief role.
+        model = resolve_model("decompose_brief")
 
     # 1. Freshness check for digest mode
     if input_mode == "digest":

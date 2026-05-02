@@ -80,7 +80,11 @@ DEFAULT_SMOKE_FIX_MAX_RETRIES = 3
 DEFAULT_SMOKE_FIX_MAX_TURNS = 15
 DEFAULT_SMOKE_HEALTH_CHECK_TIMEOUT = 30
 DEFAULT_MAX_VERIFY_RETRIES = 2
-DEFAULT_REVIEW_MODEL = "sonnet"
+# DEPRECATED — kept as an empty string for any external import. Code
+# inside this module uses model_config.resolve_model("review") at call
+# time so operator overrides via orchestration.yaml::models.review take
+# effect without restart.
+DEFAULT_REVIEW_MODEL = ""
 DEFAULT_E2E_TIMEOUT = 3600  # 1h ceiling. 600s/1200s caused repeated false timeouts on
 # realistic web suites (>50 routes, prisma seed, next build, 100+ tests). The gate
 # is fail-closed on real timeout — a high ceiling just gives slow infra room without
@@ -1427,7 +1431,7 @@ def review_change(
     change_name: str,
     wt_path: str,
     scope: str,
-    review_model: str = DEFAULT_REVIEW_MODEL,
+    review_model: str = "",
     state_file: str = "",
     digest_dir: str = "",
     prompt_prefix: str = "",
@@ -1436,6 +1440,12 @@ def review_change(
 
     Source: verifier.sh review_change (lines 134-193)
     """
+    # Resolve review model via the unified config (CLI/ENV/yaml/profile/defaults)
+    # when no explicit override was passed in.
+    if not review_model:
+        from .model_config import resolve_model
+        review_model = resolve_model("review", project_dir=wt_path)
+
     # Generate diff
     merge_base = _get_merge_base(wt_path)
     diff_result = run_git("diff", f"{merge_base}..HEAD", cwd=wt_path)
@@ -1495,20 +1505,24 @@ def review_change(
         timeout=900, cwd=wt_path,
     )
     if claude_result.exit_code != 0:
-        # Escalate to opus if not already
-        if review_model != "opus":
+        # Escalate to the configured escalation model if not already there.
+        from .model_config import resolve_model
+        escalation_model = resolve_model("review_escalation", project_dir=wt_path)
+        if review_model != escalation_model:
             logger.warning(
-                "Code review failed with %s for %s (exit=%d, timed_out=%s) — escalating to opus",
-                review_model, change_name, claude_result.exit_code, claude_result.timed_out,
+                "Code review failed with %s for %s (exit=%d, timed_out=%s) — escalating to %s",
+                review_model, change_name, claude_result.exit_code,
+                claude_result.timed_out, escalation_model,
             )
             claude_result = run_claude_logged(
-                review_prompt, purpose="review", change=change_name, model="opus",
+                review_prompt, purpose="review", change=change_name,
+                model=escalation_model,
                 timeout=900, cwd=wt_path,
             )
             if claude_result.exit_code != 0:
                 logger.error(
-                    "Code review failed with opus for %s (exit=%d, timed_out=%s) — skipping (FALSE PASS)",
-                    change_name, claude_result.exit_code, claude_result.timed_out,
+                    "Code review failed with %s for %s (exit=%d, timed_out=%s) — skipping (FALSE PASS)",
+                    escalation_model, change_name, claude_result.exit_code, claude_result.timed_out,
                 )
                 _persist_review_verdict(
                     cwd=wt_path, baseline=session_baseline, change_name=change_name,
@@ -1972,9 +1986,11 @@ def smoke_fix_scoped(
             continue
 
         fix_prompt = template_result.stdout
+        from .model_config import resolve_model
+        fix_prompt_model = resolve_model("review", project_dir=wt_path)
         fix_result = run_claude_logged(
             fix_prompt, purpose="smoke_fix", change=change_name,
-            model="sonnet",
+            model=fix_prompt_model,
             extra_args=["--max-turns", str(max_turns)],
         )
         if fix_result.exit_code != 0:
@@ -3423,14 +3439,18 @@ def _execute_spec_verify_gate(
     from .gate_verdict import snapshot_session_files
     session_baseline = snapshot_session_files(wt_path)
 
-    # Start with Sonnet (cheaper, sufficient for verification checks),
-    # escalate to Opus on failure — same pattern as review gate.
+    # Start with the configured spec_verify model (default sonnet —
+    # cheaper, sufficient for verification checks), escalate to the
+    # configured escalation model on failure. Same pattern as review gate.
+    from .model_config import resolve_model
+    _initial_model = resolve_model("spec_verify", project_dir=wt_path)
+    _escalation_model = resolve_model("spec_verify_escalation", project_dir=wt_path)
     _MAX_TURNS_DEFAULT = 40
     _MAX_TURNS_RETRY = 80  # doubled budget for the infra-failure retry path
     verify_cmd_result = run_claude_logged(
         verify_prompt,
         purpose="spec_verify", change=change_name,
-        model="sonnet",
+        model=_initial_model,
         extra_args=["--max-turns", str(_MAX_TURNS_DEFAULT)],
         cwd=wt_path,
         timeout=900,
@@ -3441,7 +3461,7 @@ def _execute_spec_verify_gate(
         + getattr(verify_cmd_result, "output_tokens", 0)
     )
 
-    # Escalate to Opus if Sonnet didn't produce a sentinel (classifier-path
+    # Escalate if the initial pass didn't produce a sentinel (classifier-path
     # friendliness: we still escalate on bare exit!=0 for back-compat, but
     # the classification at the end is what drives the verdict).
     if (
@@ -3449,13 +3469,14 @@ def _execute_spec_verify_gate(
         or "VERIFY_RESULT:" not in (verify_cmd_result.stdout or "")
     ):
         logger.warning(
-            "Gate[spec-verify] Sonnet didn't emit sentinel for %s (exit=%d, timed_out=%s) — escalating to opus",
-            change_name, verify_cmd_result.exit_code, verify_cmd_result.timed_out,
+            "Gate[spec-verify] %s didn't emit sentinel for %s (exit=%d, timed_out=%s) — escalating to %s",
+            _initial_model, change_name, verify_cmd_result.exit_code,
+            verify_cmd_result.timed_out, _escalation_model,
         )
         verify_cmd_result = run_claude_logged(
             verify_prompt,
             purpose="spec_verify", change=change_name,
-            model="opus",
+            model=_escalation_model,
             extra_args=["--max-turns", str(_MAX_TURNS_DEFAULT)],
             cwd=wt_path,
             timeout=900,
@@ -3476,14 +3497,14 @@ def _execute_spec_verify_gate(
         # in the infra bucket, abstain — gate skipped, no retry slot
         # consumed, no impl re-dispatch.
         logger.warning(
-            "Gate[spec-verify] %s: infra failure (reason=%s, exit=%d, timed_out=%s) — retrying opus with max-turns=%d",
+            "Gate[spec-verify] %s: infra failure (reason=%s, exit=%d, timed_out=%s) — retrying %s with max-turns=%d",
             change_name, terminal_reason, verify_cmd_result.exit_code,
-            verify_cmd_result.timed_out, _MAX_TURNS_RETRY,
+            verify_cmd_result.timed_out, _escalation_model, _MAX_TURNS_RETRY,
         )
         retry_cmd_result = run_claude_logged(
             verify_prompt,
             purpose="spec_verify", change=change_name,
-            model="opus",
+            model=_escalation_model,
             extra_args=["--max-turns", str(_MAX_TURNS_RETRY)],
             cwd=wt_path,
             timeout=900,

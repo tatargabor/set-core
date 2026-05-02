@@ -78,10 +78,14 @@ class Directives:
     llm_verdict_classifier_enabled: bool = True  # Second Sonnet pass classifies LLM gate outputs into structured verdicts (review/spec-verify/investigator)
     supervisor_mode: str = "python"  # "python" (set-supervisor daemon) | "claude" (legacy sentinel.md) | "off" (no supervision)
     review_before_merge: bool = True
-    review_model: str = "sonnet"
-    digest_model: str = "sonnet"
-    investigation_model: str = "sonnet"
-    default_model: str = "opus"
+    # Legacy flat model directives — preserved for backwards compat with
+    # existing orchestration.yaml files. Resolution at use sites prefers
+    # the unified `models.<role>` block via model_config.resolve_model();
+    # these fields are only consulted when the unified block is unset.
+    review_model: str = ""
+    digest_model: str = ""
+    investigation_model: str = ""
+    default_model: str = ""
     smoke_command: str = ""
     smoke_timeout: int = 120
     smoke_blocking: bool = False
@@ -3693,7 +3697,8 @@ def _auto_replan_cycle(
         digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
         logger.debug("Replan: digest_dir=%s, exists=%s", digest_dir, os.path.isdir(digest_dir))
         domain_data = _load_domain_data(digest_dir)
-        model = d.default_model or "opus"
+        from .model_config import resolve_model as _resolve_model
+        model = d.default_model or _resolve_model("agent")
 
         if replan_trigger == "spec_change":
             # Full re-decompose
@@ -3750,7 +3755,11 @@ def _auto_replan_cycle(
         from .templates import render_planning_prompt
         prompt = render_planning_prompt(**context)
 
-        claude_result = run_claude_logged(prompt, purpose="replan", timeout=1800, model=d.default_model or "opus")
+        from .model_config import resolve_model as _resolve_model
+        claude_result = run_claude_logged(
+            prompt, purpose="replan", timeout=1800,
+            model=d.default_model or _resolve_model("agent"),
+        )
         if claude_result.exit_code != 0:
             logger.error("Replan: Claude invocation failed (exit %d)", claude_result.exit_code)
             return "error"

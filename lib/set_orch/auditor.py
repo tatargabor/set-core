@@ -163,7 +163,7 @@ def run_audit(
     input_mode: str = "spec",
     input_path: str = "",
     digest_dir: str = "",
-    review_model: str = "sonnet",
+    review_model: str = "",
 ) -> AuditResult:
     """Run post-phase audit: build prompt, call LLM, parse result.
 
@@ -173,11 +173,15 @@ def run_audit(
         input_mode: "spec" or "digest".
         input_path: Path to spec/brief file.
         digest_dir: Path to digest directory.
-        review_model: Model to use for audit.
+        review_model: Model to use for audit. Empty string resolves via
+            model_config.resolve_model("review").
 
     Returns:
         AuditResult with gaps, recommendations, etc.
     """
+    if not review_model:
+        from .model_config import resolve_model
+        review_model = resolve_model("review")
     start_ms = int(time.time() * 1000)
 
     logger.info(

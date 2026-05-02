@@ -112,20 +112,24 @@ class TestResolveChangeModel:
         assert resolve_change_model(change) == "sonnet"
 
     def test_explicit_sonnet_overridden_for_code(self):
-        change = Change(name="add-auth", model="sonnet")
-        assert resolve_change_model(change) == "opus"
+        # New default agent model is opus-4-6 (was opus → 4-7).
+        change = Change(name="add-auth", model="sonnet", change_type="feature")
+        assert resolve_change_model(change) == "opus-4-6"
 
     def test_complexity_routing_s_bugfix(self):
+        # Bugfix is not "feature" — S-complexity routes to agent_small (sonnet by default).
         change = Change(name="fix-typo", complexity="S", change_type="bugfix")
         assert resolve_change_model(change, model_routing="complexity") == "sonnet"
 
     def test_complexity_routing_s_feature(self):
+        # S-complexity feature stays on the agent default (opus-4-6).
         change = Change(name="add-btn", complexity="S", change_type="feature")
-        assert resolve_change_model(change, model_routing="complexity") == "opus"
+        assert resolve_change_model(change, model_routing="complexity") == "opus-4-6"
 
     def test_complexity_routing_l(self):
+        # L-complexity stays on agent default regardless of change_type.
         change = Change(name="big-refactor", complexity="L", change_type="refactor")
-        assert resolve_change_model(change, model_routing="complexity") == "opus"
+        assert resolve_change_model(change, model_routing="complexity") == "opus-4-6"
 
     def test_doc_change_always_sonnet(self):
         change = Change(name="api-docs", complexity="L")

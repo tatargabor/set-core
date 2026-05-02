@@ -312,7 +312,9 @@ class ProjectSupervisor:
         stdout_file = open(sentinel_log / "stdout.log", "w")
         stderr_file = open(sentinel_log / "stderr.log", "w")
 
-        cmd = ["claude", "-p", "--model", "sonnet", "--max-turns", "500",
+        from ..model_config import resolve_model
+        sup_model = resolve_model("supervisor", project_dir=str(self.config.path))
+        cmd = ["claude", "-p", "--model", sup_model, "--max-turns", "500",
                "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]
 

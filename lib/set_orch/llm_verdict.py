@@ -156,7 +156,7 @@ def classify_verdict(
     primary_output: str,
     schema: dict,
     *,
-    model: str = "sonnet",
+    model: str = "",
     purpose: str = "classify",
     timeout: int = 120,
     event_bus: Any = None,
@@ -170,8 +170,9 @@ def classify_verdict(
         schema: a dict describing the expected JSON shape. The dict is
             serialized into the classifier prompt so the model knows what
             fields to emit.
-        model: classifier model short name (default: "sonnet" — cheap and
-            reliable for this task).
+        model: classifier model short name. Empty string (default) resolves
+            via model_config.resolve_model("classifier") — operator can
+            override via orchestration.yaml::models.classifier.
         purpose: short string used for logging and event correlation.
         timeout: seconds before the classifier call is killed.
         event_bus: optional event bus for emitting CLASSIFIER_CALL events.
@@ -180,6 +181,10 @@ def classify_verdict(
         ClassifierResult. On any error the result has verdict="fail",
         critical_count=1, and error set to a short code.
     """
+    if not model:
+        from .model_config import resolve_model
+        model = resolve_model("classifier")
+
     # Import lazily to avoid a circular import: subprocess_utils imports
     # events which may import verifier which imports this module.
     from .subprocess_utils import run_claude_logged

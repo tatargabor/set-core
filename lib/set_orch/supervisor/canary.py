@@ -234,12 +234,13 @@ class CanaryRunner:
     def run(self, diff: CanaryDiff) -> CanaryRun:
         """Spawn the canary Claude and parse its verdict."""
         prompt = self._build_prompt(diff)
+        from ..model_config import resolve_model
         result = self.spawn_fn(
             trigger="canary",
             prompt=prompt,
             cwd=str(self.project_path),
             project_path=str(self.project_path),
-            model="sonnet",
+            model=resolve_model("canary", project_dir=str(self.project_path)),
             timeout=600,
             max_turns=15,
         )

@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .events import EventBus
 from .notifications import send_notification
@@ -1159,32 +1159,53 @@ def _is_doc_change(change_name: str) -> bool:
 
 def resolve_change_model(
     change: Change,
-    default_model: str = "opus",
+    default_model: Optional[str] = None,
     model_routing: str = "off",
+    *,
+    project_dir: str = ".",
 ) -> str:
     """Resolve effective model for a change.
 
     Migrated from: dispatcher.sh resolve_change_model() L157-209
 
     Three-tier priority:
-    1. Explicit per-change model > 2. Complexity-based routing > 3. default_model
+      1. Explicit per-change model from plan.json
+      2. Complexity-based routing (when model_routing="complexity")
+      3. default_model (or resolve_model("agent") when default_model is None)
+
+    The downgrade target for the complexity branch and the doc-change
+    fallback both come from resolve_model("agent_small") so operators
+    can override the "smaller model" via the unified models config.
+
+    foundational-changes-use-opus fix: the explicit-sonnet override that
+    swapped sonnet→opus for feature changes is preserved AND extended
+    to also reject sonnet for foundational changes (the planner prompt
+    still occasionally produces sonnet on foundational; the dispatcher
+    bullet-checks here as a belt-and-suspenders).
     """
+    from .model_config import resolve_model
+
     is_doc = _is_doc_change(change.name)
+
+    # Resolve defaults lazily so test environments + per-call overrides
+    # both work cleanly.
+    if default_model is None:
+        default_model = resolve_model("agent", project_dir=project_dir)
+    agent_small = resolve_model("agent_small", project_dir=project_dir)
 
     # 1. Per-change explicit model (highest priority)
     explicit_model = change.model
     if explicit_model:
-        # Guard: sonnet only for safe change types (doc, infrastructure, cleanup)
-        # Feature changes should use opus unless they only have test-fill tasks
+        # Guard: sonnet only for non-foundational, non-feature changes.
         if explicit_model == "sonnet" and not is_doc:
             change_type = getattr(change, "change_type", "") or ""
-            if change_type in ("feature",):
+            if change_type in ("feature", "foundational"):
                 logger.warning(
-                    "overriding planner model=sonnet → opus for feature change '%s'",
-                    change.name,
+                    "overriding planner model=sonnet → %s for %s change '%s'",
+                    default_model, change_type, change.name,
                 )
-                return "opus"
-            # Allow sonnet for infrastructure, cleanup, foundational
+                return default_model
+            # Allow sonnet for infrastructure, schema, cleanup-*
             logger.info(
                 "allowing planner model=sonnet for %s (type=%s)",
                 change.name, change_type,
@@ -1194,16 +1215,19 @@ def resolve_change_model(
     # 2. Complexity-based routing
     if model_routing == "complexity":
         if change.complexity == "S" and change.change_type != "feature":
-            logger.info("model routing: %s → sonnet (S-complexity, type=%s)", change.name, change.change_type)
-            return "sonnet"
+            logger.info(
+                "model routing: %s → %s (S-complexity, type=%s)",
+                change.name, agent_small, change.change_type,
+            )
+            return agent_small
         if change.complexity == "S" and change.change_type == "infrastructure":
-            return "sonnet"
+            return agent_small
         if is_doc:
-            return "sonnet"
+            return agent_small
 
-    # 3. Default — doc changes always sonnet
+    # 3. Default — doc changes always agent_small
     if is_doc:
-        return "sonnet"
+        return agent_small
 
     return default_model
 
@@ -2587,7 +2611,7 @@ def _recall_dispatch_memory(scope: str) -> str:
 def dispatch_change(
     state_path: str,
     change_name: str,
-    default_model: str = "opus",
+    default_model: Optional[str] = None,
     model_routing: str = "off",
     team_mode: bool = False,
     context_pruning: bool = True,
@@ -3520,7 +3544,7 @@ def _iss_owned_change_names(state_path: str) -> set[str]:
 def dispatch_ready_changes(
     state_path: str,
     max_parallel: int,
-    default_model: str = "opus",
+    default_model: Optional[str] = None,
     model_routing: str = "off",
     team_mode: bool = False,
     context_pruning: bool = True,
@@ -3681,7 +3705,7 @@ def pause_change(
 def resume_change(
     state_path: str,
     change_name: str,
-    default_model: str = "opus",
+    default_model: Optional[str] = None,
     model_routing: str = "off",
     team_mode: bool = False,
     event_bus: EventBus | None = None,

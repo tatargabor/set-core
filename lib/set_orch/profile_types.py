@@ -238,6 +238,23 @@ class ProjectType(ABC):
         """
         return None
 
+    def model_for(self, role: str) -> Optional[str]:
+        """Per-stack model override for a given orchestration role.
+
+        Roles cover every model touch point: agent, digest, decompose_*,
+        review (+escalation), spec_verify (+escalation), classifier,
+        supervisor, canary, agent_small, and trigger.<sub>. Return a short
+        model name to pin a specific role, or None to mean "no opinion —
+        let the resolution chain decide".
+
+        Read by `model_config.resolve_model()` after CLI/ENV/yaml and
+        before DIRECTIVE_DEFAULTS, so an explicit operator setting still
+        wins, but the plugin's preference beats the framework default.
+
+        Default: None for all roles. Plugins override per-role as needed.
+        """
+        return None
+
 
     # --- Design source provider (v0-only pipeline) ---
     #
@@ -955,10 +972,11 @@ class ProjectType(ABC):
             f"Every idx from 0 to {len(patterns) - 1} must appear exactly once."
         )
 
+        from .model_config import resolve_model as _resolve_model
         result = run_claude_logged(
             prompt,
             purpose="classify",
-            model="sonnet",
+            model=_resolve_model("classifier"),
             timeout=60,
             extra_args=["--max-turns", "1"],
             cwd=project_path or None,
@@ -1135,10 +1153,11 @@ class ProjectType(ABC):
             "Example: [[0, 2, 4], [1], [3]]"
         )
 
+        from .model_config import resolve_model as _resolve_model
         result = run_claude_logged(
             prompt,
             purpose="classify",
-            model="sonnet",
+            model=_resolve_model("classifier"),
             timeout=60,
             extra_args=["--max-turns", "1"],
             cwd=project_path or None,

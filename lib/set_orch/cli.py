@@ -1408,6 +1408,18 @@ def main():
         prog="set-orch-core",
         description="Python core for set-core orchestration engine",
     )
+    # Top-level model-profile flag — applies the named preset by setting
+    # SET_ORCH_MODEL_<ROLE> env vars before dispatch. Per-role flags on
+    # subcommands override on top of the preset.
+    parser.add_argument(
+        "--model-profile",
+        choices=["default", "all-opus-4-6", "all-opus-4-7", "cost-optimized"],
+        default=None,
+        help=(
+            "Apply a model preset to all roles. Per-role flags override. "
+            "Presets: default | all-opus-4-6 | all-opus-4-7 | cost-optimized."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --- process ---
@@ -1601,7 +1613,7 @@ def main():
     pl_run.add_argument("--input-path", required=True, help="Input file/dir path")
     pl_run.add_argument("--output", default=None, help="Output plan file (default: resolver)")
     pl_run.add_argument("--state-file", default="", help="State file (for replan)")
-    pl_run.add_argument("--model", default="opus", help="Model for decomposition")
+    pl_run.add_argument("--model", default=None, help="Model for decomposition (default: resolve_model('decompose_brief'))")
     pl_run.add_argument("--method", default="api", help="Planning method (api/agent)")
     pl_run.add_argument("--team", action="store_true", help="Team mode")
     pl_run.add_argument("--phase-hint", default="", help="Phase to focus on")
@@ -1644,13 +1656,13 @@ def main():
     d_model = disp_sub.add_parser("resolve-model", help="Resolve implementation model")
     d_model.add_argument("--state", required=True, help="State file path")
     d_model.add_argument("--change", required=True, help="Change name")
-    d_model.add_argument("--default-model", default="opus", help="Default model")
+    d_model.add_argument("--default-model", default=None, help="Default agent model (default: resolve_model('agent'))")
     d_model.add_argument("--model-routing", default="off", help="Routing mode")
 
     d_disp = disp_sub.add_parser("dispatch-change", help="Dispatch a single change")
     d_disp.add_argument("--state", required=True, help="State file path")
     d_disp.add_argument("--change", required=True, help="Change name")
-    d_disp.add_argument("--default-model", default="opus", help="Default model")
+    d_disp.add_argument("--default-model", default=None, help="Default agent model (default: resolve_model('agent'))")
     d_disp.add_argument("--model-routing", default="off", help="Routing mode")
     d_disp.add_argument("--team", action="store_true", help="Enable team mode")
     d_disp.add_argument("--no-prune", action="store_true", help="Skip context pruning")
@@ -1661,7 +1673,7 @@ def main():
     d_ready = disp_sub.add_parser("dispatch-ready", help="Dispatch all ready changes")
     d_ready.add_argument("--state", required=True, help="State file path")
     d_ready.add_argument("--max-parallel", type=int, required=True, help="Max parallel changes")
-    d_ready.add_argument("--default-model", default="opus", help="Default model")
+    d_ready.add_argument("--default-model", default=None, help="Default agent model (default: resolve_model('agent'))")
     d_ready.add_argument("--model-routing", default="off", help="Routing mode")
     d_ready.add_argument("--team", action="store_true", help="Enable team mode")
     d_ready.add_argument("--no-prune", action="store_true", help="Skip context pruning")
@@ -1676,7 +1688,7 @@ def main():
     d_resume = disp_sub.add_parser("resume", help="Resume a paused/stopped change")
     d_resume.add_argument("--state", required=True, help="State file path")
     d_resume.add_argument("--change", required=True, help="Change name")
-    d_resume.add_argument("--default-model", default="opus", help="Default model")
+    d_resume.add_argument("--default-model", default=None, help="Default agent model (default: resolve_model('agent'))")
     d_resume.add_argument("--model-routing", default="off", help="Routing mode")
     d_resume.add_argument("--team", action="store_true", help="Enable team mode")
 
@@ -1713,7 +1725,7 @@ def main():
     v_review.add_argument("--change", required=True, help="Change name")
     v_review.add_argument("--wt-path", required=True, help="Worktree path")
     v_review.add_argument("--scope", required=True, help="Change scope")
-    v_review.add_argument("--model", default="sonnet", help="Review model")
+    v_review.add_argument("--model", default=None, help="Review model (default: resolve_model('review'))")
     v_review.add_argument("--state", default="", help="State file path")
 
     v_rules = ver_sub.add_parser("evaluate-rules", help="Evaluate verification rules")
@@ -1748,7 +1760,7 @@ def main():
     v_poll.add_argument("--test-timeout", type=int, default=120, help="Test timeout")
     v_poll.add_argument("--max-verify-retries", type=int, default=2, help="Max verify retries")
     v_poll.add_argument("--review-before-merge", action="store_true", help="Enable code review")
-    v_poll.add_argument("--review-model", default="sonnet", help="Review model")
+    v_poll.add_argument("--review-model", default=None, help="Review model (default: resolve_model('review'))")
     v_poll.add_argument("--smoke-command", default="", help="Smoke test command")
     v_poll.add_argument("--smoke-timeout", type=int, default=180, help="Smoke timeout")
     v_poll.add_argument("--e2e-command", default="", help="E2E test command")
@@ -1762,7 +1774,7 @@ def main():
     v_done.add_argument("--test-timeout", type=int, default=120, help="Test timeout")
     v_done.add_argument("--max-verify-retries", type=int, default=2, help="Max verify retries")
     v_done.add_argument("--review-before-merge", action="store_true", help="Enable code review")
-    v_done.add_argument("--review-model", default="sonnet", help="Review model")
+    v_done.add_argument("--review-model", default=None, help="Review model (default: resolve_model('review'))")
     v_done.add_argument("--smoke-command", default="", help="Smoke test command")
     v_done.add_argument("--smoke-timeout", type=int, default=180, help="Smoke timeout")
     v_done.add_argument("--e2e-command", default="", help="E2E test command")
@@ -1834,7 +1846,7 @@ def main():
     dig_run = dig_sub.add_parser("run", help="Run full digest pipeline")
     dig_run.add_argument("--spec", required=True, help="Spec directory or file path")
     dig_run.add_argument("--dry-run", action="store_true", help="Print without writing")
-    dig_run.add_argument("--model", default="opus", help="Model for digest")
+    dig_run.add_argument("--model", default=None, help="Model for digest (default: resolve_model('digest'))")
     dig_run.add_argument("--dir", default=None, help="Digest directory (default: resolver)")
     dig_run.add_argument(
         "--no-digest-cache",
@@ -1919,7 +1931,7 @@ def main():
     aud_run.add_argument("--state", required=True, help="State file path")
     aud_run.add_argument("--input-mode", default="spec", help="Input mode (spec/digest)")
     aud_run.add_argument("--input-path", default="", help="Input file path")
-    aud_run.add_argument("--model", default="sonnet", help="Review model")
+    aud_run.add_argument("--model", default=None, help="Review model (default: resolve_model('review'))")
 
     aud_prompt = aud_sub.add_parser("prompt", help="Print audit prompt without executing")
     aud_prompt.add_argument("--cycle", type=int, default=1, help="Cycle number")
@@ -2005,6 +2017,27 @@ def main():
     iss_cleanup.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
 
     args = parser.parse_args()
+
+    # Apply --model-profile preset (sets SET_ORCH_MODEL_<ROLE> env vars
+    # so the resolver sees them). Per-role flags inside subcommands
+    # override on top via cli_override.
+    if getattr(args, "model_profile", None):
+        from .model_config import PRESETS, _env_var_name
+        preset = PRESETS.get(args.model_profile)
+        if preset:
+            def _flatten(d, prefix=""):
+                for k, v in d.items():
+                    full = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
+                    if isinstance(v, dict):
+                        yield from _flatten(v, full)
+                    else:
+                        yield full, v
+            for role, model in _flatten(preset):
+                env_key = _env_var_name(role)
+                # Don't override if the user already set the env var explicitly
+                if env_key not in os.environ:
+                    os.environ[env_key] = model
+            logger.info("Applied --model-profile=%s", args.model_profile)
 
     if args.command == "process":
         cmd_process(args)

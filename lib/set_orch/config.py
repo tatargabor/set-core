@@ -22,6 +22,47 @@ logger = logging.getLogger(__name__)
 # ─── Directive Defaults ─────────────────────────────────────────────
 # Migrated from: bin/set-orchestrate L39-70 (DEFAULT_* constants)
 
+# Single source of truth for the validator regex covering every short
+# model name accepted by set-core. Defined here so model_config.py and
+# the per-key validators can share it.
+MODEL_NAME_RE: str = (
+    r"^(haiku|sonnet|opus|sonnet-1m|opus-1m"
+    r"|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m)$"
+)
+
+# Default model assignment for every orchestration touch point.
+# `agent` is the per-change agent that runs ralph/claude inside a
+# worktree. The remaining roles cover orchestrator-side LLM calls and
+# supervisor/canary checks. Trigger sub-dict maps trigger types to the
+# model used when that trigger fires.
+#
+# IMPORTANT: `agent` default is `opus-4-6` (NOT `opus`, which aliases
+# to `opus-4-7`). This is the new framework default introduced by the
+# `model-config-unified` change. Operators wanting the prior behavior
+# set `models.agent: opus-4-7` (or use `--model-profile all-opus-4-7`).
+_DEFAULT_MODELS: dict[str, Any] = {
+    "agent": "opus-4-6",
+    "agent_small": "sonnet",
+    "digest": "opus-4-6",
+    "decompose_brief": "opus-4-6",
+    "decompose_domain": "opus-4-6",
+    "decompose_merge": "opus-4-6",
+    "review": "sonnet",
+    "review_escalation": "opus-4-6",
+    "spec_verify": "sonnet",
+    "spec_verify_escalation": "opus-4-6",
+    "classifier": "sonnet",
+    "supervisor": "sonnet",
+    "canary": "sonnet",
+    "trigger": {
+        "integration_failed": "opus-4-6",
+        "non_periodic_checkpoint": "opus-4-6",
+        "terminal_state": "opus-4-6",
+        "default": "sonnet",
+    },
+}
+
+
 DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "max_parallel": 1,
     "merge_policy": "eager",
@@ -137,6 +178,9 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "max_replan_retries": 5,
     # Phase 3: raised 5 → 8. Sibling-test pollution convergence.
     "e2e_retry_limit": 8,
+    # Unified model-selection block — see _DEFAULT_MODELS for the
+    # canonical defaults. model-config-unified change.
+    "models": _DEFAULT_MODELS,
 }
 
 
@@ -157,9 +201,9 @@ _VALIDATORS: dict[str, tuple[str, str | None]] = {
     "review_before_merge": ("bool", None),
     "test_timeout": ("int_pos", None),
     "max_verify_retries": ("int", None),
-    "summarize_model": ("enum", r"^(haiku|sonnet|opus|sonnet-1m|opus-1m|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m)$"),
-    "review_model": ("enum", r"^(haiku|sonnet|opus|sonnet-1m|opus-1m|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m)$"),
-    "default_model": ("enum", r"^(haiku|sonnet|opus|sonnet-1m|opus-1m|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m)$"),
+    "summarize_model": ("enum", MODEL_NAME_RE),
+    "review_model": ("enum", MODEL_NAME_RE),
+    "default_model": ("enum", MODEL_NAME_RE),
     "smoke_command": ("str", None),
     "smoke_timeout": ("int_pos", None),
     "smoke_blocking": ("bool", None),

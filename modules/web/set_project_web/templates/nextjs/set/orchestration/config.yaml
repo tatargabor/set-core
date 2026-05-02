@@ -6,7 +6,7 @@
 #
 # Inherited defaults (do NOT override unless there's a project-specific
 # reason; see `docs/reference/configuration.md` for the full list):
-#   default_model:           opus
+#   models.agent:            opus-4-6   (NEW DEFAULT — was opus → 4-7)
 #   max_parallel:            1     (sequential — >1 is experimental)
 #   review_before_merge:     true
 #   merge_policy:            eager
@@ -33,6 +33,40 @@ e2e_timeout: 3600
 # web scaffolds converge in 1-2 cycles; if more are needed it's usually a
 # planner-level bug, not a transient.
 max_replan_cycles: 2
+
+# ─── Model selection ────────────────────────────────────────────────
+#
+# All roles below are commented out — framework defaults apply. Uncomment
+# and edit individual roles to override per-stack. The full chain is
+# CLI flag → SET_ORCH_MODEL_<ROLE> env var → values below → ProjectType
+# .model_for(role) → DIRECTIVE_DEFAULTS in lib/set_orch/config.py.
+#
+# Valid model short names:
+#   haiku, sonnet, opus, sonnet-1m, opus-1m,
+#   opus-4-6, opus-4-7, opus-4-6-1m, opus-4-7-1m
+#
+# Quick presets — instead of editing this block, run with
+# `--model-profile {default | all-opus-4-6 | all-opus-4-7 | cost-optimized}`.
+#
+# models:
+#   agent: opus-4-6                  # per-change agent (ralph/claude in worktree)
+#   agent_small: sonnet              # downgrade target for complexity routing
+#   digest: opus-4-6                 # spec → DigestBrief LLM call
+#   decompose_brief: opus-4-6        # 3-phase planner — Phase 1 brief
+#   decompose_domain: opus-4-6       # 3-phase planner — Phase 2 per-domain
+#   decompose_merge: opus-4-6        # 3-phase planner — Phase 3 merge
+#   review: sonnet                   # code-review gate initial pass
+#   review_escalation: opus-4-6      # code-review gate retry on fail
+#   spec_verify: sonnet              # spec-verify gate initial pass
+#   spec_verify_escalation: opus-4-6 # spec-verify gate retry on fail
+#   classifier: sonnet               # llm_verdict classifier (cheap, structured)
+#   supervisor: sonnet               # set:sentinel supervisor agent
+#   canary: sonnet                   # supervisor canary health check
+#   trigger:                         # supervisor triggers (per-type)
+#     integration_failed: opus-4-6
+#     non_periodic_checkpoint: opus-4-6
+#     terminal_state: opus-4-6
+#     default: sonnet
 
 # Environment variables injected into every worktree .env
 env_vars:
