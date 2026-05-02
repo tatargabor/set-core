@@ -31,13 +31,13 @@ SET_COMMON = REPO_ROOT / "bin" / "set-common.sh"
 
 def test_opus_default_pins_current_release():
     """`opus` shorthand resolves to the project-wide default (currently
-    4.7). Update this test together with _MODEL_MAP when the default
+    4.6). Update this test together with _MODEL_MAP when the default
     moves — that change is intentional, not accidental."""
-    assert resolve_model_id("opus") == "claude-opus-4-7"
+    assert resolve_model_id("opus") == "claude-opus-4-6"
 
 
 def test_opus_1m_default_pins_current_release():
-    assert resolve_model_id("opus-1m") == "claude-opus-4-7[1m]"
+    assert resolve_model_id("opus-1m") == "claude-opus-4-6[1m]"
 
 
 def test_explicit_opus_4_6_pin():
@@ -101,8 +101,8 @@ def test_bash_python_parity():
 
 def test_bash_opus_default():
     """Standalone bash check — `opus` in shell pins the same default
-    as Python (currently 4.7)."""
-    assert _bash_resolve("opus") == "claude-opus-4-7"
+    as Python (currently 4.6)."""
+    assert _bash_resolve("opus") == "claude-opus-4-6"
 
 
 def test_bash_explicit_opus_4_6():

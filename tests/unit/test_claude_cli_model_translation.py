@@ -35,7 +35,7 @@ def test_resolve_model_id_translates_short_pin_to_full_id():
 
 
 def test_resolve_model_id_alias_translates():
-    assert resolve_model_id("opus") == "claude-opus-4-7"
+    assert resolve_model_id("opus") == "claude-opus-4-6"
     assert resolve_model_id("sonnet") == "claude-sonnet-4-6"
     assert resolve_model_id("haiku") == "claude-haiku-4-5-20251001"
 
@@ -73,7 +73,10 @@ def test_chat_short_pin_translated_in_cmd():
 def test_chat_alias_also_translated_to_full_id():
     s = _make_chat("opus")
     cmd = s._build_claude_cmd("hi", context="")
-    assert cmd[cmd.index("--model") + 1] == "claude-opus-4-7"
+    # The `opus` alias now maps to claude-opus-4-6 (the framework
+    # default after model-config-unified). Operators wanting 4-7 must
+    # pin `opus-4-7` explicitly via models.agent.
+    assert cmd[cmd.index("--model") + 1] == "claude-opus-4-6"
 
 
 def test_chat_full_id_passes_through():

@@ -732,10 +732,11 @@ set_model_prefix() {
 # (CLI/ENV/yaml/profile/DIRECTIVE_DEFAULTS). Falls through to the
 # positional <fallback> when the Python lookup returns nothing.
 #
-# `opus` shorthand currently resolves to 4.7 (the latest release).
-# `opus-4-6` is the new framework default for the agent role; legacy
-# operators can pin opus-4-7 via models.agent: opus-4-7. Mirrors
-# _MODEL_MAP in lib/set_orch/subprocess_utils.py.
+# `opus` shorthand resolves to 4.6 (the framework default after
+# unified-models). `opus-4-7` must be pinned explicitly via
+# `models.agent: opus-4-7` (or use `--model-profile all-opus-4-7`).
+# Mirrors _MODEL_MAP in lib/set_orch/subprocess_utils.py — keep both
+# sides in sync.
 resolve_model_id() {
     local config_yaml="" role=""
     while [[ $# -gt 0 ]]; do
@@ -783,8 +784,11 @@ except Exception:
     case "$name" in
         haiku)        echo "${prefix}claude-haiku-4-5-20251001" ;;
         sonnet)       echo "${prefix}claude-sonnet-4-6" ;;
-        opus)         echo "${prefix}claude-opus-4-7" ;;
-        opus-1m)      echo "${prefix}claude-opus-4-7[1m]" ;;
+        # `opus` alias resolves to 4.6 (the framework default). Pin
+        # `opus-4-7` explicitly for 4.7. Mirrors _MODEL_MAP in
+        # lib/set_orch/subprocess_utils.py — keep both sides in sync.
+        opus)         echo "${prefix}claude-opus-4-6" ;;
+        opus-1m)      echo "${prefix}claude-opus-4-6[1m]" ;;
         sonnet-1m)    echo "${prefix}claude-sonnet-4-6[1m]" ;;
         opus-4-6)     echo "${prefix}claude-opus-4-6" ;;
         opus-4-7)     echo "${prefix}claude-opus-4-7" ;;

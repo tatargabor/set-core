@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from ..model_config import resolve_model
+from ..subprocess_utils import resolve_model_id
 from .audit import AuditLog
 from .models import Diagnosis, Issue, now_iso
 from .policy import IssuesPolicyConfig
@@ -76,16 +78,22 @@ class InvestigationRunner:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         stdout_fh = open(output_file, "w")
 
+        # Resolve via the unified config — investigation is a supervisor-class
+        # diagnostic run; route through `supervisor` role so operators can
+        # override via models.supervisor in orchestration.yaml.
+        project_cwd = issue.environment_path or str(self.set_core_path)
+        investigation_model = resolve_model_id(
+            resolve_model("supervisor", project_dir=project_cwd)
+        )
+
         cmd = [
             "claude", "-p",
             "--max-turns", str(self.config.investigation.max_turns),
-            "--model", "claude-sonnet-4-6",
+            "--model", investigation_model,
             "--verbose", "--output-format", "stream-json",
             "--dangerously-skip-permissions",
             prompt,
         ]
-
-        project_cwd = issue.environment_path or str(self.set_core_path)
 
         try:
             proc = subprocess.Popen(

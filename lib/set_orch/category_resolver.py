@@ -277,8 +277,33 @@ def _call_llm(
 
     Per design.md D3, this is the ADDITIVE LLM layer — its return value
     will be unioned with the deterministic union, never used to remove.
+
+    Model selection: the unified config (``models.classifier``) wins.
+    Falls back to ``profile.llm_classifier_model`` for backward compat,
+    which lets a plugin disable the LLM layer entirely by returning None.
+    The caller can also disable LLM classification by returning None
+    from ``llm_classifier_model``.
     """
-    model = getattr(profile, "llm_classifier_model", None)
+    profile_model = getattr(profile, "llm_classifier_model", None)
+    # Profile explicitly disabled the LLM layer → honor it.
+    if profile_model is None:
+        return set(), {"skipped": "model_disabled"}
+    # Otherwise prefer the unified config (CLI/ENV/yaml/profile/defaults)
+    # so operators can swap classifier model via models.classifier without
+    # subclassing the profile.
+    try:
+        from .model_config import resolve_model
+        from .subprocess_utils import resolve_model_id
+        model = resolve_model_id(resolve_model("classifier", project_dir=str(project_path)))
+    except Exception:
+        # Defensive: any resolution error → fall back to the profile API.
+        logger.debug(
+            "category_resolver: resolve_model('classifier') failed; using "
+            "profile.llm_classifier_model=%s",
+            profile_model,
+            exc_info=True,
+        )
+        model = profile_model
     if not model:
         return set(), {"skipped": "model_disabled"}
 

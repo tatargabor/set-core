@@ -1528,7 +1528,7 @@ def review_change(
                     cwd=wt_path, baseline=session_baseline, change_name=change_name,
                     has_critical=False, parsed_issues=[],
                     source="exec_failed",
-                    summary=f"opus exit={claude_result.exit_code} timed_out={claude_result.timed_out} — forced pass",
+                    summary=f"{escalation_model} exit={claude_result.exit_code} timed_out={claude_result.timed_out} — forced pass",
                 )
                 return ReviewResult(has_critical=False, output="")
         else:
@@ -1540,7 +1540,7 @@ def review_change(
                 cwd=wt_path, baseline=session_baseline, change_name=change_name,
                 has_critical=False, parsed_issues=[],
                 source="exec_failed",
-                summary=f"opus exit={claude_result.exit_code} timed_out={claude_result.timed_out} — forced pass",
+                summary=f"{review_model} exit={claude_result.exit_code} timed_out={claude_result.timed_out} — forced pass",
             )
             return ReviewResult(has_critical=False, output="")
 

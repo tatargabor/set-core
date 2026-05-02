@@ -561,16 +561,22 @@ class ProjectType(ABC):
     @property
     def llm_classifier_model(self) -> str | None:
         """Return the LLM model ID for category classification, or
-        ``None``/empty to disable LLM augmentation.
+        ``None`` to disable LLM augmentation.
 
-        The resolver invokes this model after the deterministic layers
-        run and unions the result. Returning ``None`` skips the LLM call
-        entirely (purely deterministic resolution).
+        The category_resolver prefers the unified config
+        (``models.classifier`` in orchestration.yaml, falling back to
+        ``DIRECTIVE_DEFAULTS["models"]["classifier"]``). This profile
+        property is the legacy fallback / disable switch:
+          * Return ``None`` to disable the LLM layer entirely (the
+            resolver will skip the LLM call regardless of central config).
+          * Return any other string for backward compat with profiles
+            that pre-date the unified config; the central config still
+            wins when set.
 
-        Default: ``"claude-sonnet-4-6"`` — Sonnet for additive
-        edge-case detection. Profiles can downgrade to Haiku
-        (``"claude-haiku-4-5-20251001"``) if cost is critical, or set to
-        ``None`` to disable.
+        Default: ``"claude-sonnet-4-6"`` is preserved as a non-None
+        sentinel so the LLM layer stays enabled by default. The actual
+        model dispatched is whatever ``resolve_model("classifier")``
+        returns at call time.
         """
         return "claude-sonnet-4-6"
 

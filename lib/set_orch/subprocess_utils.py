@@ -136,13 +136,12 @@ def run_command(
 _MODEL_MAP = {
     "haiku": "claude-haiku-4-5-20251001",
     "sonnet": "claude-sonnet-4-6",
-    # `opus` shorthand currently resolves to 4.7 (the latest release).
-    # Operators concerned about token economy on 4.7 (~1.5-2× the output
-    # of 4.6 for similar quality) can pin `opus-4-6` explicitly in
-    # orchestration config: `default_model: opus-4-6`. We expect to
-    # revisit the default after collecting more comparative run data.
-    "opus": "claude-opus-4-7",
-    "opus-1m": "claude-opus-4-7[1m]",
+    # `opus` shorthand resolves to 4.6 — the established default for
+    # framework orchestration (better token economy than 4.7 at
+    # comparable quality on agent/decompose tasks). Operators wanting
+    # 4.7 must pin it explicitly via `opus-4-7` or `models.agent: opus-4-7`.
+    "opus": "claude-opus-4-6",
+    "opus-1m": "claude-opus-4-6[1m]",
     "sonnet-1m": "claude-sonnet-4-6[1m]",
     # Explicit version pins — bypass the shorthand default.
     "opus-4-6": "claude-opus-4-6",

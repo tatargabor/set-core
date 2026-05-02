@@ -160,9 +160,17 @@ build_digest_prompt() {
 }
 
 call_digest_api() {
+    # Resolve the digest model via the unified config chain
+    # (CLI/ENV/orchestration.yaml/profile/DIRECTIVE_DEFAULTS) so the bash
+    # entry point honors operator overrides for `models.digest`. Fall
+    # back to `opus` only if the resolver returns nothing (no config).
     local prompt="$1"
+    local digest_yaml=".claude/orchestration.yaml"
+    [[ -f "$digest_yaml" ]] || digest_yaml="orchestration.yaml"
+    local digest_model
+    digest_model=$(resolve_model_id --config "$digest_yaml" --role digest opus)
     local output
-    output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$(model_id opus)" --max-turns 1) || {
+    output=$(export RUN_CLAUDE_NO_MCP=1 RUN_CLAUDE_TIMEOUT=600; echo "$prompt" | run_claude --model "$digest_model" --max-turns 1) || {
         log_error "Digest API call failed"
         return 1
     }

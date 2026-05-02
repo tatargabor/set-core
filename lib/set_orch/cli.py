@@ -472,10 +472,12 @@ def cmd_plan(args):
         sys.exit(0)
 
     elif args.plan_cmd == "summarize-spec":
+        # model=None lets summarize_spec resolve via the central config
+        # (digest role). Hardcoded "haiku" fallback bypassed the config.
         summary = summarize_spec(
             args.spec_file,
             phase_hint=args.phase_hint or "",
-            model=args.model or "haiku",
+            model=getattr(args, "model", None) or None,
         )
         print(summary)
         sys.exit(0)
@@ -506,11 +508,15 @@ def cmd_plan(args):
                 sys.exit(1)
         else:
             try:
+                # model=None lets run_planning_pipeline resolve via the
+                # central config (decompose_brief role). Hardcoded "opus"
+                # alias here used to bypass the config and pin to whatever
+                # the alias mapped to globally.
                 plan_data = run_planning_pipeline(
                     input_mode=args.input_mode,
                     input_path=args.input_path,
                     state_path=getattr(args, "state_file", "") or "",
-                    model=getattr(args, "model", "opus") or "opus",
+                    model=getattr(args, "model", None) or None,
                     team_mode=getattr(args, "team", False),
                     replan_cycle=getattr(args, "replan_cycle", None),
                 )
@@ -601,7 +607,7 @@ def cmd_dispatch(args):
     elif args.dispatch_cmd == "dispatch-change":
         ok = dispatch_change(
             args.state, args.change,
-            default_model=args.default_model or "opus",
+            default_model=args.default_model or None,
             model_routing=args.model_routing or "off",
             team_mode=args.team,
             context_pruning=not args.no_prune,
@@ -615,7 +621,7 @@ def cmd_dispatch(args):
     elif args.dispatch_cmd == "dispatch-ready":
         count = dispatch_ready_changes(
             args.state, args.max_parallel,
-            default_model=args.default_model or "opus",
+            default_model=args.default_model or None,
             model_routing=args.model_routing or "off",
             team_mode=args.team,
             context_pruning=not args.no_prune,
@@ -634,7 +640,7 @@ def cmd_dispatch(args):
     elif args.dispatch_cmd == "resume":
         ok = resume_change(
             args.state, args.change,
-            default_model=args.default_model or "opus",
+            default_model=args.default_model or None,
             model_routing=args.model_routing or "off",
             team_mode=args.team,
             event_bus=event_bus,
@@ -709,9 +715,12 @@ def cmd_verify(args):
         sys.exit(0 if result.passed else 1)
 
     elif args.verify_cmd == "review":
+        # review_model="" lets review_change resolve via the central
+        # config (review role). Hardcoded "sonnet" fallback bypassed the
+        # config and locked operators out of the unified models setting.
         result = review_change(
             args.change, args.wt_path, args.scope,
-            review_model=args.model or "sonnet",
+            review_model=args.model or "",
             state_file=args.state or "",
         )
         json.dump({
@@ -758,6 +767,8 @@ def cmd_verify(args):
         sys.exit(0)
 
     elif args.verify_cmd == "poll":
+        # review_model="" lets the review gate resolve via the central
+        # config (review role). Hardcoded "sonnet" fallback bypassed it.
         status = poll_change(
             args.change, args.state,
             test_command=args.test_command or "",
@@ -765,7 +776,7 @@ def cmd_verify(args):
             test_timeout=args.test_timeout,
             max_verify_retries=args.max_verify_retries,
             review_before_merge=args.review_before_merge,
-            review_model=args.review_model or "sonnet",
+            review_model=args.review_model or "",
             smoke_command=args.smoke_command or "",
             smoke_timeout=args.smoke_timeout,
             e2e_command=args.e2e_command or "",
@@ -776,6 +787,8 @@ def cmd_verify(args):
         sys.exit(0)
 
     elif args.verify_cmd == "handle-done":
+        # review_model="" lets the review gate resolve via the central
+        # config (review role). Hardcoded "sonnet" fallback bypassed it.
         handle_change_done(
             args.change, args.state,
             test_command=args.test_command or "",
@@ -783,7 +796,7 @@ def cmd_verify(args):
             test_timeout=args.test_timeout,
             max_verify_retries=args.max_verify_retries,
             review_before_merge=args.review_before_merge,
-            review_model=args.review_model or "sonnet",
+            review_model=args.review_model or "",
             smoke_command=args.smoke_command or "",
             smoke_timeout=args.smoke_timeout,
             e2e_command=args.e2e_command or "",

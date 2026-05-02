@@ -38,8 +38,11 @@ prune_worktree_context() {
 
 resolve_change_model() {
     # Migrated to: wt_orch/dispatcher.py resolve_change_model()
+    # default_model defaults to empty so the Python side resolves via
+    # model_config.resolve_model("agent") — keep this empty to honor
+    # operator overrides from orchestration.yaml::models.agent.
     local change_name="$1"
-    local default_model="${2:-opus}"
+    local default_model="${2:-}"
     local model_routing="${3:-off}"
     set-orch-core dispatch resolve-model \
         --state "$STATE_FILENAME" \
@@ -82,7 +85,7 @@ dispatch_change() {
     local args=(
         --state "$STATE_FILENAME"
         --change "$change_name"
-        --default-model "${DEFAULT_IMPL_MODEL:-opus}"
+        --default-model "${DEFAULT_IMPL_MODEL:-}"
         --model-routing "${MODEL_ROUTING:-off}"
     )
     [[ "${TEAM_MODE:-false}" == "true" ]] && args+=(--team)
@@ -139,7 +142,7 @@ dispatch_ready_changes() {
     local args=(
         --state "$STATE_FILENAME"
         --max-parallel "$max_parallel"
-        --default-model "${DEFAULT_IMPL_MODEL:-opus}"
+        --default-model "${DEFAULT_IMPL_MODEL:-}"
         --model-routing "${MODEL_ROUTING:-off}"
     )
     [[ "${TEAM_MODE:-false}" == "true" ]] && args+=(--team)
@@ -166,7 +169,7 @@ resume_change() {
     local args=(
         --state "$STATE_FILENAME"
         --change "$change_name"
-        --default-model "${DEFAULT_IMPL_MODEL:-opus}"
+        --default-model "${DEFAULT_IMPL_MODEL:-}"
         --model-routing "${MODEL_ROUTING:-off}"
     )
     [[ "${TEAM_MODE:-false}" == "true" ]] && args+=(--team)
@@ -282,7 +285,7 @@ cmd_start() {
                 --directives "$_directives_file" \
                 --state "$STATE_FILENAME" \
                 --poll-interval "${POLL_INTERVAL:-15}" \
-                --default-model "$(echo "$_dir_content" | jq -r '.default_model // "opus"')" \
+                --default-model "$(echo "$_dir_content" | jq -r '.default_model // ""')" \
                 --model-routing "$(echo "$_dir_content" | jq -r '.model_routing // "off"')" \
                 ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
         fi
@@ -533,7 +536,7 @@ cmd_start() {
             trap 'exit 0' SIGTERM SIGINT SIGHUP
 
             # Apply dispatch-critical globals from directives BEFORE first dispatch
-            DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
+            DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // ""')
             TEAM_MODE=$(echo "$directives" | jq -r 'if .team_mode == true then "yes" else "" end')
             CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
             MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
@@ -563,7 +566,7 @@ cmd_start() {
                 --directives "$_directives_file" \
                 --state "$STATE_FILENAME" \
                 --poll-interval "${POLL_INTERVAL:-15}" \
-                --default-model "$(echo "$directives" | jq -r '.default_model // "opus"')" \
+                --default-model "$(echo "$directives" | jq -r '.default_model // ""')" \
                 ${TEAM_MODE:+--team-mode} \
                 --model-routing "$(echo "$directives" | jq -r '.model_routing // "off"')" \
                 ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}
@@ -664,7 +667,7 @@ cmd_start() {
 
     # Apply dispatch-critical globals from directives BEFORE first dispatch
     # (monitor_loop sets these too, but dispatch_ready_changes runs first)
-    DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // "opus"')
+    DEFAULT_IMPL_MODEL=$(echo "$directives" | jq -r '.default_model // ""')
     TEAM_MODE=$(echo "$directives" | jq -r 'if .team_mode == true then "yes" else "" end')
     CONTEXT_PRUNING=$(echo "$directives" | jq -r '.context_pruning // true')
     MODEL_ROUTING=$(echo "$directives" | jq -r '.model_routing // "off"')
@@ -689,7 +692,7 @@ cmd_start() {
         --directives "$_directives_file" \
         --state "$STATE_FILENAME" \
         --poll-interval "${POLL_INTERVAL:-15}" \
-        --default-model "$(echo "$directives" | jq -r '.default_model // "opus"')" \
+        --default-model "$(echo "$directives" | jq -r '.default_model // ""')" \
         ${TEAM_MODE:+--team-mode} \
         --model-routing "$(echo "$directives" | jq -r '.model_routing // "off"')" \
         ${CHECKPOINT_AUTO_APPROVE:+--checkpoint-auto-approve}

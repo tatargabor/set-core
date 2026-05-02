@@ -2795,8 +2795,13 @@ def plan_via_agent(
     if phase_hint:
         env["PHASE_HINT"] = phase_hint
 
+    # Resolve via the central config — agent role drives plan_via_agent's
+    # decompose subagent. Hardcoded "opus" alias here used to bypass
+    # config and pin to whatever the alias mapped to globally.
+    from .model_config import resolve_model
+    plan_model = resolve_model("agent")
     loop_result = run_command(
-        ["set-loop", "start", task_desc, "--max", "10", "--model", "opus",
+        ["set-loop", "start", task_desc, "--max", "10", "--model", plan_model,
          "--label", wt_name, "--change", wt_name],
         timeout=1800,
         cwd=wt_path,

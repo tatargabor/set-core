@@ -36,7 +36,13 @@ class BuildResult:
 _build_cache: dict[str, Any] = {
     "status": "",  # "", "pass", "fail"
     "output": "",
-    "fix_attempted": "",  # "", "sonnet", "both", "done"
+    # fix_attempted is a sentinel for the two-attempt build-fix
+    # state machine (NOT a model name):
+    #   ""        — no fix attempted
+    #   "first"   — review-role fix tried, failed → next will escalate
+    #   "both"    — both attempts failed → give up
+    #   "done"    — fix succeeded
+    "fix_attempted": "",
 }
 
 
@@ -113,7 +119,8 @@ def fix_base_build(
 ) -> BuildResult:
     """Attempt to fix build errors using LLM agent.
 
-    Single attempt guard: won't retry if both sonnet and opus already failed.
+    Single attempt guard: won't retry if the first attempt + escalation
+    already failed (state machine sentinel: fix_attempted == "both").
 
     Args:
         project_path: Path to the project directory.
@@ -123,7 +130,7 @@ def fix_base_build(
         BuildResult after fix attempt.
     """
     if _build_cache["fix_attempted"] == "both":
-        logger.info("Base build fix: both sonnet and opus failed — skipping")
+        logger.info("Base build fix: both first attempt and escalation failed — skipping")
         return BuildResult(status="fail", output=error_output or _build_cache["output"])
 
     if not error_output:
@@ -132,12 +139,17 @@ def fix_base_build(
     pm = _detect_pm(project_path)
     build_cmd = _detect_build_cmd(project_path) or "build"
 
-    # Choose model: escalate to opus if sonnet already failed
-    if _build_cache["fix_attempted"] == "sonnet":
-        model = "opus"
-        logger.info("Base build fix: sonnet failed previously, escalating to opus")
+    # Choose model: escalate to the review-escalation role if the first
+    # attempt failed; otherwise use the review role. Both come from the
+    # unified models config so operators can swap them without code edits.
+    from .model_config import resolve_model
+    if _build_cache["fix_attempted"] == "first":
+        model = resolve_model("review_escalation")
+        logger.info(
+            "Base build fix: first attempt failed, escalating to %s", model,
+        )
     else:
-        model = "sonnet"
+        model = resolve_model("review")
 
     fix_prompt = f"""The main branch has build errors that are blocking all worktree builds.
 Fix these TypeScript/build errors directly on the main branch.
@@ -177,13 +189,20 @@ Do NOT create a worktree — fix directly in the current directory."""
         # Fix applied but build still fails — don't corrupt fix_attempted state
         logger.warning("Base build fix: LLM fix applied but rebuild still fails (model=%s)", model)
 
-    # Track which model failed
-    if _build_cache["fix_attempted"] == "sonnet":
+    # Advance the two-attempt state machine. Sentinels are NOT model
+    # names; the actual model came from resolve_model("review[_escalation]").
+    if _build_cache["fix_attempted"] == "first":
         _build_cache["fix_attempted"] = "both"
-        logger.error("Base build fix: opus also failed — manual intervention needed")
+        logger.error(
+            "Base build fix: escalation (model=%s) also failed — manual intervention needed",
+            model,
+        )
     else:
-        _build_cache["fix_attempted"] = "sonnet"
-        logger.warning("Base build fix: sonnet failed — will try opus on next attempt")
+        _build_cache["fix_attempted"] = "first"
+        logger.warning(
+            "Base build fix: first attempt (model=%s) failed — will escalate on next attempt",
+            model,
+        )
 
     return BuildResult(status="fail", output=error_output, package_manager=pm)
 
