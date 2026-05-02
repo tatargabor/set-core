@@ -380,12 +380,17 @@ def run_claude_logged(
         cwd=cwd,
     )
 
-    # Emit event (best-effort — never fail the call because of logging)
+    # Emit event (best-effort — never fail the call because of logging).
+    # Resolve the model name to its full claude CLI id BEFORE emitting so
+    # the Tokens panel shows the actual version (claude-opus-4-6) instead
+    # of the alias (opus). The CLI was invoked with the resolved id via
+    # run_claude(); event capture must match.
     try:
         from .events import event_bus
+        emit_model = resolve_model_id(model) if model else "default"
         event_bus.emit("LLM_CALL", change=change, data={
             "purpose": purpose,
-            "model": model or "default",
+            "model": emit_model,
             "duration_ms": result.duration_ms,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,

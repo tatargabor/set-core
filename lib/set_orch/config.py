@@ -78,9 +78,16 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     # Empirical: order-cancellation-and-returns retried 9 times before
     # convergence in craftbrew-run-20260423-2223; 12 leaves slack.
     "max_verify_retries": 12,
-    "summarize_model": "haiku",
-    "review_model": "opus",
-    "default_model": "opus",
+    # Legacy flat model directives — kept as schema entries for back-compat
+    # with existing orchestration.yaml files that explicitly set them, but
+    # defaulted to "" so the unified `models.<role>` config in
+    # _DEFAULT_MODELS wins for fresh projects. A non-empty value here would
+    # leak into state.directives and override resolve_model() at gate sites
+    # (e.g. verifier.py:_execute_review_gate's `gc.review_model if
+    # gc.review_model else review_model` would always pick this).
+    "summarize_model": "",
+    "review_model": "",
+    "default_model": "",
     "smoke_command": "",
     "smoke_timeout": 120,
     "smoke_blocking": True,
