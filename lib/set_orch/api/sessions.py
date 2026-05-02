@@ -172,9 +172,12 @@ def _list_session_files_for_change(
 
 
 def _extract_session_model(session_path: Path) -> str:
-    """Extract model ID from a session JSONL's first assistant message.
+    """Extract full model ID from a session JSONL's first assistant message.
 
-    Returns short model name (e.g. 'opus', 'sonnet') or empty string.
+    Returns the full claude id (e.g. 'claude-opus-4-6') so the web UI's
+    `displayModel` helper can show the version. Earlier this stripped to
+    family ('opus' / 'sonnet' / 'haiku'), which hid the version everywhere
+    the Tokens panel and ChangeTable showed session-derived rows.
     """
     try:
         with open(session_path) as f:
@@ -188,14 +191,7 @@ def _extract_session_model(session_path: Path) -> str:
                     continue
                 msg = entry.get("message", {})
                 if msg.get("role") == "assistant":
-                    model = msg.get("model", "")
-                    if model:
-                        # Shorten: claude-opus-4-6 → opus, claude-sonnet-4-6 → sonnet
-                        for short in ("opus", "sonnet", "haiku"):
-                            if short in model:
-                                return short
-                        return model
-                    return ""
+                    return msg.get("model", "") or ""
     except OSError:
         pass
     return ""
