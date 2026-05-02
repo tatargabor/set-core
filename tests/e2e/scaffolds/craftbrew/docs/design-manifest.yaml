@@ -3,12 +3,250 @@ v0_export_path: v0-export/
 routes:
 - path: /adatvedelem
   files:
-  - v0-export/app/adatvedelem/page.tsx
+  - v0-export/app/(public)/adatvedelem/page.tsx
   component_deps:
   - v0-export/components/legal-page-layout.tsx
   - v0-export/lib/routes.ts
   scope_keywords:
   - adatvedelem
+- path: /aszf
+  files:
+  - v0-export/app/(public)/aszf/page.tsx
+  component_deps:
+  - v0-export/components/legal-page-layout.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - aszf
+- path: /cookie
+  files:
+  - v0-export/app/(public)/cookie/page.tsx
+  component_deps:
+  - v0-export/components/legal-page-layout.tsx
+  scope_keywords:
+  - cookie
+- path: /csomagok
+  files:
+  - v0-export/app/(public)/csomagok/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - csomagok
+- path: /elofizetes
+  files:
+  - v0-export/app/(public)/elofizetes/page.tsx
+  component_deps:
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - elofizetes
+- path: /elofizetes/uj
+  files:
+  - v0-export/app/(public)/elofizetes/uj/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/radio-group.tsx
+  - v0-export/components/ui/label.tsx
+  - v0-export/components/ui/separator.tsx
+  - v0-export/components/ui/tooltip.tsx
+  - v0-export/lib/utils.ts
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - elofizetes
+  - uj
+  - előfizetés
+- path: /eszkozok
+  files:
+  - v0-export/app/(public)/eszkozok/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - eszkozok
+  - eszközök
+- path: /gyik
+  files:
+  - v0-export/app/(public)/gyik/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - gyik
+  - gyakran
+  - ismételt
+  - kérdések
+- path: /kapcsolat
+  files:
+  - v0-export/app/(public)/kapcsolat/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - kapcsolat
+- path: /kavek/[slug]
+  files:
+  - v0-export/app/(public)/kavek/[slug]/page.tsx
+  component_deps:
+  - v0-export/lib/utils.ts
+  - v0-export/lib/routes.ts
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/breadcrumb.tsx
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/separator.tsx
+  - v0-export/components/ui/skeleton.tsx
+  - v0-export/components/ui/tabs.tsx
+  - v0-export/components/product-gallery.tsx
+  - v0-export/components/variant-selector.tsx
+  - v0-export/components/quantity-stepper.tsx
+  - v0-export/components/restock-notify-dialog.tsx
+  - v0-export/components/tasting-notes.tsx
+  - v0-export/components/product-reviews.tsx
+  - v0-export/components/product-card.tsx
+  scope_keywords:
+  - kavek
+  - slug
+- path: /kavek
+  files:
+  - v0-export/app/(public)/kavek/page.tsx
+  component_deps:
+  - v0-export/components/product-card.tsx
+  - v0-export/components/product-filters.tsx
+  - v0-export/components/empty-state.tsx
+  - v0-export/components/ui/button.tsx
+  scope_keywords:
+  - kavek
+  - kávék
+- path: /kereses
+  files:
+  - v0-export/app/(public)/kereses/page.tsx
+  component_deps:
+  - v0-export/lib/utils.ts
+  - v0-export/lib/routes.ts
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/input.tsx
+  - v0-export/components/ui/select.tsx
+  - v0-export/components/ui/separator.tsx
+  - v0-export/components/ui/skeleton.tsx
+  - v0-export/components/product-card.tsx
+  scope_keywords:
+  - kereses
+- path: /kosar
+  files:
+  - v0-export/app/(public)/kosar/page.tsx
+  component_deps:
+  - v0-export/components/cart-item.tsx
+  - v0-export/components/cart-summary.tsx
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/sonner.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - kosar
+  - kosár
+- path: /merch
+  files:
+  - v0-export/app/(public)/merch/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - merch
+- path: /nagykereskedelem
+  files:
+  - v0-export/app/(public)/nagykereskedelem/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - nagykereskedelem
+- path: /
+  files:
+  - v0-export/app/(public)/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/separator.tsx
+  scope_keywords:
+  - homepage
+  - home
+- path: /penztar
+  files:
+  - v0-export/app/(public)/penztar/page.tsx
+  component_deps:
+  - v0-export/lib/utils.ts
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/radio-group.tsx
+  - v0-export/components/ui/label.tsx
+  - v0-export/components/ui/separator.tsx
+  - v0-export/components/ui/skeleton.tsx
+  - v0-export/components/ui/alert.tsx
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/checkout-stepper.tsx
+  - v0-export/components/address-selector.tsx
+  - v0-export/components/payment-form.tsx
+  - v0-export/components/order-confirmation.tsx
+  scope_keywords:
+  - penztar
+- path: /rolunk
+  files:
+  - v0-export/app/(public)/rolunk/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - rolunk
+  - rólunk
+- path: /szallitas
+  files:
+  - v0-export/app/(public)/szallitas/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - szallitas
+  - szállítás
+- path: /sztorik/[slug]
+  files:
+  - v0-export/app/(public)/sztorik/[slug]/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/avatar.tsx
+  - v0-export/components/ui/separator.tsx
+  - v0-export/components/ui/breadcrumb.tsx
+  - v0-export/lib/routes.ts
+  - v0-export/components/ui/dropdown-menu.tsx
+  - v0-export/components/ui/aspect-ratio.tsx
+  scope_keywords:
+  - sztorik
+  - slug
+- path: /sztorik
+  files:
+  - v0-export/app/(public)/sztorik/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/components/ui/card.tsx
+  - v0-export/components/ui/badge.tsx
+  - v0-export/components/ui/avatar.tsx
+  - v0-export/components/ui/tabs.tsx
+  - v0-export/components/ui/select.tsx
+  - v0-export/components/ui/pagination.tsx
+  - v0-export/lib/utils.ts
+  scope_keywords:
+  - sztorik
+- path: /visszakuldes
+  files:
+  - v0-export/app/(public)/visszakuldes/page.tsx
+  component_deps:
+  - v0-export/components/ui/button.tsx
+  - v0-export/lib/routes.ts
+  scope_keywords:
+  - visszakuldes
+  - visszaküldés
 - path: /admin/ajandekkartyak
   files:
   - v0-export/app/admin/ajandekkartyak/page.tsx
@@ -243,14 +481,6 @@ routes:
   - visszakuldesek
   - visszaküldések
   - kezelése
-- path: /aszf
-  files:
-  - v0-export/app/aszf/page.tsx
-  component_deps:
-  - v0-export/components/legal-page-layout.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - aszf
 - path: /belepes
   files:
   - v0-export/app/belepes/page.tsx
@@ -266,58 +496,6 @@ routes:
   - v0-export/components/ui/form.tsx
   scope_keywords:
   - belepes
-- path: /cookie
-  files:
-  - v0-export/app/cookie/page.tsx
-  component_deps:
-  - v0-export/components/legal-page-layout.tsx
-  scope_keywords:
-  - cookie
-- path: /csomagok
-  files:
-  - v0-export/app/csomagok/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - csomagok
-- path: /elofizetes
-  files:
-  - v0-export/app/elofizetes/page.tsx
-  component_deps:
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - elofizetes
-- path: /elofizetes/uj
-  files:
-  - v0-export/app/elofizetes/uj/page.tsx
-  component_deps:
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/card.tsx
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/ui/radio-group.tsx
-  - v0-export/components/ui/label.tsx
-  - v0-export/components/ui/separator.tsx
-  - v0-export/components/ui/tooltip.tsx
-  - v0-export/lib/utils.ts
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - elofizetes
-  - uj
-  - előfizetés
-- path: /eszkozok
-  files:
-  - v0-export/app/eszkozok/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - eszkozok
-  - eszközök
 - path: /fiokom/adataim
   files:
   - v0-export/app/fiokom/adataim/page.tsx
@@ -400,19 +578,6 @@ routes:
   scope_keywords:
   - fiokom
   - fiókom
-- path: /gyik
-  files:
-  - v0-export/app/gyik/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - gyik
-  - gyakran
-  - ismételt
-  - kérdések
 - path: /jelszo-csere/[token]
   files:
   - v0-export/app/jelszo-csere/[token]/page.tsx
@@ -438,130 +603,6 @@ routes:
   - v0-export/components/ui/form.tsx
   scope_keywords:
   - jelszo-csere
-- path: /kapcsolat
-  files:
-  - v0-export/app/kapcsolat/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - kapcsolat
-- path: /kavek/[slug]
-  files:
-  - v0-export/app/kavek/[slug]/page.tsx
-  component_deps:
-  - v0-export/lib/utils.ts
-  - v0-export/lib/routes.ts
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/ui/breadcrumb.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/separator.tsx
-  - v0-export/components/ui/skeleton.tsx
-  - v0-export/components/ui/tabs.tsx
-  - v0-export/components/product-gallery.tsx
-  - v0-export/components/variant-selector.tsx
-  - v0-export/components/quantity-stepper.tsx
-  - v0-export/components/restock-notify-dialog.tsx
-  - v0-export/components/tasting-notes.tsx
-  - v0-export/components/product-reviews.tsx
-  - v0-export/components/product-card.tsx
-  scope_keywords:
-  - kavek
-  - slug
-- path: /kavek
-  files:
-  - v0-export/app/kavek/page.tsx
-  component_deps:
-  - v0-export/components/product-card.tsx
-  - v0-export/components/product-filters.tsx
-  - v0-export/components/empty-state.tsx
-  - v0-export/components/ui/button.tsx
-  scope_keywords:
-  - kavek
-  - kávék
-- path: /kereses
-  files:
-  - v0-export/app/kereses/page.tsx
-  component_deps:
-  - v0-export/lib/utils.ts
-  - v0-export/lib/routes.ts
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/card.tsx
-  - v0-export/components/ui/input.tsx
-  - v0-export/components/ui/select.tsx
-  - v0-export/components/ui/separator.tsx
-  - v0-export/components/ui/skeleton.tsx
-  - v0-export/components/product-card.tsx
-  scope_keywords:
-  - kereses
-- path: /kosar
-  files:
-  - v0-export/app/kosar/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/cart-item.tsx
-  - v0-export/components/cart-summary.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/sonner.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - kosar
-  - kosár
-- path: /merch
-  files:
-  - v0-export/app/merch/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - merch
-- path: /nagykereskedelem
-  files:
-  - v0-export/app/nagykereskedelem/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - nagykereskedelem
-- path: /
-  files:
-  - v0-export/app/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/ui/separator.tsx
-  scope_keywords:
-  - homepage
-  - home
-- path: /penztar
-  files:
-  - v0-export/app/penztar/page.tsx
-  component_deps:
-  - v0-export/lib/utils.ts
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/card.tsx
-  - v0-export/components/ui/radio-group.tsx
-  - v0-export/components/ui/label.tsx
-  - v0-export/components/ui/separator.tsx
-  - v0-export/components/ui/skeleton.tsx
-  - v0-export/components/ui/alert.tsx
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/checkout-stepper.tsx
-  - v0-export/components/address-selector.tsx
-  - v0-export/components/payment-form.tsx
-  - v0-export/components/order-confirmation.tsx
-  scope_keywords:
-  - penztar
 - path: /regisztracio
   files:
   - v0-export/app/regisztracio/page.tsx
@@ -589,69 +630,6 @@ routes:
   scope_keywords:
   - rendeleseink
   - rendeléseim
-- path: /rolunk
-  files:
-  - v0-export/app/rolunk/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - rolunk
-  - rólunk
-- path: /szallitas
-  files:
-  - v0-export/app/szallitas/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - szallitas
-  - szállítás
-- path: /sztorik/[slug]
-  files:
-  - v0-export/app/sztorik/[slug]/page.tsx
-  component_deps:
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/card.tsx
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/ui/avatar.tsx
-  - v0-export/components/ui/separator.tsx
-  - v0-export/components/ui/breadcrumb.tsx
-  - v0-export/lib/routes.ts
-  - v0-export/components/ui/dropdown-menu.tsx
-  - v0-export/components/ui/aspect-ratio.tsx
-  scope_keywords:
-  - sztorik
-  - slug
-- path: /sztorik
-  files:
-  - v0-export/app/sztorik/page.tsx
-  component_deps:
-  - v0-export/components/ui/button.tsx
-  - v0-export/components/ui/card.tsx
-  - v0-export/components/ui/badge.tsx
-  - v0-export/components/ui/avatar.tsx
-  - v0-export/components/ui/tabs.tsx
-  - v0-export/components/ui/select.tsx
-  - v0-export/components/ui/pagination.tsx
-  - v0-export/lib/utils.ts
-  scope_keywords:
-  - sztorik
-- path: /visszakuldes
-  files:
-  - v0-export/app/visszakuldes/page.tsx
-  component_deps:
-  - v0-export/components/site-header.tsx
-  - v0-export/components/site-footer.tsx
-  - v0-export/components/ui/button.tsx
-  - v0-export/lib/routes.ts
-  scope_keywords:
-  - visszakuldes
-  - visszaküldés
 shared:
 - v0-export/components/ui/**
 - v0-export/components/site-header.tsx
