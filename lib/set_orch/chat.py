@@ -101,10 +101,15 @@ class ChatSession:
         side model carry-over creates an implicit dependency that the
         upcoming model-config rollout cannot audit. --model is appended
         before --resume so the current `self.model` value wins.
+
+        Translates short model names (e.g. "opus-4-6") to the full claude
+        CLI id ("claude-opus-4-6") via resolve_model_id — claude CLI
+        rejects short pin names directly.
         """
+        from .subprocess_utils import resolve_model_id
         cmd = [
             "claude", "-p", "--output-format", "stream-json", "--verbose",
-            "--model", self.model,
+            "--model", resolve_model_id(self.model),
         ]
         if context:
             cmd.extend(["--append-system-prompt", context])

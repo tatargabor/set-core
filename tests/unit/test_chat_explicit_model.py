@@ -30,7 +30,8 @@ def test_fresh_session_passes_model_and_permission_mode():
     # --model is contiguous and present
     assert "--model" in cmd
     i = cmd.index("--model")
-    assert cmd[i + 1] == "opus-4-6"
+    # Resolved to full claude CLI id (claude CLI rejects short pins).
+    assert cmd[i + 1] == "claude-opus-4-6"
     # fresh session has --permission-mode auto, no --resume
     assert "--permission-mode" in cmd
     assert cmd[cmd.index("--permission-mode") + 1] == "auto"
@@ -43,7 +44,8 @@ def test_resumed_session_passes_model_no_permission_mode():
     # --model still present even on resume
     assert "--model" in cmd
     i = cmd.index("--model")
-    assert cmd[i + 1] == "opus-4-6"
+    # Resolved to full claude CLI id (claude CLI rejects short pins).
+    assert cmd[i + 1] == "claude-opus-4-6"
     # Resume present
     assert "--resume" in cmd
     assert cmd[cmd.index("--resume") + 1] == "abc-123"
@@ -54,10 +56,12 @@ def test_resumed_session_passes_model_no_permission_mode():
 def test_model_change_between_resumes_is_honored():
     s = _make("sonnet", session_id="abc-123")
     cmd1 = s._build_claude_cmd("first", context="")
-    assert cmd1[cmd1.index("--model") + 1] == "sonnet"
+    # "sonnet" alias passes through claude CLI directly — no translation
+    # change. resolve_model_id maps "sonnet" → "claude-sonnet-4-6".
+    assert cmd1[cmd1.index("--model") + 1] == "claude-sonnet-4-6"
     s.model = "opus-4-6"
     cmd2 = s._build_claude_cmd("second", context="")
-    assert cmd2[cmd2.index("--model") + 1] == "opus-4-6"
+    assert cmd2[cmd2.index("--model") + 1] == "claude-opus-4-6"
     assert "--resume" in cmd2  # still resumed
 
 

@@ -103,7 +103,11 @@ def spawn_ephemeral_claude(
             f"{prompt}"
         )
 
-    cmd = ["claude", "-p", "--model", model, "--max-turns", str(max_turns)]
+    # Translate short pins (opus-4-6, sonnet-1m, etc.) to full claude
+    # CLI ids — claude CLI accepts opus/sonnet/haiku aliases AND full
+    # ids, but rejects the explicit short pin names directly.
+    from ..subprocess_utils import resolve_model_id
+    cmd = ["claude", "-p", "--model", resolve_model_id(model), "--max-turns", str(max_turns)]
     if allow_all_tools:
         cmd.append("--dangerously-skip-permissions")
 

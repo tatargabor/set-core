@@ -313,7 +313,12 @@ class ProjectSupervisor:
         stderr_file = open(sentinel_log / "stderr.log", "w")
 
         from ..model_config import resolve_model
-        sup_model = resolve_model("supervisor", project_dir=str(self.config.path))
+        from ..subprocess_utils import resolve_model_id
+        # Resolve the role's short name, then translate to the full
+        # claude CLI id (claude CLI rejects short pin names directly).
+        sup_model = resolve_model_id(
+            resolve_model("supervisor", project_dir=str(self.config.path))
+        )
         cmd = ["claude", "-p", "--model", sup_model, "--max-turns", "500",
                "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]
