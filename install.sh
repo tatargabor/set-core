@@ -216,6 +216,12 @@ install_macos_deps() {
         brew_install+=("jq")
     fi
 
+    # coreutils — provides gtimeout for set-loop's per-iteration claude timeout.
+    # Without it set-loop falls back to TIMEOUT_CMD="" (no enforcement).
+    if ! check_command gtimeout && ! check_command timeout; then
+        brew_install+=("coreutils")
+    fi
+
     if [[ ${#brew_install[@]} -gt 0 ]]; then
         info "Installing via Homebrew: ${brew_install[*]}"
         brew install "${brew_install[@]}"
