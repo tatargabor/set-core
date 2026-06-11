@@ -611,9 +611,11 @@ def _run_gate(
     # API routes, and content merged from sibling changes legitimately
     # produce extras that the agent cannot delete without breaking the app.
     blocking_statuses = {
-        "missing-route", "missing-shared-file", "decomposition-collapsed",
+        "missing-shared-file", "decomposition-collapsed",
         # design-fidelity-shell-hardening: hard fail on missing/aliased shells
         "shell-not-mounted", "shadow-alias",
+        # "missing-route" removed — routes arrive incrementally per change,
+        # not all at once; blocking on missing routes causes false positives
     }
     blocking = [v for v in skel if v.status in blocking_statuses]
     if blocking:
