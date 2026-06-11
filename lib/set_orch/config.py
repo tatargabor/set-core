@@ -142,6 +142,8 @@ DIRECTIVE_DEFAULTS: dict[str, Any] = {
     "e2e_port_base": None,
     "gate_overrides": {},
     "design_pipeline": "auto",
+    "design_source_path": None,
+    "ikp_pipeline": "auto",
     "discord": None,
     "completion_timeout": 300,
     # fix-replan-stuck-gate-and-decomposer: per-change stuck-loop circuit breaker.
@@ -281,6 +283,8 @@ _VALIDATORS: dict[str, tuple[str, str | None]] = {
     "max_replan_retries": ("int_pos", None),
     "e2e_retry_limit": ("int_pos", None),
     "design_pipeline": ("enum", r"^(auto|none)$"),
+    "design_source_path": ("str", None),
+    "ikp_pipeline": ("enum", r"^(auto|none)$"),
 }
 
 

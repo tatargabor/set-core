@@ -39,6 +39,9 @@ memory = [
 discord = [
     "discord.py>=2.3.0",
 ]
+ikp = [
+    "ikp",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-qt>=4.2.0",
