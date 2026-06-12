@@ -943,15 +943,18 @@ def update_coverage_status(
     change_name: str,
     new_status: str,
     digest_dir: str = DIGEST_DIR,
+    req_ids: list[str] | None = None,
 ) -> None:
     """Update coverage status for all requirements owned by a change.
-
-    Migrated from: digest.sh:update_coverage_status()
 
     Args:
         change_name: Name of the change.
         new_status: New status string (e.g., "dispatched", "merged").
         digest_dir: Path to digest directory.
+        req_ids: Optional list of requirement IDs owned by this change.
+            When provided, also updates (or creates) entries for these IDs
+            even if coverage.json maps them to a different change name
+            (handles plan renames between decompose cycles).
     """
     cov_path = Path(digest_dir) / "coverage.json"
     if not cov_path.is_file():
@@ -963,19 +966,55 @@ def update_coverage_status(
         return
 
     coverage = cov_data.get("coverage", {})
+    updated = 0
+
+    # Match by change name (original path)
     for req_id, entry in coverage.items():
         if entry.get("change") == change_name:
             entry["status"] = new_status
+            updated += 1
+
+    # Match by explicit REQ-IDs (handles plan renames)
+    if req_ids:
+        for req_id in req_ids:
+            if req_id in coverage:
+                if coverage[req_id].get("status") != new_status:
+                    coverage[req_id]["status"] = new_status
+                    coverage[req_id]["change"] = change_name
+                    updated += 1
+            else:
+                coverage[req_id] = {"change": change_name, "status": new_status}
+                updated += 1
+
+    if updated == 0:
+        logger.debug("No coverage entries matched for %s", change_name)
+        return
+
+    # Remove from uncovered list
+    if new_status == "merged" and "uncovered" in cov_data:
+        merged_ids = {
+            k for k, v in coverage.items()
+            if v.get("status") == "merged"
+        }
+        cov_data["uncovered"] = [
+            r for r in cov_data["uncovered"] if r not in merged_ids
+        ]
 
     cov_data["coverage"] = coverage
     _write_json(cov_path, cov_data)
 
     # Persist merged requirements to history
     if new_status == "merged":
-        merged_history = Path(digest_dir) / "coverage-merged.json"
         merged_entries = {
-            k: v for k, v in coverage.items() if v.get("change") == change_name
+            k: v for k, v in coverage.items()
+            if v.get("change") == change_name and v.get("status") == "merged"
         }
+        if req_ids:
+            for req_id in req_ids:
+                if req_id in coverage and coverage[req_id].get("status") == "merged":
+                    merged_entries[req_id] = coverage[req_id]
+
+        merged_history = Path(digest_dir) / "coverage-merged.json"
         if merged_history.is_file():
             try:
                 existing = json.loads(merged_history.read_text(encoding="utf-8"))
@@ -986,7 +1025,9 @@ def update_coverage_status(
         else:
             _write_json(merged_history, merged_entries)
 
-    logger.info("Coverage status updated: %s → %s", change_name, new_status)
+    logger.info(
+        "Coverage status updated: %s → %s (%d entries)", change_name, new_status, updated
+    )
 
 
 def _is_branch_merged_in_git(change_name: str) -> bool:

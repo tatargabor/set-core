@@ -1000,7 +1000,8 @@ def merge_change(
         _remove_from_merge_queue(state_file, change_name)
         try:
             from .digest import update_coverage_status
-            update_coverage_status(change_name, "merged")
+            _req_ids = change.requirements if change else []
+            update_coverage_status(change_name, "merged", req_ids=_req_ids)
         except Exception:
             logger.warning("Coverage update failed for %s", change_name, exc_info=True)
         return MergeResult(success=True, status="merged", smoke_result="skip_merged")
@@ -1035,7 +1036,8 @@ def merge_change(
             _remove_from_merge_queue(state_file, change_name)
             try:
                 from .digest import update_coverage_status
-                update_coverage_status(change_name, "merged")
+                _req_ids = change.requirements if change else []
+                update_coverage_status(change_name, "merged", req_ids=_req_ids)
             except Exception:
                 logger.warning("Coverage update failed for %s", change_name, exc_info=True)
             return MergeResult(success=True, status="merged", smoke_result="skip_merged")
@@ -1175,7 +1177,8 @@ def merge_change(
         # Update coverage status (only after git-verified merge)
         try:
             from .digest import update_coverage_status
-            update_coverage_status(change_name, "merged")
+            _req_ids = change.requirements if change else []
+            update_coverage_status(change_name, "merged", req_ids=_req_ids)
         except Exception:
             logger.warning("Coverage update failed for %s", change_name, exc_info=True)
 

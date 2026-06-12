@@ -1776,19 +1776,42 @@ def _build_digest_content(digest_dir: str) -> str:
     # Data model — data-definitions.md removed (LLM-generated, caused naming drift).
     # Replaced by auto-parsed schema digest injected at dispatch time.
 
-    # Execution hints
+    # Execution hints — merge LLM-extracted (index.json) with file-based
+    # (execution-hints.yaml). File-based hints take precedence, allowing
+    # spec authors to guide the decomposer without re-running digest.
+    merged_hints: dict = {}
     index_path = d / "index.json"
     if index_path.exists():
         try:
             idx = json.loads(index_path.read_text())
-            hints = idx.get("execution_hints")
-            if hints and hints != {}:
-                sections.append(
-                    f"## Execution Hints (optional guidance from spec author)\n"
-                    f"{json.dumps(hints)}\n"
-                )
+            llm_hints = idx.get("execution_hints")
+            if llm_hints and isinstance(llm_hints, dict):
+                merged_hints.update(llm_hints)
         except (json.JSONDecodeError, OSError):
             pass
+
+    # File-based execution hints (orchestration dir or config dir)
+    for hints_candidate in [
+        d.parent / "execution-hints.yaml",
+        Path("set/orchestration/execution-hints.yaml"),
+        Path("execution-hints.yaml"),
+    ]:
+        if hints_candidate.is_file():
+            try:
+                import yaml
+                file_hints = yaml.safe_load(hints_candidate.read_text())
+                if file_hints and isinstance(file_hints, dict):
+                    merged_hints.update(file_hints)
+                    logger.info("Loaded execution hints from %s", hints_candidate)
+            except Exception:
+                logger.warning("Failed to parse %s", hints_candidate, exc_info=True)
+            break
+
+    if merged_hints:
+        sections.append(
+            f"## Execution Hints (guidance for decomposition)\n"
+            f"{json.dumps(merged_hints, indent=2, ensure_ascii=False)}\n"
+        )
 
     # Domain summaries
     domains_dir = d / "domains"
