@@ -3739,6 +3739,7 @@ def _auto_replan_cycle(
             # Brief change invalidates all hashes by construction.
             reuse_set = set()
             failed_domains = [d_["name"] for d_ in domain_data.get("domains", [])]
+            _decisions_ctx = domain_data.get("decisions_context", "")
             for dname in failed_domains:
                 domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
                 if domain:
@@ -3746,6 +3747,7 @@ def _auto_replan_cycle(
                     saved_domain_plans[dname] = _decompose_single_domain(
                         domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
                         test_plan_context=_build_test_plan_context(digest_dir, _dreq_ids),
+                        decisions_context=_decisions_ctx,
                     )
         elif replan_trigger == "e2e_failure":
             # Phase 3 only — re-merge with failure context
@@ -3762,6 +3764,7 @@ def _auto_replan_cycle(
                     len(skipped), skipped,
                 )
             logger.info("Replan: re-decomposing domains: %s", failed_domains)
+            _decisions_ctx = domain_data.get("decisions_context", "")
             for dname in failed_domains:
                 domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
                 if domain:
@@ -3769,6 +3772,7 @@ def _auto_replan_cycle(
                     saved_domain_plans[dname] = _decompose_single_domain(
                         domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
                         test_plan_context=_build_test_plan_context(digest_dir, _dreq_ids),
+                        decisions_context=_decisions_ctx,
                     )
         else:
             # "batch_complete" — check coverage before full re-decompose
@@ -3780,6 +3784,7 @@ def _auto_replan_cycle(
             failed_domains = _get_domains_needing_replan(state_file, domain_data, "coverage_gap")
             if not failed_domains:
                 return "no_new_work"
+            _decisions_ctx = domain_data.get("decisions_context", "")
             for dname in failed_domains:
                 domain = next((dom for dom in domain_data["domains"] if dom["name"] == dname), None)
                 if domain:
@@ -3787,6 +3792,7 @@ def _auto_replan_cycle(
                     saved_domain_plans[dname] = _decompose_single_domain(
                         domain, json.dumps(saved_brief), domain_data["conventions"], model=model,
                         test_plan_context=_build_test_plan_context(digest_dir, _dreq_ids2),
+                        decisions_context=_decisions_ctx,
                     )
 
         # Persist with hashes so the next replan can detect unchanged domains.

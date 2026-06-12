@@ -798,6 +798,106 @@ def _find_brief(
     return None
 
 
+# ─── Knowledge Source Resolution ────────────────────────────────────
+
+
+def resolve_knowledge_sources(project_dir: str = ".") -> dict[str, Path]:
+    """Resolve knowledge source directories from config.yaml.
+
+    Looks for `input.knowledge_dir` and `input.decisions_dir` in config,
+    then falls back to conventional paths.
+
+    Returns dict with keys: knowledge_dir, decisions_dir, architecture_dir
+    (values are Path objects, may not exist on disk).
+    """
+    result: dict[str, Path] = {}
+    p = Path(project_dir)
+
+    # Try config.yaml
+    config = load_config_file()
+    input_cfg = config.get("input", {})
+    if isinstance(input_cfg, dict):
+        if input_cfg.get("knowledge_dir"):
+            result["knowledge_dir"] = p / input_cfg["knowledge_dir"]
+        if input_cfg.get("decisions_dir"):
+            result["decisions_dir"] = p / input_cfg["decisions_dir"]
+
+    # Conventional fallbacks
+    if "knowledge_dir" not in result:
+        for candidate in ["docs/knowledge/domain", "docs/knowledge", "knowledge"]:
+            if (p / candidate).is_dir():
+                result["knowledge_dir"] = p / candidate
+                break
+
+    if "decisions_dir" not in result:
+        for candidate in ["docs/knowledge/decisions", "docs/decisions", "decisions"]:
+            if (p / candidate).is_dir():
+                result["decisions_dir"] = p / candidate
+                break
+
+    # Architecture
+    for candidate in ["docs/knowledge/architecture", "docs/architecture"]:
+        if (p / candidate).is_dir():
+            result["architecture_dir"] = p / candidate
+            break
+
+    return result
+
+
+def load_knowledge_for_domains(
+    project_dir: str = ".",
+    domain_names: list[str] | None = None,
+) -> dict[str, str]:
+    """Load knowledge files and return domain-matched content.
+
+    Returns dict mapping domain names to their knowledge content.
+    Also returns a "_decisions" key with all decision records
+    and "_all" with concatenated knowledge text.
+    """
+    sources = resolve_knowledge_sources(project_dir)
+    content: dict[str, str] = {}
+    all_parts: list[str] = []
+
+    # Knowledge files — match by filename to domain
+    kdir = sources.get("knowledge_dir")
+    if kdir and kdir.is_dir():
+        for f in sorted(kdir.glob("*.md")):
+            try:
+                text = f.read_text(errors="replace")
+                fname = f.stem.lower().replace("-", "_").replace(" ", "_")
+                content[fname] = text
+                all_parts.append(f"### Knowledge: {f.stem}\n{text}")
+            except OSError:
+                pass
+
+    # Decision records
+    ddir = sources.get("decisions_dir")
+    if ddir and ddir.is_dir():
+        dec_parts = []
+        for f in sorted(ddir.glob("*.md")):
+            try:
+                text = f.read_text(errors="replace")
+                dec_parts.append(f"### {f.stem}\n{text}")
+            except OSError:
+                pass
+        if dec_parts:
+            content["_decisions"] = "\n\n".join(dec_parts)
+            all_parts.append(f"## Decision Records\n" + "\n\n".join(dec_parts))
+
+    # Architecture
+    adir = sources.get("architecture_dir")
+    if adir and adir.is_dir():
+        for f in sorted(adir.glob("*.md")):
+            try:
+                text = f.read_text(errors="replace")
+                all_parts.append(f"### Architecture: {f.stem}\n{text}")
+            except OSError:
+                pass
+
+    content["_all"] = "\n\n".join(all_parts)
+    return content
+
+
 # ─── Test Command Auto-Detection ─────────────────────────────────────
 
 

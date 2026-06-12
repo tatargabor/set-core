@@ -747,6 +747,7 @@ class DispatchContext:
     cross_cutting_restrictions: list[str] = field(default_factory=list)
     review_learnings: str = ""
     review_learnings_checklist: str = ""
+    domain_knowledge: str = ""
     project_path: str = ""
 
 
@@ -2069,6 +2070,9 @@ def _build_input_content(
     if ctx.design_context:
         lines.append(f"\n## Design Context\n{ctx.design_context}")
 
+    if ctx.domain_knowledge:
+        lines.append(f"\n## Domain Knowledge\n{ctx.domain_knowledge}")
+
     # design-binding-completeness: per-change `design_components` from the
     # plan get listed as Focus files with a directive line. The agent should
     # mount these existing components rather than reimplementing them.
@@ -3070,6 +3074,42 @@ def dispatch_change(
     except Exception:
         logger.debug("Failed to load review learnings checklist", exc_info=True)
 
+    # Domain knowledge — scope-matched from knowledge_dir
+    domain_knowledge_text = ""
+    try:
+        from .config import load_knowledge_for_domains
+        _knowledge = load_knowledge_for_domains(project_path)
+        if _knowledge:
+            # Match by change requirements' domains
+            _change_domains = set()
+            for req_id in (change.requirements or []):
+                # Extract domain from REQ-ID pattern (e.g., REQ-PAY-001 → payment)
+                parts = req_id.split("-")
+                if len(parts) >= 2:
+                    _change_domains.add(parts[1].lower())
+            # Domain abbreviation → knowledge file mapping
+            _domain_map = {
+                "oi": ["order_intake", "logistics"],
+                "op": ["order_processing", "manufacturing", "logistics", "inventory"],
+                "inv": ["invoicing", "documents", "pricing"],
+                "log": ["logistics", "manufacturing"],
+                "pay": ["payment_matching", "documents"],
+                "ui": [],
+                "cc": ["documents", "roles"],
+            }
+            _matched_files: list[str] = []
+            for domain_abbr in _change_domains:
+                for kname in _domain_map.get(domain_abbr, []):
+                    if kname in _knowledge and kname not in [p.split(":")[0] for p in _matched_files]:
+                        _matched_files.append(f"{kname}: {_knowledge[kname][:3000]}")
+            # Also include decisions
+            if _knowledge.get("_decisions"):
+                _matched_files.append(f"decisions:\n{_knowledge['_decisions'][:2000]}")
+            if _matched_files:
+                domain_knowledge_text = "\n\n".join(_matched_files)
+    except Exception:
+        logger.debug("Domain knowledge loading failed for %s", change_name, exc_info=True)
+
     # Gather enrichment context
     ctx = DispatchContext(
         memory_ctx=_recall_dispatch_memory(scope),
@@ -3077,6 +3117,7 @@ def dispatch_change(
         sibling_context=_build_sibling_context(state),
         review_learnings=review_learnings,
         review_learnings_checklist=review_checklist,
+        domain_knowledge=domain_knowledge_text,
         project_path=project_path,
     )
 

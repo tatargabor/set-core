@@ -1872,6 +1872,23 @@ def _build_digest_content(digest_dir: str) -> str:
         except (json.JSONDecodeError, OSError):
             pass
 
+    # Multi-source knowledge injection for flat decompose path
+    try:
+        from .config import load_knowledge_for_domains
+        knowledge = load_knowledge_for_domains()
+        all_knowledge = knowledge.get("_all", "")
+        if all_knowledge:
+            sections.append(
+                f"## Domain Knowledge & Decision Records\n"
+                f"Use the following domain knowledge to create accurate, detailed change scopes. "
+                f"Embed specific business rules, data formats, and constraints into each change's "
+                f"scope description — the implementing agent will NOT see these files.\n\n"
+                f"{all_knowledge}\n"
+            )
+            logger.info("Injected %d chars of domain knowledge into decompose context", len(all_knowledge))
+    except Exception:
+        logger.debug("Knowledge loading failed for flat decompose", exc_info=True)
+
     return "\n".join(sections)
 
 
@@ -2307,10 +2324,73 @@ def _load_domain_data(digest_dir: str) -> dict:
             "summary": summary,
             "requirements": compact_reqs,
             "requirements_json": json.dumps({"requirements": compact_reqs}),
+            "knowledge_context": "",
         })
         summary_parts.append(f"### {dname}\n{summary}\nRequirements: {len(compact_reqs)}")
 
     result["domain_summaries_text"] = "\n\n".join(summary_parts)
+
+    # Multi-source knowledge injection: load knowledge files and match to domains.
+    # Uses multi-strategy matching: direct name, alias map, keyword overlap.
+    try:
+        from .config import load_knowledge_for_domains
+        knowledge = load_knowledge_for_domains()
+        if knowledge:
+            kfiles = {k: v for k, v in knowledge.items() if not k.startswith("_")}
+
+            for domain in result["domains"]:
+                dname_norm = domain["name"].lower().replace("-", "_")
+                matched_parts: list[str] = []
+
+                # Strategy 1: direct name match
+                if dname_norm in kfiles:
+                    matched_parts.append(kfiles[dname_norm])
+
+                # Strategy 2: substring/overlap match
+                for kname, kcontent in kfiles.items():
+                    if kname in matched_parts:
+                        continue
+                    # Check both directions
+                    if dname_norm in kname or kname in dname_norm:
+                        matched_parts.append(kcontent)
+                    # Check keyword overlap (e.g., "order" in "order_processing" and "orders")
+                    elif any(
+                        word in kname for word in dname_norm.split("_")
+                        if len(word) > 3
+                    ):
+                        matched_parts.append(kcontent)
+
+                # Strategy 3: REQ-domain keyword matching via requirement titles
+                if not matched_parts:
+                    req_text = " ".join(
+                        r.get("title", "") + " " + r.get("brief", "")
+                        for r in domain.get("requirements", [])
+                    ).lower()
+                    for kname, kcontent in kfiles.items():
+                        if kname in [p[:20] for p in matched_parts]:
+                            continue
+                        # If knowledge filename words appear in requirement text
+                        kwords = kname.replace("_", " ").split()
+                        if any(w in req_text for w in kwords if len(w) > 3):
+                            matched_parts.append(kcontent)
+
+                if matched_parts:
+                    domain["knowledge_context"] = "\n\n---\n\n".join(matched_parts)
+
+            # Attach decisions to all domains as shared context
+            decisions = knowledge.get("_decisions", "")
+            if decisions:
+                result["decisions_context"] = decisions
+
+            logger.info(
+                "Knowledge loaded: %d files, %d/%d domains matched",
+                len(kfiles),
+                sum(1 for d in result["domains"] if d["knowledge_context"]),
+                len(result["domains"]),
+            )
+    except Exception:
+        logger.debug("Knowledge loading failed", exc_info=True)
+
     return result
 
 
@@ -2419,6 +2499,8 @@ def _decompose_single_domain(
     test_infra_context: str = "",
     design_context: str = "",
     test_plan_context: str = "",
+    knowledge_context: str = "",
+    decisions_context: str = "",
     model: Optional[str] = None,
     max_parallel: int = 3,
     project_dir: str = ".",
@@ -2430,6 +2512,9 @@ def _decompose_single_domain(
         from .model_config import resolve_model
         model = resolve_model("decompose_domain", project_dir=project_dir)
 
+    # Use domain-specific knowledge if available, fall back to parameter
+    domain_knowledge = domain.get("knowledge_context", "") or knowledge_context
+
     prompt = render_domain_decompose_prompt(
         domain_name=domain["name"],
         domain_summary=domain["summary"],
@@ -2438,6 +2523,8 @@ def _decompose_single_domain(
         conventions=conventions,
         test_infra_context=test_infra_context,
         design_context=design_context + ("\n" + test_plan_context if test_plan_context else ""),
+        knowledge_context=domain_knowledge,
+        decisions_context=decisions_context,
         max_parallel=max_parallel,
     )
 
@@ -2483,6 +2570,7 @@ def _phase2_parallel_decompose(
 
     brief_json = json.dumps(planning_brief, indent=2)
     conventions = domain_data["conventions"]
+    decisions_ctx = domain_data.get("decisions_context", "")
 
     results: dict[str, dict] = {}
     max_workers = min(len(domains), 6)
@@ -2500,6 +2588,7 @@ def _phase2_parallel_decompose(
                     digest_dir,
                     [r.get("id", "") for r in domain.get("requirements", [])],
                 ) if digest_dir else "",
+                decisions_context=decisions_ctx,
                 model=model,
                 max_parallel=max_parallel,
             ): domain["name"]

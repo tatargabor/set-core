@@ -921,6 +921,8 @@ def render_domain_decompose_prompt(
     conventions: str,
     test_infra_context: str = "",
     design_context: str = "",
+    knowledge_context: str = "",
+    decisions_context: str = "",
     max_parallel: int = 3,
     project_path: str = ".",
 ) -> str:
@@ -946,6 +948,26 @@ def render_domain_decompose_prompt(
                 "The implementing agent will NOT see the design — only your scope text.\n"
             )
 
+    knowledge_section = ""
+    if knowledge_context and knowledge_context.strip():
+        knowledge_section = f"""
+## Domain Knowledge
+The following domain knowledge provides business rules, data formats, and implementation
+details for the "{domain_name}" domain. Use these specifics in change scope descriptions
+so the implementing agent has the exact business logic (the agent will NOT see this file).
+
+{knowledge_context}
+"""
+
+    decisions_section = ""
+    if decisions_context and decisions_context.strip():
+        decisions_section = f"""
+## Decision Records (constraints)
+These decisions are binding — respect them in your decomposition:
+
+{decisions_context}
+"""
+
     return f"""You are a software architect decomposing the "{domain_name}" domain into implementable changes.
 
 ## Domain: {domain_name}
@@ -953,6 +975,8 @@ def render_domain_decompose_prompt(
 
 ## Requirements for this domain
 {domain_requirements}
+{knowledge_section}
+{decisions_section}
 
 ## Planning Brief (shared context from orchestrator)
 {planning_brief}
