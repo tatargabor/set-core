@@ -3465,6 +3465,7 @@ def _classify_spec_verify_outcome(
 def _execute_spec_verify_gate(
     change_name: str, change: Change, wt_path: str, *,
     state_file: str = "",
+    gate_mode: str = "run",
 ) -> "GateResult":
     """Spec verify gate: run /opsx:verify via Claude."""
     from .gate_runner import GateResult
@@ -3473,7 +3474,13 @@ def _execute_spec_verify_gate(
         logger.info("Gate[spec-verify] END %s result=skipped", change_name)
         return GateResult("spec_verify", "skipped")
 
-    logger.info("Gate[spec-verify] START %s wt=%s", change_name, wt_path)
+    # Soft mode fast-path: run initial model only, skip escalation.
+    # Saves ~170s + Opus tokens per change when gate is non-blocking.
+    _is_soft = gate_mode in ("soft", "warn")
+    if _is_soft:
+        logger.info("Gate[spec-verify] START %s (soft mode, no escalation) wt=%s", change_name, wt_path)
+    else:
+        logger.info("Gate[spec-verify] START %s wt=%s", change_name, wt_path)
 
     verify_prompt = (
         f"IMPORTANT: Memory is not branch/worktree-aware — verify against filesystem, never skip checks based on memory alone.\n"
@@ -3522,22 +3529,29 @@ def _execute_spec_verify_gate(
     # Escalate if the initial pass didn't produce a sentinel (classifier-path
     # friendliness: we still escalate on bare exit!=0 for back-compat, but
     # the classification at the end is what drives the verdict).
+    # Soft mode: skip escalation entirely — the gate is non-blocking anyway.
     if (
         verify_cmd_result.exit_code != 0
         or "VERIFY_RESULT:" not in (verify_cmd_result.stdout or "")
     ):
-        logger.warning(
-            "Gate[spec-verify] %s didn't emit sentinel for %s (exit=%d, timed_out=%s) — escalating to %s",
-            _initial_model, change_name, verify_cmd_result.exit_code,
-            verify_cmd_result.timed_out, _escalation_model,
-        )
-        verify_cmd_result = run_claude_logged(
-            verify_prompt,
-            purpose="spec_verify", change=change_name,
-            model=_escalation_model,
-            cwd=wt_path,
-            timeout=900,
-        )
+        if _is_soft:
+            logger.info(
+                "Gate[spec-verify] %s: no sentinel from %s (exit=%d) — soft mode, skipping escalation",
+                change_name, _initial_model, verify_cmd_result.exit_code,
+            )
+        else:
+            logger.warning(
+                "Gate[spec-verify] %s didn't emit sentinel for %s (exit=%d, timed_out=%s) — escalating to %s",
+                _initial_model, change_name, verify_cmd_result.exit_code,
+                verify_cmd_result.timed_out, _escalation_model,
+            )
+            verify_cmd_result = run_claude_logged(
+                verify_prompt,
+                purpose="spec_verify", change=change_name,
+                model=_escalation_model,
+                cwd=wt_path,
+                timeout=900,
+            )
 
     verify_output = verify_cmd_result.stdout
     opus_duration_ms = verify_cmd_result.duration_ms
@@ -4328,7 +4342,7 @@ def handle_change_done(
     )
     pipeline.register(
         "spec_verify",
-        lambda: _execute_spec_verify_gate(change_name, change, wt_path, state_file=state_file),
+        lambda: _execute_spec_verify_gate(change_name, change, wt_path, state_file=state_file, gate_mode=gc.get("spec_verify", "run")),
         result_fields=("spec_coverage_result", "gate_verify_ms"),
     )
     pipeline.register(
