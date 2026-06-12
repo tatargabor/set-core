@@ -3074,39 +3074,36 @@ def dispatch_change(
     except Exception:
         logger.debug("Failed to load review learnings checklist", exc_info=True)
 
-    # Domain knowledge — scope-matched from knowledge_dir
+    # Domain knowledge — auto-matched from knowledge_dir using scope + REQ keywords
     domain_knowledge_text = ""
     try:
         from .config import load_knowledge_for_domains
         _knowledge = load_knowledge_for_domains(project_path)
         if _knowledge:
-            # Match by change requirements' domains
-            _change_domains = set()
+            _kfiles = {k: v for k, v in _knowledge.items() if not k.startswith("_")}
+            # Build search text from change scope + requirement IDs
+            _search_text = (scope or "").lower() + " " + change_name.replace("-", " ")
             for req_id in (change.requirements or []):
-                # Extract domain from REQ-ID pattern (e.g., REQ-PAY-001 → payment)
-                parts = req_id.split("-")
-                if len(parts) >= 2:
-                    _change_domains.add(parts[1].lower())
-            # Domain abbreviation → knowledge file mapping
-            _domain_map = {
-                "oi": ["order_intake", "logistics"],
-                "op": ["order_processing", "manufacturing", "logistics", "inventory"],
-                "inv": ["invoicing", "documents", "pricing"],
-                "log": ["logistics", "manufacturing"],
-                "pay": ["payment_matching", "documents"],
-                "ui": [],
-                "cc": ["documents", "roles"],
-            }
-            _matched_files: list[str] = []
-            for domain_abbr in _change_domains:
-                for kname in _domain_map.get(domain_abbr, []):
-                    if kname in _knowledge and kname not in [p.split(":")[0] for p in _matched_files]:
-                        _matched_files.append(f"{kname}: {_knowledge[kname][:3000]}")
-            # Also include decisions
+                _search_text += " " + req_id.lower()
+
+            _matched: dict[str, str] = {}
+            for kname, kcontent in _kfiles.items():
+                kwords = kname.replace("_", " ").split()
+                # Match if any knowledge filename word (>3 chars) appears in search text
+                if any(w in _search_text for w in kwords if len(w) > 3):
+                    _matched[kname] = kcontent[:4000]
+
+            # Also include decisions (always relevant)
             if _knowledge.get("_decisions"):
-                _matched_files.append(f"decisions:\n{_knowledge['_decisions'][:2000]}")
-            if _matched_files:
-                domain_knowledge_text = "\n\n".join(_matched_files)
+                _matched["_decisions"] = _knowledge["_decisions"][:2000]
+
+            if _matched:
+                parts = []
+                for kn, kc in sorted(_matched.items()):
+                    label = "Decision Records" if kn == "_decisions" else kn.replace("_", " ").title()
+                    parts.append(f"### {label}\n{kc}")
+                domain_knowledge_text = "\n\n".join(parts)
+                logger.debug("Dispatch knowledge: %s → %d files matched", change_name, len(_matched))
     except Exception:
         logger.debug("Domain knowledge loading failed for %s", change_name, exc_info=True)
 
