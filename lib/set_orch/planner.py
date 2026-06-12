@@ -2542,6 +2542,36 @@ def _phase3_merge_plans(
     if cc_changes:
         plan_parts.append(f"### Cross-Cutting Changes (from planning brief)\n{json.dumps(cc_changes, indent=2)}")
 
+    # Load execution hints for merge prompt
+    _exec_hints_text = ""
+    try:
+        from .paths import LineagePaths as _LP_hints
+        _ddir = Path(_LP_hints(os.getcwd()).digest_dir)
+        _idx_path = _ddir / "index.json"
+        if _idx_path.is_file():
+            _idx = json.loads(_idx_path.read_text())
+            _hints = _idx.get("execution_hints")
+            if _hints and isinstance(_hints, dict) and _hints != {}:
+                _exec_hints_text = json.dumps(_hints, indent=2, ensure_ascii=False)
+        # Also check file-based hints
+        for _hc in [_ddir.parent / "execution-hints.yaml", Path("set/orchestration/execution-hints.yaml")]:
+            if _hc.is_file():
+                try:
+                    import yaml
+                    _fh = yaml.safe_load(_hc.read_text())
+                    if _fh and isinstance(_fh, dict):
+                        if _exec_hints_text:
+                            _merged = json.loads(_exec_hints_text)
+                            _merged.update(_fh)
+                            _exec_hints_text = json.dumps(_merged, indent=2, ensure_ascii=False)
+                        else:
+                            _exec_hints_text = json.dumps(_fh, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+                break
+    except Exception:
+        logger.debug("Failed to load execution hints for merge", exc_info=True)
+
     prompt = render_merge_prompt(
         domain_plans="\n\n".join(plan_parts),
         planning_brief=json.dumps(planning_brief, indent=2),
@@ -2549,6 +2579,7 @@ def _phase3_merge_plans(
         ambiguities=domain_data["ambiguities"],
         coverage_info=coverage_info,
         replan_ctx=replan_ctx,
+        execution_hints=_exec_hints_text,
     )
 
     logger.info("Phase 3: merging %d domain plans", len(domain_plans))

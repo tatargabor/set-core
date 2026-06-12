@@ -987,6 +987,7 @@ def render_merge_prompt(
     coverage_info: str = "",
     replan_ctx: dict | None = None,
     project_path: str = ".",
+    execution_hints: str = "",
 ) -> str:
     """Render Phase 3 merge & resolve prompt."""
     try:
@@ -1034,6 +1035,13 @@ Do NOT re-plan requirements that are already merged or running."""
 ## Deferred Ambiguities
 {ambiguities}"""
 
+    hints_section = ""
+    if execution_hints and execution_hints.strip():
+        hints_section = f"""
+## Execution Hints (guidance from spec author)
+{execution_hints}
+Follow these hints for change naming, boundaries, dependency ordering, and focus areas."""
+
     return f"""You are a software architect merging domain-level plans into a unified orchestration plan.
 
 Multiple domain agents have each produced change lists for their domain. Your job is to:
@@ -1054,6 +1062,7 @@ Multiple domain agents have each produced change lists for their domain. Your jo
 {ambiguity_section}
 {coverage_section}
 {replan_section}
+{hints_section}
 
 ## Rules
 - Output a single unified plan with ALL changes from all domains + cross-cutting changes
