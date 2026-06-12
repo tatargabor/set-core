@@ -34,6 +34,12 @@ Fast-forward through artifact creation - generate everything needed to start imp
 
    If `input.md` does not exist: proceed normally using CLAUDE.md and your own codebase exploration.
 
+   **Domain knowledge loading**: Check if the project has domain knowledge files:
+   - Read `set/orchestration/config.yaml` for `input.knowledge_dir` (default: `docs/knowledge/domain`)
+   - If the directory exists, read `.md` files relevant to the change's domain
+   - Also check `docs/knowledge/decisions/` for decision records that constrain design choices
+   - Use this knowledge when writing artifacts — it contains business rules, data formats, and constraints
+
 3. **Create the change directory**
    ```bash
    openspec new change "<name>"

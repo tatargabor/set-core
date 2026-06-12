@@ -56,6 +56,12 @@ Implement tasks from an OpenSpec change.
    - **spec-driven**: proposal, specs, design, tasks
    - Other schemas: follow the contextFiles from CLI output
 
+   **Domain knowledge**: Also check for domain knowledge files:
+   - Read `set/orchestration/config.yaml` for `input.knowledge_dir` (default: `docs/knowledge/domain`)
+   - If the directory exists, read `.md` files relevant to the change's domain (match by requirement IDs or change name)
+   - Also check `docs/knowledge/decisions/` for decision records
+   - These contain business rules, data formats, and constraints needed for implementation
+
 5. **Show current progress**
 
    Display:
