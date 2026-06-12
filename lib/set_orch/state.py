@@ -857,6 +857,12 @@ def update_change_field(
                     change=change_name,
                     data={"from": old_status, "to": new_status},
                 )
+                # Auto-resolve ISS issues when resetting from failed/stalled back to active
+                _FAILED_STATES = {"failed", "failed:merge_stalled", "merge-failed",
+                                  "integration-failed", "stalled", "skipped"}
+                _RESET_TARGETS = {"done", "pending"}
+                if old_status in _FAILED_STATES and new_status in _RESET_TARGETS:
+                    _auto_resolve_iss_on_reset(path, change_name, old_status, new_status)
                 # Trigger on_fail hook when transitioning to failed
                 if new_status == "failed" and hook_scripts:
                     hook_script = hook_scripts.get("on_fail")
@@ -1447,3 +1453,35 @@ def run_hook(
     except OSError as e:
         logger.error("Hook %s execution error for %s: %s", hook_name, change_name, e)
         return True
+
+
+def _auto_resolve_iss_on_reset(
+    state_path: str, change_name: str, old_status: str, new_status: str
+) -> None:
+    """Auto-resolve ISS issues when a change is reset from failed/stalled to active.
+
+    Prevents orphaned issue ownership from blocking the merge queue after
+    manual or automated state resets.
+    """
+    try:
+        from pathlib import Path
+        from .issues.registry import IssueRegistry
+
+        project_path = Path(state_path).resolve().parent
+        while not (project_path / ".set").is_dir() and project_path != project_path.parent:
+            project_path = project_path.parent
+        if not (project_path / ".set").is_dir():
+            return
+
+        registry = IssueRegistry(project_path)
+        resolved = registry.auto_resolve_for_change(
+            change_name,
+            reason=f"change_reset_{old_status}_to_{new_status}",
+        )
+        if resolved:
+            logger.info(
+                "Auto-resolved %d ISS issue(s) for %s on reset %s→%s: %s",
+                len(resolved), change_name, old_status, new_status, resolved,
+            )
+    except Exception:
+        logger.warning("ISS auto-resolve failed for %s", change_name, exc_info=True)
