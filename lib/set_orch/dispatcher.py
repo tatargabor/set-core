@@ -3367,18 +3367,17 @@ def _setup_change_in_worktree(
                 _input_cfg = state.extras.get("directives", {}).get("input", {})
                 _spec_dir = _input_cfg.get("spec_dir", "") if isinstance(_input_cfg, dict) else ""
                 if not _spec_dir:
-                    # Fallback: check config.yaml from project root
                     from .config import load_config_file
-                    from .paths import LineagePaths as _LP_cfg
-                    try:
-                        _cfg_path = os.path.join(
-                            _LP_cfg.from_state_file(state_path).orchestration_dir,
-                            "config.yaml",
-                        )
-                    except Exception:
-                        _cfg_path = os.path.join(project_path, "set", "orchestration", "config.yaml")
-                    _cfg = load_config_file(_cfg_path)
-                    _spec_dir = (_cfg.get("input", {}) or {}).get("spec_dir", "")
+                    for _cfg_candidate in [
+                        os.path.join(project_path, "set", "orchestration", "config.yaml"),
+                        os.path.join(project_path, ".claude", "orchestration.yaml"),
+                        os.path.join(project_path, "orchestration.yaml"),
+                    ]:
+                        if os.path.isfile(_cfg_candidate):
+                            _cfg = load_config_file(_cfg_candidate)
+                            _spec_dir = (_cfg.get("input", {}) or {}).get("spec_dir", "")
+                            if _spec_dir:
+                                break
                 for sf in sorted(_spec_files):
                     if _spec_dir:
                         full_path = os.path.join(_spec_dir, sf)
