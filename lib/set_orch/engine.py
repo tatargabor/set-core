@@ -3922,6 +3922,14 @@ def _auto_replan_cycle(
     # 9. Add new changes to existing state
     _append_changes_to_state(state_file, new_changes)
 
+    # Resolve digest_dir for dispatch (may not be set in flat decompose path)
+    if "digest_dir" not in dir() or not digest_dir:
+        from .paths import LineagePaths as _LP_dispatch
+        try:
+            digest_dir = _LP_dispatch.from_state_file(state_file).digest_dir
+        except Exception:
+            digest_dir = os.path.join(os.getcwd(), "set", "orchestration", "digest")
+
     dispatch_ready_changes(
         state_file, d.max_parallel,
         default_model=d.default_model,
