@@ -2095,19 +2095,23 @@ def _build_input_content(
         for rid in change_requirements:
             req = req_lookup.get(rid, {})
             title = req.get("title", rid)
+            brief = req.get("brief", "")
+            source = req.get("source", "")
+            source_section = req.get("source_section", "")
             ac_items = req.get("acceptance_criteria", []) or []
+            # Always include brief for full business rule context
+            header = f"- **{rid}**: {title}"
+            if source_section:
+                header += f" (spec: {source} {source_section})"
+            req_lines.append(header)
+            if brief:
+                req_lines.append(f"  {brief}")
             if ac_items:
-                req_lines.append(f"- {rid}: {title}")
                 for i, ac in enumerate(ac_items, 1):
                     req_lines.append(f"  - {rid}:AC-{i}: {ac}")
-            else:
-                brief = req.get("brief", "")
-                if brief:
-                    req_lines.append(f"- {rid}: {title} — {brief}")
-                else:
-                    req_lines.append(f"- {rid}: {title}")
         if req_lines:
             lines.append("\n## Assigned Requirements")
+            lines.append("Implement ALL of these requirements completely. Read the referenced spec sections for full details.")
             lines.extend(req_lines)
 
     # Cross-cutting requirements (title-only, no AC)
@@ -3344,6 +3348,42 @@ def _setup_change_in_worktree(
 
     # Populate read-first directives based on worktree contents
     ctx.read_first_directives = _detect_read_first_directives(wt_path)
+
+    # Spec file read-first: map change's REQ-IDs to source spec files
+    # so the agent reads the actual spec before implementing
+    if digest_dir and change and change.requirements:
+        try:
+            _reqs_path = os.path.join(digest_dir, "requirements.json")
+            if os.path.isfile(_reqs_path):
+                with open(_reqs_path) as _rf:
+                    _reqs_data = json.load(_rf)
+                _all_reqs = {r["id"]: r for r in _reqs_data.get("requirements", [])}
+                _spec_files: set[str] = set()
+                for req_id in change.requirements:
+                    req = _all_reqs.get(req_id)
+                    if req and req.get("source"):
+                        _spec_files.add(req["source"])
+                # Resolve spec files to actual paths
+                _input_cfg = state.extras.get("directives", {}).get("input", {})
+                _spec_dir = _input_cfg.get("spec_dir", "") if isinstance(_input_cfg, dict) else ""
+                if not _spec_dir:
+                    # Fallback: check config.yaml
+                    from .config import load_config_file
+                    _cfg = load_config_file()
+                    _spec_dir = (_cfg.get("input", {}) or {}).get("spec_dir", "")
+                for sf in sorted(_spec_files):
+                    if _spec_dir:
+                        full_path = os.path.join(_spec_dir, sf)
+                    else:
+                        full_path = sf
+                    if os.path.isfile(os.path.join(project_path, full_path)):
+                        ctx.read_first_directives.append(
+                            f"Read `{full_path}` — this is the spec for your assigned requirements. "
+                            f"Implement the exact business rules described there."
+                        )
+                logger.info("Spec read-first: %s → %s", change_name, sorted(_spec_files))
+        except Exception:
+            logger.debug("Spec file read-first mapping failed for %s", change_name, exc_info=True)
 
     # Populate conventions summary from digest
     if digest_dir:
