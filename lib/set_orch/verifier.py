@@ -1427,6 +1427,58 @@ Only flag new user-facing features, routes, or exports that have no spec backing
 # Source: verifier.sh review_change (lines 134-193)
 
 
+def _build_ikp_review_context(change_name: str, state_file: str) -> str:
+    """L4 testing context for changes bound to IKP packs.
+
+    Returns "" when the change has no packs, the IKP pipeline is inactive,
+    or anything fails — the review prompt is then unchanged.
+    """
+    if not state_file:
+        return ""
+    try:
+        from pathlib import Path as _Path
+
+        from . import ikp_bridge
+        from .state import load_state
+
+        state = load_state(state_file)
+        change = next((c for c in state.changes if c.name == change_name), None)
+        pack_names = list(getattr(change, "ikp_packs", []) or []) if change else []
+        if not pack_names:
+            return ""
+
+        project_path = _Path(os.path.dirname(state_file) or os.getcwd())
+        directives = (state.extras.get("directives") or {}) if state.extras else {}
+        if not ikp_bridge.has_ikp_pipeline(project_path, directives):
+            return ""
+
+        ikp_config = ikp_bridge.load_ikp_config(project_path)
+        if ikp_config is None:
+            return ""
+
+        ctx = ikp_bridge.get_context_for_phase("verify", pack_names, ikp_config)
+        if not ctx:
+            return ""
+
+        logger.info(
+            "IKP L4 testing context added to review prompt for %s (packs=%s)",
+            change_name, pack_names,
+        )
+        return (
+            "## Integration Testing Context (IKP)\n\n"
+            "This change integrates with external APIs. Check the diff against "
+            "the sandbox setup, mock strategies, and edge cases below — flag "
+            "missing error handling, unhandled rate limits, unverified webhook "
+            "signatures, and tests that hit live endpoints.\n\n" + ctx
+        )
+    except Exception:
+        logger.warning(
+            "IKP review context failed for %s — reviewing without it",
+            change_name, exc_info=True,
+        )
+        return ""
+
+
 def review_change(
     change_name: str,
     wt_path: str,
@@ -1487,6 +1539,12 @@ def review_change(
         return ReviewResult(has_critical=False, output="")
 
     review_prompt = template_result.stdout
+
+    # IKP L4 (testing) context — sandbox setup, mock strategies, and edge
+    # cases the reviewer should check for this change's integrations.
+    ikp_testing = _build_ikp_review_context(change_name, state_file)
+    if ikp_testing:
+        review_prompt += "\n\n" + ikp_testing
 
     # Prepend fix-verification instructions on retry rounds
     if prompt_prefix:

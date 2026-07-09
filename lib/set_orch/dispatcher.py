@@ -355,6 +355,56 @@ def _extract_implementation_manifest(scope: str) -> str:
     return "\n".join(out)
 
 
+def _inject_ikp_rules(
+    change,
+    wt_path: str,
+    project_path: str,
+    directives: dict | None = None,
+) -> str:
+    """Write IKP L3 rule files into the worktree; return the input.md summary.
+
+    No-op returning "" when the change has no `ikp_packs` or the project
+    has no active IKP pipeline. Never raises — a broken pack must not
+    fail the dispatch.
+    """
+    pack_names = list(getattr(change, "ikp_packs", []) or [])
+    if not pack_names:
+        return ""
+
+    try:
+        from . import ikp_bridge
+
+        if not ikp_bridge.has_ikp_pipeline(Path(project_path), directives):
+            logger.debug(
+                "change %s declares ikp_packs=%s but IKP pipeline is inactive — skipping",
+                getattr(change, "name", "?"), pack_names,
+            )
+            return ""
+
+        ikp_config = ikp_bridge.load_ikp_config(Path(project_path))
+        if ikp_config is None:
+            return ""
+
+        created = ikp_bridge.inject_rules_for_change(
+            wt_path=Path(wt_path),
+            pack_names=pack_names,
+            phase="implement",
+            language=ikp_config.language,
+            packs_dir=ikp_config.packs_dir,
+        )
+        logger.info(
+            "IKP rules injected for %s: packs=%s files=%d",
+            getattr(change, "name", "?"), pack_names, len(created),
+        )
+        return ikp_bridge.build_pack_summaries(pack_names, ikp_config.packs_dir)
+    except Exception:
+        logger.warning(
+            "IKP rule injection failed for %s (packs=%s) — continuing dispatch",
+            getattr(change, "name", "?"), pack_names, exc_info=True,
+        )
+        return ""
+
+
 def _build_rule_injection(
     scope: str,
     wt_path: str,
@@ -749,6 +799,9 @@ class DispatchContext:
     review_learnings_checklist: str = ""
     domain_knowledge: str = ""
     project_path: str = ""
+    # IKP pack orientation section for input.md. Full implementation
+    # patterns live in the injected `.claude/rules/ikp-*.md` files.
+    ikp_summary: str = ""
 
 
 # ─── Worktree Preparation ────────────────────────────────────────────
@@ -2073,6 +2126,9 @@ def _build_input_content(
     if ctx.domain_knowledge:
         lines.append(f"\n## Domain Knowledge\n{ctx.domain_knowledge}")
 
+    if ctx.ikp_summary:
+        lines.append(f"\n{ctx.ikp_summary}")
+
     # design-binding-completeness: per-change `design_components` from the
     # plan get listed as Focus files with a directive line. The agent should
     # mount these existing components rather than reimplementing them.
@@ -3032,6 +3088,7 @@ def dispatch_change(
             project_path=Path(project_path),
             audit_log_path=_lp.category_classifications,
             project_insights=_project_insights,
+            ikp_packs=list(getattr(change, "ikp_packs", []) or []),
         )
         _content_categories = set(_resolver_result.final_categories)
         logger.info(
@@ -3178,6 +3235,12 @@ def dispatch_change(
                 ctx.design_context = _ctx_md
         except Exception:
             logger.debug("Defensive design context raised (source=none)", exc_info=True)
+
+    # IKP rule injection — write L3 implementation layers as
+    # `.claude/rules/ikp-<pack>.md` for every pack the decomposer bound to
+    # this change. Runs after design deployment and before input.md
+    # assembly so `ctx.ikp_summary` is available to _build_input_content().
+    ctx.ikp_summary = _inject_ikp_rules(change, wt_path, project_path, _directives)
 
     # Proactive rule injection — resolver-driven category→globs mapping
     # (no substring matching against scope text; that approach matched

@@ -1683,6 +1683,7 @@ def build_decomposition_context(
     coverage_info: str = "",
     replan_ctx: dict | None = None,
     team_mode: bool = False,
+    ikp_context: str = "",
 ) -> dict:
     """Assemble all context needed for the planning prompt.
 
@@ -1752,6 +1753,7 @@ def build_decomposition_context(
         "design_context": design_context,
         "team_mode": team_mode,
         "max_parallel": max_parallel,
+        "ikp_context": ikp_context,
     }
 
 
@@ -2029,6 +2031,102 @@ def _apply_phase_offset_to_plan(
         c["phase"] = max(old + shift, 1)
 
 
+def _load_directives(state_path: str | None) -> dict:
+    """Read orchestration directives from the state file. Empty on failure."""
+    if not state_path or not os.path.isfile(state_path):
+        return {}
+    try:
+        with open(state_path) as f:
+            data = json.load(f)
+        return data.get("extras", {}).get("directives", {}) or {}
+    except Exception:
+        logger.debug("could not read directives from %s", state_path, exc_info=True)
+        return {}
+
+
+def _build_ikp_decompose_context(project_path: str, state_path: str = "") -> str:
+    """Build the IKP L1+L2 context section for the planning prompt.
+
+    Returns an empty string when the project has no active IKP pipeline —
+    the prompt then contains no IKP section at all.
+    """
+    from . import ikp_bridge
+
+    directives = _load_directives(state_path)
+    if not ikp_bridge.has_ikp_pipeline(Path(project_path), directives):
+        logger.debug("IKP pipeline inactive for %s — no decompose context", project_path)
+        return ""
+
+    ikp_config = ikp_bridge.load_ikp_config(Path(project_path))
+    if ikp_config is None:
+        return ""
+
+    ctx = ikp_bridge.get_decompose_context(ikp_config.packs, ikp_config)
+    if ctx:
+        logger.info(
+            "IKP decompose context built: %d packs, %d chars",
+            len(ikp_config.packs), len(ctx),
+        )
+    return ctx
+
+
+def _assign_ikp_packs(plan_data: dict, project_path: str = ".", state_path: str = "") -> None:
+    """Normalize `ikp_packs` on every change; keyword-match as fallback.
+
+    The planner is the primary source — it sees the full IKP context and
+    assigns packs deliberately. When it omits the field, fall back to
+    matching declared pack names against the change's scope text so a
+    forgotten assignment does not silently drop rule injection.
+
+    Mutates `plan_data` in place. Never raises.
+    """
+    changes = plan_data.get("changes") or []
+    if not changes:
+        return
+
+    try:
+        from . import ikp_bridge
+        directives = _load_directives(state_path)
+        active = ikp_bridge.has_ikp_pipeline(Path(project_path), directives)
+        ikp_config = ikp_bridge.load_ikp_config(Path(project_path)) if active else None
+    except Exception:
+        logger.warning("IKP pack assignment skipped — bridge unavailable", exc_info=True)
+        ikp_config = None
+
+    declared = list(ikp_config.packs) if ikp_config else []
+
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        raw = change.get("ikp_packs") or []
+        packs = [p for p in raw if isinstance(p, str)] if isinstance(raw, list) else []
+
+        # Drop packs the project never declared — the bridge would skip
+        # them at injection time anyway, and they pollute the category signal.
+        if declared:
+            unknown = [p for p in packs if p not in declared]
+            if unknown:
+                logger.warning(
+                    "change %r: planner assigned undeclared IKP packs %s — dropping",
+                    change.get("name", "?"), unknown,
+                )
+            packs = [p for p in packs if p in declared]
+
+        # Fallback: keyword-match declared pack names against scope text.
+        if not packs and declared:
+            scope_lc = (change.get("scope") or "").lower()
+            matched = [p for p in declared if p.lower() in scope_lc]
+            if matched:
+                packs = matched
+                logger.warning(
+                    "change %r: planner omitted ikp_packs — fallback keyword match "
+                    "assigned %s from scope text",
+                    change.get("name", "?"), matched,
+                )
+
+        change["ikp_packs"] = packs
+
+
 def enrich_plan_metadata(
     plan_data: dict,
     hash_val: str,
@@ -2116,6 +2214,10 @@ def enrich_plan_metadata(
     for c in plan_data.get("changes", []):
         ns = c["name"].replace("-", "_")
         c.setdefault("i18n_namespace", ns)
+
+    # Normalize IKP pack assignments (planner output → validated list,
+    # with keyword-match fallback when the planner omitted the field).
+    _assign_ikp_packs(plan_data, state_path=state_path or "")
 
     # Cross-cutting file ownership: detect from profile or scope text.
     # When multiple changes mention the same unsplittable file, assign the first as
@@ -2931,6 +3033,7 @@ def _run_serial_decompose(
     team_mode: bool,
     model: Optional[str],
     strategy: str = "serial",
+    ikp_context: str = "",
 ) -> dict:
     """Run a single-call (flat) decompose. Returns the parsed plan dict.
 
@@ -2950,6 +3053,7 @@ def _run_serial_decompose(
         design_context=design_context,
         test_infra_context=test_infra_context,
         team_mode=team_mode,
+        ikp_context=ikp_context,
     )
     prompt = render_planning_prompt(**context)
 
@@ -3123,6 +3227,11 @@ def run_planning_pipeline(
     if test_infra.test_command:
         test_infra_context = f"Test command: {test_infra.test_command}"
 
+    # 4b. IKP context — L1 (knowledge) + L2 (planning) layers for every
+    # pack the project declares in .ikp.yaml. The planner uses this to
+    # size integration changes and assign `ikp_packs` per change.
+    ikp_context = _build_ikp_decompose_context(os.getcwd(), state_path)
+
     # Compute input hash for metadata
     input_hash = ""
     try:
@@ -3190,6 +3299,7 @@ def run_planning_pipeline(
             team_mode=team_mode,
             model=model,
             strategy=resolved_strategy,
+            ikp_context=ikp_context,
         )
 
     # 8. Validate

@@ -1182,6 +1182,7 @@ class WebProjectType(CoreProfile):
             "auth", "api", "database", "payment",
             "scaffolding", "ci-build-test",
             "refactor", "schema", "i18n",
+            "integration",
         ]
 
     def project_summary_for_classifier(self, project_path) -> str:

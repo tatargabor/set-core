@@ -3819,9 +3819,15 @@ def _auto_replan_cycle(
         )
     else:
         # ── Single-call replan (brief/spec mode) ──
+        # Replan must see the same IKP context as the initial decompose,
+        # otherwise packs get dropped from every change it re-plans.
+        from .planner import _build_ikp_decompose_context
         context = build_decomposition_context(
             input_mode, input_path,
             replan_ctx=replan_ctx,
+            ikp_context=_build_ikp_decompose_context(
+                os.path.dirname(state_file) or os.getcwd(), state_file,
+            ),
         )
 
         from .templates import render_planning_prompt

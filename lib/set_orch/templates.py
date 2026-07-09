@@ -542,7 +542,8 @@ _SPEC_OUTPUT_JSON = """{
       "depends_on": ["other-change-name"],
       "phase": 1,
       "roadmap_item": "The spec section/item this implements",
-      "gate_hints": {"gate_name": "skip|warn|run"}
+      "gate_hints": {"gate_name": "skip|warn|run"},
+      "ikp_packs": []
     }
   ]
 }"""
@@ -565,7 +566,8 @@ _SPEC_OUTPUT_JSON_DIGEST = """{
       "spec_files": ["path/relative/to/spec-base-dir.md"],
       "requirements": ["REQ-DOMAIN-001"],
       "also_affects_reqs": ["REQ-CROSS-001"],
-      "resolved_ambiguities": [{"id": "AMB-001", "resolution_note": "Decision rationale"}]
+      "resolved_ambiguities": [{"id": "AMB-001", "resolution_note": "Decision rationale"}],
+      "ikp_packs": []
     }
   ]
 }"""
@@ -582,7 +584,8 @@ _BRIEF_OUTPUT_JSON = """{
       "depends_on": ["other-change-name"],
       "phase": 1,
       "roadmap_item": "The exact Next bullet this implements",
-      "gate_hints": {"gate_name": "skip|warn|run"}
+      "gate_hints": {"gate_name": "skip|warn|run"},
+      "ikp_packs": []
     }
   ]
 }"""
@@ -604,6 +607,7 @@ def render_planning_prompt(
     design_context: str = "",
     team_mode: bool = False,
     max_parallel: int = 3,
+    ikp_context: str = "",
 ) -> str:
     """Render planning prompt for Claude decomposition.
 
@@ -626,6 +630,8 @@ def render_planning_prompt(
         coverage_info: Coverage status text
         design_context: Design tool prompt section (from design bridge)
         team_mode: If True, add guidance for Agent Teams parallelism
+        ikp_context: IKP L1+L2 pack context (from ikp_bridge); empty when
+            the project has no active IKP pipeline
     """
     if replan_ctx is None:
         replan_ctx = {}
@@ -658,6 +664,21 @@ from the design interfaces into each change scope description. The implementing 
 the Design Data Model section — only your scope text. For example, if the design defines
 `shortDescription` on Product, the products-page scope MUST mention `shortDescription` explicitly
 so the implementing agent creates the correct schema field and UI binding.""")
+
+    if ikp_context and ikp_context.strip():
+        sections.append(f"""
+## Integration Knowledge (IKP)
+
+The following external API integrations are declared for this project.
+When a change involves one of these integrations, set that change's
+`ikp_packs` field to the list of relevant pack names. Leave it empty for
+changes with no integration work.
+
+Use the complexity ratings and pitfalls below when sizing changes — an
+integration with async flows or no webhook support is more work than its
+endpoint count suggests.
+
+{ikp_context}""")
 
     if team_mode:
         sections.append("""

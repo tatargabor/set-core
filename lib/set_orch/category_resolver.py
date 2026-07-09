@@ -471,6 +471,7 @@ def resolve_change_categories(
     project_path: Path,
     audit_log_path: str,
     project_insights: dict | None = None,
+    ikp_packs: list[str] | None = None,
 ) -> ResolverResult:
     """Resolve content categories for one change.
 
@@ -491,6 +492,8 @@ def resolve_change_categories(
     Optional:
       project_insights: Already-loaded ``project-insights.json`` dict, or
                         None to skip the bias step.
+      ikp_packs:        ``change.ikp_packs`` — a non-empty list adds the
+                        ``integration`` category as a deterministic signal.
 
     Returns a ``ResolverResult`` whose ``final_categories`` is what the
     dispatcher should pass to ``_build_review_learnings``. The audit
@@ -519,6 +522,12 @@ def resolve_change_categories(
                 deps_cats.add(cat)
     layer_signals["deps"] = deps_cats
 
+    # Layer 5b: IKP integration signal. A change the decomposer bound to
+    # one or more integration knowledge packs is, by construction, an
+    # integration change — no inference needed.
+    ikp_cats: set[str] = {"integration"} if ikp_packs else set()
+    layer_signals["ikp"] = ikp_cats
+
     # Insights bias — common categories for THIS change_type from prior
     # successful classifications. Layered alongside change_type defaults.
     insights_bias = _insights_layer_categories(project_insights, change_type)
@@ -530,6 +539,7 @@ def resolve_change_categories(
         | layer_signals["paths"]
         | layer_signals["scope"]
         | layer_signals["deps"]
+        | layer_signals["ikp"]
         | layer_signals["insights"]
         | {"general"}
     )

@@ -370,6 +370,10 @@ class Change:
     # manifest.shared shells, and resolved @component:NAME markers.
     design_routes: list[str] = field(default_factory=list)
     design_components: list[str] = field(default_factory=list)
+    # IKP integration knowledge packs assigned to this change by the
+    # decomposer (or by enrichment's keyword fallback). Drives rule
+    # injection at dispatch and L4 testing context at review.
+    ikp_packs: list[str] = field(default_factory=list)
 
     # Lineage + sentinel-session attribution (additive; old states load with None).
     # `spec_lineage_id` survives replan and same-spec restart so historic entries
@@ -724,6 +728,8 @@ def init_state(
             change.requirements = c["requirements"]
         if "also_affects_reqs" in c:
             change.also_affects_reqs = c["also_affects_reqs"]
+        if c.get("ikp_packs"):
+            change.ikp_packs = list(c["ikp_packs"])
         changes.append(change)
 
     state = OrchestratorState(
