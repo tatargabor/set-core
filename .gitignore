@@ -75,3 +75,6 @@ set/.work/
 set_core.egg-info/
 openspec_verify_merge_flow.png
 sys
+
+# Cloudflare wrangler local cache (contains account id)
+.wrangler/
