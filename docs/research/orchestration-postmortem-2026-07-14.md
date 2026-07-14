@@ -62,10 +62,19 @@ milestone specs were **50 and 75 lines**, and the ~100 changes that followed ran
    **45% of the orchestration-era changes (30/66) were repairs of the orchestrator's own output.**
 
 5. **And the run collapsed on something unrelated to all of the above.** ~36 smoke tests were **already failing
-   on `main`**, and the integration e2e gate has **no main-baseline compare**. Every change was therefore blamed
-   for pre-existing failures and redispatched to "fix" tests it had never touched — up to the retry limit.
-   **Two changes in that futile loop consumed 14.04M of 14.77M agent tokens (95% of the run).**
-   The supervisor diagnosed it correctly five times and asked for exactly the right fix.
+   on `main`**, and **the integration e2e gate never applies the main-baseline compare** (see the correction below —
+   the baseline exists; the integration path bypasses it). Every change was therefore blamed for pre-existing
+   failures and redispatched to "fix" tests it had never touched, up to the retry limit. **20 of the 22
+   `CHANGE_REDISPATCH` events carry `reason=integration_e2e_failed`**, and the worst offender —
+   `ai-order-processing`, 8 redispatches, hitting the limit — consumed **6,580,209 of 14,766,363 tokens (44.6%)**.
+   The supervisor diagnosed the cause correctly five times and asked for exactly the right fix.
+
+   > **Correction (2026-07-14, from the follow-up worktree study).** An earlier draft of this document claimed
+   > *"14.04M of 14.77M tokens (95%) burned in redispatch loops"*. **That is false, and it must not be reused.**
+   > It was top-3 *token concentration*, not redispatch cost: the other two heavy changes
+   > (`order-state-machine` 3.88M / 26.3%, `email-intake-pipeline` 3.58M / 24.3%) recorded **zero**
+   > `CHANGE_REDISPATCH` events, and `ai-assistant` burned only 76k tokens *despite* 7 redispatches.
+   > The defensible figure for gate-churn cost is **~45%**, not 95%.
 
 ### The two findings that hurt
 
@@ -226,41 +235,66 @@ audit against code and production data**, not by asking anyone.
 
 **Immediately — and before any other change, because nothing is measurable until this lands:**
 
-1. **Main-baseline compare on the integration e2e gate.** `lib/set_orch/merger.py:2199-2211` (blocking branch) and
-   `lib/set_orch/engine.py:2901` (`_recover_integration_e2e_failed`). Today the gate asks *"is everything green?"*
-   and blames the change for the answer. It must ask *"which tests were green on `main` and are red now?"* —
-   i.e. **fail on regressions only**; pre-existing failures become `[WARNING]`, never a redispatch trigger, and
-   never increment `integration_e2e_retry_count`. `grep -rniE "baseline" lib/set_orch/` currently returns nothing
-   but `token_runaway_baseline`: **the primitive does not exist.** This single defect burned 95% of a 14.77M-token
-   run and is still open a month later. **1–2 days.**
+1. **Wire `run_on_integration` so the integration gate uses the baseline that already exists.**
+   **The baseline primitive is not missing — it ships and it is tested.** `modules/web/set_project_web/gates.py:1002`
+   (`_get_or_create_e2e_baseline`) runs the suite on `main`, caches the failing-test set keyed on main's SHA,
+   auto-invalidates when main moves, guards against races with `fcntl.flock`, and uses a dedicated port;
+   `gates.py:1717` computes exactly the right thing — `new_failures = wt_failures - baseline_failures` — and passes
+   the gate when the set is empty. It has 11 unit tests (`tests/unit/test_e2e_baseline_cache.py`) and was hardened
+   **two months before the run**.
 
-2. **Promote adversarial-review-against-code to a core rule** (`templates/core/rules/`, deployed via
+   **The bug is a dead flag.** `GateDefinition.run_on_integration` (`lib/set_orch/gate_runner.py:115`) is set `True`
+   on the web e2e gate (`modules/web/set_project_web/project_type.py:1395`) — and **`grep -rn run_on_integration
+   lib/ modules/` finds no reader**. `merger.py` imports only `GateResult` from the registry and **hand-rolls a
+   second, baseline-blind copy of the e2e run** at `merger.py:2005` / `:2160` / `:2172`; its own docstring
+   (`merger.py:1693`) admits it uses *"lightweight subprocess calls (not the full gate executors)"*.
+   So the pre-merge gate is baseline-aware and the integration gate is not.
+
+   **Fix: make `_run_integration_gates` execute the registry's `run_on_integration=True` gates instead of
+   hand-rolling bash.** `merger.py:1929-2210`. **~40 LOC, one day.** Do *not* write a third baseline implementation
+   in Layer 1 — that would put Playwright-shaped failure parsing in the core and create two caches that disagree.
+
+   > **Correction (2026-07-14).** An earlier draft claimed *"the primitive does not exist"* on the strength of
+   > `grep -rniE "baseline" lib/set_orch/`. **That grep was scoped to Layer 1 only and missed `modules/`.**
+   > The claim was wrong, and it would have cost a ~250 LOC reimplementation of a working feature.
+
+2. **Connect the circuit breaker.** It exists (`merger.py:2711-2721`, aborting after 3 identical gate-output hashes)
+   but fires only `if change.status == "merge-blocked"` (`merger.py:2709`), while the burning loop sets
+   `integration-e2e-failed`. The brake is built and not connected to the wheel. **One predicate.** On its own this
+   would have cut the worst change from 8 redispatches to 3.
+
+3. **Cap the recovery loop at `max_parallel`.** `_recover_integration_e2e_failed` (`engine.py:2901-2946`) resumes
+   changes in a bare loop with no `max_parallel` check (the cap is enforced only at `:3940` and `:4470`). Retries
+   therefore interleaved during a run believed to be sequential. **Until this lands, "we already run sequentially"
+   is a false statement, and it is a confound on every other number in this study.** ~30 LOC.
+
+4. **Promote adversarial-review-against-code to a core rule** (`templates/core/rules/`, deployed via
    `set-project init`). Zero infrastructure, already measured.
 
 **This month:**
 
-3. **`stub_check` gate** — static, change-scoped, main-baselined, in `modules/web/` (pure React/Next signature
+5. **`stub_check` gate** — static, change-scoped, main-baselined, in `modules/web/` (pure React/Next signature
    matching, zero domain knowledge, so it transfers to any web consumer unchanged). Wire
    `lib/set_orch/test_coverage.py:234` (`detect_stub_tests`) into the completion check so a mocked UI cannot report
    done. **Close the `gate_overrides` escape hatch** that let `spec_verify` go `soft` for feature/foundational/
    infrastructure — the fix is making it **non-overridable**, not flipping a default (`gate_profiles.py`
    `UNIVERSAL_DEFAULTS` already sets `spec_verify: "run"`).
 
-4. **Wire `check_triage_gate` into the autonomous path.** It exists (`lib/set_orch/planner.py:1572`, raising at
+6. **Wire `check_triage_gate` into the autonomous path.** It exists (`lib/set_orch/planner.py:1572`, raising at
    `planner.py:3206-3215`) but the engine can bypass it via `TRIAGE_AUTO_DEFER`. Eight ambiguities with eight blank
    decisions must not be a green light. **A config line.**
 
-5. **Ship the first regional compliance IKP pack** (policy, not just API surface).
+7. **Ship the first regional compliance IKP pack** (policy, not just API surface).
 
 **This quarter:**
 
-6. **Invariant packs as executable gates** against a real DB.
-7. **Re-key `auto_split_change`** (`lib/set_orch/planner.py:720`) from path-prefix to requirement-domain affinity,
+8. **Invariant packs as executable gates** against a real DB.
+9. **Re-key `auto_split_change`** (`lib/set_orch/planner.py:720`) from path-prefix to requirement-domain affinity,
    so slices are shaped like invariant families rather than screens.
-8. **Merge-time spec backflow** (next to `lib/set_orch/merger.py:531`): generate the capability spec from the
+10. **Merge-time spec backflow** (next to `lib/set_orch/merger.py:531`): generate the capability spec from the
    merged diff plus green acceptance criteria. Humans author only the milestone spec and the decision records.
    Target the measured gap: **93% of the consumer's fix commits leave no trace in `openspec/` or the knowledge base.**
-9. **Then, and only then**, re-run decompose on the repaired pipeline (spec-read-first from cycle 1,
+11. **Then, and only then**, re-run decompose on the repaired pipeline (spec-read-first from cycle 1,
    baseline-compared gates, `stub_check`, adversarial review) — **the configuration that has never been tested** —
    and compare against the June baselines: **72.7% clause coverage, 81% requirement merge, 45% repair-change rate,
    14.77M tokens.**
@@ -282,10 +316,11 @@ audit against code and production data**, not by asking anyone.
 ## 7. In one line
 
 **set-core did not fail.** It ran once, for 19 hours, built 95% of the code still in use, and was defeated by a
-missing `if (failure_existed_on_main) continue;`. The team then abandoned the only loop that made rework legible
-and spent a month doing higher-rework work by hand. **Fix the baseline compare, make the rules executable, ship
-the regional pack — and stop trying to write a bigger spec.** The deepest spec ever written on that project is the
-one that told the agent to store money in an integer.
+main-baseline compare that **it already ships, already tests, and simply never calls at the merge boundary** — plus
+a circuit breaker wired to the wrong status. The team then abandoned the only loop that made rework legible and
+spent a month doing higher-rework work by hand. **Wire the gate, make the rules executable, ship the regional pack —
+and stop trying to write a bigger spec.** The deepest spec ever written on that project is the one that told the
+agent to store money in an integer.
 
 ---
 
