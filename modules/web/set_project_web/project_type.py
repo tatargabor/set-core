@@ -2005,6 +2005,37 @@ class WebProjectType(CoreProfile):
         except (subprocess.TimeoutExpired, OSError):
             pass  # non-fatal — build will fail with clear error if client missing
 
+        # GUARD — mirrors e2e_pre_gate's `file:` check. set-core must NOT author
+        # any DB-mutating command against a shared or live target.
+        #
+        # A worktree's `.env` is a verbatim copy of the project's `.env`
+        # (dispatcher), so DATABASE_URL is whatever the developer points at —
+        # on a real consumer that is routinely a production-data mirror. A
+        # `db push --accept-data-loss` here bypasses the project's own
+        # disposable-DB guards completely, because those guards only protect the
+        # project's own scripts, not a command the framework writes itself.
+        #
+        # `prisma migrate deploy` is NOT a safe substitute: it applies the
+        # branch's pending migrations to whatever DATABASE_URL names, and those
+        # migrations routinely contain DROP COLUMN / ALTER TYPE.
+        #
+        # Only `file:` (SQLite) targets are per-worktree-disposable, so only
+        # they get a schema sync here. For every other provider the schema sync
+        # is the project's job (its own reset-on-start), until per-worktree DB
+        # isolation lands. Guarding on an empty URL too: without a target this
+        # push can only fail anyway.
+        db_url = env.get("DATABASE_URL", "")
+        if not db_url or not db_url.startswith("file:"):
+            logger.warning(
+                "integration_pre_build skip_db_sync wt=%s reason=%s db_url_scheme=%s "
+                "— refusing to run prisma db push against a non-disposable target; "
+                "schema sync is delegated to the project",
+                wt_path,
+                "missing_target" if not db_url else "non_sqlite_target",
+                (db_url.split(":", 1)[0] if ":" in db_url else "<empty>"),
+            )
+            return True
+
         # Step 2: prisma db push (schema → DB sync)
         # Surface stdout/stderr to logs on failure so the merger has actionable
         # context. Without this the merger sees "integration_pre_build FAILED"
