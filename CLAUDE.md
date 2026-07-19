@@ -1,4 +1,24 @@
 
+## Current Work State — read this first (updated 2026-07-19)
+
+**Active track: the safety trio in `docs/research/final-plan-2026-07-19.md` §0.** Start there, not with new research.
+
+**Shipped:** Phase 0′ — the DB-mutation guard in `integration_pre_build` (`modules/web/set_project_web/project_type.py`), commit `8fae5733`, with mutation-checked tests in `tests/unit/test_integration_pre_build_db_guard.py`. set-core no longer authors `prisma db push --accept-data-loss` against a non-`file:` target.
+
+**Next, in this order** (all small, none architectural):
+1. **0′b** — the twin `e2e_pre_gate` has the same class of hole: its guard reads the `.env` FILE while the push runs with the `env` PARAMETER, and it never fires when `DATABASE_URL` is absent. ~4 lines + test.
+2. **0a** — `protected: true` flags in the web deploy manifest. **This is the gate on everything else** (see decision below).
+3. **0a′** — `--no-verify` on automated worktree commits/pushes.
+4. **0b** — e2e gate reads a machine-readable result file keyed on `(file, title)` instead of scraping the Playwright list reporter.
+
+**DECISION — do NOT run `set-project init` against the live consumer project until 0a ships.** Today an `init --force` clobbers un-prefixed consumer files (i18n catalogs, the e2e global-setup, 16 hand-authored rules). This is a **gated hold**: the gate is the four items above, then re-evaluate.
+
+**Discipline.** Between 2026-07-14 and Phase 0′ this repo produced five research documents and zero lines of code while a six-line guard stood between an orchestration run and a production-data mirror. Research is not the default next step — shipping the listed items is. Before proposing a new investigation, check whether it is already answered in `docs/research/`.
+
+**Verdict already reached — do not relitigate:** no `set-factory` layer (`docs/research/set-factory-verdict-2026-07-19.md`). The meetings→requirements pipeline is permanently excluded from the framework. Deployment execution, promotion state machines and portfolio scheduling are out of scope.
+
+**Known unrelated debt:** 17 failed / 21 errors in `test_web_api_write.py` + `test_web_integration.py` (`AttributeError` in web API fixtures) — pre-existing, untouched.
+
 ## External Project Confidentiality
 
 **NEVER reference external/private consumer projects by name** in set-core code, comments, commit messages, specs, rules, templates, or documentation. When adopting lessons, patterns, or fixes from consumer projects (E2E runs, harvest, diagnostics), always generalize — describe the pattern, not the source. Consumer project names are private and must not leak into the framework codebase.

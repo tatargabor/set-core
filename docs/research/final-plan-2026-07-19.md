@@ -10,6 +10,28 @@
 
 ---
 
+## 0. Status — updated 2026-07-19, end of day
+
+**Phase 0′ is SHIPPED** (`8fae5733`). The guard sits in `integration_pre_build` between `prisma generate` (kept — it emits client code, touches no rows, and the build gate needs it) and the `db push` (now skipped unless the target is `file:`). It is a **skip, not a substitution**: `migrate deploy` applies the branch's pending migrations to whatever `DATABASE_URL` names. 8 tests in `tests/unit/test_integration_pre_build_db_guard.py`, **mutation-checked** — reverting the guard fails exactly the 4 blocking cases and leaves the 4 must-not-over-block cases green. Related suite unchanged: 487 passed before and after.
+
+**DECISION: no `set-project init` against the live consumer project until Phase 0a ships.** Today an `init --force` would clobber the consumer's i18n catalogs (554→57 lines), its reset-on-start `tests/e2e/global-setup.ts`, and 16 hand-authored rules — see §4. The framework needs further work first; this is a **gated hold, not an open-ended one.**
+
+**The gate that reopens it — all four, then re-evaluate:**
+
+| | Item | Status |
+|---|---|---|
+| 0′ | DB-mutation guard on `integration_pre_build` | **done** (`8fae5733`) |
+| 0′b | The twin: `e2e_pre_gate`'s guard reads the `.env` FILE while the push uses the `env` PARAMETER, and never fires when `DATABASE_URL` is absent | open, ~4 lines + test |
+| 0a | Manifest `protected:true` flags — **the item that unblocks a safe re-init** | open, ~1 day |
+| 0a′ | `--no-verify` on automated worktree commits/pushes (else re-armed hooks stall the run) | open, small |
+| 0b | e2e gate reads a machine-readable result file keyed on `(file, title)` | open, ~1–2 days |
+
+**Known unrelated debt, untouched:** 17 failed / 21 errors in `test_web_api_write.py` + `test_web_integration.py` (`AttributeError` in web API fixtures). Pre-existing — identical before and after Phase 0′.
+
+**Discipline note.** Between 2026-07-14 and Phase 0′, this repo produced five research documents and zero lines of code while a six-line guard stood between an orchestration run and a production-data mirror. See `set-factory-verdict-2026-07-19.md` §4(5). Research is not the default next step here; shipping the listed items is.
+
+---
+
 ## 1. What changed since 2026-07-14
 
 Since the 2026-07-14 docs, the consumer project built out extensive custom safety infrastructure. That single fact both **validates** the delegation-contract direction and **exposes** a live data-loss path the earlier docs did not see.
