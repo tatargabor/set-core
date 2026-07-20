@@ -52,6 +52,44 @@ bootstrap_env_files() {
     fi
 }
 
+# Project-provided worktree initialisation — the abstract extension point.
+#
+# WHY: `bootstrap_env_files` copies `.env` verbatim, which is right for secrets but wrong
+# for everything a worktree must NOT share with the main tree — ports, database names,
+# container names. Those are project-specific (set-core cannot know that this repo derives
+# `appname_dev`/`appname_e2e` from `DATABASE_URL`, or that its dev server binds a port from
+# `WT_PORT_BASE`), and they are NOT project-TYPE specific either — a `WebProjectType`
+# profile is shared by every web project, so per-repo isolation logic does not belong there.
+#
+# Measured consequence of not having this hook (consumer, 2026-07-20): every worktree
+# inherited the same hardcoded dev port, so only ONE tree could run a dev server at a time —
+# defeating the entire purpose of worktrees. The fix had to be applied by hand, and was not.
+#
+# CONTRACT — the project may provide an executable `set/hooks/worktree-init.sh`:
+#   $1  main project path        $2  new worktree path        $3  change id
+#   cwd is the NEW WORKTREE. Runs after env files, dependencies and Claude hooks are in
+#   place, so it can call the project's own tooling (`pnpm`, `prisma`, …).
+#
+# Failure is NON-FATAL: the worktree already exists and is usable. A broken init script
+# must not leave the developer with a half-created worktree and no way forward — it warns
+# and the developer finishes by hand.
+run_project_worktree_init() {
+    local project_path="$1" wt_path="$2" change_id="$3"
+    local hook="$wt_path/set/hooks/worktree-init.sh"
+
+    [[ -f "$hook" ]] || return 0
+
+    if [[ ! -x "$hook" ]]; then
+        warn "set/hooks/worktree-init.sh is not executable — skipping (chmod +x to enable)"
+        return 0
+    fi
+
+    info "Running project worktree-init hook"
+    if ! (cd "$wt_path" && "$hook" "$project_path" "$wt_path" "$change_id"); then
+        warn "Project worktree-init hook failed (non-fatal) — finish the setup manually"
+    fi
+}
+
 bootstrap_dependencies() {
     local wt_path="$1"
     local project_root
@@ -258,6 +296,9 @@ main() {
     if command -v set-deploy-hooks &>/dev/null; then
         "$SCRIPT_DIR/set-deploy-hooks" --quiet "$wt_path" || warn "Hook deployment failed (non-fatal)"
     fi
+
+    # Project-provided worktree initialisation
+    run_project_worktree_init "$project_path" "$wt_path" "$change_id"
 
     # Setup editor-specific configuration
     local editor_name
