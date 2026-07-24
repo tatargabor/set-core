@@ -234,12 +234,26 @@ memory system's automatic session-end extraction, and diagnostic output on error
    side sees a correct payload shrink, this side sees a button whose disabling reason
    vanished.
 
-   **Left open, and it is the project's call because the derivation is theirs:** a fully
-   acknowledged step *stays in the list named for open steps*. The count does not shrink —
-   15 before, 15 after, one of them recorded as done in both environments. The refuting
-   field sits inside the row, but the number is what a person reads, so the refutation is
-   not where the decision is made. Reported; not patched here, because filtering rows by
-   their meaning is domain logic and it belongs on the side that holds the data.
+   **Closed by the project, and their reasoning is the part worth keeping.** A fully
+   acknowledged step used to stay in the list named for open steps, so the count never
+   shrank. They kept the row and made the *count* derived, rather than dropping the row —
+   because an acknowledgement is a human assertion, so a mistaken one must not be able to
+   make a step vanish without trace. That would be a false absence at the worst possible
+   scale: not a field, a whole task. **The array is the record; the number is a
+   derivation.** Their state field is three-valued for the same reason the reporter trace
+   is four-valued — a two-valued one would render half-finished work identically to
+   untouched work, and lose it.
+
+   **The same warning found a lie on this side.** The renderer printed its own count above
+   every table — "15 items" — under a key the project names for open steps, which reads as
+   "15 open steps". Once the project publishes its own open-count, one screen carries two
+   numbers about one thing that disagree the moment anything is acknowledged. Fixed by
+   changing the subject, not the logic: it counts **rows**, which cannot be read as a claim
+   about what the rows mean (`67d64a21`, both tests fail with the fix stashed).
+
+   *The general rule, and it is not only about counts:* **a domain-free renderer inherits a
+   subject from the key above it.** Being ignorant of field names is not the same as
+   asserting nothing.
 2. ~~**The test *system*, not just the test environment.**~~ **Done on the consumer's side,
    and it appeared through set-core with zero framework changes** — the second time the
    declaration-driven design has been confirmed, and the first time deliberately.
