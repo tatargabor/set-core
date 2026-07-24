@@ -56,12 +56,12 @@ bootstrap_env_files() {
 #
 # WHY: `bootstrap_env_files` copies `.env` verbatim, which is right for secrets but wrong
 # for everything a worktree must NOT share with the main tree — ports, database names,
-# container names. Those are project-specific (set-core cannot know that this repo derives
-# `appname_dev`/`appname_e2e` from `DATABASE_URL`, or that its dev server binds a port from
-# `WT_PORT_BASE`), and they are NOT project-TYPE specific either — a `WebProjectType`
+# container names. Those are project-specific (set-core cannot know that a given repo derives
+# per-tree database names such as `<app>_dev`/`<app>_e2e` from `DATABASE_URL`, or that its dev
+# server binds a port from `WT_PORT_BASE`), and they are NOT project-TYPE specific either — a `WebProjectType`
 # profile is shared by every web project, so per-repo isolation logic does not belong there.
 #
-# Measured consequence of not having this hook (consumer, 2026-07-20): every worktree
+# Measured consequence of not having this hook (a consumer project, 2026-07-20): every worktree
 # inherited the same hardcoded dev port, so only ONE tree could run a dev server at a time —
 # defeating the entire purpose of worktrees. The fix had to be applied by hand, and was not.
 #
