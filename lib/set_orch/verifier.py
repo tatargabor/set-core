@@ -3458,6 +3458,38 @@ def _parse_critical_count(output: str) -> int | None:
         return None
 
 
+def _parse_verify_verdict(output: str) -> str | None:
+    """Parse the `VERIFY_RESULT: PASS|FAIL` sentinel with the same care as the count.
+
+    Returns "pass", "fail", or None when no sentinel was emitted.
+
+    This used to be a bare `"VERIFY_RESULT: PASS" in output`, which is the same defect
+    `_parse_critical_count` above was already hardened against — and it sat on the more
+    dangerous side of the gate. The sentinel is a token in free LLM prose, so it appears
+    in the instructions the model quotes back, in a fenced example of the format, and in
+    an echo of a previous run. A model that writes
+
+        The rule is to emit VERIFY_RESULT: PASS when nothing is critical.
+        There are 3 critical findings.
+        VERIFY_RESULT: FAIL
+
+    contained the PASS substring first, and the caller checked PASS first — so a failing
+    verification returned pass and the change merged. Fail-OPEN, on the gate that decides
+    whether work reaches main.
+
+    The rules mirror the count parser deliberately, so the two cannot drift apart:
+    scan the tail only, anchor at line start (a quoted `> VERIFY_RESULT: PASS` is not a
+    verdict), and let the LAST sentinel win, because the sign-off is emitted last.
+    """
+    if not output:
+        return None
+    tail = output[-4096:] if len(output) > 4096 else output
+    matches = re.findall(r"^\s*VERIFY_RESULT:\s*(PASS|FAIL)\b", tail, re.MULTILINE)
+    if not matches:
+        return None
+    return matches[-1].lower()
+
+
 def _persist_spec_verify_verdict(
     *,
     cwd: str,
@@ -3507,7 +3539,7 @@ def _classify_spec_verify_outcome(
     `terminal_reason` is a short string ("max_turns", "timeout", or "") used
     for logging and event payloads. Empty for "verdict" and "ambiguous".
     """
-    if "VERIFY_RESULT: PASS" in verify_output or "VERIFY_RESULT: FAIL" in verify_output:
+    if _parse_verify_verdict(verify_output) is not None:
         return ("verdict", "")
     # Subprocess-level timeout is always infra, even with empty stdout.
     if getattr(cmd_result, "timed_out", False):
@@ -3673,7 +3705,9 @@ def _execute_spec_verify_gate(
             return result
         # Retry succeeded — fall through to verdict/ambiguous handling below.
 
-    if "VERIFY_RESULT: PASS" in verify_output:
+    sentinel_verdict = _parse_verify_verdict(verify_output)
+
+    if sentinel_verdict == "pass":
         logger.info("Gate[spec-verify] END %s result=pass", change_name)
         _persist_spec_verify_verdict(
             cwd=wt_path, baseline=session_baseline, change_name=change_name,
@@ -3681,7 +3715,7 @@ def _execute_spec_verify_gate(
             summary="VERIFY_RESULT: PASS sentinel matched",
         )
         return GateResult("spec_verify", "pass", output=smart_truncate(verify_output, 2000))
-    elif "VERIFY_RESULT: FAIL" in verify_output:
+    elif sentinel_verdict == "fail":
         # Severity threshold via explicit LLM self-reported CRITICAL_COUNT
         # sentinel. If the LLM says "CRITICAL_COUNT: 0" alongside FAIL, the
         # FAIL was driven by WARNING/SUGGESTION-level findings only, so we
