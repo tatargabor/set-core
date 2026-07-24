@@ -124,7 +124,13 @@ function GlobalLayout() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="flex-1 overflow-hidden pt-11 md:pt-0">
+      {/* overflow-y-auto, not overflow-hidden: a page under this layout that is
+          taller than the viewport must scroll, not be silently cut off. The
+          project layout above keeps overflow-hidden because its pages manage
+          their own h-full scroll regions; the global pages do not, so the last
+          rows of a long list were simply unreachable — measured at 1693px of
+          content in a 700px main, with window.scrollY pinned at 0. */}
+      <main className="flex-1 overflow-y-auto pt-11 md:pt-0">
         <Outlet />
       </main>
     </div>

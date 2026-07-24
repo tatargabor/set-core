@@ -164,6 +164,27 @@ gets the page's width, the same sentence inside an object inside a table cell ge
 nesting left, which can be one character. The fix belongs where the width is decided, and
 truncating the producer's text would have treated a symptom that was not there.
 
+**A test that drives the thing with an API the user does not have measures a different
+system.** Measured here on the page-scroll fix. A regression spec scrolled the container with
+`element.scrollTo()`, asserted `scrollTop > 0`, that the last row was in the viewport and that
+the sticky header held — four assertions, all green. Then the bug was rebuilt into the served
+bundle (verified: `grep -c 'overflow-y-auto'` → 0 in the exact asset the server hands out), and
+**all four passed again**. `overflow: hidden` does not disable scrolling; it disables *user*
+scrolling. The box stays programmatically scrollable, so every scripted assertion behaves
+identically on the broken page. Rewritten to `page.mouse.wheel()`, 4 of 5 failed on the mutant
+and all 5 passed on the fix.
+
+The general form is worth more than the CSS: **the harness usually has powers the user does
+not** — it can call a handler directly instead of clicking, set a value instead of typing, post
+to an endpoint instead of submitting, seed a row instead of registering. Each shortcut quietly
+tests a system where the disabled control still fires and the guarded path is still reachable.
+So the discriminating question from the tower above, in its input form: *is the action I am
+performing one the user can perform?* If not, the green is about the API, not the product.
+
+(The fifth test passed on both, correctly: it guards the over-fix — a second nested scrollbar —
+so the mutant is not supposed to trip it. A test that fails in both directions would be
+measuring nothing; one that fails in neither is the defect above.)
+
 ## Fail direction outranks bug count
 
 When a guard is wrong, ask which way it is wrong before asking how often. A gate that

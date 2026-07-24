@@ -105,10 +105,16 @@ export default function Manager() {
         </div>
       )}
 
+      {/* The wrapper below carries no overflow-hidden: that would make it a scroll
+          container, anchoring the sticky header to a box that never scrolls —
+          measured, the header still slid to y=-916. Rounding lives on the border. */}
       {sorted.length > 0 && (
-        <div className="border border-neutral-800 rounded-lg overflow-hidden">
+        <div className="border border-neutral-800 rounded-lg">
           <table className="w-full text-sm">
-            <thead>
+            {/* Sticky since the page became scrollable: at 38 rows the header
+                scrolls away, and an unlabelled column of numbers is not data
+                anyone can read. */}
+            <thead className="sticky top-0 z-10 bg-neutral-950">
               <tr className="border-b border-neutral-800 text-xs text-neutral-500 uppercase tracking-wider">
                 <th className="text-left px-4 py-2 font-medium">Name</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
