@@ -232,3 +232,59 @@ def test_layer_one_holds_no_signal_of_its_own():
     assert source.count("set/lane-signals.json") <= 2
     for smuggled in ("src/", "*.ts", "bug-imports", "review-findings", "package.json"):
         assert smuggled not in source, f"Layer 1 must not name {smuggled!r}"
+
+
+# ── two refuted patterns, held in tests so they cannot be reintroduced ─────────────
+#
+# Both were live defects in the first implementation, and both failed in the REASSURING
+# direction: they accepted a declaration that should have been refused, or refused a
+# project that should have been accepted. Neither would have been caught by the tests
+# above, which is why they are written down here as fixtures rather than as comments.
+
+@pytest.mark.parametrize("kind", ["loc_delta", "size_delta", "hunk_count", "weight"])
+def test_a_volume_condition_under_an_UNLISTED_kind_is_still_refused(kind):
+    """A closed list of kind names is a NARROWING, and narrowings lie reassuringly.
+
+    Measured on the first implementation: `loc_delta`, `size_delta` and `hunk_count` were
+    all accepted while its commit message claimed a project "cannot smuggle one past by
+    expressing the threshold differently". Three of four disguises walked through. The
+    discriminator is the SHAPE — a numeric threshold — not membership in a list of words.
+    """
+    with pytest.raises(ls.SignalRefused) as exc:
+        ls.parse_signal("sig", _valid(condition={"kind": kind, "over": 300}))
+
+    assert "volume" in str(exc.value).lower()
+
+
+def test_a_shape_condition_may_still_carry_non_numeric_settings():
+    """The threshold test must not become "any extra key is suspicious"."""
+    signal = ls.parse_signal("sig", _valid(
+        condition={"kind": "new_module", "pattern": "src/*/index.ts", "recursive": True}))
+
+    assert signal.condition["recursive"] is True
+
+
+def test_an_empty_baseline_is_a_declaration_of_zero_debt_not_an_omission():
+    """The mirror failure: refusing the project that has nothing to baseline.
+
+    A signal introduced into a clean tree legitimately has `baseline: []`, and that is the
+    easiest case to adopt one in. The first implementation treated falsy as missing and
+    refused it — failing in the direction that looks like strictness and reads as "you may
+    not adopt this signal until you already have violations".
+    """
+    signal = ls.parse_signal("sig", _valid(baseline=[]))
+
+    assert signal.baseline == ()
+
+
+@pytest.mark.parametrize("field_name", ["lane", "scope", "triggering_case"])
+def test_relaxing_the_baseline_did_not_let_empty_scalars_through(field_name):
+    """The fix for the previous test is itself a narrowing, so it gets its own guard.
+
+    Accepting `[]` by testing `is None` would also accept `""` for lane and scope, which
+    say nothing — a repair that opens a wider hole than it closes.
+    """
+    with pytest.raises(ls.SignalRefused) as exc:
+        ls.parse_signal("sig", _valid(**{field_name: ""}))
+
+    assert field_name in str(exc.value)

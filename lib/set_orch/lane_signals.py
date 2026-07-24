@@ -54,10 +54,25 @@ logger = logging.getLogger(__name__)
 #: default — see the module docstring for why each default would be invisible.
 REQUIRED_FIELDS = ("lane", "condition", "scope", "baseline", "promotion", "triggering_case")
 
-#: Condition kinds that measure volume. Refused by name rather than by inspecting the
-#: numbers, so a project cannot smuggle one past by expressing the threshold differently.
+#: Fields where an empty value is a real declaration rather than an omission. Only the
+#: baseline: "this signal starts with no outstanding debt" is a statement, whereas an empty
+#: lane or scope says nothing and must still be refused.
+EMPTY_IS_MEANINGFUL = frozenset({"baseline"})
+
+#: Condition kinds known to measure volume. This list exists only to produce a clearer
+#: error; it is NOT the test. A closed list of names is a narrowing, and a narrowing fails
+#: in the reassuring direction — it accepts `loc_delta` because nobody thought of that word.
+#: The test below is the SHAPE: a numeric threshold.
 VOLUME_KINDS = frozenset({
     "lines_changed", "files_changed", "diff_size", "insertions", "deletions", "churn",
+})
+
+#: Keys that express "how much". A shape condition never needs one — it asks whether a
+#: module appeared, whether a fixed defect cites a test. So a numeric value under any of
+#: these is the mechanical signature of a volume condition, whatever the kind is called.
+THRESHOLD_KEYS = frozenset({
+    "over", "under", "min", "max", "minimum", "maximum", "threshold",
+    "at_least", "at_most", "greater_than", "less_than", "count", "limit",
 })
 
 #: A date in the triggering case. Only the presence of a date and an identifier is
@@ -128,12 +143,32 @@ class DeclarationReadResult:
 
 
 def _refuse_if_volume(name: str, condition: dict) -> None:
+    """Refuse a condition that measures how much rather than what shape.
+
+    Two checks, and the ORDER of their importance is the opposite of the order they were
+    written in. The kind list is a convenience for a clearer message. The load-bearing
+    check is the numeric threshold, because a closed list of names is a **narrowing**, and
+    a narrowing fails in the reassuring direction: it accepted `loc_delta` and `hunk_count`
+    while the commit introducing it claimed a project "cannot smuggle one past by
+    expressing the threshold differently". Measured — three of four disguises passed.
+    """
     kind = str(condition.get("kind", ""))
     if kind in VOLUME_KINDS:
         raise SignalRefused(
             name, "condition measures volume",
             f"kind={kind!r}; declare a SHAPE (a new module, a fixed defect with no test "
             f"citing its id), not a quantity",
+        )
+
+    numeric = sorted(
+        k for k, v in condition.items()
+        if k in THRESHOLD_KEYS and isinstance(v, (int, float)) and not isinstance(v, bool)
+    )
+    if numeric:
+        raise SignalRefused(
+            name, "condition measures volume",
+            f"numeric threshold(s) {numeric} under kind={kind!r}; a shape condition needs "
+            f"no quantity, and a size threshold fires hardest on the safest population",
         )
 
 
@@ -164,7 +199,17 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
     if not isinstance(raw, dict):
         raise SignalRefused(name, "declaration is not a mapping", type(raw).__name__)
 
-    missing = [f for f in REQUIRED_FIELDS if not raw.get(f)]
+    # Emptiness means different things per field, so "missing" is decided per field.
+    #
+    # An EMPTY BASELINE is the legitimate state of a signal introduced into a clean tree —
+    # treating `[]` as missing refused exactly the project with no debt, which is the one
+    # a new signal is easiest to adopt in. So for the collection field, presence of the key
+    # is the test, keeping "declared zero debt" apart from "never thought about debt".
+    #
+    # An EMPTY LANE OR SCOPE means nothing at all, and relaxing those the same way would
+    # let `""` through — a narrowing fix that opens a wider hole than it closes.
+    missing = [f for f in REQUIRED_FIELDS
+               if (raw.get(f) is None) or (f not in EMPTY_IS_MEANINGFUL and not raw.get(f))]
     if missing:
         raise SignalRefused(name, "missing required field(s)", ", ".join(missing))
 
