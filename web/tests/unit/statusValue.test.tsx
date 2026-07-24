@@ -18,7 +18,7 @@ import StatusValue, { DeprecationProvider, presentDeprecations } from '../../src
 
 afterEach(cleanup)
 
-const UNKNOWN = '[title="not provided by the project"]'
+const UNKNOWN = '[title^="no value"]'
 
 describe('unknown is not zero', () => {
   it('renders null as an explicit unknown, not as a number', () => {

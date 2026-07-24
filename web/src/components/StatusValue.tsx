@@ -103,10 +103,19 @@ function DeprecatedLabel({ name }: { name: string }) {
   )
 }
 
-/** Unknown — never a zero, never a tick. */
+/**
+ * No value — never a zero, never a tick.
+ *
+ * The wording is deliberately silent about WHY. An earlier version said "not provided by
+ * the project", which is set-core asserting a reason it cannot know: a null may mean
+ * "we could not find out" or "this does not apply here", and the consumer's contract
+ * uses it for both. Explaining someone else's absence is the same overreach as inventing
+ * their value. The colour still says "look at this"; the tooltip no longer says what it
+ * means.
+ */
 function Unknown({ label = '—' }: { label?: string }) {
   return (
-    <span className="text-amber-500/80" title="not provided by the project">
+    <span className="text-amber-500/80" title="no value — the project did not say what this means">
       {label}
     </span>
   )
