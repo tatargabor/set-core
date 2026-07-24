@@ -936,7 +936,23 @@ def sync_worktree_with_main(wt_path: str, change_name: str) -> SyncResult:
                         "sync: regenerating %s via %s in %s",
                         basename, " ".join(install_cmd), wt_path,
                     )
-                    result = run_command(install_cmd, timeout=600, cwd=wt_path)
+                    # A worktree shares one `.git` with the host checkout, so an install
+                    # whose `prepare` script runs a hook installer rewrites the HOST
+                    # repository's hooks — with an absolute path INTO this worktree. Once
+                    # the worktree is removed the host's hooks point at nothing and stop
+                    # running, silently, and git never shows it because hook managers
+                    # gitignore their own directory. Opt the installers out, and check
+                    # afterwards anyway: prevention that only covers the tools we thought
+                    # of is not a guarantee.
+                    from .hook_guard import capture_hook_wiring, guard_host_hooks, hook_safe_env
+                    _hooks_before = capture_hook_wiring(wt_path)
+                    result = run_command(
+                        install_cmd, timeout=600, cwd=wt_path, env=hook_safe_env(),
+                    )
+                    guard_host_hooks(
+                        wt_path, _hooks_before,
+                        context=f"{' '.join(install_cmd)} during sync of {change_name}",
+                    )
                     if result.exit_code == 0:
                         run_git("add", f, cwd=wt_path)
                         lockfile_regenerated = True
