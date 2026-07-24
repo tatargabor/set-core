@@ -22,6 +22,29 @@ survive the compact; the task in flight does not outrank them.**
    releases. Later round: development itself returns too, and the orchestration will
    need reshaping for it. That reshaping is expected, not a surprise to be avoided.
 
+**Which way the learning flows — stated by the user on 2026-07-24, and it reverses the
+usual assumption.** The consumer in this integration is their **flagship**: their newest and
+most advanced client project, hand-developed, with an **SDLC far ahead of set-core's**.
+set-core has not been developed for a while, and it is **set-core that has to catch up to the
+mechanisms already working there** — not the other way around.
+
+Three things follow, and none of them is optional:
+
+- **Do not "correct" the consumer's process toward set-core's shape.** Its development
+  foundation is proven and in daily use. The work is to bring that project's further
+  development *into* set-core **without damaging that foundation** — extend it, never
+  replace it. A design that requires the project to change how it works has failed, not
+  the project.
+- **Read their mechanism before designing ours.** When their side has already solved
+  something (release YAMLs, gate chains, a contract shape, a naming discipline), the
+  default is to adopt the shape, generalise it, and give it a home in the framework —
+  after asking on the channel what it is actually for. Inventing a parallel mechanism
+  because ours would be tidier is the failure mode to watch for.
+- **Generalise, because this schema is meant to be reused.** The user wants the same
+  pattern carried to other projects. So every piece of it lands as an abstraction with the
+  domain on the project's side — which is also what the confidentiality boundary demands.
+  If a design only works for one consumer, it is not finished.
+
 **On the `set-factory` verdict, which this partly supersedes.** The user has asked for a
 factory layer directly, so the 2026-07-19 "no" no longer settles the question — but read
 what it actually rejected before treating this as a reversal, because most of it still
