@@ -180,9 +180,20 @@ memory system's automatic session-end extraction, and diagnostic output on error
    for a check nobody had performed, and this is the only place a person is told before
    asserting it.
 
-   **Not yet exercised end to end.** No acknowledgement has been sent: a real click writes
-   into the consumer's repository, which needs the user's word, not ours. Structurally
-   verified instead — 15 rows offer a button, all disabled pending the required choice.
+   **Proven as far as it can be without asserting something false.** The consumer's write
+   command takes a repo argument, so the whole chain was run against a disposable copy:
+   the write returned ok with the chosen environment in the record, an identical second
+   write returned `alreadyAcknowledged` and the file stayed at ONE line, and the real
+   repository was untouched (no record file, empty `git status`). Idempotence is therefore
+   not a promise on this side either — it was measured through this API.
+
+   **What is still unproven, precisely:** the browser's own fetch. Everything from the API
+   inward is measured; the button's argument merge is unit-tested; the click itself is not,
+   because a real click writes into the consumer's repository.
+
+   **And the first real acknowledgement should stay what it is — a person who actually did
+   the task, not a demonstration.** The consumer already produced one stray record for a
+   check nobody had performed. A demo write into the real store would be a second.
 2. ~~**The test *system*, not just the test environment.**~~ **Done on the consumer's side,
    and it appeared through set-core with zero framework changes** — the second time the
    declaration-driven design has been confirmed, and the first time deliberately.
