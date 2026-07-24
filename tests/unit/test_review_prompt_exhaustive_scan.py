@@ -244,7 +244,6 @@ def test_retry_review_scans_fix_diff_for_regressions():
             wt_path="/tmp/fake-wt",
             review_model="opus",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
             verify_retry_count=2,
             gc=fake_gc,
         )

@@ -165,7 +165,6 @@ class TestReviewGateSilentPassFossil:
             scope="add a create-task form + server action",
             review_model="sonnet",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
         )
 
         # Classifier MUST have been invoked (fast-path returned 0)
@@ -195,7 +194,6 @@ class TestReviewGateSilentPassFossil:
             scope="storefront product catalog",
             review_model="sonnet",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
         )
 
         assert mock_classify.called
@@ -219,7 +217,6 @@ class TestReviewGateFirstRoundFastPath:
             scope="clean scope",
             review_model="sonnet",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
         )
 
         # Fast-path finds 2 MEDIUM + 1 LOW — no CRITICAL → has_critical False
@@ -251,7 +248,6 @@ class TestReviewGateClassifierDisabled:
             scope="scope",
             review_model="sonnet",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
         )
 
         # With classifier disabled, the fossil slips through (known-bad, opt-in)
@@ -273,7 +269,6 @@ class TestReviewGateClassifierErrorFallThrough:
             scope="scope",
             review_model="sonnet",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
         )
 
         # Classifier was called but errored — fast-path verdict stands
@@ -306,7 +301,6 @@ class TestReviewPassRegexRemoved:
             scope="scope",
             review_model="sonnet",
             state_file="/tmp/fake-state.json",
-            design_snapshot_dir="",
         )
 
         assert result.has_critical is True  # new CRITICAL detected
