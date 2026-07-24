@@ -146,6 +146,16 @@ The general rule this stands for: *the declaration is the contract, not the docu
 - **Read and write are separate namespaces.** Write commands live in their own list
   (`writeCommands`), are never cached, and a generic renderer walking the read list can
   therefore never call one by accident.
+
+  **Precisely how far that protects, because the sentence above reads stronger than it
+  is.** set-core defends the *ambiguous* case itself: a name appearing in both lists is
+  dropped from both and logged — a command cannot be safe to open a page with and also
+  change something. It cannot defend the *misfiled* case, where a write command is declared
+  only as a read: nothing in an answer says it mutates, which is the whole reason the
+  namespaces are declared rather than inferred. That guard therefore lives on the producer's
+  side, and the consumer built it (2026-07-24) after the risk was named. The failure it
+  prevents is the worst one this surface has: a page load acknowledging manual tasks that
+  nobody performed — the surface manufacturing its own `DONE`.
 - **Write commands are idempotent.** The same acknowledgement sent twice is a successful
   no-op that reports it was already done. This is what lets the surface hold no state about
   what it has already sent.
