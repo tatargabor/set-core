@@ -796,6 +796,55 @@ rescoping when anything cites the old order.** New items go on the end.
    command. **Not** the router, and **not** their specific three signals lifted into Layer 1
    — a design that only works for one consumer is not finished.
 
+   **The instrument shipped 2026-07-24 (`lane-contradiction-detection`), and the pipeline is
+   now specified — proposal, design, specs and tasks, no code** (`bugfix-lane-with-a-real-delta`,
+   `openspec validate --strict` clean). Three things were decided and each reverses what looked
+   obvious, so they are recorded rather than left in the change:
+
+   - **The first draft was on the wrong footing, and a goal-alignment re-read of THIS FILE
+     caught it.** It opened a `UNIVERSAL_DEFAULTS['bugfix']` entry — taxonomy first, which the
+     verdict's ordering constraint forbids. What rescued it was the consumer's answer rather
+     than the retreat: **a lane entry is admissible when it CANNOT exist without its delta.**
+     A `bugfix` declaration carrying no enforced exit obligation is refused, so the entry is
+     structurally incapable of becoming a fourth empty name. That satisfies the ordering
+     constraint instead of evading it.
+   - **Refuse, never substitute — and the reason is not danger.** Falling back to the feature
+     chain is *stricter*, so nothing breaks. The harm is belief: the project declared a lane,
+     believes it has one, and silently runs an ordinary change. Their argument, and it names
+     the class this record keeps meeting — a marker true of a narrower subject than its reader
+     takes it for.
+   - **The project maps its vocabulary onto set-core's change types, in one place.** Comparing
+     `LaneSignal.lane` to `change_type` was rejected a second time, having been rejected once
+     inside the reader: that mapping is domain. The two vocabularies happen to overlap in this
+     one consumer, which is the worst available reason to build a coupling on the overlap —
+     and it is exactly the implementation a later reader reaches for, so a task asserts nothing
+     does it.
+
+   **Measured defects found while specifying it, all pre-existing:**
+   `UNIVERSAL_DEFAULTS['feature'] == UNIVERSAL_DEFAULTS['foundational']` is `True` — the
+   verdict's zero-delta failure already in the tree, unnoticed until measured; the type list
+   lives in three places and two disagree, with `merger.py:2442` exempting `config` and `docs`
+   which exist nowhere else; and an unknown type is **stricter**, not looser, so today's
+   `bugfix` runs the most conservative chain and anything done here is a loosening that must be
+   bought rather than spent.
+
+   **A scope REMOVED on their measurement, recorded because a removal needs its reasons as much
+   as an addition or the next reader restores it.** The natural thing to generalise was their
+   entrance question — *does this fix restore what the specification says, or change it?* Their
+   figures: **50 of 536 `fix(...)` commits touch a specification or the knowledge store
+   (9.3%)**, a named incident where a specification described automatic behaviour while the code
+   was deliberately manual for two weeks and was never annotated, and the gate intended to
+   enforce it does not exist in their tree either. They asked that the half they demonstrably do
+   not keep not be generalised. **A framework gate enforcing what the most advanced available
+   practice cannot keep does not protect anyone — it gets switched off and takes the warning
+   with it.**
+
+   **The price, stated so it is not softened later:** an exit obligation counts only at ENFORCE
+   severity, and lane signals reach ENFORCE only through their own recorded measurement. So a
+   project cannot obtain the bugfix discount on day one — it runs the signal at WARN, earns the
+   promotion, and only then does the entrance get cheaper. The evidence is the price, which
+   means it cannot be paid afterwards.
+
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
 in CI stays there. This *tightens* the production constraint rather than loosening it — the
