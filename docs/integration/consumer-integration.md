@@ -167,16 +167,21 @@ memory system's automatic session-end extraction, and diagnostic output on error
    and is idempotent. This is the first write path the framework will use, so the read/write
    namespace split has to hold on this side too — a renderer walking the read list must be
    structurally unable to call a write command.
-2. **The test *system*, not just the test environment.** Whether the suites run, whether
-   they are green, when they last ran. Needs its own contract command; nothing is built.
+2. ~~**The test *system*, not just the test environment.**~~ **Done on the consumer's side,
+   and it appeared through set-core with zero framework changes** — the second time the
+   declaration-driven design has been confirmed, and the first time deliberately.
 
-   **The trap to design against, flagged before it cost anything:** a stale artefact whose
-   *shape* is convincingly machine-readable — a last-run summary that reads `6/6 passed` but
-   is a day old and covers a subset. Rendered naively that becomes a green box for a run
-   that never happened. It is the same class as the deprecated field and the prose
-   `schedule`: **a plausible shape carrying a false meaning.** The framework cannot detect
-   it; the contract must state freshness and scope, and the screen must show them next to
-   the number rather than beside it in a tooltip.
+   **How the trap was solved is worth keeping**, because the answer was not the obvious one.
+   The stale artefact — a last-run summary reading `6/6 passed`, a day old, covering a
+   subset of 62 spec files — was not hidden. It was made *measurable*: no `ok` field at all
+   (an `ok: true` would headline "our tests are green" about a sixth of them), `scope: null`
+   because the artefact does not record what was filtered, and **`commitsSince`** as the
+   load-bearing field. Time alone misleads — a three-day-old result is still valid if
+   nothing was committed since — whereas commit distance does not. A test asserts the `ok`
+   field stays absent, so a later "helpful" addition cannot smuggle it back.
+
+   *The general rule, worth applying beyond tests:* **age misleads, distance from the tree
+   does not.**
 3. **The reporter-feedback trace.** Same class — a step the process requires and
    nothing records, so it cannot be checked. Note carefully what the measurement does and
    does not prove: it shows the answer is *unverifiable*, not that it was never sent.
