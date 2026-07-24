@@ -280,6 +280,37 @@ with the other project's slug is not, and this session stays silent on it. An un
 turn is for whoever it is actually useful to. Getting this wrong is what makes two copilots
 talk over each other.
 
+## Framework work goes through OpenSpec again — decided by the user, 2026-07-24
+
+**On the set-core side this is settled, not a preference.** It was reopened because a day's
+work slipped past it unnoticed: **81 commits, zero through an OpenSpec change**, and set-core's
+largest new capability — the consumer status contract — had **no capability spec at all**.
+The user's reason is the one that matters and it is not process hygiene: OpenSpec was adopted
+here because set-core's accumulated knowledge had outgrown what plain agent operations could
+carry. A capability that lives only in code, commit messages and a decision log is exactly
+that failure returning.
+
+**The rule, and the line it draws:**
+
+- **New capability, or a change to a contract → OpenSpec.** Use `/opsx:ff` when the shape is
+  already known; it produces every artifact in one pass and costs little against work that
+  needs tests and verification anyway.
+- **A measured defect fix → a direct commit is fine** — unless it changes contract behaviour,
+  in which case it carries a spec delta. This is the same distinction the integration track
+  keeps making by hand: *a fix* versus *a mechanism*.
+- **Behaviour that shipped without a spec is documented retroactively**, as a change whose
+  tasks are already done, then archived so the deltas reach `openspec/specs/`. The first one
+  is `2026-07-24-consumer-status-contract` (20 requirements, three capabilities). Do not
+  invent a new format for this — that change is the worked example.
+
+**What this does NOT license.** It is not a reason to route a five-minute peer-reported fix
+through a proposal, and it does not reopen the research habit the Discipline note below
+closes. Two measured cautions, both current: **10 of 28 existing changes fail
+`openspec validate --strict`**, and the last archive before 2026-07-24 was in April — so
+adding changes without archiving them is a real failure mode here, not a hypothetical one.
+The delta parser also **ends a section at any `##` heading**, so scope blocks written inside
+`## ADDED Requirements` parse as zero requirements and validate as an empty change.
+
 **Discipline.** Between 2026-07-14 and Phase 0′ this repo produced five research documents and zero lines of code while a six-line guard stood between an orchestration run and a production-data mirror. Research is not the default next step — shipping the listed items is. Before proposing a new investigation, check whether it is already answered in `docs/research/`.
 
 **Partly superseded — see the goals section at the top of this file.** The 2026-07-19
