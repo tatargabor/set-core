@@ -370,6 +370,29 @@ being guessed at.
 3. **The reporter-feedback trace.** Same class — a step the process requires and
    nothing records, so it cannot be checked. Note carefully what the measurement does and
    does not prove: it shows the answer is *unverifiable*, not that it was never sent.
+3b. ~~**Which answer opens the surface.**~~ **Shipped** (`e7b0051e`). A contract that keeps
+   growing eventually opens on whatever was declared first, which is an ordering decision
+   nobody made. The project now declares `primary`; set-core never infers it from a name,
+   because a name is not a promise about content. Absent stays absent rather than becoming
+   "the first one", so *the project chose this* and *nobody chose* remain distinguishable
+   — the same false-value shape as the row count, one level up. A write command named as
+   primary is refused outright: opening a page must never land a reader on a mutation.
+
+   It exists because the *readiness* answer below will need somewhere to land, and it cost
+   nothing to build first — but it is useful to any project with more than a couple of
+   answers, which is the test for whether something belongs in the framework at all.
+
+3c. **The missing screen the consumer named, and who builds which half.** Their gap: no
+   view shows that high-severity bugs are open *while a release is closing*. This side will
+   not join bugs to releases — that is domain knowledge in a layer that must not have any,
+   and it would break the property that has now paid off three times (their new fields
+   appear with zero framework changes). So the derivation is theirs, as one more read
+   command; the framework's half was `primary`, and it is done.
+
+   **One caution passed back to them:** such an answer must not carry a green test claim.
+   Nothing runs their spec suite automatically, so "E2E fine" would assert what nobody
+   measured. If it appears at all it should carry last-run time and commits-since — the
+   shape they already got right elsewhere. *Age misleads, distance from the tree does not.*
 4. **Then the factory layer proper** — planning releases and bug fixes inside set-core.
    Its shape is the router between differentiated ADWs already identified in the
    2026-07-19 verdict, not a new system.
