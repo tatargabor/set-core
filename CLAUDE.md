@@ -117,6 +117,21 @@ long-lived service holds the code it started with (`systemd ExecMainStartTimesta
 first init has been run and verified.** The 2026-07-19 safety track is complete; do not
 reopen it, and do not start new research on it.
 
+**Corrected 2026-07-24 — "every write path" was counted in files, and one of them was not a
+file.** A fifth path existed and is now closed (`9ab3e6b6`): a dependency install run with
+`cwd` set to a WORKTREE. A worktree shares one `.git`, so a `prepare` script that installs
+git hooks rewrites the **host** repository's hook wiring with a path inside the worktree —
+and orchestration then deletes the worktree. Nothing on disk points back at the cause; hook
+managers gitignore their own directory so `git status` stays clean; and a hook that cannot
+run does not error, it just stops enforcing. It was found on a real repository ten days
+later, by the consumer, while looking for something else.
+
+Two lessons outrank the fix. **A completeness claim is a measurement, not a summary** — the
+sealed statement above was true of everything that had been enumerated, which is not the
+same as everything that exists, and it read as the latter for five days. And **the guard
+belongs where the effect is, not where the alarming word is**: no hook installer is called
+anywhere in this repo, and it did not need to be.
+
 **Shipped — the safety track, in order:**
 - `8fae5733` — DB-mutation guard in `integration_pre_build`; no more
   `prisma db push --accept-data-loss` against a non-`file:` target.
