@@ -26,7 +26,21 @@
 Consumer gate chains commonly hang off the *pre-push* hook; bypassing it makes every one of
 them skip silently. Commits may use `--no-verify`; pushes must never.
 
-**DECISION — do NOT run `set-project init` against the live consumer project until 0a ships.** Today an `init --force` clobbers un-prefixed consumer files (i18n catalogs, the e2e global-setup, 16 hand-authored rules). This is a **gated hold**: the gate is the four items above, then re-evaluate.
+**GATE LIFTED 2026-07-24 — with one required first step.** The hold on running `set-project
+init` against a live consumer is released: every clobber path measured on 2026-07-19 now goes
+through either the manifest flags (`d3769483`), the install ledger and tombstones
+(`aed09d3c`), or an ownership check (`a20aab1f`), and `--dry-run` finally reports the bash
+engine too.
+
+**Run `set-project init --dry-run` first and read the plan.** It is now honest about its own
+blast radius, which it was not before. Then diff-check the consumer's `.claude/`, its hook
+config and its gate scripts after the real run; an empty diff on hand-authored files is the
+pass condition.
+
+**One unguarded path remains** (out of scope for today, and it fires only when the memory CLI
+is installed): `_deploy_memory` shells out to `set-memory-hooks remove --quiet` inside the
+consumer tree with both streams swallowed, no dry-run awareness and no provenance. Close it
+before treating deploy as fully sealed.
 
 ## Cross-project agent channel — TEMPORARY (from 2026-07-24)
 
