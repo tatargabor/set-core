@@ -6,6 +6,7 @@ import Worktrees from './pages/Worktrees'
 import Settings from './pages/Settings'
 import Memory from './pages/Memory'
 import Manager from './pages/Manager'
+import ProjectStatus from './pages/ProjectStatus'
 import ManagerIssues from './pages/ManagerIssues'
 import ManagerMutes from './pages/ManagerMutes'
 // SentinelPage removed — controls now in StatusHeader, /sentinel redirects to /orch
@@ -139,6 +140,11 @@ function OrchPage({ tab }: { tab?: string }) {
   return <Dashboard project={name || null} initialTab={tab} />
 }
 
+function ProjectStatusPage() {
+  const { name } = useParams<{ name: string }>()
+  return <ProjectStatus project={name || null} />
+}
+
 function IssuesPage() {
   const { name } = useParams<{ name: string }>()
   return <ManagerIssues project={name || null} />
@@ -218,6 +224,8 @@ export default function App() {
           {/* Sentinel — redirects to orch (controls now in StatusHeader) */}
           <Route path="sentinel" element={<Navigate to="../orch" replace />} />
           <Route path="sentinel/chat" element={<SentinelChatPage />} />
+          {/* Project status — read from the project's own contract */}
+          <Route path="status" element={<ProjectStatusPage />} />
           {/* Issues */}
           <Route path="issues" element={<IssuesPage />} />
           {/* Memory */}

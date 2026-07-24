@@ -1246,3 +1246,51 @@ export function getSessionDetail(
   if (to) params.set('to', to)
   return fetchJSON(`/${project}/activity-timeline/session-detail?${params.toString()}`)
 }
+
+// --- Project status contract ---
+//
+// What the PROJECT says about itself, read live through its published contract.
+// Deliberately untyped past the envelope: `data` is the project's shape, not
+// set-core's, and pinning field names here would make the framework the authority
+// on what a project may report. The renderer works from the shape it receives.
+
+export interface StatusContractInfo {
+  configured: boolean
+  source: string | null
+  command: string | null
+  commands: string[]
+  timeout: number | null
+  cwd: string | null
+}
+
+export interface StatusCommandResult {
+  ok: boolean
+  data: unknown
+  error: string | null
+  errorClass: string | null
+  generatedAt: string | null
+  contractVersion: number | null
+}
+
+export interface ProjectStatusResponse {
+  project?: string
+  contract: StatusContractInfo
+  ok: boolean
+  commands: Record<string, StatusCommandResult>
+  gaps: Record<string, string>
+}
+
+export function getStatusContract(project: string): Promise<StatusContractInfo> {
+  return fetchJSON(`/${project}/project-status/contract`)
+}
+
+export function getProjectStatus(
+  project: string,
+  opts?: { commands?: string[]; refresh?: boolean },
+): Promise<ProjectStatusResponse> {
+  const params = new URLSearchParams()
+  if (opts?.commands?.length) params.set('commands', opts.commands.join(','))
+  if (opts?.refresh) params.set('refresh', 'true')
+  const qs = params.toString()
+  return fetchJSON(`/${project}/project-status${qs ? `?${qs}` : ''}`)
+}
