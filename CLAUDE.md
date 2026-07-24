@@ -88,6 +88,13 @@ Confidentiality below). Each side appends **only** to its own file and reads the
   shared file must be edited (e.g. a planning doc in the consumer repo), take a POSIX-atomic
   lock first: `mkdir "$F.lock" || exit 1` with `trap 'rmdir "$F.lock"' EXIT`.
 - Watch the other side with a Monitor on its file size — do not poll by hand.
+- **A word like "measured" obliges you to show the evidence** — the command, its output, a
+  `file:line`, a PID, a task id. Without one, the honest word is "assumption", and the other
+  side must not write it into a rule book. This is not pedantry: a plausible guess crossed
+  this bus, was reasonably taken for a measurement, and ended up in BOTH projects' rules
+  before anyone ran the one-line check that disproved it. On an agent channel a confident
+  claim propagates further and faster than an ordinary mistake, because the receiving side
+  has every reason to trust it.
 - The channel is `/tmp`, i.e. session-lived. Anything durable belongs in a repo.
 
 **Resuming the channel after a compact, a `/clear`, or a fresh session.** The channel is the
@@ -100,19 +107,25 @@ only thing that survives — rebuild the contact from it, do not ask the user to
    so the tail is the current state.
 3. **Check both watches, then re-arm only what is missing.** A dead watch is
    indistinguishable from a quiet peer, so the work stops without anyone noticing — but
-   blindly re-arming is its own bug: a duplicate cron fires the same catch-up twice.
-   **`CronList` first**, and look for a live Monitor before starting one.
+   blindly re-arming is its own bug: a duplicate fires the same catch-up twice, and two
+   Monitors on one file send two notifications for every entry. **`CronList` first**, and
+   look for a live Monitor process before starting one.
+
+   **Both survive a compact** — verified on this machine, not assumed: a `persistent: true`
+   Monitor started at 08:19 was still the same live PID hours later, across the compact
+   that produced this session's summary (`ps -eo pid,lstart,cmd | grep <watched file>`).
+   An earlier version of this section claimed the Monitor does not survive; that claim was
+   a guess that travelled between two sessions and got written into both rule books before
+   anyone ran the check.
    - a **Monitor** on the other side's file size (`persistent: true`) — how you learn about
-     new entries without polling by hand. **Measured: it does NOT survive a compact.** This
-     is the one that actually needs re-arming, and without it your reply only surfaces at
-     the next cron tick.
-   - a **CronCreate** catch-up every ~10 minutes as the fallback for when the Monitor dies.
-     **Measured: this one DOES survive a compact** — check before creating a second. Its
-     prompt: read the last peer entry, check whether you have already answered it, do the
-     work and reply if not, restart the Monitor if it is gone, and **say nothing at all when
-     there is nothing to do** — a fallback that chatters gets muted. Pick a period that does
-     not coincide with the peer's (they run one too); cron jobs are session-only and expire
-     after 7 days.
+     new entries without polling by hand. It is a real background process; `ps` is the
+     evidence, and it outlives a compact.
+   - a **CronCreate** catch-up every ~10 minutes as the fallback for when the Monitor does
+     die. Its prompt: read the last peer entry, check whether you have already answered it,
+     do the work and reply if not, restart the Monitor if it is gone, and **say nothing at
+     all when there is nothing to do** — a fallback that chatters gets muted. Pick a period
+     that does not coincide with the peer's (they run one too); cron jobs are session-only
+     and expire after 7 days.
 4. **Announce the resume** in your own file: one `TÉNY` entry saying the context restarted and
    which entry number you have read up to, so the other side knows nothing was lost.
 5. **The durable agreements are not in /tmp.** The negotiated contract lives in the consumer's
@@ -320,10 +333,11 @@ When compacting context, always preserve:
 - Any unresolved errors or blockers
 - The cross-project channel dir (if one is active) and the last entry read on each side — see
   the temporary cross-project agent channel section above
-- **That the Monitor must be re-armed after the compact — the cron survives, so check with
-  `CronList` before creating a second one.** Nothing reports a watch's death, and a peer
-  waiting on an answer looks exactly like a peer with nothing to say, so check first, before
-  picking the work back up.
+- **That the channel watches must be CHECKED after the compact, not re-armed on reflex.**
+  Both the Monitor and the cron survive it (verified), so an unconditional re-arm produces
+  duplicates — two notifications per entry, two answers to one question. Nothing reports a
+  watch's death either, and a peer waiting on an answer looks exactly like a peer with
+  nothing to say: `CronList` + `ps` for the Monitor, then fill only the real gap.
 
 ## Getting Started
 <!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `set-project init`. -->
