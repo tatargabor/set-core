@@ -206,7 +206,11 @@ export default function ProjectStatus({ project }: Props) {
   const activeResult = entries.find(([n]) => n === activeName)?.[1]
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl overflow-y-auto h-full">
+    // Full width, deliberately. The cap that used to be here was written when an answer
+    // was a handful of fields; a live one is 67 rows by nine columns, and half of them sat
+    // behind a scrollbar inside a container using half the screen. Horizontal scrolling
+    // belongs to the table, never to the page.
+    <div className="p-4 space-y-3 overflow-y-auto h-full">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-base font-semibold text-neutral-100">Project Status</h1>
