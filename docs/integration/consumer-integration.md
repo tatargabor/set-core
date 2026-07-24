@@ -173,9 +173,19 @@ reproduces the defect classes this track keeps finding:
    draws *nothing* — never "1 emphasised field missing". That is the false-absence shape.
 2. **The count comes from the data**; the declaration only says what to look for.
 
-There is a zero-contract-change fallback: field order. The blocker's own `detail` prose
-already states the subset, so moving that list to be the object's first list-valued field
-raises it without any mechanism at all. Ugly, free, and the consumer's call.
+There was a zero-contract-change fallback: field order. **The consumer rejected it and took
+the expensive path, and their reason is better than the offer was**: order would be a
+*silent* contract, broken by an innocent reordering with nothing to say so — the same
+reasoning that already put an explicit `primary` in the manifest instead of trusting the
+order of `commands`. Recorded because it is the second time that principle has decided a
+design here without being invoked by name.
+
+**Both halves shipped 2026-07-24**: the producer's (`_emphasis` on the blocker, empty array
+when there is nothing to mark) and this side's (`d54c0807`). Verified in a browser against
+the live contract: exactly one emphasised element, holding exactly what the producer marked,
+the marking itself not rendered as data, 0 JS errors. 6 of 8 new tests measure, 2 guard —
+and the test *named* for false absence fails against HEAD on its other assertion, so its
+false-absence half is a guard, not a measurement.
 
 ### The property this keeps re-proving, measured seven times
 
@@ -189,7 +199,7 @@ framework change, a name has been burned in somewhere, and that is the bug** —
 
 | Decision | Owner | State |
 |---|---|---|
-| `_emphasis` vs. field-order fallback | consumer | offered in S#69, awaiting their choice |
+| Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
 
 ---
 
