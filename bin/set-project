@@ -83,17 +83,30 @@ _migrate_consumer() {
         orch_yaml="$project_path/.claude/orchestration.yaml"
     fi
     if [[ -f "$orch_yaml" ]]; then
-        # Find directives in our known set that are missing from consumer's yaml
+        # Which directives does the consumer's yaml already mention?
+        #
+        # A commented placeholder counts as mentioned. This pass writes exactly such
+        # placeholders (`# key: default  # added by migration …`), and it used to look
+        # only for ACTIVE keys — so it never recognised its own output and appended the
+        # same 16 lines on every single init. Measured on a consumer after two runs: 32
+        # dead lines from 16 keys, growing without bound.
+        #
+        # Matching is exact and delimiter-anchored. The old substring test would have let
+        # any key that happens to end another key's name read as already present.
         local existing_keys
-        existing_keys=$(grep -E '^[a-z_]+:' "$orch_yaml" 2>/dev/null | sed 's/:.*//' | tr '\n' '|' || true)
+        existing_keys=$(grep -E '^[[:space:]]*#?[[:space:]]*[a-z_]+:' "$orch_yaml" 2>/dev/null \
+            | sed -E 's/^[[:space:]]*#?[[:space:]]*([a-z_]+):.*/\1/' | sort -u | tr '\n' '|' || true)
 
+        # An unreadable or keyless yaml means "no information" — say nothing rather than
+        # append all sixteen defaults to a file we failed to understand.
         if [[ -n "$existing_keys" ]]; then
+            existing_keys="|${existing_keys}"
             # Check each known directive
             local all_keys
             all_keys=$(echo "$_KNOWN_DIRECTIVES" | jq -r 'keys[]')
             while IFS= read -r key; do
                 [[ -z "$key" ]] && continue
-                if ! echo "$existing_keys" | grep -q "${key}|"; then
+                if [[ "$existing_keys" != *"|${key}|"* ]]; then
                     # Missing directive — add with comment
                     local default_val
                     default_val=$(echo "$_KNOWN_DIRECTIVES" | jq -r --arg k "$key" '.[$k] // ""')

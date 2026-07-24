@@ -332,6 +332,8 @@ import json, os, sys
 from datetime import datetime, timezone
 
 ledger_path, staged_path, tombs_path = sys.argv[1], sys.argv[2], sys.argv[3]
+if len(sys.argv) > 4 and sys.argv[4]:
+    sys.path.insert(0, sys.argv[4])
 data = {}
 if os.path.isfile(ledger_path):
     try:
@@ -369,25 +371,32 @@ if os.path.isfile(tombs_path):
             tombstones.add(key)
             files.pop(key, None)
 
-data['version'] = 2
-data['_help'] = (
-    \"Written by 'set-project init'. 'files' maps a project-relative path to the sha256 \"
-    \"of the content set-core deployed there; a file whose hash still matches is treated \"
-    \"as untouched and may be updated, one that differs belongs to the project and is left \"
-    \"alone. 'tombstones' lists paths the project deleted on purpose - set-core will not \"
-    \"recreate them. To accept the framework version of a tombstoned path again, remove its \"
-    \"entry from the 'tombstones' list and re-run the init.\"
-)
-data['files'] = dict(sorted(files.items()))
-data['tombstones'] = sorted(tombstones)
-data['updated'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
+# Both engines write this same file on every init. When each carried its own copy of
+# the help text they disagreed on the wording AND on the key order, so the ledger came
+# out different depending on which engine wrote last — a diff on every run with nothing
+# behind it. One source of truth, imported; the literal below is only for a target where
+# set_orch is not importable.
+try:
+    from set_orch.deploy_ledger import SCHEMA_VERSION as _SV, _HELP as _H
+except Exception:
+    _SV, _H = 2, 'Written by set-project init. See the set-core documentation.'
+
+payload = {
+    'version': _SV,
+    '_help': _H,
+    'updated': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+    'files': dict(sorted(files.items())),
+    'tombstones': sorted(tombstones),
+}
 
 tmp = ledger_path + '.tmp'
 with open(tmp, 'w') as f:
-    json.dump(data, f, indent=2)
+    # ensure_ascii=False keeps the em dash a character instead of an escape. With it
+    # escaped the two engines produced byte-different files from identical content.
+    json.dump(payload, f, indent=2, ensure_ascii=False)
     f.write('\n')
 os.replace(tmp, ledger_path)
-" "$ledger" "$_PV_STAGED" "$_PV_NEWTOMBS" 2>/dev/null \
+" "$ledger" "$_PV_STAGED" "$_PV_NEWTOMBS" "${SET_TOOLS_ROOT:-}/lib" 2>/dev/null \
             || warn "  Failed to update deploy ledger: $ledger"
     fi
 

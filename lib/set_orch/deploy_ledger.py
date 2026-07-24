@@ -241,7 +241,10 @@ class DeployLedger:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(self.path.suffix + ".tmp")
             with open(tmp, "w") as fh:
-                json.dump(payload, fh, indent=2)
+                # ensure_ascii=False: the bash engine writes this same file. With the
+                # em dash escaped on one side and literal on the other, identical
+                # content produced a diff on every init.
+                json.dump(payload, fh, indent=2, ensure_ascii=False)
                 fh.write("\n")
             os.replace(tmp, self.path)
             logger.info(
