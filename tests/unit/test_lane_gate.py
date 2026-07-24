@@ -188,6 +188,33 @@ def test_a_non_path_violation_is_not_silently_dropped_by_exclusions(monkeypatch,
     assert set(report.fired[0].violations) == {"DEF-77", "BUG-3"}
 
 
+def test_the_output_names_declared_fields_this_version_does_not_read(tmp_path):
+    """Keeping a field and showing nothing moves the silence one step later.
+
+    The project would still believe the framework acted on something it merely stored. So
+    the keys are named — and none of their values is interpreted, because naming a
+    project's vocabulary in Layer 1 is what this whole capability refuses.
+    """
+    tree = _tree(tmp_path, {"sig": dict(_decl(),
+                                        canonical_implementation="scripts/gates/x.sh",
+                                        published_answer={"command": "bugs"})})
+
+    output = lg.format_output(lg.build_report(tree, change=_change()), change=_change())
+
+    assert "[NOT READ] sig" in output
+    assert "canonical_implementation" in output
+    assert "interprets none of them" in output
+
+
+def test_a_signal_with_no_extra_fields_produces_no_NOT_READ_line(tmp_path):
+    """A notice that fires on every ordinary signal is a notice nobody reads."""
+    tree = _tree(tmp_path, {"sig": _decl()})
+
+    output = lg.format_output(lg.build_report(tree, change=_change()), change=_change())
+
+    assert "NOT READ" not in output
+
+
 def test_the_output_names_unevaluated_signals(tmp_path):
     tree = _tree(tmp_path, {"sig": _decl()})
 

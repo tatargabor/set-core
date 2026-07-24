@@ -130,6 +130,20 @@ class LaneSignal:
     triggering_case: str
     exclusions: tuple = ()
 
+    #: Declared keys this set-core version does not read, kept verbatim and NOT interpreted.
+    #:
+    #: Without this the reader silently discarded them, which is the false-absence class
+    #: pointed inward: a project declares something, the framework keeps nothing, and
+    #: nothing says so. It surfaced when a project attached a reference to the canonical
+    #: implementation of its own condition — the whole point of which is that a handler and
+    #: the project's own gate can be COMPARED, so discarding it removes the comparison that
+    #: would have caught a divergence.
+    #:
+    #: Preserved as opaque data on purpose. Naming any of these keys in Layer 1 would make
+    #: the framework hold project vocabulary, which is exactly what this module refuses;
+    #: the gate reports that they exist, by key name, and interprets none of them.
+    extra: dict = field(default_factory=dict)
+
     @property
     def is_explained(self) -> bool:
         """Whether the triggering case carries anything beyond a date and an identifier.
@@ -327,6 +341,12 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
 
     _refuse_if_self_inclusive(name, condition, str(raw["scope"]), exclusions, declared_at)
 
+    # Everything the project declared that this version does not read is KEPT, never
+    # dropped — see `LaneSignal.extra`. Derived from the field list rather than a second
+    # hard-coded set of names, so a future field cannot be preserved and read at once.
+    known = set(REQUIRED_FIELDS) | {"exclusions"}
+    extra = {k: v for k, v in raw.items() if k not in known}
+
     signal = LaneSignal(
         name=name,
         lane=str(raw["lane"]),
@@ -336,6 +356,7 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
         promotion=raw["promotion"],
         triggering_case=triggering,
         exclusions=tuple(exclusions),
+        extra=extra,
     )
     # Shape, not content — see "What this module logs" in the module docstring.
     logger.debug("lane signal accepted: %d condition key(s), explained=%s",

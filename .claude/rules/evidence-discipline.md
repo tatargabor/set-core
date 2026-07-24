@@ -172,6 +172,23 @@ And prefer a restore that works on the file's actual state: `cp` a copy aside, o
 original back explicitly. A revert command chosen for the tracked case fails silently in the
 untracked one — which is exactly when new code is being mutation-tested.
 
+**Never open a file for writing in the same expression that reads it.** Measured on the
+other side of the agent channel, on a 290 KB append-only log: `open(p, "w").write(open(p)
+.read().replace(...))` truncated the file to **0 bytes**. Python evaluates `open(p, "w")`
+first, which truncates immediately; the read that follows then sees the already-empty file.
+No exception, no non-zero exit. The same author had written it safely one round earlier —
+read into a variable, then write — and compressed it onto one line because it was shorter.
+
+Two things make it worth a rule rather than a note. **The failure direction is reassuring:**
+an empty file is a valid "nothing to write" shape, so every downstream check (size, diff,
+commit) stays green on it. And **the backup was refreshed by the destroying command itself** —
+a `cp` to a mirror ran after the truncation, so the mirror held the zero. Only the git
+history, written before the operation, still had the content. *A backup that the damaging
+operation updates is not a backup.*
+
+So: read in a separate statement, or write a temp file and `mv`. And when a check exists to
+catch a class of damage, make sure the damaging path cannot be the thing that updates it.
+
 **Never put `git stash` in a command that can be killed.** Same defect one level up, and it
 nearly cost this session's uncommitted work: `git stash -u && <full suite> && git stash pop`
 run in the foreground hit a two-minute tool timeout **after the stash and before the pop**,

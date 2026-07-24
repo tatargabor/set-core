@@ -14,6 +14,8 @@
 - [x] 2.5 Add the `ProjectType` extension point that supplies declarations, with a default returning nothing — and a test asserting `lib/set_orch/` contains no built-in signal, path pattern, or defect-store name [REQ: set-core-holds-no-lane-signal-of-its-own]
 - [x] 2.6 Assert no declaration content is persisted into set-core's tree, cache or logs beyond the run — two carriers, and the log was the one that leaked: the framework's own loggers now emit shape only (counts, reason codes, condition-key count) while every value reaches the developer through the returned refusal and the gate output [REQ: the-declaration-is-read-at-evaluation-time-and-never-persisted]
 
+- [x] 2.7 Preserve declared keys this version does not read, and NAME them in the gate output without interpreting any value. Dropping them is the false-absence class pointed inward — the declaration parses, so the project believes the field arrived. It surfaced when a project attached a reference to the canonical implementation of its own condition, attached precisely so the framework's answer and the project's own gate could be COMPARED; discarding it removes the comparison that would catch a divergence [REQ: set-core-holds-no-lane-signal-of-its-own]
+
 ## 3. Evaluator and baseline
 
 - [x] 3.1 Evaluate a signal against a change's delivered artefacts and return one of three outcomes: fired / did not fire / could not be evaluated [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]

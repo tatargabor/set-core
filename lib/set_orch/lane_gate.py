@@ -159,6 +159,18 @@ def format_output(report: LaneReport, change: Any = None) -> str:
     for refusal in report.refusals:
         lines.append(f"[REFUSED] {refusal}")
 
+    # Declared-but-unread keys are named, never interpreted. Keeping them and showing
+    # nothing would move the silence one step later: the project would still believe the
+    # framework acted on a field it merely stored. Naming them is also how a divergence
+    # gets noticed — a project attaching a reference to its own canonical implementation
+    # does so precisely so the two can be compared.
+    for outcome in report.outcomes:
+        if outcome.signal.extra:
+            lines.append(
+                f"[NOT READ] {outcome.signal.name}: declared "
+                f"{sorted(outcome.signal.extra)} — this set-core version stores these "
+                f"and interprets none of them")
+
     for name, added in report.baseline_growth:
         lines.append(f"[BASELINE GROWTH] {name}: {list(added)} — a baseline may only shrink; "
                      f"inheriting debt is what it is for, creating it is not")

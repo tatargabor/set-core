@@ -389,6 +389,54 @@ def test_a_refusal_logs_its_reason_and_not_the_offending_value(tmp_path, caplog)
     assert _MARKERS[0] in str(result.refusals[0])
 
 
+# ── declared but not read: kept, never silently dropped ────────────────────────────
+
+def test_a_declared_field_this_version_does_not_read_is_KEPT():
+    """Discarding it is the false-absence class pointed inward.
+
+    Surfaced when a project attached a reference to the canonical implementation of its own
+    condition — attached precisely so a handler and the project's own gate could be
+    COMPARED. Silently dropping it removes the comparison that would catch a divergence,
+    and the project has no way to tell: its declaration parsed, so it believes the field
+    arrived.
+    """
+    signal = ls.parse_signal("sig", _valid(
+        canonical_implementation="scripts/gates/check-x.sh",
+        published_answer={"command": "bugs", "field": "data.bugs[].hasTest"}))
+
+    assert signal.extra["canonical_implementation"] == "scripts/gates/check-x.sh"
+    assert signal.extra["published_answer"]["command"] == "bugs"
+
+
+def test_a_known_field_never_lands_in_extra():
+    """`extra` is derived from the field list, so a field cannot be both read and preserved.
+
+    A second hard-coded set of names here would be the second copy that drifts — a field
+    added to `REQUIRED_FIELDS` but forgotten in that set would appear as unread while being
+    read, which is the mirror falsehood.
+    """
+    signal = ls.parse_signal("sig", _valid())
+
+    assert signal.extra == {}
+    for known in ls.REQUIRED_FIELDS + ("exclusions",):
+        assert known not in signal.extra
+
+
+def test_layer_one_does_not_name_any_of_the_preserved_keys():
+    """Preserving them must not become interpreting them.
+
+    The moment Layer 1 mentions `canonical_implementation` by name, it holds a project's
+    vocabulary — the exact content this module refuses. It stores; the gate names the keys
+    in its output; neither reads a value.
+    """
+    from pathlib import Path as _P
+    source = _P(ls.__file__).read_text()
+
+    for project_vocabulary in ("canonical_implementation", "published_answer",
+                               "exempt_path_contains", "rename_detection"):
+        assert project_vocabulary not in source
+
+
 # ── the layer boundary ─────────────────────────────────────────────────────────────
 
 def test_layer_one_holds_no_signal_of_its_own():
