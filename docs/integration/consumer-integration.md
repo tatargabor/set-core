@@ -432,7 +432,24 @@ being guessed at.
    is held apart from the page-load data, since an answer that vanishes on the next refresh
    reads as a failure. An absent declaration means today's behaviour, verified live.
 
-   **Waiting on the project to declare it** — the derivation, as always, is theirs.
+   **Declared by the project, and then measured — which is how the gap in it was found.**
+   The page load now asks seven commands instead of eight, correctly. But pressing the
+   button returns in **zero seconds** with the same permanent null, because the expensive
+   probe needs a flag nothing sends. **That is a false affordance, and this side built it:**
+   a reader who clicks and sees nothing concludes the probe ran and found nothing, rather
+   than that it never ran. Recorded rather than quietly waited out, because a half-built
+   affordance is exactly what a later session mistakes for a finished one.
+
+   **The framework's remaining half is now built too** (`8f91b4b2`): per-command timeouts.
+   Even once the probe runs, the global 30s would have killed a call measured at 118–286s —
+   so the mechanism built for this one answer would never once have delivered it. One
+   number cannot serve both kinds of question, and the failure is asymmetric: a raised
+   global lets a hung fast command hold the page, while a global that fits the fast ones
+   makes the slow answer permanently unobtainable — on screen indistinguishable from a
+   project that cannot answer it.
+
+   **Still open, and it is the project's half:** the command must actually probe when asked
+   by name.
 
 4. **Then the factory layer proper** — planning releases and bug fixes inside set-core.
    Its shape is the router between differentiated ADWs already identified in the
