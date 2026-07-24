@@ -70,6 +70,61 @@ def test_an_unhandled_condition_kind_is_unevaluated_not_a_pass(tmp_path):
     assert report.did_not_fire == []
 
 
+def test_all_signals_unevaluated_is_SKIPPED_not_a_pass(tmp_path):
+    """Nothing fired while nothing could run is the absent case wearing a better status.
+
+    Found by running the gate against a declaring tree instead of reading the code: it
+    answered `pass`. That is the shape it meets FIRST in the real world — `_KIND_HANDLERS`
+    is empty, so today every declared signal is unevaluated — and `pass` is the reassuring
+    direction, in the one place a reader believes an all-clear.
+
+    The earlier tests here checked `report.unevaluated` and `did_not_fire`, never the gate
+    STATUS in this state, which is the field a gate summary counts.
+    """
+    result = lg.execute_lane_gate("c", _change(), _tree(tmp_path, {"sig": _decl()}))
+
+    assert result.status == "skipped"
+    assert result.status != "pass"
+
+
+def test_pass_requires_that_something_actually_ran(monkeypatch, tmp_path):
+    """The mirror: `pass` is still reachable, so the fix is not "never pass"."""
+    tree = _tree(tmp_path, {"sig": _decl()})
+    monkeypatch.setitem(lg._KIND_HANDLERS, "new_module", lambda s, p: [])
+
+    result = lg.execute_lane_gate("c", _change(), tree)
+
+    assert result.status == "pass"
+
+
+def test_one_evaluated_and_one_not_does_not_earn_a_pass(monkeypatch, tmp_path):
+    """A partial run is not a clean run, and the status is what gets counted."""
+    tree = _tree(tmp_path, {
+        "ran": _decl(condition={"kind": "new_module", "pattern": "src/*"}),
+        "could-not": _decl(condition={"kind": "something_this_version_cannot_read"}),
+    })
+    monkeypatch.setitem(lg._KIND_HANDLERS, "new_module", lambda s, p: [])
+
+    result = lg.execute_lane_gate("c", _change(), tree)
+
+    assert result.status == "skipped"
+
+
+def test_an_unhandled_kind_does_not_blame_the_projects_tree(tmp_path):
+    """Two unevaluable reasons that are opposites must not share one message.
+
+    The evaluator's `None` means "the condition's input is absent" — a statement about the
+    project's tree. A missing handler is a statement about set-core. Collapsed into one,
+    the message sends someone looking for a file that is not missing.
+    """
+    tree = _tree(tmp_path, {"sig": _decl()})
+
+    output = lg.format_output(lg.build_report(tree, change=_change()), change=_change())
+
+    assert "input is absent" not in output
+    assert "not at fault" in output
+
+
 def test_the_output_names_unevaluated_signals(tmp_path):
     tree = _tree(tmp_path, {"sig": _decl()})
 

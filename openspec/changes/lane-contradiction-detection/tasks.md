@@ -25,6 +25,9 @@
 
 ## 4. Gate wiring
 
+- [x] 4.6 **Added after the fact, from a defect the wiring itself produced.** `pass` requires that at least one declared signal was actually EVALUATED: nothing firing while nothing could run is the absent case wearing a better status, and it is the shape the gate meets FIRST in the real world (`_KIND_HANDLERS` is empty). Found by running the gate against a declaring tree, not by reading it — the existing tests checked `report.unevaluated` and never the STATUS, which is the field a summary counts [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]
+- [x] 4.7 An unhandled condition kind is reported as set-core's limit, not as the project's artefact being absent — two unevaluable reasons that are opposites must not share one message, or the reader goes looking for a file that is not missing [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]
+
 - [x] 4.1 Register the lane gate through the existing `gate-registry` mechanism so it inherits observability and per-change configuration [REQ: the-lane-is-measured-after-the-work-never-classified-before-it]
 - [x] 4.2 Report a contradiction naming the declared type and the contradicting artefact **together** — either alone reads as normal [REQ: the-lane-is-measured-after-the-work-never-classified-before-it]
 - [x] 4.3 Assert the gate emits no overall lane-correct verdict field, and that unevaluated signals are excluded from the did-not-fire count [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]

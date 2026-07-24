@@ -36,13 +36,23 @@ logger = logging.getLogger(__name__)
 GATE_NAME = "lane"
 
 
+class UnhandledConditionKind(Exception):
+    """This set-core version has no handler for a declared condition kind.
+
+    A distinct type because the alternative — returning the evaluator's `None` — collapses
+    it into "the condition's input is absent", which points the reader at their own tree.
+    The two unevaluable reasons are opposites: one says a file is missing, the other says
+    the framework cannot read this kind and the tree is fine. Merged, they send someone
+    looking for a file that is not missing.
+    """
+
+
 def _detector_for(wt_path: str) -> Callable[[LaneSignal], Optional[list]]:
     """Return a detector that runs a signal's condition against the worktree.
 
     Layer 1 knows how to READ a condition, never what any particular condition means for a
-    given project's layout — so an unrecognised kind returns None ("could not decide")
-    rather than an empty list. That direction matters: an empty list would make every
-    unknown condition look like a clean result.
+    given project's layout — so an unrecognised kind is never an empty list. That direction
+    matters: an empty list would make every unknown condition look like a clean result.
     """
 
     def detect(signal: LaneSignal) -> Optional[list]:
@@ -52,7 +62,11 @@ def _detector_for(wt_path: str) -> Callable[[LaneSignal], Optional[list]]:
             # vocabulary. They reach the developer through the gate's output, which is the
             # project's report about its own tree — see `lane_signals`' module docstring.
             logger.debug("lane signal: no handler for its condition kind — unevaluated")
-            return None
+            raise UnhandledConditionKind(
+                "no handler for this condition kind in this set-core version; the tree is "
+                "not at fault. A handler is added once a project declares a signal that "
+                "needs it — until then the signal is unevaluated, never a pass"
+            )
         return handler(signal, wt_path)
 
     return detect
@@ -137,6 +151,18 @@ def execute_lane_gate(change_name: str, change: Any, wt_path: str) -> Any:
 
     if report.fired:
         return GateResult(GATE_NAME, "warn-fail", output=output)
+
+    # `pass` requires that every declared signal was actually EVALUATED. Nothing firing
+    # while nothing could run is the same all-clear as the absent case wearing a better
+    # status — and it is the shape the gate meets first in the real world, because
+    # `_KIND_HANDLERS` is empty, so today every declared signal is unevaluated. Found by
+    # running the gate against a declaring tree rather than by reading the code: it
+    # answered `pass`, which the four rules in this module's docstring forbid.
+    #
+    # Strictness costs nothing here: `skipped` blocks nothing. It only refuses to claim a
+    # clean result the gate did not earn.
+    if report.unevaluated:
+        return GateResult(GATE_NAME, "skipped", output=output)
 
     return GateResult(GATE_NAME, "pass", output=output)
 
