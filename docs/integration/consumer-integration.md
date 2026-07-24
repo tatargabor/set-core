@@ -573,6 +573,19 @@ being guessed at.
    framework's shape. Starting the router here now would still be the parallel design the
    user ruled out.
 
+   **Opened on the channel 2026-07-24 (S#78), and the reason it took this long is the
+   finding.** For roughly an hour both sides did real, measurable work — three false
+   blockers removed on theirs, four gates and a renderer gap on this one — and none of it
+   advanced this item. It hardened the item before it. Neither side was wrong and neither
+   noticed, because mutual defect-finding produces a steady supply of legitimate next
+   things to do, each one smaller than the step being avoided. Their substantive path is
+   genuinely blocked on two user decisions; this side's was not blocked, only unopened.
+
+   *The question now on the channel, awaiting their answer:* which axis the differentiation
+   should follow — theirs (is a manual step needed, is it already live) or this repo's (what
+   does the change touch), or the product of the two — and whether to start now or after
+   their readiness-truth pass. Nothing is being designed here until that comes back.
+
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
 in CI stays there. This *tightens* the production constraint rather than loosening it — the
