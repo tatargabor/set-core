@@ -40,13 +40,21 @@ survive the compact; the task in flight does not outrank them.**
    *for this*, not as an end in itself.
 2. **Register in set-core what a project needs in order to be visible:** bugs, releases, the
    **test system**, the **live system**, settings, accesses, and the surrounding
-   information. Today none of that reaches the framework.
+   information. **MET as of 2026-07-24** — all of it reaches the framework now; see items
+   1–3d of "Next, in order" in the living record for what each one cost.
 
    *Corrected 2026-07-24 after the consumer's side caught it:* this said "test environment"
    and "live environment", which is narrower than what was asked for and produces a
    different next step. An environment is a place — is it up, what is its URL. A **system**
-   also covers whether its tests run, whether they are green, and when they last ran. The
-   first was already satisfied; the second needs its own contract command and is not built.
+   also covers whether its tests run, whether they are green, and when they last ran.
+
+   *Corrected again the same day, because this paragraph was stale in the direction that
+   causes wasted work:* it said the second "needs its own contract command and is not
+   built", and a session reading only this file would have gone off to build one. Both are
+   done — the test system through a `commitsSince`-carrying answer that deliberately has no
+   `ok` field, the live system through a separate `health` command — and **neither cost the
+   framework a single change**, which is the seventh time the declaration-driven design has
+   held. Goal 2 is a closed item; goal 5 is the open one.
 3. **The project supplies the data; set-core supplies the abstraction.** The consumer exposes
    endpoints — a command speaking a versioned contract — and set-core's abstraction layer is
    extended to read them. The layer stays domain-free; the domain stays on the project side.
