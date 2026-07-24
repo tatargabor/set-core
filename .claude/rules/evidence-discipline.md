@@ -47,6 +47,22 @@ to a pass*, so the clause admitting the gap was the thing that hid it. When a se
 supposed to be a line, match the WHOLE line; anything else is a substring test wearing an
 anchor.
 
+**The name is a second place, and it is the copy people actually read.** A limit stated in
+a header, a docstring or a design section does not protect anything if the *name* claims
+more, because the name is what travels — into a summary, a test report, an `ls`, a status
+line, a compact. Found on both sides of an agent channel within minutes of each other on
+2026-07-24: a change called `differentiated-change-pipeline` whose 22 tasks built a detector
+and no pipeline (`grep -inE "regression|exit gate|per-lane|second pipeline" tasks.md` → zero
+hits, while its own design argued the two lanes gate opposite ends), and a test suite named
+"the output surface is CLOSED" that was closed in one direction only — a limit its file
+header stated loudly and its fourth test specifically asserted.
+
+This is the second-place defect turned inward: **within a single artifact, the name is a
+second copy of the content.** It is the shortest and most-read copy, so it drifts first and
+costs most. Two consequences: put the limit *in the name* when the thing is one-directional
+or partial, and prefer renaming to rescoping — a name that claims more than the tasks
+deliver reads later as "that part is done".
+
 **A subagent's "done" is not evidence that anything happened.** Measured here: an unflagged
 `claude -p` asked to create a file replied `Done.` and exit 0, and the file did not exist —
 the tool layer had refused the write and the agent did not know. So a gate that waits on an
