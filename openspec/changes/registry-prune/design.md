@@ -40,8 +40,9 @@ old". Anything richer is a heuristic, and a heuristic that guesses wrong here de
 operator's registration for a live project.
 
 *Alternative rejected:* also deregistering entries whose directory exists but has no `.set/`
-or no orchestration state. That would have caught more of the 50 — and it would have caught
-`itline-web`, a real project last touched 10h ago.
+or no orchestration state. That would have caught more of the 50 — and on the live registry it
+would also have caught a project someone had worked on ten hours earlier, which simply had no
+orchestration run behind it.
 
 ### D2 — A missing parent directory means "unknown", not "gone"
 
@@ -49,7 +50,7 @@ or no orchestration state. That would have caught more of the 50 — and it woul
 not mounted. The two are indistinguishable at the leaf, and they demand opposite actions.
 
 So deregistration additionally requires that the entry's **parent directory exists**. A
-deleted scaffold at `/tmp/tmp.INGbqLloeb` has a live parent (`/tmp`) and is deregistered; an
+deleted scaffold under a temp directory has a live parent (`/tmp`) and is deregistered; an
 unmounted `/mnt/nas/proj` has a missing parent and is reported as *unknown* and left alone.
 
 This is the `evidence-discipline.md` "gap is not a zero" rule applied to the filesystem:
@@ -74,8 +75,8 @@ Archiving is restricted to projects under the framework's own `e2e-runs/` root
 (`~/.local/share/set-core/e2e-runs/`), *and* older than an operator-supplied threshold. Both
 conditions, because either alone is wrong.
 
-Measured, and this is why: `sales-raketa` (62d) and `minishop0412` (62d) are real projects
-exactly as old as the E2E runs to be archived. **Age does not separate them.** The E2E root
+Measured on a live registry, and this is why: two ordinary development projects were 62 days
+idle — exactly as old as the E2E runs to be archived. **Age does not separate them.** The E2E root
 is a set-core-owned directory whose contents are by definition test fixtures, so location
 does separate them — and it is a framework path, not a consumer-specific one, so it does not
 violate the domain boundary.
@@ -121,6 +122,38 @@ reader is standing.
 
 A bare `set-project prune` prints the plan and asks. This is the `set-project init --dry-run`
 precedent: a tool with blast radius states its radius before acting.
+
+### D9 — Registry I/O moves to Layer 1, because a CLI cannot import FastAPI
+
+*Added during implementation, after the first real dry-run failed.* `PROJECTS_FILE`,
+`_load_projects` and `_save_projects` lived in `api/helpers.py`, so reaching the registry from
+a shell command imported `api/__init__.py` and with it FastAPI — `ModuleNotFoundError: No
+module named 'fastapi'` on the interpreter `bin/set-project` actually uses.
+
+The registry is core state that the CLI, the orchestrator and the API all need, and only one
+of those can carry a web dependency. It now lives in `lib/set_orch/project_registry.py`;
+`api/helpers.py` keeps thin wrappers that pass its own module-level `PROJECTS_FILE` through,
+so existing callers and their monkeypatches are unaffected. This is the layering rule in
+`modular-architecture.md` applied in the direction it is usually read backwards: Layer 1 may
+not import the web layer, so shared state cannot live there.
+
+### D10 — The omitted count travels in a header, not in the body
+
+`GET /api/projects` returns a JSON array. Wrapping it in an object to carry `archived_count`
+would break every existing caller for a number one of them needs, so the count goes out as
+`X-Archived-Count` — additive, always present (`0` when there is nothing archived, so a
+reader never has to distinguish "none" from "this build does not report it").
+
+### D11 — The archived mark rides on the status glyph, not on a badge
+
+*Added after looking at the screen.* The first implementation put an `ARCHIVED` badge next to
+the name. Structurally it was perfect — 26→41 rows, 15 badges, zero JS errors — and it made
+the table worse: the widened name column wrapped project names, issue labels and token counts
+onto two lines, so switching archived rows ON degraded every row's legibility.
+
+Nothing in the counts could see that; only the screenshot could. The mark is now the status
+glyph itself (`◌` plus dimmed text), which costs zero width — measured afterwards: row height
+41px with archived rows shown and hidden alike.
 
 ## Risks / Trade-offs
 

@@ -45,49 +45,19 @@ _PURPOSE_LABELS = {
 def _load_projects() -> list[dict]:
     """Load registered projects from ~/.config/set-core/projects.json.
 
-    Format: {"projects": {"name": {"path": "...", "addedAt": "..."}}, "default": "..."}
-    Returns: [{"name": "...", "path": "..."}]
+    Thin wrapper over `set_orch.project_registry` — the implementation lives
+    there so a CLI can read the registry without importing FastAPI. The
+    module-level `PROJECTS_FILE` above is passed explicitly so that patching it
+    on THIS module keeps working for existing callers and tests.
     """
-    if not PROJECTS_FILE.exists():
-        return []
-    try:
-        with open(PROJECTS_FILE) as f:
-            data = json.load(f)
-        if isinstance(data, dict) and "projects" in data:
-            return [
-                {"name": name, "path": info.get("path", ""), **{k: v for k, v in info.items() if k != "path"}}
-                for name, info in data["projects"].items()
-                if isinstance(info, dict)
-            ]
-        # Legacy: list format
-        if isinstance(data, list):
-            return data
-        return []
-    except (json.JSONDecodeError, OSError):
-        return []
+    from ..project_registry import load_projects
+    return load_projects(PROJECTS_FILE)
 
 
 def _save_projects(projects: list[dict]):
-    """Save projects back to projects.json."""
-    PROJECTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    # Read existing to preserve 'default' and extra fields
-    existing = {}
-    if PROJECTS_FILE.exists():
-        try:
-            with open(PROJECTS_FILE) as f:
-                existing = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    if not isinstance(existing, dict):
-        existing = {}
-    projects_dict = {}
-    for p in projects:
-        name = p["name"]
-        entry = {k: v for k, v in p.items() if k != "name"}
-        projects_dict[name] = entry
-    existing["projects"] = projects_dict
-    with open(PROJECTS_FILE, "w") as f:
-        json.dump(existing, f, indent=2)
+    """Save projects back to projects.json. See `_load_projects` on the split."""
+    from ..project_registry import save_projects
+    save_projects(projects, PROJECTS_FILE)
 
 
 def _claude_mangle(path: str) -> str:

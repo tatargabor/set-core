@@ -2,8 +2,8 @@
 
 The project registry accumulates entries that nothing removes. Measured 2026-07-24 on
 `~/.config/set-core/projects.json`: **50 entries, of which 12 point at directories that no
-longer exist** (`/tmp/tmp.*` scaffolds, `nulltest-probe*`, `idem-clone`, `test-shadcn`,
-`test-no-shadcn`), and ~17 more are old E2E runs under the framework's own `e2e-runs/` root.
+longer exist** — temp-directory scaffolds and short-lived test fixtures from earlier
+sessions — and ~17 more are old E2E runs under the framework's own `e2e-runs/` root.
 The dashboard lists all of them, so the projects actually being worked on are buried. In
 parallel, `git worktree list --porcelain` reports **10 orphaned worktree entries** across two
 registered projects — every one flagged `prunable gitdir file points to non-existent
@@ -26,8 +26,9 @@ itself, so this grows monotonically.
   are never deregistered. `--archive-e2e-older-than <Nd>` marks them `archived: true` +
   `archivedAt` in the registry; the entry and everything on disk stay. Reversible.
   Restricted to projects under the framework's `e2e-runs/` root, because **age alone cannot
-  separate them** — measured: `sales-raketa` (62d) and `minishop0412` (62d) are real projects
-  exactly as old as the E2E runs to be archived. Location separates them; age does not.
+  separate them** — measured on a live registry: two ordinary development projects were 62
+  days idle, exactly as old as the E2E runs to be archived. Location separates them; age does
+  not.
 - **`GET /api/projects` hides archived entries by default**, `?include_archived=true` returns
   them. The existing `DELETE /api/projects/{name}` is untouched.
 - **A timestamped backup of `projects.json` is written before any mutation.**

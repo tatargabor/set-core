@@ -16,6 +16,8 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
 export interface ProjectInfo {
   name: string
   path: string
+  archived?: boolean
+  archivedAt?: string | null
   status?: string
   has_orchestration?: boolean
   last_updated?: string | null
@@ -225,6 +227,24 @@ export interface ActivityInfo {
 
 export function getProjects(): Promise<ProjectInfo[]> {
   return fetchJSON('/projects')
+}
+
+/**
+ * Projects plus the count of archived entries the API left out.
+ *
+ * The count comes back in the `X-Archived-Count` header rather than the body so
+ * that existing callers of `getProjects()` keep receiving a plain array. Hiding
+ * rows without saying how many were hidden is exactly the "tidy screen that
+ * reports calm it has not verified" that `ui-quality.md` forbids.
+ */
+export async function getProjectsWithArchiveInfo(
+  includeArchived = false,
+): Promise<{ projects: ProjectInfo[]; archivedCount: number }> {
+  const res = await fetch(`${BASE}/projects${includeArchived ? '?include_archived=true' : ''}`)
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+  const projects = (await res.json()) as ProjectInfo[]
+  const header = res.headers.get('X-Archived-Count')
+  return { projects, archivedCount: header === null ? 0 : Number(header) || 0 }
 }
 
 /**

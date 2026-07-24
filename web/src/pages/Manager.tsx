@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { getProjects, type ProjectInfo } from '../lib/api'
+import { getProjectsWithArchiveInfo, type ProjectInfo } from '../lib/api'
 import { sortByLastUpdated } from '../lib/sort'
 
 const statusStyle: Record<string, { char: string; color: string; label: string }> = {
@@ -46,6 +46,8 @@ function formatDuration(secs?: number): string {
 
 export default function Manager() {
   const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [archivedCount, setArchivedCount] = useState(0)
+  const [showArchived, setShowArchived] = useState(false)
   const [loading, setLoading] = useState(true)
   const jsonRef = useRef('')
 
@@ -53,14 +55,15 @@ export default function Manager() {
     let timer: ReturnType<typeof setTimeout>
     let fails = 0
     const poll = () => {
-      getProjects()
-        .then(data => {
+      getProjectsWithArchiveInfo(showArchived)
+        .then(({ projects: data, archivedCount: n }) => {
           fails = 0
           const json = JSON.stringify(data)
           if (json !== jsonRef.current) {
             jsonRef.current = json
             setProjects(data)
           }
+          setArchivedCount(n)
           setLoading(false)
           timer = setTimeout(poll, 5000)
         })
@@ -72,13 +75,25 @@ export default function Manager() {
     }
     poll()
     return () => clearTimeout(timer)
-  }, [])
+  }, [showArchived])
 
   const sorted = sortByLastUpdated(projects)
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      <h1 className="text-lg md:text-xl font-semibold text-neutral-100 mb-4 md:mb-6">Projects</h1>
+      <div className="flex items-baseline gap-3 mb-4 md:mb-6">
+        <h1 className="text-lg md:text-xl font-semibold text-neutral-100">Projects</h1>
+        {archivedCount > 0 && (
+          // Hidden rows must stay counted where the reader is standing — a
+          // shorter list otherwise reads as "that is everything".
+          <button
+            onClick={() => setShowArchived(v => !v)}
+            className="text-xs text-neutral-500 hover:text-neutral-300 underline underline-offset-2 transition-colors"
+          >
+            {showArchived ? 'hide' : 'show'} {archivedCount} archived
+          </button>
+        )}
+      </div>
 
       {loading && projects.length === 0 && (
         <div className="text-sm text-neutral-500">Loading...</div>
@@ -111,9 +126,22 @@ export default function Manager() {
                 return (
                   <tr key={p.name} className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
                     <td className="px-4 py-2.5">
-                      <Link to={`/p/${p.name}/orch`} className="flex items-center gap-2 hover:text-neutral-100">
-                        <span className={`shrink-0 ${s.color}`}>{s.char}</span>
-                        <span className="text-neutral-200 font-medium">{p.name}</span>
+                      {/* The archived mark rides on the status glyph rather than
+                          adding a badge: a badge widened this column enough to
+                          wrap names, issue labels and token counts onto two
+                          lines — the toggle made the whole table less legible,
+                          which the row/badge counts could not see. */}
+                      <Link
+                        to={`/p/${p.name}/orch`}
+                        className="flex items-center gap-2 hover:text-neutral-100"
+                        title={p.archived ? `archived ${p.archivedAt?.slice(0, 10) ?? ''}` : undefined}
+                      >
+                        <span className={`shrink-0 ${p.archived ? 'text-neutral-700' : s.color}`}>
+                          {p.archived ? '◌' : s.char}
+                        </span>
+                        <span className={p.archived ? 'text-neutral-500' : 'text-neutral-200 font-medium'}>
+                          {p.name}
+                        </span>
                       </Link>
                     </td>
                     <td className="px-4 py-2.5">

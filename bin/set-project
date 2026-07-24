@@ -691,6 +691,8 @@ Commands:
   list                    List all registered projects
   list-types              List available project types
   remove <name>           Remove a project from registry
+  prune                   Deregister entries whose directory is gone and prune
+                          orphaned worktree records (never deletes from disk)
   default <name>          Set default project
 
 Options:
@@ -710,6 +712,8 @@ Examples:
   set-project list
   set-project default myproj
   set-project remove myproj
+  set-project prune --dry-run
+  set-project prune --archive-e2e-older-than 30d
 EOF
 }
 
@@ -1151,6 +1155,21 @@ list_project_worktrees_brief() {
     fi
 }
 
+# Prune the registry: deregister entries whose directory is gone, prune orphaned
+# git worktree records. Delegates to lib/set_orch/registry_prune.py so the CLI and
+# the web API share one implementation — the loss-free guarantee cannot hold in
+# one and not the other.
+cmd_prune() {
+    local py
+    py=$(_set_python)
+    if [[ -z "$py" ]]; then
+        error "No suitable Python interpreter found"
+        exit 1
+    fi
+    info "Pruning project registry"
+    env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.registry_prune "$@"
+}
+
 cmd_remove() {
     local name="$1"
 
@@ -1447,6 +1466,10 @@ case "$1" in
     remove|rm)
         shift
         cmd_remove "$@"
+        ;;
+    prune)
+        shift
+        cmd_prune "$@"
         ;;
     default)
         shift

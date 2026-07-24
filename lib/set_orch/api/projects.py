@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from .helpers import (
     PROJECTS_FILE,
@@ -21,9 +21,20 @@ router = APIRouter()
 
 
 @router.get("/api/projects")
-def list_projects():
-    """List all registered projects with quick status and last_updated."""
+def list_projects(response: Response, include_archived: bool = False):
+    """List registered projects with quick status and last_updated.
+
+    Archived entries are omitted by default. The omission is never silent: the
+    count goes out in the `X-Archived-Count` header, so a caller that hides them
+    can still say how many are hidden (`ui-quality.md` — compacting must never
+    hide a failure). The body stays a plain list; making it an object would break
+    every existing caller for a number only one of them needs.
+    """
     projects = _load_projects()
+    archived_count = sum(1 for p in projects if p.get("archived"))
+    if not include_archived:
+        projects = [p for p in projects if not p.get("archived")]
+    response.headers["X-Archived-Count"] = str(archived_count)
     result = []
     for p in projects:
         path = Path(p.get("path", ""))
@@ -34,6 +45,9 @@ def list_projects():
             "status": _quick_status(path) if path.is_dir() else "error",
             "last_updated": None,
         }
+        if p.get("archived"):
+            entry["archived"] = True
+            entry["archivedAt"] = p.get("archivedAt")
         # Use state file mtime if it exists, otherwise project dir mtime
         if path.is_dir():
             sp = _state_path(path)
