@@ -207,10 +207,31 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    - If only warnings: "No critical issues. Y warning(s) to consider. Ready for archive (with noted improvements)."
    - If all clear: "All checks passed. Ready for archive."
 
-   **End with sentinel**:
-   Output exactly one of these on its own line at the very end of the report:
-   - `VERIFY_RESULT: PASS` — if no CRITICAL issues
-   - `VERIFY_RESULT: FAIL` — if any CRITICAL issues exist
+   **End with BOTH sentinels**, in this order, as the final TWO lines — each on a line of
+   its own, with nothing else on the line (no quoting, no trailing comment):
+
+   ```
+   CRITICAL_COUNT: <integer count of CRITICAL-severity findings, 0 if none>
+   VERIFY_RESULT: PASS|FAIL
+   ```
+
+   - `VERIFY_RESULT: PASS` — if no CRITICAL issues; `FAIL` — if any exist.
+   - `CRITICAL_COUNT` counts ONLY findings marked CRITICAL. WARNING and SUGGESTION do not
+     count — emit `0` if those are all you have.
+
+   **Why the count is not optional, stated because it was missing here for a long time.**
+   The orchestrator downgrades `VERIFY_RESULT: FAIL` + `CRITICAL_COUNT: 0` to a pass, so
+   warning-level findings report without blocking the merge
+   (`lib/set_orch/verifier.py:3740`). Omit the count and the gate blocks and retries — the
+   *safe* direction, but it means an agent following this file exactly could never produce
+   the one input that mechanism needs. A guard is only as good as the document that teaches
+   its input.
+
+   **Nothing else on the line, and a bare number after the colon.** Both parsers require the
+   whole line to be the sentinel: `CRITICAL_COUNT: 0 — but I could not check the auth
+   module` and `VERIFY_RESULT: PASS is NOT what I emit here` were each read as their
+   opposite before that was tightened. If you need to qualify a verdict, do it in the body
+   above, never on the sentinel line.
 
 **Verification Heuristics**
 
@@ -237,4 +258,5 @@ Use clear markdown with:
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
-- `VERIFY_RESULT: PASS` or `VERIFY_RESULT: FAIL` as the final line
+- `CRITICAL_COUNT: <n>` and then `VERIFY_RESULT: PASS|FAIL` as the final **two** lines,
+  each alone on its line — see "End with BOTH sentinels" above for why the count is required
