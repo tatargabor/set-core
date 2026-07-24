@@ -128,15 +128,59 @@ decision has to be re-opened, not worked around in the UI.
 
 ---
 
+## Constraints from the consumer's side that outrank set-core's ordering
+
+These are the ones this side cannot see, and they were surfaced by asking rather than by
+discovering them the hard way. They are why the goal reconciliation exists.
+
+- **A commitment to their client comes first.** A release running on test and awaiting the
+  user's approval for production outranks integration work. The integration must never be
+  what blocks a release — which matters most for the later round, where set-core takes back
+  development and the orchestration is reshaped.
+- **The reshaping may not reduce what already works there.** Their pre-push gate chain,
+  their OpenSpec `change → adversarial review → apply → archive` loop, and their Definition
+  of Done are the proven foundation. An orchestration plan that replaces any of it with
+  something looser is a wrong plan, however much more elegant it is. This is the flagship
+  rule from `CLAUDE.md` applied to a concrete case.
+
+## Where the confidentiality boundary actually runs — stated because the screen made it visible
+
+The abstraction layer is domain-free, and stays that way. **Domain and infrastructure
+content still crosses** — not as code but as data, rendered on set-core's screen: directory
+paths, deployment settings, business rules quoted inside review findings.
+
+That is not a violation, and pretending otherwise would make the feature impossible. The
+boundary is **persistence, not visibility**: nothing read this way is written into this
+repo, a committed artifact, a cache, or a log that can leave the machine, and the surface
+runs locally. `CLAUDE.md` states the same rule; this paragraph exists because the consumer's
+side asked for it to be said out loud while stopping was still cheap, rather than have it
+surface later as a surprise.
+
+The two carriers that cross it without anyone deciding to are named in `CLAUDE.md`: the
+memory system's automatic session-end extraction, and diagnostic output on error paths.
+
 ## Next, in order
 
 1. **The acknowledgement surface.** The pain the consumer measured is state that lives
    nowhere: manual post-deploy steps that exist only in one person's memory, per
-   environment. The read side already shows them. The button waits on the storage decision.
-2. **Second: the reporter-feedback trace.** Same class — a step the process requires and
+   environment. The read side already shows them; the write command exists on their side
+   and is idempotent. This is the first write path the framework will use, so the read/write
+   namespace split has to hold on this side too — a renderer walking the read list must be
+   structurally unable to call a write command.
+2. **The test *system*, not just the test environment.** Whether the suites run, whether
+   they are green, when they last ran. Needs its own contract command; nothing is built.
+
+   **The trap to design against, flagged before it cost anything:** a stale artefact whose
+   *shape* is convincingly machine-readable — a last-run summary that reads `6/6 passed` but
+   is a day old and covers a subset. Rendered naively that becomes a green box for a run
+   that never happened. It is the same class as the deprecated field and the prose
+   `schedule`: **a plausible shape carrying a false meaning.** The framework cannot detect
+   it; the contract must state freshness and scope, and the screen must show them next to
+   the number rather than beside it in a tooltip.
+3. **The reporter-feedback trace.** Same class — a step the process requires and
    nothing records, so it cannot be checked. Note carefully what the measurement does and
    does not prove: it shows the answer is *unverifiable*, not that it was never sent.
-3. **Then the factory layer proper** — planning releases and bug fixes inside set-core.
+4. **Then the factory layer proper** — planning releases and bug fixes inside set-core.
    Its shape is the router between differentiated ADWs already identified in the
    2026-07-19 verdict, not a new system.
 

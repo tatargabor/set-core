@@ -23,8 +23,14 @@ survive the compact; the task in flight does not outrank them.**
    point of the cross-project coordination — the two copilot sessions talk to each other
    *for this*, not as an end in itself.
 2. **Register in set-core what a project needs in order to be visible:** bugs, releases, the
-   test environment, the live environment, settings, accesses, and the surrounding
+   **test system**, the **live system**, settings, accesses, and the surrounding
    information. Today none of that reaches the framework.
+
+   *Corrected 2026-07-24 after the consumer's side caught it:* this said "test environment"
+   and "live environment", which is narrower than what was asked for and produces a
+   different next step. An environment is a place — is it up, what is its URL. A **system**
+   also covers whether its tests run, whether they are green, and when they last ran. The
+   first was already satisfied; the second needs its own contract command and is not built.
 3. **The project supplies the data; set-core supplies the abstraction.** The consumer exposes
    endpoints — a command speaking a versioned contract — and set-core's abstraction layer is
    extended to read them. The layer stays domain-free; the domain stays on the project side.
