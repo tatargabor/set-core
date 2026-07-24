@@ -48,6 +48,15 @@ honest about its own blast radius, including the bash engine. Then diff-check th
 `.claude/`, hook config and gate scripts after the real run; an empty diff on hand-authored
 files is the pass condition. Consumers no longer need to hand-maintain the `tombstones` list.
 
+**Precision on "verified", so the next session does not over-trust this.** The live init that
+produced a real ledger ran *before* the last four commits. What has been verified against a
+consumer tree **since** is the dry-run: a sha256 snapshot of all 2477 files any deploy path
+can reach, taken before and after, showed **zero bytes changed**, and the plan it printed
+plans 0 overwrites and 0 new command/skill/rule/agent files. So the current code is proven not
+to write in preview and proven to *intend* nothing destructive — but no real init has yet run
+with `once: true`, git-history intent, and the removed external call all in place. The first
+one that does is still worth watching.
+
 ## Cross-project agent channel — TEMPORARY (from 2026-07-24)
 
 While set-core and a consumer project are being integrated, their two copilot sessions
