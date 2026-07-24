@@ -377,7 +377,26 @@ when it was born from *one measured failure*, named in its own header. Anything 
 ceremony. Whether set-core's eight gates can each name theirs is not yet known and is not
 being guessed at.
 
-## Next, in order
+## What was built, in order — and the one item still open (item 4)
+
+**Read this heading before the list.** 292 lines, 40% of this file, and **six of its seven
+items are finished**. Someone opening it to find "what is next" would read a completed
+archive first, and a hurried reader would take an old item for a live one. The numbering and
+the ordering are load-bearing anyway — each entry records *what a step cost*, which is why
+the finished ones stay — so the fix is the heading and this note, not a split.
+
+**Item 3d was the one that made this worth checking rather than assuming.** Its heading was
+never struck through, so the list read "two open items", while its own last paragraph says
+*"Goal 2's last item is met"*. Struck now. A list where the marker and the body disagree is
+worse than one with no markers: the marker is the part that gets counted.
+
+**Not renumbered and not split into two lists, deliberately.** `CLAUDE.md:44` points at
+"items 1–3d of 'Next, in order'", and every completed entry is referenced by its number in
+the reasoning above it. Renumbering would break every one of those to buy tidiness. The
+general rule, one step past *renaming beats rescoping*: **rearranging is more expensive than
+rescoping when anything cites the old order.** New items go on the end.
+
+**One live item: 4, the factory layer.** Everything numbered below it is history.
 
 1. ~~**The acknowledgement surface.**~~ **Built.** The pain the consumer measured was state
    that lives nowhere: manual post-deploy steps existing only in one person's memory, per
@@ -504,8 +523,9 @@ being guessed at.
    Nothing runs their spec suite automatically, so "E2E fine" would assert what nobody
    measured. If it appears at all it should carry last-run time and commits-since — the
    shape they already got right elsewhere. *Age misleads, distance from the tree does not.*
-3d. **The live system is still an address, not a state** — and it is the last item of
-   goal 2 that is not met. The project publishes both environments' URLs and a permanent
+3d. ~~**The live system is still an address, not a state**~~ **Closed — it is a state now.**
+   It was the last item of goal 2 to be met. At the time this was written the project
+   published both environments' URLs and a permanent
    null for whether they answer, because probing them takes minutes and a page load cannot
    pay that. The test *system* was solved; the live *system* was not, and the difference is
    exactly the one the user corrected earlier: a place versus a state.
