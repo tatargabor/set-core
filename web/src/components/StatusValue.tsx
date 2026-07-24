@@ -49,6 +49,31 @@ export function useDeprecation(): DeprecationView {
   return useContext(DeprecationCtx)
 }
 
+/**
+ * Which of the declared-deprecated names actually appear in this answer.
+ *
+ * A declaration is a claim about the data, and a claim can be wrong. If the project
+ * marks a field it no longer sends, a count taken from the declaration would announce
+ * "1 deprecated field hidden" about something that was never there — a false *absence*,
+ * which is the mirror image of the false value this whole mechanism exists to prevent.
+ * So the count comes from the data, and the declaration only decides what to look for.
+ */
+export function presentDeprecations(value: unknown, names: ReadonlySet<string>): Set<string> {
+  const found = new Set<string>()
+  if (names.size === 0) return found
+
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) { v.forEach(walk); return }
+    if (!isPlainObject(v)) return
+    for (const [k, child] of Object.entries(v)) {
+      if (names.has(k)) found.add(k)
+      walk(child)
+    }
+  }
+  walk(value)
+  return found
+}
+
 /** Keys to render, and how many were withheld — so a hidden field is never silent. */
 function partitionKeys(keys: string[], view: DeprecationView) {
   if (view.names.size === 0) return { visible: keys, hiddenCount: 0 }

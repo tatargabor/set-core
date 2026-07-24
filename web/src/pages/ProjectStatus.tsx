@@ -21,7 +21,7 @@ import {
   type ProjectStatusResponse,
   type StatusCommandResult,
 } from '../lib/api'
-import StatusValue, { DeprecationProvider } from '../components/StatusValue'
+import StatusValue, { DeprecationProvider, presentDeprecations } from '../components/StatusValue'
 
 interface Props {
   project?: string | null
@@ -66,7 +66,13 @@ function Answer({ name, result }: { name: string; result: StatusCommandResult })
   // replaced but still emits would otherwise sit next to its replacement contradicting
   // it — found on a live screen, not reasoned about.
   const [showDeprecated, setShowDeprecated] = useState(false)
-  const deprecated = new Set(result.deprecated ?? [])
+  // The declaration says what to look for; the DATA says how many there are. A field
+  // declared deprecated but no longer sent would otherwise be announced as hidden when
+  // it was never there — a false absence, and the mirror of the false value this
+  // mechanism exists to prevent. Raised by the consumer's side as an invariant on
+  // theirs; it turned out to bite here too.
+  const declared = new Set(result.deprecated ?? [])
+  const deprecated = presentDeprecations(result.data, declared)
 
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">

@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import StatusValue, { DeprecationProvider } from '../../src/components/StatusValue'
+import StatusValue, { DeprecationProvider, presentDeprecations } from '../../src/components/StatusValue'
 
 afterEach(cleanup)
 
@@ -157,5 +157,42 @@ describe('a field the project no longer stands behind', () => {
     expect(container.textContent).toContain('a')
     expect(container.textContent).toContain('b')
     expect(container.textContent).not.toContain('hidden')
+  })
+})
+
+describe('a declaration is a claim about the data, and can be wrong', () => {
+  it('counts only the deprecated fields that are actually there', () => {
+    // The mirror of the failure this mechanism prevents: not a false value, a false
+    // absence. Announcing a hidden field that was never sent is its own lie.
+    const found = presentDeprecations({ a: 1 }, new Set(['ghost']))
+
+    expect(found.size).toBe(0)
+  })
+
+  it('finds one nested inside a list of rows', () => {
+    const found = presentDeprecations({ rows: [{ stale: 1 }] }, new Set(['stale']))
+
+    expect([...found]).toEqual(['stale'])
+  })
+
+  it('finds one nested arbitrarily deep', () => {
+    const found = presentDeprecations({ a: { b: { c: { stale: 1 } } } }, new Set(['stale']))
+
+    expect([...found]).toEqual(['stale'])
+  })
+
+  it('reports nothing when nothing was declared, without walking anything', () => {
+    expect(presentDeprecations({ a: { b: 1 } }, new Set()).size).toBe(0)
+  })
+
+  it('does not mistake a VALUE equal to the name for a field of that name', () => {
+    const found = presentDeprecations({ label: 'stale' }, new Set(['stale']))
+
+    expect(found.size).toBe(0)
+  })
+
+  it('survives null and scalars in the tree without throwing', () => {
+    expect(() => presentDeprecations({ a: null, b: 3, c: 'x' }, new Set(['a']))).not.toThrow()
+    expect([...presentDeprecations({ a: null }, new Set(['a']))]).toEqual(['a'])
   })
 })
