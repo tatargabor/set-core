@@ -13,6 +13,12 @@
  * - **Round anything.** Counts come from the project; they are shown as given.
  * - **Store what it read.** Nothing is cached in localStorage, nothing is posted back.
  *   The consumer's domain lives on the consumer's disk.
+ *
+ * The answers are tabbed, one tab per command the project declares. Tabs bring a risk
+ * the stacked layout did not have: a failed command can sit behind an unselected tab,
+ * so the page looks fine while something is broken. The tab strip therefore marks every
+ * command that failed, and a count of them sits next to the strip — a gap must be
+ * visible from wherever you are standing, not only from the tab it belongs to.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -105,6 +111,10 @@ export default function ProjectStatus({ project }: Props) {
   const [data, setData] = useState<ProjectStatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // The active tab is held by NAME, not by index: the project can change what it
+  // declares between two loads, and an index would then quietly select a different
+  // command than the one that was open.
+  const [active, setActive] = useState<string | null>(null)
 
   const load = useCallback((refresh = false) => {
     if (!project) return
@@ -126,6 +136,11 @@ export default function ProjectStatus({ project }: Props) {
 
   const contract = data?.contract
   const entries = Object.entries(data?.commands ?? {})
+  const failing = entries.filter(([, r]) => !r.ok)
+  const activeName = active && entries.some(([n]) => n === active)
+    ? active
+    : entries[0]?.[0] ?? null
+  const activeResult = entries.find(([n]) => n === activeName)?.[1]
 
   return (
     <div className="p-6 space-y-4 max-w-5xl overflow-y-auto h-full">
@@ -181,10 +196,49 @@ export default function ProjectStatus({ project }: Props) {
         </div>
       )}
 
-      {entries.map(([name, result]) =>
-        result.ok
-          ? <Answer key={name} name={name} result={result} />
-          : <Gap key={name} name={name} result={result} />
+      {entries.length > 0 && (
+        <div className="flex items-center gap-3 border-b border-neutral-800">
+          <div
+            role="tablist"
+            className="flex items-center gap-1 overflow-x-auto scrollbar-hide -mb-px"
+          >
+            {entries.map(([name, result]) => {
+              const isActive = name === activeName
+              return (
+                <button
+                  key={name}
+                  role="tab"
+                  aria-selected={isActive}
+                  data-status-tab={name}
+                  onClick={() => setActive(name)}
+                  className={`px-3 py-1.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-500 text-neutral-100'
+                      : 'border-transparent text-neutral-500 hover:text-neutral-300'
+                  }`}
+                >
+                  {name}
+                  {/* A failed command must be visible from every tab, not only its own —
+                      otherwise tabbing is how a broken thing starts looking fine. */}
+                  {!result.ok && (
+                    <span className="ml-1.5 text-red-400" title="this command failed">●</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          {failing.length > 0 && (
+            <span className="ml-auto shrink-0 text-[11px] text-red-400 pb-1.5">
+              {failing.length} of {entries.length} failed
+            </span>
+          )}
+        </div>
+      )}
+
+      {activeName && activeResult && (
+        activeResult.ok
+          ? <Answer name={activeName} result={activeResult} />
+          : <Gap name={activeName} result={activeResult} />
       )}
 
       {!loading && contract?.configured && entries.length === 0 && !data?.gaps?.['*'] && (
