@@ -420,6 +420,34 @@ ADWs" is **not confirmed** by the most advanced practice available to us. What a
 varies there is whether a change needs a manual step afterwards and whether it is already
 live — not what kind of work it was.
 
+### A named candidate, found 2026-07-24 and deliberately NOT built yet
+
+**A command that answers `ok: true` while reporting bad news is unmarked outside its own tab.**
+Measured on this side: the tab strip's red mark keys on `!result.ok` (`ProjectStatus.tsx:288`)
+and the "N of M failed" counter on the same condition. Both are correct for a command that
+*fails*. Neither fires for a command that *succeeds* and whose data says something is wrong.
+
+It surfaced when the consumer ran their full end-to-end suite for the first time and their
+`tests` answer stopped being uniformly green: 296 passing, **2 failing**, 1 flaky, 8 skipped.
+The command answers fine. A reader standing on the first screen sees calm.
+
+This is the ui-quality rule's own failure mode — *compacting must never hide a failure* — in
+the one place the rule was already applied once and stopped a level too early. The earlier fix
+was about a **broken command**; this is about **bad news inside a working one**, and only the
+first was closed.
+
+**The shape a fix must take, so it is not solved by recognising a field name:** the project
+declares which of its values are problem indicators, the same way it already declares
+`deprecated` fields, `actions`, and the ordered `severity` of blocker rows. set-core still
+knows no field name; it learns from the declaration what to count, and counts from the data —
+the same split that stopped "1 deprecated field hidden" being announced about a field that was
+never sent.
+
+**Not built on purpose.** It arrived mid-change, from the peer's finding rather than from this
+side's plan, and reacting to it immediately is the exact pattern both sides named the same day:
+*two agents drift from the plan by answering each other's findings*, each next thing smaller
+than the step being avoided. Recorded here so it survives without costing the current change.
+
 ### Where state is lost today — the real backlog, in their words
 
 1. **Bug priority against release timing.** Someone knows a high-severity bug is open at
