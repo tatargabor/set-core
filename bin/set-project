@@ -200,6 +200,11 @@ deploy_set_tools() {
         elif [[ -z "$old_version" ]]; then
             info "  Would write version: $current_version"
         fi
+        # Report the file-level plan for the provenance-guarded subsystems. These two
+        # write nothing under DRY_RUN, and they are the ones that can clobber
+        # project-owned files — so a dry run must show exactly what they would keep.
+        _deploy_commands "$project_path"
+        _deploy_skills "$project_path"
         return 0
     fi
     echo "$current_version" > "$version_file"

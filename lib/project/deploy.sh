@@ -6,6 +6,9 @@
 [[ -n "${SCRIPT_DIR:-}" ]] || { echo "deploy.sh: SCRIPT_DIR not set" >&2; return 1; }
 [[ -n "${SET_TOOLS_ROOT:-}" ]] || { echo "deploy.sh: SET_TOOLS_ROOT not set" >&2; return 1; }
 
+# Provenance ledger — guards every copy below against clobbering consumer edits.
+source "$SET_TOOLS_ROOT/lib/project/deploy_provenance.sh"
+
 # Register set-core MCP server for given project paths
 _register_mcp_server() {
     if ! command -v claude &>/dev/null; then
@@ -98,23 +101,21 @@ _deploy_hooks() {
     fi
 }
 
-# Deploy /set:* and /opsx:* commands (copy)
+# Deploy /set:* and /opsx:* commands.
+# Every copy goes through the provenance guard: a command the project edited is kept,
+# an untouched one receives the framework update. See deploy_provenance.sh.
 _deploy_commands() {
     local project_path="$1"
     local claude_dir="$project_path/.claude"
+
+    _pv_begin "$project_path"
 
     # /set:* commands
     local src_commands="$SET_TOOLS_ROOT/.claude/commands/set"
     local dst_commands="$claude_dir/commands/set"
     if [[ -d "$src_commands" ]]; then
-        [[ -L "$dst_commands" ]] && rm -f "$dst_commands"
-        mkdir -p "$dst_commands"
-        if [[ "$(realpath "$src_commands")" != "$(realpath "$dst_commands")" ]]; then
-            cp -r "$src_commands"/* "$dst_commands/"
-        fi
-        local cmd_count
-        cmd_count=$(ls -1 "$src_commands"/*.md 2>/dev/null | wc -l)
-        success "  Deployed $cmd_count command(s) to .claude/commands/set/"
+        _pv_deploy_tree "$src_commands" "$dst_commands" "$project_path"
+        success "  $(_pv_verb) ${_PV_DEPLOYED:-0} command(s) to .claude/commands/set/"
     else
         warn "  Source commands not found: $src_commands"
     fi
@@ -122,33 +123,30 @@ _deploy_commands() {
     # /opsx:* commands
     local src_opsx_commands="$SET_TOOLS_ROOT/.claude/commands/opsx"
     local dst_opsx_commands="$claude_dir/commands/opsx"
+    local before="${_PV_DEPLOYED:-0}"
     if [[ -d "$src_opsx_commands" ]]; then
-        [[ -L "$dst_opsx_commands" ]] && rm -f "$dst_opsx_commands"
-        mkdir -p "$dst_opsx_commands"
-        if [[ "$(realpath "$src_opsx_commands")" != "$(realpath "$dst_opsx_commands")" ]]; then
-            cp -r "$src_opsx_commands"/* "$dst_opsx_commands/"
-        fi
-        local opsx_cmd_count
-        opsx_cmd_count=$(ls -1 "$src_opsx_commands"/*.md 2>/dev/null | wc -l)
-        success "  Deployed $opsx_cmd_count command(s) to .claude/commands/opsx/"
+        _pv_deploy_tree "$src_opsx_commands" "$dst_opsx_commands" "$project_path"
+        success "  $(_pv_verb) $(( ${_PV_DEPLOYED:-0} - before )) command(s) to .claude/commands/opsx/"
     fi
+
+    _pv_report_skips "Commands"
+    _pv_end
 }
 
-# Deploy skills (set, openspec-*), rules, and agents
+# Deploy skills (set, openspec-*), rules, and agents.
+# Provenance-guarded throughout — see _deploy_commands and deploy_provenance.sh.
 _deploy_skills() {
     local project_path="$1"
     local claude_dir="$project_path/.claude"
+
+    _pv_begin "$project_path"
 
     # set skills
     local src_skills="$SET_TOOLS_ROOT/.claude/skills/set"
     local dst_skills="$claude_dir/skills/set"
     if [[ -d "$src_skills" ]]; then
-        [[ -L "$dst_skills" ]] && rm -f "$dst_skills"
-        mkdir -p "$dst_skills"
-        if [[ "$(realpath "$src_skills")" != "$(realpath "$dst_skills")" ]]; then
-            cp -r "$src_skills"/* "$dst_skills/"
-        fi
-        success "  Deployed skills to .claude/skills/set/"
+        _pv_deploy_tree "$src_skills" "$dst_skills" "$project_path"
+        success "  $(_pv_verb) ${_PV_DEPLOYED:-0} skill file(s) to .claude/skills/set/"
     else
         warn "  Source skills not found: $src_skills"
     fi
@@ -159,16 +157,11 @@ _deploy_skills() {
         [[ -d "$src_skill_dir" ]] || continue
         local skill_name
         skill_name=$(basename "$src_skill_dir")
-        local dst_skill_dir="$claude_dir/skills/$skill_name"
-        [[ -L "$dst_skill_dir" ]] && rm -f "$dst_skill_dir"
-        mkdir -p "$dst_skill_dir"
-        if [[ "$(realpath "$src_skill_dir")" != "$(realpath "$dst_skill_dir")" ]]; then
-            cp -r "$src_skill_dir"/* "$dst_skill_dir/"
-            openspec_skill_count=$((openspec_skill_count + 1))
-        fi
+        _pv_deploy_tree "${src_skill_dir%/}" "$claude_dir/skills/$skill_name" "$project_path"
+        openspec_skill_count=$((openspec_skill_count + 1))
     done
     if [[ $openspec_skill_count -gt 0 ]]; then
-        success "  Deployed $openspec_skill_count openspec skill(s) to .claude/skills/"
+        success "  Processed $openspec_skill_count openspec skill(s) in .claude/skills/"
     fi
 
     # Core rules (from templates/core/rules/ — explicit deploy source)
@@ -182,36 +175,47 @@ _deploy_skills() {
         if [[ -n "$target_git_root" ]] && [[ "$(realpath "$target_git_root" 2>/dev/null)" == "$(realpath "$SET_TOOLS_ROOT" 2>/dev/null)" ]]; then
             is_self=true
         fi
-        if [[ "$is_self" == "false" ]]; then
+        if [[ "$is_self" == "false" ]] && _pv_prepare_dir "$src_rules" "$dst_rules"; then
+            local rules_before="${_PV_DEPLOYED:-0}"
             local rule_count=0
             while IFS= read -r -d '' src_file; do
-                local base_name
+                local base_name dst_rule
                 base_name=$(basename "$src_file")
-                mkdir -p "$dst_rules"
-                cp "$src_file" "$dst_rules/set-$base_name"
+                dst_rule="$dst_rules/set-$base_name"
+                _pv_deploy_file "${dst_rule#"$project_path"/}" "$src_file" "$dst_rule"
                 rule_count=$((rule_count + 1))
             done < <(find "$src_rules" -maxdepth 1 -name '*.md' -print0)
             if [[ $rule_count -gt 0 ]]; then
-                success "  Deployed $rule_count core rule(s) to .claude/rules/ (set-* prefix)"
+                success "  $(_pv_verb) $(( ${_PV_DEPLOYED:-0} - rules_before )) core rule(s) to .claude/rules/ (set-* prefix)"
             fi
         else
             success "  Rules: self-deploy detected, skipping"
         fi
     fi
 
-    # Agents
+    # Agents. These deploy by bare basename into a shared directory, so a project agent
+    # named like one of ours (e.g. code-reviewer.md) collides head-on. The provenance
+    # guard is what keeps the project's version — renaming ours would break every
+    # existing deployment that already references the current names.
     local src_agents="$SET_TOOLS_ROOT/.claude/agents"
     local dst_agents="$claude_dir/agents"
-    if [[ -d "$src_agents" ]]; then
-        [[ -L "$dst_agents" ]] && rm -f "$dst_agents"
-        mkdir -p "$dst_agents"
-        if [[ "$(realpath "$src_agents")" != "$(realpath "$dst_agents")" ]]; then
-            cp "$src_agents"/*.md "$dst_agents/" 2>/dev/null || true
+    if [[ -d "$src_agents" ]] && _pv_prepare_dir "$src_agents" "$dst_agents"; then
+        local agents_before="${_PV_DEPLOYED:-0}"
+        local agent_count=0
+        local src_agent dst_agent
+        for src_agent in "$src_agents"/*.md; do
+            [[ -f "$src_agent" ]] || continue
+            dst_agent="$dst_agents/$(basename "$src_agent")"
+            _pv_deploy_file "${dst_agent#"$project_path"/}" "$src_agent" "$dst_agent"
+            agent_count=$((agent_count + 1))
+        done
+        if [[ $agent_count -gt 0 ]]; then
+            success "  $(_pv_verb) $(( ${_PV_DEPLOYED:-0} - agents_before )) agent(s) to .claude/agents/"
         fi
-        local agent_count
-        agent_count=$(ls -1 "$src_agents"/*.md 2>/dev/null | wc -l)
-        success "  Deployed $agent_count agent(s) to .claude/agents/"
     fi
+
+    _pv_report_skips "Skills/rules/agents"
+    _pv_end
 }
 
 # Deploy MCP server registration

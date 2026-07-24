@@ -14,6 +14,7 @@ try:
 except ImportError:
     yaml = None  # type: ignore[assignment]
 
+from .deploy_ledger import DeployLedger
 from .profile_types import ProjectType
 
 
@@ -266,13 +267,18 @@ def deploy_templates(
     resolved_id, template_dir = resolve_template(project_type, template_id)
     manifest = _load_manifest(template_dir)
 
+    # One ledger for the whole pass: parent, leaf and project-level overrides all
+    # record into it, and it is written once at the end.
+    ledger = DeployLedger.load(target_dir)
+
     # Deploy parent template first if manifest declares inheritance
     if manifest and manifest.get("inherits"):
         parent_template_id = manifest["inherits"]
         parent_dir = project_type.get_template_dir(parent_template_id)
         if parent_dir and parent_dir.is_dir():
             parent_msgs = _deploy_single_template(
-                parent_dir, target_dir, modules=None, force=force, dry_run=dry_run
+                parent_dir, target_dir, modules=None, force=force, dry_run=dry_run,
+                ledger=ledger,
             )
             # Return parent messages followed by child messages
             messages = parent_msgs
@@ -283,7 +289,8 @@ def deploy_templates(
 
     # Deploy the leaf template (with modules and optional-module display)
     leaf_msgs = _deploy_single_template(
-        template_dir, target_dir, modules=modules, force=force, dry_run=dry_run
+        template_dir, target_dir, modules=modules, force=force, dry_run=dry_run,
+        ledger=ledger,
     )
     messages.extend(leaf_msgs)
 
@@ -296,6 +303,18 @@ def deploy_templates(
             messages.append("  Project-level template overrides:")
             messages.extend(pt_messages)
 
+    if not dry_run:
+        ledger.save()
+
+    tombstoned = sorted(ledger.tombstones)
+    if tombstoned:
+        messages.append("")
+        messages.append(
+            f"  {len(tombstoned)} path(s) not deployed — removed by the project "
+            f"(clear the entry in set/.deploy-manifest.json to restore):"
+        )
+        messages.extend(f"    - {t}" for t in tombstoned)
+
     return messages
 
 
@@ -305,10 +324,15 @@ def _deploy_single_template(
     modules: Optional[List[str]] = None,
     force: bool = False,
     dry_run: bool = False,
+    ledger: Optional["DeployLedger"] = None,
 ) -> List[str]:
     """Deploy files from a single template directory into the target."""
     manifest = _load_manifest(template_dir)
     messages: List[str] = []
+
+    owns_ledger = ledger is None
+    if ledger is None:
+        ledger = DeployLedger.load(target_dir)
 
     file_entries, warns = _resolve_file_list(template_dir, manifest, modules)
 
@@ -319,6 +343,26 @@ def _deploy_single_template(
     for entry in file_entries:
         src_path = template_dir / entry.path
         dst = _target_path(entry.path, target_dir)
+        key = ledger.rel_key(dst)
+
+        # Tombstone: the project deployed this once and then deleted it. Re-creating
+        # it would re-arm content the project deliberately removed, so never do it
+        # implicitly — the ledger's `tombstones` entry must be dropped by hand first.
+        if ledger.is_tombstoned(key):
+            verb = "Would skip" if dry_run else "Skipped"
+            messages.append(f"  {verb} (removed by project): {dst.relative_to(target_dir)}")
+            continue
+
+        # Absent, but we deployed it before → the project removed it. Record the
+        # tombstone now so the next run is decided by history, not by chance.
+        if not dst.exists() and key in ledger.files:
+            if not dry_run:
+                ledger.tombstone(key)
+            verb = "Would skip" if dry_run else "Skipped"
+            messages.append(
+                f"  {verb} (deleted by project, tombstoned): {dst.relative_to(target_dir)}"
+            )
+            continue
 
         if dst.exists() and not force:
             messages.append(f"  Skipped (exists): {dst.relative_to(target_dir)}")
@@ -351,8 +395,14 @@ def _deploy_single_template(
         if not dry_run:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_path, dst)
+            # Record what we wrote so the next run can tell "project edited this"
+            # from "the template moved on", and a later deletion becomes a tombstone.
+            ledger.record(key, src_path)
 
         messages.append(f"  {verb}: {dst.relative_to(target_dir)}")
+
+    if owns_ledger and not dry_run:
+        ledger.save()
 
     # Show available optional modules if manifest exists and none were selected
     if manifest and not modules:
