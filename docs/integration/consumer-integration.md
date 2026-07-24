@@ -224,6 +224,22 @@ memory system's automatic session-end extraction, and diagnostic output on error
    **And the first real acknowledgement should stay what it is — a person who actually did
    the task, not a demonstration.** The consumer already produced one stray record for a
    check nobody had performed. A demo write into the real store would be a second.
+
+   **The dangerous edge was checked, not assumed.** When every environment of a step is
+   acknowledged, the project drops the *whole* `actions` key — not just the list of
+   choices. Measured on a disposable copy by acknowledging both. Had only the choices
+   gone, the button would have become **enabled** (nothing left to pick, so nothing to
+   wait for) and would have written a record with no environment. A false affordance is
+   the same family as a false absence, and it is invisible from either side alone: their
+   side sees a correct payload shrink, this side sees a button whose disabling reason
+   vanished.
+
+   **Left open, and it is the project's call because the derivation is theirs:** a fully
+   acknowledged step *stays in the list named for open steps*. The count does not shrink —
+   15 before, 15 after, one of them recorded as done in both environments. The refuting
+   field sits inside the row, but the number is what a person reads, so the refutation is
+   not where the decision is made. Reported; not patched here, because filtering rows by
+   their meaning is domain logic and it belongs on the side that holds the data.
 2. ~~**The test *system*, not just the test environment.**~~ **Done on the consumer's side,
    and it appeared through set-core with zero framework changes** — the second time the
    declaration-driven design has been confirmed, and the first time deliberately.
