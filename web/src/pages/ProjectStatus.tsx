@@ -128,6 +128,11 @@ export default function ProjectStatus({ project }: Props) {
   // declares between two loads, and an index would then quietly select a different
   // command than the one that was open.
   const [active, setActive] = useState<string | null>(null)
+  // Answers the project marked too expensive to ask automatically, once someone has
+  // asked. Kept apart from `data` so a later page-load refresh cannot silently drop
+  // them — an answer that vanishes because something else reloaded reads as a failure.
+  const [onDemandData, setOnDemandData] = useState<Record<string, StatusCommandResult>>({})
+  const [asking, setAsking] = useState<string | null>(null)
 
   const load = useCallback((refresh = false) => {
     if (!project) return
@@ -137,6 +142,21 @@ export default function ProjectStatus({ project }: Props) {
       .then(setData)
       .catch(e => setError(String(e?.message ?? e)))
       .finally(() => setLoading(false))
+  }, [project])
+
+  // An expensive answer is fetched only when a person asks for it by name. The page
+  // never does this on its own: one measured probe on a real project took minutes, and
+  // a status screen that hangs is a status screen nobody opens.
+  const askOnDemand = useCallback((name: string) => {
+    if (!project) return
+    setAsking(name)
+    getProjectStatus(project, { commands: [name], refresh: true })
+      .then(res => {
+        const result = res.commands?.[name]
+        if (result) setOnDemandData(prev => ({ ...prev, [name]: result }))
+      })
+      .catch(e => setError(String(e?.message ?? e)))
+      .finally(() => setAsking(null))
   }, [project])
 
   // No polling. A contract call spawns the project's own toolchain — one measured
@@ -161,8 +181,19 @@ export default function ProjectStatus({ project }: Props) {
   }
 
   const contract = data?.contract
-  const entries = Object.entries(data?.commands ?? {})
-  const failing = entries.filter(([, r]) => !r.ok)
+  // The tab strip lists every declared command, including the expensive ones. Leaving
+  // those out until asked would hide that the project answers them at all — and a reader
+  // cannot ask for something they cannot see.
+  const answered = { ...(data?.commands ?? {}), ...onDemandData }
+  const declaredOrder = contract?.commands ?? []
+  const names = declaredOrder.length
+    ? declaredOrder.filter(n => n in answered || (contract?.onDemand ?? []).includes(n))
+    : Object.keys(answered)
+  const entries: Array<[string, StatusCommandResult | undefined]> =
+    names.map(n => [n, answered[n]])
+  // An unasked answer is NOT a failure and must never be counted as one — that is the
+  // false-absence shape, and the tab strip is exactly where it would be believed.
+  const failing = entries.filter(([, r]) => r && !r.ok)
   // Which tab opens: the reader's choice if they made one, then the project's declared
   // primary, then declaration order. The middle step is the point — without it the page
   // opens on whatever the project happened to list first, which is an ordering decision
@@ -251,9 +282,14 @@ export default function ProjectStatus({ project }: Props) {
                 >
                   {name}
                   {/* A failed command must be visible from every tab, not only its own —
-                      otherwise tabbing is how a broken thing starts looking fine. */}
-                  {!result.ok && (
+                      otherwise tabbing is how a broken thing starts looking fine. An
+                      UNASKED one gets a different, quiet mark: it is not broken, and one
+                      visual weight per meaning means red stays reserved for broken. */}
+                  {result && !result.ok && (
                     <span className="ml-1.5 text-red-400" title="this command failed">●</span>
+                  )}
+                  {!result && (
+                    <span className="ml-1.5 text-neutral-600" title="not asked yet — expensive">○</span>
                   )}
                 </button>
               )
@@ -265,6 +301,23 @@ export default function ProjectStatus({ project }: Props) {
             </span>
           )}
         </div>
+      )}
+
+      {activeName && !activeResult && (
+        <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
+          <h2 className="text-sm font-medium text-neutral-100">{activeName}</h2>
+          <p className="text-xs text-neutral-500">
+            The project marks this answer as expensive, so the page does not ask for it on
+            its own. Nothing is known about it yet — this is not a gap and not a zero.
+          </p>
+          <button
+            onClick={() => askOnDemand(activeName)}
+            disabled={asking === activeName}
+            className="px-3 py-1.5 text-xs rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {asking === activeName ? 'Asking…' : 'Ask now'}
+          </button>
+        </section>
       )}
 
       {activeName && activeResult && (

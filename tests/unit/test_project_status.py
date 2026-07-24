@@ -443,3 +443,42 @@ def test_the_operator_config_can_declare_a_primary_too(tmp_path):
     )
 
     assert load_status_config(proj).primary == "readiness"
+
+
+# ── answers too expensive to ask on a page load ──────────────────────────
+#
+# "Is the live system up" is exactly what a status screen exists for, and on a real
+# project probing it took minutes. The alternative to marking it is the project dropping
+# the command entirely, which trades a slow answer for NO answer — the wrong direction.
+
+def test_a_declared_on_demand_command_is_kept(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(
+        tmp_path / "p", commands=["bugs", "environments"], onDemand=["environments"],
+    )
+
+    assert load_manifest(proj).on_demand == ("environments",)
+
+
+def test_an_on_demand_name_that_is_not_declared_is_dropped(tmp_path):
+    """Honouring it would silently stop asking a question the project believes it
+    publishes — a gap indistinguishable from a project with nothing to say."""
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs"], onDemand=["typo"])
+
+    assert load_manifest(proj).on_demand == ()
+
+
+def test_on_demand_is_empty_by_default_so_nothing_stops_being_asked(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs", "environments"])
+
+    assert load_manifest(proj).on_demand == ()
+
+
+def test_the_operator_config_can_mark_a_command_on_demand_too(tmp_path):
+    proj = _project(
+        tmp_path, "node api.mjs", commands=["bugs", "probe"], on_demand=["probe"],
+    )
+
+    assert load_status_config(proj).on_demand == ("probe",)

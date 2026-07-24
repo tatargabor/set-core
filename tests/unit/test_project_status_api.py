@@ -418,3 +418,37 @@ def test_a_refused_primary_reaches_the_surface_as_null_not_as_itself(client, pro
 
 def test_a_project_without_a_contract_reports_no_primary_either(client):
     assert client.get("/api/bare/project-status/contract").json()["primary"] is None
+
+
+# ─── expensive answers are not asked for by a page load ──────────────────────
+
+def _mark_on_demand(project, name):
+    manifest = json.loads((project / ".set-endpoint.json").read_text())
+    manifest["onDemand"] = [name]
+    (project / ".set-endpoint.json").write_text(json.dumps(manifest))
+
+
+def test_a_page_load_does_not_run_an_on_demand_command(client, project):
+    _mark_on_demand(project, "bugs")
+
+    data = client.get("/api/proj/project-status").json()
+
+    assert "releases" in data["commands"]
+    assert "bugs" not in data["commands"], "an expensive answer must not run by itself"
+    assert [c[0] for c in _calls(project)] == ["releases", "boom"]
+
+
+def test_asking_for_it_by_name_still_works(client, project):
+    """The flag narrows what happens automatically, never what a person may request."""
+    _mark_on_demand(project, "bugs")
+
+    data = client.get("/api/proj/project-status?commands=bugs").json()
+
+    assert data["commands"]["bugs"]["ok"] is True
+    assert [c[0] for c in _calls(project)] == ["bugs"]
+
+
+def test_the_contract_route_reports_the_on_demand_list(client, project):
+    _mark_on_demand(project, "bugs")
+
+    assert client.get("/api/proj/project-status/contract").json()["onDemand"] == ["bugs"]

@@ -79,7 +79,7 @@ def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:
     if cfg is None:
         return {"configured": False, "source": None, "command": None,
                 "commands": [], "writeCommands": [], "primary": None,
-                "timeout": None, "cwd": None}
+                "onDemand": [], "timeout": None, "cwd": None}
     return {
         "configured": True,
         "source": cfg.source,
@@ -90,6 +90,10 @@ def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:
         # unusable. The surface must not be able to tell those apart, or it would start
         # reporting a preference the loader already refused.
         "primary": cfg.primary,
+        # Declared read commands the surface must not ask for on its own. Reported so the
+        # page can show the tab and say the answer has not been asked for yet — which is
+        # a different thing from a gap, and must not render as one.
+        "onDemand": list(cfg.on_demand),
         "timeout": cfg.timeout,
         "cwd": cfg.cwd,
     }
@@ -104,7 +108,11 @@ def _requested_commands(cfg: StatusConfig, requested: Optional[str]) -> list:
     """
     declared = list(cfg.commands)
     if not requested:
-        return declared
+        # A page load asks everything the project declares EXCEPT what it marked as
+        # too expensive to ask automatically. Those are still askable — by name, which
+        # is what the surface's "ask now" does — so this narrows what happens by itself,
+        # never what a person can request.
+        return [n for n in declared if n not in cfg.on_demand]
 
     names = [part.strip() for part in requested.split(",") if part.strip()]
     for name in names:

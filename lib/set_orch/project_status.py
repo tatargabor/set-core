@@ -120,6 +120,14 @@ class StatusConfig:
     #: The project knows which of its answers is "where do we stand"; set-core cannot,
     #: and must not guess it from a name. None means no preference — see `_primary`.
     primary: Optional[str] = None
+    #: Declared read commands that must NOT run on a page load. Still reads, still
+    #: harmless to call — but expensive enough that asking automatically would either
+    #: make the page unusable or, worse, get the whole surface quietly abandoned. A
+    #: measured example: probing whether a deployed environment answers took minutes.
+    #: The alternative to this flag is the project dropping the command from its declared
+    #: list, which trades a slow answer for NO answer — the wrong direction, since "is
+    #: the live system up" is exactly the kind of thing a status screen exists for.
+    on_demand: tuple = ()
 
     @property
     def argv_prefix(self) -> List[str]:
@@ -205,6 +213,39 @@ def _primary(raw: Any, read_cmds: tuple, write_cmds: tuple) -> Optional[str]:
     return name
 
 
+def _on_demand(raw: Any, read_cmds: tuple) -> tuple:
+    """Read the declared do-not-auto-run list, keeping only real read commands.
+
+    A name that is not a declared read command is dropped: it can only be a typo, a
+    rename left behind, or a write command — and a write command in here would be
+    meaningless, since writes never run on a page load anyway.
+
+    The fail direction is the point. Ignoring a valid entry costs a slow page load, which
+    is visible and annoying. Honouring an invalid one would silently stop asking a
+    question the project believes it publishes — a gap that looks exactly like a project
+    with nothing to say.
+    """
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    out = []
+    for item in raw:
+        name = str(item).strip()
+        if not is_valid_command_name(name):
+            if name:
+                logger.warning(
+                    "project_status: ignoring onDemand %r — not a command name", name
+                )
+            continue
+        if name not in read_cmds:
+            logger.warning(
+                "project_status: ignoring onDemand %r — not among the declared commands",
+                name,
+            )
+            continue
+        out.append(name)
+    return tuple(dict.fromkeys(out))
+
+
 def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
     """Read the repo-root endpoint manifest, or None when there is none.
 
@@ -265,6 +306,7 @@ def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
         command=command, timeout=timeout, cwd=resolved_cwd, source="manifest",
         commands=read_cmds, write_commands=write_cmds,
         primary=_primary(raw.get("primary"), read_cmds, write_cmds),
+        on_demand=_on_demand(raw.get("onDemand"), read_cmds),
     )
 
 
@@ -348,6 +390,7 @@ def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
         cwd=cwd if isinstance(cwd, str) and cwd.strip() else None,
         commands=read_cmds, write_commands=write_cmds,
         primary=_primary(block.get("primary"), read_cmds, write_cmds),
+        on_demand=_on_demand(block.get("on_demand"), read_cmds),
     )
 
 

@@ -1267,6 +1267,12 @@ export interface StatusContractInfo {
    * which command name sounds most important.
    */
   primary: string | null
+  /**
+   * Declared read commands the page must not ask for by itself — expensive enough that
+   * asking automatically would make the surface unusable. Shown as a tab that has not
+   * been asked yet, which is NOT the same as a gap and must not look like one.
+   */
+  onDemand: string[]
   timeout: number | null
   cwd: string | null
 }
