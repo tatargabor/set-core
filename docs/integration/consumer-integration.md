@@ -1,8 +1,8 @@
 # Consumer ↔ set-core integration — the living record
 
 **This is the highest-priority track while it is open.** It is also the one most likely to
-be lost, because it spans two repositories, two agent sessions, and a `/tmp` channel that
-does not survive a reboot. Everything durable about it lives here.
+be lost, because it spans two repositories, two agent sessions, and a file channel that
+holds coordination state rather than agreements. Everything durable about it lives here.
 
 **Update this file as part of the work, not after it.** A step that is done but unrecorded
 is indistinguishable from a step that was never taken — and the next session will redo it
@@ -26,7 +26,9 @@ alternative it beat and why, so the next session cannot revisit it — only inhe
 
 Three carriers of this track are lossy, and all three are in play at once: the **compact**
 (summarises), the **agent channel** (paraphrases across a repository boundary), and the
-**`/tmp` channel itself** (evaporates on reboot). This file is the only carrier that is not.
+**channel itself** (a machine-local file, so a lost disk or a second machine loses it —
+until 2026-07-24 it sat in `/tmp` and a mere reboot was enough). This file is the only
+carrier that is not.
 
 So, on resuming:
 
@@ -277,7 +279,7 @@ surface later as a surprise.
 The two carriers that cross it without anyone deciding to are named in `CLAUDE.md`: the
 memory system's automatic session-end extraction, and diagnostic output on error paths.
 
-## How the consumer actually releases — recorded because the channel is `/tmp`
+## How the consumer actually releases — recorded because the channel is not a record
 
 Asked before designing anything, per the rule that their mechanism is read first. Recorded
 here in generalised form because the answers arrived on a channel that does not survive a
