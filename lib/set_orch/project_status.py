@@ -43,6 +43,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass, field
@@ -77,6 +78,18 @@ DEFAULT_TIMEOUT_SECONDS = 30
 MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 
 
+#: A contract command name, as it may be appended to the argv. Constrained because the
+#: name arrives from an HTTP query string on the way to `subprocess.run`: no leading dash
+#: (so it can never be read as a flag), no separators, no spaces. The allowlist below is
+#: the real guard; this is what holds when a project declares nothing.
+_COMMAND_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+def is_valid_command_name(name: str) -> bool:
+    """Whether a string is shaped like a contract command."""
+    return bool(_COMMAND_NAME.match(name or ""))
+
+
 @dataclass(frozen=True)
 class StatusConfig:
     """How to invoke a project's status contract.
@@ -84,18 +97,40 @@ class StatusConfig:
     `command` accepts a list (from the manifest — unambiguous) or a string (from the
     operator config — convenient). `source` records which one won, because "why is it
     calling THAT" is the first question anyone asks when a status panel misbehaves.
+
+    `commands` is what the project says it ANSWERS. set-core does not keep a built-in
+    list of contract commands: the framework would then be guessing on the project's
+    behalf, and a project that grows a sixth question would need a set-core release to be
+    seen. Empty means undeclared, which is not the same as none — it means ask by name.
     """
 
     command: str | List[str]
     timeout: int = DEFAULT_TIMEOUT_SECONDS
     cwd: Optional[str] = None
     source: str = "config"
+    commands: tuple = ()
 
     @property
     def argv_prefix(self) -> List[str]:
         if isinstance(self.command, (list, tuple)):
             return [str(part) for part in self.command]
         return shlex.split(self.command)
+
+
+def _declared_commands(raw: Any) -> tuple:
+    """Read a declared command list, dropping anything not shaped like a command name."""
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    out = []
+    for item in raw:
+        name = str(item).strip()
+        if is_valid_command_name(name):
+            out.append(name)
+        elif name:
+            logger.warning(
+                "project_status: ignoring declared command %r — not a command name", name
+            )
+    return tuple(dict.fromkeys(out))
 
 
 def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
@@ -153,6 +188,7 @@ def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
 
     return StatusConfig(
         command=command, timeout=timeout, cwd=resolved_cwd, source="manifest",
+        commands=_declared_commands(raw.get("commands")),
     )
 
 
@@ -228,6 +264,7 @@ def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
         command=command.strip(),
         timeout=timeout,
         cwd=cwd if isinstance(cwd, str) and cwd.strip() else None,
+        commands=_declared_commands(block.get("commands")),
     )
 
 
