@@ -15,7 +15,7 @@ record, so it can be revisited rather than merely inherited.
 
 **Write it down BEFORE the context ends, and read it back after** (user, 2026-07-24). The
 danger on this track is not forgetting — it is **compounding**: every hop through a compact,
-through the agent channel, or through a `/tmp` file that evaporates loses precision while
+through the agent channel, or through a scratch file that evaporates loses precision while
 keeping confidence, so a diluted claim gets built on as if it were the measurement. Three
 consequences, all binding:
 
@@ -199,9 +199,10 @@ rejected as the cross-project channel: it caused problems in practice, and it ca
 transport may be built later as its own piece of work; until then the file channel below is
 the agreed mechanism.
 
-**Protocol — one file, one writer.** Channel dir: `/tmp/<consumer-slug>-set/` (the slug is
-runtime-derived; never hard-code a consumer name here — see External Project
-Confidentiality below). Each side appends **only** to its own file and reads the other's:
+**Protocol — one file, one writer.** Channel dir:
+`~/.local/share/set-core/channels/<consumer-slug>/` (the slug is runtime-derived; never
+hard-code a consumer name here — see External Project Confidentiality below). Each side
+appends **only** to its own file and reads the other's:
 
 | file | writer | reader |
 |---|---|---|
@@ -222,12 +223,14 @@ Confidentiality below). Each side appends **only** to its own file and reads the
   before anyone ran the one-line check that disproved it. On an agent channel a confident
   claim propagates further and faster than an ordinary mistake, because the receiving side
   has every reason to trust it.
-- The channel is `/tmp`, i.e. session-lived. Anything durable belongs in a repo.
+- The channel survives a reboot but **not a lost disk, and not another machine.** It is
+  coordination state, not the agreement itself: anything durable belongs in a repo. Read the
+  channel to rebuild the contact; read `docs/integration/consumer-integration.md` to learn
+  what was decided.
 
-**⚠ NEXT JOINT TASK — move the channel off `/tmp` (user instruction, 2026-07-24).** A restart
-or a power cut currently loses the status. Proposed on the channel and awaiting the peer's
-acknowledgement; **do not migrate unilaterally** — a move the other side does not know about
-causes exactly the loss it is meant to prevent.
+**DONE 2026-07-24 — the channel moved off `/tmp` (user instruction), jointly, both sides
+switched.** A restart or a power cut used to lose the status. Kept here rather than deleted,
+because every reason below is a rule the *next* move would otherwise rediscover:
 
 - **Target: `~/.local/share/set-core/channels/<slug>/`.** Measured, not invented: that root
   already exists and is the framework's durable per-user store (`memory`, `metrics`,
@@ -241,15 +244,26 @@ causes exactly the loss it is meant to prevent.
   practice.)
 - **Copy, never move.** `mv` breaks the peer's live watch mid-flight; `cp` is reversible and
   leaves the old file as a fallback. Both sides append a final pointer entry to the OLD file.
+  **A closed file must state its successor, not merely fall silent** — otherwise a session
+  that lands on it reads the old tail as the current state, which is the exact loss the move
+  was meant to prevent. The old dir also gained a `MOVED.md`; neither side deletes it.
 - **The watches are the dangerous step.** Kill the old Monitor FIRST, identified by the file
   it watches (`pgrep -af "<old path>"`), and only then start one on the new path — otherwise
-  two run and every entry arrives twice. Same for the cron.
+  two run and every entry arrives twice. Same for the cron. During the cutover **one Monitor
+  watching BOTH paths** is the correct shape (used by both sides here): the duplicate bug is
+  two watchers on one file, not one watcher on two.
+- **`CLAUDE.md` is the second place, and the second place is itself the error source.** The
+  path lives in the rule book as well as in the running watch, so a move that updates only
+  the watch sends the *next* session to the dead location. The peer had seven occurrences,
+  this file six — of which two were instruction-valued. Grep before declaring the move done.
 
 **Resuming the channel after a compact, a `/clear`, or a fresh session.** The channel is the
 only thing that survives — rebuild the contact from it, do not ask the user to re-explain:
 
-1. **Find it:** `ls -dt /tmp/*-set/ 2>/dev/null | head` — the channel dir is the newest match.
-   Read its `README.md` first; it carries the protocol and the addressing convention.
+1. **Find it:** `ls -dt ~/.local/share/set-core/channels/*/ 2>/dev/null | head` — the channel
+   dir is the newest match. Read its `README.md` first; it carries the protocol and the
+   addressing convention. (Before 2026-07-24 the channel lived under `/tmp/*-set/`; if you
+   land there, its last entry names the successor.)
 2. **Catch up:** read the OTHER side's file end-to-end (`<consumer-slug>.md`), then your own
    (`set-core.md`) to see what you already answered. Entries are timestamped and append-only,
    so the tail is the current state.
@@ -290,7 +304,7 @@ only thing that survives — rebuild the contact from it, do not ask the user to
      and expire after 7 days.
 4. **Announce the resume** in your own file: one `TÉNY` entry saying the context restarted and
    which entry number you have read up to, so the other side knows nothing was lost.
-5. **The durable agreements are not in /tmp.** The negotiated contract lives in the consumer's
+5. **The durable agreements are not in the channel.** The negotiated contract lives in the consumer's
    planning document (the channel's entries point at it) — read that before answering anything
    substantive, and never re-open a decision it already records.
 

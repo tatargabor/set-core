@@ -78,3 +78,6 @@ sys
 
 # Cloudflare wrangler local cache (contains account id)
 .wrangler/
+
+# Local-only integration working notes (never published)
+docs/integration/local/
