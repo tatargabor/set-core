@@ -240,3 +240,89 @@ def test_config_is_loaded_once_for_a_whole_snapshot(tmp_path, monkeypatch):
 
     ps.gather(proj, ["bugs", "releases", "changes"])
     assert len(calls) == 1
+
+
+# ── discovery: the repo-root manifest ─────────────────────────────────────
+#
+# A project announces its own entry point so set-core does not have to be configured
+# once per project. `command` is a list, and nothing assumes an interpreter — the next
+# project to publish a contract may be Python, Go, or a compiled binary.
+
+def _manifest(proj: Path, **over):
+    from set_orch.project_status import MANIFEST_FILENAME
+    payload = {"contractVersion": 1, "command": ["echo", "hi"], "cwd": "."}
+    payload.update(over)
+    proj.mkdir(parents=True, exist_ok=True)
+    (proj / MANIFEST_FILENAME).write_text(json.dumps(payload))
+    return proj
+
+
+def test_a_manifest_is_discovered_without_any_configuration(tmp_path):
+    from set_orch.project_status import resolve_status_config
+    script = _script(tmp_path, f"echo '{_envelope()}'")
+    proj = _manifest(tmp_path / "p", command=[str(script)])
+
+    cfg = resolve_status_config(proj)
+    assert cfg is not None and cfg.source == "manifest"
+    assert query(proj, "bugs", config=cfg).data == {"total": 67}
+
+
+def test_manifest_command_is_a_list_so_a_path_with_a_space_survives(tmp_path):
+    """The reason it is a list: splitting a string is where this silently breaks."""
+    from set_orch.project_status import resolve_status_config
+    spaced = tmp_path / "my tools"
+    spaced.mkdir()
+    script = _script(spaced, f"echo '{_envelope()}'", name="api.sh")
+    proj = _manifest(tmp_path / "p", command=[str(script)])
+
+    result = query(proj, "bugs", config=resolve_status_config(proj))
+    assert result.ok, result.error
+
+
+def test_an_operator_override_beats_the_manifest(tmp_path):
+    """Whoever is running set-core must be able to redirect it without editing a repo."""
+    from set_orch.project_status import resolve_status_config
+    good = _script(tmp_path, f"echo '{_envelope()}'", name="good.sh")
+    proj = _project(tmp_path, str(good))
+    _manifest(proj, command=[str(tmp_path / "never-run")])
+
+    cfg = resolve_status_config(proj)
+    assert cfg.source == "config"
+    assert query(proj, "bugs", config=cfg).ok
+
+
+def test_a_manifest_declaring_an_unsupported_version_is_not_even_called(tmp_path):
+    from set_orch.project_status import resolve_status_config
+    marker = tmp_path / "was-called"
+    script = _script(tmp_path, f"touch '{marker}'; echo '{_envelope()}'")
+    proj = _manifest(tmp_path / "p", contractVersion=99, command=[str(script)])
+
+    assert resolve_status_config(proj) is None
+    assert query(proj, "bugs").error_class == "not-configured"
+    assert not marker.exists(), "a version we cannot read must not be executed"
+
+
+def test_a_corrupt_manifest_is_ignored_rather_than_fatal(tmp_path):
+    from set_orch.project_status import MANIFEST_FILENAME, resolve_status_config
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / MANIFEST_FILENAME).write_text("{ not json")
+    assert resolve_status_config(proj) is None
+
+
+def test_manifest_cwd_is_resolved_relative_to_the_project(tmp_path):
+    from set_orch.project_status import resolve_status_config
+    proj = tmp_path / "p"
+    (proj / "sub").mkdir(parents=True)
+    script = _script(tmp_path, 'printf \'{"contractVersion":1,"ok":true,"data":"%s"}\' "$PWD"')
+    _manifest(proj, command=[str(script)], cwd="sub")
+
+    result = query(proj, "where", config=resolve_status_config(proj))
+    assert result.data == str((proj / "sub").resolve())
+
+
+def test_the_not_configured_message_names_both_places_to_look(tmp_path):
+    proj = tmp_path / "bare"
+    proj.mkdir()
+    err = query(proj, "bugs").error
+    assert "config.yaml" in err and ".set-endpoint.json" in err

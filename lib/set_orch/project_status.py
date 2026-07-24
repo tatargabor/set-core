@@ -27,6 +27,15 @@ plausible number. Everything here fails to `ok=False` with a reason a person can
 nothing falls back to zero, to an empty list, or to "probably fine". A dashboard that
 quietly shows 0 open bugs because a script crashed is worse than one showing an error,
 because only one of them gets fixed.
+
+**A field's name is not a promise about what it counts.** Whatever renders this data
+should prefer counts and lists over free-text summaries, and should not promote a field
+to a headline just because it reads like one. Two failure modes have been measured on a
+real contract: a description written when a release was opened, still displayed after a
+dozen changes landed under it; and a count whose name said one thing while it counted
+another. Both render as confident, specific, wrong. When a contract offers both a
+summary and a count of the thing summarised, show the count too — it is the one that
+cannot go stale without the underlying list changing.
 """
 
 from __future__ import annotations
@@ -47,8 +56,18 @@ logger = logging.getLogger(__name__)
 #: this code would then read as absent.
 SUPPORTED_CONTRACT_VERSIONS = frozenset({1})
 
-#: Config key under `set/orchestration/config.yaml`.
+#: Config key under `set/orchestration/config.yaml`. An operator override.
 CONFIG_KEY = "status_api"
+
+#: Repo-root manifest a project drops to announce its own entry point, so the contract
+#: is DISCOVERABLE rather than hand-configured once per project:
+#:
+#:     {"contractVersion": 1, "command": ["node", "scripts/set-api.mjs"], "cwd": "."}
+#:
+#: `command` is a LIST on purpose. A string would have to be split, and splitting is
+#: where a path with a space silently becomes two arguments. Nothing here assumes an
+#: interpreter: the next project to publish a contract may be Python, Go, or a binary.
+MANIFEST_FILENAME = ".set-endpoint.json"
 
 DEFAULT_TIMEOUT_SECONDS = 30
 
@@ -60,15 +79,81 @@ MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 
 @dataclass(frozen=True)
 class StatusConfig:
-    """How to invoke a project's status contract."""
+    """How to invoke a project's status contract.
 
-    command: str
+    `command` accepts a list (from the manifest — unambiguous) or a string (from the
+    operator config — convenient). `source` records which one won, because "why is it
+    calling THAT" is the first question anyone asks when a status panel misbehaves.
+    """
+
+    command: str | List[str]
     timeout: int = DEFAULT_TIMEOUT_SECONDS
     cwd: Optional[str] = None
+    source: str = "config"
 
     @property
     def argv_prefix(self) -> List[str]:
+        if isinstance(self.command, (list, tuple)):
+            return [str(part) for part in self.command]
         return shlex.split(self.command)
+
+
+def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
+    """Read the repo-root endpoint manifest, or None when there is none.
+
+    A manifest announcing a contract version this set-core does not understand is
+    refused HERE, before anything is run — the alternative is spawning a process whose
+    answer we would then have to reject anyway.
+    """
+    path = Path(project_path) / MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+
+    try:
+        with open(path) as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "project_status: unreadable %s (%s) — ignoring it",
+            MANIFEST_FILENAME, type(exc).__name__,
+        )
+        return None
+
+    if not isinstance(raw, dict):
+        return None
+
+    version = raw.get("contractVersion")
+    if version is not None and version not in SUPPORTED_CONTRACT_VERSIONS:
+        logger.warning(
+            "project_status: %s announces contractVersion %s, which this set-core does "
+            "not support — not calling it", MANIFEST_FILENAME, version,
+        )
+        return None
+
+    command = raw.get("command")
+    if isinstance(command, (list, tuple)):
+        parts = [str(p) for p in command if str(p).strip()]
+        if not parts:
+            return None
+        command = parts
+    elif isinstance(command, str) and command.strip():
+        command = command.strip()
+    else:
+        logger.warning("project_status: %s has no usable 'command'", MANIFEST_FILENAME)
+        return None
+
+    timeout = raw.get("timeout", DEFAULT_TIMEOUT_SECONDS)
+    if not isinstance(timeout, int) or timeout <= 0:
+        timeout = DEFAULT_TIMEOUT_SECONDS
+
+    cwd = raw.get("cwd")
+    resolved_cwd: Optional[str] = None
+    if isinstance(cwd, str) and cwd.strip() and cwd.strip() != ".":
+        resolved_cwd = str((Path(project_path) / cwd.strip()).resolve())
+
+    return StatusConfig(
+        command=command, timeout=timeout, cwd=resolved_cwd, source="manifest",
+    )
 
 
 @dataclass(frozen=True)
@@ -88,12 +173,22 @@ class StatusResult:
         return cls(command=command, ok=False, error=error, error_class=error_class)
 
 
-def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
-    """Read the `status_api` block from a project's orchestration config.
+def resolve_status_config(project_path: str | Path) -> Optional[StatusConfig]:
+    """Find how to call this project, preferring an operator's explicit override.
 
-    Returns None when the project has not published a contract — which is not an error.
-    Most projects have not, and the surface simply stays empty for them.
+    Order: `status_api` in the orchestration config, then the repo-root manifest. The
+    override wins because a manifest is committed by the project and an override is
+    chosen by whoever is running set-core right now — the person present when something
+    is wrong must be able to redirect it without editing someone else's repository.
+
+    None means the project publishes no contract. That is not an error; most projects
+    do not, and their status surface simply stays empty.
     """
+    return load_status_config(project_path) or load_manifest(project_path)
+
+
+def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
+    """Read the `status_api` block from a project's orchestration config."""
     config_path = Path(project_path) / "set" / "orchestration" / "config.yaml"
     if not config_path.is_file():
         return None
@@ -213,12 +308,12 @@ def query(
     because a status panel must render the gap rather than take the page down with it.
     """
     project_path = Path(project_path)
-    cfg = config or load_status_config(project_path)
+    cfg = config or resolve_status_config(project_path)
     if cfg is None:
         return StatusResult.failure(
             command, "not-configured",
-            f"this project publishes no status contract (no '{CONFIG_KEY}.command' in "
-            f"set/orchestration/config.yaml)",
+            f"this project publishes no status contract — no '{CONFIG_KEY}.command' in "
+            f"set/orchestration/config.yaml and no {MANIFEST_FILENAME} at its root",
         )
 
     argv = cfg.argv_prefix + [command] + list(args or [])
@@ -323,7 +418,7 @@ def gather(
     One command failing must not blank the others: a project with a broken release
     script still has bugs worth showing.
     """
-    cfg = config or load_status_config(project_path)
+    cfg = config or resolve_status_config(project_path)
     snapshot = StatusSnapshot()
     for name in commands:
         snapshot.results[name] = query(project_path, name, config=cfg)
