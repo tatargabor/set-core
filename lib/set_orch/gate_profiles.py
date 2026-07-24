@@ -22,6 +22,21 @@ class GateConfig:
 
     Stores gate modes as a dict[str, str] supporting arbitrary gate names.
     Non-gate attributes (test_files_required, max_retries, etc.) are direct attrs.
+
+    **Every attribute, by name.** `_gates`, `test_files_required`, `max_retries`,
+    `review_model`, `review_extra_retries`.
+
+    The gate modes live in `_gates` — note the underscore. Read them through
+    `should_run()` / `is_blocking()` / `is_warn_only()` / `get()` / `gate_names()`, which is
+    why the attribute is private; but a caller who reaches for `getattr(cfg, "gates", {})`
+    gets an empty dict rather than an error, and an empty gate map reads as "nothing
+    configured" instead of "I spelled it wrong". Measured on an integration peer, who hit
+    exactly this — the third instance that day of the same class (`j.bugs` under an
+    envelope, `read_commands` for `commands`, then `gates` for `_gates`).
+
+    The general rule, theirs: **enumerate a foreign object's fields before reading one by
+    name** (`dataclasses.fields(o)`, `vars(o)`, `Object.keys(o)`). The obligation on this
+    side is the list above, kept in step by `test_gate_config_docstring_names_every_attr`.
     """
 
     def __init__(self, gates: dict[str, str] | None = None, **kwargs):
