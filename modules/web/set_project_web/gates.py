@@ -58,6 +58,23 @@ _E2E_CAPTURE_MAX_BYTES = 4 * 1024 * 1024  # 4 MiB
 # collides with the baseline. See OpenSpec change: harden-e2e-baseline-cache.
 _E2E_BASELINE_PORT = 3199
 
+# Machine-readable e2e result file, relative to the tree that ran the suite.
+# Overridable via `SET_E2E_RESULT_FILE` or a profile's `e2e_result_file()`.
+# Reporter-independent: the gate reads what the runner recorded instead of
+# scraping a reporter's console format, which the project chooses, not us.
+_E2E_RESULT_FILE_DEFAULT = ".e2e/last-run.json"
+
+# Tolerance when deciding whether a result file belongs to the run that just
+# finished. Covers coarse filesystem timestamp granularity; small on purpose,
+# because a stale file read as current is exactly the false-green this fixes.
+_E2E_RESULT_MTIME_GRACE_S = 2.0
+
+# Recorded in the baseline cache so a cache written from one failure-ID
+# surface is never compared against IDs from the other (`file::title` vs
+# `file:LINE`) — the keys would not match and every pre-existing failure
+# would read as new.
+_E2E_BASELINE_SCHEMA = 2
+
 # Runtime error indicators in E2E output — if any appear, the page has client-side errors
 # even if HTTP returned 200.
 E2E_RUNTIME_ERROR_INDICATORS = [
@@ -350,7 +367,11 @@ def _self_heal_missing_module(
         "e2e_self_heal_installed_and_rerun change=%s missing_pkg=%s install_duration_ms=%d "
         "rerun_exit_code=%d rerun_outcome=%s",
         change_name, pkg_name, install_ms, rerun_result.exit_code,
-        "pass" if healed else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable"),
+        "pass" if healed else (
+            "fail_parseable"
+            if _extract_e2e_failure_ids(rerun_output, root=wt_path, profile=profile)
+            else "fail_unparseable"
+        ),
     )
     return (healed, pkg_name, rerun_result)
 
@@ -557,7 +578,11 @@ def _self_heal_db_env_drift(
         "e2e_db_env_self_heal_resynced_and_rerun change=%s resync_duration_ms=%d "
         "rerun_exit_code=%d rerun_outcome=%s",
         change_name, resync_ms, rerun_result.exit_code,
-        "pass" if healed else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable"),
+        "pass" if healed else (
+            "fail_parseable"
+            if _extract_e2e_failure_ids(rerun_output, root=wt_path, profile=profile)
+            else "fail_unparseable"
+        ),
     )
     return (healed, recovered, rerun_result)
 
@@ -801,7 +826,11 @@ def _self_heal_testdir_drift(
     )
     rerun_outcome = (
         "pass" if healed
-        else ("fail_parseable" if _extract_e2e_failure_ids(rerun_output) else "fail_unparseable")
+        else (
+            "fail_parseable"
+            if _extract_e2e_failure_ids(rerun_output, root=wt_path, profile=profile)
+            else "fail_unparseable"
+        )
     )
     logger.info(
         "e2e_testdir_self_heal_resynced_and_rerun change=%s resync_duration_ms=%d "
@@ -843,8 +872,144 @@ def _extract_webserver_diagnostics(output: str, max_lines: int = 30) -> str:
     return ""
 
 
-def _extract_e2e_failure_ids(output: str) -> set[str]:
-    """Extract unique failure identifiers from Playwright output.
+def _e2e_result_file_path(root: str, profile: "object | None" = None) -> str:
+    """Absolute path of the machine-readable e2e result file for `root`.
+
+    Resolution: `SET_E2E_RESULT_FILE` env override > `profile.e2e_result_file()`
+    > the default. All relative paths resolve against `root`.
+    """
+    rel = os.environ.get("SET_E2E_RESULT_FILE") or ""
+    if not rel and profile is not None and hasattr(profile, "e2e_result_file"):
+        try:
+            rel = profile.e2e_result_file() or ""
+        except Exception:
+            logger.debug("profile.e2e_result_file failed", exc_info=True)
+            rel = ""
+    rel = rel or _E2E_RESULT_FILE_DEFAULT
+    return rel if os.path.isabs(rel) else os.path.join(root, rel)
+
+
+def _read_e2e_result_file(
+    root: str,
+    profile: "object | None" = None,
+    min_mtime: float | None = None,
+) -> dict | None:
+    """Read the runner's machine-readable result file. None when unusable.
+
+    The gate's original failure list came from regexing Playwright's *list*
+    reporter. A project is free to run Playwright with any reporter — a
+    measured consumer wraps it and forces `--reporter json` — and then the
+    list-format lines never appear, the regex matches nothing, and the gate
+    reports a crash it did not have (or, on the baseline path, reads zero
+    failures and waves the run through). Reading a result file the runner
+    wrote is reporter-independent, so it survives that choice.
+
+    Expected shape (reporter-agnostic, no framework-specific fields):
+
+        {"ok": bool, "total": int, "passed": int, "failed": int,
+         "flaky": int, "skipped": int,
+         "failures": [{"file": str, "title": str, "message": str}, ...]}
+
+    `min_mtime` guards against staleness: a run that dies before writing
+    leaves the *previous* run's file in place, and trusting it would invent
+    a false green — the very failure mode being fixed. A file older than the
+    run that was supposed to produce it is treated as absent, and the caller
+    falls back to text parsing.
+    """
+    path = _e2e_result_file_path(root, profile)
+    if not os.path.isfile(path):
+        return None
+
+    if min_mtime is not None:
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return None
+        # Small grace for coarse filesystem timestamp granularity. Erring
+        # toward "stale" only costs a fallback to text parsing; erring the
+        # other way reports a stale result as this run's.
+        if mtime < (min_mtime - _E2E_RESULT_MTIME_GRACE_S):
+            logger.warning(
+                "e2e_result_file stale path=%s mtime=%.0f run_started=%.0f "
+                "— ignoring (falling back to output parsing)",
+                path, mtime, min_mtime,
+            )
+            return None
+
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("e2e_result_file unreadable path=%s error=%s", path, exc)
+        return None
+
+    if not isinstance(data, dict):
+        logger.warning("e2e_result_file not an object path=%s", path)
+        return None
+
+    raw_failures = data.get("failures")
+    if not isinstance(raw_failures, list):
+        logger.warning(
+            "e2e_result_file missing a 'failures' list path=%s — ignoring", path,
+        )
+        return None
+
+    ids: set[str] = set()
+    for entry in raw_failures:
+        if not isinstance(entry, dict):
+            continue
+        file_part = str(entry.get("file") or "").strip()
+        title_part = str(entry.get("title") or "").strip()
+        if not file_part and not title_part:
+            continue
+        ids.add(_e2e_failure_id(file_part, title_part))
+
+    ok = data.get("ok")
+    parsed = {
+        "path": path,
+        "ok": bool(ok) if isinstance(ok, bool) else None,
+        "failure_ids": ids,
+        "stats": {
+            key: data[key]
+            for key in ("total", "passed", "failed", "flaky", "skipped")
+            if isinstance(data.get(key), int)
+        },
+    }
+    logger.info(
+        "e2e_result_file read path=%s ok=%s failures=%d",
+        path, parsed["ok"], len(ids),
+    )
+    return parsed
+
+
+def _e2e_failure_id(file_part: str, title_part: str) -> str:
+    """Stable failure key: `<file>::<title>`.
+
+    Deliberately line-free. The old `file:LINE` key made every failure below
+    an inserted line look like a *new* failure on the next run, so an
+    unrelated edit above a failing test turned a known-failing suite into a
+    blocking regression. File plus test title identifies the same test across
+    edits, which is what the baseline comparison needs.
+    """
+    return f"{file_part}::{title_part}"
+
+
+def _extract_e2e_failure_ids(
+    output: str,
+    root: str | None = None,
+    profile: "object | None" = None,
+    min_mtime: float | None = None,
+) -> set[str]:
+    """Extract unique failure identifiers, preferring the result file.
+
+    When `root` is given and a usable result file exists, its `(file, title)`
+    pairs are authoritative — see `_read_e2e_result_file` for why the text
+    path cannot be relied on. Otherwise falls back to parsing Playwright's
+    list reporter, which remains correct for projects using the default.
+
+    IDs from the two sources are NOT interchangeable (`file::title` vs
+    `file:LINE`); `_e2e_failure_source` reports which one produced a set so
+    callers can refuse to compare across schemas.
 
     Strips ANSI escape sequences first. Playwright emits cursor-control
     codes (`\\x1b[1A\\x1b[2K`) before each progress line when stdout is
@@ -856,11 +1021,34 @@ def _extract_e2e_failure_ids(output: str) -> set[str]:
     nano-run-20260412-1941 where a `toHaveCount({min: 2})` assertion
     error was misdiagnosed as a crash.
     """
+    if root:
+        parsed = _read_e2e_result_file(root, profile, min_mtime)
+        if parsed is not None:
+            return parsed["failure_ids"]
+
     clean = _ANSI_ESCAPE_RE.sub("", output)
     ids: set[str] = set()
     for m in re.finditer(r"^\s*\d+\)\s+\[.*?\]\s+[›»]\s+([^\s:]+\.spec\.\w+:\d+)", clean, re.MULTILINE):
         ids.add(m.group(1))
     return ids
+
+
+def _e2e_failure_source(
+    root: str | None = None,
+    profile: "object | None" = None,
+    min_mtime: float | None = None,
+) -> str:
+    """Which surface `_extract_e2e_failure_ids` used: `result-file` or `text`.
+
+    The baseline comparison subtracts one set of IDs from another. If the two
+    runs read different surfaces the keys have different shapes, every
+    pre-existing failure looks new, and a suite that was already red on main
+    blocks the change. Recording the source lets the comparison refuse
+    rather than produce a confident wrong answer.
+    """
+    if root and _read_e2e_result_file(root, profile, min_mtime) is not None:
+        return "result-file"
+    return "text"
 
 
 def _parse_playwright_config(wt_path: str) -> dict:
@@ -1024,6 +1212,16 @@ def _get_or_create_e2e_baseline(
             return None
         if data.get("main_sha") != sha:
             return None
+        # A cache from before failure IDs carried a schema, or from a run that
+        # read a different surface, holds keys of a different shape. Comparing
+        # across them makes every pre-existing failure look new, so drop it and
+        # regenerate rather than compare confidently wrong sets.
+        if data.get("schema") != _E2E_BASELINE_SCHEMA:
+            logger.info(
+                "E2E baseline: cache schema %s != %s — regenerating",
+                data.get("schema"), _E2E_BASELINE_SCHEMA,
+            )
+            return None
         data["failures"] = set(data.get("failures", []))
         return data
 
@@ -1090,6 +1288,7 @@ def _get_or_create_e2e_baseline(
         baseline_env["PW_PORT"] = str(_E2E_BASELINE_PORT)
 
         # Capture up to 4MB so _extract_e2e_failure_ids sees every failure.
+        run_started = time.time()
         result = run_command(
             ["bash", "-c", e2e_command],
             timeout=e2e_timeout, cwd=project_root,
@@ -1098,10 +1297,17 @@ def _get_or_create_e2e_baseline(
         )
         output = result.stdout + result.stderr
         stats = parse_test_output(output)
-        failures = _extract_e2e_failure_ids(output)
+        failures = _extract_e2e_failure_ids(
+            output, root=project_root, profile=profile, min_mtime=run_started,
+        )
+        failure_source = _e2e_failure_source(
+            root=project_root, profile=profile, min_mtime=run_started,
+        )
 
         baseline = {
             "main_sha": main_sha,
+            "schema": _E2E_BASELINE_SCHEMA,
+            "failure_source": failure_source,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "failures": list(failures),
             "total": stats.get("total", 0),
@@ -1404,6 +1610,9 @@ def execute_e2e_gate(
     # (one short-lived string per gate run). Downstream state storage
     # still bounds the persisted value at 32KB via gate_runner's
     # smart_truncate_structured with a Playwright-aware keep pattern.
+    # Stamped before the run so a result file left behind by an earlier run
+    # (this one may die before writing its own) is recognised as stale.
+    e2e_run_started = time.time()
     try:
         e2e_cmd_result = run_command(
             ["bash", "-c", actual_e2e_cmd],
@@ -1543,7 +1752,30 @@ def execute_e2e_gate(
         )
 
     # E2E failed — check baseline to filter pre-existing failures
-    wt_failures = _extract_e2e_failure_ids(e2e_output)
+    wt_failures = _extract_e2e_failure_ids(
+        e2e_output, root=wt_path, profile=profile, min_mtime=e2e_run_started,
+    )
+    wt_failure_source = _e2e_failure_source(
+        root=wt_path, profile=profile, min_mtime=e2e_run_started,
+    )
+
+    # A result file that reports failure without naming a failing test is not
+    # a pass and not a parseable failure list — it is the runner telling us it
+    # ended badly (suite crash, setup error, non-zero exit before any test).
+    # Recorded here so the unparseable branch below can say so instead of
+    # blaming a garbled reporter.
+    _result_file = _read_e2e_result_file(wt_path, profile, e2e_run_started)
+    result_file_unattributed_failure = bool(
+        _result_file is not None
+        and _result_file.get("ok") is False
+        and not _result_file["failure_ids"]
+    )
+    if result_file_unattributed_failure:
+        logger.warning(
+            "e2e_result_file reports failure with an empty failure list "
+            "change=%s path=%s — treating as unattributed failure, not a pass",
+            change_name, _result_file["path"],
+        )
 
     # Unparseable-fail guard: non-zero exit with no extractable failure IDs
     # means Playwright crashed or the formatter output was garbled — the
@@ -1567,7 +1799,10 @@ def execute_e2e_gate(
                 # Replace outer state with rerun values for downstream logic.
                 e2e_cmd_result = rerun_result
                 e2e_output = rerun_result.stdout + rerun_result.stderr
-                wt_failures = _extract_e2e_failure_ids(e2e_output)
+                wt_failures = _extract_e2e_failure_ids(
+                    e2e_output, root=wt_path, profile=profile,
+                    min_mtime=e2e_run_started,
+                )
                 if healed:
                     logger.info(
                         "e2e_self_heal_succeeded change=%s missing_pkg=%s — returning pass",
@@ -1598,7 +1833,10 @@ def execute_e2e_gate(
                 self_heal_marker = "[self-heal: synced .env from config.yaml]\n\n"
                 e2e_cmd_result = env_rerun_result
                 e2e_output = env_rerun_result.stdout + env_rerun_result.stderr
-                wt_failures = _extract_e2e_failure_ids(e2e_output)
+                wt_failures = _extract_e2e_failure_ids(
+                    e2e_output, root=wt_path, profile=profile,
+                    min_mtime=e2e_run_started,
+                )
                 if healed:
                     logger.info(
                         "e2e_db_env_self_heal_succeeded change=%s — returning pass",
@@ -1630,7 +1868,10 @@ def execute_e2e_gate(
                 )
                 e2e_cmd_result = td_rerun_result
                 e2e_output = td_rerun_result.stdout + td_rerun_result.stderr
-                wt_failures = _extract_e2e_failure_ids(e2e_output)
+                wt_failures = _extract_e2e_failure_ids(
+                    e2e_output, root=wt_path, profile=profile,
+                    min_mtime=e2e_run_started,
+                )
                 if healed:
                     logger.info(
                         "e2e_testdir_self_heal_succeeded change=%s — returning pass",
@@ -1664,6 +1905,19 @@ def execute_e2e_gate(
                     f"testDir layout. Self-heal attempted to rewrite testDir but the "
                     f"rerun also failed — manual inspection of playwright.config.ts and "
                     f"the spec file layout is required."
+                )
+            elif result_file_unattributed_failure:
+                # The runner DID report — it just could not attribute the
+                # failure to a test. Saying "reporter mismatch" here would
+                # send the agent after a problem it does not have.
+                retry_ctx = (
+                    f"E2E gate failed with exit_code={e2e_cmd_result.exit_code}. The "
+                    f"run's result file reports the suite as failed but lists no "
+                    f"failing test, so the failure happened outside any test: global "
+                    f"setup/teardown, a webServer that never came up, a fixture that "
+                    f"threw, or the process dying mid-run. Look at the output below "
+                    f"and at the run's own logs rather than at individual specs."
+                    + _extract_webserver_diagnostics(e2e_output)
                 )
             else:
                 retry_ctx = (
@@ -1709,6 +1963,30 @@ def execute_e2e_gate(
             )
         except Exception as e:
             logger.warning("E2E baseline creation failed (using all-failures mode): %s", e)
+
+    # No baseline means nothing is known to be pre-existing, so every failure
+    # in the worktree is new. Binding these here also keeps the cross-change
+    # regression hint below reachable on the no-baseline path — it reads
+    # `new_failures` unconditionally, and previously raised UnboundLocalError
+    # whenever baseline comparison was skipped (unreliable git topology, a
+    # failed baseline run, and now a surface mismatch).
+    new_failures = wt_failures
+    pre_existing: set[str] = set()
+
+    # Refuse to compare failure IDs produced by different surfaces. The keys
+    # have different shapes (`file::title` vs `file:LINE`), so the subtraction
+    # below would mark every pre-existing failure as new and block a change for
+    # a suite that was already red on main. Fail-closed, same as unreliable git
+    # topology above.
+    if baseline:
+        baseline_source = baseline.get("failure_source", "text")
+        if baseline_source != wt_failure_source:
+            logger.warning(
+                "E2E baseline: failure-ID surface mismatch (baseline=%s worktree=%s) "
+                "for %s — skipping baseline comparison, treating all failures as new",
+                baseline_source, wt_failure_source, change_name,
+            )
+            baseline = None
 
     if baseline:
         baseline_failures = baseline.get("failures", set())

@@ -2,12 +2,14 @@
 
 import json
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+from set_orch import db_safety
 from set_orch.profile_loader import CoreProfile
 from set_orch.profile_types import (
     OrchestrationDirective,
@@ -2087,25 +2089,55 @@ class WebProjectType(CoreProfile):
             )
             return False
 
+    def _resolve_effective_database_url(self, wt_path: str, env: dict[str, str]) -> str:
+        """Resolve the DATABASE_URL the pre-gate subprocesses will actually use.
+
+        Resolution order mirrors how the commands below are invoked
+        (`env={**os.environ, **env}`) and how Prisma resolves its target:
+
+          1. the `env` parameter — merged last, so it wins;
+          2. the ambient process environment — inherited by the subprocess;
+          3. the worktree `.env` file — Prisma auto-loads it, but only for keys
+             not already present in the environment.
+
+        Reading only the file (as this guard once did) inspects the *lowest*
+        priority source while the command runs with the highest, so an `env`
+        that repoints DATABASE_URL at a shared database slips straight past.
+        """
+        for candidate in (env.get("DATABASE_URL"), os.environ.get("DATABASE_URL")):
+            if candidate:
+                return candidate
+        return db_safety.read_database_url(wt_path)
+
     def e2e_pre_gate(self, wt_path: str, env: dict[str, str]) -> bool:
         """Run Prisma db push + seed before e2e tests if schema exists."""
         prisma_schema = Path(wt_path) / "prisma" / "schema.prisma"
         if not prisma_schema.is_file():
             return True
 
-        # Check if SQLite (file: prefix) — skip for Postgres (future)
-        env_file = Path(wt_path) / ".env"
-        if env_file.is_file():
-            try:
-                content = env_file.read_text()
-                if "DATABASE_URL=" in content:
-                    for line in content.splitlines():
-                        if line.startswith("DATABASE_URL="):
-                            db_url = line.split("=", 1)[1].strip().strip('"').strip("'")
-                            if not db_url.startswith("file:"):
-                                return True  # Not SQLite — skip for now
-            except OSError:
-                pass
+        # GUARD — same rule as integration_pre_build: never author a DB-mutating
+        # command against a target that is not per-worktree-disposable. Both
+        # commands below are destructive: `db push --accept-data-loss` drops
+        # columns/tables to match the schema, and `db seed` writes rows.
+        #
+        # Guard on an ABSENT target too. The old form only refused when the
+        # `.env` file existed AND contained a non-`file:` DATABASE_URL — so a
+        # worktree with no `.env`, or one whose `.env` lacks the key, fell
+        # through to the push, which then ran against whatever the ambient
+        # environment happened to name. That is the case with no declared
+        # target at all, i.e. the one where we know least about what we are
+        # about to write to.
+        db_url = self._resolve_effective_database_url(wt_path, env)
+        if not db_safety.target_is_disposable(db_url):
+            logger.warning(
+                "e2e_pre_gate skip_db_sync wt=%s reason=%s db_url_scheme=%s "
+                "— refusing prisma db push/seed against a non-disposable target; "
+                "schema setup is delegated to the project (e.g. its own reset-on-start)",
+                wt_path,
+                "missing_target" if not db_url else "non_sqlite_target",
+                db_safety.url_scheme(db_url),
+            )
+            return True
 
         # Prisma db push (schema → DB sync, no migration history)
         try:

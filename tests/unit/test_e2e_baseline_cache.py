@@ -261,10 +261,13 @@ class TestBaselineLock:
             lambda: type("R", (), {"orchestration_dir": str(orch_dir)})(),
         )
 
+        import set_project_web.gates as gates_mod
+
         baseline_path = orch_dir / "e2e-baseline.json"
         # Write a STALE baseline with old main_sha
         baseline_path.write_text(json.dumps({
             "main_sha": "old",
+            "schema": gates_mod._E2E_BASELINE_SCHEMA,
             "failures": [],
             "timestamp": "2026-01-01T00:00:00Z",
             "total": 5, "passed": 5, "failed": 0,
@@ -276,9 +279,14 @@ class TestBaselineLock:
             if args[:2] == ("rev-parse", "HEAD"):
                 return _git_result(stdout="new\n")
             if args[:2] == ("status", "--porcelain"):
-                # Peer writes fresh cache here, while "we" are about to acquire the lock
+                # Peer writes fresh cache here, while "we" are about to acquire
+                # the lock. It carries the current `schema`, because a peer runs
+                # the same code we do — a cache without one comes from an older
+                # version and is deliberately rejected (see TestSchemaInvalidation).
                 baseline_path.write_text(json.dumps({
                     "main_sha": "new",
+                    "schema": gates_mod._E2E_BASELINE_SCHEMA,
+                    "failure_source": "text",
                     "failures": ["peer.spec.ts:10"],
                     "timestamp": "2026-01-01T00:00:01Z",
                     "total": 10, "passed": 9, "failed": 1,
