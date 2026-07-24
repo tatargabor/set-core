@@ -414,6 +414,26 @@ being guessed at.
    Nothing runs their spec suite automatically, so "E2E fine" would assert what nobody
    measured. If it appears at all it should carry last-run time and commits-since — the
    shape they already got right elsewhere. *Age misleads, distance from the tree does not.*
+3d. **The live system is still an address, not a state** — and it is the last item of
+   goal 2 that is not met. The project publishes both environments' URLs and a permanent
+   null for whether they answer, because probing them takes minutes and a page load cannot
+   pay that. The test *system* was solved; the live *system* was not, and the difference is
+   exactly the one the user corrected earlier: a place versus a state.
+
+   **The framework half is built** (`567b4111`): a project may declare read commands as
+   on-demand, and the surface then shows the tab with an "ask now" button instead of
+   running it on load. What it narrows is only what happens BY ITSELF — asking by name
+   still works, which is what the button does.
+
+   The care went into what it must not become. The tab stays, because a reader cannot ask
+   for what they cannot see; an unasked answer is not counted as a failure, which would be
+   the false-absence shape in the one place it would be believed; it gets a quiet mark
+   rather than a red one, because red must stay reserved for broken; and the fetched answer
+   is held apart from the page-load data, since an answer that vanishes on the next refresh
+   reads as a failure. An absent declaration means today's behaviour, verified live.
+
+   **Waiting on the project to declare it** — the derivation, as always, is theirs.
+
 4. **Then the factory layer proper** — planning releases and bug fixes inside set-core.
    Its shape is the router between differentiated ADWs already identified in the
    2026-07-19 verdict, not a new system.
