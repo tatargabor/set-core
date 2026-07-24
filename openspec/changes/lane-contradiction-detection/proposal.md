@@ -29,7 +29,18 @@ identified the missing piece as a router between differentiated pipelines, and f
 building it first: the taxonomy comes *"only once two provably different pipelines exist
 to choose between"*, because otherwise *"the router gets built and has nothing distinct to
 route to… a taxonomy with near-zero behavioural delta is a false gate, and this repo
-already has three."* This change builds one differentiated pipeline and no router.
+already has three."*
+
+**What this change is, stated precisely, because its first name overclaimed.** It was
+called `differentiated-change-pipeline`, and it does not build a pipeline: every task here
+builds the *instrument* that measures whether a declared lane contradicts delivered work.
+That instrument is a genuine precondition — "two **provably** different pipelines" cannot be
+demonstrated by a mechanism that measures nothing, so the detector has to exist before the
+second pipeline is worth building — but a change whose name claims more than its tasks
+deliver is the same defect this repository keeps finding elsewhere, and it would have been
+read later as "the pipeline is done". Renamed rather than rescoped. **The differentiated
+pipeline itself is the next change, not this one; the router remains after that, and only
+if the delta turns out to be real.**
 
 ## What Changes
 

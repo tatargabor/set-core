@@ -30,6 +30,8 @@ repo already has three."*
 **Goals:**
 
 - Measure, after the work, whether the declared lane contradicts what was delivered.
+- Be the *instrument* that a later change uses to prove two pipelines actually differ. This
+  change builds no pipeline; see the proposal's note on the rename.
 - Keep every signal on the project's side; Layer 1 holds the mechanism and no pattern.
 - Produce a real behavioural delta between two lanes — opposite ends of the process gated —
   so that a future taxonomy would have something to sort between.
@@ -39,6 +41,10 @@ repo already has three."*
 **Non-Goals:**
 
 - The router. Not built, not designed, not stubbed.
+- **A second, lane-specific gate chain.** D3 describes what the two lanes *are*, because the
+  detector cannot be specified without saying what it detects — but no task here builds the
+  restoring lane's exit gate or the changing lane's entrance gate. That is the next change,
+  and keeping it out is what makes the ordering constraint real instead of decorative.
 - Any change to `change_type`, `gate-profiles`, `gate-registry` or
   `change-category-resolver`. They answer a different question and stay untouched.
 - Proving a change's lane is *correct*. This gate can only prove a contradiction.
