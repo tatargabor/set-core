@@ -693,6 +693,9 @@ Commands:
   remove <name>           Remove a project from registry
   prune                   Deregister entries whose directory is gone and prune
                           orphaned worktree records (never deletes from disk)
+  archive <name>...       Hide named projects from the dashboard; the entry and
+                          every file are kept, and it is reversible
+  unarchive <name>...     Undo archive for the named projects
   default <name>          Set default project
 
 Options:
@@ -714,6 +717,8 @@ Examples:
   set-project remove myproj
   set-project prune --dry-run
   set-project prune --archive-e2e-older-than 30d
+  set-project archive old-run-a old-run-b
+  set-project unarchive old-run-a
 EOF
 }
 
@@ -1170,6 +1175,24 @@ cmd_prune() {
     env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.registry_prune "$@"
 }
 
+# Archive / unarchive named entries. Same module as prune, so "archived" has one
+# definition. Archiving hides an entry from the dashboard and deletes nothing.
+cmd_archive() {
+    local mode="$1"; shift
+    local py
+    py=$(_set_python)
+    if [[ -z "$py" ]]; then
+        error "No suitable Python interpreter found"
+        exit 1
+    fi
+    if [[ $# -eq 0 ]]; then
+        error "At least one project name required"
+        echo "Usage: set-project $mode <name>... [--dry-run]"
+        exit 1
+    fi
+    env "PYTHONPATH=$SET_TOOLS_ROOT/lib:${PYTHONPATH:-}" "$py" -m set_orch.registry_prune "$mode" "$@"
+}
+
 cmd_remove() {
     local name="$1"
 
@@ -1470,6 +1493,14 @@ case "$1" in
     prune)
         shift
         cmd_prune "$@"
+        ;;
+    archive)
+        shift
+        cmd_archive archive "$@"
+        ;;
+    unarchive)
+        shift
+        cmd_archive unarchive "$@"
         ;;
     default)
         shift

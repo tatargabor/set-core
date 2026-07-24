@@ -236,6 +236,29 @@ that ran, so "I changed the file" is a proxy for "the changed code executed" —
 as `cd`-ing into a worktree as a proxy for running its code. And when a mutation loop and a
 single run disagree, the loop is the one to distrust: it has more machinery in it.
 
+**A mutation pattern that is not unique mutates something else, and the report blames the
+test.** Measured the same day, three times in one run: `s.replace(old, new, 1)` with patterns
+like `if not path.is_dir():` and `running = _live_process(path)`. Both appear twice in that
+file — once in the bulk path, once in the named path — and `1` takes the FIRST, so three
+mutations aimed at new code landed on old code. The tests guarding the new code passed,
+correctly, and the loop printed "NOT CAUGHT" against them.
+
+Its direction is the same as the `.pyc` case and that is what makes the pair worth naming:
+**both accuse the test of being weak when the code under test was never touched.** Following
+that accusation means weakening or rewriting a test that was right — a repair that leaves the
+suite worse than before the measurement.
+
+So the mutation helper must refuse ambiguity rather than resolve it:
+
+```python
+n = s.count(old)
+assert n == 1, f"AMBIGUOUS/MISSING: {n} occurrences"   # not a silent replace(..., 1)
+```
+
+Generalised: **`replace(x, y, 1)`, `head -1`, `grep -m1`, "the first match" — every one of
+them is a silent tie-break, and a tie-break inside a measurement is a guess wearing a result's
+clothes.** When the count matters, assert the count.
+
 **Never open a file for writing in the same expression that reads it.** Measured on the
 other side of the agent channel, on a 290 KB append-only log: `open(p, "w").write(open(p)
 .read().replace(...))` truncated the file to **0 bytes**. Python evaluates `open(p, "w")`

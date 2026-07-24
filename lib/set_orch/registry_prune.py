@@ -409,27 +409,177 @@ from .project_registry import backup_registry  # noqa: E402
 # ─── Orchestration ────────────────────────────────────────────────────
 
 
-def _clear_dangling_default(removed: Iterable[str], registry_file: Optional[Path] = None) -> None:
-    """Drop the `default` pointer when it names an entry that was just removed.
+def _clear_dangling_default(
+    removed: Iterable[str], registry_file: Optional[Path] = None
+) -> Optional[str]:
+    """Drop the `default` pointer when it names an entry that just went away.
 
-    `_save_projects` deliberately preserves `default`, so a deregistered default
-    would survive as a pointer to nothing — and a dangling default reads exactly
-    like a configured one to every caller downstream.
+    "Went away" covers both deregistration and archiving: `save_projects`
+    deliberately preserves `default`, so either leaves a pointer that reads
+    exactly like a configured one to every caller downstream while naming
+    something no command will show.
+
+    Returns the cleared name so the caller can REPORT it. A default that
+    disappears silently is a configuration change nobody can trace later.
     """
     from .project_registry import PROJECTS_FILE
     src = Path(registry_file) if registry_file else PROJECTS_FILE
     removed = set(removed)
     if not removed or not src.exists():
-        return
+        return None
     try:
         data = json.loads(src.read_text())
     except (json.JSONDecodeError, OSError):
-        return
+        return None
     if not isinstance(data, dict) or data.get("default") not in removed:
-        return
-    logger.warning("clearing default project, it was deregistered: %s", data.get("default"))
+        return None
+    cleared = data.get("default")
+    logger.warning("clearing default project, it is no longer listed: %s", cleared)
     data["default"] = None
     src.write_text(json.dumps(data, indent=2))
+    return cleared
+
+
+@dataclass
+class NameArchiveReport:
+    """Outcome of an archive/unarchive by name."""
+
+    archived: list[str] = field(default_factory=list)
+    unarchived: list[str] = field(default_factory=list)
+    refused: list[ArchiveRefusal] = field(default_factory=list)
+    noop: list[str] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    default_cleared: Optional[str] = None
+    backup_path: Optional[str] = None
+    preview: bool = False
+
+    @property
+    def mutates(self) -> bool:
+        return bool(self.archived or self.unarchived)
+
+
+def archive_by_name(
+    names: Iterable[str],
+    *,
+    undo: bool = False,
+    preview: bool = False,
+    registry_file: Optional[Path] = None,
+) -> NameArchiveReport:
+    """Archive (or unarchive) specific entries the operator named.
+
+    This is a different act from the threshold-driven bulk path, and its refusal
+    rules differ deliberately:
+
+    - **Open issues warn, they do not block.** Naming the project IS the decision,
+      and the issues stay visible — the sidebar's total reads a separate endpoint.
+      The bulk path keeps its refusal, because there nobody looked at the entry.
+    - **A live sentinel/orchestrator refuses, with no override.** Hiding work that
+      is running right now makes the dashboard lie about the machine's state.
+    - **A missing directory refuses**, pointing at `set-project prune` — archiving
+      is for entries whose directory is alive; hiding a dead one behind a flag is
+      the worst of both.
+    - **An unknown name aborts everything before the first write**, so a typo
+      cannot half-apply across the other named entries.
+    """
+    from . import project_registry
+
+    projects = project_registry.load_projects(registry_file)
+    by_name = {p.get("name", ""): p for p in projects}
+    report = NameArchiveReport(preview=preview)
+
+    wanted = list(names)
+    report.unknown = [n for n in wanted if n not in by_name]
+    if report.unknown:
+        # Nothing is written — not even for the names that DO exist.
+        logger.warning("archive by name aborted, unknown: %s", ", ".join(report.unknown))
+        return report
+
+    for name in wanted:
+        entry = by_name[name]
+        if undo:
+            if not is_archived(entry):
+                report.noop.append(name)
+                continue
+            clear_archive(entry)
+            report.unarchived.append(name)
+            continue
+
+        if is_archived(entry):
+            report.noop.append(name)
+            continue
+        path = Path((entry.get("path") or "").strip()).expanduser()
+        if not path.is_dir():
+            report.refused.append(ArchiveRefusal(
+                name=name,
+                reason="directory does not exist — deregister it with `set-project prune`",
+            ))
+            continue
+        running = _live_process(path)
+        if running:
+            report.refused.append(ArchiveRefusal(
+                name=name, reason=f"{running} is running — stop it first",
+            ))
+            continue
+        open_issues = _open_issue_count(path)
+        if open_issues != 0:
+            report.warnings.append(
+                f"{name}: {'issue registry unreadable' if open_issues < 0 else f'{open_issues} open issue(s)'}"
+                " — archived anyway, the issue count on the dashboard is unaffected"
+            )
+        apply_archive(entry)
+        report.archived.append(name)
+
+    if preview or not report.mutates:
+        return report
+
+    report.backup_path = backup_registry(registry_file)
+    project_registry.save_projects(projects, registry_file)
+    if report.archived:
+        report.default_cleared = _clear_dangling_default(report.archived, registry_file)
+    logger.info(
+        "archive by name: archived=%d unarchived=%d refused=%d",
+        len(report.archived), len(report.unarchived), len(report.refused),
+    )
+    return report
+
+
+def format_name_report(report: NameArchiveReport, *, undo: bool = False) -> str:
+    """Human-readable outcome. Every category is named, including the empty ones
+    that mean "asked for, not done"."""
+    lines: list[str] = []
+    if report.unknown:
+        lines.append(f"Not found in the registry: {', '.join(report.unknown)}")
+        lines.append("Nothing was written — fix the name(s) and run again.")
+        return "\n".join(lines)
+    done = report.unarchived if undo else report.archived
+    if done:
+        verb = ("Would unarchive" if report.preview else "Unarchived") if undo else \
+               ("Would archive" if report.preview else "Archived")
+        lines.append(f"{verb} {len(done)} entr(ies) — nothing removed from disk:")
+        lines += [f"    - {n}" for n in done]
+    if report.warnings:
+        lines.append("")
+        lines.append("Warnings:")
+        lines += [f"    ! {w}" for w in report.warnings]
+    if report.refused:
+        lines.append("")
+        lines.append(f"REFUSED for {len(report.refused)}:")
+        lines += [f"    - {r.name}: {r.reason}" for r in report.refused]
+    if report.noop:
+        lines.append("")
+        state = "not archived" if undo else "already archived"
+        lines.append(f"No change ({state}): {', '.join(report.noop)}")
+    if report.default_cleared:
+        lines.append("")
+        lines.append(
+            f"NOTE: cleared the default project — it named '{report.default_cleared}', "
+            "which is now archived. Set a new one with `set-project default <name>`."
+        )
+    if report.backup_path:
+        lines.append("")
+        lines.append(f"Registry backed up to: {report.backup_path}")
+    return "\n".join(lines) if lines else "Nothing to do."
 
 
 def run_prune(
@@ -594,5 +744,39 @@ def main(argv: Optional[list[str]] = None) -> int:
     return 0
 
 
+def main_archive(argv: Optional[list[str]] = None, *, undo: bool = False) -> int:
+    """Entry point for `set-project archive` / `unarchive`."""
+    import argparse
+
+    verb = "unarchive" if undo else "archive"
+    parser = argparse.ArgumentParser(
+        prog=f"set-project {verb}",
+        description=(
+            f"{verb.capitalize()} named registry entries. Archiving hides an entry from the "
+            "dashboard; the entry and every file on disk are kept, and it is reversible."
+        ),
+    )
+    parser.add_argument("names", nargs="+", metavar="NAME")
+    parser.add_argument("--dry-run", action="store_true", help="report only; writes nothing")
+    parser.add_argument("--json", action="store_true", help="emit the report as JSON")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+
+    report = archive_by_name(args.names, undo=undo, preview=args.dry_run)
+    if args.json:
+        from dataclasses import asdict
+        print(json.dumps(asdict(report), indent=2))
+    else:
+        print(format_name_report(report, undo=undo))
+    if report.unknown:
+        return 2
+    return 1 if report.refused and not report.mutates else 0
+
+
 if __name__ == "__main__":  # pragma: no cover
+    import sys as _sys
+    _mode = _sys.argv[1] if len(_sys.argv) > 1 else ""
+    if _mode in ("archive", "unarchive"):
+        raise SystemExit(main_archive(_sys.argv[2:], undo=(_mode == "unarchive")))
     raise SystemExit(main())
