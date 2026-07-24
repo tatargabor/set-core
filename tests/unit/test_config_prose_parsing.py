@@ -42,7 +42,12 @@ def test_a_real_directive_is_still_read(tmp_path):
 
 
 def test_an_example_inside_a_fence_is_not_a_directive(tmp_path):
-    """The documented format is documentation, however well it matches."""
+    """The documented format is documentation, however well it matches.
+
+    Note this one passed before the fix as well, because the later real line
+    overwrote the example. It is a guard against over-cutting, not a regression
+    test — the regression is the case below, where the example is all there is.
+    """
     doc = _doc(tmp_path, (
         "## Orchestrator Directives\n"
         "Write them like this:\n"
@@ -76,9 +81,15 @@ def test_a_commented_out_directive_is_disabled_not_hidden_in_plain_sight(tmp_pat
 
 
 def test_a_multi_line_html_comment_stays_a_comment_to_its_end(tmp_path):
+    """The commented value must be a VALID one, or the validator hides the defect.
+
+    An earlier version of this test used an invalid `merge_policy`, so it passed
+    before the fix too — the comment WAS parsed, and only the enum check stopped it.
+    A test that is green either way proves nothing; it just looks like proof.
+    """
     doc = _doc(tmp_path, (
         "## Orchestrator Directives\n"
-        "<!--\n- max_parallel: 9\n- merge_policy: batch\n-->\n"
+        "<!--\n- max_parallel: 9\n- merge_policy: checkpoint\n-->\n"
         "- max_parallel: 5\n"
     ))
 
