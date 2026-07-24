@@ -392,12 +392,23 @@ being guessed at.
    nothing to build first — but it is useful to any project with more than a couple of
    answers, which is the test for whether something belongs in the framework at all.
 
-3c. **The missing screen the consumer named, and who builds which half.** Their gap: no
-   view shows that high-severity bugs are open *while a release is closing*. This side will
-   not join bugs to releases — that is domain knowledge in a layer that must not have any,
-   and it would break the property that has now paid off three times (their new fields
-   appear with zero framework changes). So the derivation is theirs, as one more read
-   command; the framework's half was `primary`, and it is done.
+3c. ~~**The missing screen the consumer named.**~~ **Done, and it is the sharpest form of
+   this track's acceptance test so far.** Their gap was that no view showed high-severity
+   bugs open *while a release is closing*. The split held: the derivation is theirs, as one
+   more read command; the framework's half was `primary`. Verified in a browser rather than
+   inferred from config — eight tabs, exactly one selected, the declared one, zero JS
+   errors, and the motivating sentence sitting on the first screen without scrolling: three
+   open high-severity bugs, with stable identifiers, beside an open draft release.
+
+   **Zero framework changes, for the fifth time.** The mechanism was in place two hours
+   before the project declared it.
+
+   **The design decision worth carrying to every project:** their answer has no `ready`,
+   `ok` or `green` field at all, and a test forbids one. Not because the data is missing —
+   because two of the closing gates and the full end-to-end suite can only be decided by
+   *running* them, so any summary verdict would assert what nobody measured. The contract
+   says instead: an empty blocker list means no KNOWN blocker, and here is the count of
+   things not measured. Most dashboards lie exactly here.
 
    **One caution passed back to them:** such an answer must not carry a green test claim.
    Nothing runs their spec suite automatically, so "E2E fine" would assert what nobody
