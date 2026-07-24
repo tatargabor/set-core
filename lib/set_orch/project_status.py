@@ -203,6 +203,9 @@ class StatusResult:
     error_class: Optional[str] = None
     contract_version: Optional[int] = None
     generated_at: Optional[str] = None
+    #: Field names the project still emits but no longer stands behind. See
+    #: `_deprecated_fields` for why this is the project's call and not the framework's.
+    deprecated: tuple = ()
 
     @classmethod
     def failure(cls, command: str, error_class: str, error: str) -> "StatusResult":
@@ -326,7 +329,31 @@ def parse_envelope(command: str, raw: str) -> StatusResult:
         data=payload["data"],
         contract_version=version,
         generated_at=_str_or_none(payload.get("generatedAt")),
+        deprecated=_deprecated_fields(payload.get("deprecated")),
     )
+
+
+def _deprecated_fields(raw: Any) -> tuple:
+    """Field names the project keeps emitting but no longer stands behind.
+
+    Read from the envelope, never decided here. A deprecated field usually exists
+    because removing it would break someone, so it goes on being sent — and a renderer
+    that shows every field it receives will then put the stale value NEXT TO the correct
+    one, contradicting it. Measured on a live screen: an old count read `1` beside its
+    replacement's `2`, which is precisely the ambiguity the replacement was introduced
+    to end.
+
+    The alternative was to name the field in set-core and hide it. That is one line and
+    it is the wrong line: the framework would then hold a list of one project's field
+    names, and the next project's stale field would contradict its replacement until
+    someone shipped a set-core release. The project knows which of its fields it no
+    longer stands behind; it is the only side that can know.
+    """
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    return tuple(dict.fromkeys(
+        str(item).strip() for item in raw if str(item).strip()
+    ))
 
 
 def _str_or_none(value: Any) -> Optional[str]:
@@ -438,6 +465,7 @@ class StatusSnapshot:
                     "errorClass": r.error_class,
                     "generatedAt": r.generated_at,
                     "contractVersion": r.contract_version,
+                    "deprecated": list(r.deprecated),
                 }
                 for name, r in self.results.items()
             },

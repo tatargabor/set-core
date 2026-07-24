@@ -16,10 +16,66 @@
  * **Nothing is promoted.** A field is shown where it sits, with the name the project gave
  * it. Lifting one number into a headline would mean deciding it is the important one,
  * which is a judgement about someone else's domain.
+ *
+ * One consequence of showing everything had to be handled, and it was found on a live
+ * screen rather than reasoned about: a field the project has replaced but still emits
+ * ends up rendered NEXT TO its replacement, contradicting it. The fix keeps the rule —
+ * the project declares which of its fields are deprecated, in the envelope, and this
+ * renderer hides those by default behind a count. set-core still knows no field name.
  */
+
+import { createContext, useContext } from 'react'
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * Field names the project declared deprecated, and whether the reader has chosen to see
+ * them anyway. Carried by context rather than by prop so that nesting — a table cell
+ * inside a row inside a list — does not have to thread it through every level and
+ * silently lose it at one.
+ */
+export interface DeprecationView {
+  names: ReadonlySet<string>
+  show: boolean
+}
+
+const DeprecationCtx = createContext<DeprecationView>({ names: new Set(), show: false })
+
+export const DeprecationProvider = DeprecationCtx.Provider
+
+export function useDeprecation(): DeprecationView {
+  return useContext(DeprecationCtx)
+}
+
+/** Keys to render, and how many were withheld — so a hidden field is never silent. */
+function partitionKeys(keys: string[], view: DeprecationView) {
+  if (view.names.size === 0) return { visible: keys, hiddenCount: 0 }
+  const deprecated = keys.filter(k => view.names.has(k))
+  if (view.show) return { visible: keys, hiddenCount: 0 }
+  return {
+    visible: keys.filter(k => !view.names.has(k)),
+    hiddenCount: deprecated.length,
+  }
+}
+
+function HiddenNote({ count }: { count: number }) {
+  if (count === 0) return null
+  return (
+    <div className="text-[11px] text-neutral-600 italic">
+      {count} deprecated field{count === 1 ? '' : 's'} hidden
+    </div>
+  )
+}
+
+/** A deprecated field, when the reader asked to see it: visibly not to be relied on. */
+function DeprecatedLabel({ name }: { name: string }) {
+  return (
+    <span className="line-through decoration-neutral-600" title="the project no longer stands behind this field">
+      {name}
+    </span>
+  )
 }
 
 /** Unknown — never a zero, never a tick. */
@@ -56,14 +112,18 @@ function columnsOf(rows: Record<string, unknown>[]): string[] {
 }
 
 function Table({ rows }: { rows: Record<string, unknown>[] }) {
-  const cols = columnsOf(rows)
+  const view = useDeprecation()
+  const { visible: cols, hiddenCount } = partitionKeys(columnsOf(rows), view)
   return (
+    <div className="space-y-1">
     <div className="overflow-x-auto rounded border border-neutral-800">
       <table className="w-full text-xs">
         <thead>
           <tr className="bg-neutral-900/80 text-neutral-400">
             {cols.map(c => (
-              <th key={c} className="text-left font-medium px-2 py-1.5 whitespace-nowrap">{c}</th>
+              <th key={c} className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
+                {view.names.has(c) ? <DeprecatedLabel name={c} /> : c}
+              </th>
             ))}
           </tr>
         </thead>
@@ -80,25 +140,36 @@ function Table({ rows }: { rows: Record<string, unknown>[] }) {
         </tbody>
       </table>
     </div>
+    <HiddenNote count={hiddenCount} />
+    </div>
   )
 }
 
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
-  const entries = Object.entries(obj)
-  if (entries.length === 0) return <Unknown label="(no fields)" />
+  const view = useDeprecation()
+  const all = Object.keys(obj)
+  if (all.length === 0) return <Unknown label="(no fields)" />
+  const { visible, hiddenCount } = partitionKeys(all, view)
   return (
-    <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-xs">
-      {entries.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-neutral-500 truncate" title={k}>{k}</dt>
-          <dd className="min-w-0"><StatusValue value={v} depth={depth + 1} /></dd>
-        </div>
-      ))}
-    </dl>
+    <div className="space-y-1">
+      <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-xs">
+        {visible.map(k => (
+          <div key={k} className="contents">
+            <dt className="text-neutral-500 truncate" title={k}>
+              {view.names.has(k) ? <DeprecatedLabel name={k} /> : k}
+            </dt>
+            <dd className="min-w-0"><StatusValue value={obj[k]} depth={depth + 1} /></dd>
+          </div>
+        ))}
+      </dl>
+      <HiddenNote count={hiddenCount} />
+    </div>
   )
 }
 
 export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+  const view = useDeprecation()
+
   if (Array.isArray(value)) {
     if (value.length === 0) {
       return <span className="text-neutral-500 text-xs">none <span className="text-neutral-700">(0)</span></span>
@@ -126,9 +197,14 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
     // Deep nesting is where a generic renderer stops helping and starts hiding. Past
     // this point, show the structure verbatim rather than pretending to understand it.
     if (depth >= 3) {
+      // Even the verbatim dump respects the project's deprecations — otherwise a stale
+      // field hidden two levels up reappears here, contradicting its replacement again.
+      const shown = view.show || view.names.size === 0
+        ? value
+        : Object.fromEntries(Object.entries(value).filter(([k]) => !view.names.has(k)))
       return (
         <pre className="text-[11px] text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto">
-          {JSON.stringify(value, null, 1)}
+          {JSON.stringify(shown, null, 1)}
         </pre>
       )
     }

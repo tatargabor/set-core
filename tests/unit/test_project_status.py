@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 from set_orch.project_status import (  # noqa: E402
     CONFIG_KEY,
     StatusConfig,
+    StatusSnapshot,
     gather,
     load_status_config,
     parse_envelope,
@@ -326,3 +327,61 @@ def test_the_not_configured_message_names_both_places_to_look(tmp_path):
     proj.mkdir()
     err = query(proj, "bugs").error
     assert "config.yaml" in err and ".set-endpoint.json" in err
+
+
+# ─── deprecated fields: the project's call, never the framework's ─────────────
+
+def test_the_envelope_carries_which_fields_the_project_no_longer_stands_behind():
+    """A replaced field usually keeps being emitted, because removing it breaks someone.
+
+    A renderer that shows everything then puts the stale value next to its replacement,
+    contradicting it — found on a live screen. The project is the only side that knows
+    which of its fields those are, so it says so and set-core reads it.
+    """
+    raw = json.dumps({
+        "contractVersion": 1, "ok": True,
+        "deprecated": ["oldCount"],
+        "data": {"oldCount": 1, "newCount": 2},
+    })
+
+    result = parse_envelope("releases", raw)
+
+    assert result.deprecated == ("oldCount",)
+    assert result.data == {"oldCount": 1, "newCount": 2}, \
+        "the value is still delivered — hiding it is a rendering decision, not a read one"
+
+
+def test_no_declaration_means_no_deprecated_fields_not_a_guess():
+    result = parse_envelope("releases", json.dumps({
+        "contractVersion": 1, "ok": True, "data": {"a": 1},
+    }))
+
+    assert result.deprecated == ()
+
+
+def test_a_malformed_deprecation_list_is_ignored_rather_than_crashing_the_read():
+    """A status panel must not go dark over a badly typed advisory field."""
+    result = parse_envelope("releases", json.dumps({
+        "contractVersion": 1, "ok": True, "deprecated": "oldCount", "data": {"a": 1},
+    }))
+
+    assert result.deprecated == ()
+    assert result.ok is True
+
+
+def test_duplicates_and_blanks_are_dropped():
+    result = parse_envelope("releases", json.dumps({
+        "contractVersion": 1, "ok": True,
+        "deprecated": ["a", "a", "  ", "b"], "data": {},
+    }))
+
+    assert result.deprecated == ("a", "b")
+
+
+def test_the_snapshot_carries_the_deprecations_to_the_surface():
+    snapshot = StatusSnapshot()
+    snapshot.results["releases"] = parse_envelope("releases", json.dumps({
+        "contractVersion": 1, "ok": True, "deprecated": ["x"], "data": {"x": 1},
+    }))
+
+    assert snapshot.to_dict()["commands"]["releases"]["deprecated"] == ["x"]

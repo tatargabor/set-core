@@ -21,7 +21,7 @@ import {
   type ProjectStatusResponse,
   type StatusCommandResult,
 } from '../lib/api'
-import StatusValue from '../components/StatusValue'
+import StatusValue, { DeprecationProvider } from '../components/StatusValue'
 
 interface Props {
   project?: string | null
@@ -62,18 +62,35 @@ function Gap({ name, result }: { name: string; result: StatusCommandResult }) {
 }
 
 function Answer({ name, result }: { name: string; result: StatusCommandResult }) {
+  // Deprecated fields are hidden by default, per command. A field the project has
+  // replaced but still emits would otherwise sit next to its replacement contradicting
+  // it — found on a live screen, not reasoned about.
+  const [showDeprecated, setShowDeprecated] = useState(false)
+  const deprecated = new Set(result.deprecated ?? [])
+
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-medium text-neutral-100">{name}</h2>
         <div className="flex items-center gap-3 text-[11px] text-neutral-600">
+          {deprecated.size > 0 && (
+            <button
+              onClick={() => setShowDeprecated(v => !v)}
+              className="text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+              title="fields the project still emits but no longer stands behind"
+            >
+              {showDeprecated ? 'hide' : 'show'} {deprecated.size} deprecated
+            </button>
+          )}
           {result.contractVersion !== null && <span>contract v{result.contractVersion}</span>}
           {/* The project's own timestamp, shown verbatim — re-formatting it would mean
               deciding what its timezone meant. */}
           {result.generatedAt && <span title="as reported by the project">{result.generatedAt}</span>}
         </div>
       </div>
-      <StatusValue value={result.data} />
+      <DeprecationProvider value={{ names: deprecated, show: showDeprecated }}>
+        <StatusValue value={result.data} />
+      </DeprecationProvider>
     </section>
   )
 }

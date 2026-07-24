@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import StatusValue from '../../src/components/StatusValue'
+import StatusValue, { DeprecationProvider } from '../../src/components/StatusValue'
 
 afterEach(cleanup)
 
@@ -103,5 +103,59 @@ describe('numbers are shown as given', () => {
 
     expect(container.textContent).toMatch(/1[\s,. ]?234[\s,. ]?567/)
     expect(container.textContent).not.toContain('1.2M')
+  })
+})
+
+describe('a field the project no longer stands behind', () => {
+  const withDeprecation = (names: string[], show: boolean, value: unknown) =>
+    render(
+      <DeprecationProvider value={{ names: new Set(names), show }}>
+        <StatusValue value={value} />
+      </DeprecationProvider>,
+    )
+
+  it('is hidden by default, so it cannot contradict its replacement', () => {
+    // The live failure this exists for: the old count rendered `1` directly beside the
+    // new count's `2`, which is the ambiguity the new field was introduced to end.
+    const { container } = withDeprecation(['oldCount'], false, { oldCount: 1, newCount: 2 })
+
+    expect(container.textContent).not.toContain('oldCount')
+    expect(container.textContent).toContain('newCount')
+  })
+
+  it('is never hidden silently — the count is always shown', () => {
+    const { container } = withDeprecation(['oldCount'], false, { oldCount: 1, newCount: 2 })
+
+    expect(container.textContent).toContain('1 deprecated field hidden')
+  })
+
+  it('is shown struck through when the reader asks for it', () => {
+    const { container } = withDeprecation(['oldCount'], true, { oldCount: 1, newCount: 2 })
+
+    expect(container.textContent).toContain('oldCount')
+    expect(container.querySelector('.line-through')).not.toBeNull()
+  })
+
+  it('drops the column from a table, not just the label', () => {
+    withDeprecation(['stale'], false, [{ stale: 1, fresh: 2 }])
+
+    const headers = [...document.querySelectorAll('th')].map(th => th.textContent)
+    expect(headers).toEqual(['fresh'])
+  })
+
+  it('does not reappear in the verbatim dump of deeply nested structure', () => {
+    const deep = { a: { b: { c: { stale: 1, fresh: 2 } } } }
+    const { container } = withDeprecation(['stale'], false, deep)
+
+    expect(container.querySelector('pre')).not.toBeNull()
+    expect(container.textContent).not.toContain('stale')
+  })
+
+  it('changes nothing when the project declares no deprecations', () => {
+    const { container } = withDeprecation([], false, { a: 1, b: 2 })
+
+    expect(container.textContent).toContain('a')
+    expect(container.textContent).toContain('b')
+    expect(container.textContent).not.toContain('hidden')
   })
 })

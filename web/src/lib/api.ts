@@ -1270,6 +1270,8 @@ export interface StatusCommandResult {
   errorClass: string | null
   generatedAt: string | null
   contractVersion: number | null
+  /** Field names the project still emits but no longer stands behind. */
+  deprecated?: string[]
 }
 
 export interface ProjectStatusResponse {
