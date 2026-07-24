@@ -327,6 +327,85 @@ else
     test_fail "dry run output='$out' tombstones=$tombs_after (want 0)"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Git history as the deletion-intent signal.
+#
+# The ledger is empty on a FIRST init, so every absent path reads as "new" and the
+# deploy recreates files the project deleted on purpose. Measured on a live consumer:
+# 11 resurrected, all of them committed deletions. The project's git history is the
+# record that already exists, and it is available on the very first run.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Turn a scenario's project dir into a git repo where $1 was committed then deleted.
+git_repo_with_deletion() {
+    local proj="$1" rel="$2"
+    git -C "$proj" init -q
+    git -C "$proj" config user.email "t@example.invalid"
+    git -C "$proj" config user.name "t"
+    mkdir -p "$(dirname "$proj/$rel")"
+    echo "stale and wrong" > "$proj/$rel"
+    git -C "$proj" add -A >/dev/null 2>&1
+    git -C "$proj" commit -qm "initial" >/dev/null 2>&1
+    rm -f "$proj/$rel"
+    git -C "$proj" add -A >/dev/null 2>&1
+    git -C "$proj" commit -qm "remove a rule that had gone stale" >/dev/null 2>&1
+}
+
+test_start "git history: a committed deletion is not resurrected on a first init"
+read -r SRC PROJ <<< "$(new_scenario git_del)"
+echo "framework version" > "$SRC/stale.md"
+git_repo_with_deletion "$PROJ" ".claude/rules/stale.md"
+_pv_begin "$PROJ"
+_pv_deploy_file ".claude/rules/stale.md" "$SRC/stale.md" "$PROJ/.claude/rules/stale.md" >/dev/null 2>&1
+_pv_end
+if [[ ! -e "$PROJ/.claude/rules/stale.md" ]]; then
+    test_pass
+else
+    test_fail "a deliberate deletion was undone by the deploy"
+fi
+
+test_start "git history: the decision is written down as a tombstone"
+tombs=$(python3 -c "
+import json,sys
+print(','.join(json.load(open(sys.argv[1])).get('tombstones',[])))
+" "$PROJ/set/.deploy-manifest.json" 2>/dev/null)
+if [[ "$tombs" == ".claude/rules/stale.md" ]]; then
+    test_pass
+else
+    test_fail "tombstones='$tombs'"
+fi
+
+test_start "git history: a file absent from history still deploys"
+read -r SRC PROJ <<< "$(new_scenario git_new)"
+echo "new content" > "$SRC/fresh.md"
+git_repo_with_deletion "$PROJ" ".claude/rules/stale.md"
+_pv_begin "$PROJ"
+_pv_deploy_file ".claude/rules/fresh.md" "$SRC/fresh.md" "$PROJ/.claude/rules/fresh.md" >/dev/null 2>&1
+_pv_end
+assert_content "$PROJ/.claude/rules/fresh.md" "new content" "a new project was denied its template file"
+
+test_start "git history: the escape hatch restores the previous behaviour"
+read -r SRC PROJ <<< "$(new_scenario git_optout)"
+echo "framework version" > "$SRC/stale.md"
+git_repo_with_deletion "$PROJ" ".claude/rules/stale.md"
+SET_DEPLOY_IGNORE_GIT_HISTORY=1 bash -c '
+    source "$1/bin/set-common.sh"
+    DRY_RUN=false
+    source "$1/lib/project/deploy_provenance.sh"
+    _pv_begin "$2"
+    _pv_deploy_file ".claude/rules/stale.md" "$3" "$2/.claude/rules/stale.md"
+    _pv_end
+' _ "$PROJECT_DIR" "$PROJ" "$SRC/stale.md" >/dev/null 2>&1
+assert_content "$PROJ/.claude/rules/stale.md" "framework version" "opt-out did not re-enable the deploy"
+
+test_start "git history: a non-repository project is unaffected"
+read -r SRC PROJ <<< "$(new_scenario git_norepo)"
+echo "content" > "$SRC/a.md"
+_pv_begin "$PROJ"
+_pv_deploy_file ".claude/a.md" "$SRC/a.md" "$PROJ/.claude/a.md" >/dev/null 2>&1
+_pv_end
+assert_content "$PROJ/.claude/a.md" "content" "no-git fell back to refusing the deploy"
+
 echo
 echo "─────────────────────────────────────────"
 echo "Tests run: $TESTS_RUN, passed: $TESTS_PASSED, failed: $TESTS_FAILED"

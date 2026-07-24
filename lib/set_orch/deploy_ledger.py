@@ -26,16 +26,23 @@ so both questions have a factual answer:
 
 Decision table (`decide()`):
 
-    tombstoned                        → SKIP  (project deleted it deliberately)
-    dst missing, no ledger entry      → DEPLOY (genuinely new)
-    dst missing, has ledger entry     → SKIP  + tombstone (project deleted it)
-    dst exists, no ledger entry       → SKIP  (unknown provenance — never guess)
-    dst exists, hash == recorded      → DEPLOY (untouched; the update lands)
-    dst exists, hash != recorded      → SKIP  (the project owns it now)
+    tombstoned                          → SKIP  (project deleted it deliberately)
+    dst missing, deleted in git history → SKIP  + tombstone (deliberate, pre-ledger)
+    dst missing, no ledger entry        → DEPLOY (genuinely new)
+    dst missing, has ledger entry       → SKIP  + tombstone (project deleted it)
+    dst exists, no ledger entry         → SKIP  (unknown provenance — never guess)
+    dst exists, hash == recorded        → DEPLOY (untouched; the update lands)
+    dst exists, hash != recorded        → SKIP  (the project owns it now)
 
 The "unknown provenance" rule is what makes adoption safe on projects that predate
 the ledger: the first run after this lands records nothing it did not verify, so no
 pre-existing file is clobbered.
+
+The git-history rule covers the mirror-image blind spot for *absent* files. The
+ledger only knows what set-core wrote, so on a first init every deleted file reads
+as new and comes back. The project's own history already recorded the decision;
+`git_intent` reads it. Measured: 11 files resurrected on one live first init, all of
+them deletions the project had committed on purpose.
 
 The bash engine writes the same schema (`lib/project/deploy_provenance.sh`); keep the
 two in step.
@@ -47,7 +54,9 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+
+from .git_intent import deleted_paths as git_deleted_paths
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +100,10 @@ class DeployLedger:
         self.files: Dict[str, str] = {}
         self.tombstones: Set[str] = set()
         self._dirty = False
+        # Loaded on first use, not at construction: a deploy that never asks about an
+        # absent file should not pay for a history scan.
+        self._git_deleted: Optional[FrozenSet[str]] = None
+        self._git_asked = False
 
     # ── loading ──────────────────────────────────────────────────────────────
 
@@ -137,6 +150,19 @@ class DeployLedger:
     def is_tombstoned(self, key: str) -> bool:
         return key in self.tombstones
 
+    def deleted_in_history(self, key: str) -> bool:
+        """Did the project's git history record a deletion of this path?
+
+        Only meaningful for a path that is absent right now — one deleted and later
+        re-added is on disk, so this is never consulted for it.
+        """
+        if not self._git_asked:
+            self._git_deleted = git_deleted_paths(self.project_root)
+            self._git_asked = True
+        if self._git_deleted is None:
+            return False
+        return key in self._git_deleted
+
     def decide(self, key: str, dst: Path) -> Tuple[bool, str]:
         """Return (should_deploy, reason). Tombstones a path the project deleted."""
         if key in self.tombstones:
@@ -146,6 +172,11 @@ class DeployLedger:
             if key in self.files:
                 self.tombstone(key)
                 return False, "deleted by the project — recorded as tombstone"
+            # The ledger has never seen this path. Before calling it new, ask the one
+            # source that predates the ledger: did the project commit its removal?
+            if self.deleted_in_history(key):
+                self.tombstone(key, source="git history")
+                return False, "deleted in the project's git history — recorded as tombstone"
             return True, "new"
 
         known = self.files.get(key)
@@ -172,13 +203,13 @@ class DeployLedger:
         self.tombstones.discard(key)
         self._dirty = True
 
-    def tombstone(self, key: str) -> None:
+    def tombstone(self, key: str, source: str = "the install ledger") -> None:
         """Mark a path as deliberately removed by the project."""
         if key in self.tombstones:
             return
         logger.info(
-            "deploy_ledger: tombstoning %s — deployed previously, now absent; "
-            "set-core will not recreate it", key,
+            "deploy_ledger: tombstoning %s — deletion evidenced by %s; "
+            "set-core will not recreate it", key, source,
         )
         self.tombstones.add(key)
         self.files.pop(key, None)

@@ -384,6 +384,18 @@ def _deploy_single_template(
             )
             continue
 
+        # Absent and unknown to the ledger. On a first init that describes both a
+        # genuinely new file and one the project deleted years ago, and the ledger
+        # cannot separate them — but the project's git history can.
+        if not dst.exists() and ledger.deleted_in_history(key):
+            if not dry_run:
+                ledger.tombstone(key, source="git history")
+            verb = "Would skip" if dry_run else "Skipped"
+            messages.append(
+                f"  {verb} (deleted in git history, tombstoned): {dst.relative_to(target_dir)}"
+            )
+            continue
+
         if dst.exists() and not force:
             messages.append(f"  Skipped (exists): {dst.relative_to(target_dir)}")
             continue

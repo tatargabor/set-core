@@ -16,10 +16,16 @@
 # The ledger closes exactly that gap. At deploy time we record the sha256 of what we
 # WROTE. On the next run:
 #
+#   dst missing, deleted in git    → SKIP   (the project committed its removal)
 #   dst missing                    → deploy (new file)
 #   ledger hash == sha256(dst)     → deploy (consumer never touched it; the update lands)
 #   ledger hash != sha256(dst)     → SKIP   (the consumer owns it now)
 #   no ledger entry, dst exists    → SKIP   (unknown provenance — never guess)
+#
+# The git rule covers the mirror-image blind spot for ABSENT files: the ledger only
+# knows what set-core wrote, so on a first init every deleted file reads as new and
+# comes back. Measured on a live consumer: 11 files resurrected, every one of them a
+# deletion the project had committed on purpose.
 #
 # The last rule is what makes adoption safe on projects that predate the ledger: the first
 # init after this change writes no hashes it did not verify, so nothing pre-existing is
@@ -49,6 +55,46 @@ _pv_sha256() {
     fi
 }
 
+# Collect every path git history records as deleted, relative to the project root.
+# Written to $_PV_GITDEL, one path per line. Silent no-op when the project is not a
+# git repository or git is missing — the file simply stays empty, which reads as
+# "no information" and leaves every previous decision unchanged.
+#
+# Mirrors lib/set_orch/git_intent.py; keep the two in step.
+_pv_load_git_deletions() {
+    local project_path="$1" prefix top line
+    : > "$_PV_GITDEL"
+
+    if [[ "${SET_DEPLOY_IGNORE_GIT_HISTORY:-}" =~ ^(1|true|yes|TRUE|YES)$ ]]; then
+        info "  Git deletion history ignored (SET_DEPLOY_IGNORE_GIT_HISTORY set)"
+        return 0
+    fi
+    command -v git &>/dev/null || return 0
+
+    top="$(git -C "$project_path" rev-parse --show-toplevel 2>/dev/null)" || return 0
+    [[ -n "$top" ]] || return 0
+    prefix="$(git -C "$project_path" rev-parse --show-prefix 2>/dev/null)" || prefix=""
+
+    # `--format=` leaves nothing but path lines. Rename detection stays on, so a moved
+    # file is reported as R and correctly does not count as a deletion of the old path.
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        if [[ -n "$prefix" ]]; then
+            [[ "$line" == "$prefix"* ]] || continue
+            line="${line#"$prefix"}"
+        fi
+        [[ -n "$line" ]] && printf '%s\n' "$line"
+    done < <(git -C "$project_path" log --diff-filter=D --name-only --format= 2>/dev/null) \
+        | sort -u > "$_PV_GITDEL"
+}
+
+# Does the project's git history record a deletion of this path?
+# Only meaningful for a path that is absent right now.
+_pv_deleted_in_history() {
+    [[ -s "${_PV_GITDEL:-/nonexistent}" ]] || return 1
+    grep -Fxq -- "$1" "$_PV_GITDEL" 2>/dev/null
+}
+
 # Begin a deploy session: load the ledger into a lookup file and open a staging file.
 # Both are process-scoped temp files; _pv_end flushes staging into the ledger.
 #
@@ -60,9 +106,13 @@ _pv_begin() {
     _PV_TOMBS="$(mktemp -t set-pv-tombs.XXXXXX)"
     _PV_STAGED="$(mktemp -t set-pv-staged.XXXXXX)"
     _PV_NEWTOMBS="$(mktemp -t set-pv-newtombs.XXXXXX)"
+    _PV_GITDEL="$(mktemp -t set-pv-gitdel.XXXXXX)"
     _PV_SKIPPED=0
     _PV_DEPLOYED=0
     _PV_TOMBSTONED=0
+
+    # One history scan per session, not per file.
+    _pv_load_git_deletions "$project_path"
 
     local ledger
     ledger="$(_pv_ledger_path "$project_path")"
@@ -122,6 +172,14 @@ _pv_should_deploy() {
             # as history so the next run decides from fact rather than from chance.
             _pv_tombstone "$key"
             printf 'deleted by the project — recorded as tombstone'
+            return 1
+        fi
+        # Unknown to the ledger. On a first init that covers both a genuinely new file
+        # and one the project deleted long before the ledger existed; the project's own
+        # git history is the only record that can tell them apart.
+        if _pv_deleted_in_history "$key"; then
+            _pv_tombstone "$key"
+            printf 'deleted in the project'"'"'s git history — recorded as tombstone'
             return 1
         fi
         return 0                            # genuinely new — nothing to lose
@@ -333,8 +391,9 @@ os.replace(tmp, ledger_path)
             || warn "  Failed to update deploy ledger: $ledger"
     fi
 
-    rm -f "${_PV_KNOWN:-}" "${_PV_STAGED:-}" "${_PV_TOMBS:-}" "${_PV_NEWTOMBS:-}" 2>/dev/null || true
-    unset _PV_KNOWN _PV_STAGED _PV_TOMBS _PV_NEWTOMBS _PV_PROJECT
+    rm -f "${_PV_KNOWN:-}" "${_PV_STAGED:-}" "${_PV_TOMBS:-}" "${_PV_NEWTOMBS:-}" \
+          "${_PV_GITDEL:-}" 2>/dev/null || true
+    unset _PV_KNOWN _PV_STAGED _PV_TOMBS _PV_NEWTOMBS _PV_GITDEL _PV_PROJECT
 }
 
 # "Deployed" under a real run, "Would deploy" under --dry-run. Keeps the log honest:
