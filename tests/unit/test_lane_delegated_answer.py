@@ -339,3 +339,69 @@ def test_a_non_bool_sole_enforcement_is_refused(tmp_path):
     for value in ("false", 0, 1, "yes", None):
         with pytest.raises(ls.SignalRefused):
             ls.parse_signal("s", _answer_decl(sole_enforcement=value))
+
+
+# ── a near miss on an optional field is a refusal, not a silent absence ────────────
+
+def test_a_key_aimed_at_the_delegation_field_is_refused_not_stored(tmp_path):
+    """Peer-measured: a mistyped delegation key reads as "no delegation".
+
+    That is the reassuring direction one step earlier than the malformed-answer refusal —
+    the signal parses, `answer` is None, and evaluation silently takes the handler route,
+    which is the recomputation the whole delegation exists to prevent.
+
+    Keys chosen for SHAPE, not from any project's vocabulary: a prefix, a plural, a suffix,
+    and a case/separator variant.
+    """
+    for key in ("prior_answer", "answers", "answer_field", "Answer", "ANSWER"):
+        raw = _answer_decl()
+        raw[key] = raw.pop("answer")
+        with pytest.raises(ls.SignalRefused) as caught:
+            ls.parse_signal("s", raw)
+        assert key in str(caught.value)
+
+
+def test_a_key_aimed_at_the_blocking_flag_is_refused(tmp_path):
+    """The same hole in the worse direction.
+
+    A mistyped flag reads as False, so a signal its project declared the only enforcement of
+    its class stops blocking — and nothing reports it. `[NOT READ]` would not cover this: it
+    is a report, not a gate.
+    """
+    for key in ("soleEnforcement", "sole-enforcement", "enforcement"):
+        with pytest.raises(ls.SignalRefused):
+            ls.parse_signal("s", _answer_decl(**{key: True}))
+
+
+def test_a_declared_key_that_resembles_nothing_is_still_kept(tmp_path):
+    """The refusal must not swallow the preservation it was added next to."""
+    signal = ls.parse_signal("s", _answer_decl(canonical_implementation="scripts/x.sh"))
+    assert signal.extra == {"canonical_implementation": "scripts/x.sh"}
+
+
+def test_required_fields_are_deliberately_not_near_miss_checked(tmp_path):
+    """Stated as a test because the omission looks like an oversight otherwise.
+
+    A typo on a required field leaves the real field missing, which is already refused by
+    name. Checking those too would buy nothing and cost over-refusals: `lane` normalises to
+    four characters, so any project key containing it — `plane_config` — would collide.
+    """
+    assert set(ls.SILENTLY_OPTIONAL_FIELDS).isdisjoint(ls.REQUIRED_FIELDS)
+    raw = _answer_decl(plane_config="x", scope_notes="y")
+    assert set(ls.parse_signal("s", raw).extra) == {"plane_config", "scope_notes"}
+
+
+def test_every_optional_signal_field_is_near_miss_checked(tmp_path):
+    """Pins the list to `LaneSignal` itself, so a new optional field cannot reopen the hole.
+
+    This is the "hold the wrong pattern in a test" discipline: a hand-maintained list is a
+    second copy, and a second copy drifts. Adding an optional field without extending
+    `SILENTLY_OPTIONAL_FIELDS` fails here instead of silently going unchecked.
+    """
+    import dataclasses
+
+    optional = {f.name for f in dataclasses.fields(ls.LaneSignal)
+                if f.name not in ls.REQUIRED_FIELDS and f.name not in ("name", "extra")}
+    assert optional == set(ls.SILENTLY_OPTIONAL_FIELDS), (
+        "an optional LaneSignal field is not covered by the near-miss refusal — a typo on "
+        "it would read as absent, silently")

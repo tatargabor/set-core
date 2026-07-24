@@ -182,11 +182,36 @@ The general rule this stands for: *the declaration is the contract, not the docu
   the split from their side: their defect signal's answer is already a contract field, their
   new-module signal's is not, because only the framework holds the base ref.
 
-  **One shape question is on the channel, not decided here:** their declaration calls the
-  field `published_answer` and names three fields for set-core to combine
-  (`data.bugs[].hasRegressionTest` + `.onBaseline` + FIXED status). Combining them IS the
-  reimplementation the rule forbids, so the ask is that they publish the already-decided list
-  under one path. That is a request about what they expose, never about how their gate works.
+  **CLOSED end-to-end the same evening (channel W#109).** The consumer published the decided
+  list under one path, declared it, and ran **set-core's own `build_report` against their
+  tree**: on the main tree `0 fired / 1 did not fire / 1 unevaluated`, and in a disposable
+  worktree with a reference deliberately broken, `fired: 1` with the violation named. So the
+  chain closes — our gate asks their command in a bare tree and reports THEIR answer back,
+  firing in the broken tree and staying quiet in the good one. First time the mechanism has
+  produced a real `fired` with content.
+
+  Three things settled with it, each worth more than the answer itself:
+
+  - **The key name is `answer`, and their reasoning is the rule applied to itself:** the
+    framework defines the SHAPE, the project supplies the VALUE — a key name is shape, so it
+    is ours. Forcing their word onto our schema would break the same rule in the other
+    direction.
+  - **A violation identifier must be stable across environments.** They rejected our example,
+    which used a runtime-assigned sequential number: such an identifier differs per
+    environment and cannot be derived where no runtime exists — which is exactly the worktree
+    the gate reads in. Both the baseline and the exclusions key on the published string, so a
+    per-environment identifier makes the baseline hold on one machine and not another. This
+    generalises beyond them and belongs in any project's contract: **publish an identifier
+    the tree itself can produce.**
+  - **A near-miss key is now refused, not stored** (`4.13`, AC-28). They measured what
+    happens when the delegation key is mistyped or carries an older name: it lands in `extra`,
+    `answer` stays `None`, and evaluation silently takes the handler route — the recomputation
+    the delegation exists to prevent, selected by a typo. `[NOT READ]` does not cover it,
+    because a report is not a gate. Refusal covers the optional fields only; required ones are
+    already protected by their own missing-field refusal. The first implementation had a hole
+    of its own — a pure case or separator variant escaped, because the "is it different?" test
+    compared normalised forms while the reader matches raw keys — and the test written beside
+    the function found it, not a reading of it.
 
 - **Envelope v1**: `{contractVersion, generatedAt, command, ok, data, deprecated}`. An
   unsupported version is refused *before* spawning anything.

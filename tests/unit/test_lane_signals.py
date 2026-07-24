@@ -402,10 +402,10 @@ def test_a_declared_field_this_version_does_not_read_is_KEPT():
     """
     signal = ls.parse_signal("sig", _valid(
         canonical_implementation="scripts/gates/check-x.sh",
-        published_answer={"command": "bugs", "field": "data.bugs[].hasTest"}))
+        rename_detection="-M"))
 
     assert signal.extra["canonical_implementation"] == "scripts/gates/check-x.sh"
-    assert signal.extra["published_answer"]["command"] == "bugs"
+    assert signal.extra["rename_detection"] == "-M"
 
 
 def test_a_known_field_never_lands_in_extra():

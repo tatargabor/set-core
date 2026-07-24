@@ -158,6 +158,29 @@ contract, every declared command and both signal declarations, existed on one ma
 was absent from the remote branch, so a clone or a CI run finds nothing to ask rather than
 receiving a wrong answer.
 
+A violation identifier SHALL be stable across environments. set-core SHALL NOT require a
+particular identifier scheme — that is the project's — but a project publishing identifiers
+its own tooling assigns at runtime SHALL expect the baseline and the exclusions to match on
+one machine and not another, because both mechanisms key on the published string.
+
+This is the same constraint the worktree requirement makes, one level down: the value is read
+where no runtime exists, so an identifier that only a runtime can produce is not available at
+the moment it is needed.
+
+#### Scenario: A key aimed at a framework field is refused rather than stored
+- **WHEN** a declaration carries a key that differs from an optional framework field only by
+  prefix, suffix, plural, case, or separator
+- **THEN** set-core SHALL refuse the declaration, naming both the declared key and the field
+  it resembles
+- **AND** SHALL NOT store it as an uninterpreted field
+
+Reporting it as unread is not sufficient here, and the difference is the point: an unread
+report is a report, whereas a missed delegation key silently selects the framework-side
+route — the recomputation the delegation exists to prevent. The same miss on the blocking
+flag reads as `false`, so a signal its project declared the only enforcement of its class
+stops blocking and nothing says so. Required fields are deliberately excluded: a typo there
+leaves the real field missing, which is already refused by name.
+
 #### Scenario: A projection in the declared path is refused
 - **WHEN** a signal's delegated answer names a path containing an index, a wildcard or a
   filter

@@ -376,6 +376,74 @@ def _parse_answer(name: str, raw: Any) -> Optional[dict]:
     return {f: raw[f] for f in ANSWER_FIELDS}
 
 
+def _normalise_key(key: str) -> str:
+    """Lowercase, letters and digits only — so `sole-enforcement` and `soleEnforcement`
+    collapse onto the same string as the field they were aiming at."""
+    return "".join(c for c in str(key).lower() if c.isalnum())
+
+
+#: The fields whose ABSENCE is silent, and therefore the only ones a near-miss check is
+#: worth its false positives for. Every required field is already protected by accident: a
+#: typo there leaves the real field missing, which is refused with a message naming it. So
+#: checking those too would add nothing but over-refusals — `lane` normalises to four
+#: characters, and any project key containing `lane` (or `plane`) would collide.
+#:
+#: Derived from `LaneSignal`'s own optional fields by a test, not by hand, so that adding an
+#: optional field without extending this tuple fails rather than silently reopening the hole.
+SILENTLY_OPTIONAL_FIELDS = ("exclusions", "answer", "sole_enforcement")
+
+
+def _refuse_near_miss_keys(name: str, extra: dict, known: Iterable[str]) -> None:
+    """Refuse a declared key that was clearly aiming at a field this reader knows.
+
+    Peer-raised, and they found it by MEASURING the miss rather than reasoning about it: a
+    mistyped or renamed delegation key is not an error today — it lands in `extra`, the
+    signal is built with `answer=None`, and evaluation quietly takes the handler route. That
+    is the same reassuring direction `_parse_answer` refuses a MALFORMED answer for, arriving
+    one step earlier: the fallback IS the second implementation, and a typo must not be able
+    to select it. The key names that would do it are the project's vocabulary and are
+    deliberately not written here — the check is a shape, not a list.
+
+    The class is wider than `answer`, which is why this is not a list of three names.
+    `sole_enforcement` has the same hole in the worse direction: a mistyped flag silently
+    reads as False, so a signal its project declared the only enforcement of its class stops
+    blocking, and nothing says so. The required six are deliberately NOT checked — a typo
+    there leaves the real field missing, which is already refused by name, so including them
+    would buy nothing and cost over-refusals on any key containing a short field name.
+
+    A legitimate project key that merely resembles a framework field is refused too, and
+    that is the intended trade: refusal is loud, cheap and fixed by renaming, whereas the
+    silent version is a protection that reports nothing while doing nothing. Same reasoning
+    as D4 — refuse, never default.
+
+    `[NOT READ]` does not cover this. It is a report, not a gate; the project would still
+    believe the framework acted on a field it merely stored.
+    """
+    normalised_known = {_normalise_key(k): k for k in known}
+    for declared in extra:
+        candidate = _normalise_key(declared)
+        for norm, field_name in normalised_known.items():
+            # Either direction: a prefixed key CONTAINS the field name, and a truncated one
+            # is CONTAINED BY it. A near miss is a near miss whichever way the extra
+            # characters fell.
+            #
+            # The escape clause compares the RAW key to the field name, never the normalised
+            # forms. Comparing normalised forms let a pure case or separator variant through
+            # — it normalises to the field name exactly, so an "is it different?" test on the
+            # normalised string said no while the reader, which matches raw keys, had already
+            # ignored it. Found by the test written next to this function, which is the point
+            # of writing the shapes out rather than one happy-path example.
+            if declared != field_name and (norm in candidate or candidate in norm):
+                raise SignalRefused(
+                    name, f"declared key {declared!r} looks like {field_name!r}",
+                    f"if it was meant to be {field_name!r}, this reader never saw it and "
+                    f"would have carried on as though the field were absent — for "
+                    f"'answer' that silently selects the framework-side handler route, "
+                    f"which is the recomputation the delegation exists to prevent. Rename "
+                    f"it to {field_name!r}, or to something that cannot be read as it",
+                )
+
+
 def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> LaneSignal:
     """Validate one declaration. Raises `SignalRefused`; never returns a partial signal."""
     if not isinstance(raw, dict):
@@ -432,6 +500,7 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
     # hard-coded set of names, so a future field cannot be preserved and read at once.
     known = set(REQUIRED_FIELDS) | {"exclusions", "answer", "sole_enforcement"}
     extra = {k: v for k, v in raw.items() if k not in known}
+    _refuse_near_miss_keys(name, extra, SILENTLY_OPTIONAL_FIELDS)
 
     signal = LaneSignal(
         name=name,

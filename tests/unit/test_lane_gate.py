@@ -197,7 +197,7 @@ def test_the_output_names_declared_fields_this_version_does_not_read(tmp_path):
     """
     tree = _tree(tmp_path, {"sig": dict(_decl(),
                                         canonical_implementation="scripts/gates/x.sh",
-                                        published_answer={"command": "bugs"})})
+                                        rename_detection="-M")})
 
     output = lg.format_output(lg.build_report(tree, change=_change()), change=_change())
 

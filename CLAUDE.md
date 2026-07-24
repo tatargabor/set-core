@@ -401,10 +401,30 @@ started:
 ```bash
 git worktree add -q --detach /tmp/base HEAD
 python -m pytest tests/unit -q -p no:randomly 2>&1 | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort > /tmp/now.txt
-(cd /tmp/base && python -m pytest tests/unit -q -p no:randomly 2>&1 | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort) > /tmp/base.txt
+# The baseline MUST import its own lib. Assert it before trusting the run — see below.
+(cd /tmp/base && PYTHONPATH=/tmp/base/lib python -c \
+   "import set_orch;assert set_orch.__file__.startswith('/tmp/base/'),set_orch.__file__" \
+ && PYTHONPATH=/tmp/base/lib python -m pytest tests/unit -q -p no:randomly 2>&1 \
+    | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort) > /tmp/base.txt
 diff /tmp/base.txt /tmp/now.txt   # empty = no regression, whatever the counts say
 git worktree remove /tmp/base --force
 ```
+
+**The `PYTHONPATH` line and the assertion are not decoration — without them this check does
+not compare two versions.** Measured 2026-07-24: `set-core` is installed editable, so its
+`__editable___set_core_0_3_0_finder` resolves `set_orch` to `/home/…/set-core/lib` from
+*anywhere*. A worktree at `/tmp/base` therefore ran the BASELINE TESTS against the WORKING
+TREE's library — a hybrid, not a baseline.
+
+Its fail direction is what makes it expensive: the usual change is additive, so old tests
+still pass against new code and the failure sets come out identical. The check then reports
+"no regression" having compared one version with itself, and it does so most convincingly
+exactly when it is least earned. It only became visible when two baseline tests failed that
+could not fail at `HEAD` — the hybrid's own tell, and it appeared by luck.
+
+So: point `PYTHONPATH` at the worktree's `lib`, and **assert where the import came from
+before believing the run**. This is the proxy-instead-of-the-thing class applied to a version:
+`cd`-ing into a worktree is a proxy for running its code.
 
 ## External Project Confidentiality
 

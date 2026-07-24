@@ -200,6 +200,31 @@ operation updates is not a backup.*
 So: read in a separate statement, or write a temp file and `mv`. And when a check exists to
 catch a class of damage, make sure the damaging path cannot be the thing that updates it.
 
+**A baseline that shares the working tree's code is not a baseline.** Measured here on the
+very check this repo prescribes for regressions. `git worktree add --detach /tmp/base HEAD`
+then `cd /tmp/base && pytest` looks like running the old version — and does not. An editable
+install resolves the package from a finder that hard-codes the development path, so the
+baseline's TESTS ran against the working tree's LIBRARY. Two versions were never compared.
+
+The direction is the expensive part, and it is the reassuring one twice over. Additive
+changes — the common case — leave old tests passing against new code, so the two failure sets
+come out identical and the check reports "no regression" having compared one version with
+itself. And it is *most* convincing exactly when it is least earned. It surfaced only because
+two baseline tests failed that could not fail at `HEAD`, which was luck, not method.
+
+The general shape: **`cd` into a directory is a proxy for running the code in it.** Point
+`PYTHONPATH` (or the equivalent) at the baseline's own source, and *assert where the import
+came from* before believing the run:
+
+```bash
+PYTHONPATH=/tmp/base/lib python -c \
+  "import set_orch;assert set_orch.__file__.startswith('/tmp/base/'),set_orch.__file__"
+```
+
+Two lessons outrank the fix, and both are already in this file under other names. A guard is
+only as good as the thing it actually measured — and *the check that verifies other work is
+itself work nobody checks*, because a green comparison is where reading stops.
+
 **Never put `git stash` in a command that can be killed.** Same defect one level up, and it
 nearly cost this session's uncommitted work: `git stash -u && <full suite> && git stash pop`
 run in the foreground hit a two-minute tool timeout **after the stash and before the pop**,
