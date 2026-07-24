@@ -15,6 +15,36 @@ or, worse, build on an assumption about it.
 
 ---
 
+## Read this back — do not re-derive it, and do not trust a paraphrase of it
+
+Stated by the user on 2026-07-24: **the important decisions and details must be written down
+before a compact, and read back by whoever resumes.** The reason is not tidiness — it is
+that error here *accumulates*, and each hop dilutes in one direction only: **precision goes,
+confidence stays.** A finding that arrives as "we hardened the parsers" has lost the part
+that made it useful. A decision that arrives as "we agreed on the envelope" has lost the
+alternative it beat and why, so the next session cannot revisit it — only inherit it.
+
+Three carriers of this track are lossy, and all three are in play at once: the **compact**
+(summarises), the **agent channel** (paraphrases across a repository boundary), and the
+**`/tmp` channel itself** (evaporates on reboot). This file is the only carrier that is not.
+
+So, on resuming:
+
+1. **Read this file end to end before deciding anything.** It is short on purpose.
+2. **Re-check, don't re-derive.** Every claim below names how it was verified. Re-running
+   that check costs seconds; re-deriving the conclusion costs a session and can land
+   somewhere else.
+3. **When this file and your recollection disagree, this file wins** — unless you can
+   produce evidence, in which case fix the file in the same breath.
+4. **Anything decided or measured since the last write goes in before the context ends**,
+   not after the next step. The next step may not happen in this session.
+
+The general form of that discipline — what counts as knowing something, and how a claim and
+its evidence stay attached — is in
+[`.claude/rules/evidence-discipline.md`](../../.claude/rules/evidence-discipline.md).
+
+---
+
 ## Why this exists — the goal, in one sentence
 
 **Open set-core and see where the project stands.** Not an API that returns correct JSON:

@@ -13,6 +13,22 @@ experience already on the record rather than escalating. That is a mandate to ch
 to guess — a decision made this way names the evidence it rests on and goes in the living
 record, so it can be revisited rather than merely inherited.
 
+**Write it down BEFORE the context ends, and read it back after** (user, 2026-07-24). The
+danger on this track is not forgetting — it is **compounding**: every hop through a compact,
+through the agent channel, or through a `/tmp` file that evaporates loses precision while
+keeping confidence, so a diluted claim gets built on as if it were the measurement. Three
+consequences, all binding:
+
+- **Record at the moment of the decision or the measurement**, not at the end of the step.
+- **On resuming, re-check rather than re-derive** — every claim in the living record names
+  how it was verified, and re-running that check costs seconds.
+- **A summary is not a source.** When your recollection and the living record disagree, the
+  record wins unless you can produce evidence — and then you fix the record immediately.
+
+What counts as knowing something — the defect classes that keep recurring here, and how to
+prove a fix is a fix — is in
+[`.claude/rules/evidence-discipline.md`](.claude/rules/evidence-discipline.md).
+
 ## The goal this work serves — do not lose this across a compact (2026-07-24)
 
 The user has stated this twice, emphatically, because a context boundary is exactly where
@@ -449,6 +465,9 @@ When compacting context, always preserve:
 - Any unresolved errors or blockers
 - The cross-project channel dir (if one is active) and the last entry read on each side — see
   the temporary cross-project agent channel section above
+- **The living record's path, and that it is read BACK, not summarised forward.** A compact
+  keeps confidence and loses precision; the record is the only carrier that does not. If the
+  summary and `docs/integration/consumer-integration.md` disagree, the file wins.
 - **That the channel watches must be CHECKED after the compact, not re-armed on reflex.**
   Both the Monitor and the cron survive it (verified), so an unconditional re-arm produces
   duplicates — two notifications per entry, two answers to one question. Nothing reports a
