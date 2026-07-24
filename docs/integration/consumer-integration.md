@@ -448,8 +448,26 @@ being guessed at.
    makes the slow answer permanently unobtainable — on screen indistinguishable from a
    project that cannot answer it.
 
-   **Still open, and it is the project's half:** the command must actually probe when asked
-   by name.
+   **Closed, and not the way either side planned.** The project measured the number this
+   whole design rested on and found it wrong: the "118–286s" was a CI pipeline's duration
+   lifted from another document into a field meaning "how long does this take", and a 400s
+   timeout was being sized against it. What the question actually needed was one HTTP call,
+   so they published a separate `health` command instead — **9 commands, 0 gaps, 1.5
+   seconds for the whole page load**, and the on-demand flag was withdrawn as unnecessary.
+
+   **Goal 2's last item is met:** the live system is a state now, not an address. It
+   reports reachability, HTTP status, latency, and **which commit is actually running** —
+   the same rule this repo learned the hard way, that a shipped commit is not a running
+   system.
+
+   *Two lessons worth more than the feature.* **A duration is a number like any other**, and
+   this side accepted it without asking how it was measured, while demanding exactly that
+   discipline of everything else. And **the error's direction is why nobody would have
+   caught it**: a wrong number that suggests a LARGER timeout breaks nothing — it just lets
+   a stuck command hold a page for minutes. Slow, quiet, invisible.
+
+   The per-command timeout stands but is honestly unused: no project declares one today, and
+   the need it was built for was measured away. It is available, not vindicated.
 
 4. **Then the factory layer proper** — planning releases and bug fixes inside set-core.
    Its shape is the router between differentiated ADWs already identified in the
