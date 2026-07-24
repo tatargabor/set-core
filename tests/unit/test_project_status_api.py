@@ -246,3 +246,147 @@ def test_nothing_from_the_answer_is_written_into_the_project(client, project):
     after = {p.name for p in project.iterdir()}
 
     assert after - before <= {"calls.log"}
+
+
+# ─── writes: a separate list, a separate function, a separate route ──────────
+
+WRITE_CONTRACT = """\
+import json, sys, pathlib
+argv = sys.argv[1:]
+pathlib.Path(__file__).with_name("calls.log").open("a").write(json.dumps(argv) + "\\n")
+cmd = argv[0] if argv else ""
+print(json.dumps({"contractVersion": 1, "command": cmd, "ok": True,
+                  "data": {"recorded": True, "argv": argv[1:]}}))
+"""
+
+
+@pytest.fixture
+def writable(tmp_path, monkeypatch):
+    """A project declaring one read command and one write command."""
+    proj = tmp_path / "w"
+    proj.mkdir()
+    (proj / "contract.py").write_text(WRITE_CONTRACT)
+    (proj / ".set-endpoint.json").write_text(json.dumps({
+        "contractVersion": 1,
+        "command": [sys.executable, "contract.py"],
+        "commands": ["releases"],
+        "writeCommands": ["ack"],
+    }))
+    pf = tmp_path / "wp.json"
+    pf.write_text(json.dumps([{"name": "w", "path": str(proj)}]))
+    monkeypatch.setattr(api_helpers, "PROJECTS_FILE", pf)
+    return proj, TestClient(create_app(web_dist_dir=None))
+
+
+def test_a_declared_write_is_performed(writable):
+    proj, client = writable
+    resp = client.post("/api/w/project-status/write/ack",
+                       json={"release": "1.2.3", "index": 4, "env": "test"})
+
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert _calls(proj) == [["ack", "--release", "1.2.3", "--index", "4", "--env", "test"]]
+
+
+def test_a_read_command_cannot_be_invoked_as_a_write(writable):
+    """The separation is the safety property; precedence would dissolve it."""
+    proj, client = writable
+    resp = client.post("/api/w/project-status/write/releases", json={})
+
+    assert resp.status_code == 404
+    assert _calls(proj) == []
+
+
+def test_a_write_command_is_never_reachable_through_the_read_route(writable):
+    """A page load walks the read list — it must not be able to arrive at a write."""
+    proj, client = writable
+    resp = client.get("/api/w/project-status?commands=ack")
+
+    assert resp.status_code == 404
+    assert _calls(proj) == []
+
+
+def test_the_default_page_load_asks_only_read_commands(writable):
+    proj, client = writable
+    client.get("/api/w/project-status")
+
+    assert [c[0] for c in _calls(proj)] == ["releases"]
+
+
+def test_a_project_declaring_no_writes_can_never_be_written_to(client, project):
+    resp = client.post("/api/proj/project-status/write/ack", json={})
+
+    assert resp.status_code == 404
+    assert _calls(project) == []
+
+
+@pytest.mark.parametrize("flag", ["--evil", "a b", "A", "", "a;b"])
+def test_a_malformed_argument_name_never_reaches_argv(writable, flag):
+    proj, client = writable
+    resp = client.post("/api/w/project-status/write/ack", json={flag: "x"})
+
+    assert resp.json()["ok"] is False
+    assert resp.json()["errorClass"] == "invalid-argument"
+    assert _calls(proj) == []
+
+
+def test_a_value_that_looks_like_a_flag_is_refused_not_escaped(writable):
+    """argv is positional: a dashed value shifts everything after it, silently."""
+    proj, client = writable
+    resp = client.post("/api/w/project-status/write/ack", json={"by": "-rf"})
+
+    assert resp.json()["errorClass"] == "invalid-argument"
+    assert _calls(proj) == []
+
+
+def test_a_successful_write_drops_the_read_cache(writable):
+    """Showing a step as un-acknowledged right after acknowledging it is its own lie."""
+    proj, client = writable
+    client.get("/api/w/project-status")
+    client.post("/api/w/project-status/write/ack", json={"env": "test"})
+    client.get("/api/w/project-status")
+
+    assert [c[0] for c in _calls(proj)] == ["releases", "ack", "releases"]
+
+
+def test_a_failed_write_leaves_the_cache_alone(writable):
+    """Nothing changed on the project's side, so nothing needs re-reading."""
+    proj, client = writable
+    client.get("/api/w/project-status")
+    client.post("/api/w/project-status/write/ack", json={"by": "-x"})
+    client.get("/api/w/project-status")
+
+    assert [c[0] for c in _calls(proj)] == ["releases"]
+
+
+def test_the_contract_route_reports_the_write_list_separately(writable):
+    _, client = writable
+    data = client.get("/api/w/project-status/contract").json()
+
+    assert data["commands"] == ["releases"]
+    assert data["writeCommands"] == ["ack"]
+
+
+def test_a_name_in_both_lists_is_refused_from_both(tmp_path, monkeypatch):
+    """A command cannot be safe to call on a page load and also change something."""
+    proj = tmp_path / "both"
+    proj.mkdir()
+    (proj / "contract.py").write_text(WRITE_CONTRACT)
+    (proj / ".set-endpoint.json").write_text(json.dumps({
+        "contractVersion": 1,
+        "command": [sys.executable, "contract.py"],
+        "commands": ["ack", "releases"],
+        "writeCommands": ["ack"],
+    }))
+    pf = tmp_path / "bp.json"
+    pf.write_text(json.dumps([{"name": "both", "path": str(proj)}]))
+    monkeypatch.setattr(api_helpers, "PROJECTS_FILE", pf)
+    client = TestClient(create_app(web_dist_dir=None))
+
+    contract = client.get("/api/both/project-status/contract").json()
+    assert contract["commands"] == ["releases"]
+    assert contract["writeCommands"] == []
+
+    assert client.post("/api/both/project-status/write/ack", json={}).status_code == 404
+    assert client.get("/api/both/project-status?commands=ack").status_code == 404
+    assert _calls(proj) == []

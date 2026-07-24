@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from .helpers import _resolve_project
 from ..project_status import (
@@ -37,6 +37,7 @@ from ..project_status import (
     is_valid_command_name,
     query,
     resolve_status_config,
+    write,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,12 +78,13 @@ def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:
     """
     if cfg is None:
         return {"configured": False, "source": None, "command": None,
-                "commands": [], "timeout": None, "cwd": None}
+                "commands": [], "writeCommands": [], "timeout": None, "cwd": None}
     return {
         "configured": True,
         "source": cfg.source,
         "command": " ".join(cfg.argv_prefix),
         "commands": list(cfg.commands),
+        "writeCommands": list(cfg.write_commands),
         "timeout": cfg.timeout,
         "cwd": cfg.cwd,
     }
@@ -173,3 +175,52 @@ def get_project_status(
         project, len(names), len(payload.get("gaps", {})),
     )
     return payload
+
+
+@router.post("/api/{project}/project-status/write/{command}")
+def post_project_write(project: str, command: str, args: Optional[dict] = Body(None)):
+    """Ask the project to record something. set-core never writes; it asks.
+
+    Deliberately a different route from the read one, not a flag on it. The two are
+    separated all the way down — declared list, function, endpoint — so that "read
+    everything the project offers", which happens on every page load, cannot reach a
+    command that changes something no matter how the caller is composed.
+
+    Nothing is cached. On success the read cache for this project is dropped, because
+    the answer that was true a moment ago no longer is, and a status panel showing a
+    step as un-acknowledged right after acknowledging it is worse than a slow one.
+    """
+    project_path = _resolve_project(project)
+    cfg = resolve_status_config(project_path)
+
+    if cfg is None:
+        raise HTTPException(404, "this project publishes no status contract")
+
+    if command not in cfg.write_commands:
+        declared = ", ".join(cfg.write_commands) or "none"
+        raise HTTPException(
+            404,
+            f"the project does not publish {command!r} as a write command "
+            f"(it declares: {declared})",
+        )
+
+    if args is not None and not isinstance(args, dict):
+        raise HTTPException(400, "arguments must be an object of {flag: value}")
+
+    result = write(project_path, command, args or {}, config=cfg)
+
+    if result.ok:
+        for key in [k for k in _CACHE if k[0] == str(project_path)]:
+            _CACHE.pop(key, None)
+        logger.info("project_status API: write '%s' ok; read cache dropped", command)
+
+    return {
+        "project": project,
+        "command": command,
+        "ok": result.ok,
+        "data": result.data if result.ok else None,
+        "error": result.error,
+        "errorClass": result.error_class,
+        "generatedAt": result.generated_at,
+        "contractVersion": result.contract_version,
+    }

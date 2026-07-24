@@ -109,6 +109,12 @@ class StatusConfig:
     cwd: Optional[str] = None
     source: str = "config"
     commands: tuple = ()
+    #: Commands that CHANGE something on the project's side. Kept in a list of their
+    #: own, never merged with `commands`, because the separation is the safety property:
+    #: a renderer walking the read list can then never call a write by accident, and a
+    #: caller asking to write can never reach a command the project did not mark as one.
+    #: A name in both lists is refused outright — see `_declared_commands`.
+    write_commands: tuple = ()
 
     @property
     def argv_prefix(self) -> List[str]:
@@ -131,6 +137,28 @@ def _declared_commands(raw: Any) -> tuple:
                 "project_status: ignoring declared command %r — not a command name", name
             )
     return tuple(dict.fromkeys(out))
+
+
+def _split_command_lists(read_raw: Any, write_raw: Any) -> tuple:
+    """Read the two declared lists, refusing any name that appears in both.
+
+    An overlap is not a conflict to resolve by precedence — it means the project has
+    told us a command both is and is not safe to call on a page load. There is no
+    reading of that which is safe, so the name is dropped from both lists and has to be
+    asked for by neither.
+    """
+    read = _declared_commands(read_raw)
+    write = _declared_commands(write_raw)
+    both = set(read) & set(write)
+    if both:
+        logger.warning(
+            "project_status: %s declared in BOTH commands and writeCommands — dropping "
+            "from both; a command cannot be safe to call on a page load and also change "
+            "something", ", ".join(sorted(both)),
+        )
+        read = tuple(n for n in read if n not in both)
+        write = tuple(n for n in write if n not in both)
+    return read, write
 
 
 def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
@@ -186,9 +214,12 @@ def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
     if isinstance(cwd, str) and cwd.strip() and cwd.strip() != ".":
         resolved_cwd = str((Path(project_path) / cwd.strip()).resolve())
 
+    read_cmds, write_cmds = _split_command_lists(
+        raw.get("commands"), raw.get("writeCommands"),
+    )
     return StatusConfig(
         command=command, timeout=timeout, cwd=resolved_cwd, source="manifest",
-        commands=_declared_commands(raw.get("commands")),
+        commands=read_cmds, write_commands=write_cmds,
     )
 
 
@@ -263,11 +294,14 @@ def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
         timeout = DEFAULT_TIMEOUT_SECONDS
 
     cwd = block.get("cwd")
+    read_cmds, write_cmds = _split_command_lists(
+        block.get("commands"), block.get("write_commands"),
+    )
     return StatusConfig(
         command=command.strip(),
         timeout=timeout,
         cwd=cwd if isinstance(cwd, str) and cwd.strip() else None,
-        commands=_declared_commands(block.get("commands")),
+        commands=read_cmds, write_commands=write_cmds,
     )
 
 
@@ -433,6 +467,107 @@ def query(
         command, result.ok, result.error_class, result.contract_version,
     )
     return result
+
+
+#: A flag name a caller may send with a write. Same shape as a command name, for the
+#: same reason: it becomes an argv entry.
+def is_valid_flag_name(name: str) -> bool:
+    return bool(_COMMAND_NAME.match(name or ""))
+
+
+def write(
+    project_path: str | Path,
+    command: str,
+    args: Optional[Dict[str, Any]] = None,
+    config: Optional[StatusConfig] = None,
+) -> StatusResult:
+    """Ask the project to RECORD something. set-core never writes; it asks.
+
+    That distinction is the design, not a turn of phrase. The value lives on the
+    project's side, in a store the project chose, written by the project's own command.
+    set-core holds no copy and no memory of having asked — which is only safe because
+    the write is idempotent: sending the same acknowledgement twice is a successful
+    no-op, so the surface never has to remember what it already sent.
+
+    The command must appear in the project's `writeCommands`. Not in `commands`, and
+    not merely be well-shaped — a project that never declared a write has none, and no
+    argument from this side changes that.
+
+    Arguments arrive as `{flag: value}` and become `--flag value` argv entries. There is
+    no shell, so nothing is interpolated; the one remaining hazard is a VALUE that looks
+    like a flag, which is refused rather than escaped.
+    """
+    project_path = Path(project_path)
+    cfg = config or resolve_status_config(project_path)
+    if cfg is None:
+        return StatusResult.failure(
+            command, "not-configured", "this project publishes no status contract",
+        )
+
+    if command not in cfg.write_commands:
+        declared = ", ".join(cfg.write_commands) or "none"
+        return StatusResult.failure(
+            command, "not-a-write-command",
+            f"the project does not publish {command!r} as a write command "
+            f"(it declares: {declared})",
+        )
+
+    argv = cfg.argv_prefix + [command]
+    for flag, value in (args or {}).items():
+        if not is_valid_flag_name(flag):
+            return StatusResult.failure(
+                command, "invalid-argument", f"not an argument name: {flag!r}",
+            )
+        text = str(value)
+        if text.startswith("-"):
+            # With no shell there is no injection, but argv is positional: a value
+            # beginning with a dash is read by the project's own parser as the next
+            # flag, silently shifting everything after it.
+            return StatusResult.failure(
+                command, "invalid-argument",
+                f"the value for --{flag} starts with '-', which the project would read "
+                f"as another flag",
+            )
+        argv += [f"--{flag}", text]
+
+    env = dict(os.environ)
+    env["CI"] = "1"
+    env["NO_COLOR"] = "1"
+
+    logger.info("project_status: WRITE '%s' with %d argument(s)", command, len(args or {}))
+    try:
+        proc = subprocess.run(
+            argv, cwd=cfg.cwd or str(project_path), env=env,
+            capture_output=True, timeout=cfg.timeout,
+        )
+    except FileNotFoundError:
+        return StatusResult.failure(
+            command, "command-not-found", f"cannot run the write command ({argv[0]!r} not found)",
+        )
+    except subprocess.TimeoutExpired:
+        # A timed-out write is the one case where "did it happen?" has no answer here.
+        # Saying so is the only honest report; the project's own record is the truth,
+        # and re-asking is safe because the write is idempotent.
+        return StatusResult.failure(
+            command, "timeout",
+            f"the project did not answer within {cfg.timeout}s — whether it recorded the "
+            f"change is unknown from here; re-reading the project is the only way to tell",
+        )
+    except OSError as exc:
+        return StatusResult.failure(
+            command, "spawn-failed", f"could not start the write command ({type(exc).__name__})",
+        )
+
+    if proc.returncode != 0:
+        logger.warning(
+            "project_status: WRITE '%s' exited %d (%d bytes on stderr)",
+            command, proc.returncode, len(proc.stderr),
+        )
+        return StatusResult.failure(
+            command, "nonzero-exit", f"the write command exited {proc.returncode}",
+        )
+
+    return parse_envelope(command, proc.stdout.decode("utf-8", errors="replace"))
 
 
 @dataclass
