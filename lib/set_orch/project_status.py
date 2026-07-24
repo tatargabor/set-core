@@ -496,6 +496,21 @@ def write(
     Arguments arrive as `{flag: value}` and become `--flag value` argv entries. There is
     no shell, so nothing is interpolated; the one remaining hazard is a VALUE that looks
     like a flag, which is refused rather than escaped.
+
+    **What may be declared a write command at all — the standard, arrived at with the
+    first project to publish one and adopted as the general rule.** The first write was
+    acceptable because it appends to a file in the project's own repository, and is
+    therefore *structurally* incapable of reaching a live system: no network, no database,
+    no deployment. That is the bar. A write that reaches anything else — a database, an
+    HTTP endpoint, another service's API — is not covered by this design and must not be
+    declared here without the operator deciding so explicitly, however harmless it looks
+    from the command's name.
+
+    The reason to write the bar down rather than trust it: this function cannot check it.
+    set-core spawns a command it was told to spawn and cannot know what the command does.
+    So the guarantee is not enforced here — it is a property of *which commands a project
+    declares*, and it survives only as long as someone restates it at the moment a second
+    kind of write is proposed.
     """
     project_path = Path(project_path)
     cfg = config or resolve_status_config(project_path)

@@ -189,6 +189,68 @@ surface later as a surprise.
 The two carriers that cross it without anyone deciding to are named in `CLAUDE.md`: the
 memory system's automatic session-end extraction, and diagnostic output on error paths.
 
+## How the consumer actually releases — recorded because the channel is `/tmp`
+
+Asked before designing anything, per the rule that their mechanism is read first. Recorded
+here in generalised form because the answers arrived on a channel that does not survive a
+reboot, and because two of them change what should be built.
+
+**The release opens at the START, not the end.** A script creates a *draft* release file
+when the version is opened; features then write their own changelog line as they land. The
+tag comes only after the closing commit, so the tag contains the release file describing
+it. The test environment can receive the draft any number of times — the deploy runner is
+environment-aware and refuses draft migrations against production — so nothing has to be
+closed in order to test it. Closing is the "may go live" gate, and it runs a chain of them
+(manual-sync, release-file validation, a bug-regression suite, spec archival, then build,
+tests and a tagged E2E subset), each skippable only with a stated reason.
+
+**What is generated and what is written by hand is a deliberate split**, not an accident of
+tooling: the changelog list is generated from commit messages and then *curated* by a
+person, while the description, the migration block and the manual post-deploy steps are
+written by hand. A generated list that nobody curates is how a changelog becomes noise.
+
+### The two answers that were uncomfortable, and are therefore the useful ones
+
+**There is no mechanism deciding which release a fix lands in — timing decides.** Whatever
+is ready while the draft is open goes in. A severity field exists and is filled in on every
+fixed item, but it *controls nothing*: it is a label applied afterwards, not a decision made
+before. Their own summary of the gap: no screen anywhere shows that high-severity bugs are
+open **while a release is closing**. The past is recorded (which release fixed what); the
+future is not.
+
+**And the four work types do not split into four paths.** There is one path; chore, bug,
+feature and hotfix differ only by label and by whether a manual post-deploy step exists.
+They flagged this themselves as a shape *not* to generalise — it is not a principle, it is
+that splitting has never hurt enough to be worth it. Which is exactly the warning this
+track needs: the 2026-07-19 verdict's "missing piece is a router between differentiated
+ADWs" is **not confirmed** by the most advanced practice available to us. What actually
+varies there is whether a change needs a manual step afterwards and whether it is already
+live — not what kind of work it was.
+
+### Where state is lost today — the real backlog, in their words
+
+1. **Bug priority against release timing.** Someone knows a high-severity bug is open at
+   closing time. Nowhere does it show.
+2. **The reporter's answer.** Now visible as a status field; before, invisible entirely.
+3. **Test coverage state.** Dozens of spec files, none running automatically — a subset
+   runs at release close. Until someone runs them, the word "green" means nothing.
+4. **Why something was left out of a release.** Spoken, never recorded.
+
+### The boundary, restated by them before it was asked twice
+
+Nothing in their release should be *triggered* by set-core, and their reason is their own
+rather than deference to this side's constraint: the only path to production is a push that
+their CI promotes, and deploying from a local working directory would ship a snapshot
+rather than a commit.
+
+**The yardstick they proposed for every future write, and it is now the framework's:** the
+acknowledgement was acceptable because it appends to a repository file and is therefore
+structurally incapable of touching a live system. A write that reaches a database, an HTTP
+endpoint or an external API is not covered by that argument and is refused until the
+operator decides otherwise. Written into `project_status.write`'s docstring, where the next
+person proposing a write command will read it — it cannot be enforced in code, because
+set-core cannot know what a command it was told to spawn actually does.
+
 ## Next, in order
 
 1. ~~**The acknowledgement surface.**~~ **Built.** The pain the consumer measured was state
