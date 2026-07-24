@@ -1,46 +1,52 @@
 
-## Current Work State — read this first (updated 2026-07-19)
+## Current Work State — read this first (updated 2026-07-24)
 
-**Active track: the safety trio in `docs/research/final-plan-2026-07-19.md` §0.** Start there, not with new research.
+**The deploy is sealed. Every write path into a consumer tree is now guarded, and a live
+first init has been run and verified.** The 2026-07-19 safety track is complete; do not
+reopen it, and do not start new research on it.
 
-**Shipped:** Phase 0′ — the DB-mutation guard in `integration_pre_build` (`modules/web/set_project_web/project_type.py`), commit `8fae5733`, with mutation-checked tests in `tests/unit/test_integration_pre_build_db_guard.py`. set-core no longer authors `prisma db push --accept-data-loss` against a non-`file:` target.
-
-**Shipped 2026-07-24** — the deploy/runtime safety block:
-- `d3769483` — `protected: true` across the web manifest (49 of 51 entries).
+**Shipped — the safety track, in order:**
+- `8fae5733` — DB-mutation guard in `integration_pre_build`; no more
+  `prisma db push --accept-data-loss` against a non-`file:` target.
+- `d3769483` — `protected: true` across the web manifest.
 - `eb7e2839` — the two remaining live-DB paths: a guard refusing config-supplied destructive
   commands against a non-`file:` target (`lib/set_orch/db_safety.py`, both post-merge paths),
   and dispatch re-running the project's `worktree-init` hook *after* `env_vars`, so the
   project's per-tree database name wins. They were a chain, not two bugs.
 - `aed09d3c` — install-time hash ledger + tombstones (`set/.deploy-manifest.json`), covering
   BOTH deploy engines, and a `--dry-run` that finally reports the bash engine too.
-
-**Next, in this order** (all small, none architectural):
-1. **0′b** — the twin `e2e_pre_gate` has the same class of hole: its guard reads the `.env` FILE while the push runs with the `env` PARAMETER, and it never fires when `DATABASE_URL` is absent. ~4 lines + test.
-2. **0b** — e2e gate reads a machine-readable result file keyed on `(file, title)` instead of scraping the Playwright list reporter. **Now known to be live, not theoretical**: a measured consumer runs Playwright with `--reporter json`, so the list-reporter regex matches nothing and the gate reads zero failures.
-3. **Two mutation paths still outside both engines**: `_cleanup_deprecated_memory_refs`
-   (`lib/project/deploy.sh`) edits consumer command files unguarded, and `set-deploy-hooks`'
-   "fresh merge" branch would replace whole `settings.json` event arrays — taking a consumer's
-   own PreToolUse firewall with them — if the config ever stops looking canonical.
+- `a20aab1f` — ownership checks on the two mutation paths outside the engines.
+- `a0334e19` — the `e2e_pre_gate` twin hole, and the gate reading a machine-readable result
+  file keyed on `(file, title)` instead of scraping the Playwright list reporter. A measured
+  consumer runs Playwright with `--reporter json`, so the old regex matched nothing and the
+  gate read zero failures.
+- `ae9706bb` — **`once: true`** separates scaffold from knowledge. 41 manifest entries are
+  seeded once and never rewritten (all `rules/*.md`, which deploy un-prefixed into the
+  project's own namespace, plus every scaffold file); 9 namespaced `framework-rules/`
+  entries keep flowing. The split follows ownership, not file type.
+- `f8f92ee3` — **git history as deletion intent.** On a first init the ledger is empty, so an
+  absent path read as "new" and came back. Now a path absent from disk AND unknown to the
+  ledger is checked against `git log --diff-filter=D`; a committed deletion is intent. Both
+  engines, one scan per repository. Fails open (`None` = no information) so a new project
+  still receives its templates. `SET_DEPLOY_IGNORE_GIT_HISTORY=1` opts out.
+- `01701912` + `e2c818db` — **the fourth unguarded write path closed.** `_deploy_memory` no
+  longer shells out to `set-memory-hooks remove`; that tool resolved its own target with
+  `git rev-parse`, so a deploy into a non-repo-root walked UP and edited an ancestor
+  repository, and it knew nothing about ownership. The in-process cleanup covers a superset
+  of the same files through the ledger. Removing it exposed why nobody had noticed: the
+  in-process migration matched zero blocks (its regex demanded a closing
+  `<!-- /set-memory hooks -->` while the installer emitted `start`/`end`), so the unguarded
+  external call had been doing the real work all along. A test now fails if the call
+  returns.
 
 **Superseded:** `0a′` (`--no-verify` on automated commits/pushes) is **withdrawn for pushes**.
 Consumer gate chains commonly hang off the *pre-push* hook; bypassing it makes every one of
 them skip silently. Commits may use `--no-verify`; pushes must never.
 
-**GATE LIFTED 2026-07-24 — with one required first step.** The hold on running `set-project
-init` against a live consumer is released: every clobber path measured on 2026-07-19 now goes
-through either the manifest flags (`d3769483`), the install ledger and tombstones
-(`aed09d3c`), or an ownership check (`a20aab1f`), and `--dry-run` finally reports the bash
-engine too.
-
-**Run `set-project init --dry-run` first and read the plan.** It is now honest about its own
-blast radius, which it was not before. Then diff-check the consumer's `.claude/`, its hook
-config and its gate scripts after the real run; an empty diff on hand-authored files is the
-pass condition.
-
-**One unguarded path remains** (out of scope for today, and it fires only when the memory CLI
-is installed): `_deploy_memory` shells out to `set-memory-hooks remove --quiet` inside the
-consumer tree with both streams swallowed, no dry-run awareness and no provenance. Close it
-before treating deploy as fully sealed.
+**Deploying to a consumer.** Run `set-project init --dry-run` first and read the plan — it is
+honest about its own blast radius, including the bash engine. Then diff-check the consumer's
+`.claude/`, hook config and gate scripts after the real run; an empty diff on hand-authored
+files is the pass condition. Consumers no longer need to hand-maintain the `tombstones` list.
 
 ## Cross-project agent channel — TEMPORARY (from 2026-07-24)
 
