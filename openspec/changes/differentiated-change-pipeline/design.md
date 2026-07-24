@@ -180,8 +180,16 @@ gate — one that reports having verified something it never looked at — insid
 written to remove exactly that. Rejected alternative: a minimum rationale length, which is
 the same proxy failure with a threshold attached.
 
+**D11 — The lanes stay unnamed at the mechanism level.** Signals are named; lanes are not.
+Closed rather than left open, on two pieces of evidence from a project that named theirs.
+The general one: *an unnamed lane is recognised by its signal, a named lane by its name —
+and the name goes stale before the signal does.* The measured one: their name pulled readers
+onto the wrong axis, and the rule had to add a sentence saying which axis actually decides.
+A name is a second place that drifts, and this change has spent its whole life removing
+those.
+
 ## Open Questions
 
-- **Whether a lane needs a name at all.** The two lanes are currently distinguished only by
-  which end they gate. Naming them invites the taxonomy the verdict defers. Leaning toward
-  leaving them unnamed until a second pipeline exists.
+None. The two that existed — where a declaration lives (D9) and whether lanes need names
+(D11) — are closed above. A question left open is itself a second place that goes stale:
+the next reader cannot tell an undecided question from a forgotten one.
