@@ -86,6 +86,14 @@ def named_as_a_field(key: str, document: str) -> bool:
     record is English prose, and `error`, `message` and `data` are ordinary English words,
     so a bare-word gate passes on any sufficiently wordy page. A gate that cannot fail is
     indistinguishable from no gate, and worse, because it reports calm it never verified.
+
+    **Why only inline code, when the pattern's originator accepts JSON examples too.** They
+    widened theirs after measuring a field documented solely inside a `"key": value` example,
+    which is real documentation. Measured here, this record contains **zero fenced code
+    blocks** and names all seven envelope fields inline, so the same widening would guard a
+    case that cannot arise while moving the gate a step toward passing on prose. If a JSON
+    example is ever added to this record and a field is documented only there, this will
+    report it missing — loudly, in the safe direction — and *that* is the moment to widen it.
     """
     return re.search(rf"`[^`\n]*\b{re.escape(key)}\b[^`\n]*`", document) is not None
 
