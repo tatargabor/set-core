@@ -367,9 +367,19 @@ being guessed at.
 
    *The general rule, worth applying beyond tests:* **age misleads, distance from the tree
    does not.**
-3. **The reporter-feedback trace.** Same class — a step the process requires and
-   nothing records, so it cannot be checked. Note carefully what the measurement does and
-   does not prove: it shows the answer is *unverifiable*, not that it was never sent.
+3. ~~**The reporter-feedback trace.**~~ **Delivered on the project's side and live through
+   here — the fourth time a new field arrived with zero framework changes.** Measured:
+   67 rows carrying a four-valued status, and a summary whose four counts sum exactly to
+   the total (6 sent / 12 pending / 6 unmarked / 43 not-applicable = 67). The summary was
+   checked against the rows rather than taken on trust, which is the same discipline the
+   count-vs-list pair needed elsewhere.
+
+   **Four values, not two, and the reason generalises:** a boolean would render work that
+   is half-done identically to work nobody has touched, and lose it. The same argument
+   produced the three-valued acknowledgement state.
+
+   Note carefully what the measurement does and does not prove: it shows an answer is
+   *unverifiable*, not that it was never sent.
 3b. ~~**Which answer opens the surface.**~~ **Shipped** (`e7b0051e`). A contract that keeps
    growing eventually opens on whatever was declared first, which is an ordering decision
    nobody made. The project now declares `primary`; set-core never infers it from a name,
@@ -397,15 +407,16 @@ being guessed at.
    Its shape is the router between differentiated ADWs already identified in the
    2026-07-19 verdict, not a new system.
 
-   **Deliberately not started, and this is a state rather than a delay.** Five questions
-   went out on the channel first, because the rule that governs this track says to read
-   their mechanism before designing ours: how a release is actually opened and closed
-   today, what decides which release a fix lands in, whether a hotfix is a separate path,
-   what is done by hand and grates — and the boundary question, asked early on purpose:
-   is there any step they would want set-core to *trigger*. The answer to that last one is
-   fixed on this side and non-negotiable, but it is better known now than after half a
-   surface exists. Designing here while that is unanswered would be the parallel design
-   the user explicitly ruled out.
+   **All five scoping questions are now answered** (recorded above), and two of the answers
+   removed work rather than adding it: there is no four-way router to build, and nothing
+   should be triggered from here. What remains open is the axis the differentiation should
+   actually follow — theirs varies by *whether a manual step is needed and whether it is
+   already live*, while this repo already differentiates by *what a change touches*. Those
+   are two real axes and neither is the one that was planned.
+
+   **Still not started, and still a state rather than a delay:** the design belongs on the
+   channel, and their side is mid-build on the readiness answer. Starting here now would be
+   the parallel design the user ruled out.
 
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
