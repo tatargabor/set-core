@@ -368,6 +368,42 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
   )
 }
 
+/** How many chips are shown before the rest go behind a count. */
+const CHIP_LIMIT = 5
+
+/**
+ * A list of scalars, shortened when it is long enough to swallow the row it sits in.
+ *
+ * Measured on the live screen: one blocker row carried three identifier lists and grew to
+ * a dozen lines, pushing the other three blockers off the first screenful. A screen that
+ * shows everything shows nothing — but the shortening has to obey the rule that outranks
+ * it, so the number hidden is ALWAYS stated and is always one click from being shown.
+ * "+2 more" is a count from the data; it can never be a silent truncation.
+ */
+function ChipList({ values, depth }: { values: unknown[]; depth: number }) {
+  const [expanded, setExpanded] = useState(false)
+  const hidden = values.length - CHIP_LIMIT
+  const shown = expanded || hidden <= 0 ? values : values.slice(0, CHIP_LIMIT)
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {shown.map((v, i) => (
+        <span key={i} className="px-1.5 py-0.5 rounded bg-neutral-800 text-[11px]">
+          <StatusValue value={v} depth={depth + 1} />
+        </span>
+      ))}
+      {hidden > 0 && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="text-[11px] text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+        >
+          {expanded ? 'show fewer' : `+${hidden} more`}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
   const view = useDeprecation()
 
@@ -394,15 +430,7 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
         </div>
       )
     }
-    return (
-      <div className="flex flex-wrap gap-1">
-        {value.map((v, i) => (
-          <span key={i} className="px-1.5 py-0.5 rounded bg-neutral-800 text-[11px]">
-            <StatusValue value={v} depth={depth + 1} />
-          </span>
-        ))}
-      </div>
-    )
+    return <ChipList values={value} depth={depth} />
   }
 
   if (isPlainObject(value)) {

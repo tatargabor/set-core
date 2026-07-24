@@ -387,3 +387,41 @@ describe('a uniform nested object becomes columns, not a stack inside a cell', (
     expect(headers.some(h => h?.startsWith('actions'))).toBe(false)
   })
 })
+
+describe('a long list is shortened, but never silently', () => {
+  // Measured on the live screen: one blocker row carried three identifier lists and grew
+  // to a dozen lines, pushing the other three blockers off the first screenful.
+  const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+
+  it('shows a bounded number of chips and states exactly how many are hidden', () => {
+    const { container } = render(<StatusValue value={many} />)
+
+    expect(container.textContent).toContain('+2 more')
+    expect(container.textContent).toContain('a')
+    expect(container.textContent).not.toContain('g')
+  })
+
+  it('is one click from complete — shortening is never a truncation', () => {
+    const { container } = render(<StatusValue value={many} />)
+    fireEvent.click(screen.getByText('+2 more'))
+
+    expect(container.textContent).toContain('g')
+    expect(container.textContent).toContain('show fewer')
+  })
+
+  it('leaves a short list entirely alone, with no control to click', () => {
+    const { container } = render(<StatusValue value={['a', 'b']} />)
+
+    expect(container.querySelector('button')).toBeNull()
+    expect(container.textContent).not.toContain('more')
+  })
+
+  it('never claims to hide what it is already showing', () => {
+    // Exactly at the limit: a "+0 more" would be a false absence, announcing a hidden
+    // thing that is on screen.
+    const { container } = render(<StatusValue value={['a', 'b', 'c', 'd', 'e']} />)
+
+    expect(container.textContent).not.toContain('more')
+    expect(container.textContent).toContain('e')
+  })
+})
