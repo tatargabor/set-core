@@ -482,3 +482,59 @@ def test_the_operator_config_can_mark_a_command_on_demand_too(tmp_path):
     )
 
     assert load_status_config(proj).on_demand == ("probe",)
+
+
+# ── one timeout cannot serve both kinds of question ───────────────────────
+#
+# A page-load answer should come back in milliseconds; a probe that goes and asks the
+# world was measured at minutes on a real project. The failure is not symmetric: raising
+# the global timeout to fit the slow one lets a hung fast one hold the page, while a
+# global that fits the fast ones makes the slow answer permanently unobtainable — which
+# looks exactly like a project that cannot answer it.
+
+def test_a_declared_per_command_timeout_wins(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(
+        tmp_path / "p", commands=["bugs", "environments"], timeout=30,
+        timeouts={"environments": 400},
+    )
+    cfg = load_manifest(proj)
+
+    assert cfg.timeout_for("environments") == 400
+    assert cfg.timeout_for("bugs") == 30, "everything else keeps the global one"
+
+
+def test_a_timeout_for_an_undeclared_command_is_dropped(tmp_path):
+    """A leftover override would silently restore the global timeout after a rename —
+    on the one command that needed minutes."""
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs"], timeouts={"gone": 400})
+
+    assert load_manifest(proj).timeouts == ()
+
+
+def test_a_write_command_may_have_its_own_timeout(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(
+        tmp_path / "p", commands=["bugs"], writeCommands=["ack"], timeouts={"ack": 120},
+    )
+
+    assert load_manifest(proj).timeout_for("ack") == 120
+
+
+def test_a_nonsense_timeout_falls_back_rather_than_disabling_the_limit(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(
+        tmp_path / "p", commands=["bugs"], timeout=30,
+        timeouts={"bugs": 0},
+    )
+
+    assert load_manifest(proj).timeout_for("bugs") == 30
+
+
+def test_a_boolean_is_not_a_number_of_seconds(tmp_path):
+    """`True` is an int in Python, and would silently become a 1-second timeout."""
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs"], timeout=30, timeouts={"bugs": True})
+
+    assert load_manifest(proj).timeout_for("bugs") == 30

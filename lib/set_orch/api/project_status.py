@@ -79,7 +79,7 @@ def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:
     if cfg is None:
         return {"configured": False, "source": None, "command": None,
                 "commands": [], "writeCommands": [], "primary": None,
-                "onDemand": [], "timeout": None, "cwd": None}
+                "onDemand": [], "timeout": None, "timeouts": {}, "cwd": None}
     return {
         "configured": True,
         "source": cfg.source,
@@ -95,6 +95,9 @@ def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:
         # a different thing from a gap, and must not render as one.
         "onDemand": list(cfg.on_demand),
         "timeout": cfg.timeout,
+        # Per-command overrides, reported because "why did THAT one time out" is the next
+        # question after it does, and the answer must not require reading someone's repo.
+        "timeouts": {name: seconds for name, seconds in cfg.timeouts},
         "cwd": cfg.cwd,
     }
 

@@ -128,6 +128,20 @@ class StatusConfig:
     #: list, which trades a slow answer for NO answer — the wrong direction, since "is
     #: the live system up" is exactly the kind of thing a status screen exists for.
     on_demand: tuple = ()
+    #: Per-command timeout overrides, as (name, seconds) pairs. One number cannot serve
+    #: both "answers in 200ms on every page load" and "goes and asks the world" — and the
+    #: failure is not symmetric. A global timeout raised to fit the slow command lets a
+    #: hung fast one hold a page for minutes; a global timeout that fits the fast ones
+    #: makes the slow answer permanently unobtainable, which looks exactly like a project
+    #: that cannot answer it. See `timeout_for`.
+    timeouts: tuple = ()
+
+    def timeout_for(self, command: str) -> int:
+        """The timeout for one command — its own if declared, otherwise the global one."""
+        for name, seconds in self.timeouts:
+            if name == command:
+                return seconds
+        return self.timeout
 
     @property
     def argv_prefix(self) -> List[str]:
@@ -246,6 +260,35 @@ def _on_demand(raw: Any, read_cmds: tuple) -> tuple:
     return tuple(dict.fromkeys(out))
 
 
+def _timeouts(raw: Any, known: tuple) -> tuple:
+    """Read per-command timeout overrides, keeping only declared names and sane values.
+
+    A name that is not declared is dropped rather than kept for later: an override for a
+    command that does not exist is either a typo or a leftover, and honouring it silently
+    would mean a rename quietly restores the global timeout on a command that needed
+    minutes. A non-positive or non-integer value is dropped for the same reason — the
+    global timeout is a defensible fallback, and zero is not.
+    """
+    if not isinstance(raw, dict):
+        return ()
+    out = []
+    for name, value in raw.items():
+        name = str(name).strip()
+        if name not in known:
+            logger.warning(
+                "project_status: ignoring timeout for %r — not a declared command", name
+            )
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            logger.warning(
+                "project_status: ignoring timeout for %r — %r is not a positive number of "
+                "seconds", name, value,
+            )
+            continue
+        out.append((name, value))
+    return tuple(out)
+
+
 def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
     """Read the repo-root endpoint manifest, or None when there is none.
 
@@ -307,6 +350,7 @@ def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
         commands=read_cmds, write_commands=write_cmds,
         primary=_primary(raw.get("primary"), read_cmds, write_cmds),
         on_demand=_on_demand(raw.get("onDemand"), read_cmds),
+        timeouts=_timeouts(raw.get("timeouts"), read_cmds + write_cmds),
     )
 
 
@@ -391,6 +435,7 @@ def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
         commands=read_cmds, write_commands=write_cmds,
         primary=_primary(block.get("primary"), read_cmds, write_cmds),
         on_demand=_on_demand(block.get("on_demand"), read_cmds),
+        timeouts=_timeouts(block.get("timeouts"), read_cmds + write_cmds),
     )
 
 
@@ -513,7 +558,7 @@ def query(
 
     try:
         proc = subprocess.run(
-            argv, cwd=cwd, env=env, capture_output=True, timeout=cfg.timeout,
+            argv, cwd=cwd, env=env, capture_output=True, timeout=cfg.timeout_for(command),
         )
     except FileNotFoundError:
         return StatusResult.failure(
@@ -523,7 +568,7 @@ def query(
     except subprocess.TimeoutExpired:
         return StatusResult.failure(
             command, "timeout",
-            f"the project did not answer within {cfg.timeout}s",
+            f"the project did not answer within {cfg.timeout_for(command)}s",
         )
     except OSError as exc:
         return StatusResult.failure(
@@ -642,7 +687,7 @@ def write(
     try:
         proc = subprocess.run(
             argv, cwd=cfg.cwd or str(project_path), env=env,
-            capture_output=True, timeout=cfg.timeout,
+            capture_output=True, timeout=cfg.timeout_for(command),
         )
     except FileNotFoundError:
         return StatusResult.failure(
@@ -654,7 +699,7 @@ def write(
         # and re-asking is safe because the write is idempotent.
         return StatusResult.failure(
             command, "timeout",
-            f"the project did not answer within {cfg.timeout}s — whether it recorded the "
+            f"the project did not answer within {cfg.timeout_for(command)}s — whether it recorded the "
             f"change is unknown from here; re-reading the project is the only way to tell",
         )
     except OSError as exc:
