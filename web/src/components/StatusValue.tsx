@@ -420,8 +420,140 @@ function Table({ rows: rawRows }: { rows: Record<string, unknown>[] }) {
   )
 }
 
+/**
+ * The project ranking its own top-level lists — which of them the reader should look at
+ * first, and what it calls each one.
+ *
+ * The need was measured on the live screen: the project spent a working session moving rows
+ * BETWEEN sibling arrays — from the one it calls blocking to the one it calls a warning —
+ * and on screen the reclassification was invisible, because three arrays rendered as three
+ * identical tables. The work was real and it did not reach the reader.
+ *
+ * **The weight comes from the ORDER, never from the severity word.** The contract declares
+ * the list to be in descending order of weight, so position carries the ranking and this
+ * file needs to understand no vocabulary at all — a project saying `critical`/`minor`, or
+ * saying it in another language, renders correctly without a change here. The severity
+ * string and the label are shown verbatim, as the project's words, not interpreted as
+ * instructions.
+ *
+ * That is also why the ranking is not a number: a rank field beside an ordered list states
+ * one fact twice, and a fact stored twice becomes two facts.
+ */
+export const SECTIONS_KEY = 'sections'
+
+export interface SectionDecl {
+  key: string
+  severity?: string
+  label?: string
+  count?: number
+}
+
+/**
+ * Read a section declaration — but only when the value really is one.
+ *
+ * `sections` has no reserved prefix, unlike `_emphasis`, and it is an ordinary English word
+ * a project might legitimately use for its own data. So the name alone is not enough:
+ * this checks the SHAPE, and further requires that at least one declared key names a
+ * sibling. A project publishing its own list of document sections keeps it as data, which
+ * is the failure that would otherwise be silent — metadata treatment makes data disappear.
+ */
+export function sectionsOf(obj: Record<string, unknown>): SectionDecl[] {
+  const raw = obj[SECTIONS_KEY]
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  const looksLikeDecl = (s: unknown): s is SectionDecl =>
+    isPlainObject(s) && typeof (s as Record<string, unknown>).key === 'string'
+  if (!raw.every(looksLikeDecl)) return []
+  const decls = raw as unknown as SectionDecl[]
+  // A declaration talks about this object. Anything else is the project's own data.
+  if (!decls.some(d => d.key in obj)) return []
+  return decls
+}
+
+/** Prominence by position — three steps, then flat. Weight, not hue: red stays reserved. */
+function sectionStyle(index: number): { rule: string; label: string } {
+  if (index === 0) return { rule: 'border-l-4 border-neutral-300', label: 'text-neutral-50 font-semibold' }
+  if (index === 1) return { rule: 'border-l-2 border-neutral-500', label: 'text-neutral-300 font-medium' }
+  return { rule: 'border-l border-neutral-700', label: 'text-neutral-500' }
+}
+
+/** How many rows a section's value actually holds, or null when it is not a list. */
+function rowsIn(value: unknown): number | null {
+  return Array.isArray(value) ? value.length : null
+}
+
+function SectionHeading(
+  { decl, index, actual }: { decl: SectionDecl; index: number; actual: number | null },
+) {
+  const style = sectionStyle(index)
+  // The count shown is the DATA's, never the declaration's. Where they disagree the
+  // disagreement is the finding — a header and its rows saying different numbers is the
+  // shape this whole surface exists to make impossible.
+  const disagrees = typeof decl.count === 'number' && actual !== null && decl.count !== actual
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className={`text-xs ${style.label}`}>{decl.label || decl.key}</span>
+      <span className="text-[10px] text-neutral-600 font-mono" title="the project's own word for this section">
+        {decl.severity || decl.key}
+      </span>
+      {/* No row count here when the two agree: the list below states it, and a heading
+          repeating it is one fact in two places — which is how two facts start. It appears
+          only to name a disagreement, because THAT the list below cannot say. */}
+      {disagrees && (
+        <span
+          className="text-[11px] text-amber-500"
+          title="the project's declared count and the rows it sent do not match"
+        >
+          declared {decl.count}, {actual} delivered
+        </span>
+      )}
+    </div>
+  )
+}
+
+function SectionedGrid(
+  { obj, depth, sections }: { obj: Record<string, unknown>; depth: number; sections: SectionDecl[] },
+) {
+  const view = useDeprecation()
+  // A declared key that is absent draws NOTHING — not a placeholder, not a note. The
+  // declaration says what to look for; the data decides what exists.
+  const declared = sections.filter(d => d.key in obj && !view.names.has(d.key))
+  const spoken = new Set(declared.map(d => d.key))
+  // Anything the declaration did not mention is still shown. A list omitted from the
+  // ranking is unranked, not hidden — hiding data because a declaration forgot it would be
+  // the declaration overruling the thing it describes.
+  const rest = Object.keys(obj).filter(
+    k => !META_KEYS.has(k) && k !== SECTIONS_KEY && !spoken.has(k),
+  )
+  const { visible, hiddenCount } = partitionKeys(rest, view)
+
+  return (
+    <div className="space-y-3">
+      {declared.map((decl, i) => (
+        <section key={decl.key} className={`${sectionStyle(i).rule} pl-2 space-y-1`}>
+          <SectionHeading decl={decl} index={i} actual={rowsIn(obj[decl.key])} />
+          <StatusValue value={obj[decl.key]} depth={depth + 1} />
+        </section>
+      ))}
+      {visible.length > 0 && (
+        <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-xs pt-1">
+          {visible.map(k => (
+            <div key={k} className="contents">
+              <dt className="text-neutral-500 truncate" title={k}>{k}</dt>
+              <dd className="min-w-0"><StatusValue value={obj[k]} depth={depth + 1} /></dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <HiddenNote count={hiddenCount} />
+      <RowActions value={obj[ACTIONS_KEY]} />
+    </div>
+  )
+}
+
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
   const view = useDeprecation()
+  const sections = sectionsOf(obj)
+  if (sections.length > 0) return <SectionedGrid obj={obj} depth={depth} sections={sections} />
   const all = Object.keys(obj).filter(k => !META_KEYS.has(k))
   const emphasised = emphasisOf(obj)
   if (all.length === 0 && !(ACTIONS_KEY in obj)) return <Unknown label="(no fields)" />

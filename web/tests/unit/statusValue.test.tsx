@@ -565,3 +565,104 @@ describe('a false is a value, an unknown is not', () => {
     expect(container.textContent).toContain('no')
   })
 })
+
+/**
+ * The project ranking its own lists, and the renderer honouring a ranking it cannot read.
+ *
+ * The weight comes from ORDER, so these tests use nonsense severity words on purpose: if
+ * any of them started needing `block` or `warn` to pass, the mechanism would have failed at
+ * the only thing it exists for — working for the next project, which will use other words,
+ * in another language.
+ */
+describe('sections: the project ranks, the renderer never interprets', () => {
+  const HEAVIEST = '.border-l-4'
+
+  it('orders the sections as declared, whatever the severity words are', () => {
+    const { container } = render(
+      <StatusValue value={{
+        wobble: [{ a: 1 }],
+        wibble: [{ a: 1 }, { a: 2 }],
+        sections: [
+          { key: 'wibble', severity: 'zzz', label: 'First' },
+          { key: 'wobble', severity: 'aaa', label: 'Second' },
+        ],
+      }} />,
+    )
+
+    const text = container.textContent!
+    expect(text.indexOf('First')).toBeLessThan(text.indexOf('Second'))
+    // …and the heaviest rule sits on the first, not on the alphabetically-smallest word
+    expect(container.querySelector(HEAVIEST)!.textContent).toContain('First')
+  })
+
+  it('never renders the declaration itself as data', () => {
+    const { container } = render(
+      <StatusValue value={{ wibble: [{ a: 1 }], sections: [{ key: 'wibble', label: 'L' }] }} />,
+    )
+
+    expect(container.textContent).not.toContain('sections')
+  })
+
+  it('draws NOTHING for a declared section that is absent', () => {
+    const { container } = render(
+      <StatusValue value={{
+        wibble: [{ a: 1 }],
+        sections: [{ key: 'wibble', label: 'Here' }, { key: 'nosuch', label: 'Gone' }],
+      }} />,
+    )
+
+    expect(container.textContent).toContain('Here')
+    expect(container.textContent).not.toContain('Gone')
+  })
+
+  it('still shows a list the declaration forgot to rank', () => {
+    const { container } = render(
+      <StatusValue value={{
+        wibble: [{ a: 1 }],
+        forgotten: [{ b: 2 }],
+        sections: [{ key: 'wibble', label: 'Ranked' }],
+      }} />,
+    )
+
+    expect(container.textContent).toContain('forgotten')
+  })
+
+  it('counts the rows itself and says so when the declaration disagrees', () => {
+    const { container } = render(
+      <StatusValue value={{
+        wibble: [{ a: 1 }, { a: 2 }],
+        sections: [{ key: 'wibble', label: 'L', count: 7 }],
+      }} />,
+    )
+
+    expect(container.textContent).toContain('2 rows')
+    expect(container.textContent).toContain('declared 7, 2 delivered')
+    // …and exactly once: a heading that repeats the list's own count is one fact twice.
+    expect(container.textContent!.match(/2 rows/g)).toHaveLength(1)
+  })
+
+  it('leaves a project\'s OWN sections alone when they are not a declaration', () => {
+    // Same key name, real data: objects that do not name siblings.
+    const { container } = render(
+      <StatusValue value={{
+        sections: [{ title: 'Intro', pages: 3 }, { title: 'Body', pages: 40 }],
+      }} />,
+    )
+
+    expect(container.textContent).toContain('Intro')
+    expect(container.textContent).toContain('sections')
+  })
+
+  it('is not fooled by a ragged array that merely looks like one', () => {
+    const { container } = render(
+      <StatusValue value={{
+        wibble: [{ a: 1 }],
+        sections: [{ key: 'wibble' }, 'not an object'],
+      }} />,
+    )
+
+    // Falls back to plain rendering: the declaration is not trusted, and nothing vanishes.
+    expect(container.textContent).toContain('sections')
+    expect(container.textContent).toContain('wibble')
+  })
+})
