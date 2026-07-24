@@ -390,3 +390,31 @@ def test_a_name_in_both_lists_is_refused_from_both(tmp_path, monkeypatch):
     assert client.post("/api/both/project-status/write/ack", json={}).status_code == 404
     assert client.get("/api/both/project-status?commands=ack").status_code == 404
     assert _calls(proj) == []
+
+
+# ─── which answer the surface opens on ───────────────────────────────────────
+
+def test_the_contract_route_reports_a_declared_primary(client, project):
+    """The surface needs it before it renders, so it travels with the contract."""
+    manifest = json.loads((project / ".set-endpoint.json").read_text())
+    manifest["primary"] = "bugs"
+    (project / ".set-endpoint.json").write_text(json.dumps(manifest))
+
+    data = client.get("/api/proj/project-status/contract").json()
+
+    assert data["primary"] == "bugs"
+    assert _calls(project) == [], "a preference must not cost a spawn"
+
+
+def test_a_refused_primary_reaches_the_surface_as_null_not_as_itself(client, project):
+    """Otherwise the page reports a preference the loader already threw away, and the
+    reader is told the project chose something it did not get."""
+    manifest = json.loads((project / ".set-endpoint.json").read_text())
+    manifest["primary"] = "not-declared-anywhere"
+    (project / ".set-endpoint.json").write_text(json.dumps(manifest))
+
+    assert client.get("/api/proj/project-status/contract").json()["primary"] is None
+
+
+def test_a_project_without_a_contract_reports_no_primary_either(client):
+    assert client.get("/api/bare/project-status/contract").json()["primary"] is None

@@ -115,6 +115,11 @@ class StatusConfig:
     #: caller asking to write can never reach a command the project did not mark as one.
     #: A name in both lists is refused outright — see `_declared_commands`.
     write_commands: tuple = ()
+    #: Which answer a reader should be shown FIRST. Without it the surface opens whatever
+    #: the project happened to declare first, which is an ordering decision nobody made.
+    #: The project knows which of its answers is "where do we stand"; set-core cannot,
+    #: and must not guess it from a name. None means no preference — see `_primary`.
+    primary: Optional[str] = None
 
     @property
     def argv_prefix(self) -> List[str]:
@@ -159,6 +164,45 @@ def _split_command_lists(read_raw: Any, write_raw: Any) -> tuple:
         read = tuple(n for n in read if n not in both)
         write = tuple(n for n in write if n not in both)
     return read, write
+
+
+def _primary(raw: Any, read_cmds: tuple, write_cmds: tuple) -> Optional[str]:
+    """Read the project's preferred opening answer, or None if it named nothing usable.
+
+    Three ways this can be wrong, and all three resolve to None rather than to an error,
+    because the cost of ignoring a preference is one extra click and the cost of honouring
+    a bad one is a surface that opens on something that cannot be shown:
+
+    - a name that is not declared as a read command — including a stale one left behind
+      after the command was renamed;
+    - a WRITE command, which would mean opening the page performs the write's tab and
+      invites a click on a mutation nobody asked for;
+    - anything not shaped like a command name at all.
+
+    Each is logged, because a preference silently not taking effect is exactly the kind of
+    thing that gets re-declared three times before anyone looks.
+    """
+    if raw is None:
+        return None
+    name = str(raw).strip()
+    if not name:
+        return None
+    if not is_valid_command_name(name):
+        logger.warning("project_status: ignoring primary %r — not a command name", name)
+        return None
+    if name in write_cmds:
+        logger.warning(
+            "project_status: ignoring primary %r — it is a WRITE command; a surface must "
+            "not open on something that changes state", name,
+        )
+        return None
+    if name not in read_cmds:
+        logger.warning(
+            "project_status: ignoring primary %r — not among the declared commands (%s)",
+            name, ", ".join(read_cmds) or "none",
+        )
+        return None
+    return name
 
 
 def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
@@ -220,6 +264,7 @@ def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
     return StatusConfig(
         command=command, timeout=timeout, cwd=resolved_cwd, source="manifest",
         commands=read_cmds, write_commands=write_cmds,
+        primary=_primary(raw.get("primary"), read_cmds, write_cmds),
     )
 
 
@@ -302,6 +347,7 @@ def load_status_config(project_path: str | Path) -> Optional[StatusConfig]:
         timeout=timeout,
         cwd=cwd if isinstance(cwd, str) and cwd.strip() else None,
         commands=read_cmds, write_commands=write_cmds,
+        primary=_primary(block.get("primary"), read_cmds, write_cmds),
     )
 
 

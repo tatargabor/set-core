@@ -78,13 +78,18 @@ def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:
     """
     if cfg is None:
         return {"configured": False, "source": None, "command": None,
-                "commands": [], "writeCommands": [], "timeout": None, "cwd": None}
+                "commands": [], "writeCommands": [], "primary": None,
+                "timeout": None, "cwd": None}
     return {
         "configured": True,
         "source": cfg.source,
         "command": " ".join(cfg.argv_prefix),
         "commands": list(cfg.commands),
         "writeCommands": list(cfg.write_commands),
+        # Null when the project named nothing usable — which includes naming something
+        # unusable. The surface must not be able to tell those apart, or it would start
+        # reporting a preference the loader already refused.
+        "primary": cfg.primary,
         "timeout": cfg.timeout,
         "cwd": cfg.cwd,
     }

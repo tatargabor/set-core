@@ -1261,6 +1261,12 @@ export interface StatusContractInfo {
   commands: string[]
   /** Commands that CHANGE something. Never called by a page load — see the write route. */
   writeCommands: string[]
+  /**
+   * Which answer the project wants shown first. Null means it expressed no usable
+   * preference, and the surface falls back to declaration order — never to a guess about
+   * which command name sounds most important.
+   */
+  primary: string | null
   timeout: number | null
   cwd: string | null
 }

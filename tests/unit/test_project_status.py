@@ -385,3 +385,61 @@ def test_the_snapshot_carries_the_deprecations_to_the_surface():
     }))
 
     assert snapshot.to_dict()["commands"]["releases"]["deprecated"] == ["x"]
+
+
+# ── which answer opens the surface ────────────────────────────────────────
+#
+# Without a declared preference the surface opens whatever the project listed first,
+# which is an ordering decision nobody made. Only the project knows which of its answers
+# is "where do we stand"; set-core must never infer that from a command's name.
+#
+# Every way of getting it wrong resolves to None rather than to an error: the cost of
+# ignoring a preference is one extra click, and the cost of honouring a bad one is a
+# surface that opens on something it cannot show — or worse, on a mutation.
+
+def test_a_declared_primary_is_carried_from_the_manifest(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs", "readiness"], primary="readiness")
+
+    assert load_manifest(proj).primary == "readiness"
+
+
+def test_a_primary_naming_an_undeclared_command_is_ignored(tmp_path):
+    """Including a stale one left behind after the command was renamed."""
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs"], primary="renamed-away")
+
+    assert load_manifest(proj).primary is None
+
+
+def test_a_primary_naming_a_WRITE_command_is_refused(tmp_path):
+    """Opening the page would land the reader on a mutation nobody asked for."""
+    from set_orch.project_status import load_manifest
+    proj = _manifest(
+        tmp_path / "p", commands=["bugs"], writeCommands=["ack"], primary="ack",
+    )
+
+    assert load_manifest(proj).primary is None
+
+
+def test_a_primary_that_is_not_a_command_name_never_reaches_the_config(tmp_path):
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs"], primary="--eval")
+
+    assert load_manifest(proj).primary is None
+
+
+def test_no_primary_is_None_not_the_first_command(tmp_path):
+    """Absence must stay absence: the surface decides the fallback, not the loader."""
+    from set_orch.project_status import load_manifest
+    proj = _manifest(tmp_path / "p", commands=["bugs", "releases"])
+
+    assert load_manifest(proj).primary is None
+
+
+def test_the_operator_config_can_declare_a_primary_too(tmp_path):
+    proj = _project(
+        tmp_path, "node api.mjs", commands=["bugs", "readiness"], primary="readiness",
+    )
+
+    assert load_status_config(proj).primary == "readiness"

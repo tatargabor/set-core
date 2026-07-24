@@ -163,9 +163,15 @@ export default function ProjectStatus({ project }: Props) {
   const contract = data?.contract
   const entries = Object.entries(data?.commands ?? {})
   const failing = entries.filter(([, r]) => !r.ok)
-  const activeName = active && entries.some(([n]) => n === active)
-    ? active
+  // Which tab opens: the reader's choice if they made one, then the project's declared
+  // primary, then declaration order. The middle step is the point — without it the page
+  // opens on whatever the project happened to list first, which is an ordering decision
+  // nobody made. Only the project knows which of its answers is "where do we stand", and
+  // set-core must not infer it from a command's name.
+  const preferred = contract?.primary && entries.some(([n]) => n === contract.primary)
+    ? contract.primary
     : entries[0]?.[0] ?? null
+  const activeName = active && entries.some(([n]) => n === active) ? active : preferred
   const activeResult = entries.find(([n]) => n === activeName)?.[1]
 
   return (
