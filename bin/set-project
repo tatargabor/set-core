@@ -205,6 +205,9 @@ deploy_set_tools() {
         # project-owned files — so a dry run must show exactly what they would keep.
         _deploy_commands "$project_path"
         _deploy_skills "$project_path"
+        # The deprecated-memory migration edits files in place; it is provenance-guarded
+        # and DRY_RUN-aware, so it belongs in the plan for the same reason.
+        _cleanup_deprecated_memory_refs "$project_path"
         return 0
     fi
     echo "$current_version" > "$version_file"

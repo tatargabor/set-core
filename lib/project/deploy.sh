@@ -35,58 +35,108 @@ _register_mcp_server() {
     return $had_failure
 }
 
-# Clean up deprecated memory references from skill/command files
+# Strip one deprecated-memory pattern from a file set-core owns.
+#   $1 project-relative key   $2 file   $3 mode: "block" | "line"   $4 human label
+#
+# Ownership is decided by the provenance ledger, never by the content: a file whose
+# hash still matches what we deployed is ours to migrate; anything else is the
+# project's and is left exactly as found, even when it matches the pattern. The old
+# implementation edited every match it found — including hand-authored command files
+# the consumer wrote itself, with no backup and no report.
+#
+# Rewrites the ledger hash after a successful edit. Without that the very next deploy
+# would read its own change as "modified by the project" and skip the file forever.
+_pv_strip_memory_refs() {
+    local key="$1" file="$2" mode="$3" label="$4"
+    local removed
+
+    if ! _pv_is_ours "$key" "$file"; then
+        warn "    Left $key untouched — $label present but the file is project-owned"
+        return 0
+    fi
+
+    removed=$(python3 -c "
+import re, sys
+
+path, mode, dry = sys.argv[1], sys.argv[2], sys.argv[3] == 'true'
+with open(path) as fh:
+    content = fh.read()
+
+if mode == 'block':
+    cleaned = re.sub(
+        r'<!--\s*set-memory hooks[^>]*-->.*?<!--\s*/set-memory hooks[^>]*-->\s*\n?',
+        '', content, flags=re.DOTALL,
+    )
+    removed = 0 if cleaned == content else content.count('<!-- set-memory hooks')
+else:
+    lines = content.split('\n')
+    kept = [l for l in lines if not re.search(r'set-memory\s+(recall|remember)', l)]
+    removed = len(lines) - len(kept)
+    cleaned = '\n'.join(kept)
+
+if cleaned != content and not dry:
+    with open(path, 'w') as fh:
+        fh.write(cleaned)
+print(removed)
+" "$file" "$mode" "${DRY_RUN:-false}" 2>/dev/null) || {
+        warn "    Failed to clean $label in $key"
+        return 0
+    }
+
+    [[ "${removed:-0}" -gt 0 ]] || return 0
+
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        info "    Would remove $removed deprecated $label line(s) from $key"
+    else
+        warn "    Removed $removed deprecated $label line(s) from $key"
+        _pv_record "$key" "$file"
+    fi
+}
+
+# Clean up deprecated memory references from files SET-CORE DEPLOYED.
+#
+# This is a migration pass, not a linter: it exists to retire an inline-instruction
+# format set-core itself shipped, now superseded by the settings.json hook layer. It
+# therefore has no business touching a file the project wrote — and until the
+# provenance ledger existed it could not tell the difference. It edited every
+# `.claude/commands/**/*.md` outside `commands/set/`, project-authored files included.
 _cleanup_deprecated_memory_refs() {
     local project_path="$1"
+    local f key
 
-    # Remove <!-- set-memory hooks --> blocks from SKILL.md files
+    _pv_begin "$project_path"
+
+    # Inline hook blocks in skills set-core deployed (openspec-*, set).
     if [[ -d "$project_path/.claude/skills" ]]; then
-        find "$project_path/.claude/skills" -name "SKILL.md" -type f 2>/dev/null | while read -r f; do
-            if grep -q '<!-- set-memory hooks' "$f" 2>/dev/null; then
-                if ! python3 -c "
-import re, sys
-with open(sys.argv[1]) as f:
-    content = f.read()
-# Remove all set-memory hooks blocks (including variants like hooks-midflow, hooks-remember, etc.)
-cleaned = re.sub(r'<!--\s*set-memory hooks[^>]*-->.*?<!--\s*/set-memory hooks[^>]*-->\s*\n?', '', content, flags=re.DOTALL)
-if cleaned != content:
-    with open(sys.argv[1], 'w') as f:
-        f.write(cleaned)
-" "$f" 2>&1; then
-                    warn "  Failed to clean up memory hooks in $f"
-                fi
-            fi
-        done
+        while IFS= read -r -d '' f; do
+            grep -q '<!-- set-memory hooks' "$f" 2>/dev/null || continue
+            key="${f#"$project_path"/}"
+            _pv_strip_memory_refs "$key" "$f" block "memory-hook block"
+        done < <(find "$project_path/.claude/skills" -name "SKILL.md" -type f -print0 2>/dev/null)
     fi
 
-    # Remove manual set-memory recall/remember instructions from command .md files
-    # Exclude commands/set/ — those are set-core's own commands that legitimately use set-memory
+    # Manual recall/remember instructions in commands set-core deployed.
+    # `commands/set/*` is skipped by intent: those are set-core's own commands and
+    # they call set-memory deliberately.
     if [[ -d "$project_path/.claude/commands" ]]; then
-        find "$project_path/.claude/commands" -name "*.md" -type f 2>/dev/null | while read -r f; do
-            # Skip set-core command files (commands/set/*.md) — they use set-memory intentionally
+        while IFS= read -r -d '' f; do
             [[ "$f" == */commands/set/*.md ]] && continue
-            if grep -qE 'set-memory (recall|remember)' "$f" 2>/dev/null; then
-                if ! python3 -c "
-import re, sys
-with open(sys.argv[1]) as f:
-    content = f.read()
-# Remove lines containing set-memory recall or set-memory remember instructions
-lines = content.split('\n')
-cleaned_lines = [l for l in lines if not re.search(r'set-memory\s+(recall|remember)', l)]
-cleaned = '\n'.join(cleaned_lines)
-if cleaned != content:
-    with open(sys.argv[1], 'w') as f:
-        f.write(cleaned)
-" "$f" 2>&1; then
-                    warn "  Failed to clean up memory refs in $f"
-                fi
-            fi
-        done
+            grep -qE 'set-memory (recall|remember)' "$f" 2>/dev/null || continue
+            key="${f#"$project_path"/}"
+            _pv_strip_memory_refs "$key" "$f" line "set-memory instruction"
+        done < <(find "$project_path/.claude/commands" -name "*.md" -type f -print0 2>/dev/null)
     fi
 
-    # Delete .claude/hot-topics.json if it exists
+    _pv_end
+
+    # set-core's own cache artifact — no consumer content, safe to drop, still reported.
     if [[ -f "$project_path/.claude/hot-topics.json" ]]; then
-        rm -f "$project_path/.claude/hot-topics.json"
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            info "    Would remove .claude/hot-topics.json (superseded set-core cache)"
+        else
+            rm -f "$project_path/.claude/hot-topics.json"
+            info "    Removed .claude/hot-topics.json (superseded set-core cache)"
+        fi
     fi
 }
 

@@ -233,6 +233,85 @@ else
     deploy_json="$hook_json"
 fi
 
+# Additive per-event merge of set-core's hooks into an existing settings.json.
+#
+# WHY NOT `. * {"hooks": $hooks}`. jq's `*` merges objects recursively but REPLACES
+# arrays — and every hook event IS an array. So the obvious one-liner silently
+# substituted set-core's eight event arrays for the project's, discarding whatever
+# else lived in them. On a measured consumer that included a PreToolUse firewall
+# blocking destructive commands: removed without a word, by a tool the user ran to
+# install hooks, not to remove theirs.
+#
+# The merge below works at two levels, because an event array holds
+# `{matcher, hooks: [...]}` entries and a project routinely shares a matcher with
+# set-core (one SessionStart entry carrying both a set-hook-memory command and the
+# project's own script):
+#
+#   event array   — match the FIRST entry with the same matcher; append if none
+#   inner hooks   — match by `command`; update that hook in place, else append
+#
+# Nothing is ever removed except by an explicit flag: $purge_legacy retires the old
+# individual memory scripts, $strip_memory implements --no-memory. Both target only
+# commands set-core owns; project entries survive every branch, in their order.
+#
+# Args: $1 settings file, $2 desired hooks object, $3 purge_legacy, $4 strip_memory
+_merge_hooks_additively() {
+    local file="$1" desired="$2" purge="$3" strip="$4"
+
+    jq --argjson desired "$desired" \
+       --argjson purge "$purge" \
+       --argjson strip "$strip" '
+        def is_legacy_cmd:
+            (.command // "") | test("^set-hook-memory-(warmstart|recall|pretool|posttool|save)");
+        def is_memory_cmd:
+            (.command // "") | startswith("set-hook-memory");
+
+        # Drop set-core-owned hooks an explicit flag asked us to retire, then drop any
+        # entry left with no hooks at all. A project entry never matches either filter.
+        def prune($arr):
+            [ $arr[]?
+              | .hooks = [ (.hooks // [])[]
+                           | select(($purge and is_legacy_cmd) or ($strip and is_memory_cmd) | not) ]
+            ]
+            | map(select(((.hooks // []) | length) > 0));
+
+        # Merge desired hook objects into one entry.hooks array, keyed by command.
+        def merge_cmds($target; $wanted):
+            reduce $wanted[] as $w ($target;
+                . as $cur
+                | ([ range(0; $cur | length)
+                     | select(($cur[.].command // "") == ($w.command // "")) ] | first) as $i
+                | if $i == null then $cur + [$w] else ($cur | .[$i] = $w) end
+            );
+
+        # Merge desired entries into one event array, keyed by matcher.
+        def merge_entries($target; $wanted):
+            reduce $wanted[] as $w ($target;
+                . as $cur
+                | ([ range(0; $cur | length)
+                     | select(($cur[.].matcher // "") == ($w.matcher // "")) ] | first) as $i
+                | if $i == null
+                  then $cur + [$w]
+                  else ($cur | .[$i].hooks = merge_cmds(($cur[$i].hooks // []); ($w.hooks // [])))
+                  end
+            );
+
+        .hooks = (
+            reduce ($desired | to_entries[]) as $ev (
+                (.hooks // {});
+                .[$ev.key] = merge_entries(prune(.[$ev.key] // []); $ev.value)
+            )
+            # Events set-core does not ship (a project-only event) keep their entries,
+            # but still honour an explicit purge/strip request. `.key` is bound first:
+            # inside `$desired | has(.key)` the pipe would rebind `.` to $desired.
+            | with_entries(
+                . as $e
+                | if ($desired | has($e.key)) then . else .value = prune($e.value) end
+              )
+        )
+    ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+}
+
 if [[ -f "$settings_file" ]]; then
     # Detect current hook state
     has_base=false
@@ -255,7 +334,11 @@ if [[ -f "$settings_file" ]]; then
     fi
 
     # Old individual scripts present?
-    if jq -e '.hooks | to_entries[] | .value[][] | .hooks[] | select(.command | test("set-hook-memory-(warmstart|recall|pretool|posttool|save)"))' "$settings_file" &>/dev/null; then
+    # `.value[]` yields each {matcher, hooks} entry. The previous `.value[][]` iterated
+    # an ENTRY'S OWN VALUES (a matcher string and an array), so the following `.hooks[]`
+    # always errored and jq -e always reported false — the upgrade branch could not fire
+    # at all, and legacy memory scripts were never retired.
+    if jq -e '.hooks | to_entries[] | .value[]? | .hooks[]? | select((.command // "") | test("set-hook-memory-(warmstart|recall|pretool|posttool|save)"))' "$settings_file" &>/dev/null; then
         has_old_individual=true
     fi
 
@@ -313,21 +396,19 @@ if [[ -f "$settings_file" ]]; then
         ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
         _success "Downgraded: $settings_file (removed $stale_pre stale PreToolUse, $stale_post stale PostToolUse)"
     elif $has_old_individual && ! $NO_MEMORY; then
-        # Upgrade path: replace old individual scripts with unified handler
-        jq --argjson hooks "$(echo "$deploy_json" | jq '.hooks')" \
-            '.hooks = $hooks + (
-                .hooks | to_entries
-                | map(select(.key as $k | ["SessionStart","UserPromptSubmit","PreToolUse","PostToolUse","PostToolUseFailure","SubagentStart","SubagentStop","Stop"] | index($k) | not))
-                | from_entries
-            )' \
-            "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
-        _success "Upgraded: $settings_file (replaced old individual hooks with unified handler)"
+        # Upgrade path: retire the old individual memory scripts, add the unified
+        # handler. Additive, so a project hook sharing an event array survives.
+        _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" true false
+        _success "Upgraded: $settings_file (retired old individual memory hooks; project hooks preserved)"
     else
-        # Fresh merge: deploy full config
-        jq --argjson hooks "$(echo "$deploy_json" | jq '.hooks')" \
-            '. * {"hooks": $hooks}' \
-            "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
-        _success "Updated: $settings_file (hooks)"
+        # Fresh merge: add set-core's hooks alongside whatever is already configured.
+        # Under --no-memory the memory hooks set-core owns are stripped as well.
+        if $NO_MEMORY; then
+            _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" false true
+        else
+            _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" false false
+        fi
+        _success "Updated: $settings_file (hooks merged; project hooks preserved)"
     fi
 else
     echo "$deploy_json" | jq '.' > "$settings_file"

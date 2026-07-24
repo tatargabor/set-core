@@ -145,6 +145,24 @@ _pv_should_deploy() {
     return 1
 }
 
+# May set-core EDIT this file in place?
+#   $1 project-relative key   $2 file
+# Returns 0 only when the ledger says we wrote it and it still carries the exact bytes
+# we wrote. Anything else — no entry, a changed hash, an unreadable file — belongs to
+# the project. Editing is strictly narrower than deploying: `_pv_should_deploy` returns
+# 0 for a missing destination (nothing to lose by creating it), but there is nothing to
+# clean in a file that does not exist, and a file of unknown provenance must never be
+# rewritten by a cleanup pass the consumer never asked for.
+_pv_is_ours() {
+    local key="$1" file="$2" known dst_hash
+
+    [[ -f "$file" ]] || return 1
+    known="$(_pv_known_hash "$key" 2>/dev/null)" || return 1
+    [[ -n "$known" ]] || return 1
+    dst_hash="$(_pv_sha256 "$file")" || return 1
+    [[ "$dst_hash" == "$known" ]]
+}
+
 # Record the hash a destination will carry after a successful copy.
 _pv_record() {
     local key="$1" src="$2" digest
