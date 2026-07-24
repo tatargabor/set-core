@@ -32,7 +32,9 @@ handles all memory operations. Use 'set-deploy-hooks' instead.
 
 Commands:
   check [--json]         Check whether inline hooks are present
-  remove [--quiet]       Remove inline memory hooks from OpenSpec files
+  remove [--quiet] [--dry-run]
+                         Remove inline memory hooks from OpenSpec files
+                         (--dry-run reports what it would remove and writes nothing)
   install                (deprecated — prints warning and exits)
 
 Global options:
@@ -576,6 +578,13 @@ remove_single() {
         return 0
     fi
 
+    # A preview that edits files is worse than no preview: it is the one thing a
+    # person runs precisely because they are not yet willing to be changed.
+    if [[ "${MH_DRY_RUN:-false}" == "true" ]]; then
+        echo "  $skill ($label): would remove"
+        return 0
+    fi
+
     local tmpfile
     tmpfile=$(mktemp)
 
@@ -684,9 +693,11 @@ cmd_install() {
 
 cmd_remove() {
     local quiet=false
+    MH_DRY_RUN=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --quiet|-q) quiet=true; shift ;;
+            --dry-run) MH_DRY_RUN=true; shift ;;
             *) shift ;;
         esac
     done
@@ -725,7 +736,11 @@ cmd_remove() {
 
     if [[ "$removed" -gt 0 ]]; then
         $quiet || echo ""
-        $quiet || echo "Removed inline hooks from $removed file(s)."
+        if [[ "$MH_DRY_RUN" == "true" ]]; then
+            $quiet || echo "Would remove inline hooks from $removed file(s)."
+        else
+            $quiet || echo "Removed inline hooks from $removed file(s)."
+        fi
     else
         $quiet || echo "No inline hooks found."
     fi

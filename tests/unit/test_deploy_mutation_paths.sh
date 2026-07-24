@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the two deploy mutation paths that sit outside both deploy engines.
+# Tests for the deploy mutation paths that sit outside both deploy engines.
 #
 #   1. `_cleanup_deprecated_memory_refs` (lib/project/deploy.sh) — edits .claude files
 #      in place. It must only ever touch a file the provenance ledger says set-core
@@ -7,6 +7,10 @@
 #   2. `set-deploy-hooks`' merge (bin/set-deploy-hooks) — writes settings.json. It must
 #      add set-core's hooks WITHOUT displacing the project's, which a jq `*` merge does
 #      silently because `*` replaces arrays and every hook event is an array.
+#   3. The path that must NOT exist: shelling out to `set-memory-hooks remove`. It
+#      resolved its own target with `git rev-parse`, so a deploy into a directory that
+#      is not its own repository root edited an ancestor repository — and it knew
+#      nothing about ownership. Pinned here so it cannot come back.
 #
 # Assertions are on file content, never on log text: a regression must not be able to
 # pass by printing reassuring words.
@@ -318,6 +322,136 @@ SETCORE_COUNT=$(jq '[.hooks[][] | .hooks[] | select(.command | startswith("set-h
 if [[ "$SETCORE_COUNT" -ge 10 ]]; then test_pass; else
     test_fail "expected the full hook set, got $SETCORE_COUNT"
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Path 3 — the deploy must not shell out to `set-memory-hooks remove`
+#
+# That tool resolves its own target with `git rev-parse --show-toplevel`, so a deploy
+# into a directory that is not its own repository root edited an ANCESTOR repository's
+# .claude/ — outside the deploy target entirely. It also knew nothing about ownership.
+# The in-process cleanup pass covers a superset of the same files through the ledger.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# A project-authored SKILL.md carrying a hook block. Absent from the ledger, so the
+# guarded pass must leave it alone — and no unguarded path may reach it either.
+new_hookblock_project() {
+    local proj="$WORK/$1"
+    mkdir -p "$proj/.claude/skills/openspec-ff-change" "$proj/set"
+    printf '# Skill\n<!-- set-memory hooks start -->\nset-memory recall "x"\n<!-- set-memory hooks end -->\nProject content.\n' \
+        > "$proj/.claude/skills/openspec-ff-change/SKILL.md"
+    printf '{\n  "version": 2,\n  "files": {},\n  "tombstones": []\n}\n' \
+        > "$proj/set/.deploy-manifest.json"
+    echo "$proj"
+}
+
+test_start "memory: a project-authored SKILL.md keeps its hook block"
+PROJ=$(new_hookblock_project mh_owned)
+_deploy_memory "$PROJ" >/dev/null 2>&1
+assert_grep "$PROJ/.claude/skills/openspec-ff-change/SKILL.md" 'set-memory hooks start' \
+    "a file absent from the ledger was edited by an unguarded path"
+
+test_start "memory: the deploy no longer shells out to set-memory-hooks"
+if grep -qE '^[^#]*set-memory-hooks[[:space:]]+remove' "$PROJECT_DIR/lib/project/deploy.sh"; then
+    test_fail "deploy.sh calls set-memory-hooks remove — that path escapes the ledger"
+else
+    test_pass
+fi
+
+test_start "memory: set-memory-hooks --dry-run writes nothing"
+PROJ=$(new_hookblock_project mh_dry)
+git -C "$PROJ" init -q 2>/dev/null
+BEFORE=$(_pv_sha256 "$PROJ/.claude/skills/openspec-ff-change/SKILL.md")
+(cd "$PROJ" && "$PROJECT_DIR/bin/set-memory-hooks" remove --dry-run) >/dev/null 2>&1
+AFTER=$(_pv_sha256 "$PROJ/.claude/skills/openspec-ff-change/SKILL.md")
+assert_eq "$AFTER" "$BEFORE" "the dry run modified the file"
+
+test_start "memory: set-memory-hooks without --dry-run still removes the block"
+(cd "$PROJ" && "$PROJECT_DIR/bin/set-memory-hooks" remove --quiet) >/dev/null 2>&1
+assert_no_grep "$PROJ/.claude/skills/openspec-ff-change/SKILL.md" 'set-memory hooks start' \
+    "the real removal stopped working"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Path 1b — the marker spelling set-core actually wrote
+#
+# The block regex demanded a closing `<!-- /set-memory hooks -->`. The installer
+# emitted `start`/`end` comments instead, so the migration matched nothing while
+# reporting nothing wrong — the removal work was silently being done by an external
+# tool that had no ownership check. These pin the real spelling.
+# ─────────────────────────────────────────────────────────────────────────────
+
+ledger_add() {
+    python3 -c "
+import json,sys
+p=sys.argv[1]
+d=json.load(open(p))
+d['files'][sys.argv[2]]=sys.argv[3]
+json.dump(d,open(p,'w'))
+" "$1" "$2" "$3"
+}
+
+PROJ=$(new_cleanup_project markers)
+SK="$PROJ/.claude/skills/openspec-ff-change/SKILL.md"
+printf 'Header\n<!-- set-memory hooks start -->\n1b. run set-memory recall\n<!-- set-memory hooks end -->\nFooter\n' > "$SK"
+ledger_add "$PROJ/set/.deploy-manifest.json" \
+    ".claude/skills/openspec-ff-change/SKILL.md" "$(_pv_sha256 "$SK")"
+_cleanup_deprecated_memory_refs "$PROJ" >/dev/null 2>&1
+
+test_start "markers: strips a start/end block — the spelling actually shipped"
+assert_no_grep "$SK" 'set-memory hooks' "the block regex must match what the installer wrote"
+
+test_start "markers: keeps the content around the block"
+assert_grep "$SK" 'Footer' "only the block may go"
+
+# A command file carrying a marked block must lose the whole block, not just the
+# lines inside it — otherwise orphaned start/end comments survive.
+PROJ=$(new_cleanup_project cmdblock)
+CMD="$PROJ/.claude/commands/opsx/apply.md"
+mkdir -p "$(dirname "$CMD")"
+printf 'Apply.\n<!-- set-memory hooks start -->\nrun set-memory recall "x"\n<!-- set-memory hooks end -->\nTail.\n' > "$CMD"
+ledger_add "$PROJ/set/.deploy-manifest.json" ".claude/commands/opsx/apply.md" "$(_pv_sha256 "$CMD")"
+_cleanup_deprecated_memory_refs "$PROJ" >/dev/null 2>&1
+
+test_start "markers: a command block leaves no orphaned marker comment"
+assert_no_grep "$CMD" 'set-memory hooks' "block mode, not line mode, for marked command files"
+
+test_start "markers: the command's own content survives"
+assert_grep "$CMD" 'Tail.' "only the block may go"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Path 4 — no external tool may pick its own target
+#
+# `set-memory-hooks` resolves the tree it edits with `git rev-parse --show-toplevel`,
+# so a deploy into a directory that is not its own repository root walked UP and
+# edited an ancestor repository. The deploy must not call it at all; a person running
+# the CLI deliberately is a different matter.
+# ─────────────────────────────────────────────────────────────────────────────
+
+STUB_BIN="$WORK/stubbin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/set-memory-hooks" << 'STUB'
+#!/usr/bin/env bash
+touch "$MH_INVOKED_MARKER"
+exit 0
+STUB
+chmod +x "$STUB_BIN/set-memory-hooks"
+
+PROJ=$(new_cleanup_project noexternal)
+export MH_INVOKED_MARKER="$WORK/mh-was-invoked"
+rm -f "$MH_INVOKED_MARKER"
+PATH="$STUB_BIN:$PATH" _deploy_memory "$PROJ" >/dev/null 2>&1
+
+test_start "deploy: never shells out to a tool that resolves its own target"
+if [[ -f "$MH_INVOKED_MARKER" ]]; then
+    test_fail "set-memory-hooks was invoked — it edits the enclosing git root, not \$project_path"
+else test_pass; fi
+
+test_start "deploy: the in-process pass still does the cleanup"
+assert_no_grep "$PROJ/.claude/commands/docs/ingest.md" 'set-memory recall' \
+    "dropping the external call must not drop the migration"
+
+test_start "deploy: and still refuses a project-authored file"
+assert_grep "$PROJ/.claude/commands/docs/handmade.md" 'set-memory remember' \
+    "ownership is decided by the ledger, on every path"
 
 echo
 echo "─────────────────────────────────────────"

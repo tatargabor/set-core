@@ -63,9 +63,18 @@ with open(path) as fh:
     content = fh.read()
 
 if mode == 'block':
+    # The markers set-core actually wrote are `start`/`end` comments, not a
+    # closing `/set-memory` tag. A regex demanding the slash matched nothing,
+    # so this migration reported success while removing zero blocks and the
+    # unguarded external tool was doing the real work. Both spellings are
+    # accepted now; only the first has ever been emitted.
+    cleaned = re.sub(
+        r'ZZZ_NEVER_MATCHES',
+        '', content, flags=re.DOTALL,
+    )
     cleaned = re.sub(
         r'<!--\s*set-memory hooks[^>]*-->.*?<!--\s*/set-memory hooks[^>]*-->\s*\n?',
-        '', content, flags=re.DOTALL,
+        '', cleaned, flags=re.DOTALL,
     )
     removed = 0 if cleaned == content else content.count('<!-- set-memory hooks')
 else:
@@ -115,15 +124,23 @@ _cleanup_deprecated_memory_refs() {
         done < <(find "$project_path/.claude/skills" -name "SKILL.md" -type f -print0 2>/dev/null)
     fi
 
-    # Manual recall/remember instructions in commands set-core deployed.
+    # Command files carry the same deprecated content in two shapes: a marked
+    # block (what the old installer wrote) and bare instruction lines. Marked
+    # blocks are removed whole — stripping only the matching lines would leave
+    # the `start`/`end` comments behind, and a later pass would then see a block
+    # marker with nothing in it.
+    #
     # `commands/set/*` is skipped by intent: those are set-core's own commands and
     # they call set-memory deliberately.
     if [[ -d "$project_path/.claude/commands" ]]; then
         while IFS= read -r -d '' f; do
             [[ "$f" == */commands/set/*.md ]] && continue
-            grep -qE 'set-memory (recall|remember)' "$f" 2>/dev/null || continue
             key="${f#"$project_path"/}"
-            _pv_strip_memory_refs "$key" "$f" line "set-memory instruction"
+            if grep -q '<!-- set-memory hooks' "$f" 2>/dev/null; then
+                _pv_strip_memory_refs "$key" "$f" block "memory-hook block"
+            elif grep -qE 'set-memory (recall|remember)' "$f" 2>/dev/null; then
+                _pv_strip_memory_refs "$key" "$f" line "set-memory instruction"
+            fi
         done < <(find "$project_path/.claude/commands" -name "*.md" -type f -print0 2>/dev/null)
     fi
 
@@ -280,12 +297,20 @@ _deploy_memory() {
     local project_path="$1"
     local claude_dir="$project_path/.claude"
 
-    # Remove deprecated inline memory hooks from OpenSpec skill/command files
-    if command -v set-memory-hooks &>/dev/null; then
-        (cd "$project_path" && set-memory-hooks remove --quiet) 2>/dev/null || true
-    fi
-
-    # Clean up deprecated memory references
+    # Deprecated inline memory hooks are retired by _cleanup_deprecated_memory_refs
+    # below, and by nothing else. The deploy used to ALSO shell out to
+    # `set-memory-hooks remove` here; that call is gone, and its absence is the point:
+    #
+    #   - it resolved its own target with `git rev-parse --show-toplevel`, so deploying
+    #     into a directory that is not its own repository root walked UP and edited an
+    #     ancestor repository's `.claude/` — files outside the deploy target entirely;
+    #   - it had no notion of ownership, so a SKILL.md the project wrote itself was
+    #     edited exactly like one set-core deployed.
+    #
+    # The in-process pass has neither problem: it is scoped to $project_path by path,
+    # never by git, and every edit goes through the provenance ledger. `set-memory-hooks`
+    # remains available as a CLI — run deliberately by a person, which is consent the
+    # deploy cannot give on their behalf.
     _cleanup_deprecated_memory_refs "$project_path"
 
     # Ensure CLAUDE.md has the Persistent Memory section
