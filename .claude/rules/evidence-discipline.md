@@ -153,6 +153,35 @@ The same discipline applies to a screen: structural counts (sections rendered, r
 zero JS errors) prove it *renders*. They say nothing about whether two fields contradict
 each other — see [ui-quality](ui-quality.md). Look at it.
 
+**Assert the RESTORE too, not only the mutation.** Mutation testing has two steps that can
+silently no-op, and only the first one is ever guarded. Measured here: a mutation was applied
+through a helper that asserts its target exists (so that half was honest), and restored with
+`git checkout <file> 2>/dev/null || true` — on a file that was **untracked**. `git checkout`
+cannot restore a file git does not know about; the `|| true` swallowed the error; the suite
+went green because the mutation was reverted only in the *assumption*, and the broken value
+sat in the tree ready to be committed as the shipped behaviour. The direction is what makes
+it expensive: the failure produces a *reassuring* run and leaves the defect behind. So the
+restore is checked the same way the mutation is — re-grep the file for the original value
+before believing the green run:
+
+```bash
+grep -n 'position="before:end"' lib/set_orch/lane_gate.py   # the restore, verified
+```
+
+And prefer a restore that works on the file's actual state: `cp` a copy aside, or write the
+original back explicitly. A revert command chosen for the tracked case fails silently in the
+untracked one — which is exactly when new code is being mutation-tested.
+
+**Never put `git stash` in a command that can be killed.** Same defect one level up, and it
+nearly cost this session's uncommitted work: `git stash -u && <full suite> && git stash pop`
+run in the foreground hit a two-minute tool timeout **after the stash and before the pop**,
+leaving a clean tree and every change of the session in `stash@{0}`. It is recoverable —
+`git stash list` then `git stash pop stash@{0}`, and check the list first because an
+unrelated older stash may sit below it — but only if you notice, and a clean `git status`
+after a timeout looks exactly like a command that never started. For a before/after
+comparison use a **`git worktree add --detach <dir> HEAD`** instead: the baseline gets its
+own directory, the working tree is never touched, and both suites can run at once.
+
 ## Why this file exists rather than a memory
 
 These findings crossed an agent channel and a context compact on the same day. Each hop is
