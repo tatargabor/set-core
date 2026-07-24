@@ -367,10 +367,19 @@ it was. Combined with the consumer's "our four types are one path", the router i
 wrong twice over, and the honest next move is to look at the axis that exists before
 proposing another.
 
-**The absence is not theoretical.** A pristine `HEAD` checkout runs 94 failed / 2631 passed
+**The absence is not theoretical.** A pristine `HEAD` checkout runs 81 failed / 2983 passed
 / 21 errors, and nothing in the git flow has ever noticed, because nothing runs tests before
 a push. The consumer's rule — "green means nothing until someone runs it" — applies here
 more sharply than there: on their side a subset runs at release close; here not even that.
+
+> *Corrected 2026-07-24, later the same day.* This line read **94 / 2631 / 21**, which is
+> what `CLAUDE.md` still says. Both were true when written and neither is now — the passing
+> count moved by 352 in a day. A debt figure is a **measurement with a timestamp**, not a
+> constant, and quoting a stale one is how a real regression gets waved through as
+> "expected". The check that actually works is the one the guidance already prescribes:
+> **diff the failure SET**, against a `git worktree add --detach <dir> HEAD` baseline rather
+> than a stash. Done for the lane gate: 106 entries on each side, symmetric difference empty
+> in both directions.
 
 **Their standard for gates, accepted before their research lands:** a gate is worth having
 when it was born from *one measured failure*, named in its own header. Anything else is

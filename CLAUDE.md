@@ -364,11 +364,29 @@ asked for — seeing project status in set-core, and planning/preparing/managing
 sits outside those three, and the verdict's own finding (the missing piece is a router
 between differentiated ADWs) is what it continues.
 
-**Known unrelated debt:** measured on a pristine checkout of `HEAD` (2026-07-24): **94 failed /
-2631 passed / 21 errors**. The earlier "17 failed" note in this file was stale and understated
-it by ~77, and the failures are not confined to `test_web_api_write.py` +
-`test_web_integration.py`. Pre-existing and outside the current track — but do not treat a
-green-except-94 run as a regression signal without diffing the failure set.
+**Known unrelated debt — and the figure is not the check.** Measured on a pristine checkout
+of `HEAD` (2026-07-24, late): **81 failed / ~2980 passed / 21 errors**, and the failures are
+not confined to `test_web_api_write.py` + `test_web_integration.py`. Pre-existing and outside
+the current track.
+
+**Do not quote this number as a baseline.** It has now been stale twice in one file: "17
+failed" understated it by ~77, and "94 / 2631 / 21" — written earlier the same day — was off
+by 352 passing tests within hours. The passing count also moves a few tests between runs. A
+debt figure is a *measurement with a timestamp*, and a stale one waves a real regression
+through as "expected".
+
+**The check that works is a set diff against a baseline you actually ran.** Never a stash
+inside a killable command — a timeout between the stash and the pop leaves a clean tree and
+the whole session's work in `stash@{0}`, which looks exactly like a command that never
+started:
+
+```bash
+git worktree add -q --detach /tmp/base HEAD
+python -m pytest tests/unit -q -p no:randomly 2>&1 | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort > /tmp/now.txt
+(cd /tmp/base && python -m pytest tests/unit -q -p no:randomly 2>&1 | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort) > /tmp/base.txt
+diff /tmp/base.txt /tmp/now.txt   # empty = no regression, whatever the counts say
+git worktree remove /tmp/base --force
+```
 
 ## External Project Confidentiality
 
