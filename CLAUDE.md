@@ -5,11 +5,26 @@
 
 **Shipped:** Phase 0′ — the DB-mutation guard in `integration_pre_build` (`modules/web/set_project_web/project_type.py`), commit `8fae5733`, with mutation-checked tests in `tests/unit/test_integration_pre_build_db_guard.py`. set-core no longer authors `prisma db push --accept-data-loss` against a non-`file:` target.
 
+**Shipped 2026-07-24** — the deploy/runtime safety block:
+- `d3769483` — `protected: true` across the web manifest (49 of 51 entries).
+- `eb7e2839` — the two remaining live-DB paths: a guard refusing config-supplied destructive
+  commands against a non-`file:` target (`lib/set_orch/db_safety.py`, both post-merge paths),
+  and dispatch re-running the project's `worktree-init` hook *after* `env_vars`, so the
+  project's per-tree database name wins. They were a chain, not two bugs.
+- `aed09d3c` — install-time hash ledger + tombstones (`set/.deploy-manifest.json`), covering
+  BOTH deploy engines, and a `--dry-run` that finally reports the bash engine too.
+
 **Next, in this order** (all small, none architectural):
 1. **0′b** — the twin `e2e_pre_gate` has the same class of hole: its guard reads the `.env` FILE while the push runs with the `env` PARAMETER, and it never fires when `DATABASE_URL` is absent. ~4 lines + test.
-2. **0a** — `protected: true` flags in the web deploy manifest. **This is the gate on everything else** (see decision below).
-3. **0a′** — `--no-verify` on automated worktree commits/pushes.
-4. **0b** — e2e gate reads a machine-readable result file keyed on `(file, title)` instead of scraping the Playwright list reporter.
+2. **0b** — e2e gate reads a machine-readable result file keyed on `(file, title)` instead of scraping the Playwright list reporter. **Now known to be live, not theoretical**: a measured consumer runs Playwright with `--reporter json`, so the list-reporter regex matches nothing and the gate reads zero failures.
+3. **Two mutation paths still outside both engines**: `_cleanup_deprecated_memory_refs`
+   (`lib/project/deploy.sh`) edits consumer command files unguarded, and `set-deploy-hooks`'
+   "fresh merge" branch would replace whole `settings.json` event arrays — taking a consumer's
+   own PreToolUse firewall with them — if the config ever stops looking canonical.
+
+**Superseded:** `0a′` (`--no-verify` on automated commits/pushes) is **withdrawn for pushes**.
+Consumer gate chains commonly hang off the *pre-push* hook; bypassing it makes every one of
+them skip silently. Commits may use `--no-verify`; pushes must never.
 
 **DECISION — do NOT run `set-project init` against the live consumer project until 0a ships.** Today an `init --force` clobbers un-prefixed consumer files (i18n catalogs, the e2e global-setup, 16 hand-authored rules). This is a **gated hold**: the gate is the four items above, then re-evaluate.
 
@@ -73,7 +88,11 @@ talk over each other.
 
 **Verdict already reached — do not relitigate:** no `set-factory` layer (`docs/research/set-factory-verdict-2026-07-19.md`). The meetings→requirements pipeline is permanently excluded from the framework. Deployment execution, promotion state machines and portfolio scheduling are out of scope.
 
-**Known unrelated debt:** 17 failed / 21 errors in `test_web_api_write.py` + `test_web_integration.py` (`AttributeError` in web API fixtures) — pre-existing, untouched.
+**Known unrelated debt:** measured on a pristine checkout of `HEAD` (2026-07-24): **94 failed /
+2631 passed / 21 errors**. The earlier "17 failed" note in this file was stale and understated
+it by ~77, and the failures are not confined to `test_web_api_write.py` +
+`test_web_integration.py`. Pre-existing and outside the current track — but do not treat a
+green-except-94 run as a regression signal without diffing the failure set.
 
 ## External Project Confidentiality
 
