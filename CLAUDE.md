@@ -17,7 +17,27 @@ survive the compact; the task in flight does not outrank them.**
    The two sides design that extension **together, agreed on the channel**, not in parallel.
 4. **The acceptance test is one sentence: open set-core and see the project's development
    status.** Not an API that returns correct JSON — a screen that shows where the project is.
-5. Then, and only then, move on to other things.
+5. **Then bring the manual OpenSpec-change operation back into set-core — but smartly.**
+   First round: see everything in set-core, prepare a release, plan bug fixes, manage
+   releases. Later round: development itself returns too, and the orchestration will
+   need reshaping for it. That reshaping is expected, not a surprise to be avoided.
+
+**On the `set-factory` verdict, which this partly supersedes.** The user has asked for a
+factory layer directly, so the 2026-07-19 "no" no longer settles the question — but read
+what it actually rejected before treating this as a reversal, because most of it still
+holds and the distinction is what keeps the work honest:
+
+- **Still rejected, and nothing above asks for it:** a new repo or layer above set-core;
+  the meetings→requirements pipeline (permanently out); set-core *executing* deployments.
+- **The verdict's own finding, which the goals above are a direct continuation of:** the
+  factory frame *is already* the set-core ↔ project split, the OpenSpec chain *is* one
+  ADW, and the genuinely missing piece is a **router between differentiated ADWs**
+  (chore / bug / feature / hotfix) — an extension of an existing router, not a new system.
+- **The one real tension, and how it resolves:** the verdict said delegate release and
+  promotion to the tools that already do them. The goal above is to *plan, prepare and
+  manage* releases, which is not the same act as shipping them. set-core shows the state
+  and helps decide; the project's own CI remains the only thing that deploys. Keep that
+  line visible in whatever gets built — it is also the consumer's own iron rule.
 
 **The safety track below is finished, and it is a precondition for this, not a substitute.**
 Do not let it become the work again. And a shipped commit is not a running system — a
@@ -165,7 +185,13 @@ talk over each other.
 
 **Discipline.** Between 2026-07-14 and Phase 0′ this repo produced five research documents and zero lines of code while a six-line guard stood between an orchestration run and a production-data mirror. Research is not the default next step — shipping the listed items is. Before proposing a new investigation, check whether it is already answered in `docs/research/`.
 
-**Verdict already reached — do not relitigate:** no `set-factory` layer (`docs/research/set-factory-verdict-2026-07-19.md`). The meetings→requirements pipeline is permanently excluded from the framework. Deployment execution, promotion state machines and portfolio scheduling are out of scope.
+**Partly superseded — see the goals section at the top of this file.** The 2026-07-19
+verdict (`docs/research/set-factory-verdict-2026-07-19.md`) still governs three things and
+they are not open: no new repo or layer above set-core, the meetings→requirements pipeline
+is permanently excluded, and set-core never *executes* a deployment. What the user has since
+asked for — seeing project status in set-core, and planning/preparing/managing releases —
+sits outside those three, and the verdict's own finding (the missing piece is a router
+between differentiated ADWs) is what it continues.
 
 **Known unrelated debt:** measured on a pristine checkout of `HEAD` (2026-07-24): **94 failed /
 2631 passed / 21 errors**. The earlier "17 failed" note in this file was stale and understated
