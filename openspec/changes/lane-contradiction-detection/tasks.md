@@ -38,14 +38,34 @@
 
 - [x] 4.8 The framework applies a signal's exclusions to handler results, rather than trusting each handler to. The self-inclusion refusal is WAIVED as soon as an exclusion covers the declaration file, so the waiver is only honest if the exclusion is enforced — otherwise a signal buys its way past the guard with a promise nothing checks. Peer-raised from the mirror on their side: listing the declaration file in `exclusions` short-circuited the whole guard for that signal, and an escape hatch that disables its own signal's protection looks like care [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it]
 
-- [ ] 4.9 Evaluate a condition that names a published answer by invoking the project's
+- [x] 4.9 Evaluate a condition that names a published answer by invoking the project's
   declared command through the existing `project_status` mechanism — never a second
-  invocation path, and never a framework-side computation of the same value [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
-- [ ] 4.10 A failed, timed-out or unusable published answer yields UNEVALUATED with the
-  reason, and no fallback computation [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
-- [ ] 4.11 A signal declaring that no other gate enforces its defect class BLOCKS when it
+  invocation path, and never a framework-side computation of the same value. Delegation is
+  tried **before** any handler, and the order is the requirement rather than a preference: a
+  handler running while the project publishes the value IS the recomputation. `field` is a
+  dotted path of plain keys resolved against the envelope's `data`; an index or filter is
+  refused at parse time, because a projection is the project's rule re-expressed in the
+  framework's syntax [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+- [x] 4.10 A failed, timed-out or unusable published answer yields UNEVALUATED with the
+  reason, and no fallback computation. **Two unevaluable states, not one** — peer-required,
+  with a measurement behind it: their whole read contract existed on one machine and was
+  absent from the remote branch, so a clone finds nothing to ask rather than getting a wrong
+  answer. `not-configured` and `command-not-found` mean *this tree does not publish*
+  (`reason_class="not-published"`); every other class means *it published badly*
+  (`"unusable-answer"`). Neither is a pass; the gate just says which one it is
+  [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+- [x] 4.11 A signal declaring that no other gate enforces its defect class BLOCKS when it
   cannot be evaluated, instead of reporting silence — the consumer's condition for agreeing
-  to 4.10, and the honest limit of it [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+  to 4.10, and the honest limit of it. Opt-in (`sole_enforcement`, a strict bool — `"false"`
+  is a true string and this flag decides whether the gate blocks), and it does **not** fire
+  on out-of-scope silence: a signal declared for per-change verification is not a hole at
+  merge time, and blocking there is how a gate gets switched off in its first week
+  [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+- [x] 4.12 A lane signal never invokes a WRITE command, and never a command the tree's
+  contract does not declare as readable. Checked by the framework rather than trusted to the
+  declaration: the declaration is the project's, this guarantee is set-core's, and a gate
+  that mutated the tree it is judging would be the worst possible place to discover the
+  distinction [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
 
 ## 5. Prove the tests are load-bearing
 
@@ -63,7 +83,10 @@
 - [x] AC-7: WHEN a signal's scope includes the document declaring it THEN the declaration is refused with an error naming self-inclusion [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it, scenario: a-scope-that-swallows-the-rule-that-defines-the-signal-is-refused]
 - [x] AC-8: WHEN a signal is declared without exclusions THEN it is incomplete and is not evaluated [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it, scenario: specification-and-test-corpora-are-excluded-by-default-in-the-declaration]
 - [x] AC-9: WHEN a signal references project-internal identifiers THEN it is evaluated and those identifiers are not persisted under set-core's tree [REQ: the-declaration-is-read-at-evaluation-time-and-never-persisted, scenario: a-signal-naming-project-internal-identifiers-leaves-no-trace-in-the-framework]
-- [ ] AC-10: **reporting proven, detection not built.** The contradiction IS reported naming the declared type and the artefact together (`test_a_firing_signal_is_reported_with_the_declared_change_type`), but through an injected handler: `_KIND_HANDLERS` is empty, so no condition kind is evaluated for real yet and an unhandled kind reports UNEVALUATED. A handler is a mechanism worth adding once a project declares a signal that needs it — until then this box stays open, because a tick here would read as "the gate catches this" [REQ: the-lane-is-measured-after-the-work-never-classified-before-it, scenario: a-change-declared-trivial-that-delivers-a-new-capability-is-caught]
+- [x] AC-25: WHEN a signal names an answer the project publishes THEN the prohibition on contacting a service applies to reading the DECLARATION only, the condition is evaluated by invoking that project-declared command against the worktree, and set-core computes no answer of its own — asserted by the negative test (`test_the_published_answer_is_taken_and_the_handler_is_not_consulted`), because the positive one would pass with a fallback in place [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system, scenario: reading-the-declaration-and-evaluating-the-condition-are-different-acts]
+- [x] AC-26: WHEN the published command fails, times out or returns an unusable answer THEN the signal is unevaluated with the reason and neither passes nor falls back to a framework-side computation [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it, scenario: a-silent-command-is-unevaluated-never-a-pass]
+- [x] AC-27: WHEN a signal's declaration states that no other gate enforces its defect class THEN an unevaluable signal blocks and the gate names the missing answer [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it, scenario: a-signal-that-is-the-only-enforcement-of-its-defect-class-blocks-instead-of-falling-silent]
+- [ ] AC-10: **the gate is no longer inert; THIS shape is still not detected.** Updated rather than ticked, because the change is real and partial: a delegated answer is now evaluated for real, so a project publishing its own verdict gets a genuine fired/did-not-fire result (AC-25). What remains unbuilt is the shape THIS scenario names — a new capability delivered under a cheap declaration — which needs a diff against a base ref rather than a published value, and no `_KIND_HANDLERS` entry exists for it. A peer confirmed the split from their side: their defect signal's answer is already a contract field, their new-module signal's is not, because only the framework holds the base ref. Previous wording, for the record: **reporting proven, detection not built.** The contradiction IS reported naming the declared type and the artefact together (`test_a_firing_signal_is_reported_with_the_declared_change_type`), but through an injected handler: `_KIND_HANDLERS` is empty, so no condition kind is evaluated for real yet and an unhandled kind reports UNEVALUATED. A handler is a mechanism worth adding once a project declares a signal that needs it — until then this box stays open, because a tick here would read as "the gate catches this" [REQ: the-lane-is-measured-after-the-work-never-classified-before-it, scenario: a-change-declared-trivial-that-delivers-a-new-capability-is-caught]
 - [x] AC-11: WHEN the gate runs THEN no model is invoked to determine a lane and no new change-definition field is required [REQ: the-lane-is-measured-after-the-work-never-classified-before-it, scenario: no-classification-prompt-is-added-anywhere]
 - [x] AC-12: WHEN a WARN-severity signal fires THEN it is reported and neither the gate nor the merge is blocked [REQ: a-signal-starts-at-warn-and-is-promoted-only-by-its-own-measured-condition, scenario: a-warn-signal-does-not-block]
 - [x] AC-13: WHEN a signal is set to ENFORCE without the recorded measurement THEN the promotion is refused, the signal evaluates at WARN, and the refusal is reported [REQ: a-signal-starts-at-warn-and-is-promoted-only-by-its-own-measured-condition, scenario: promotion-without-evidence-is-refused]
@@ -75,6 +98,6 @@
 - [x] AC-18: WHEN a signal cannot be evaluated because its artefact is absent THEN it is reported as unevaluated with a reason and excluded from the did-not-fire set [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass, scenario: an-unevaluable-signal-is-not-a-pass]
 - [x] AC-19: WHEN every signal is evaluated and none fires THEN evaluated and unevaluated counts are reported and no lane-correct verdict field is emitted [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass, scenario: no-overall-lane-correct-verdict-is-emitted]
 - [x] AC-20: WHEN a signal declares everything but names no incident it was written for THEN it is refused with an error naming the missing triggering case [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case, scenario: a-signal-with-no-triggering-case-is-refused]
-- [x] AC-21: WHEN a change is verified in a worktree with no database and no application server THEN declarations are read from the tree and no contract command, HTTP call or database connection is attempted [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system, scenario: declarations-are-read-with-no-service-running]
+- [x] AC-21: WHEN a change is verified in a worktree with no database and no application server THEN **the DECLARATION is** read from the tree and no contract command, HTTP call or database connection is attempted **to read it**. Narrowed after D12: evaluation may invoke a published command (AC-25), so an AC worded as "the gate attempts no contract command" would have been a marker true of a narrower subject than it named [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system, scenario: declarations-are-read-with-no-service-running]
 - [x] AC-22: WHEN a signal fires THEN the message includes the incident's date and identifier and the way to suppress that one signal [REQ: the-triggering-case-appears-in-the-gates-own-message-not-only-in-the-specification, scenario: a-firing-signal-states-why-it-exists]
 - [x] AC-23: WHEN a triggering case is a date and identifier with no explanation THEN the declaration is accepted, no claim of justification is made, and the unexplained state is reported [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case, scenario: a-dated-identifier-with-no-explanation-is-accepted-and-the-gate-says-so]

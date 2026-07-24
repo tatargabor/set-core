@@ -69,6 +69,18 @@ class SignalOutcome:
     reason: str = ""
     severity: str = WARN
 
+    #: WHY it could not be evaluated, as a token rather than prose. The report groups on
+    #: this: "the project publishes no answer" and "the answer came back broken" are
+    #: opposite statements, and a reader who has to tell them apart by reading the sentence
+    #: is doing what every prose-parsed-as-fact defect in this repo started as.
+    reason_class: str = ""
+
+    #: Whether THIS outcome fails the gate on its own. Set only where the signal is in
+    #: scope, could not be evaluated, and its project declared it the sole enforcement of
+    #: its defect class. Carried per outcome rather than recomputed in `LaneReport.blocks`
+    #: because out-of-scope silence is not a hole, and the two are the same status.
+    blocking: bool = False
+
     @property
     def message(self) -> str:
         """What the reader sees when this signal fires.
@@ -132,6 +144,8 @@ class LaneReport:
     def blocks(self) -> bool:
         """Whether the gate fails. Baseline growth blocks regardless of severity."""
         if self.baseline_growth:
+            return True
+        if any(o.blocking for o in self.outcomes):
             return True
         return any(o.severity == ENFORCE for o in self.fired)
 
@@ -223,7 +237,8 @@ def evaluate(signals: Iterable[LaneSignal],
         if not in_scope(signal, phase):
             report.outcomes.append(SignalOutcome(
                 signal, UNEVALUATED, reason=f"out of scope here (declared for {signal.scope!r}, "
-                                            f"running {phase!r})", severity=severity))
+                                            f"running {phase!r})", severity=severity,
+                reason_class="out-of-scope"))
             continue
 
         try:
@@ -231,13 +246,18 @@ def evaluate(signals: Iterable[LaneSignal],
         except Exception as exc:
             logger.warning("lane signal could not be evaluated: %s", type(exc).__name__)
             report.outcomes.append(SignalOutcome(
-                signal, UNEVALUATED, reason=f"{type(exc).__name__}: {exc}", severity=severity))
+                signal, UNEVALUATED, reason=f"{type(exc).__name__}: {exc}", severity=severity,
+                # The detector names its own reason class; an unexpected exception carries
+                # none, and `""` reads as "unclassified" rather than borrowing a bucket.
+                reason_class=getattr(exc, "reason_class", ""),
+                blocking=bool(signal.sole_enforcement)))
             continue
 
         if found is None:
             report.outcomes.append(SignalOutcome(
                 signal, UNEVALUATED, reason="the condition's input is absent",
-                severity=severity))
+                severity=severity, reason_class="input-absent",
+                blocking=bool(signal.sole_enforcement)))
             continue
 
         baselined = set(signal.baseline)

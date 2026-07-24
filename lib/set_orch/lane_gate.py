@@ -46,6 +46,128 @@ class UnhandledConditionKind(Exception):
     looking for a file that is not missing.
     """
 
+    reason_class = "no-handler"
+
+
+class ProjectPublishesNothing(Exception):
+    """The signal names a published answer, and this tree publishes no contract to ask.
+
+    Kept apart from `PublishedAnswerUnusable` at a peer's request, with a measurement behind
+    it: on their side the entire read contract — every declared command AND both signal
+    declarations — existed on one machine and was absent from the remote branch, so a clone
+    or a CI run does not get a *wrong* answer, it finds nothing to ask. Collapsed into the
+    broken case, a project that simply does not publish would report identically to one whose
+    command is failing, and the gate would look like it had found something.
+
+    Neutral is not a pass. It is still UNEVALUATED — it just says which of the two it is.
+    """
+
+    reason_class = "not-published"
+
+
+class PublishedAnswerUnusable(Exception):
+    """The project publishes, and the answer did not arrive in a usable form.
+
+    Never a fallback computation — the spec forbids one, because a framework-side answer to
+    a question the project already answers is the second implementation the whole delegation
+    exists to prevent.
+    """
+
+    reason_class = "unusable-answer"
+
+
+#: Error classes that mean *this tree does not publish*, as opposed to *it published badly*.
+#: Read off `project_status.query`: `not-configured` is returned when no manifest and no
+#: config key exist, `command-not-found` when the interpreter or script named by the contract
+#: is not on disk. Both are the shape of a checkout that does not carry the publishing half —
+#: the case measured on a peer's remote branch.
+NOT_PUBLISHING = frozenset({"not-configured", "command-not-found"})
+
+#: Sentinel for "this path is not in the answer", distinct from a published `None`.
+_MISSING = object()
+
+
+def _dig(data: Any, dotted: str) -> Any:
+    """Walk a dotted path of plain keys. No index, no filter — see `_parse_answer`."""
+    current = data
+    for segment in dotted.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return _MISSING
+        current = current[segment]
+    return current
+
+
+def _delegated_violations(signal: LaneSignal, wt_path: str) -> list:
+    """Take the project's published answer. Never recompute it.
+
+    This is the whole agreement in one function: set-core defines the SHAPE of a signal, the
+    project supplies the VALUE. The alternative was measured on the consumer's side before
+    this was written — two paths computing one business figure drifted to 412% and 164%, and
+    a customer noticed before either team did. A framework-side reimplementation of a
+    project's rule is that same defect with a longer feedback loop, because the two answers
+    are read by different people.
+
+    Safe against a live system only because the thing being asked is the WORKTREE: measured
+    on a consumer's disposable tree with no `node_modules`, no `.env` and no database, their
+    query answered in 129 ms and answered about *that tree*.
+    """
+    from . import project_status
+
+    config = project_status.resolve_status_config(wt_path)
+    if config is None:
+        raise ProjectPublishesNothing(
+            "this tree publishes no status contract, so the answer this signal delegates to "
+            "cannot be asked for. That is not a finding about the change — it says the "
+            "checkout does not carry the publishing half")
+
+    command = signal.answer["command"]
+
+    # A lane signal reads; it never writes. Checked here rather than trusted to the
+    # declaration, because the declaration is the project's and this guarantee is the
+    # framework's — and a gate that mutated the tree it is judging would be the worst
+    # possible place to discover the distinction.
+    if command in config.write_commands:
+        raise PublishedAnswerUnusable(
+            "the answer names a WRITE command; a lane signal reads and never mutates, so "
+            "it was not invoked")
+    if config.commands and command not in config.commands:
+        raise PublishedAnswerUnusable(
+            "the answer names a command this tree's contract does not declare as readable "
+            "— two of the project's own declarations disagree, and guessing which one is "
+            "current is not the framework's call")
+
+    result = project_status.query(wt_path, command, config=config)
+    if not result.ok:
+        # Shape, not content: the class is the framework's vocabulary, the message is the
+        # project's own and reaches the developer through the gate output.
+        if result.error_class in NOT_PUBLISHING:
+            raise ProjectPublishesNothing(
+                f"the published command could not be reached ({result.error_class})")
+        raise PublishedAnswerUnusable(
+            f"the published answer did not arrive ({result.error_class}); no framework-side "
+            f"computation was substituted, because a substitute is the second "
+            f"implementation this delegation exists to prevent")
+
+    value = _dig(result.data, signal.answer["field"])
+    if value is _MISSING:
+        raise PublishedAnswerUnusable(
+            f"the answer arrived but carries nothing at the declared path "
+            f"{signal.answer['field']!r} (resolved against the envelope's `data`)")
+    if not isinstance(value, list):
+        raise PublishedAnswerUnusable(
+            f"the declared path holds {type(value).__name__}, not a list of violations. A "
+            f"count cannot be baselined and cannot be excluded, so it would report a number "
+            f"nobody can act on or forgive")
+
+    violations = []
+    for entry in value:
+        if isinstance(entry, (dict, list, tuple, set)):
+            raise PublishedAnswerUnusable(
+                "a violation must be a stable identifier — the baseline and the exclusions "
+                "both match on it, so a structured entry silently escapes both")
+        violations.append(str(entry))
+    return violations
+
 
 def _detector_for(wt_path: str) -> Callable[[LaneSignal], Optional[list]]:
     """Return a detector that runs a signal's condition against the worktree.
@@ -68,6 +190,13 @@ def _detector_for(wt_path: str) -> Callable[[LaneSignal], Optional[list]]:
     """
 
     def detect(signal: LaneSignal) -> Optional[list]:
+        # Delegation is tried BEFORE any handler, and the order is a requirement rather than
+        # a preference: where the project publishes the answer, a framework handler running
+        # instead of it IS the recomputation the spec forbids. So a declared `answer` wins
+        # even if this version happens to have a handler for the same condition kind.
+        if signal.answer:
+            return _apply_exclusions(signal, _delegated_violations(signal, wt_path))
+
         handler = _KIND_HANDLERS.get(str(signal.condition.get("kind", "")))
         if handler is None:
             # Shape, not content: the kind and the signal name are the project's own
@@ -153,8 +282,26 @@ def format_output(report: LaneReport, change: Any = None) -> str:
         for violation in outcome.violations:
             lines.append(f"    - {violation}")
 
+    # Two buckets, not one. "this project publishes no answer" and "the answer came back
+    # broken" are opposite statements about opposite subjects — the checkout versus the
+    # change — and a reader told to tell them apart by reading the sentence is doing the
+    # prose-parsed-as-fact job by hand. Neither is a pass; both are printed.
     for outcome in report.unevaluated:
-        lines.append(f"[UNEVALUATED] {outcome.signal.name}: {outcome.reason}")
+        if outcome.reason_class == "not-published":
+            continue
+        marker = "[BLOCKED — UNEVALUATED]" if outcome.blocking else "[UNEVALUATED]"
+        lines.append(f"{marker} {outcome.signal.name}: {outcome.reason}")
+        if outcome.blocking:
+            lines.append(
+                "    this signal declares itself the ONLY enforcement of its defect class, "
+                "so silence here is a hole rather than a lost early warning")
+
+    for outcome in report.unevaluated:
+        if outcome.reason_class != "not-published":
+            continue
+        marker = ("[BLOCKED — NOT PUBLISHED]" if outcome.blocking
+                  else "[NOT PUBLISHED BY THIS TREE]")
+        lines.append(f"{marker} {outcome.signal.name}: {outcome.reason}")
 
     for refusal in report.refusals:
         lines.append(f"[REFUSED] {refusal}")

@@ -58,6 +58,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from .project_status import is_valid_command_name
+
 logger = logging.getLogger(__name__)
 
 #: The six fields a declaration must carry. Absence of any one is a refusal, never a
@@ -142,6 +144,21 @@ class LaneSignal:
     #: Preserved as opaque data on purpose. Naming any of these keys in Layer 1 would make
     #: the framework hold project vocabulary, which is exactly what this module refuses;
     #: the gate reports that they exist, by key name, and interprets none of them.
+    #: An optional delegation: the project already publishes this answer, so the gate asks
+    #: rather than recomputing. `{command, field}` — set-core defines the shape, the project
+    #: supplies the value. See `_parse_answer` for why a malformed one is refused.
+    answer: Optional[dict] = None
+
+    #: The project's own statement that NO other gate enforces this signal's defect class.
+    #:
+    #: Default False, and the default is the honest one: a peer accepted framework silence
+    #: on an unevaluable signal *because their own blocking gate covered the same class*, so
+    #: silence there costs earlier warning rather than protection. Where that is not true,
+    #: silence is a real hole — so a project may say so, and an unevaluable signal then
+    #: BLOCKS instead of reporting quiet. Opt-in on purpose: a framework that guessed this
+    #: would either block every clone or forgive every hole.
+    sole_enforcement: bool = False
+
     extra: dict = field(default_factory=dict)
 
     @property
@@ -302,6 +319,63 @@ def _refuse_if_self_inclusive(name: str, condition: dict, scope: str,
         )
 
 
+#: The keys of an `answer` declaration. set-core defines this SHAPE; the project fills it
+#: in — which is the whole agreement in one line: the framework says what a delegation looks
+#: like, the project says which of its commands answers and which field carries the value.
+ANSWER_FIELDS = ("command", "field")
+
+
+def _parse_answer(name: str, raw: Any) -> Optional[dict]:
+    """Validate an optional delegation declaration.
+
+    A signal may name an answer the project ALREADY publishes through its status contract,
+    instead of describing a rule for set-core to reimplement. Two implementations of one
+    business value diverge silently — measured on a consumer before this existed, where the
+    same figure reached 412% down one path and 164% down another, and a customer noticed
+    before either team did.
+
+    Absent is legitimate and common: a condition the framework evaluates itself needs no
+    delegation. But a MALFORMED one is refused rather than ignored, because ignoring it
+    would silently fall back to "no delegation" — and the fallback is precisely the
+    reimplementation the field exists to prevent.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SignalRefused(name, "answer is not a mapping", type(raw).__name__)
+
+    missing = [f for f in ANSWER_FIELDS if not raw.get(f) or not isinstance(raw[f], str)]
+    if missing:
+        raise SignalRefused(
+            name, "answer is missing required field(s)", ", ".join(missing) +
+            "; an answer names the command that already publishes the value and the field "
+            "that carries it",
+        )
+    if not is_valid_command_name(raw["command"]):
+        raise SignalRefused(
+            name, "answer names an invalid command",
+            "a command name reaching a shell unvalidated is the hole the status contract "
+            "already closed; the same rule applies here",
+        )
+
+    # `field` is a dotted path of PLAIN KEYS, resolved against the envelope's `data`. No
+    # index, no projection, no filter — and the restriction is the whole point rather than
+    # a parser limitation. A projection like `bugs[?fixed && !hasTest]` is the project's
+    # RULE re-expressed in the framework's syntax, which is the second implementation this
+    # field exists to prevent; the 412%-vs-164% divergence it was written after did not need
+    # two languages to happen, only two places. So the project publishes the already-decided
+    # list under one path, and set-core reads it.
+    bad = [seg for seg in raw["field"].split(".") if not seg or any(c in seg for c in "[]*?")]
+    if bad:
+        raise SignalRefused(
+            name, "answer field is not a plain dotted path",
+            f"{raw['field']!r} — an index or filter here would make set-core re-apply the "
+            f"project's own rule, which is exactly the second implementation this "
+            f"delegation exists to prevent; publish the decided list under one path instead",
+        )
+    return {f: raw[f] for f in ANSWER_FIELDS}
+
+
 def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> LaneSignal:
     """Validate one declaration. Raises `SignalRefused`; never returns a partial signal."""
     if not isinstance(raw, dict):
@@ -341,10 +415,22 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
 
     _refuse_if_self_inclusive(name, condition, str(raw["scope"]), exclusions, declared_at)
 
+    answer = _parse_answer(name, raw.get("answer"))
+
+    # A strict bool, never a truthiness test. `"false"` is a true string, and this flag
+    # decides whether an unevaluable signal blocks — a defaulting error here fails in
+    # whichever direction the typo happened to point, which is worse than either.
+    sole = raw.get("sole_enforcement", False)
+    if not isinstance(sole, bool):
+        raise SignalRefused(
+            name, "sole_enforcement is not a boolean", f"got {type(sole).__name__}; "
+            f"this flag decides whether an unevaluable signal blocks, so a string that "
+            f"merely looks false would silently enable blocking")
+
     # Everything the project declared that this version does not read is KEPT, never
     # dropped — see `LaneSignal.extra`. Derived from the field list rather than a second
     # hard-coded set of names, so a future field cannot be preserved and read at once.
-    known = set(REQUIRED_FIELDS) | {"exclusions"}
+    known = set(REQUIRED_FIELDS) | {"exclusions", "answer", "sole_enforcement"}
     extra = {k: v for k, v in raw.items() if k not in known}
 
     signal = LaneSignal(
@@ -356,6 +442,8 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
         promotion=raw["promotion"],
         triggering_case=triggering,
         exclusions=tuple(exclusions),
+        answer=answer,
+        sole_enforcement=sole,
         extra=extra,
     )
     # Shape, not content — see "What this module logs" in the module docstring.

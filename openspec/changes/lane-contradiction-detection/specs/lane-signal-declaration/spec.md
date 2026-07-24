@@ -124,16 +124,67 @@ being verified is not a live system: measured on a consumer's disposable worktre
 crucially, answered about THAT tree: a reference broken only in the worktree changed the
 worktree's answer and left the main tree's unchanged.
 
+The delegated answer SHALL name a command and a **plain dotted path** to a list of violation
+identifiers. set-core SHALL NOT accept an index, a filter, or a projection in that path, and
+SHALL NOT accept a count in place of the list. A projection is the project's own rule
+re-expressed in the framework's syntax, which is the second implementation this requirement
+exists to prevent — the divergence it was written after needed two places, not two languages.
+A count cannot be matched against the baseline and cannot be matched against the exclusions,
+so it would report a figure nobody can act on or forgive.
+
+A lane signal SHALL NOT invoke a command the project declares as a WRITE command, nor one its
+contract does not declare as readable. This is enforced by the framework rather than trusted
+to the declaration: the declaration is the project's, this guarantee is set-core's, and a gate
+that mutated the tree it is judging is the worst place to discover the difference.
+
 #### Scenario: A silent command is unevaluated, never a pass
 - **WHEN** the published command fails, times out, or returns an unusable answer
 - **THEN** the signal SHALL be reported as unevaluated with the reason
 - **AND** SHALL NOT be reported as passing, and SHALL NOT fall back to a framework-side
   computation of the same value
 
+#### Scenario: A tree that publishes nothing is distinguishable from a command that is broken
+- **WHEN** the tree carries no status contract, or the command's entry point is absent from it
+- **THEN** the signal SHALL be reported as unevaluated with a reason stating that THIS TREE
+  DOES NOT PUBLISH the answer
+- **AND** that state SHALL be distinguishable, in the gate's own output, from a command that
+  is present and answered unusably
+- **AND** neither state SHALL be reported as passing
+
+The two are statements about different subjects — the checkout versus the change — and
+merging them makes a project that never opted in report identically to one whose gate has
+just died. Required by the consumer with a measurement behind it: their entire read
+contract, every declared command and both signal declarations, existed on one machine and
+was absent from the remote branch, so a clone or a CI run finds nothing to ask rather than
+receiving a wrong answer.
+
+#### Scenario: A projection in the declared path is refused
+- **WHEN** a signal's delegated answer names a path containing an index, a wildcard or a
+  filter
+- **THEN** set-core SHALL refuse the declaration, naming the reason
+- **AND** the project SHALL instead publish the decided list under one path
+
+#### Scenario: A published count is not a published answer
+- **WHEN** the declared path holds a number rather than a list of identifiers
+- **THEN** the signal SHALL be reported as unevaluated with the reason
+- **AND** SHALL NOT be reported as passing when that number is zero
+
 #### Scenario: A signal that is the only enforcement of its defect class blocks instead of falling silent
 - **WHEN** a signal's declaration states that no other gate enforces its defect class
 - **THEN** an unevaluable signal SHALL block rather than report silence
 - **AND** the gate SHALL name the missing answer as the reason
+- **AND** this SHALL apply whether the answer was unusable or the tree publishes none —
+  naming the state honestly and refusing to pass are not in tension
+
+#### Scenario: Out-of-scope silence is not a hole and does not block
+- **WHEN** a signal declaring itself the sole enforcement of its class is reached in a phase
+  it was not declared for
+- **THEN** it SHALL NOT block
+- **AND** its absence there SHALL still be recorded as not evaluated
+
+A signal declared for per-change verification is not unenforced at merge time; it runs in its
+own phase. Blocking there would fail every integration run, which is how a gate is switched
+off in its first week — taking the warning with it.
 
 This condition was required by the consumer as the price of accepting the previous scenario,
 and it is the honest limit of it: their agreement holds *because their own blocking gate

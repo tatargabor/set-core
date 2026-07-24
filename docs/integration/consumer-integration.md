@@ -140,7 +140,53 @@ The general rule this stands for: *the declaration is the contract, not the docu
   warning rather than protection. Where a signal is the only enforcement of its class,
   silence is a real hole and it must block instead. Recorded as
   `lane-signal-declaration` requirement "the framework takes the project's published answer"
-  and design decision D12; tasks 4.9–4.11 are open, and the invocation path is **not built**.
+  and design decision D12.
+
+  **BUILT 2026-07-24 (tasks 4.9–4.12, AC-25/26/27).** The gate now takes a declared
+  `answer: {command, field}` through `project_status.query` — the existing mechanism, so the
+  timeout, the declared-command list and the read/write separation come for free rather than
+  as a second invocation path. Verified by mutation, not by reading: **11 mutations applied
+  one at a time, each killed the test aimed at it, each restore re-grepped** (delegation
+  running first, the two-state split, the write-command refusal, the undeclared-command
+  refusal, list-not-count, identifier-not-record, missing-path-is-not-empty, the projection
+  refusal, the strict bool, sole-enforcement blocking, out-of-scope not blocking).
+
+  Four shape decisions, each with the reason it is not a parser limitation:
+
+  - **Delegation runs BEFORE any handler**, so a declared answer wins even where set-core has
+    a handler for the same condition kind. The load-bearing test is the negative one —
+    `test_the_published_answer_is_taken_and_the_handler_is_not_consulted` — because the
+    positive one passes with a fallback in place.
+  - **`field` is a plain dotted path resolved against the envelope's `data`.** An index or
+    filter is refused at parse time: a projection is the project's own rule re-expressed in
+    the framework's syntax, and the divergence this whole decision was written after needed
+    two *places*, not two languages.
+  - **A list of identifiers, never a count.** A count cannot be baselined and cannot be
+    excluded, so a published `0` would read as proof there was nothing to answer — a zero with
+    an empty breakdown, at the one place a reader believes it.
+  - **A lane signal never invokes a WRITE command**, nor one the tree's contract does not
+    declare readable. Framework-enforced, not trusted to the declaration.
+
+  **Two unevaluable states, at the consumer's request and with their measurement behind it**
+  (channel W#108): their entire read contract — all nine commands AND both signal
+  declarations — existed on one machine and was absent from `origin/dev`, so a clone finds
+  nothing to ask rather than receiving a wrong answer. `not-configured` and
+  `command-not-found` → `reason_class="not-published"`, printed as
+  `[NOT PUBLISHED BY THIS TREE]`; every other class → `"unusable-answer"`, printed as
+  `[UNEVALUATED]`. **Neither is a pass**, and `sole_enforcement` blocks on both — naming the
+  state honestly and refusing to pass are not in tension.
+
+  **Still open and deliberately so:** AC-10. The gate is no longer inert, but the shape that
+  AC names — a new capability delivered under a cheap declaration — needs a diff against a
+  base ref rather than a published value, and no handler exists for it. The consumer confirmed
+  the split from their side: their defect signal's answer is already a contract field, their
+  new-module signal's is not, because only the framework holds the base ref.
+
+  **One shape question is on the channel, not decided here:** their declaration calls the
+  field `published_answer` and names three fields for set-core to combine
+  (`data.bugs[].hasRegressionTest` + `.onBaseline` + FIXED status). Combining them IS the
+  reimplementation the rule forbids, so the ask is that they publish the already-decided list
+  under one path. That is a request about what they expose, never about how their gate works.
 
 - **Envelope v1**: `{contractVersion, generatedAt, command, ok, data, deprecated}`. An
   unsupported version is refused *before* spawning anything.
