@@ -13,6 +13,62 @@
 
 **DECISION — do NOT run `set-project init` against the live consumer project until 0a ships.** Today an `init --force` clobbers un-prefixed consumer files (i18n catalogs, the e2e global-setup, 16 hand-authored rules). This is a **gated hold**: the gate is the four items above, then re-evaluate.
 
+## Cross-project agent channel — TEMPORARY (from 2026-07-24)
+
+While set-core and a consumer project are being integrated, their two copilot sessions
+coordinate over a **file channel**, because no shared transport exists: `.set-control` is
+per-project (`mcp-server/set_mcp_server.py` resolves it under the project root), so the
+MCP `send_message` / `get_inbox` pair cannot cross a project boundary. **Remove this
+section once the real transport ships.**
+
+**DECISION 2026-07-24 — do not revive the git-based control sync for this.** The existing
+agent-messaging path (`set-control-sync`, `.set-control` worktree, ~15 s commit cycle) is
+rejected as the cross-project channel: it caused problems in practice, and it carries
+*ephemeral messages* where this coordination needs *durable state*. A live (non-git)
+transport may be built later as its own piece of work; until then the file channel below is
+the agreed mechanism.
+
+**Protocol — one file, one writer.** Channel dir: `/tmp/<consumer-slug>-set/` (the slug is
+runtime-derived; never hard-code a consumer name here — see External Project
+Confidentiality below). Each side appends **only** to its own file and reads the other's:
+
+| file | writer | reader |
+|---|---|---|
+| `set-core.md` | this project's session | the consumer's session |
+| `<consumer-slug>.md` | the consumer's session | this project's session |
+| `README.md` | whoever creates the channel | both |
+
+- **Append-only**, newest last, each entry headed `## <ISO timestamp> — <TYPE>` where TYPE is
+  one of `TÉNY` / `KÉRDÉS` / `VÁLASZ` / `KÉRÉS`. Answers cite what they answer (`re: …`).
+- One writer per file means **no lock is needed** and no write can be lost. When a genuinely
+  shared file must be edited (e.g. a planning doc in the consumer repo), take a POSIX-atomic
+  lock first: `mkdir "$F.lock" || exit 1` with `trap 'rmdir "$F.lock"' EXIT`.
+- Watch the other side with a Monitor on its file size — do not poll by hand.
+- The channel is `/tmp`, i.e. session-lived. Anything durable belongs in a repo.
+
+**Resuming the channel after a compact, a `/clear`, or a fresh session.** The channel is the
+only thing that survives — rebuild the contact from it, do not ask the user to re-explain:
+
+1. **Find it:** `ls -dt /tmp/*-set/ 2>/dev/null | head` — the channel dir is the newest match.
+   Read its `README.md` first; it carries the protocol and the addressing convention.
+2. **Catch up:** read the OTHER side's file end-to-end (`<consumer-slug>.md`), then your own
+   (`set-core.md`) to see what you already answered. Entries are timestamped and append-only,
+   so the tail is the current state.
+3. **Re-arm the watch:** start a Monitor on the other side's file size — it is how you learn
+   about new entries without polling by hand.
+4. **Announce the resume** in your own file: one `TÉNY` entry saying the context restarted and
+   which entry number you have read up to, so the other side knows nothing was lost.
+5. **The durable agreements are not in /tmp.** The negotiated contract lives in the consumer's
+   planning document (the channel's entries point at it) — read that before answering anything
+   substantive, and never re-open a decision it already records.
+
+**Addressing convention (spoken sessions).** When both copilots listen to the same
+microphone, the speaker names the addressee **first in the sentence** — a turn opening with
+this project's name (`set-core`, or its spoken variants) is for this session; a turn opening
+with the other project's slug is not, and this session stays silent on it. An unaddressed
+turn is for whoever it is actually useful to. Getting this wrong is what makes two copilots
+talk over each other.
+
 **Discipline.** Between 2026-07-14 and Phase 0′ this repo produced five research documents and zero lines of code while a six-line guard stood between an orchestration run and a production-data mirror. Research is not the default next step — shipping the listed items is. Before proposing a new investigation, check whether it is already answered in `docs/research/`.
 
 **Verdict already reached — do not relitigate:** no `set-factory` layer (`docs/research/set-factory-verdict-2026-07-19.md`). The meetings→requirements pipeline is permanently excluded from the framework. Deployment execution, promotion state machines and portfolio scheduling are out of scope.
@@ -184,6 +240,8 @@ When compacting context, always preserve:
 - Active worktree path (if working in a worktree)
 - Test commands and their last pass/fail results
 - Any unresolved errors or blockers
+- The cross-project channel dir (if one is active) and the last entry read on each side — see
+  the temporary cross-project agent channel section above
 
 ## Getting Started
 <!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `set-project init`. -->
