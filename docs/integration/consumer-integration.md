@@ -148,6 +148,23 @@ nothing to trigger by accident.
 
 ---
 
+## Keeping the two sides aimed at the same thing
+
+The user asked for this explicitly, and it is not redundant with talking a lot. Divergence
+between two agents does not show up as an argument — it shows up months later as two
+different next steps, each defensible on its own side. So the goals get reconciled
+periodically, item by item, against what the *other* side says the next step is.
+
+**The mechanics:** the goals are stated numbered on the channel so they can be refuted
+individually rather than agreed with in general, and a recurring check compares
+consequences (is the next step the same? the same order? does their side carry an
+obligation mine does not know about?) rather than wording. It stays silent when the two
+sides agree — a check that chatters gets ignored, which is the same as not having one.
+
+**Watch for the asymmetry:** their side has commitments — a client, a deadline, a quality
+gate — that this side cannot see and that can outrank set-core's ordering. Ask for those
+before building on an ordering, not after a half-finished surface.
+
 ## Resuming after a compact or a fresh session
 
 The negotiated agreements are here; the conversation is not. The channel is `/tmp`-lived
