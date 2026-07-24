@@ -41,6 +41,27 @@ Nothing is pushed until every check is clean or explicitly cleared.
 6. **Whole tracked tree**, not just the diff — a secret committed several releases ago
    is still a secret being republished.
 
+7. **Commit MESSAGES across the whole range, and every ref — not just `main`.** Measured
+   2026-07-24: the diff scan and the tree scan both came back clean while two commit
+   messages still carried a consumer's name. A message is not in any diff and not in any
+   tree, so checks 1–6 are structurally blind to it:
+
+   ```bash
+   git log <tag>..HEAD --format='%H%n%s%n%b' | grep -inE "<name1>|<name2>"
+   git log --all         --format='%s%n%b'   | grep -inE "<name1>|<name2>"
+   ```
+
+8. **The scrub's own leftovers.** After a history rewrite, `refs/original/*`, any backup
+   tag or branch, and the reflog still hold exactly what was removed. `git push --tags`,
+   `--mirror`, or `--all` republishes them, so a repository can be clean on `main` and
+   leak anyway. Either delete them before pushing, or push explicit refspecs only —
+   never both a scrub and a blanket push.
+
+   ```bash
+   git for-each-ref refs/original --format='%(refname) %(objectname)'
+   git tag -l 'backup-*'
+   ```
+
 ## When something is found
 
 - **Not yet pushed** → rewrite history now (`git filter-branch` / `git rebase`), while it
@@ -48,6 +69,20 @@ Nothing is pushed until every check is clean or explicitly cleared.
   old commits before concluding a force-push is unnecessary.
 - **Already pushed** → the credential is compromised. Rotate it. Scrubbing history is
   cleanup, not remediation.
+
+### Doing the rewrite so the result is checkable
+
+- **Substitute mechanically, judge nothing inside the filter.** One uniform `sed` over the
+  paths that carried the name means the outcome is reproducible and a single `grep`
+  afterwards proves it. A filter that phrases each site nicely cannot be verified in one
+  command, which is the whole point of the pass.
+- **`--tag-name-filter cat` rewrites your backup tag too.** It is a tag like any other, so
+  the safety net silently becomes a copy of the scrubbed history. Re-point it at
+  `refs/original/refs/heads/<branch>` afterwards, and check it — measured here, not
+  anticipated.
+- **Prove the content did not move.** `git diff <backup-tag> <branch> --stat` must be empty
+  when the working tree was already fixed by hand before the rewrite. An empty diff is the
+  evidence that the pass touched only what it was aimed at.
 
 ## Order of operations
 
