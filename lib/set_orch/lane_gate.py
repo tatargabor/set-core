@@ -108,7 +108,14 @@ def format_output(report: LaneReport, change: Any = None) -> str:
                 "This is not a clean result; it is an absent one.")
 
     for outcome in report.fired:
-        lines.append(f"declared change_type={declared_type!r}, but: {outcome.message}")
+        # The declared lane is printed beside the declared change_type and NOT compared to
+        # it: the mapping between a project's lane vocabulary and set-core's change types is
+        # domain. Stated here rather than left implicit, because a reader seeing the two
+        # names adjacent will otherwise assume the gate checked one against the other.
+        lines.append(
+            f"declared change_type={declared_type!r} "
+            f"(signal's own lane label: {outcome.signal.lane!r}, not compared — see "
+            f"LaneSignal.lane), but: {outcome.message}")
         for violation in outcome.violations:
             lines.append(f"    - {violation}")
 

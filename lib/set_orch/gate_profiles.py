@@ -151,7 +151,26 @@ def resolve_gate_config(
         "spec_verify": "run",
     }
 
-    # Step 2: Apply universal change_type defaults
+    # Step 2: Apply universal change_type defaults.
+    #
+    # An UNRECOGNISED change_type is not an error and must not be: a project may name its
+    # own, and the all-"run" baseline above is the strictest set, so the fail direction is
+    # closed. But it was also SILENT, which is the diagnosable half of the same problem —
+    # a typo (`infrastructur`) and a deliberate new lane are indistinguishable from the
+    # operator's chair, and the operator sees gates they never configured.
+    #
+    # It does NOT fall back to `feature`'s set, which is the natural assumption and is
+    # wrong in a load-bearing way: `feature` softens `rules` to "warn", while an unknown
+    # type keeps it blocking. Measured, after a peer inferred the fallback from the
+    # `or "feature"` on the line above — that default only covers an ABSENT or empty value.
+    if change_type not in UNIVERSAL_DEFAULTS:
+        logger.warning(
+            "gate config: change_type %r is not one of %s — no per-type defaults apply, so "
+            "every universal gate stays blocking (this is stricter than 'feature', which "
+            "softens 'rules'). If this is a typo the gates will look unexplained; if it is "
+            "a deliberate lane, add it to UNIVERSAL_DEFAULTS.",
+            change_type, sorted(UNIVERSAL_DEFAULTS),
+        )
     gates.update(UNIVERSAL_DEFAULTS.get(change_type, {}))
 
     # Non-gate attrs from change_type

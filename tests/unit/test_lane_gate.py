@@ -148,6 +148,23 @@ def test_a_firing_signal_is_reported_with_the_declared_change_type(monkeypatch, 
     assert "src/billing/index.ts" in output
 
 
+def test_the_lane_label_is_printed_as_NOT_compared(monkeypatch, tmp_path):
+    """The field name promises a comparison the framework deliberately does not make.
+
+    Nothing maps a project's lane vocabulary onto set-core's change types, and nothing
+    should — that mapping is domain. But a reader seeing `lane` and `change_type` adjacent
+    assumes one was checked against the other, so the limit goes where the reader is
+    standing. Caught by the peer reading this code, not by its author.
+    """
+    tree = _tree(tmp_path, {"sig": _decl()})
+    monkeypatch.setitem(lg._KIND_HANDLERS, "new_module", lambda s, p: ["src/x/index.ts"])
+
+    output = lg.format_output(lg.build_report(tree, change=_change()), change=_change())
+
+    assert "'changing'" in output, "the declared lane label must still be visible"
+    assert "not compared" in output
+
+
 def test_a_warn_signal_does_not_fail_the_gate(monkeypatch, tmp_path):
     tree = _tree(tmp_path, {"sig": _decl()})
     monkeypatch.setitem(lg._KIND_HANDLERS, "new_module", lambda s, p: ["src/x/index.ts"])

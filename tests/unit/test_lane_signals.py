@@ -142,6 +142,63 @@ def test_the_condition_check_looks_at_every_string_not_a_chosen_key_name():
             declared_at="set/lane-signals.json")
 
 
+@pytest.mark.parametrize("condition", [
+    {"kind": "k", "globs": ["set/*.json"]},
+    {"kind": "k", "where": {"glob": "set/*.json"}},
+    {"kind": "k", "a": [{"b": {"c": ["set/*.json"]}}]},
+])
+def test_a_NESTED_self_selecting_pattern_is_refused(condition):
+    """Second refuted pattern of the same class, one level down: TRAVERSAL DEPTH.
+
+    Measured by the peer against this code and reproduced here: the checks walked
+    `condition.items()` once and stopped, so of six disguises exactly one was refused. The
+    list form is not exotic — it is the *likely* way to write several path patterns, so the
+    probable shape was the evading shape, in the reassuring direction.
+
+    Worth stating as a rule rather than a fix: **a repair for a narrowing is itself a
+    candidate narrowing until its own traversal is checked.** The key-name narrowing was
+    closed hours before this one, by the same reasoning, and the replacement inherited the
+    defect at a different axis.
+    """
+    with pytest.raises(ls.SignalRefused) as exc:
+        ls.parse_signal("sig", _valid(condition=condition, exclusions=["docs/**"]),
+                        declared_at="set/lane-signals.json")
+
+    assert "declaration itself" in str(exc.value)
+
+
+@pytest.mark.parametrize("condition", [
+    {"kind": "k", "limits": [{"over": 500}]},
+    {"kind": "k", "where": {"over": 500}},
+    {"kind": "k", "a": [{"b": [{"threshold": 7}]}]},
+])
+def test_a_NESTED_volume_threshold_is_refused(condition):
+    """The load-bearing half of the same depth defect — a quantity at any nesting."""
+    with pytest.raises(ls.SignalRefused) as exc:
+        ls.parse_signal("sig", _valid(condition=condition))
+
+    assert "volume" in str(exc.value).lower()
+
+
+def test_the_recursive_walk_did_not_turn_legitimate_nesting_into_a_refusal():
+    """The mirror, so the fix cannot be "refuse anything nested".
+
+    The second case is the shape a real project declared: a list of test-file globs under
+    a `fixed_defect_without_citing_test` condition. If the repair refused that, it would
+    have closed the hole by making the feature unusable.
+    """
+    nested = ls.parse_signal("sig", _valid(
+        condition={"kind": "k", "where": {"store": "data/defects.jsonl",
+                                          "recursive": True, "depth": None}}))
+    assert nested.condition["where"]["recursive"] is True
+
+    listed = ls.parse_signal("sig", _valid(
+        condition={"kind": "fixed_defect_without_citing_test",
+                   "citing_globs": ["tests/**/*.spec.ts", "tests/**/*.test.ts"]}),
+        declared_at="set/lane-signals.json")
+    assert len(listed.condition["citing_globs"]) == 2
+
+
 def test_a_condition_full_of_non_patterns_is_not_a_false_positive():
     """Most condition values are a project's vocabulary, not globs. None may match."""
     signal = ls.parse_signal("sig", _valid(

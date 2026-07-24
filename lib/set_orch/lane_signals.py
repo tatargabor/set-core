@@ -111,7 +111,18 @@ class LaneSignal:
     """One project-declared signal. Every field comes from the project."""
 
     name: str
+
+    #: **A project-side LABEL that the framework never interprets.** Nothing compares it to
+    #: a change's `change_type`, and nothing should: the mapping between a project's lane
+    #: vocabulary and set-core's change types is domain, and a built-in mapping would be
+    #: exactly the content this layer refuses to hold. The contradiction is carried by the
+    #: CONDITION firing while a cheap `change_type` was declared — the two names sitting
+    #: near each other in the report is for the reader, not a machine check.
+    #:
+    #: Named as a limit because the field name promises more than it delivers, and the name
+    #: is the copy that travels. Caught by the peer reading this code, not by its author.
     lane: str
+
     condition: dict
     scope: str
     baseline: tuple
@@ -152,6 +163,30 @@ class DeclarationReadResult:
         return not self.signals and not self.refusals
 
 
+def walk_leaves(value: Any, path: str = "") -> Iterable[tuple]:
+    """Yield `(key_path, key, leaf)` for every scalar inside nested dicts/lists/tuples.
+
+    Exists because both condition rules were **narrowed by traversal depth** — they walked
+    `condition.items()` once and stopped. That is the same class as a closed list of key
+    names, one level down, and it failed the same reassuring way. Measured by the peer and
+    reproduced here: of six disguises, one was refused and five walked through —
+    `{"globs": ["set/*.json"]}`, `{"where": {"glob": ...}}`, `{"limits": [{"over": 500}]}`,
+    `{"where": {"over": 500}}` and an arbitrarily nested variant.
+
+    The list form is not exotic; it is the *likely* form. Anyone listing path patterns
+    writes a list, so the probable shape was the evading shape.
+    """
+    if isinstance(value, dict):
+        for key, sub in value.items():
+            yield from walk_leaves(sub, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, (list, tuple)):
+        for index, sub in enumerate(value):
+            yield from walk_leaves(sub, f"{path}[{index}]")
+    else:
+        key = path.rsplit(".", 1)[-1].split("[", 1)[0]
+        yield (path, key, value)
+
+
 def _refuse_if_volume(name: str, condition: dict) -> None:
     """Refuse a condition that measures how much rather than what shape.
 
@@ -161,6 +196,12 @@ def _refuse_if_volume(name: str, condition: dict) -> None:
     a narrowing fails in the reassuring direction: it accepted `loc_delta` and `hunk_count`
     while the commit introducing it claimed a project "cannot smuggle one past by
     expressing the threshold differently". Measured — three of four disguises passed.
+
+    **And then the fix itself was narrowed, by depth.** It walked one level, so
+    `{"limits": [{"over": 500}]}` and `{"where": {"over": 500}}` were accepted. The rule now
+    runs on every leaf, at any nesting — see `walk_leaves`. Two rounds, same class, twice in
+    the reassuring direction: worth stating that *a fix for a narrowing is itself a candidate
+    narrowing until its own traversal is checked*.
     """
     kind = str(condition.get("kind", ""))
     if kind in VOLUME_KINDS:
@@ -171,13 +212,14 @@ def _refuse_if_volume(name: str, condition: dict) -> None:
         )
 
     numeric = sorted(
-        k for k, v in condition.items()
-        if k in THRESHOLD_KEYS and isinstance(v, (int, float)) and not isinstance(v, bool)
+        key_path for key_path, key, leaf in walk_leaves(condition)
+        if key in THRESHOLD_KEYS and isinstance(leaf, (int, float))
+        and not isinstance(leaf, bool)
     )
     if numeric:
         raise SignalRefused(
             name, "condition measures volume",
-            f"numeric threshold(s) {numeric} under kind={kind!r}; a shape condition needs "
+            f"numeric threshold(s) at {numeric} under kind={kind!r}; a shape condition needs "
             f"no quantity, and a size threshold fires hardest on the safest population",
         )
 
@@ -219,7 +261,9 @@ def _refuse_if_self_inclusive(name: str, condition: dict, scope: str,
 
     Every string in the condition is tested, not a chosen key name: a closed list of keys
     (`pattern`, `glob`, `paths`) is a narrowing, and narrowings fail in the reassuring
-    direction.
+    direction. **At any nesting depth**, for the same reason one level down — a list of
+    globs is the *likely* way to write several path patterns, and it was walking straight
+    through. See `walk_leaves`.
     """
     if not declared_at:
         return
@@ -227,11 +271,11 @@ def _refuse_if_self_inclusive(name: str, condition: dict, scope: str,
     if any(_matches(declared_at, pattern) for pattern in excl):
         return
 
-    for key, value in sorted(condition.items()):
-        if _matches(declared_at, value):
+    for key_path, _key, leaf in walk_leaves(condition):
+        if _matches(declared_at, leaf):
             raise SignalRefused(
                 name, "the condition selects the declaration itself",
-                f"{declared_at} matches condition[{key!r}]={value!r} and no exclusion "
+                f"{declared_at} matches condition.{key_path}={leaf!r} and no exclusion "
                 f"covers it; a signal that reports its own definition gets silenced by "
                 f"deleting the explanation",
             )
