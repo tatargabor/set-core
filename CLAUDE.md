@@ -1,4 +1,28 @@
 
+## The goal this work serves — do not lose this across a compact (2026-07-24)
+
+The user has stated this twice, emphatically, because a context boundary is exactly where
+an agreed goal quietly turns into whatever the current task happens to be. **The goals below
+survive the compact; the task in flight does not outrank them.**
+
+1. **Connect a consumer project and set-core so the link actually works.** This is the whole
+   point of the cross-project coordination — the two copilot sessions talk to each other
+   *for this*, not as an end in itself.
+2. **Register in set-core what a project needs in order to be visible:** bugs, releases, the
+   test environment, the live environment, settings, accesses, and the surrounding
+   information. Today none of that reaches the framework.
+3. **The project supplies the data; set-core supplies the abstraction.** The consumer exposes
+   endpoints — a command speaking a versioned contract — and set-core's abstraction layer is
+   extended to read them. The layer stays domain-free; the domain stays on the project side.
+   The two sides design that extension **together, agreed on the channel**, not in parallel.
+4. **The acceptance test is one sentence: open set-core and see the project's development
+   status.** Not an API that returns correct JSON — a screen that shows where the project is.
+5. Then, and only then, move on to other things.
+
+**The safety track below is finished, and it is a precondition for this, not a substitute.**
+Do not let it become the work again. And a shipped commit is not a running system — a
+long-lived service holds the code it started with (`systemd ExecMainStartTimestamp`).
+
 ## Current Work State — read this first (updated 2026-07-24)
 
 **The deploy is sealed. Every write path into a consumer tree is now guarded, and a live
