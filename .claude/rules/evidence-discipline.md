@@ -221,9 +221,25 @@ PYTHONPATH=/tmp/base/lib python -c \
   "import set_orch;assert set_orch.__file__.startswith('/tmp/base/'),set_orch.__file__"
 ```
 
-Two lessons outrank the fix, and both are already in this file under other names. A guard is
-only as good as the thing it actually measured — and *the check that verifies other work is
-itself work nobody checks*, because a green comparison is where reading stops.
+**And the first repair was itself a narrowing.** It set `PYTHONPATH` to one root and asserted
+one package by name. This repo has three first-party roots, and a raw `.pth` entry hard-codes
+one of them to the development tree — so a package imported by 10+ unit test files still came
+from the working tree, and the "corrected" baseline was still partly hybrid. A hand-named list
+is a second copy; this one drifted at the moment it was written. The replacement asserts the
+THING — at session end, no loaded module may resolve to any set-core checkout other than this
+one — which is a check nobody has to maintain a list for.
+
+**A generated artefact escapes even a correct source path**, because it is a product rather
+than a source. Measured on the other side of the channel: a generated database client resolved
+from the main tree while the worktree held modified schema source, so the tests ran worktree
+code against main-tree schema — the same hybrid one layer up, and additive schema changes keep
+it green. The check therefore has two questions, not one: *where did the module come from*, and
+*when was what it loads generated*.
+
+Three lessons outrank the fix, and all are already in this file under other names. A guard is
+only as good as the thing it actually measured. *The check that verifies other work is itself
+work nobody checks*, because a green comparison is where reading stops. And a repair for a
+narrowing is a candidate narrowing until its own traversal has been measured.
 
 **Never put `git stash` in a command that can be killed.** Same defect one level up, and it
 nearly cost this session's uncommitted work: `git stash -u && <full suite> && git stash pop`

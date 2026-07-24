@@ -401,10 +401,21 @@ started:
 ```bash
 git worktree add -q --detach /tmp/base HEAD
 python -m pytest tests/unit -q -p no:randomly 2>&1 | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort > /tmp/now.txt
-# The baseline MUST import its own lib. Assert it before trusting the run — see below.
-(cd /tmp/base && PYTHONPATH=/tmp/base/lib python -c \
-   "import set_orch;assert set_orch.__file__.startswith('/tmp/base/'),set_orch.__file__" \
- && PYTHONPATH=/tmp/base/lib python -m pytest tests/unit -q -p no:randomly 2>&1 \
+# THREE import roots, and a session-end assertion that nothing leaked. Both matter — see below.
+cat > /tmp/leakcheck.py <<'EOF'
+import os, sys
+def pytest_sessionfinish(session, exitstatus):
+    base = os.environ["BASELINE_ROOT"]
+    leaks = sorted({m.__name__ for m in list(sys.modules.values())
+                    if getattr(m, "__file__", None) and "/set-core/" in str(m.__file__)
+                    and not str(m.__file__).startswith(base)})
+    if leaks:
+        print(f"BASELINE LEAK ({len(leaks)}): " + ", ".join(leaks[:25]), file=sys.stderr)
+        session.exitstatus = 99
+EOF
+(cd /tmp/base && BASELINE_ROOT=/tmp/base/ \
+   PYTHONPATH=/tmp/base/lib:/tmp/base/modules/web:/tmp/base:/tmp \
+   python -m pytest tests/unit -q -p no:randomly -p leakcheck 2>&1 \
     | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort) > /tmp/base.txt
 diff /tmp/base.txt /tmp/now.txt   # empty = no regression, whatever the counts say
 git worktree remove /tmp/base --force
@@ -422,9 +433,32 @@ still pass against new code and the failure sets come out identical. The check t
 exactly when it is least earned. It only became visible when two baseline tests failed that
 could not fail at `HEAD` — the hybrid's own tell, and it appeared by luck.
 
-So: point `PYTHONPATH` at the worktree's `lib`, and **assert where the import came from
-before believing the run**. This is the proxy-instead-of-the-thing class applied to a version:
-`cd`-ing into a worktree is a proxy for running its code.
+So: point `PYTHONPATH` at the worktree's source roots, and **assert where the imports came
+from before believing the run**. This is the proxy-instead-of-the-thing class applied to a
+version: `cd`-ing into a worktree is a proxy for running its code.
+
+**And the first repair of it was itself incomplete, which is the more useful half.** It set
+`PYTHONPATH=/tmp/base/lib` and asserted `set_orch` — one package, named by hand. Measured
+afterwards, prompted by an integration peer generalising the finding on their own side: this
+repo puts first-party code under **three** roots, and a raw `.pth` entry hard-codes
+`modules/web` to the development tree. `set_project_web` is imported by 10+ unit test files
+and was still coming from the working tree, so the "corrected" baseline was *still* partly
+hybrid. The named list was a second copy, and it drifted at the moment it was written.
+
+Hence the session-end check above, which asserts **the thing** — no module loaded from any
+set-core checkout other than this one — instead of a list of paths somebody has to maintain.
+Measured on `HEAD` with full isolation: **0 leaks, 106 failure entries, identical to the
+partially-isolated run**, so the earlier conclusion survives while the evidence for it is now
+real.
+
+**One thing this does NOT cover**, raised by the same peer with their own measurement: a
+**generated artefact** can come from the other tree even when every source path is right,
+because it is a product, not a source (their case: a generated database client resolved from
+the main tree's `node_modules`, so worktree source ran against main-tree schema — the same
+hybrid, and additive changes keep it green). Measured here: set-core's Python has **no
+generated layer** (`find lib modules set_tools -name '*_pb2.py' -o -name '*_generated*.py'`
+→ empty), so `tests/unit` is not exposed. The dashboard under `web/` does have a build
+product, and that path has **not** been measured — do not assume it is clean.
 
 ## External Project Confidentiality
 
