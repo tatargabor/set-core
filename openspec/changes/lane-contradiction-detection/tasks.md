@@ -16,12 +16,12 @@
 
 ## 3. Evaluator and baseline
 
-- [ ] 3.1 Evaluate a signal against a change's delivered artefacts and return one of three outcomes: fired / did not fire / could not be evaluated [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]
-- [ ] 3.2 Suppress baselined violations from the report [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
-- [ ] 3.3 Fail the gate when a change would grow a baseline, independently of the signal's severity [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
-- [ ] 3.4 Report outstanding baselined debt even when nothing new fired [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
-- [ ] 3.5 Enforce WARN as the starting severity, and refuse a promotion whose declared measurement is not recorded — reporting the refusal rather than downgrading silently [REQ: a-signal-starts-at-warn-and-is-promoted-only-by-its-own-measured-condition]
-- [ ] 3.6 Restrict evaluation to the signal's declared scope, and record an out-of-scope signal as not-evaluated rather than as a pass [REQ: every-signal-states-its-scope-and-the-gate-evaluates-only-within-it]
+- [x] 3.1 Evaluate a signal against a change's delivered artefacts and return one of three outcomes: fired / did not fire / could not be evaluated [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]
+- [x] 3.2 Suppress baselined violations from the report [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
+- [x] 3.3 Fail the gate when a change would grow a baseline, independently of the signal's severity [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
+- [x] 3.4 Report outstanding baselined debt even when nothing new fired [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
+- [x] 3.5 Enforce WARN as the starting severity, and refuse a promotion whose declared measurement is not recorded — reporting the refusal rather than downgrading silently [REQ: a-signal-starts-at-warn-and-is-promoted-only-by-its-own-measured-condition]
+- [x] 3.6 Restrict evaluation to the signal's declared scope, and record an out-of-scope signal as not-evaluated rather than as a pass [REQ: every-signal-states-its-scope-and-the-gate-evaluates-only-within-it]
 
 ## 4. Gate wiring
 
