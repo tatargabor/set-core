@@ -112,6 +112,56 @@ def test_a_scope_that_swallows_the_declaration_is_refused():
     assert "itself" in str(exc.value) or "self" in str(exc.value).lower()
 
 
+def test_a_CONDITION_that_selects_the_declaration_is_refused():
+    """The guard has to be aimed at the field that actually selects files.
+
+    Refuted pattern, measured: the first implementation checked `declared_at` against
+    `scope` only. `scope` is the PHASE a signal runs in, compared by equality in the
+    evaluator — a phase name glob-matches no path, so that refusal could never fire on a
+    well-formed declaration, while a condition patterned `set/*.json` declared inside
+    `set/lane-signals.json` walked straight through. A guard that cannot fire on any
+    legitimate input is a false gate: it is cited as protection and protects nothing.
+    """
+    with pytest.raises(ls.SignalRefused) as exc:
+        ls.parse_signal("sig", _valid(
+            condition={"kind": "new_module", "pattern": "set/*.json"},
+            scope="per-change-verification",
+            exclusions=["docs/**"]),
+            declared_at="set/lane-signals.json")
+
+    assert "declaration itself" in str(exc.value)
+    assert "pattern" in str(exc.value), "the error must name WHICH key selected it"
+
+
+def test_the_condition_check_looks_at_every_string_not_a_chosen_key_name():
+    """A closed list of key names (`pattern`, `glob`, `paths`) would be a narrowing."""
+    with pytest.raises(ls.SignalRefused):
+        ls.parse_signal("sig", _valid(
+            condition={"kind": "new_module", "watch_here": "set/*.json"},
+            exclusions=["docs/**"]),
+            declared_at="set/lane-signals.json")
+
+
+def test_a_condition_full_of_non_patterns_is_not_a_false_positive():
+    """Most condition values are a project's vocabulary, not globs. None may match."""
+    signal = ls.parse_signal("sig", _valid(
+        condition={"kind": "fixed_defect_without_test", "store": "data/defects.jsonl",
+                   "recursive": True, "depth": None}),
+        declared_at="set/lane-signals.json")
+
+    assert signal.condition["store"] == "data/defects.jsonl"
+
+
+def test_an_exclusion_covers_the_condition_check_too(tmp_path):
+    """The exclusion is the escape hatch, so it must work on the check that now fires."""
+    signal = ls.parse_signal("sig", _valid(
+        condition={"kind": "new_module", "pattern": "set/*.json"},
+        exclusions=["set/lane-signals.json"]),
+        declared_at="set/lane-signals.json")
+
+    assert signal.condition["pattern"] == "set/*.json"
+
+
 def test_an_exclusion_covering_the_declaration_makes_the_same_scope_legal():
     """The exclusion is the mechanism, so it must actually work — not merely be required."""
     signal = ls.parse_signal("sig", _valid(scope="set/*.json",
@@ -214,6 +264,72 @@ def test_an_unreadable_declaration_file_is_a_refusal_not_an_absence(tmp_path):
     assert result.signals == []
     assert len(result.refusals) == 1
     assert result.declared_nothing is False
+
+
+# ── the confidentiality boundary: read it all, persist none of it ──────────────────
+
+_MARKERS = ("acme-orders", "src/acme/**", "data/acme-defects.jsonl", "ACME-77")
+
+
+def _declaration_full_of_project_material():
+    return {
+        _MARKERS[0]: {
+            "lane": "restoring",
+            "condition": {"kind": "new_module", "pattern": _MARKERS[1],
+                          "store": _MARKERS[2]},
+            "scope": "per-change-verification",
+            "baseline": [_MARKERS[3]],
+            "promotion": {"measure": "half real for two weeks"},
+            "triggering_case": f"2026-07-20 {_MARKERS[3]}: shipped with no test",
+            "exclusions": ["docs/**"],
+        }
+    }
+
+
+def test_the_frameworks_own_log_carries_the_shape_and_none_of_the_content(tmp_path, caplog):
+    """A log is a persistence carrier that leaves the machine without anyone deciding it.
+
+    So the framework's logger gets counts and reason codes; the values — signal name, path
+    pattern, defect-store path, incident id — stay in the returned refusal and the gate's
+    output, which are the project's own report about its own tree.
+    """
+    import logging
+
+    (tmp_path / "set").mkdir()
+    (tmp_path / "set" / "lane-signals.json").write_text(
+        json.dumps(_declaration_full_of_project_material()))
+
+    with caplog.at_level(logging.DEBUG, logger="set_orch.lane_signals"):
+        result = ls.read_declarations(tmp_path)
+
+    assert len(result.signals) == 1, "the signal must still be READ in full"
+    assert result.signals[0].condition["pattern"] == _MARKERS[1]
+
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    for marker in _MARKERS:
+        assert marker not in logged, f"{marker!r} reached the framework's own log"
+
+
+def test_a_refusal_logs_its_reason_and_not_the_offending_value(tmp_path, caplog):
+    """The refusal is the case where quoting the input is most tempting."""
+    import logging
+
+    declared = _declaration_full_of_project_material()
+    declared[_MARKERS[0]]["condition"] = {"kind": "loc_delta", "over": 300,
+                                          "pattern": _MARKERS[1]}
+    (tmp_path / "set").mkdir()
+    (tmp_path / "set" / "lane-signals.json").write_text(json.dumps(declared))
+
+    with caplog.at_level(logging.DEBUG, logger="set_orch.lane_signals"):
+        result = ls.read_declarations(tmp_path)
+
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "volume" in logged, "the reason must be logged — a silent refusal is worse"
+    for marker in _MARKERS:
+        assert marker not in logged
+
+    # …while the developer still gets the whole story through the returned object.
+    assert _MARKERS[0] in str(result.refusals[0])
 
 
 # ── the layer boundary ─────────────────────────────────────────────────────────────

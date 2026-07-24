@@ -150,7 +150,9 @@ def resolve_severity(signal: LaneSignal, promotions: Optional[dict] = None) -> t
     if not evidence:
         reason = (f"{signal.name}: promotion to enforce refused — the declared measurement "
                   f"({(signal.promotion or {}).get('measure', 'unspecified')}) is not recorded")
-        logger.warning("%s", reason)
+        # Shape, not content — the reason quotes the project's own declared measurement,
+        # and it already reaches the developer through the returned refusal.
+        logger.warning("lane signal promotion to enforce refused: measurement not recorded")
         return WARN, reason
     return ENFORCE, ""
 
@@ -190,8 +192,8 @@ def evaluate(signals: Iterable[LaneSignal],
         added = tuple((baseline_additions or {}).get(signal.name) or ())
         if added:
             growth.append((signal.name, added))
-            logger.error("lane signal %r: baseline growth attempted (%d entr(y|ies))",
-                         signal.name, len(added))
+            logger.error("lane signal: baseline growth attempted (%d entr(y|ies))",
+                         len(added))
 
         if not in_scope(signal, phase):
             report.outcomes.append(SignalOutcome(
@@ -202,8 +204,7 @@ def evaluate(signals: Iterable[LaneSignal],
         try:
             found = detect(signal)
         except Exception as exc:
-            logger.warning("lane signal %r could not be evaluated: %s: %s",
-                           signal.name, type(exc).__name__, exc)
+            logger.warning("lane signal could not be evaluated: %s", type(exc).__name__)
             report.outcomes.append(SignalOutcome(
                 signal, UNEVALUATED, reason=f"{type(exc).__name__}: {exc}", severity=severity))
             continue

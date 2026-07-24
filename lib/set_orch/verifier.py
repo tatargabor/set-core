@@ -4055,7 +4055,19 @@ def _get_universal_gates():
             position="end",
             result_fields=("spec_coverage_result", "gate_verify_ms"),
         ),
+        # Lane contradiction detection. Inert for a project that declares no lane
+        # signals — it reports "skipped", never "pass", because an all-clear about a
+        # check that never ran is a false absence in the one place a reader believes it.
+        # Registered with NO per-change_type defaults on purpose: a gate whose job is to
+        # doubt the declared change_type must not be switchable off by that same
+        # declaration.
+        _lane_gate_definition(),
     ]
+
+
+def _lane_gate_definition():
+    from .lane_gate import gate_definition
+    return gate_definition()
 
 
 # ─── Handle Change Done / Verify Gate Pipeline ──────────────────────

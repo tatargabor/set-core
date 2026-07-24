@@ -37,6 +37,16 @@ tried elsewhere and both misclassified, in opposite directions. A declaration ca
 only a date is accepted and reported as unexplained, so review has something to act on
 rather than a silent pass.
 
+**What this module logs, and why it says so little.** A declaration is a project's own
+material: its path conventions, its defect-store location, its signal names. The framework
+may READ all of that and must persist none of it — and a log is a persistence carrier that
+crosses machines without anyone deciding it should. So the framework's own logger gets the
+SHAPE (how many signals, how many refused, which reason, how many condition keys) and never
+the values. The actionable detail — which key matched, which pattern, which path — is
+carried by the `SignalRefused` object and printed in the gate's output, which is the
+project's own report about its own tree. Same rule as `db_safety.py` logging a URL's scheme
+and nothing else.
+
 See `openspec/changes/lane-contradiction-detection/` for the requirements this implements.
 """
 from __future__ import annotations
@@ -172,21 +182,61 @@ def _refuse_if_volume(name: str, condition: dict) -> None:
         )
 
 
-def _refuse_if_self_inclusive(name: str, scope: str, exclusions: Iterable[str],
+def _matches(path: str, pattern: Any) -> bool:
+    """Glob-match, tolerating the non-patterns a condition legitimately contains.
+
+    A condition's values are a project's own vocabulary — kind names, store paths, flags —
+    so most of them are not patterns at all. Anything unmatchable is simply not a match.
+    """
+    if not isinstance(pattern, str) or not pattern:
+        return False
+    try:
+        return Path(path).match(pattern)
+    except (ValueError, TypeError):
+        return False
+
+
+def _refuse_if_self_inclusive(name: str, condition: dict, scope: str,
+                              exclusions: Iterable[str],
                               declared_at: Optional[str]) -> None:
-    """Refuse a scope that would evaluate the document declaring the signal.
+    """Refuse a signal whose own CONDITION would select the document declaring it.
 
     Checked against the declaration's own path rather than against a guessed set of
     "documentation" paths: the framework does not know which files a project treats as
     its rule book, and guessing would be a built-in pattern of exactly the kind this
     module refuses to hold.
+
+    **Checked against the condition, not only the scope — and that correction matters more
+    than it looks.** The first implementation matched `declared_at` against `scope` alone.
+    But `scope` is the PHASE a signal runs in (`per-change-verification`), which the
+    evaluator compares by equality; a phase name glob-matches no path, so the refusal could
+    never fire on a well-formed declaration. It could only fire on one whose scope was a
+    path glob — which is a *different* defect, and one that leaves the signal permanently
+    unevaluated anyway. A guard that cannot fire on any legitimate input is a false gate:
+    it reads as protection, is cited as protection, and protects nothing. Measured, not
+    reasoned — a condition patterned `set/*.json` declared in `set/lane-signals.json` was
+    accepted.
+
+    Every string in the condition is tested, not a chosen key name: a closed list of keys
+    (`pattern`, `glob`, `paths`) is a narrowing, and narrowings fail in the reassuring
+    direction.
     """
     if not declared_at:
         return
     excl = tuple(exclusions or ())
-    if any(Path(declared_at).match(pattern) for pattern in excl):
+    if any(_matches(declared_at, pattern) for pattern in excl):
         return
-    if Path(declared_at).match(scope):
+
+    for key, value in sorted(condition.items()):
+        if _matches(declared_at, value):
+            raise SignalRefused(
+                name, "the condition selects the declaration itself",
+                f"{declared_at} matches condition[{key!r}]={value!r} and no exclusion "
+                f"covers it; a signal that reports its own definition gets silenced by "
+                f"deleting the explanation",
+            )
+
+    if _matches(declared_at, scope):
         raise SignalRefused(
             name, "scope includes the declaration itself",
             f"{declared_at} matches scope {scope!r} and no exclusion covers it; a signal "
@@ -231,7 +281,7 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
             "a signal with no incident behind it is a guess dressed as a rule",
         )
 
-    _refuse_if_self_inclusive(name, str(raw["scope"]), exclusions, declared_at)
+    _refuse_if_self_inclusive(name, condition, str(raw["scope"]), exclusions, declared_at)
 
     signal = LaneSignal(
         name=name,
@@ -243,9 +293,9 @@ def parse_signal(name: str, raw: dict, declared_at: Optional[str] = None) -> Lan
         triggering_case=triggering,
         exclusions=tuple(exclusions),
     )
-    logger.debug("lane signal %r accepted: lane=%s kind=%s scope=%s explained=%s",
-                 name, signal.lane, condition.get("kind"), signal.scope,
-                 signal.is_explained)
+    # Shape, not content — see "What this module logs" in the module docstring.
+    logger.debug("lane signal accepted: %d condition key(s), explained=%s",
+                 len(condition), signal.is_explained)
     return signal
 
 
@@ -279,12 +329,12 @@ def read_declarations(tree: Path, profile: Any = None) -> DeclarationReadResult:
         try:
             raw_sets.append((json.loads(path.read_text()), str(path)))
         except (OSError, ValueError) as exc:
-            logger.warning("lane signal file %s unreadable: %s", path, exc)
+            logger.warning("lane signal file unreadable: %s", type(exc).__name__)
             result.refusals.append(SignalRefused("<file>", "declaration file unreadable",
                                                  f"{path}: {exc}"))
 
     if not raw_sets:
-        logger.debug("no lane signal declarations under %s — evaluating none", tree)
+        logger.debug("no lane signal declarations in this tree — evaluating none")
         return result
 
     for declared, declared_at in raw_sets:
@@ -292,9 +342,12 @@ def read_declarations(tree: Path, profile: Any = None) -> DeclarationReadResult:
             try:
                 result.signals.append(parse_signal(name, raw, declared_at))
             except SignalRefused as refusal:
-                logger.warning("%s", refusal)
+                # The REASON, never the detail: the detail quotes the project's own
+                # patterns and store names, and it already reaches the developer through
+                # the refusal object and the gate's output. See "What this module logs" in the module docstring.
+                logger.warning("lane signal refused: %s", refusal.reason)
                 result.refusals.append(refusal)
 
-    logger.info("lane signals: %d accepted, %d refused (tree=%s)",
-                len(result.signals), len(result.refusals), tree)
+    logger.info("lane signals: %d accepted, %d refused",
+                len(result.signals), len(result.refusals))
     return result
