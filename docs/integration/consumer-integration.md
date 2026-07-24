@@ -687,6 +687,28 @@ sides agree — a check that chatters gets ignored, which is the same as not hav
 gate — that this side cannot see and that can outrank set-core's ordering. Ask for those
 before building on an ordering, not after a half-finished surface.
 
+**The channel's best-paid-off property is not the one it was built for, and this is the
+argument to reach for when its cost is questioned.** It was set up to exchange information.
+What it actually kept catching, three times on 2026-07-24 alone, is *a good check run on a
+corpus it was never written for, returning a confidently wrong number*:
+
+| the check | the wrong answer | what it was |
+|---|---|---|
+| a secret scanner over source code | 118 findings | every one a `token`/`password` identifier |
+| two proxies for "carries a rationale" | 14/19 | misclassified in **both** directions; reading them gave 18/19 rationale, 14/19 dated |
+| completeness words over a whole test suite | 268 findings | all describing asserted behaviour, not mechanism coverage |
+
+Each was caught by the *other* side — not by being more careful, but **by standing on a
+different corpus**. Neither side could have found its own, because the blind spot is the
+corpus, and you cannot notice the corpus you are standing in. That is not redundancy
+between two readers of the same record; it is the one thing a second reader of the same
+record could never provide.
+
+The transferable discipline that came out of it: **"I looked and there is none" is weak
+regardless of whether it is true.** State the corpus and the pattern, so the negative result
+can be re-run instead of believed. That is what separated every real finding of that day
+from an impression.
+
 ## Resuming after a compact or a fresh session
 
 The negotiated agreements are here; the conversation is not. The channel is `/tmp`-lived
