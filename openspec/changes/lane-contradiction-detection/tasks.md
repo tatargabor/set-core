@@ -1,17 +1,17 @@
 ## 1. Resolve the one structural choice first
 
 - [x] 1.1 Decide where a lane signal declaration lives and record the decision with its reason in `design.md` — closed as D9: in the tree, never behind a running system, because signals are evaluated during worktree verification where no live project exists [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system]
-- [ ] 1.2 Implement the tree-only reader and assert it attempts no contract command, HTTP call or database connection [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system]
+- [x] 1.2 Implement the tree-only reader and assert it attempts no contract command, HTTP call or database connection [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system]
 
 ## 2. Declaration reader (Layer 1, domain-free)
 
-- [ ] 2.1 Add the declaration dataclass and reader in a new `lib/set_orch/` module — six fields, no defaults, refusal with a named error on any missing one [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
-- [ ] 2.1b Refuse a signal that names no triggering case (date + identifier of the incident it was written for) [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
-- [ ] 2.1c Check ONLY the dated identifier mechanically; accept a case with no explanation, report it as unexplained, and add a test asserting the gate never claims the signal is justified — the rationale is review's job and no proxy for it may be added [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
-- [ ] 2.2 Refuse a condition expressed as a volume threshold (lines/files changed), with an error naming volume as the reason [REQ: a-signals-condition-shall-be-mechanically-decidable-and-shall-not-measure-quantity]
-- [ ] 2.3 Refuse a declaration whose scope includes the document that declares it [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it]
-- [ ] 2.4 Make one refused signal non-fatal to the others: report the refusal alongside the remaining results [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
-- [ ] 2.5 Add the `ProjectType` extension point that supplies declarations, with a default returning nothing — and a test asserting `lib/set_orch/` contains no built-in signal, path pattern, or defect-store name [REQ: set-core-holds-no-lane-signal-of-its-own]
+- [x] 2.1 Add the declaration dataclass and reader in a new `lib/set_orch/` module — six fields, no defaults, refusal with a named error on any missing one [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
+- [x] 2.1b Refuse a signal that names no triggering case (date + identifier of the incident it was written for) [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
+- [x] 2.1c Check ONLY the dated identifier mechanically; accept a case with no explanation, report it as unexplained, and add a test asserting the gate never claims the signal is justified — the rationale is review's job and no proxy for it may be added [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
+- [x] 2.2 Refuse a condition expressed as a volume threshold (lines/files changed), with an error naming volume as the reason [REQ: a-signals-condition-shall-be-mechanically-decidable-and-shall-not-measure-quantity]
+- [x] 2.3 Refuse a declaration whose scope includes the document that declares it [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it]
+- [x] 2.4 Make one refused signal non-fatal to the others: report the refusal alongside the remaining results [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
+- [x] 2.5 Add the `ProjectType` extension point that supplies declarations, with a default returning nothing — and a test asserting `lib/set_orch/` contains no built-in signal, path pattern, or defect-store name [REQ: set-core-holds-no-lane-signal-of-its-own]
 - [ ] 2.6 Assert no declaration content is persisted into set-core's tree, cache or logs beyond the run [REQ: the-declaration-is-read-at-evaluation-time-and-never-persisted]
 
 ## 3. Evaluator and baseline
