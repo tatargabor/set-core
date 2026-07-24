@@ -39,6 +39,21 @@ raised `TypeError` on a removed keyword argument *before reaching any assertion*
 the one test written to guard against a quoted verdict being read as a verdict. Collection
 counts and green suites do not distinguish "asserted and held" from "never got there".
 
+**A pattern is blind to negation, and the blindness looks like a match.** Anchoring a
+sentinel at the start of a line stops a *quoted* verdict and nothing else. `VERIFY_RESULT:
+PASS is NOT what I emit here` still parsed as a pass, and `CRITICAL_COUNT: 0 — but I could
+not check the auth module` still parsed as zero — where zero *downgrades an explicit failure
+to a pass*, so the clause admitting the gap was the thing that hid it. When a sentinel is
+supposed to be a line, match the WHOLE line; anything else is a substring test wearing an
+anchor.
+
+**A subagent's "done" is not evidence that anything happened.** Measured here: an unflagged
+`claude -p` asked to create a file replied `Done.` and exit 0, and the file did not exist —
+the tool layer had refused the write and the agent did not know. So a gate that waits on an
+action must measure the action's *trace* (a file, a commit, a line in a log), never the
+report. The same fact cuts the other way too: **an instruction is not a constraint.** What
+an agent cannot do is decided by the tools it holds, not by the sentence telling it not to.
+
 ## Fail direction outranks bug count
 
 When a guard is wrong, ask which way it is wrong before asking how often. A gate that
