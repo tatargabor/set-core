@@ -581,10 +581,23 @@ being guessed at.
    things to do, each one smaller than the step being avoided. Their substantive path is
    genuinely blocked on two user decisions; this side's was not blocked, only unopened.
 
-   *The question now on the channel, awaiting their answer:* which axis the differentiation
-   should follow — theirs (is a manual step needed, is it already live) or this repo's (what
-   does the change touch), or the product of the two — and whether to start now or after
-   their readiness-truth pass. Nothing is being designed here until that comes back.
+   **The axis question was premature, and this record is why it got asked.** It went to the
+   channel; the consumer declined to answer it — correctly — because "router" is this
+   repo's word and they will not guess at a definition. Going back to the source to write
+   one produced the actual answer, which was in the verdict all along and *not* in this
+   entry: **build the differentiated pipeline first, and alone. Not the router.** The
+   taxonomy comes "only once two provably different pipelines exist to choose between", and
+   the verdict names the failure of doing it the other way in its own words — *"the router
+   gets built and has nothing distinct to route to… a taxonomy with near-zero behavioural
+   delta is a false gate, and this repo already has three."*
+
+   So the axis cannot be chosen yet by anyone, on either side, because what it would sort
+   between does not exist. The question is withdrawn rather than left open.
+
+   *What this entry had lost:* it carried the verdict's finding (the missing piece is a
+   router) without the verdict's **ordering constraint** on it. A summary that keeps the
+   conclusion and drops the precondition reads as a green light — which is exactly what it
+   did. When quoting a verdict here, quote what it forbids alongside what it identifies.
 
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
