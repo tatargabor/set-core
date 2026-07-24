@@ -262,6 +262,16 @@ memory system's automatic session-end extraction, and diagnostic output on error
    Its shape is the router between differentiated ADWs already identified in the
    2026-07-19 verdict, not a new system.
 
+   **Deliberately not started, and this is a state rather than a delay.** Five questions
+   went out on the channel first, because the rule that governs this track says to read
+   their mechanism before designing ours: how a release is actually opened and closed
+   today, what decides which release a fix lands in, whether a hotfix is a separate path,
+   what is done by hand and grates — and the boundary question, asked early on purpose:
+   is there any step they would want set-core to *trigger*. The answer to that last one is
+   fixed on this side and non-negotiable, but it is better known now than after half a
+   surface exists. Designing here while that is unanswered would be the parallel design
+   the user explicitly ruled out.
+
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
 in CI stays there. This *tightens* the production constraint rather than loosening it — the
