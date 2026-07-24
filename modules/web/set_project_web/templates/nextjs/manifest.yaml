@@ -5,96 +5,137 @@ core:
   # chains, ignore lists). Flag anything a project legitimately customises.
   - path: .gitignore
     protected: true
+    once: true
   - path: package.json
     protected: true
+    once: true
   - path: project-knowledge.yaml
     protected: true
+    once: true
   # Rules deploy to `.claude/rules/<name>.md` WITHOUT a set- prefix (_SET_PREFIX_PATHS
   # covers `framework-rules/` only), so every name here can collide with a rule the
   # project wrote itself. Protected: a project that authored its own
   # `nextjs-patterns.md` keeps it; only never-seen rules land.
   - path: rules/ui-conventions.md
     protected: true
+    once: true
   - path: rules/functional-conventions.md
     protected: true
+    once: true
   - path: rules/auth-conventions.md
     protected: true
+    once: true
   - path: rules/data-model.md
     protected: true
+    once: true
   - path: rules/deployment.md
     protected: true
+    once: true
   - path: rules/testing-conventions.md
     protected: true
+    once: true
   - path: rules/playwright-assertions.md
     protected: true
+    once: true
   - path: rules/seo-conventions.md
     protected: true
+    once: true
   - path: rules/accessibility.md
     protected: true
+    once: true
   - path: rules/performance.md
     protected: true
+    once: true
   - path: rules/security.md
     protected: true
+    once: true
   - path: rules/error-handling.md
     protected: true
+    once: true
   - path: rules/design-integration.md
     protected: true
+    once: true
   - path: rules/web-frontend.md
     protected: true
+    once: true
   - path: rules/worktree-setup.md
     protected: true
+    once: true
   - path: rules/i18n-conventions.md
     protected: true
+    once: true
   - path: rules/nextjs-patterns.md
     protected: true
+    once: true
   - path: rules/schema-integrity.md
     protected: true
+    once: true
   - path: rules/transaction-safety.md
     protected: true
+    once: true
   - path: rules/seed-conventions.md
     protected: true
+    once: true
   - path: rules/web-conventions.md
     protected: true
+    once: true
   - path: rules/e2e-test-layering.md
     protected: true
+    once: true
   - path: vitest.config.ts
     protected: true
+    once: true
   - path: playwright.config.ts
     protected: true
+    once: true
   - path: tsconfig.json
     protected: true
+    once: true
   - path: postcss.config.mjs
     protected: true
+    once: true
   - path: next.config.js
     protected: true
+    once: true
   - reflection.md
   - path: src/app/globals.css
     protected: true
+    once: true
   - path: src/lib/prisma.ts
     protected: true
+    once: true
   - path: src/lib/auth/storage-state.ts
     protected: true
+    once: true
   - path: .env.example
     protected: true
+    once: true
   # The project's e2e harness. A reset-on-start global-setup is SIGKILL-safe state
   # management the framework must not replace with a generic scaffold.
   - path: tests/e2e/global-setup.ts
     protected: true
+    once: true
   - path: tests/e2e/helpers/README.md
     protected: true
+    once: true
   # i18n catalogues are content, never scaffold — overwriting is total data loss.
   - path: messages/hu.json
     protected: true
+    once: true
   - path: messages/en.json
     protected: true
+    once: true
   - path: scripts/check-i18n-completeness.ts
     protected: true
+    once: true
   - path: eslint.config.mjs
     protected: true
+    once: true
   # A pre-commit hook may delegate to a hook manager (lefthook/husky) driving the
   # project's own gate chain. Replacing it silently disarms every one of them.
   - path: .husky/pre-commit
     protected: true
+    once: true
   - path: set/orchestration/config.yaml
     merge: true
   # These land as `.claude/rules/web/set-<name>.md` — namespaced, so they never
@@ -121,3 +162,4 @@ modules:
     files:
       - path: rules/integrations.md
         protected: true
+        once: true

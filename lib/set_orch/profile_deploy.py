@@ -20,10 +20,29 @@ from .profile_types import ProjectType
 
 @dataclass
 class FileEntry:
-    """A template file entry with optional deployment flags."""
+    """A template file entry with optional deployment flags.
+
+    Two kinds of file live in a template, and they want opposite treatment once a
+    project is real:
+
+    - **Scaffold** (`once: true`) — starter code and config: a Prisma client stub,
+      a lint config, an i18n catalogue seed. Written to get a project moving, then
+      outgrown. Re-deploying it into a live project is never wanted, even when the
+      project has not touched it; if such a file ever genuinely needs to move
+      forward, that is an upgrade step with its own reasoning, not a side effect
+      of `init`.
+    - **Knowledge** (default) — the framework's own rules and conventions. These
+      SHOULD keep flowing, or fixes never reach the projects that need them. The
+      install ledger decides safely: untouched files update, edited ones do not.
+
+    `protected` is a weaker, orthogonal guard: skip when the file exists and
+    differs. It cannot tell "the project edited it" from "the template moved on",
+    which is exactly why `once` and the ledger exist.
+    """
     path: str
     protected: bool = False
     merge: bool = False
+    once: bool = False
 
 
 # Map template-relative paths to target-relative paths
@@ -107,6 +126,7 @@ def _parse_file_entry(raw: Any) -> FileEntry:
             path=raw.get("path", ""),
             protected=bool(raw.get("protected", False)),
             merge=bool(raw.get("merge", False)),
+            once=bool(raw.get("once", False)),
         )
     return FileEntry(path=str(raw))
 
@@ -379,7 +399,16 @@ def _deploy_single_template(
                 messages.append(f"  {verb}: {dst.relative_to(target_dir)}")
             continue
 
+        # Scaffold: written once to start a project, then owned by it. Present is
+        # done — do not re-deploy, and do not care whether it was edited. Moving a
+        # scaffold file forward is an upgrade decision, never a side effect of init.
+        if entry.once and dst.exists():
+            verb = "Would skip" if dry_run else "Skipped"
+            messages.append(f"  {verb} (scaffold, already present): {dst.relative_to(target_dir)}")
+            continue
+
         # Handle protected files (skip if project has modified them)
+        identical = False
         if entry.protected and force and dst.exists():
             if not _file_matches_template(dst, src_path):
                 messages.append(
@@ -387,10 +416,17 @@ def _deploy_single_template(
                 )
                 continue
             # Content matches template — safe to overwrite
+            identical = True
 
         verb = "Would deploy" if dry_run else "Deployed"
         if dst.exists() and force:
-            verb = "Would overwrite" if dry_run else "Overwritten"
+            # Say what actually happens. Reporting a byte-identical rewrite as an
+            # "overwrite" makes a no-op read as data loss, and a plan nobody trusts
+            # is a plan nobody reads.
+            if identical or _file_matches_template(dst, src_path):
+                verb = "Unchanged (identical)"
+            else:
+                verb = "Would overwrite" if dry_run else "Overwritten"
 
         if not dry_run:
             dst.parent.mkdir(parents=True, exist_ok=True)
