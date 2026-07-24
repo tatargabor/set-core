@@ -138,6 +138,32 @@ action must measure the action's *trace* (a file, a commit, a line in a log), ne
 report. The same fact cuts the other way too: **an instruction is not a constraint.** What
 an agent cannot do is decided by the tools it holds, not by the sentence telling it not to.
 
+**The check verifies the MECHANISM and is silent about the RESULT.** Three instances in one
+day, across two repositories, which is what promoted it from a bug to a class:
+
+- A field-presence check reported `RENDERED` for all five new fields **while the screen they
+  landed on was unreadable** — one of them had collapsed its row into a 500-pixel tower that
+  pushed the other rows off the display. Rendering is the mechanism; legibility is the result.
+- A status column was read as authority and a conclusion built on it, when the pipeline that
+  writes it never syncs back — the column *existed and updated*, which is the mechanism; what
+  it said was not the state.
+- A repair for a too-narrow join was run against **one** of the fields the marker can appear
+  in, so the widened check was still narrow. The join executed; the answer was short.
+
+The discriminating question is one line and it is not the obvious one: *if this check passes,
+what exactly do I now know?* "The renderer produced a node", "the query ran", "the field is
+present" — all true, all compatible with the thing being wrong. It is the same shape as a mock
+that asserts a call rather than an outcome, and the same shape as `cd`-ing into a worktree as a
+proxy for running its code. Where the result is a screen, the only check for it is to **look**.
+
+**And when a layout breaks, measure whether the size is even unusual before shortening
+anything.** Measured on the producer's side after the tower above: the offending string was the
+**15th longest** value the whole surface carries, and the longest — roughly nine times its
+size — renders fine. So length was not the variable. **Nesting was:** a sentence at top level
+gets the page's width, the same sentence inside an object inside a table cell gets whatever the
+nesting left, which can be one character. The fix belongs where the width is decided, and
+truncating the producer's text would have treated a symptom that was not there.
+
 ## Fail direction outranks bug count
 
 When a guard is wrong, ask which way it is wrong before asking how often. A gate that

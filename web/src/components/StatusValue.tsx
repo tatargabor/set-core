@@ -310,6 +310,11 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
       // row into a 500-pixel tower. Measured on a live answer, not reasoned about — a
       // ragged nested key cannot be flattened into columns (correctly, since most rows do
       // not have it), so the cell is where it has to be survivable.
+      //
+      // The variable is NESTING, not length, and the producer measured it: the offending
+      // string was the 15th longest value on the whole surface, and the longest — about
+      // nine times its size — renders fine at top level, where it has the page's width.
+      // So do not "fix" this by asking the project to shorten anything.
       <div className={depth > 0 ? 'rounded border border-neutral-800 bg-neutral-900/40 p-2 min-w-[18rem]' : ''}>
         <KeyGrid obj={value} depth={depth} />
       </div>
