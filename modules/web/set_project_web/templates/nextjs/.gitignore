@@ -32,7 +32,17 @@ coverage/
 .claude/logs/
 .claude/digest-last-response.txt
 
-# Orchestration runtime (managed by set-core)
+# Orchestration runtime (managed by set-core).
+#
+# Ignored means `git clean -fdx` deletes it and a fresh clone never has it. Most of
+# what lives here is genuinely ephemeral (loop state, telemetry journals — the
+# resolver runs cold on absence), but two are not: `.set/issues/registry.json` holds
+# the issue registry, and `.set/reflection.md` is the agent learning file. Neither is
+# recoverable from git, because this rule is why git never saw them.
+#
+# Track them deliberately if that history matters to you — they will then contain
+# whatever your issues contain, which is a decision about your repository, not one
+# set-core should make for you.
 /.set/
 
 # Orchestration runtime journals (written at project root by dispatcher/merger)
