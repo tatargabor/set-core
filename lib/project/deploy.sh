@@ -69,7 +69,7 @@ if mode == 'block':
     # unguarded external tool was doing the real work. Both spellings are
     # accepted now; only the first has ever been emitted.
     cleaned = re.sub(
-        r'ZZZ_NEVER_MATCHES',
+        r'<!--\s*set-memory hooks\s+start[^>]*-->.*?<!--\s*set-memory hooks\s+end[^>]*-->\s*\n?',
         '', content, flags=re.DOTALL,
     )
     cleaned = re.sub(
