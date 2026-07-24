@@ -613,6 +613,55 @@ being guessed at.
    conclusion and drops the precondition reads as a green light — which is exactly what it
    did. When quoting a verdict here, quote what it forbids alongside what it identifies.
 
+   **The consumer's working differentiation, supplied on the channel 2026-07-24 (W#88),
+   measured by them from `lefthook.yml` and the gate headers rather than recalled.** This is
+   the input the verdict's ordering constraint was waiting for: something real to generalise,
+   instead of a taxonomy invented here. It does not look the way a pipeline designer would
+   expect, and every departure is load-bearing:
+
+   - **Nothing classifies the work. The lane becomes apparent from narrow mechanical
+     signals**, each watched by its own gate, each silent by default: a NEW non-test source
+     file (silent if an OpenSpec change is touched or a valid trailer names one); a bug
+     marked fixed whose stable id no test references; a checked-off task with no review
+     artefact. There is no classifier at the entrance, so nothing has to be right about a
+     change before work starts.
+   - **The signal is deliberately NOT diff size.** Their gate header says it outright — a
+     400-line generated enum update is trivial and a 12-line predicate change in payment
+     matching is not, so line count measures the wrong thing. A NEW MODULE, by contrast, is
+     almost by definition a new capability. *Find a **shape** that correlates with risk;
+     never classify by quantity.*
+   - **The two lanes are asymmetric, and that is the design rather than a side effect.**
+     Feature lane: OpenSpec mandatory → adversarial review → delta spec → archive; an
+     expensive **entrance**. Bug-fix lane: no OpenSpec (most fixes restore conformance to a
+     spec that already says the right thing) but a regression test is mandatory, citing the
+     bug's stable id; a cheap entrance and an expensive **exit**. In one sentence: *the
+     feature lane gates whether we are building the right thing; the bug-fix lane gates
+     whether it can come back.*
+   - **One human question decides the lane** — "does this fix restore what the spec says, or
+     change what it should say?" — and the machine only checks afterwards. Restoring needs no
+     spec update; changing behaviour is a spec change in disguise and carries its delta in
+     the same commit. So their side has no router either: one question and three retrospective
+     checks.
+   - **Introduction lessons, which are the part most pipeline designs omit.** Every lane
+     signal ships with a baseline file that **can only shrink** — without it there are dozens
+     of hits on day one and the gate gets switched off, so the baseline is the debt register,
+     not a concession. Every gate starts as WARN with a **measured** promotion condition
+     ("two consecutive weeks with at least half the signals real"). And every gate states its
+     scope: theirs does not run on `main` pushes, where it would judge weeks-old work and
+     produce noise. *A gate without a stated scope evaluates twice and inflates its own
+     baseline.*
+   - **The lane detector is itself a scanner**, so today's finding applies to it: put the
+     rule's own examples under `src/` and the gate reports itself (S#88). **A lane detector's
+     corpus must never contain the lane's definition.**
+
+   **What this side does with it, decided 2026-07-24 under the delegated mandate:** build the
+   differentiated pipeline, alone, as the verdict orders — and via OpenSpec, per the rule
+   adopted the same day. The abstraction to generalise is *lane detection from declared
+   mechanical signals, with per-lane gate chains that are asymmetric by design*; the signals
+   themselves are project data and stay on the project's side, exactly like every contract
+   command. **Not** the router, and **not** their specific three signals lifted into Layer 1
+   — a design that only works for one consumer is not finished.
+
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
 in CI stays there. This *tightens* the production constraint rather than loosening it — the
