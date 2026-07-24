@@ -194,3 +194,36 @@ def test_every_error_class_the_reader_emits_is_named_in_the_living_record():
         "screen as the reason an answer is absent. A reason nobody can look up is a gap "
         "wearing an explanation."
     )
+
+
+#: The behavioural statement, as opposed to the decision log above. Both are obliged, and
+#: that is not the duplication this repo keeps warning about: the trap is two documents
+#: maintained BY HAND against each other. Here the code is the single source and each
+#: document is checked against it independently, so neither can drift without failing.
+SPEC = REPO / "openspec" / "specs" / "project-status-contract" / "spec.md"
+
+
+def test_the_capability_spec_names_the_same_vocabulary_the_reader_emits():
+    """A spec nothing enforces is prose with a filename.
+
+    Written after the consumer pointed out that their equivalent obligation is MECHANICAL —
+    publish a field without documenting it and the push blocks — and that a gap on this side
+    is a missing gate rather than a lapse of attention. They were right, and the gap had just
+    been created: three capability specs were written an hour earlier with nothing keeping
+    them true.
+
+    Honest about what this is: a GUARD, not a measurement. The spec already names all
+    fourteen classes and all seven envelope fields; nothing failed before this existed. Its
+    value is entirely in the future, which is exactly when a spec drifts.
+    """
+    assert SPEC.exists(), f"{SPEC.relative_to(REPO)} is gone — the capability lost its spec"
+    spec = SPEC.read_text()
+
+    expected = envelope_keys_read_by_the_parser() | error_classes_the_reader_emits()
+    missing = sorted(k for k in expected if not named_as_a_field(k, spec))
+
+    assert not missing, (
+        f"{SPEC.relative_to(REPO)} does not name {missing}, but the reader consumes or "
+        "emits them. A specification silent about behaviour that exists is not a smaller "
+        "specification — it is a wrong one."
+    )
