@@ -152,14 +152,33 @@ phase numbering that did not contradict each other but did not know about each o
 count in prose that said 7 where the reality was 17, erring *downward* so it understated the
 risk. So: separate the call from the execution freely; do not move the norm out of reach.
 
-*Which direction the link must be strong.* Measured on their tree: 14 of 19 gates name a
-rule, 11 of 76 rules name a gate. The asymmetry is correct, and the reason generalises —
+*Which direction the link must be strong.* Measured: 14 of 19 gates carry a dated case, 18
+of 19 carry a rationale, and 11 of 76 rules name a gate. The asymmetry is correct, and the
+reason generalises —
 **the gate's message is what someone reads at the moment it fires**, and that is the only
 moment its rationale is worth anything. If the reason lives one indirection away, the
 fastest available response is to suppress the gate. Hence two requirements: a *triggering
 case* is a mandatory declaration field, and it must appear in the firing message along with
 the way to suppress that one signal — because a reader who cannot find the narrow bypass
 will find the blanket one.
+
+**D10 — The gate enforces the date, review enforces the explanation, and the spec says
+which is which.** The first draft of the requirement above said a declaration must carry a
+"measured triggering case", which reads as though the framework verifies the reasoning. It
+cannot: whether a paragraph explains anything is not mechanically decidable. This was caught
+by the same measurement being redone — two independent proxies for "carries a rationale"
+were tried and **both misclassified, in opposite directions** (one missed gates carrying a
+full explanation and no date; the other missed a dated gate with a terse header). Corrected
+figures: 18 of 19 carry a rationale, 14 of 19 carry a dated case, so the rationale is nearly
+universal and the *dating* is the inconsistent half — which is also the only half a machine
+can hold.
+
+The enforcement is therefore split and stated: the **date and identifier are
+machine-checked**, the **explanation is not**, and a declaration carrying only a date is
+accepted while being reported as unexplained. Blurring the two would have produced a false
+gate — one that reports having verified something it never looked at — inside the capability
+written to remove exactly that. Rejected alternative: a minimum rationale length, which is
+the same proxy failure with a threshold attached.
 
 ## Open Questions
 

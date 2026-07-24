@@ -43,10 +43,23 @@ anybody deciding it.
 
 The **triggering case** — a date and an identifier for the incident the signal was written
 in response to — is mandatory for a different reason, and it is the one field that would
-normally be left to convention. A signal with no incident behind it is a guess dressed as
-a rule, and there is no way to tell the two apart later. In a project running this pattern
-today, 14 of 19 gates carry a measured triggering case in their header and the remaining
-five are not wrong, merely unable to prove anything about themselves.
+normally be left to convention. A signal with no incident behind it is a guess dressed as a
+rule, and there is no way to tell the two apart later.
+
+**Only the dated identifier is machine-checked; the rationale is not, and this
+specification SHALL NOT pretend otherwise.** Whether a paragraph actually explains anything
+is not mechanically decidable — measured in a project running this pattern, two independent
+proxies for "carries a rationale" both misclassified, in opposite directions. What a machine
+can check is that a date and an identifier are present, and a line reading `# 2026-01-01`
+satisfies that while explaining nothing. So the split is stated rather than blurred: the
+**date and identifier are enforced by this gate**, the **explanation is enforced by review**.
+A gate that implied otherwise would be a false gate of the kind this whole capability
+exists to remove.
+
+The same project's corrected figures, which are the reason the split is written down: 18 of
+19 gates carry a rationale, 14 of 19 carry a dated case. The rationale is close to
+universal; the *dating* is what is inconsistent, and it is also the only half a machine can
+hold.
 
 #### Scenario: A declaration missing its scope is refused
 - **WHEN** a signal declares a condition, a lane, a baseline and a promotion condition, but
@@ -63,6 +76,13 @@ five are not wrong, merely unable to prove anything about themselves.
 - **WHEN** a signal declares a lane, condition, scope, baseline and promotion condition but
   names no incident it was written in response to
 - **THEN** set-core SHALL refuse the signal with an error naming the missing triggering case
+
+#### Scenario: A dated identifier with no explanation is accepted, and the gate says so
+- **WHEN** a signal's triggering case consists of a date and an identifier and nothing else
+- **THEN** set-core SHALL accept the declaration
+- **AND** SHALL NOT claim to have verified that the signal is justified
+- **AND** the accepted-but-unexplained state SHALL be reported, so review has something to
+  act on rather than a silent pass
 
 ### Requirement: The declaration lives in the tree being verified, not behind a running system
 A lane signal declaration SHALL be readable from the checked-out tree alone. set-core SHALL
