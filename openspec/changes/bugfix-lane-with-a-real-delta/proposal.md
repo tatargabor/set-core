@@ -1,69 +1,73 @@
 ## Why
 
-A consumer declared a lane signal whose `lane` is `bugfix`, and **set-core's taxonomy has no
-such lane**. Measured on `HEAD`:
+A consumer's restoring lane is in daily use and blocking; set-core has no lane that behaves
+differently from any other. This is the fourth item of the integration track and it is
+set-core's half — but **not in the shape this proposal first argued**, and the correction is
+the useful part.
 
-```
-UNIVERSAL_DEFAULTS keys → cleanup-after · cleanup-before · feature · foundational ·
-                          infrastructure · schema
-```
+**What the first draft got wrong.** It opened a `UNIVERSAL_DEFAULTS['bugfix']` entry and
+treated the taxonomy as the deliverable. The 2026-07-19 verdict's ordering constraint says the
+opposite: build the differentiated pipeline **first, and alone**; a taxonomy comes only once
+two provably different pipelines exist to choose between. Adding a name first is how *"the
+router gets built and has nothing distinct to route to"*.
 
-So a bug fix in that project cannot declare what it is. This is the fourth item of the
-integration track and it is set-core's half: the project can describe its restoring lane, and
-the framework has no slot to put it in.
+**What survives, and why the name is still in scope.** A lane entry is admissible when it
+cannot exist without its delta. That is a structural property, not a promise — and it is what
+the consumer's answer supplies (below): a `bugfix` declaration with no enforced exit obligation
+is **refused**, so the entry is incapable of being an empty name.
 
-Three further measurements decide the shape, and each is a defect the change must not repeat:
+Three measurements on `HEAD` set the bar, all of them defects already present:
 
-1. **`feature` and `foundational` are byte-identical** (`UNIVERSAL_DEFAULTS['feature'] ==
-   UNIVERSAL_DEFAULTS['foundational']` → `True`). A taxonomy entry with zero behavioural
-   delta already exists here, which is precisely the failure the 2026-07-19 verdict named:
-   *"a taxonomy with near-zero behavioural delta is a false gate, and this repo already has
-   three."* Adding a fifth name that changes nothing would make it four.
+1. `UNIVERSAL_DEFAULTS['feature'] == UNIVERSAL_DEFAULTS['foundational']` → `True`. A taxonomy
+   entry with zero behavioural delta already exists — the verdict's named failure, in the tree.
+2. The type list lives in three places and two disagree: the dictionary holds six, the
+   planning skill restates the same six by hand, and `merger.py:2442` exempts
+   `('infrastructure', 'config', 'docs')` where `config` and `docs` exist nowhere else.
+3. An unknown type is **stricter**, not looser (`gate_profiles.py:181` applies no defaults, so
+   every universal gate stays blocking). Anything this change does is a loosening relative to
+   today, and it must buy that rather than spend it.
 
-2. **The type list lives in at least three places, and two disagree.**
-   `UNIVERSAL_DEFAULTS` holds six; `.claude/skills/set/decompose/SKILL.md:68` restates the
-   same six as a hand-written enum string; `merger.py:2442` exempts
-   `('infrastructure', 'config', 'docs')` — and **`config` and `docs` exist nowhere else**,
-   so that guard's exemption list names two types nothing can produce. Its direction is
-   benign today (it exempts nobody), which is exactly why it has survived: a stale second
-   copy that costs nothing until someone reads it as the list.
+**The consumer's answer, with their measurements** (channel W#113), which decides the shape:
 
-3. **An unknown type is stricter, not looser.** `gate_profiles.py:181` warns and applies no
-   per-type defaults, so every universal gate stays blocking. A consumer declaring `bugfix`
-   today therefore runs the *most* conservative chain — which means this change must not
-   accidentally be a loosening dressed as a taxonomy addition.
+- **Refuse loudly, not fall back.** A `bugfix` declaration with no exit signal is an
+  *incomplete declaration*, the same shape as a malformed delegation — and falling back to the
+  feature chain would silently give something other than what the project stated. The project
+  would believe it has a lane while running an ordinary one: a marker true of a narrower
+  subject than its reader takes it for.
+- **The discount's price is the evidence.** "A cheaper entrance paid for by a stricter exit" is
+  only true if the exit is *enforced*. Their acceptance of framework silence elsewhere holds
+  precisely because their own exit gate blocks; with no exit signal the sentence's second half
+  is empty and the lane is just a discount.
+- **The refusal binds the declaration, not the project.** A project declaring no `bugfix` lane
+  keeps today's behaviour, which finding 3 shows is already the most conservative chain — so
+  nobody loses protection by not asking for a discount.
 
 ## What Changes
 
-- A **`bugfix` lane** whose delta is real and points at the opposite end of the process from
-  `feature`: a cheaper **entrance** (a fix restores conformance to a specification that
-  already exists, so it does not carry a spec delta) paid for by a stricter **exit**.
-- The **exit obligation** is what makes the lane different rather than merely cheaper: a
-  change declared `bugfix` must produce evidence that the defect cannot return. set-core does
-  not define what that evidence is — the project does, through the lane-signal mechanism that
-  already exists and already delegates to a published answer.
-- **One home for the type list.** The enum in the planning skill and the exemption list in
-  the merger stop being independent copies.
-- A **refusal to soften without the exit**: declaring `bugfix` in a project that publishes no
-  exit evidence must not buy a cheaper chain. This is the change's central safety property and
-  the reason it is not simply a seventh dictionary entry.
+- A **`bugfix` lane whose entry is conditional on an enforced exit obligation.** Declaring it
+  without one is refused with a named error; the refusal is per declaration.
+- The **exit obligation rides on the lane-signal mechanism already shipped** — the project
+  declares what counts as evidence that the defect cannot return, and the framework delegates
+  to the project's published answer. set-core defines the shape and holds no signal.
+- **One home for the type list**, so the planning skill's enum and the merger's exemption list
+  stop being independent copies.
+
+## What This Deliberately Does NOT Change
+
+- **No entrance gate on "is this fix restoring the spec or changing it?"** The consumer's rule
+  asks exactly that question, and they reported — measured, not recalled — that **nothing
+  enforces it**: of 536 `fix(...)` commits, 50 touch a specification or the knowledge store
+  (**9.3%**), and they named an incident where a specification described automatic behaviour
+  while the code was deliberately manual for two weeks and was never annotated. Their explicit
+  caution was not to generalise the half they demonstrably do not keep. Adopting an unenforced
+  rule as a framework gate would be inventing a mechanism, not reading theirs.
+- **No router.** Not built, not designed, not stubbed.
+- **No change to `lane_signals.py`, `lane_evaluator.py` or `lane_gate.py`.** The exit evidence
+  rides on what `lane-contradiction-detection` shipped, which is why it was built first.
 
 ## Impact
 
-- `lib/set_orch/gate_profiles.py` — the new lane, and the type list as a single source.
+- `lib/set_orch/gate_profiles.py` — the conditional lane, and the type list as one source.
 - `lib/set_orch/merger.py` — the stale exemption list.
-- `.claude/skills/set/decompose/SKILL.md` — the restated enum.
-- No change to `lane_signals.py`, `lane_evaluator.py` or `lane_gate.py`: the exit evidence
-  rides on the mechanism shipped in `lane-contradiction-detection`, which is the point of
-  having built it first.
-- **Deployed to consumers** via `set-project init` (the skill file), so the enum change
-  reaches projects.
-
-## Open question — asked on the channel before building
-
-Whether the cheaper entrance is conditional on the project declaring an exit signal, or
-whether `bugfix` is simply refused in a project that declares none. Both are defensible and
-they differ in the direction that matters: the first fails toward today's behaviour, the
-second fails toward a loud stop. The consumer's own bug-fix lane is in daily use and blocking,
-so their answer is evidence rather than opinion, and the goal states the two sides design
-extensions together.
+- `.claude/skills/set/decompose/SKILL.md` — the restated enum; deployed to consumers via
+  `set-project init`.
