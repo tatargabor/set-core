@@ -436,6 +436,23 @@ the one place the rule was already applied once and stopped a level too early. T
 was about a **broken command**; this is about **bad news inside a working one**, and only the
 first was closed.
 
+**Corrected within the hour, by the peer, and the correction is larger than the finding.** This
+entry said the marker is correct for a command that *fails*. Their measurement — from the
+source of their envelope emitter, not from sampling its output — is that **no valid command can
+ever fail**: the emitter hard-codes `ok: true` into every successful answer, and the single
+`ok: false` in the file is the unknown-command / crash path. So `result && !result.ok` is not a
+marker that *rarely* fires against their contract; it is one that **cannot** fire. And it is
+not one command's problem: at one measured moment, **all eight read commands answered
+`ok: true`** while their payloads carried release blockers, open high-severity defects,
+unanswered reporter items, outstanding manual steps and a failed test artefact.
+
+Two things follow, and the second is the reason this is recorded rather than left on the
+channel. **The fix must be envelope-level and uniform**, because the property is — a
+`tests`-shaped field would close one of eight and leave the screen calm over the rest. And a
+per-instance finding proposed a per-instance fix: this side found ONE example and was about to
+ask for a shape scoped to it. *The scope of a defect is a measurement too, and the side that
+owns the producer is the one that can take it.*
+
 **The shape a fix must take, so it is not solved by recognising a field name:** the project
 declares which of its values are problem indicators, the same way it already declares
 `deprecated` fields, `actions`, and the ordered `severity` of blocker rows. set-core still
@@ -447,6 +464,15 @@ never sent.
 side's plan, and reacting to it immediately is the exact pattern both sides named the same day:
 *two agents drift from the plan by answering each other's findings*, each next thing smaller
 than the step being avoided. Recorded here so it survives without costing the current change.
+
+**Its standing changed 2026-07-24 evening, and by the user rather than by a finding.** The user
+asked what the next step is toward *releasing a version carrying most of the reported fixes,
+chosen by severity and relevance*. That operation makes this the screen's decision surface, and
+it meets the same two gaps: this candidate, and backlog item 1 below (*no screen shows a
+high-severity bug open while a release closes*). They are one mechanism — the project declares
+which values are problem indicators; set-core counts from the data. **Recommended to the user
+as the next build, ahead of finishing the `bugfix` lane; no approval given yet, so nothing is
+built.** The `bugfix` lane keeps its state: proposal, design, spec and tasks complete, no code.
 
 ### Where state is lost today — the real backlog, in their words
 
