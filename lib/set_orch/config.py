@@ -396,6 +396,56 @@ def brief_hash(path: str | Path) -> str:
 # ─── Brief Parsing ───────────────────────────────────────────────────
 
 
+def iter_prose_lines(lines: list[str]):
+    """Yield the lines of a markdown document that are PROSE, not illustration.
+
+    Both parsers below read state out of a hand-written document with a regex, and a
+    regex cannot tell an instruction from an example of an instruction. A directive
+    shown inside a fenced block to explain the format, or one commented out to disable
+    it, matches exactly as well as a real one — and then the orchestration runs with a
+    number nobody set.
+
+    This is a recurring failure class rather than an oversight: the same pattern was
+    measured on a consumer four separate times in one day (a CI comment supplying a test
+    runner's name, a commented-out example read as a real endpoint, an explanatory
+    sentence read as a variable declaration, a prose schedule read as a cron expression).
+    In every case the comment looked exactly like the data.
+
+    Fences and HTML comments are skipped, and headers inside them do not end a section
+    either — a `##` in an example block is illustration too.
+    """
+    in_fence = False
+    fence_marker = ""
+    in_comment = False
+
+    for raw in lines:
+        stripped = raw.strip()
+
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+
+        if in_fence:
+            # Only the same marker closes the fence, so a ``` inside a ~~~ block stays
+            # content rather than silently reopening the document.
+            if stripped.startswith(fence_marker):
+                in_fence = False
+            continue
+
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = True
+            fence_marker = stripped[:3]
+            continue
+
+        if stripped.startswith("<!--"):
+            if "-->" not in stripped:
+                in_comment = True
+            continue
+
+        yield raw
+
+
 def parse_next_items(brief_path: str | Path) -> list[str]:
     """Extract items from the ### Next section of a brief file.
 
@@ -411,7 +461,7 @@ def parse_next_items(brief_path: str | Path) -> list[str]:
     items: list[str] = []
     in_next = False
 
-    for line in lines:
+    for line in iter_prose_lines(lines):
         # Detect ### Next header
         if re.match(r"^###\s+Next", line):
             in_next = True
@@ -454,7 +504,7 @@ def parse_directives(doc_path: str | Path | None) -> dict[str, Any]:
 
     in_directives = False
 
-    for line in lines:
+    for line in iter_prose_lines(lines):
         # Detect ## Orchestrator Directives header
         if re.match(r"^##\s+Orchestrator\s+Directives", line):
             in_directives = True
