@@ -73,6 +73,8 @@ Two of them are load-bearing for every decision on this page:
 | Project Status screen | `126c71c8` | live page: 6 sections, 9 tables, 185 rows, 0 JS errors |
 | Renderer honesty tests | `a2eea14a` | 11 tests |
 | Long scalar lists capped at 5 chips | `248a76c8` | one live command emits 17 in a cell; 2 of 4 tests measure, 2 guard |
+| Project-declared emphasis (`_emphasis`) | `d54c0807` | live: 1 marked element, marking not rendered as data, 0 JS errors |
+| Project-declared section ranking (`sections`) | `55554bb8` | live: 3 sections in declared order, descending weight; 4 of 7 tests measure |
 
 **The acceptance test is met for reading.** The screen is at `/p/<project>/status`, listed
 in the sidebar under Orchestration.
