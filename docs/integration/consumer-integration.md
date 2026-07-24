@@ -398,7 +398,9 @@ rescoping when anything cites the old order.** New items go on the end.
 
 **One live item: 4, the factory layer.** Everything numbered below it is history.
 
-1. ~~**The acknowledgement surface.**~~ **Built.** The pain the consumer measured was state
+1. ~~**The acknowledgement surface.**~~ **Built and measured as far as the API; the click
+   itself is not proven** (see "still unproven" below — this qualifier is in the marker
+   because that is the line a hurried reader counts). The pain the consumer measured was state
    that lives nowhere: manual post-deploy steps existing only in one person's memory, per
    environment. They are now listed, and each offers a button.
 

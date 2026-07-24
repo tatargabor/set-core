@@ -83,6 +83,29 @@ refuse to claim the field is described *correctly*. So: one instance found and f
 peer's side, none here, and the corpus and pattern are stated so the negative result can be
 rechecked rather than believed.
 
+**A marker outranks the body, so a marker that is true of a narrower subject still lies.**
+Two shapes, and the second is the harder one. The blunt shape: a strike-through, a `✅` or a
+"Built" that simply contradicts the text underneath it — a list item here read as open while
+its own last paragraph said the goal it belonged to was met. The subtle shape: the marker is
+**true of its own subject** and the reader takes the subject to be wider. Measured on the
+other side of the channel the same day — a row marked `✅ DONE` because the *tool* was
+finished, while sixteen people who had filed reports still had no answer. Nothing in it was
+false; the subject had quietly widened between writer and reader.
+
+So: **when an item's name is broader than the thing delivered, the marker must say what it
+is a marker OF.** "Built" becomes "built as far as the API; the click is unproven". The
+reason is not fairness, it is arithmetic — *the marker is the part that gets counted*, in a
+summary, in a status line, in a compact. A body that states the limit while the marker
+overclaims has put the correction where nobody is standing, which is the same defect as the
+overclaiming name one section up.
+
+**A zero with an empty breakdown is a shape error until proven otherwise.** From the same
+measurement: a count came back `0` because the reader looked for its list under the wrong
+key of an envelope, so `undefined` became an empty array became zero — and that zero would
+have *proved* there was nothing to answer. The tell was not the zero, which looked like data,
+but that the breakdown beside it was empty too. When a count is zero and its own grouping is
+empty, inspect the **shape of the input** before writing down the conclusion.
+
 **A subagent's "done" is not evidence that anything happened.** Measured here: an unflagged
 `claude -p` asked to create a file replied `Done.` and exit 0, and the file did not exist —
 the tool layer had refused the write and the agent did not know. So a gate that waits on an
