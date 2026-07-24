@@ -38,6 +38,15 @@
 
 - [x] 4.8 The framework applies a signal's exclusions to handler results, rather than trusting each handler to. The self-inclusion refusal is WAIVED as soon as an exclusion covers the declaration file, so the waiver is only honest if the exclusion is enforced — otherwise a signal buys its way past the guard with a promise nothing checks. Peer-raised from the mirror on their side: listing the declaration file in `exclusions` short-circuited the whole guard for that signal, and an escape hatch that disables its own signal's protection looks like care [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it]
 
+- [ ] 4.9 Evaluate a condition that names a published answer by invoking the project's
+  declared command through the existing `project_status` mechanism — never a second
+  invocation path, and never a framework-side computation of the same value [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+- [ ] 4.10 A failed, timed-out or unusable published answer yields UNEVALUATED with the
+  reason, and no fallback computation [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+- [ ] 4.11 A signal declaring that no other gate enforces its defect class BLOCKS when it
+  cannot be evaluated, instead of reporting silence — the consumer's condition for agreeing
+  to 4.10, and the honest limit of it [REQ: the-framework-takes-the-projects-published-answer-rather-than-recomputing-it]
+
 ## 5. Prove the tests are load-bearing
 
 - [x] 5.1 **Partially — the guards are verified, not literally every test.** Each guard that could fail in the reassuring direction was mutation-tested one at a time (absence-as-pass, unknown-kind→`[]`, the volume shape check, the self-inclusion aim, the three shape-only log lines, the `defaults={}` wiring, the resolved gate order, the "cannot show there is none" limit): mutation applied, presence asserted, 1–2 tests killed each, restore asserted. The remaining assertions are straightforward positives. Original wording, for the record: for every test added above, stash the implementation and confirm the test fails — record which ones passed either way and fix them, since a test that passes without the fix proves nothing and looks like proof forever [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]

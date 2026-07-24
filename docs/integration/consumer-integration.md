@@ -110,6 +110,38 @@ The general rule this stands for: *the declaration is the contract, not the docu
 
 ## Agreed with the consumer, on the channel
 
+- **The framework takes the project's published answer; it never recomputes it**
+  (2026-07-24, channel W#105–W#107 / S#108). set-core defines the SHAPE of a lane signal;
+  the project supplies the VALUE. Where a signal's condition names something the project
+  already publishes through its status contract, the gate invokes that command instead of
+  reimplementing the rule.
+
+  **Their reason is a measurement, not a preference:** two implementations of one business
+  value drifted to 412% and 164% on their side, and a customer noticed before either team
+  did. A framework-side reimplementation is that defect with a longer feedback loop, because
+  the two answers are read by different people.
+
+  **This collided with a rule of ours, and the resolution is the useful part.** Our reader
+  is forbidden from touching a service — a declaration reachable only through a running
+  system is unreadable exactly when it is needed. The two rules are right about different
+  objects: the **declaration** is configuration and stays service-free; the **value** is
+  data and belongs to the project. Evaluation may call a project command; reading
+  declarations may not.
+
+  **Safe only because the thing asked is the worktree, and they measured that rather than
+  assuming it:** their defect query ran in a disposable worktree with no `node_modules`, no
+  `.env` and no database, in 129 ms — and answered about *that tree*, proven by breaking one
+  reference in the worktree and watching the worktree's answer change while the main tree's
+  did not.
+
+  **Their yes is conditional, and the condition is in the spec.** A silent command yields
+  UNEVALUATED, never a pass and never a fallback computation. That is acceptable *because
+  their own blocking gate covers the same defect class*, so framework silence costs earlier
+  warning rather than protection. Where a signal is the only enforcement of its class,
+  silence is a real hole and it must block instead. Recorded as
+  `lane-signal-declaration` requirement "the framework takes the project's published answer"
+  and design decision D12; tasks 4.9–4.11 are open, and the invocation path is **not built**.
+
 - **Envelope v1**: `{contractVersion, generatedAt, command, ok, data, deprecated}`. An
   unsupported version is refused *before* spawning anything.
 

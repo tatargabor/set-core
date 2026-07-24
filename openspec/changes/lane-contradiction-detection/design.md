@@ -194,8 +194,39 @@ onto the wrong axis, and the rule had to add a sentence saying which axis actual
 A name is a second place that drifts, and this change has spent its whole life removing
 those.
 
+**D12 — Reading a declaration and evaluating a condition are different acts, and only the
+first is service-free.** D9 says a declaration must be readable from the tree alone, and
+that stands. But the consumer asked, with a measured reason, that the gate NOT recompute an
+answer they already publish: two implementations of one business value drifted to 412% and
+164% on their side, and a customer noticed before either team did.
+
+Both rules are right about different objects. The *declaration* is configuration and must be
+readable when nothing is running, or the gate cannot read its own settings exactly when it
+needs them. The *value* is data, and the project owns it. So evaluation may invoke a
+project-declared command; reading declarations still may not.
+
+This is only safe because the thing being asked is the **worktree**, not a live system —
+which the consumer measured rather than assumed: their defect query ran in a disposable
+worktree with no `node_modules`, no `.env` and no database, in 129 ms, and answered about
+*that tree* (a reference broken only in the worktree changed the worktree's answer while the
+main tree's stayed put). Two consequences follow, and the second is theirs:
+
+- A silent command yields UNEVALUATED, never a pass, and never a framework-side fallback
+  computation — a fallback would recreate the second implementation this decision exists to
+  prevent.
+- **Their yes is conditional and the condition is in the spec:** it holds because their own
+  blocking gate covers the same defect class, so framework silence costs earlier warning
+  rather than protection. Where a signal is the *only* enforcement of its class, silence is
+  a real hole and it must block instead.
+
+When this is implemented it delegates to the existing status-contract mechanism
+(`project_status`), which already has the timeout, the declared-command list and the
+read/write separation. A second invocation path would be the same reimplementation defect
+one level up, inside set-core.
+
 ## Open Questions
 
-None. The two that existed — where a declaration lives (D9) and whether lanes need names
-(D11) — are closed above. A question left open is itself a second place that goes stale:
-the next reader cannot tell an undecided question from a forgotten one.
+None. The three that existed — where a declaration lives (D9), whether lanes need names
+(D11), and whether evaluation may call a project command (D12) — are closed above. A
+question left open is itself a second place that goes stale: the next reader cannot tell an
+undecided question from a forgotten one.

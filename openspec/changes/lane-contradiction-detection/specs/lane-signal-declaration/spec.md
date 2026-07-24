@@ -99,6 +99,48 @@ like "nothing to check".
 - **THEN** set-core SHALL read the project's declarations from the tree
 - **AND** SHALL NOT attempt a contract command, an HTTP call, or a database connection
 
+#### Scenario: Reading the declaration and evaluating the condition are different acts
+- **WHEN** a signal's condition names an answer the project already publishes through its
+  status contract
+- **THEN** the prohibition above SHALL apply to reading the DECLARATION only
+- **AND** evaluating the condition MAY invoke that project-declared command against the
+  worktree being verified
+- **AND** set-core SHALL NOT compute its own answer to a question the project publishes
+
+### Requirement: The framework takes the project's published answer rather than recomputing it
+Where a signal's condition names an answer the project already publishes, the gate SHALL
+obtain the value by invoking that published command and SHALL NOT reimplement the
+computation. set-core defines the SHAPE of a signal; the project supplies the VALUE.
+
+Two implementations of one business value diverge silently. Measured on the consumer's side
+before this was written: two paths computing the same figure drifted to 412% and 164%, and a
+customer noticed before either side did. A framework-side reimplementation of a project's
+own rule is that same defect with a longer feedback loop, because the two answers are read
+by different people.
+
+Invoking a published command is compatible with the requirement above because the worktree
+being verified is not a live system: measured on a consumer's disposable worktree with no
+`node_modules`, no `.env` and no database, their defect query answered in 129 ms — and,
+crucially, answered about THAT tree: a reference broken only in the worktree changed the
+worktree's answer and left the main tree's unchanged.
+
+#### Scenario: A silent command is unevaluated, never a pass
+- **WHEN** the published command fails, times out, or returns an unusable answer
+- **THEN** the signal SHALL be reported as unevaluated with the reason
+- **AND** SHALL NOT be reported as passing, and SHALL NOT fall back to a framework-side
+  computation of the same value
+
+#### Scenario: A signal that is the only enforcement of its defect class blocks instead of falling silent
+- **WHEN** a signal's declaration states that no other gate enforces its defect class
+- **THEN** an unevaluable signal SHALL block rather than report silence
+- **AND** the gate SHALL name the missing answer as the reason
+
+This condition was required by the consumer as the price of accepting the previous scenario,
+and it is the honest limit of it: their agreement holds *because their own blocking gate
+covers the same defect class*, so a silent framework signal costs earlier warning and not
+protection. Where that is not true, silence is a real hole and the reassuring direction wins
+again.
+
 ### Requirement: The triggering case appears in the gate's own message, not only in the specification
 When a signal fires, the reported message SHALL carry the signal's triggering case. It SHALL
 NOT be sufficient for that case to exist only in the declaration file or in this
