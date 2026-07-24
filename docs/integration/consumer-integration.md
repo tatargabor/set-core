@@ -106,8 +106,17 @@ The general rule this stands for: *the declaration is the contract, not the docu
 
 ## Agreed with the consumer, on the channel
 
-- **Envelope v1**: `{contractVersion, generatedAt, command, ok, data}`. An unsupported
-  version is refused *before* spawning anything.
+- **Envelope v1**: `{contractVersion, generatedAt, command, ok, data, deprecated}`. An
+  unsupported version is refused *before* spawning anything.
+
+  **The failure half of the envelope, which this list omitted until a gate found it.** When
+  a project answers `ok: false` it has answered honestly that it could not answer, and its
+  reason is carried through rather than replaced with one of ours: the reader takes
+  **`error`**, or **`message`** if `error` is absent — an undeclared fallback that had
+  existed in the parser and in neither side's documentation, so a producer reading this page
+  could not have known it works. A refusal with neither field still produces a result, with
+  a reason saying exactly that: the project reported a failure and gave no reason. Nothing
+  in that path ever renders as success or as zero.
 - **Precedence**: operator config beats the repo manifest. The person present when
   something is wrong must be able to redirect it without editing someone else's repo.
 - **Read and write are separate namespaces.** Write commands live in their own list
