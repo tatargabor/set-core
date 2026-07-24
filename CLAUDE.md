@@ -1,4 +1,18 @@
 
+## ⚠ ACTIVE TRACK — highest priority while it is open
+
+**The consumer ↔ set-core integration. Its living record is
+[`docs/integration/consumer-integration.md`](docs/integration/consumer-integration.md).**
+Read it before deciding what to do next, and **update it as part of the work, not after** —
+a step that is done but unrecorded is indistinguishable from one that was never taken.
+It holds what is shipped and verified, what is agreed with the consumer, the decisions
+taken and why, and the ordered next steps. The goals and constraints below outrank it.
+
+**The user has delegated the decisions on this track** (2026-07-24): decide from the
+experience already on the record rather than escalating. That is a mandate to choose, not
+to guess — a decision made this way names the evidence it rests on and goes in the living
+record, so it can be revisited rather than merely inherited.
+
 ## The goal this work serves — do not lose this across a compact (2026-07-24)
 
 The user has stated this twice, emphatically, because a context boundary is exactly where
