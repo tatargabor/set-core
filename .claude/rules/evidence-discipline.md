@@ -229,6 +229,27 @@ is a second copy; this one drifted at the moment it was written. The replacement
 THING — at session end, no loaded module may resolve to any set-core checkout other than this
 one — which is a check nobody has to maintain a list for.
 
+**And the detector was proven to fire before its zero was believed.** A check that reports
+clean is indistinguishable from one that cannot report anything, so the leak checker was run
+against a deliberately un-isolated baseline: **128 leaks** on the full suite, **0** with the
+import roots set. Only then does the zero mean something.
+
+Two of this repo's own measurement bugs surfaced doing it, both worth more than the result:
+
+- **`$?` after a pipeline is the LAST command's status.** `pytest … | tail -3; echo $?`
+  reports on `tail`, which always succeeds. It read `exit=0` for a run whose status was never
+  examined, twice, in the same breath as concluding the check worked.
+- **A poll condition must exclude the state the file starts in.** The checker writes
+  `NOT REACHED` at configure time so an unrun hook reports itself — and a wait loop on
+  "file is non-empty" then fired on that placeholder and read the answer before it existed.
+  A guard against silence became the thing that produced a premature reading.
+
+The finding underneath both: **a single-file run said `LEAKS 0` while the full suite said
+128.** 140 of 217 unit files insert the source root themselves and 77 do not, so whichever
+module imports first decides for the entire session. *Isolation that depends on collection
+order is not isolation* — and it fails toward clean on exactly the small, fast run someone
+reaches for when checking quickly.
+
 **A generated artefact escapes even a correct source path**, because it is a product rather
 than a source. Measured on the other side of the channel: a generated database client resolved
 from the main tree while the worktree held modified schema source, so the tests ran worktree
