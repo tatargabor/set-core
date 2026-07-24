@@ -34,6 +34,17 @@ that number, not whether *your* process is alive. Ask by identity, not by a numb
 remember: `pgrep -af "<the thing it watches>"`. When a check is cheap and its subject is
 specific, matching the subject is never harder than remembering the handle.
 
+**The measurement is inside the corpus it measures.** `pgrep -af "<pattern>"` matches the
+searching process itself, because the pattern is in its own command line — and so is any
+word chosen to filter it, so `| grep -c 'while :'` counts a command containing the string
+`'while :'`. Measured four times in one day here: the check reported 3, then 2 watchers
+while exactly one ran. The direction is what costs: it **over**-reports, and "two watchers"
+invites killing one, which can leave zero. The general form covers a grep over a corpus that
+includes the file doing the grepping, a test that asserts about a directory it writes into,
+and a count of matches that its own query created. Resolve each hit to an identity and
+discriminate on something the impostor cannot fake — here, process age: a real watcher is
+hours old, the self-match is always `00:00`.
+
 **A dead test looks exactly like a passing one, from far enough away.** Fifteen tests here
 raised `TypeError` on a removed keyword argument *before reaching any assertion* — including
 the one test written to guard against a quoted verdict being read as a verdict. Collection

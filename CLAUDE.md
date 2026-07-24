@@ -296,6 +296,24 @@ only thing that survives — rebuild the contact from it, do not ask the user to
    watcher" for a watcher that is running — which sends you to start a second one, which is
    the exact duplicate this step exists to prevent.
 
+   **But `pgrep -af "<watched file>"` MATCHES ITSELF, and piping it into `grep -c` counts
+   the count.** Measured four separate times on 2026-07-24: the check reported 3 and then 2
+   watchers while exactly one was running. Every extra hit was the measuring command — the
+   pattern appears in the searching shell's own command line, and so does any word used to
+   filter it (`grep -c "while :"` matches a command containing the string `'while :'`). This
+   is the same class as the completeness-word sweep: **the measurement is inside the corpus
+   it measures.** Its direction is the dangerous one — it over-reports, and "two watchers"
+   invites killing one, which can leave zero.
+
+   Resolve each PID instead of counting lines, and discriminate by age — a real Monitor is
+   hours old, the impostor is always `00:00`:
+
+   ```bash
+   pgrep -f 'NEW=.*<watched file>' | while read -r p; do
+     ps -o pid=,etime=,lstart= -p "$p"
+   done          # one row per candidate; the seconds-old one is your own command
+   ```
+
    This is the same defect class as reading a verdict out of prose: **measuring a proxy
    instead of the thing.** A remembered PID is a proxy for a process; a registry entry is a
    proxy for a running program; a matched substring is a proxy for a decision. The direction
