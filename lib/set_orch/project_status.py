@@ -102,6 +102,31 @@ class StatusConfig:
     list of contract commands: the framework would then be guessing on the project's
     behalf, and a project that grows a sixth question would need a set-core release to be
     seen. Empty means undeclared, which is not the same as none — it means ask by name.
+
+    **Every field, by name — and this list is the whole point of this paragraph.**
+    `command`, `timeout`, `cwd`, `source`, `commands`, `write_commands`, `primary`,
+    `on_demand`, `timeouts`.
+
+    *(That list was first written with "command_timeouts" in it — a name that does not
+    exist — and the test below caught it within a minute of being written. The defect
+    reproduced on its own author while the fix for it was being documented, which is the
+    strongest available argument that a prose list needs a test rather than proofreading.
+    The wrong name is deliberately unquoted here: the mirror test treats every backticked
+    token in this paragraph as a claimed field.)*
+
+    A caller who does not know the exact spelling reaches for `getattr(cfg, "…", ())` or
+    `.get("…")`, and **a default does not fail on a wrong name — it returns the empty,
+    reassuring shape.** A misread then becomes indistinguishable from a project that
+    declared nothing. Measured on the other side of an integration: a caller asked for
+    `read_commands`, which does not exist, got `[]`, and was one step from reporting "the
+    framework sees nothing from us" about a tree whose nine commands all answer. It was
+    caught only by a CONTRADICTION in the same object — zero read commands while `primary`
+    named one — not by care.
+
+    So the operational rule for any foreign object, theirs or ours: **enumerate the fields
+    before reading one by name** (`dataclasses.fields(cfg)`, `Object.keys(o)`). And the
+    obligation on this side is this list, kept in step by
+    `test_status_config_docstring_names_every_field`.
     """
 
     command: str | List[str]
