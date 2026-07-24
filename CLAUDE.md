@@ -224,6 +224,27 @@ Confidentiality below). Each side appends **only** to its own file and reads the
   has every reason to trust it.
 - The channel is `/tmp`, i.e. session-lived. Anything durable belongs in a repo.
 
+**⚠ NEXT JOINT TASK — move the channel off `/tmp` (user instruction, 2026-07-24).** A restart
+or a power cut currently loses the status. Proposed on the channel and awaiting the peer's
+acknowledgement; **do not migrate unilaterally** — a move the other side does not know about
+causes exactly the loss it is meant to prevent.
+
+- **Target: `~/.local/share/set-core/channels/<slug>/`.** Measured, not invented: that root
+  already exists and is the framework's durable per-user store (`memory`, `metrics`,
+  `e2e-runs`, `manager`, `runtime`). Survives reboot, pollutes neither repository, and is
+  symmetric — neither side's tree is the host.
+- **Why not a gitignored directory inside this repo**, even though the user allowed one:
+  `.gitignore` is itself a *tracked* file, so an entry naming the consumer would publish the
+  name that External Project Confidentiality forbids. The gitignore would BE the leak.
+  Neutral ground cannot produce that problem at all. (A generically-named local dir such as
+  `docs/integration/local/` stays fine — the rule is about the consumer's name, not the
+  practice.)
+- **Copy, never move.** `mv` breaks the peer's live watch mid-flight; `cp` is reversible and
+  leaves the old file as a fallback. Both sides append a final pointer entry to the OLD file.
+- **The watches are the dangerous step.** Kill the old Monitor FIRST, identified by the file
+  it watches (`pgrep -af "<old path>"`), and only then start one on the new path — otherwise
+  two run and every entry arrives twice. Same for the cron.
+
 **Resuming the channel after a compact, a `/clear`, or a fresh session.** The channel is the
 only thing that survives — rebuild the contact from it, do not ask the user to re-explain:
 
