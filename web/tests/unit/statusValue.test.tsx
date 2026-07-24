@@ -528,3 +528,40 @@ describe('emphasis is declared by the project, never recognised by name', () => 
     expect(container.textContent).toContain('a')
   })
 })
+
+/**
+ * `false` and "we could not find out" must never look the same.
+ *
+ * The renderer already keeps them apart; these are GUARDS, not measurements — nothing here
+ * failed before they were written, and saying otherwise would be reporting a sentinel as
+ * proof. They exist because the distinction stopped being cosmetic: a producer now sends
+ * three-valued fields where `false` is a verdict, `true` is a different verdict, and `null`
+ * means an input was unreadable. If this renderer collapsed the last two into the first, an
+ * unreadable file would appear on screen as the project's own answer — and the reader has
+ * no way to tell, because the verdict arrives already formed.
+ */
+describe('a false is a value, an unknown is not', () => {
+  it('renders false as an answer, not as an absence', () => {
+    const { container } = render(<StatusValue value={{ wibble: false }} />)
+
+    expect(container.querySelector(UNKNOWN)).toBeNull()
+    expect(container.textContent).toContain('no')
+  })
+
+  it('renders null as an absence, not as a false', () => {
+    const { container } = render(<StatusValue value={{ wibble: null }} />)
+
+    expect(container.querySelector(UNKNOWN)).not.toBeNull()
+    expect(container.textContent).not.toContain('no')
+  })
+
+  it('keeps all three apart in one row, which is where they actually arrive', () => {
+    const { container } = render(
+      <StatusValue value={[{ a: true, b: false, c: null }]} />,
+    )
+
+    expect(container.querySelectorAll(UNKNOWN)).toHaveLength(1)
+    expect(container.textContent).toContain('yes')
+    expect(container.textContent).toContain('no')
+  })
+})
