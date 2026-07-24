@@ -251,6 +251,42 @@ operator decides otherwise. Written into `project_status.write`'s docstring, whe
 person proposing a write command will read it — it cannot be enforced in code, because
 set-core cannot know what a command it was told to spawn actually does.
 
+## What mechanically enforces anything in set-core — measured 2026-07-24
+
+Asked for by the consumer before proposing anything, on the sound argument that a proposal
+is worthless if it recommends what already exists or what cannot structurally run here.
+Measured rather than recalled, and the answer is uncomfortable enough to be worth keeping:
+
+**Nothing gates set-core's own git flow.** No non-sample hook in `.git/hooks`,
+`core.hooksPath` pointing at that same empty directory, no lefthook / husky / pre-commit
+config, no CI workflow of any kind. Not "warns but lets through" — there is nothing there.
+
+**What runs is observational.** Twelve Claude hooks across eight events, all memory,
+activity or skill routing; a grep for the only blocking construct returns zero in all four
+entry points.
+
+**What does block points elsewhere.** The gate engine refuses merges of *agent worktrees* —
+build, test, e2e, scope_check, test_files, review, rules, spec_verify, in run/warn/skip —
+not what a person or an assistant commits into set-core itself.
+
+**A finding that lands on the factory question.** Those gate sets are already differentiated
+per change type — infrastructure, schema, foundational, feature, cleanup-before,
+cleanup-after — each with its own mix. So the differentiation this track was about to build
+**exists here already, on a different axis**: what the change touches, not what kind of work
+it was. Combined with the consumer's "our four types are one path", the router idea was
+wrong twice over, and the honest next move is to look at the axis that exists before
+proposing another.
+
+**The absence is not theoretical.** A pristine `HEAD` checkout runs 94 failed / 2631 passed
+/ 21 errors, and nothing in the git flow has ever noticed, because nothing runs tests before
+a push. The consumer's rule — "green means nothing until someone runs it" — applies here
+more sharply than there: on their side a subset runs at release close; here not even that.
+
+**Their standard for gates, accepted before their research lands:** a gate is worth having
+when it was born from *one measured failure*, named in its own header. Anything else is
+ceremony. Whether set-core's eight gates can each name theirs is not yet known and is not
+being guessed at.
+
 ## Next, in order
 
 1. ~~**The acknowledgement surface.**~~ **Built.** The pain the consumer measured was state
