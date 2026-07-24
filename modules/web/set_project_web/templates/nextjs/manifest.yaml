@@ -1,66 +1,123 @@
 core:
-  - .gitignore
+  # `protected: true` — under --force, skip when the file exists AND differs from
+  # the template. A consumer that edited the file owns it; the framework must not
+  # silently replace hand-authored content (i18n catalogues, e2e harnesses, hook
+  # chains, ignore lists). Flag anything a project legitimately customises.
+  - path: .gitignore
+    protected: true
   - path: package.json
     protected: true
-  - project-knowledge.yaml
-  - rules/ui-conventions.md
-  - rules/functional-conventions.md
-  - rules/auth-conventions.md
-  - rules/data-model.md
-  - rules/deployment.md
-  - rules/testing-conventions.md
-  - rules/playwright-assertions.md
-  - rules/seo-conventions.md
-  - rules/accessibility.md
-  - rules/performance.md
-  - rules/security.md
-  - rules/error-handling.md
-  - rules/design-integration.md
-  - rules/web-frontend.md
-  - rules/worktree-setup.md
-  - rules/i18n-conventions.md
-  - rules/nextjs-patterns.md
-  - rules/schema-integrity.md
-  - rules/transaction-safety.md
-  - rules/seed-conventions.md
-  - rules/web-conventions.md
-  - rules/e2e-test-layering.md
+  - path: project-knowledge.yaml
+    protected: true
+  # Rules deploy to `.claude/rules/<name>.md` WITHOUT a set- prefix (_SET_PREFIX_PATHS
+  # covers `framework-rules/` only), so every name here can collide with a rule the
+  # project wrote itself. Protected: a project that authored its own
+  # `nextjs-patterns.md` keeps it; only never-seen rules land.
+  - path: rules/ui-conventions.md
+    protected: true
+  - path: rules/functional-conventions.md
+    protected: true
+  - path: rules/auth-conventions.md
+    protected: true
+  - path: rules/data-model.md
+    protected: true
+  - path: rules/deployment.md
+    protected: true
+  - path: rules/testing-conventions.md
+    protected: true
+  - path: rules/playwright-assertions.md
+    protected: true
+  - path: rules/seo-conventions.md
+    protected: true
+  - path: rules/accessibility.md
+    protected: true
+  - path: rules/performance.md
+    protected: true
+  - path: rules/security.md
+    protected: true
+  - path: rules/error-handling.md
+    protected: true
+  - path: rules/design-integration.md
+    protected: true
+  - path: rules/web-frontend.md
+    protected: true
+  - path: rules/worktree-setup.md
+    protected: true
+  - path: rules/i18n-conventions.md
+    protected: true
+  - path: rules/nextjs-patterns.md
+    protected: true
+  - path: rules/schema-integrity.md
+    protected: true
+  - path: rules/transaction-safety.md
+    protected: true
+  - path: rules/seed-conventions.md
+    protected: true
+  - path: rules/web-conventions.md
+    protected: true
+  - path: rules/e2e-test-layering.md
+    protected: true
   - path: vitest.config.ts
     protected: true
   - path: playwright.config.ts
     protected: true
   - path: tsconfig.json
     protected: true
-  - postcss.config.mjs
+  - path: postcss.config.mjs
+    protected: true
   - path: next.config.js
     protected: true
   - reflection.md
   - path: src/app/globals.css
     protected: true
-  - src/lib/prisma.ts
-  - src/lib/auth/storage-state.ts
+  - path: src/lib/prisma.ts
+    protected: true
+  - path: src/lib/auth/storage-state.ts
+    protected: true
   - path: .env.example
     protected: true
-  - tests/e2e/global-setup.ts
-  - tests/e2e/helpers/README.md
-  - messages/hu.json
-  - messages/en.json
-  - scripts/check-i18n-completeness.ts
+  # The project's e2e harness. A reset-on-start global-setup is SIGKILL-safe state
+  # management the framework must not replace with a generic scaffold.
+  - path: tests/e2e/global-setup.ts
+    protected: true
+  - path: tests/e2e/helpers/README.md
+    protected: true
+  # i18n catalogues are content, never scaffold — overwriting is total data loss.
+  - path: messages/hu.json
+    protected: true
+  - path: messages/en.json
+    protected: true
+  - path: scripts/check-i18n-completeness.ts
+    protected: true
   - path: eslint.config.mjs
     protected: true
-  - .husky/pre-commit
+  # A pre-commit hook may delegate to a hook manager (lefthook/husky) driving the
+  # project's own gate chain. Replacing it silently disarms every one of them.
+  - path: .husky/pre-commit
+    protected: true
   - path: set/orchestration/config.yaml
     merge: true
-  - framework-rules/web/api-design.md
-  - framework-rules/web/auth-middleware.md
-  - framework-rules/web/db-type-safety.md
-  - framework-rules/web/route-completeness.md
-  - framework-rules/web/schema-integrity.md
-  - framework-rules/web/security-patterns.md
-  - framework-rules/web/transaction-patterns.md
+  # These land as `.claude/rules/web/set-<name>.md` — namespaced, so they never
+  # collide with project-authored rules. Still protected: a consumer that tuned a
+  # framework rule to its own stack keeps the tuning.
+  - path: framework-rules/web/api-design.md
+    protected: true
+  - path: framework-rules/web/auth-middleware.md
+    protected: true
+  - path: framework-rules/web/db-type-safety.md
+    protected: true
+  - path: framework-rules/web/route-completeness.md
+    protected: true
+  - path: framework-rules/web/schema-integrity.md
+    protected: true
+  - path: framework-rules/web/security-patterns.md
+    protected: true
+  - path: framework-rules/web/transaction-patterns.md
+    protected: true
 
 modules:
   integrations:
     description: "External API patterns (webhooks, retry, rate limiting)"
     files:
-      - rules/integrations.md
+      - path: rules/integrations.md
+        protected: true
