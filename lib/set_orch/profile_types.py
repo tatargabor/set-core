@@ -667,6 +667,21 @@ class ProjectType(ABC):
         """
         return 0
 
+    def destructive_db_command_patterns(self) -> List[str]:
+        """Regexes for ecosystem-specific commands that mutate database rows.
+
+        Extends (never replaces) the Layer-1 baseline in `set_orch.db_safety`, which
+        already covers ecosystem-neutral data loss (raw DROP/TRUNCATE/DELETE,
+        `--accept-data-loss`, `migrate reset`). Override to add the verbs a given stack
+        uses for schema push, migration apply, or seeding — those read as harmless but
+        write rows on whatever `DATABASE_URL` names.
+
+        set-core consults this before running any command supplied by project config
+        (`post_merge_command`, plugin post-merge directives), so that a project cannot
+        hand the framework a destructive command aimed at a shared database.
+        """
+        return []
+
     def integration_pre_build(self, wt_path: str) -> bool:
         """Run minimal setup before integration build gate (e.g. DB schema sync).
 

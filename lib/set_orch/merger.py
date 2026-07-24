@@ -3041,12 +3041,53 @@ def _persist_change_review_learnings(change_name: str, state_file: str) -> None:
         )
 
 
+def _load_profile_for_db_safety() -> Any:
+    """Loaded profile for destructive-pattern extension, or None."""
+    try:
+        from .profile_loader import load_profile
+        return load_profile()
+    except Exception:
+        logger.debug("db_safety: profile load failed, using baseline patterns only",
+                     exc_info=True)
+        return None
+
+
+def _skip_if_destructive(command: str, context: str) -> bool:
+    """True when `command` must not run against this tree's database.
+
+    Post-merge commands execute in the MAIN working tree, whose `DATABASE_URL` is the
+    developer's real one. A project config can hand us `prisma db push
+    --accept-data-loss` there — and with `2>/dev/null || true` around it, the damage is
+    silent and the pipeline still reports success. Refuse the whole command rather than
+    trying to run the safe half: splitting a shell string on `&&` misreads `||`,
+    subshells and redirections, and half a pipeline is not what the project asked for.
+    """
+    from .db_safety import refuse_db_mutation
+
+    reason = refuse_db_mutation(
+        command, os.getcwd(), context=context,
+        profile=_load_profile_for_db_safety(),
+    )
+    if not reason:
+        return False
+    logger.warning(
+        "Post-merge: SKIPPED %s — %s. Schema sync against a shared database is the "
+        "project's own responsibility (its scripts can assert the target is disposable; "
+        "set-core cannot see that). Command: %s",
+        context, reason, command,
+    )
+    return True
+
+
 def _post_merge_custom_command(state_file: str) -> None:
     """Run post_merge_command from directives if configured."""
     # Source: merger.sh L169-180
     state = load_state(state_file)
     pmc = state.extras.get("directives", {}).get("post_merge_command", "")
     if not pmc:
+        return
+
+    if _skip_if_destructive(pmc, "post_merge_command"):
         return
 
     logger.info("Post-merge: running custom command: %s", pmc)
@@ -3074,6 +3115,8 @@ def _run_plugin_post_merge_directives(change_name: str) -> None:
             config = getattr(d, "config", {}) or {}
             cmd = config.get("command", "")
             if not cmd:
+                continue
+            if _skip_if_destructive(cmd, f"plugin post-merge directive ({change_name})"):
                 continue
             logger.info("Plugin post-merge directive: running '%s' for %s", cmd, change_name)
             result = run_command(["bash", "-c", cmd], timeout=300)

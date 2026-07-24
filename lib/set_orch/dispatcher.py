@@ -1053,6 +1053,75 @@ def _write_e2e_manifest(wt_path: str, change_name: str, change_reqs: list[str]) 
         logger.debug("Failed to write per-worktree e2e manifest (non-fatal)")
 
 
+def _apply_env_vars_to_env_file(env_file: str, env_vars: dict) -> int:
+    """Set `env_vars` in `.env` by replacing lines in place. Returns count applied.
+
+    The previous implementation parsed the file into a dict and rewrote it whole. That
+    dropped every comment and blank line, including the ones a project's own tooling
+    writes to explain a value ("# the main tree's, replaced by worktree-init") — and
+    with them the audit trail for anyone debugging why a tree points where it does.
+    Replacing matched lines and appending the rest preserves the file as authored.
+    """
+    lines: list[str] = []
+    if os.path.isfile(env_file):
+        with open(env_file) as f:
+            lines = f.read().splitlines()
+
+    remaining = dict(env_vars)
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        # Only real assignments are candidates; commented-out lines stay commented out.
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.partition("=")[0].strip()
+            if key in remaining:
+                value = str(remaining.pop(key))
+                quoted = value if value.startswith('"') else f'"{value}"'
+                out.append(f"{key}={quoted}")
+                continue
+        out.append(line)
+
+    for key, value in remaining.items():
+        value = str(value)
+        quoted = value if value.startswith('"') else f'"{value}"'
+        out.append(f"{key}={quoted}")
+
+    with open(env_file, "w") as f:
+        f.write("\n".join(out) + ("\n" if out else ""))
+    return len(env_vars)
+
+
+def _rerun_project_worktree_init(project_path: str, wt_path: str, change_name: str) -> None:
+    """Re-run the project's `set/hooks/worktree-init.sh` after env_vars are applied.
+
+    Contract (mirrors `bin/set-new::run_project_worktree_init`):
+        argv = [main project path, worktree path, change id]; cwd = the worktree.
+    Failure is non-fatal — a broken project hook must not stop a dispatch.
+    """
+    hook = os.path.join(wt_path, "set", "hooks", "worktree-init.sh")
+    if not os.path.isfile(hook):
+        return
+    if not os.access(hook, os.X_OK):
+        logger.warning(
+            "worktree-init hook not executable, skipping hook=%s change=%s "
+            "(chmod +x to enable) — config env_vars therefore have the last word",
+            hook, change_name,
+        )
+        return
+
+    logger.info("Re-running project worktree-init hook after env_vars change=%s wt=%s",
+                change_name, wt_path)
+    result = run_command(
+        [hook, project_path, wt_path, change_name], cwd=wt_path, timeout=300,
+    )
+    if result.exit_code != 0:
+        logger.warning(
+            "Project worktree-init hook failed (non-fatal) change=%s exit_code=%d "
+            "stderr=%s",
+            change_name, result.exit_code, (result.stderr or "")[-500:],
+        )
+
+
 def bootstrap_worktree(project_path: str, wt_path: str, change_name: str = "") -> int:
     """Copy .env files, inject port, and install deps in a worktree.
 
@@ -3017,24 +3086,26 @@ def dispatch_change(
         env_vars = _directives.get("env_vars", {})
         if env_vars and isinstance(env_vars, dict):
             env_file = os.path.join(wt_path, ".env")
-            # Read existing .env (may have been created by profile bootstrap)
-            existing: dict[str, str] = {}
-            if os.path.isfile(env_file):
-                with open(env_file) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, _, v = line.partition("=")
-                            existing[k.strip()] = v.strip()
-            # Merge: config overrides profile
-            existing.update(env_vars)
-            with open(env_file, "w") as f:
-                for k, v in existing.items():
-                    val = v if v.startswith('"') else f'"{v}"'
-                    f.write(f"{k}={val}\n")
-            logger.info("bootstrap: wrote %d env var(s) to .env in %s", len(existing), wt_path)
+            written = _apply_env_vars_to_env_file(env_file, env_vars)
+            logger.info("bootstrap: applied %d env var(s) to .env in %s", written, wt_path)
     except Exception as _e:
         logger.warning("Failed to write env_vars to .env in %s: %s", wt_path, _e)
+
+    # The project's worktree-init hook runs LAST — it wins over config env_vars.
+    #
+    # Ordering matters and used to be wrong. `set-new` runs `set/hooks/worktree-init.sh`
+    # at creation time; the hook is what makes a worktree independent (its own port
+    # base, its own database name derived from the change id). Then this function wrote
+    # `env_vars` over the result, restoring the SHARED DATABASE_URL from config — so
+    # every worktree pointed back at the same database, and the isolation the project
+    # had built for itself silently evaporated.
+    #
+    # `env_vars` is a bootstrap DEFAULT (what a fresh tree should start from). The hook
+    # is the project's per-tree decision, and it is the more specific of the two, so it
+    # gets the last word. Re-running is safe: the hook contract requires idempotence,
+    # and hooks in the field already implement it ("value already differs from main —
+    # not overwriting").
+    _rerun_project_worktree_init(project_path, wt_path, change_name)
 
     # Sync with main immediately after bootstrap — ensures archive commits (openspec/specs/,
     # openspec/changes/ deletions) from recently merged changes are present before agent starts.

@@ -1918,6 +1918,22 @@ class WebProjectType(CoreProfile):
             env["PW_FRESH_SERVER"] = "1"
         return env
 
+    def destructive_db_command_patterns(self) -> List[str]:
+        """Prisma verbs that write rows, on top of the Layer-1 baseline.
+
+        These read as routine and are the ones that actually appear in project configs:
+        `db push` rewrites the schema in place (dropping columns that no longer exist),
+        `migrate deploy` applies the branch's pending migrations — which routinely carry
+        DROP COLUMN / ALTER TYPE — and `db seed` writes rows outright. None of them is
+        safe against a shared or production-mirror database, however innocent the
+        surrounding command looks.
+        """
+        return [
+            r"\bprisma\b[^|;&]*\bdb\s+push\b",
+            r"\bprisma\b[^|;&]*\bmigrate\s+deploy\b",
+            r"\bprisma\b[^|;&]*\bdb\s+seed\b",
+        ]
+
     def integration_pre_build(self, wt_path: str) -> bool:
         """Run Prisma generate + DB schema sync before integration build gate.
 
