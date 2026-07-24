@@ -62,24 +62,50 @@ class DetectionBridge:
             if key in self._processed_findings:
                 continue
 
-            self._processed_findings.add(key)
-
             severity_hint = finding.get("severity", "unknown")
 
-            issue = self.issue_manager.register(
-                source="sentinel",
-                severity_hint=severity_hint,
-                error_summary=finding.get("summary", ""),
-                error_detail=finding.get("detail", ""),
-                affected_change=finding.get("change"),
-                environment=project_name,
-                environment_path=str(project_path),
-                source_finding_id=finding_id,
-            )
+            # The key is recorded only once `register` has RETURNED. It used to be
+            # recorded first, so a raised exception — an unwritable registry, a corrupt
+            # JSON, a full disk — still consumed the finding, and the `key in
+            # self._processed_findings` guard above then skipped it on every later scan.
+            # The finding stayed `open` in findings.json forever while nothing would
+            # ever look at it again. Measured on a consumer: 18 findings consumed, 10
+            # registered.
+            #
+            # A returned None is different and legitimate — muted, duplicate, or below
+            # the policy threshold — and DOES consume the finding, which is the point of
+            # muting. That case is logged rather than left to be inferred from the gap
+            # between two state files.
+            try:
+                issue = self.issue_manager.register(
+                    source="sentinel",
+                    severity_hint=severity_hint,
+                    error_summary=finding.get("summary", ""),
+                    error_detail=finding.get("detail", ""),
+                    affected_change=finding.get("change"),
+                    environment=project_name,
+                    environment_path=str(project_path),
+                    source_finding_id=finding_id,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Issue registration failed for finding %s in %s (%s: %s) — "
+                    "left unprocessed so the next scan retries it",
+                    finding_id, project_name, type(e).__name__, e,
+                )
+                continue
+
+            self._processed_findings.add(key)
 
             # Mark finding as pipeline-owned so sentinel doesn't double-fix
             if issue:
                 self._mark_finding_status(project_path, finding_id, "pipeline")
+            else:
+                logger.info(
+                    "Finding %s in %s consumed without an issue (muted, duplicate or "
+                    "below policy threshold); it stays 'open' and will not be rescanned",
+                    finding_id, project_name,
+                )
 
         self._save_processed()
 
