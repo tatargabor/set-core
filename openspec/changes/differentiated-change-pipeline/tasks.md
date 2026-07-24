@@ -1,13 +1,15 @@
 ## 1. Resolve the one structural choice first
 
-- [ ] 1.1 Decide where a lane signal declaration lives (project `set/` directory vs. the project-type profile vs. a status-contract command) and record the decision with its reason in `design.md` — every later task depends on it, and it is the only open structural question [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-and-a-promotion-condition]
+- [x] 1.1 Decide where a lane signal declaration lives and record the decision with its reason in `design.md` — closed as D9: in the tree, never behind a running system, because signals are evaluated during worktree verification where no live project exists [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system]
+- [ ] 1.2 Implement the tree-only reader and assert it attempts no contract command, HTTP call or database connection [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system]
 
 ## 2. Declaration reader (Layer 1, domain-free)
 
-- [ ] 2.1 Add the declaration dataclass and reader in a new `lib/set_orch/` module — five fields, no defaults, refusal with a named error on any missing one [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-and-a-promotion-condition]
+- [ ] 2.1 Add the declaration dataclass and reader in a new `lib/set_orch/` module — six fields, no defaults, refusal with a named error on any missing one [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
+- [ ] 2.1b Refuse a signal that names no triggering case (date + identifier of the incident it was written for) [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
 - [ ] 2.2 Refuse a condition expressed as a volume threshold (lines/files changed), with an error naming volume as the reason [REQ: a-signals-condition-shall-be-mechanically-decidable-and-shall-not-measure-quantity]
 - [ ] 2.3 Refuse a declaration whose scope includes the document that declares it [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it]
-- [ ] 2.4 Make one refused signal non-fatal to the others: report the refusal alongside the remaining results [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-and-a-promotion-condition]
+- [ ] 2.4 Make one refused signal non-fatal to the others: report the refusal alongside the remaining results [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case]
 - [ ] 2.5 Add the `ProjectType` extension point that supplies declarations, with a default returning nothing — and a test asserting `lib/set_orch/` contains no built-in signal, path pattern, or defect-store name [REQ: set-core-holds-no-lane-signal-of-its-own]
 - [ ] 2.6 Assert no declaration content is persisted into set-core's tree, cache or logs beyond the run [REQ: the-declaration-is-read-at-evaluation-time-and-never-persisted]
 
@@ -37,8 +39,8 @@
 
 - [ ] AC-1: WHEN a change is verified in a project declaring no lane signals THEN no signal is evaluated and no all-clear, zero-count or passing lane gate is reported [REQ: set-core-holds-no-lane-signal-of-its-own, scenario: a-project-declaring-nothing-gets-todays-behaviour]
 - [ ] AC-2: WHEN a project declares no signal but its tree contains recognisable structure THEN no signal is synthesised from it [REQ: set-core-holds-no-lane-signal-of-its-own, scenario: no-signal-is-inferred-from-the-frameworks-own-conventions]
-- [ ] AC-3: WHEN a signal declares everything but a scope THEN it is refused with an error naming the missing field and is not evaluated [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-and-a-promotion-condition, scenario: a-declaration-missing-its-scope-is-refused]
-- [ ] AC-4: WHEN one of three signals is refused THEN the other two are still evaluated and the refusal is reported alongside their result [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-and-a-promotion-condition, scenario: a-refused-signal-does-not-silently-disable-the-others]
+- [ ] AC-3: WHEN a signal declares everything but a scope THEN it is refused with an error naming the missing field and is not evaluated [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case, scenario: a-declaration-missing-its-scope-is-refused]
+- [ ] AC-4: WHEN one of three signals is refused THEN the other two are still evaluated and the refusal is reported alongside their result [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case, scenario: a-refused-signal-does-not-silently-disable-the-others]
 - [ ] AC-5: WHEN a signal's condition is "more than 300 lines changed" THEN it is refused with an error naming volume [REQ: a-signals-condition-shall-be-mechanically-decidable-and-shall-not-measure-quantity, scenario: a-size-threshold-is-refused]
 - [ ] AC-6: WHEN a signal's condition names a new source file matching the project's declared module pattern THEN the declaration is accepted [REQ: a-signals-condition-shall-be-mechanically-decidable-and-shall-not-measure-quantity, scenario: a-shape-condition-is-accepted]
 - [ ] AC-7: WHEN a signal's scope includes the document declaring it THEN the declaration is refused with an error naming self-inclusion [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it, scenario: a-scope-that-swallows-the-rule-that-defines-the-signal-is-refused]
@@ -54,3 +56,6 @@
 - [ ] AC-17: WHEN a signal scoped to per-change verification is reached during a merge-time integration run THEN it is not evaluated and its absence is not recorded as a pass [REQ: every-signal-states-its-scope-and-the-gate-evaluates-only-within-it, scenario: a-signal-scoped-to-per-change-verification-does-not-run-at-merge-time]
 - [ ] AC-18: WHEN a signal cannot be evaluated because its artefact is absent THEN it is reported as unevaluated with a reason and excluded from the did-not-fire set [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass, scenario: an-unevaluable-signal-is-not-a-pass]
 - [ ] AC-19: WHEN every signal is evaluated and none fires THEN evaluated and unevaluated counts are reported and no lane-correct verdict field is emitted [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass, scenario: no-overall-lane-correct-verdict-is-emitted]
+- [ ] AC-20: WHEN a signal declares everything but names no incident it was written for THEN it is refused with an error naming the missing triggering case [REQ: a-signal-declares-a-lane-a-condition-a-scope-a-baseline-a-promotion-condition-and-a-triggering-case, scenario: a-signal-with-no-triggering-case-is-refused]
+- [ ] AC-21: WHEN a change is verified in a worktree with no database and no application server THEN declarations are read from the tree and no contract command, HTTP call or database connection is attempted [REQ: the-declaration-lives-in-the-tree-being-verified-not-behind-a-running-system, scenario: declarations-are-read-with-no-service-running]
+- [ ] AC-22: WHEN a signal fires THEN the message includes the incident's date and identifier and the way to suppress that one signal [REQ: the-triggering-case-appears-in-the-gates-own-message-not-only-in-the-specification, scenario: a-firing-signal-states-why-it-exists]

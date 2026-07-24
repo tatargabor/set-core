@@ -131,13 +131,38 @@ spec describing the violation.**
 
 Rollback is removing the declaration; the framework half is inert without one.
 
+**D9 — The declaration lives in the tree, and the rationale lives with the gate.** This
+closed the structural question that was left open above; it was settled by measured
+experience from a project that has run the pattern for months, not by preference here.
+
+*Where.* Not the status contract. Their gates run in a pre-push hook with no database and
+no server — the same constraint that made the status contract itself "file plus CLI, no
+HTTP" — and lane signals are evaluated during verification of a **worktree**, which is the
+same environment: there is no live project to ask. A declaration reachable only through a
+running system is unreadable exactly when it is needed, and it fails in the direction that
+looks like "nothing to check".
+
+*How many places.* The cost of each split was measured across four homes — the call (the
+hook configuration), the execution (the gate script), the norm (the rule prose), and the
+debt (the baseline). The finding is asymmetric and it is the useful part: **the
+configuration↔implementation split cost zero measured incidents, while prose as a third
+home cost three** — a third of the rule corpus referencing files that no longer existed
+(43 lines of debt still outstanding), four parallel process descriptions with different
+phase numbering that did not contradict each other but did not know about each other, and a
+count in prose that said 7 where the reality was 17, erring *downward* so it understated the
+risk. So: separate the call from the execution freely; do not move the norm out of reach.
+
+*Which direction the link must be strong.* Measured on their tree: 14 of 19 gates name a
+rule, 11 of 76 rules name a gate. The asymmetry is correct, and the reason generalises —
+**the gate's message is what someone reads at the moment it fires**, and that is the only
+moment its rationale is worth anything. If the reason lives one indirection away, the
+fastest available response is to suppress the gate. Hence two requirements: a *triggering
+case* is a mandatory declaration field, and it must appear in the firing message along with
+the way to suppress that one signal — because a reader who cannot find the narrow bypass
+will find the blanket one.
+
 ## Open Questions
 
-- **Where a declaration lives.** Options: the project's `set/` directory, the existing
-  project-type profile, or the status contract itself as a declared command. The contract
-  is attractive because the reading discipline already exists — but it is a *runtime read*
-  of a live project, whereas signals are needed during verification of a worktree. Decide
-  before the reader is written; it is the only structural choice left.
 - **Whether a lane needs a name at all.** The two lanes are currently distinguished only by
   which end they gate. Naming them invites the taxonomy the verdict defers. Leaning toward
   leaving them unnamed until a second pipeline exists.

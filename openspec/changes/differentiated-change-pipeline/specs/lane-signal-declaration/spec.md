@@ -32,14 +32,21 @@ everyone else, while looking authoritative to both.
   other structure set-core recognises
 - **THEN** set-core SHALL NOT synthesise a signal from that structure
 
-### Requirement: A signal declares a lane, a condition, a scope, a baseline and a promotion condition
-A lane signal declaration SHALL carry all five fields. A declaration missing any of them
+### Requirement: A signal declares a lane, a condition, a scope, a baseline, a promotion condition and a triggering case
+A lane signal declaration SHALL carry all six fields. A declaration missing any of them
 SHALL be refused with a named error, and the signal SHALL NOT be evaluated.
 
 Refusal rather than a default is deliberate for each field: a defaulted scope evaluates
 work the author never meant it to judge, a defaulted baseline forgives existing violations
 silently, and a defaulted promotion condition turns a warning into a blocker without
 anybody deciding it.
+
+The **triggering case** — a date and an identifier for the incident the signal was written
+in response to — is mandatory for a different reason, and it is the one field that would
+normally be left to convention. A signal with no incident behind it is a guess dressed as
+a rule, and there is no way to tell the two apart later. In a project running this pattern
+today, 14 of 19 gates carry a measured triggering case in their header and the remaining
+five are not wrong, merely unable to prove anything about themselves.
 
 #### Scenario: A declaration missing its scope is refused
 - **WHEN** a signal declares a condition, a lane, a baseline and a promotion condition, but
@@ -51,6 +58,43 @@ anybody deciding it.
 - **WHEN** one of three declared signals is refused as malformed
 - **THEN** the remaining two SHALL still be evaluated
 - **AND** the refusal SHALL be reported alongside their result, not in place of it
+
+#### Scenario: A signal with no triggering case is refused
+- **WHEN** a signal declares a lane, condition, scope, baseline and promotion condition but
+  names no incident it was written in response to
+- **THEN** set-core SHALL refuse the signal with an error naming the missing triggering case
+
+### Requirement: The declaration lives in the tree being verified, not behind a running system
+A lane signal declaration SHALL be readable from the checked-out tree alone. set-core SHALL
+NOT obtain declarations by invoking a project's status contract, an HTTP endpoint, or
+anything else requiring a running application or database.
+
+Signals are evaluated during verification of a worktree, where there is no live project to
+ask. A declaration reachable only through a running system is unreadable exactly when it is
+needed, and a gate that cannot read its own configuration fails in the direction that looks
+like "nothing to check".
+
+#### Scenario: Declarations are read with no service running
+- **WHEN** a change is verified in a worktree with no database and no application server
+- **THEN** set-core SHALL read the project's declarations from the tree
+- **AND** SHALL NOT attempt a contract command, an HTTP call, or a database connection
+
+### Requirement: The triggering case appears in the gate's own message, not only in the specification
+When a signal fires, the reported message SHALL carry the signal's triggering case. It SHALL
+NOT be sufficient for that case to exist only in the declaration file or in this
+specification.
+
+The person reading a gate's output is reading it *because it just fired*, and that is the
+only moment the reason is worth anything. If the rationale lives one indirection away, the
+fastest available response is to suppress the gate — so a signal that cannot explain itself
+at the point of firing trains people to switch it off.
+
+#### Scenario: A firing signal states why it exists
+- **WHEN** a signal fires on a change
+- **THEN** the reported message SHALL include the date and identifier of the incident the
+  signal was written for
+- **AND** SHALL include the way to suppress this one signal, rather than leaving a blanket
+  bypass as the reader's only discoverable option
 
 ### Requirement: A signal's condition SHALL be mechanically decidable and SHALL NOT measure quantity
 A lane signal's condition SHALL be evaluable from the delivered artefacts without a model,
