@@ -94,10 +94,23 @@ describe('shape, not vocabulary', () => {
     expect(container.querySelector('pre')).not.toBeNull()
   })
 
-  it('reports a count for a non-empty list so the reader is never guessing', () => {
+  it('counts ROWS, never "items", because the key above it names a domain', () => {
+    // The count is the renderer's own, and the wording is what keeps it from being read
+    // as the project's. Under a key like `openManualTasks`, "3 items" reads as "3 open
+    // tasks" — and once the project publishes its own derived open-count, the screen
+    // carries two numbers about one thing, disagreeing. The renderer counts rows; what
+    // the rows MEAN is never its claim to make.
     const { container } = render(<StatusValue value={[{ k: 1 }, { k: 2 }, { k: 3 }]} />)
 
-    expect(container.textContent).toContain('3 items')
+    expect(container.textContent).toContain('3 rows')
+    expect(container.textContent).not.toContain('3 items')
+  })
+
+  it('says row, not rows, for one — a count that misreports itself is still a false value', () => {
+    const { container } = render(<StatusValue value={[{ k: 1 }]} />)
+
+    expect(container.textContent).toContain('1 row')
+    expect(container.textContent).not.toContain('1 rows')
   })
 })
 

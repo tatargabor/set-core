@@ -334,7 +334,18 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
     if (value.every(isPlainObject)) {
       return (
         <div className="space-y-1">
-          <div className="text-[11px] text-neutral-500">{value.length} item{value.length === 1 ? '' : 's'}</div>
+          {/* This number is the renderer's, not the project's, and it says so. "15 items"
+              under a key called `openManualTasks` reads as "15 open tasks" — and once the
+              project publishes its own derived count, the two sit on one screen saying
+              different things, which is the false-value shape with the misleading half
+              coming from here. A count of ROWS cannot be mistaken for a claim about what
+              the rows mean. Never restore domain-neutral-sounding wording like "items". */}
+          <div
+            className="text-[11px] text-neutral-500"
+            title="rows as delivered — set-core counts them, it does not interpret them"
+          >
+            {value.length} row{value.length === 1 ? '' : 's'}
+          </div>
           <Table rows={value as Record<string, unknown>[]} />
         </div>
       )
