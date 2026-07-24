@@ -99,6 +99,20 @@ summary, in a status line, in a compact. A body that states the limit while the 
 overclaims has put the correction where nobody is standing, which is the same defect as the
 overclaiming name one section up.
 
+**Record the pattern that was WRONG, not only the number that is right.** A corrected figure
+sitting alone invites the next reader to re-derive it — and they will reach for the same
+obvious query, because it was obvious to you too. Measured across this day: `grep -i` on a
+Hungarian keyword returned 12 where the answer was 7, matching a title containing the word
+and a note saying the thing was *pending* — the two cases that mean the opposite; an
+unanchored severity match, a bare substring search for a field name, and a completeness-word
+sweep all failed the same way. In every case the corrected number is the cheap half of the
+finding and the refuted pattern is the durable half.
+
+The stronger form, where it fits: **hold the wrong pattern in a test.** `test_a_bare_substring
+_check_would_not_have_caught_it` exists so that a later "simplification" back to `key in
+document` fails instead of looking identical and quietly checking nothing. A comment asks to
+be believed; a test refuses to be reverted.
+
 **A zero with an empty breakdown is a shape error until proven otherwise.** From the same
 measurement: a count came back `0` because the reader looked for its list under the wrong
 key of an envelope, so `undefined` became an empty array became zero — and that zero would
