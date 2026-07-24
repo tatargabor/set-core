@@ -39,6 +39,15 @@ holds and the distinction is what keeps the work honest:
   and helps decide; the project's own CI remains the only thing that deploys. Keep that
   line visible in whatever gets built — it is also the consumer's own iron rule.
 
+**Standing constraint — NEVER deploy a consumer to production. Test environment at most.**
+Stated by the user on 2026-07-24 and not time-limited. It binds every path, not just the
+obvious one: not a direct deploy command, not a push to a branch whose CI promotes to
+production, not a release-management action that ends in a production release, and not a
+"just this once to verify the fix". If a piece of work would cause a production deploy as a
+*consequence*, that counts and the answer is still no — ask the user instead. The framework
+never executes deployments at all (see the factory-verdict note above); this constraint is
+the narrower, operational one that also covers merely *triggering* someone else's pipeline.
+
 **The safety track below is finished, and it is a precondition for this, not a substitute.**
 Do not let it become the work again. And a shipped commit is not a running system — a
 long-lived service holds the code it started with (`systemd ExecMainStartTimestamp`).
