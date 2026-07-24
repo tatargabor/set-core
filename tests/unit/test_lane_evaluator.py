@@ -78,15 +78,63 @@ def test_a_baselined_violation_is_silent_and_a_new_one_is_not():
     assert report.fired[0].violations == ("DEF-99",)
 
 
-def test_outstanding_debt_is_reported_even_when_nothing_new_fires():
+def test_declared_and_checked_debt_are_reported_when_nothing_new_fires():
     """A quiet zero is how a backlog stops being anyone's problem."""
     signal = _signal(baseline=("DEF-11", "DEF-12"))
 
     report = ev.evaluate([signal], detect=lambda s: ["DEF-11", "DEF-12"])
 
     assert report.fired == []
-    assert report.outstanding_debt == 2
-    assert report.summary()["outstanding_debt"] == 2
+    assert report.declared_debt == 2
+    assert report.checked_debt == 2
+    assert report.unchecked_debt == 0
+    assert report.summary()["declared_debt"] == 2
+
+
+def test_declared_debt_is_counted_even_when_NOTHING_could_be_evaluated():
+    """The debt was counted along the evaluation path, so an unevaluable signal read 0.
+
+    Measured by the peer against a real declaration: ten baselined entries reported as
+    "outstanding baselined debt: 0". The increment sat after three `continue`s (out of
+    scope / raised / could not decide), so with no condition handlers registered EVERY
+    project would have seen zero — in the summary line, which is the most-read copy.
+
+    A baseline is a DECLARED quantity. It is read from the declaration, never accumulated
+    by whatever managed to run.
+    """
+    signal = _signal(baseline=("DEF-11", "DEF-12", "DEF-13"))
+
+    report = ev.evaluate([signal], detect=lambda s: None)  # could not decide
+
+    assert report.unevaluated != []
+    assert report.declared_debt == 3, "declared debt must not depend on the evaluation"
+    assert report.checked_debt == 0
+    assert report.unchecked_debt == 3
+
+
+def test_no_debt_and_unchecked_debt_are_two_different_statements():
+    """Collapsed into one integer, the reassuring one wins."""
+    empty = ev.evaluate([_signal(baseline=())], detect=lambda s: [])
+    unchecked = ev.evaluate([_signal(baseline=("D-1",))], detect=lambda s: None)
+
+    assert empty.summary()["declared_debt"] == 0
+    assert empty.summary()["unchecked_debt"] == 0
+
+    assert unchecked.summary()["declared_debt"] == 1
+    assert unchecked.summary()["unchecked_debt"] == 1
+    assert empty.summary() != unchecked.summary(), (
+        "a project with no debt and one whose debt was never looked at must not produce "
+        "the same summary")
+
+
+def test_an_out_of_scope_signals_debt_is_still_declared():
+    """The first of the three `continue`s, checked on its own."""
+    signal = _signal(baseline=("D-1", "D-2"), scope="merge-time")
+
+    report = ev.evaluate([signal], detect=lambda s: [], phase="per-change-verification")
+
+    assert report.declared_debt == 2
+    assert report.checked_debt == 0
 
 
 def test_growing_a_baseline_fails_the_gate_regardless_of_severity():

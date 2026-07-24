@@ -125,6 +125,69 @@ def test_an_unhandled_kind_does_not_blame_the_projects_tree(tmp_path):
     assert "not at fault" in output
 
 
+def test_the_summary_line_does_not_report_zero_debt_for_debt_it_never_checked(tmp_path):
+    """The summary line is the most-read copy, so a false zero costs most there.
+
+    Measured by the peer on a real tree: ten declared baseline entries printed as
+    "outstanding baselined debt: 0", because the count was accumulated along the
+    evaluation path and no condition handler was registered.
+    """
+    tree = _tree(tmp_path, {"sig": _decl(baseline=["D-1", "D-2", "D-3"])})
+
+    output = lg.format_output(lg.build_report(tree, change=_change()), change=_change())
+
+    assert "3 declared" in output
+    assert "0 checked" in output
+    assert "NOT CHECKED" in output
+    assert "debt: 0" not in output
+
+
+def test_the_framework_applies_exclusions_not_each_handler(monkeypatch, tmp_path):
+    """The self-inclusion waiver rests on the exclusion actually taking effect.
+
+    `_refuse_if_self_inclusive` stops refusing a self-selecting condition as soon as an
+    exclusion covers the declaration file. If honouring exclusions were left to each
+    handler, a signal would buy its way past that guard with a promise nothing enforces —
+    and it would hold exactly until the second handler was written.
+
+    Raised by an integration peer who hit the mirror on their own side: listing their
+    declaration file in `exclusions` short-circuited the whole guard for that signal. An
+    escape hatch that disables the protection of the signal it belongs to looks like care
+    from the outside.
+    """
+    tree = _tree(tmp_path, {"sig": _decl(exclusions=["docs/**", "generated/**"])})
+    monkeypatch.setitem(lg._KIND_HANDLERS, "new_module",
+                        lambda s, p: ["src/real/index.ts", "docs/guide.md",
+                                      "generated/api-client.ts"])
+
+    report = lg.build_report(tree, change=_change())
+
+    assert report.fired[0].violations == ("src/real/index.ts",), (
+        "a handler that ignores exclusions must not be able to report an excluded path")
+
+
+def test_an_exclusion_cannot_empty_a_result_a_handler_could_not_produce(monkeypatch,
+                                                                        tmp_path):
+    """The mirror: filtering must not turn "could not decide" into "found nothing"."""
+    tree = _tree(tmp_path, {"sig": _decl()})
+    monkeypatch.setitem(lg._KIND_HANDLERS, "new_module", lambda s, p: None)
+
+    report = lg.build_report(tree, change=_change())
+
+    assert len(report.unevaluated) == 1
+    assert report.did_not_fire == []
+
+
+def test_a_non_path_violation_is_not_silently_dropped_by_exclusions(monkeypatch, tmp_path):
+    """A handler may return ids, not paths. Only path-shaped values can match a glob."""
+    tree = _tree(tmp_path, {"sig": _decl(exclusions=["docs/**"])})
+    monkeypatch.setitem(lg._KIND_HANDLERS, "new_module", lambda s, p: ["DEF-77", "BUG-3"])
+
+    report = lg.build_report(tree, change=_change())
+
+    assert set(report.fired[0].violations) == {"DEF-77", "BUG-3"}
+
+
 def test_the_output_names_unevaluated_signals(tmp_path):
     tree = _tree(tmp_path, {"sig": _decl()})
 

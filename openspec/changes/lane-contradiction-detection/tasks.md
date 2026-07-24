@@ -19,7 +19,7 @@
 - [x] 3.1 Evaluate a signal against a change's delivered artefacts and return one of three outcomes: fired / did not fire / could not be evaluated [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]
 - [x] 3.2 Suppress baselined violations from the report [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
 - [x] 3.3 Fail the gate when a change would grow a baseline, independently of the signal's severity [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
-- [x] 3.4 Report outstanding baselined debt even when nothing new fired [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
+- [x] 3.4 Report DECLARED baselined debt (read from the declaration, not accumulated along the evaluation path) and, separately, how much of it an evaluation reached — peer-measured defect: ten declared entries printed as "debt: 0" because the count sat after three `continue`s, so with no handlers registered every project saw zero in the summary line [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink]
 - [x] 3.5 Enforce WARN as the starting severity, and refuse a promotion whose declared measurement is not recorded — reporting the refusal rather than downgrading silently [REQ: a-signal-starts-at-warn-and-is-promoted-only-by-its-own-measured-condition]
 - [x] 3.6 Restrict evaluation to the signal's declared scope, and record an out-of-scope signal as not-evaluated rather than as a pass [REQ: every-signal-states-its-scope-and-the-gate-evaluates-only-within-it]
 
@@ -33,6 +33,8 @@
 - [x] 4.3 Assert the gate emits no overall lane-correct verdict field, and that unevaluated signals are excluded from the did-not-fire count [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass]
 - [x] 4.4 Assert a project with no declarations sees no evaluation and **no all-clear** — absence must stay distinguishable from a clean run [REQ: set-core-holds-no-lane-signal-of-its-own]
 - [x] 4.5 Assert no model call and no new change-definition field is introduced by the gate [REQ: the-lane-is-measured-after-the-work-never-classified-before-it]
+
+- [x] 4.8 The framework applies a signal's exclusions to handler results, rather than trusting each handler to. The self-inclusion refusal is WAIVED as soon as an exclusion covers the declaration file, so the waiver is only honest if the exclusion is enforced — otherwise a signal buys its way past the guard with a promise nothing checks. Peer-raised from the mirror on their side: listing the declaration file in `exclusions` short-circuited the whole guard for that signal, and an escape hatch that disables its own signal's protection looks like care [REQ: a-signal-shall-not-evaluate-the-corpus-that-defines-it]
 
 ## 5. Prove the tests are load-bearing
 
@@ -56,7 +58,8 @@
 - [x] AC-13: WHEN a signal is set to ENFORCE without the recorded measurement THEN the promotion is refused, the signal evaluates at WARN, and the refusal is reported [REQ: a-signal-starts-at-warn-and-is-promoted-only-by-its-own-measured-condition, scenario: promotion-without-evidence-is-refused]
 - [x] AC-14: WHEN a baseline holds one violation and a change introduces a second THEN exactly the new one is reported [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink, scenario: a-pre-existing-violation-is-silent-a-new-one-is-not]
 - [x] AC-15: WHEN a change adds a violation and baselines it in the same change THEN the gate fails naming baseline growth, regardless of severity [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink, scenario: a-change-that-would-grow-the-baseline-fails]
-- [x] AC-16: WHEN nothing new fires and the baseline is non-empty THEN the outstanding count is reported and the change is not reported as violation-free [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink, scenario: the-remaining-debt-is-reported-even-when-nothing-new-fired]
+- [x] AC-16: WHEN nothing new fires and the baseline is non-empty THEN the DECLARED count is reported, the checked count is reported separately, and the change is not reported as violation-free
+- [x] AC-24: WHEN debt is declared and no evaluation reaches it THEN declared and unchecked are reported as two numbers, never as a single zero [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink, scenario: debt-that-was-never-checked-is-not-reported-as-no-debt] [REQ: a-baseline-records-existing-violations-as-debt-and-may-only-shrink, scenario: the-remaining-debt-is-reported-even-when-nothing-new-fired]
 - [x] AC-17: WHEN a signal scoped to per-change verification is reached during a merge-time integration run THEN it is not evaluated and its absence is not recorded as a pass [REQ: every-signal-states-its-scope-and-the-gate-evaluates-only-within-it, scenario: a-signal-scoped-to-per-change-verification-does-not-run-at-merge-time]
 - [x] AC-18: WHEN a signal cannot be evaluated because its artefact is absent THEN it is reported as unevaluated with a reason and excluded from the did-not-fire set [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass, scenario: an-unevaluable-signal-is-not-a-pass]
 - [x] AC-19: WHEN every signal is evaluated and none fires THEN evaluated and unevaluated counts are reported and no lane-correct verdict field is emitted [REQ: the-gate-reports-what-it-could-not-decide-and-never-converts-that-into-a-pass, scenario: no-overall-lane-correct-verdict-is-emitted]

@@ -99,7 +99,20 @@ class LaneReport:
     outcomes: list = field(default_factory=list)
     refusals: list = field(default_factory=list)
     declared_nothing: bool = True
-    outstanding_debt: int = 0
+
+    #: Baseline entries the project DECLARED, summed straight from the declarations. A
+    #: baseline is a declared quantity, so it is read from the declaration — never
+    #: accumulated along the evaluation path, which is how it used to be counted and why it
+    #: reported `0` for a project declaring ten. The increment sat after three `continue`s
+    #: (out of scope / raised / could not decide), so with no condition handlers registered
+    #: **every** project saw zero debt, in the summary line — the most-read copy.
+    declared_debt: int = 0
+
+    #: How much of that debt was actually LOOKED AT. Separate from `declared_debt` on
+    #: purpose: "there is no debt" and "we could not check the debt" are opposite
+    #: statements, and collapsing them into one integer makes the reassuring one win.
+    checked_debt: int = 0
+
     baseline_growth: tuple = ()
 
     @property
@@ -122,6 +135,11 @@ class LaneReport:
             return True
         return any(o.severity == ENFORCE for o in self.fired)
 
+    @property
+    def unchecked_debt(self) -> int:
+        """Declared debt that no evaluation reached. Reported, never silently dropped."""
+        return max(0, self.declared_debt - self.checked_debt)
+
     def summary(self) -> dict:
         """Counts, never a verdict. `evaluated` excludes what could not be decided."""
         return {
@@ -130,7 +148,9 @@ class LaneReport:
             "did_not_fire": len(self.did_not_fire),
             "unevaluated": len(self.unevaluated),
             "refused": len(self.refusals),
-            "outstanding_debt": self.outstanding_debt,
+            "declared_debt": self.declared_debt,
+            "checked_debt": self.checked_debt,
+            "unchecked_debt": self.unchecked_debt,
             "baseline_growth": len(self.baseline_growth),
         }
 
@@ -185,6 +205,11 @@ def evaluate(signals: Iterable[LaneSignal],
     growth = []
 
     for signal in signals:
+        # Counted BEFORE any `continue`: a baseline is a declared quantity, readable from
+        # the declaration itself. Accumulating it along the evaluation path made an
+        # unevaluable signal report zero debt — see `LaneReport.declared_debt`.
+        report.declared_debt += len(set(signal.baseline))
+
         severity, refusal = resolve_severity(signal, promotions)
         if refusal:
             report.refusals.append(refusal)
@@ -216,7 +241,7 @@ def evaluate(signals: Iterable[LaneSignal],
             continue
 
         baselined = set(signal.baseline)
-        report.outstanding_debt += len(baselined)
+        report.checked_debt += len(baselined)
         fresh = tuple(v for v in found if v not in baselined)
 
         if fresh:

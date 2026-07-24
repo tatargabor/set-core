@@ -76,8 +76,19 @@ and it is not permitted to grow.
 
 #### Scenario: The remaining debt is reported even when nothing new fired
 - **WHEN** a change introduces no new violation and the baseline is non-empty
-- **THEN** the gate SHALL report the count of outstanding baselined violations
+- **THEN** the gate SHALL report the count of baselined violations the project DECLARED,
+  read from the declaration itself and not accumulated along the evaluation path
+- **AND** SHALL report separately how many of them an evaluation actually reached
 - **AND** SHALL NOT report the change as having no violations
+
+#### Scenario: Debt that was never checked is not reported as no debt
+- **WHEN** a signal declares baselined violations and no evaluation reaches them, because
+  the signal is out of scope, its detector raised, or its condition could not be decided
+- **THEN** the gate SHALL report the declared count as declared, and the unchecked count
+  as unchecked
+- **AND** SHALL NOT report a single debt figure of zero, because "there is no debt" and
+  "the debt was not looked at" are opposite statements and one integer lets the
+  reassuring one win
 
 ### Requirement: Every signal states its scope, and the gate evaluates only within it
 The gate SHALL evaluate a signal only against work inside the signal's declared scope. A

@@ -26,10 +26,10 @@ measures, after the fact, whether the delivered artefacts contradict it.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from .lane_evaluator import LaneReport, evaluate
-from .lane_signals import LaneSignal, read_declarations
+from .lane_signals import LaneSignal, _matches, read_declarations
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,18 @@ def _detector_for(wt_path: str) -> Callable[[LaneSignal], Optional[list]]:
     Layer 1 knows how to READ a condition, never what any particular condition means for a
     given project's layout — so an unrecognised kind is never an empty list. That direction
     matters: an empty list would make every unknown condition look like a clean result.
+
+    **Exclusions are applied HERE, by the framework, not left to each handler.** The reason
+    is a waiver: `lane_signals._refuse_if_self_inclusive` stops refusing a self-selecting
+    condition as soon as an exclusion covers the declaration file. That waiver is only
+    honest if the exclusion is guaranteed to take effect — otherwise a signal buys its way
+    past the guard with a promise nothing enforces, and a per-handler implementation is
+    exactly the kind of promise that holds until the second handler is written.
+
+    Raised by an integration peer, who found the mirror of it on their own side: listing
+    their declaration file in `exclusions` short-circuited the whole guard for that signal.
+    **An escape hatch that disables the protection of the same signal it belongs to looks
+    like care from the outside** — which is what makes it worth enforcing centrally.
     """
 
     def detect(signal: LaneSignal) -> Optional[list]:
@@ -67,9 +79,31 @@ def _detector_for(wt_path: str) -> Callable[[LaneSignal], Optional[list]]:
                 "not at fault. A handler is added once a project declares a signal that "
                 "needs it — until then the signal is unevaluated, never a pass"
             )
-        return handler(signal, wt_path)
+        found = handler(signal, wt_path)
+        if found is None:  # "could not decide" survives untouched
+            return None
+        return _apply_exclusions(signal, found)
 
     return detect
+
+
+def _apply_exclusions(signal: LaneSignal, found: Iterable) -> list:
+    """Drop violations covered by the signal's own exclusions.
+
+    A violation is usually a path, but a handler may return an id. Only path-shaped strings
+    can match a glob, so anything else passes through untouched rather than being silently
+    dropped — dropping an unrecognised shape would be the reassuring direction again.
+    """
+    # Materialised once: `found` may be a generator, and consuming it twice would silently
+    # return an empty list — a false absence produced by the code that exists to prevent
+    # them.
+    all_found = list(found)
+    kept = [v for v in all_found
+            if not any(_matches(str(v), pattern) for pattern in signal.exclusions)]
+    if len(kept) != len(all_found):
+        logger.debug("lane signal: %d violation(s) removed by declared exclusions",
+                     len(all_found) - len(kept))
+    return kept
 
 
 #: Condition kinds this layer can evaluate. Empty by design in this commit: the handlers
@@ -132,9 +166,17 @@ def format_output(report: LaneReport, change: Any = None) -> str:
     summary = report.summary()
     lines.append(
         f"signals: {summary['fired']} fired, {summary['did_not_fire']} did not fire, "
-        f"{summary['unevaluated']} could not be evaluated, {summary['refused']} refused; "
-        f"outstanding baselined debt: {summary['outstanding_debt']}"
+        f"{summary['unevaluated']} could not be evaluated, {summary['refused']} refused"
     )
+    # Declared debt and checked debt are printed as two numbers, never one. "There is no
+    # debt" and "the debt was not looked at" are opposite statements, and a single integer
+    # lets the reassuring one win — in the summary line, which is the most-read copy.
+    debt = (f"baselined debt: {summary['declared_debt']} declared, "
+            f"{summary['checked_debt']} checked")
+    if summary["unchecked_debt"]:
+        debt += (f", {summary['unchecked_debt']} NOT CHECKED (no evaluation reached them — "
+                 f"this is not a statement that they are resolved)")
+    lines.append(debt)
     lines.append("This gate can show a contradiction; it cannot show there is none.")
     return "\n".join(lines)
 
