@@ -304,7 +304,13 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
       )
     }
     return (
-      <div className={depth > 0 ? 'rounded border border-neutral-800 bg-neutral-900/40 p-2' : ''}>
+      // The minimum width is not decoration. A nested object inside a table cell renders a
+      // two-column grid whose label column alone wants 8rem; in a narrow cell the value
+      // column collapses to about one character per line, and a one-sentence field turns a
+      // row into a 500-pixel tower. Measured on a live answer, not reasoned about — a
+      // ragged nested key cannot be flattened into columns (correctly, since most rows do
+      // not have it), so the cell is where it has to be survivable.
+      <div className={depth > 0 ? 'rounded border border-neutral-800 bg-neutral-900/40 p-2 min-w-[18rem]' : ''}>
         <KeyGrid obj={value} depth={depth} />
       </div>
     )

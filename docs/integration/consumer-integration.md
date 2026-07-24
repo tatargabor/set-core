@@ -335,13 +335,25 @@ the marking itself not rendered as data, 0 JS errors. 6 of 8 new tests measure, 
 and the test *named* for false absence fails against HEAD on its other assertion, so its
 false-absence half is a guard, not a measurement.
 
-### The property this keeps re-proving, measured seven times
+### The property this keeps re-proving, measured eight times
 
-New producer fields reach the screen with **zero framework changes** — most recently 67 bug
-rows carrying two new planning fields, and a blocker carrying a nested list plus a nested
-table (`plannedIn` on 4, `wasPlannedIn` on 22). This is no longer a pleasant surprise; it is
-the contract's defining property, and the useful inversion is: **the day a new field needs a
-framework change, a name has been burned in somewhere, and that is the bug** — not the field.
+New producer fields reach the screen with **zero framework changes** — most recently a
+`coverage` object (`source` / `excludes` / `complete`) attached both to a list and to the
+blocker row derived from it, plus a new `kind` on an unknowns row. Measured on this side
+rather than taken on trust: all three render, on both tabs, with 0 JS errors and no framework
+edit. Before that: 67 bug rows carrying two new planning fields, and a blocker carrying a
+nested list plus a nested table. This is no longer a pleasant surprise; it is the contract's
+defining property, and the useful inversion is: **the day a new field needs a framework
+change, a name has been burned in somewhere, and that is the bug** — not the field.
+
+**The eighth one did surface a defect, and not in the reading — in the LAYOUT.** A ragged
+nested key cannot be flattened into columns (correctly: most rows do not have it), so the
+object renders inside one cell, where its own two-column grid wants 8rem for labels alone. In
+a narrow cell the value column collapsed to about one character per line and a one-sentence
+field turned the row into a 500-pixel tower, pushing the other two blockers off the screen.
+Fixed with a minimum width on nested objects. Worth recording because of what found it:
+**looking at the screen.** The field-presence check said RENDERED for all three — structural
+counts prove a thing renders and say nothing about whether it is readable.
 
 ### Still open
 
@@ -473,6 +485,39 @@ high-severity bug open while a release closes*). They are one mechanism — the 
 which values are problem indicators; set-core counts from the data. **Recommended to the user
 as the next build, ahead of finishing the `bugfix` lane; no approval given yet, so nothing is
 built.** The `bugfix` lane keeps its state: proposal, design, spec and tasks complete, no code.
+
+### The first of those four gaps was closed by the project, the same evening
+
+Backlog item 1 below — *nobody sees a high-severity defect open while a release closes* — had
+a screen built for it, and the screen was **under-counting**. Their measurement: the
+readiness answer stated three open high-severity defects while roughly eight were open, because
+the number came from a file-and-CLI pipeline that a second reporting path never writes back
+into. Nothing said the number was partial, which is what made it dangerous rather than merely
+wrong.
+
+**Their fix is the shape this whole contract keeps arriving at, and it is worth copying
+verbatim in principle:** a `coverage` object — the source it counted, what it excludes, and a
+plain `complete: false` — attached to the list AND, separately, to the blocker row derived from
+it. Their reason for the duplication is the one this record has already made twice about
+`deprecated`: *a warning living in another command does not protect the person reading this
+number*.
+
+Two further decisions of theirs are the durable part:
+
+- **They put no COUNT in the code.** A quantity goes stale; the structure does not. The code
+  says only that the set is incomplete, and one of their four guard tests exists specifically
+  to forbid a hard-coded figure — the same defect this file has had twice in its own debt
+  numbers.
+- **They corrected themselves in public, twice, within twenty minutes.** The first report said
+  eleven open including a critical; the correction found the status column was a proxy, not an
+  authority, and that their own join was too narrow — *twice*, the second time while repairing
+  the first. A correction that arrives in the same channel as the claim is what keeps a
+  measurement worth building on.
+
+**Nothing was asked of this side and nothing was needed** — the fields rendered unchanged (see
+the property above). Their note for later: `coverage.complete: false` is an obvious candidate
+for the problem-indicator declaration if and when that is built. Recorded as a candidate, not
+as a design.
 
 ### Where state is lost today — the real backlog, in their words
 
