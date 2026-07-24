@@ -24,7 +24,7 @@
  * renderer hides those by default behind a count. set-core still knows no field name.
  */
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -187,6 +187,73 @@ function RowActions({ value }: { value: unknown }) {
   )
 }
 
+/**
+ * The project's own marking of which of ITS fields matters most here.
+ *
+ * A framework-level key, like `actions` and `deprecated`, and that distinction is the whole
+ * reason it exists. The consumer asked for one field of theirs to be given extra weight on
+ * screen; doing that directly would mean this file recognising a DOMAIN name, which is the
+ * one thing it must never do. So the weight travels in the contract instead: the project
+ * names the key, and this renderer honours a marking it cannot interpret.
+ *
+ * The alternative both sides rejected was field ORDER — put the important one first. It is
+ * free and it is a silent contract: an innocent reordering breaks it and nothing says so.
+ * The same reasoning already put an explicit `primary` in the manifest instead of trusting
+ * the order of `commands`.
+ */
+export const EMPHASIS_KEY = '_emphasis'
+
+/** Framework-level keys — the only names this renderer knows, none of them a domain name. */
+const META_KEYS: ReadonlySet<string> = new Set([ACTIONS_KEY, EMPHASIS_KEY])
+
+/**
+ * Which marked names are actually present on this object.
+ *
+ * The presence filter is the load-bearing part, not a nicety. A declaration is a claim
+ * about the data and a claim can be wrong; marking a key that is not there would have this
+ * renderer draw attention to nothing at all — the false-absence shape, arriving through the
+ * one channel we built specifically to carry intent. So the marking says what to LOOK for,
+ * and the data decides what is drawn.
+ *
+ * An emphasised key whose value is empty is still emphasised: the existing rendering says
+ * "none (0)" plainly, and a marking silently dropped here would be this side deviating from
+ * a declaration without telling anyone. Visibly odd beats silently different.
+ */
+export function emphasisOf(obj: Record<string, unknown>): Set<string> {
+  const declared = obj[EMPHASIS_KEY]
+  if (!Array.isArray(declared)) return new Set()
+  return new Set(
+    declared.filter((n): n is string => typeof n === 'string' && n in obj && !META_KEYS.has(n)),
+  )
+}
+
+/**
+ * True when a column carries emphasis — including one this renderer itself created.
+ *
+ * `flattenUniformObjects` turns `health` into `health.up` / `health.ms`, so a marked key
+ * can lose its own name to a transformation on THIS side. Carrying the marking across the
+ * dot is not name recognition; it is refusing to drop a declaration because of something
+ * we did to it.
+ */
+function emphasisMatches(col: string, emphasised: ReadonlySet<string>): boolean {
+  if (emphasised.has(col)) return true
+  const dot = col.indexOf('.')
+  return dot > 0 && emphasised.has(col.slice(0, dot))
+}
+
+/** The project's marking, drawn as weight — deliberately not in the colour that means broken. */
+function Emphasis({ children }: { children: ReactNode }) {
+  return (
+    <span
+      data-emphasis="true"
+      className="inline-block border-l-2 border-sky-500/70 pl-1.5 font-medium text-neutral-50"
+      title="the project marked this as the field to act on"
+    >
+      {children}
+    </span>
+  )
+}
+
 /** Keys to render, and how many were withheld — so a hidden field is never silent. */
 function partitionKeys(keys: string[], view: DeprecationView) {
   if (view.names.size === 0) return { visible: keys, hiddenCount: 0 }
@@ -277,7 +344,7 @@ const FLATTEN_MAX_KEYS = 8
 function flattenUniformObjects(
   rows: Record<string, unknown>[],
 ): Record<string, unknown>[] {
-  const cols = columnsOf(rows).filter(c => c !== ACTIONS_KEY)
+  const cols = columnsOf(rows).filter(c => !META_KEYS.has(c))
   const spreadable = cols.filter(col => {
     const values = rows.map(r => r[col])
     if (!values.every(isPlainObject)) return false
@@ -304,8 +371,12 @@ function flattenUniformObjects(
 function Table({ rows: rawRows }: { rows: Record<string, unknown>[] }) {
   const view = useDeprecation()
   const rows = flattenUniformObjects(rawRows)
-  // `actions` is machinery, not data: it renders as controls, never as a JSON column.
-  const dataCols = columnsOf(rows).filter(c => c !== ACTIONS_KEY)
+  // Emphasis is read from the ROW AS DELIVERED — flattening renames keys, and the presence
+  // check that stops a marking pointing at nothing has to run against the real object.
+  const emphasised = rawRows.map(emphasisOf)
+  // Framework keys are machinery, not data: they render as controls or weight, never as
+  // a JSON column.
+  const dataCols = columnsOf(rows).filter(c => !META_KEYS.has(c))
   const { visible: cols, hiddenCount } = partitionKeys(dataCols, view)
   const hasActions = rows.some(r => Array.isArray(r[ACTIONS_KEY]) && (r[ACTIONS_KEY] as unknown[]).length > 0)
   return (
@@ -327,7 +398,11 @@ function Table({ rows: rawRows }: { rows: Record<string, unknown>[] }) {
             <tr key={i} className="border-t border-neutral-800/70 align-top">
               {cols.map(c => (
                 <td key={c} className="px-2 py-1.5 max-w-[26rem]">
-                  {c in row ? <StatusValue value={row[c]} depth={2} /> : <Unknown />}
+                  {!(c in row)
+                    ? <Unknown />
+                    : emphasisMatches(c, emphasised[i] ?? new Set())
+                      ? <Emphasis><StatusValue value={row[c]} depth={2} /></Emphasis>
+                      : <StatusValue value={row[c]} depth={2} />}
                 </td>
               ))}
               {hasActions && (
@@ -347,7 +422,8 @@ function Table({ rows: rawRows }: { rows: Record<string, unknown>[] }) {
 
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
   const view = useDeprecation()
-  const all = Object.keys(obj).filter(k => k !== ACTIONS_KEY)
+  const all = Object.keys(obj).filter(k => !META_KEYS.has(k))
+  const emphasised = emphasisOf(obj)
   if (all.length === 0 && !(ACTIONS_KEY in obj)) return <Unknown label="(no fields)" />
   const { visible, hiddenCount } = partitionKeys(all, view)
   return (
@@ -356,7 +432,9 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
         {visible.map(k => (
           <div key={k} className="contents">
             <dt className="text-neutral-500 truncate" title={k}>
-              {view.names.has(k) ? <DeprecatedLabel name={k} /> : k}
+              {view.names.has(k)
+                ? <DeprecatedLabel name={k} />
+                : emphasised.has(k) ? <Emphasis>{k}</Emphasis> : k}
             </dt>
             <dd className="min-w-0"><StatusValue value={obj[k]} depth={depth + 1} /></dd>
           </div>
@@ -441,7 +519,7 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
       // field hidden two levels up reappears here, contradicting its replacement again.
       const shown = Object.fromEntries(
         Object.entries(value).filter(
-          ([k]) => k !== ACTIONS_KEY && (view.show || !view.names.has(k)),
+          ([k]) => !META_KEYS.has(k) && (view.show || !view.names.has(k)),
         ),
       )
       return (

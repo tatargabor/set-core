@@ -425,3 +425,106 @@ describe('a long list is shortened, but never silently', () => {
     expect(container.textContent).toContain('e')
   })
 })
+
+/**
+ * The project marking one of ITS fields as the one to act on.
+ *
+ * This is the mechanism that replaced a request to recognise a domain field name, so the
+ * tests below use nonsense keys on purpose — if any of them started needing a real one,
+ * the mechanism would have failed at the only thing it exists for.
+ *
+ * The dangerous direction is not "no emphasis drawn". It is emphasis drawn for something
+ * that is not there: the marking is a declaration, and a declaration that outruns the data
+ * is exactly the false absence this whole contract keeps having to defend against — now
+ * arriving through the channel built to carry intent.
+ */
+describe('emphasis is declared by the project, never recognised by name', () => {
+  const EMPH = '[data-emphasis="true"]'
+
+  it('draws weight on a marked key that is present', () => {
+    const { container } = render(
+      <StatusValue value={[{ wibble: 'a', wobble: ['x', 'y'], _emphasis: ['wobble'] }]} />,
+    )
+
+    const marked = container.querySelector(EMPH)
+    expect(marked).not.toBeNull()
+    expect(marked!.textContent).toContain('x')
+    expect(marked!.textContent).not.toContain('a')
+  })
+
+  it('draws NOTHING for a marked key that is absent — a declaration is not data', () => {
+    const { container } = render(
+      <StatusValue value={[{ wibble: 'a', _emphasis: ['nosuchfield'] }]} />,
+    )
+
+    expect(container.querySelector(EMPH)).toBeNull()
+    // and no note announcing something that was never there
+    expect(container.textContent).not.toMatch(/emphasis|marked|hidden/i)
+  })
+
+  it('never renders the marking itself as data', () => {
+    const { container } = render(
+      <StatusValue value={[{ wibble: 'a', _emphasis: ['wibble'] }]} />,
+    )
+
+    expect(container.textContent).not.toContain('_emphasis')
+  })
+
+  it('is per row, not per column — a sibling without the marking stays plain', () => {
+    const { container } = render(
+      <StatusValue
+        value={[
+          { wibble: 'first', _emphasis: ['wibble'] },
+          { wibble: 'second' },
+        ]}
+      />,
+    )
+
+    const marked = container.querySelectorAll(EMPH)
+    expect(marked).toHaveLength(1)
+    expect(marked[0].textContent).toContain('first')
+  })
+
+  it('survives the renderer flattening a nested object into dotted columns', () => {
+    // `flattenUniformObjects` renames `wobble` to `wobble.up`. Dropping the marking there
+    // would be this side losing a declaration because of something this side did to it.
+    const { container } = render(
+      <StatusValue
+        value={[
+          { wibble: 'a', wobble: { up: true, ms: 3 }, _emphasis: ['wobble'] },
+          { wibble: 'b', wobble: { up: false, ms: 9 }, _emphasis: ['wobble'] },
+        ]}
+      />,
+    )
+
+    expect(container.textContent).toContain('wobble.up')
+    expect(container.querySelectorAll(EMPH).length).toBeGreaterThan(0)
+  })
+
+  it('marks the label in a key grid, where there is no column to mark', () => {
+    const { container } = render(
+      <StatusValue value={{ wibble: 'a', wobble: 'b', _emphasis: ['wobble'] }} />,
+    )
+
+    const marked = container.querySelector(EMPH)
+    expect(marked).not.toBeNull()
+    expect(marked!.textContent).toBe('wobble')
+  })
+
+  it('ignores a marking that names a framework key rather than a field', () => {
+    const { container } = render(
+      <StatusValue value={[{ wibble: 'a', _emphasis: ['_emphasis'] }]} />,
+    )
+
+    expect(container.querySelector(EMPH)).toBeNull()
+  })
+
+  it('ignores a malformed marking instead of failing the whole render', () => {
+    const { container } = render(
+      <StatusValue value={[{ wibble: 'a', _emphasis: 'wibble' }]} />,
+    )
+
+    expect(container.querySelector(EMPH)).toBeNull()
+    expect(container.textContent).toContain('a')
+  })
+})
