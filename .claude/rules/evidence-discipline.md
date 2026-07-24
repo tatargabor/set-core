@@ -63,6 +63,26 @@ costs most. Two consequences: put the limit *in the name* when the thing is one-
 or partial, and prefer renaming to rescoping — a name that claims more than the tasks
 deliver reads later as "that part is done".
 
+**And a third, about how to look for it — because the obvious search is worthless.** The
+class is *a claim about what a MECHANISM covers*, not *a completeness word*. Grepping
+`every|all|never|always|complete|closed` across a whole test suite finds names describing
+asserted **behaviour** — "the quantity never goes negative", "every price × discount
+combination" — which are correct and numerous. Measured on the other side of the channel:
+**268 hits on the broad corpus, all legitimate; 1 on the correctly narrowed one.** Search
+only the names that describe a checker: gate suites, contract suites, manifest and surface
+tests. Anywhere else the hit rate is so bad that the next person abandons the search before
+reaching the one real instance — which is the same failure as a gate that fires daily on
+nothing.
+
+*Worked example of the narrowing, from this repo:* the broad pattern over `tests/unit/*.py`
+plus the web unit tests returns 2; the narrow corpus is 56 test names across the gate and
+contract suites, of which two make a mechanism-coverage claim
+(`test_every_envelope_field...is_named_in_the_living_record` and its `error_class` twin).
+Both say **"is named"**, which is exactly what they check — their docstrings explicitly
+refuse to claim the field is described *correctly*. So: one instance found and fixed on the
+peer's side, none here, and the corpus and pattern are stated so the negative result can be
+rechecked rather than believed.
+
 **A subagent's "done" is not evidence that anything happened.** Measured here: an unflagged
 `claude -p` asked to create a file replied `Done.` and exit 0, and the file did not exist —
 the tool layer had refused the write and the agent did not know. So a gate that waits on an
