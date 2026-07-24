@@ -3449,7 +3449,11 @@ def _parse_critical_count(output: str) -> int | None:
     if not output:
         return None
     tail = output[-4096:] if len(output) > 4096 else output
-    matches = re.findall(r"^\s*CRITICAL_COUNT:\s*(\d+)\b", tail, re.MULTILINE)
+    # Whole line, not just the start. `CRITICAL_COUNT: 0 — but I could not check the
+    # auth module` used to parse as zero, and a zero here DOWNGRADES AN EXPLICIT FAIL TO
+    # PASS — so the sentence describing the gap was the thing that hid it. A missing
+    # count keeps blocking, so tightening this can only fail closed.
+    matches = re.findall(r"^[ \t]*CRITICAL_COUNT:[ \t]*(\d+)[ \t\r]*$", tail, re.MULTILINE)
     if not matches:
         return None
     try:
@@ -3480,11 +3484,23 @@ def _parse_verify_verdict(output: str) -> str | None:
     The rules mirror the count parser deliberately, so the two cannot drift apart:
     scan the tail only, anchor at line start (a quoted `> VERIFY_RESULT: PASS` is not a
     verdict), and let the LAST sentinel win, because the sign-off is emitted last.
+
+    **The line must contain the sentinel and NOTHING ELSE**, which is the second half of
+    the same lesson and was missing until a peer described the shape from their own gate.
+    Anchoring only the start still read
+
+        VERIFY_RESULT: PASS is NOT what I emit here.
+
+    as a pass — the regex is blind to negation, and the sentence means the opposite of
+    what it matched. Fail-OPEN again, on the same gate, after it had already been fixed
+    once. Requiring the whole line costs nothing, because the prompt asks for the sentinel
+    on a line of its own; a model that decorates it instead falls through to None, which
+    routes to the classifier and never to a merge.
     """
     if not output:
         return None
     tail = output[-4096:] if len(output) > 4096 else output
-    matches = re.findall(r"^\s*VERIFY_RESULT:\s*(PASS|FAIL)\b", tail, re.MULTILINE)
+    matches = re.findall(r"^[ \t]*VERIFY_RESULT:[ \t]*(PASS|FAIL)[ \t\r]*$", tail, re.MULTILINE)
     if not matches:
         return None
     return matches[-1].lower()

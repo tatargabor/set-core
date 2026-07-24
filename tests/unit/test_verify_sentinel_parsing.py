@@ -97,3 +97,41 @@ def test_classification_no_longer_calls_a_quoted_mention_a_verdict():
 
 def test_classification_still_recognises_a_real_verdict():
     assert _classify_spec_verify_outcome(_Result(), "VERIFY_RESULT: FAIL\n")[0] == "verdict"
+
+
+# ── the second half of the same lesson: a line that STARTS with the sentinel ──
+#
+# Anchoring at line start stops a quoted verdict. It does not stop a line that opens with
+# the sentinel and then says something else — including something that means the opposite.
+# A peer running an unrelated gate hit the negation-blind version of this and described
+# the shape; it was still open here, on the gate that decides whether work reaches main.
+
+def test_a_sentence_that_STARTS_with_the_sentinel_is_not_a_verdict():
+    """The regex cannot read the negation, so the sentence means the opposite of the
+    thing it matched — and matched in the pass direction."""
+    assert _parse_verify_verdict("VERIFY_RESULT: PASS is NOT what I emit here.\n") is None
+
+
+def test_a_verdict_followed_by_a_retraction_is_not_a_verdict():
+    output = "VERIFY_RESULT: PASS — wait, actually there are 3 criticals.\n"
+
+    assert _parse_verify_verdict(output) is None
+
+
+def test_trailing_whitespace_still_counts_because_that_is_not_prose():
+    assert _parse_verify_verdict("VERIFY_RESULT: FAIL   \n") == "fail"
+    assert _parse_verify_verdict("VERIFY_RESULT: PASS\r\n") == "pass"
+
+
+def test_a_count_with_a_caveat_after_it_is_not_a_count():
+    """This one is worse than it looks: a zero DOWNGRADES an explicit FAIL to pass, so
+    the sentence describing what could not be checked was the thing that hid it."""
+    output = "CRITICAL_COUNT: 0 — but I could not check the auth module\n"
+
+    assert _parse_critical_count(output) is None
+
+
+def test_a_missing_count_still_blocks_so_tightening_can_only_fail_closed():
+    """The caller treats None as 'keep blocking'. That is what makes the stricter match
+    safe: every input this newly rejects lands on the conservative side."""
+    assert _parse_critical_count("no sentinel at all\n") is None
