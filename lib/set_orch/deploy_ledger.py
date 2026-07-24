@@ -52,9 +52,10 @@ import hashlib
 import json
 import logging
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from .git_intent import deleted_paths as git_deleted_paths
 
@@ -71,6 +72,24 @@ _HELP = (
     "recreate them. To accept the framework version of a tombstoned path again, remove its "
     "entry from the 'tombstones' list and re-run the init."
 )
+
+
+def _same_except_timestamp(path: Path, payload: Dict[str, Any]) -> bool:
+    """Does `path` already hold this payload, ignoring the `updated` field?
+
+    Shared by both deploy engines through the same comparison rule: the timestamp
+    records when the content last changed, so it must not be what makes it change.
+    A missing or unreadable file is not a match — write it.
+    """
+    try:
+        with open(path) as fh:
+            existing = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(existing, dict):
+        return False
+    return {k: v for k, v in existing.items() if k != "updated"} == \
+           {k: v for k, v in payload.items() if k != "updated"}
 
 
 def sha256_file(path: Path) -> Optional[str]:
@@ -104,6 +123,7 @@ class DeployLedger:
         # absent file should not pay for a history scan.
         self._git_deleted: Optional[FrozenSet[str]] = None
         self._git_asked = False
+        self._ignored_cache: Dict[str, bool] = {}
 
     # ── loading ──────────────────────────────────────────────────────────────
 
@@ -163,12 +183,38 @@ class DeployLedger:
             return False
         return key in self._git_deleted
 
+    def is_git_ignored(self, key: str) -> bool:
+        """Would git ignore this path? Cached per ledger; False when git cannot say.
+
+        Failing to False keeps the previous behaviour on a non-git target: absence
+        still reads as a deletion there, which is the only signal available.
+        """
+        if key in self._ignored_cache:
+            return self._ignored_cache[key]
+        result = False
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(self.project_root), "check-ignore", "-q", "--", key],
+                capture_output=True, timeout=10,
+            )
+            # 0 = ignored, 1 = not ignored, anything else = git could not answer.
+            result = proc.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            result = False
+        self._ignored_cache[key] = result
+        return result
+
     def decide(self, key: str, dst: Path) -> Tuple[bool, str]:
         """Return (should_deploy, reason). Tombstones a path the project deleted."""
         if key in self.tombstones:
             return False, "removed by the project (tombstoned)"
 
         if not Path(dst).exists():
+            # Neither absence rule applies to a path git currently ignores. `git clean
+            # -fdx` removes it and so does every fresh clone, and a deletion in its
+            # history is about the era when it WAS tracked — not about today.
+            if self.is_git_ignored(key):
+                return True, "absent but git-ignored — absence carries no intent"
             if key in self.files:
                 self.tombstone(key)
                 return False, "deleted by the project — recorded as tombstone"
@@ -237,6 +283,17 @@ class DeployLedger:
             "files": dict(sorted(self.files.items())),
             "tombstones": sorted(self.tombstones),
         }
+
+        # An init that changed nothing must leave nothing to commit. `_dirty` only means
+        # "record() was called", not "the content differs" — re-recording an unchanged
+        # file sets it. Without this check the timestamp alone rewrote the ledger on
+        # every run, so `git status` could never be the proof that a deploy was a no-op:
+        # a consumer had to filter one line by hand to see it.
+        if _same_except_timestamp(self.path, payload):
+            logger.debug("deploy_ledger: %s unchanged, not rewritten", self.path)
+            self._dirty = False
+            return False
+
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(self.path.suffix + ".tmp")

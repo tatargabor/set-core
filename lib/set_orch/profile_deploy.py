@@ -373,9 +373,17 @@ def _deploy_single_template(
             messages.append(f"  {verb} (removed by project): {dst.relative_to(target_dir)}")
             continue
 
+        # Neither absence rule below applies to a path git currently ignores. Absence
+        # proves nothing there — `git clean -fdx` removes it and so does every fresh
+        # clone — and a deletion in its history is about the era when it WAS tracked,
+        # not about today. Measured: `.set/reflection.md` is ignored because the agent
+        # learning file had to move out of `.claude/`; that move is in history as a
+        # deletion, and reading it as intent retired the file for good.
+        absent_without_intent = not dst.exists() and ledger.is_git_ignored(key)
+
         # Absent, but we deployed it before → the project removed it. Record the
         # tombstone now so the next run is decided by history, not by chance.
-        if not dst.exists() and key in ledger.files:
+        if not dst.exists() and key in ledger.files and not absent_without_intent:
             if not dry_run:
                 ledger.tombstone(key)
             verb = "Would skip" if dry_run else "Skipped"
@@ -387,7 +395,7 @@ def _deploy_single_template(
         # Absent and unknown to the ledger. On a first init that describes both a
         # genuinely new file and one the project deleted years ago, and the ledger
         # cannot separate them — but the project's git history can.
-        if not dst.exists() and ledger.deleted_in_history(key):
+        if not dst.exists() and not absent_without_intent and ledger.deleted_in_history(key):
             if not dry_run:
                 ledger.tombstone(key, source="git history")
             verb = "Would skip" if dry_run else "Skipped"

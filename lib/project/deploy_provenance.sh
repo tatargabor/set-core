@@ -88,6 +88,15 @@ _pv_load_git_deletions() {
         | sort -u > "$_PV_GITDEL"
 }
 
+# Would git ignore this path? Exit 0 = ignored.
+# Mirrors DeployLedger.is_git_ignored; keep the two in step. Anything other than a
+# clean "yes" answers no, so a non-git target keeps its previous behaviour.
+_pv_is_git_ignored() {
+    [[ -n "${_PV_PROJECT:-}" ]] || return 1
+    command -v git &>/dev/null || return 1
+    git -C "$_PV_PROJECT" check-ignore -q -- "$1" 2>/dev/null
+}
+
 # Does the project's git history record a deletion of this path?
 # Only meaningful for a path that is absent right now.
 _pv_deleted_in_history() {
@@ -167,6 +176,12 @@ _pv_should_deploy() {
     known="$(_pv_known_hash "$key" 2>/dev/null)" || known=""
 
     if [[ ! -e "$dst" ]]; then
+        # Neither absence rule below applies to a path git currently ignores. `git
+        # clean -fdx` removes it and so does every fresh clone, and a deletion in its
+        # history is about the era when it WAS tracked — not about today.
+        if _pv_is_git_ignored "$key"; then
+            return 0
+        fi
         if [[ -n "$known" ]]; then
             # We deployed it once, it is gone now: the project deleted it. Record that
             # as history so the next run decides from fact rather than from chance.
@@ -389,13 +404,24 @@ payload = {
     'tombstones': sorted(tombstones),
 }
 
-tmp = ledger_path + '.tmp'
-with open(tmp, 'w') as f:
-    # ensure_ascii=False keeps the em dash a character instead of an escape. With it
-    # escaped the two engines produced byte-different files from identical content.
-    json.dump(payload, f, indent=2, ensure_ascii=False)
-    f.write('\n')
-os.replace(tmp, ledger_path)
+# An init that changed nothing must leave nothing to commit, so the timestamp alone
+# must not rewrite the file — otherwise an empty 'git status' can never be the proof
+# that a deploy was a no-op. Same rule in set_orch.deploy_ledger; keep them in step.
+try:
+    from set_orch.deploy_ledger import _same_except_timestamp as _same
+    unchanged = _same(ledger_path, payload)
+except Exception:
+    unchanged = {k: v for k, v in data.items() if k != 'updated'} == \\
+                {k: v for k, v in payload.items() if k != 'updated'}
+
+if not unchanged:
+    tmp = ledger_path + '.tmp'
+    with open(tmp, 'w') as f:
+        # ensure_ascii=False keeps the em dash a character instead of an escape. With it
+        # escaped the two engines produced byte-different files from identical content.
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+        f.write('\n')
+    os.replace(tmp, ledger_path)
 " "$ledger" "$_PV_STAGED" "$_PV_NEWTOMBS" "${SET_TOOLS_ROOT:-}/lib" 2>/dev/null \
             || warn "  Failed to update deploy ledger: $ledger"
     fi
