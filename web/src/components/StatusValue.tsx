@@ -258,8 +258,52 @@ function columnsOf(rows: Record<string, unknown>[]): string[] {
   return cols
 }
 
-function Table({ rows }: { rows: Record<string, unknown>[] }) {
+/** How many nested keys are still worth spreading into columns rather than stacking. */
+const FLATTEN_MAX_KEYS = 8
+
+/**
+ * Spread a uniform one-level nested object into columns: `{health: {up, ms}}` becomes
+ * `health.up` and `health.ms`.
+ *
+ * Why this is worth doing rather than rendering the object in its cell: a nested object
+ * stacks its keys vertically, so each row becomes a tall block and comparing two rows
+ * means reading two blocks instead of scanning a column. The rows ARE comparable — that
+ * is what makes them rows — and a table is the right shape for comparable things.
+ *
+ * Only when every row agrees on the nested keys. A ragged shape flattened would invent
+ * columns most rows do not have, and every gap would render as "unknown" — manufacturing
+ * absences out of a rendering choice, which is the one thing this renderer must never do.
+ */
+function flattenUniformObjects(
+  rows: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const cols = columnsOf(rows).filter(c => c !== ACTIONS_KEY)
+  const spreadable = cols.filter(col => {
+    const values = rows.map(r => r[col])
+    if (!values.every(isPlainObject)) return false
+    const shapes = values.map(v => Object.keys(v as object).join('\u0000'))
+    if (new Set(shapes).size !== 1) return false
+    const width = Object.keys(values[0] as object).length
+    return width > 0 && width <= FLATTEN_MAX_KEYS
+  })
+  if (spreadable.length === 0) return rows
+
+  return rows.map(row => {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(row)) {
+      if (spreadable.includes(key) && isPlainObject(value)) {
+        for (const [k, v] of Object.entries(value)) out[`${key}.${k}`] = v
+      } else {
+        out[key] = value
+      }
+    }
+    return out
+  })
+}
+
+function Table({ rows: rawRows }: { rows: Record<string, unknown>[] }) {
   const view = useDeprecation()
+  const rows = flattenUniformObjects(rawRows)
   // `actions` is machinery, not data: it renders as controls, never as a JSON column.
   const dataCols = columnsOf(rows).filter(c => c !== ACTIONS_KEY)
   const { visible: cols, hiddenCount } = partitionKeys(dataCols, view)

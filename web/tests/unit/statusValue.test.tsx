@@ -325,3 +325,65 @@ describe('an action the project attached to a row', () => {
     expect(container.querySelector('pre')!.textContent).not.toContain('actions')
   })
 })
+
+describe('a uniform nested object becomes columns, not a stack inside a cell', () => {
+  // Measured on a real screen: two environments, each with a seven-field health object.
+  // Rendered in-cell it is two tall blocks, and comparing them means reading both. Rows
+  // are comparable by definition — that is what makes them rows — so the columns should
+  // be comparable too.
+  const rows = [
+    { name: 'test', health: { up: true, ms: 223 } },
+    { name: 'prod', health: { up: false, ms: 291 } },
+  ]
+
+  it('spreads the nested keys into their own columns, keeping the parent in the name', () => {
+    const { container } = render(<StatusValue value={rows} />)
+    const headers = Array.from(container.querySelectorAll('th')).map(th => th.textContent)
+
+    expect(headers).toContain('health.up')
+    expect(headers).toContain('health.ms')
+    expect(headers).toContain('name')
+  })
+
+  it('does NOT flatten when the rows disagree on the nested shape', () => {
+    // Flattening a ragged shape would invent columns most rows lack, and every gap would
+    // render as unknown — absences manufactured by a rendering choice.
+    const ragged = [
+      { name: 'a', detail: { x: 1 } },
+      { name: 'b', detail: { y: 2 } },
+    ]
+    const { container } = render(<StatusValue value={ragged} />)
+    const headers = Array.from(container.querySelectorAll('th')).map(th => th.textContent)
+
+    expect(headers).toContain('detail')
+    expect(headers).not.toContain('detail.x')
+  })
+
+  it('leaves a wide nested object alone rather than exploding the table', () => {
+    const wide = [{ k: Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`f${i}`, i])) }]
+    const { container } = render(<StatusValue value={wide} />)
+    const headers = Array.from(container.querySelectorAll('th')).map(th => th.textContent)
+
+    expect(headers).toEqual(['k'])
+  })
+
+  it('keeps the values intact — flattening must not change what is shown', () => {
+    const { container } = render(<StatusValue value={rows} />)
+
+    expect(container.textContent).toContain('223')
+    expect(container.textContent).toContain('291')
+    expect(container.textContent).toContain('yes')
+    expect(container.textContent).toContain('no')
+  })
+
+  it('never spreads the actions machinery into columns', () => {
+    const withActions = [
+      { name: 'a', actions: [{ command: 'ack' }] },
+      { name: 'b', actions: [{ command: 'ack' }] },
+    ]
+    const { container } = render(<StatusValue value={withActions} />)
+    const headers = Array.from(container.querySelectorAll('th')).map(th => th.textContent)
+
+    expect(headers.some(h => h?.startsWith('actions'))).toBe(false)
+  })
+})
