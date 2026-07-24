@@ -335,7 +335,7 @@ the marking itself not rendered as data, 0 JS errors. 6 of 8 new tests measure, 
 and the test *named* for false absence fails against HEAD on its other assertion, so its
 false-absence half is a guard, not a measurement.
 
-### The property this keeps re-proving, measured eight times
+### The property this keeps re-proving, measured nine times
 
 New producer fields reach the screen with **zero framework changes** — most recently a
 `coverage` object (`source` / `excludes` / `complete`) attached both to a list and to the
@@ -354,6 +354,26 @@ field turned the row into a 500-pixel tower, pushing the other two blockers off 
 Fixed with a minimum width on nested objects. Worth recording because of what found it:
 **looking at the screen.** The field-presence check said RENDERED for all three — structural
 counts prove a thing renders and say nothing about whether it is readable.
+
+**The ninth arrived as a whole new bug-ingest contract** — four new source prefixes, three
+new optional fields (`foundIn` / `duplicateOf` / `reopenOf`), a widened status set (seven
+values) and a `CRITICAL` severity. Measured on this side, `2026-07-24T23:53`: it renders with
+no framework edit and 0 JS errors — the read surface reads the repository, so it appears here
+before the change is deployed anywhere. Two things worth keeping:
+
+- **The two predicates the producer flagged as breaking are not on this side.** `grep -rn
+  "OPEN_BUGS" lib modules web/src bin` is empty, and the reader has no `status`/`severity`
+  predicate on the project's bugs — the framework renders the producer's count, never
+  recomputes it. So the `3 → 14` blocker figure becomes correct here automatically because it
+  is theirs; the `kind` value they deliberately did not rename is not matched by anything on
+  this side.
+- **A three-outcome gate proved the section mechanism.** A new close-gate can exit `0`/`1`/`2`
+  where `2` = "cannot tell" (no DB, or a stale local mirror), and it lands in the producer's
+  `unknowns` list, not `blockers`. That is *unknown is not zero and not success* — this
+  surface's founding renderer rule — applied to a gate by the producer. Measured that it
+  renders distinctly: the three sections draw at descending left-border weight
+  (`4px` / `2px` / `1px`), so an "I could not check" never sits where a failure or a pass
+  would be read.
 
 ### Still open
 
