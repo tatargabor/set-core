@@ -1259,6 +1259,8 @@ export interface StatusContractInfo {
   source: string | null
   command: string | null
   commands: string[]
+  /** Commands that CHANGE something. Never called by a page load — see the write route. */
+  writeCommands: string[]
   timeout: number | null
   cwd: string | null
 }
@@ -1295,4 +1297,30 @@ export function getProjectStatus(
   if (opts?.refresh) params.set('refresh', 'true')
   const qs = params.toString()
   return fetchJSON(`/${project}/project-status${qs ? `?${qs}` : ''}`)
+}
+
+
+export interface ProjectWriteResponse {
+  project: string
+  command: string
+  ok: boolean
+  data: unknown
+  error: string | null
+  errorClass: string | null
+}
+
+/**
+ * Ask the project to record something. A separate route from the read one, on purpose:
+ * the separation is what makes it impossible for a page load to reach a write.
+ */
+export function postProjectWrite(
+  project: string,
+  command: string,
+  args: Record<string, unknown>,
+): Promise<ProjectWriteResponse> {
+  return fetchJSON(`/${project}/project-status/write/${encodeURIComponent(command)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  })
 }

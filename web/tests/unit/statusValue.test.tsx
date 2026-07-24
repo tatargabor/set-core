@@ -12,11 +12,15 @@
  *    project's vocabulary, so these tests deliberately use nonsense keys.
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
-import StatusValue, { DeprecationProvider, presentDeprecations } from '../../src/components/StatusValue'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import StatusValue, {
+  ActionProvider,
+  DeprecationProvider,
+  presentDeprecations,
+} from '../../src/components/StatusValue'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 const UNKNOWN = '[title^="no value"]'
 
@@ -194,5 +198,117 @@ describe('a declaration is a claim about the data, and can be wrong', () => {
   it('survives null and scalars in the tree without throwing', () => {
     expect(() => presentDeprecations({ a: null, b: 3, c: 'x' }, new Set(['a']))).not.toThrow()
     expect([...presentDeprecations({ a: null }, new Set(['a']))]).toEqual(['a'])
+  })
+})
+
+describe('an action the project attached to a row', () => {
+  const withAction = (value: unknown, run = async () => ({ ok: true })) =>
+    render(
+      <ActionProvider value={run}>
+        <StatusValue value={value} />
+      </ActionProvider>,
+    )
+
+  const ROW = {
+    thing: 'x',
+    actions: [{ command: 'ack', label: 'Record', args: { id: 7 } }],
+  }
+
+  it('renders as a control, never as a JSON column', () => {
+    withAction([ROW])
+
+    const headers = [...document.querySelectorAll('th')].map(h => h.textContent)
+    expect(headers).not.toContain('actions')
+    expect(document.querySelector('[data-action="ack"]')).not.toBeNull()
+  })
+
+  it('is not offered at all when nothing can run it', () => {
+    // Without a runner there is no write path, so a button would be a lie about
+    // what this page can do.
+    render(<StatusValue value={[ROW]} />)
+
+    expect(document.querySelector('[data-action="ack"]')).toBeNull()
+  })
+
+  it('sends the project’s own arguments, not arguments derived here', async () => {
+    const calls: unknown[] = []
+    withAction([ROW], async (c, a) => { calls.push([c, a]); return { ok: true } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    fireEvent.click(document.querySelector('[data-action="ack"]')!)
+    await waitFor(() => expect(calls).toHaveLength(1))
+
+    expect(calls[0]).toEqual(['ack', { id: 7 }])
+  })
+
+  it('asks first, and does nothing if the confirmation is declined', async () => {
+    const calls: unknown[] = []
+    withAction([ROW], async (c, a) => { calls.push([c, a]); return { ok: true } })
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    fireEvent.click(document.querySelector('[data-action="ack"]')!)
+
+    expect(calls).toHaveLength(0)
+  })
+
+  it('says out loud that the record is a human statement, not a measurement', async () => {
+    // The consumer produced a stray record for a check nobody had performed. The
+    // confirmation is the one place a person can be told that before they assert it.
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    withAction([ROW])
+
+    fireEvent.click(document.querySelector('[data-action="ack"]')!)
+
+    expect(confirm.mock.calls[0][0]).toMatch(/not a measurement/i)
+  })
+
+  it('will not run until every choice the project demands has been made', () => {
+    withAction([{
+      thing: 'x',
+      actions: [{ command: 'ack', args: { id: 1 }, choose: { env: ['test', 'prod'] } }],
+    }])
+
+    expect(document.querySelector<HTMLButtonElement>('[data-action="ack"]')!.disabled).toBe(true)
+    expect(document.querySelector('select')).not.toBeNull()
+  })
+
+  it('merges the choice into the project’s arguments', async () => {
+    const calls: unknown[] = []
+    withAction(
+      [{ thing: 'x', actions: [{ command: 'ack', args: { id: 1 }, choose: { env: ['test'] } }] }],
+      async (c, a) => { calls.push(a); return { ok: true } },
+    )
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    fireEvent.change(document.querySelector('select')!, { target: { value: 'test' } })
+    fireEvent.click(document.querySelector('[data-action="ack"]')!)
+    await waitFor(() => expect(calls).toHaveLength(1))
+
+    expect(calls[0]).toEqual({ id: 1, env: 'test' })
+  })
+
+  it('reports a refused write instead of looking like it worked', async () => {
+    withAction([ROW], async () => ({ ok: false, error: 'nope' }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    fireEvent.click(document.querySelector('[data-action="ack"]')!)
+
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('failed'))
+    expect(document.body.textContent).not.toContain('recorded')
+  })
+
+  it('ignores a malformed action rather than rendering a button that cannot work', () => {
+    withAction([{ thing: 'x', actions: [{ label: 'no command here' }] }])
+
+    expect(document.querySelector('button')).toBeNull()
+  })
+
+  it('does not leak the machinery into the verbatim deep dump', () => {
+    const deep = { a: { b: { c: { keep: 1, actions: [{ command: 'ack' }] } } } }
+    const { container } = withAction(deep)
+
+    expect(container.querySelector('pre')).not.toBeNull()
+    expect(container.querySelector('pre')!.textContent).not.toContain('actions')
   })
 })

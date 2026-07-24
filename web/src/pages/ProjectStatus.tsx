@@ -24,10 +24,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   getProjectStatus,
+  postProjectWrite,
   type ProjectStatusResponse,
   type StatusCommandResult,
 } from '../lib/api'
-import StatusValue, { DeprecationProvider, presentDeprecations } from '../components/StatusValue'
+import StatusValue, {
+  ActionProvider,
+  DeprecationProvider,
+  presentDeprecations,
+} from '../components/StatusValue'
 
 interface Props {
   project?: string | null
@@ -67,7 +72,13 @@ function Gap({ name, result }: { name: string; result: StatusCommandResult }) {
   )
 }
 
-function Answer({ name, result }: { name: string; result: StatusCommandResult }) {
+function Answer({
+  name, result, onAction,
+}: {
+  name: string
+  result: StatusCommandResult
+  onAction: (command: string, args: Record<string, unknown>) => Promise<{ ok: boolean; error?: string | null }>
+}) {
   // Deprecated fields are hidden by default, per command. A field the project has
   // replaced but still emits would otherwise sit next to its replacement contradicting
   // it — found on a live screen, not reasoned about.
@@ -101,7 +112,9 @@ function Answer({ name, result }: { name: string; result: StatusCommandResult })
         </div>
       </div>
       <DeprecationProvider value={{ names: deprecated, show: showDeprecated }}>
-        <StatusValue value={result.data} />
+        <ActionProvider value={onAction}>
+          <StatusValue value={result.data} />
+        </ActionProvider>
       </DeprecationProvider>
     </section>
   )
@@ -129,6 +142,19 @@ export default function ProjectStatus({ project }: Props) {
   // No polling. A contract call spawns the project's own toolchain — one measured
   // command took minutes. This page refreshes when asked, and says how old it is.
   useEffect(() => { load(false) }, [load])
+
+  // A write goes out, and then the page re-reads. Not because the answer is stale by a
+  // clock, but because it is stale by an action WE took — leaving the old answer on
+  // screen would show a step as outstanding immediately after recording that it is not.
+  const runAction = useCallback(
+    async (command: string, args: Record<string, unknown>) => {
+      if (!project) return { ok: false, error: 'no project' }
+      const res = await postProjectWrite(project, command, args)
+      if (res.ok) load(true)
+      return { ok: res.ok, error: res.error }
+    },
+    [project, load],
+  )
 
   if (!project) {
     return <div className="p-6 text-sm text-neutral-500">Select a project.</div>
@@ -237,7 +263,7 @@ export default function ProjectStatus({ project }: Props) {
 
       {activeName && activeResult && (
         activeResult.ok
-          ? <Answer name={activeName} result={activeResult} />
+          ? <Answer name={activeName} result={activeResult} onAction={runAction} />
           : <Gap name={activeName} result={activeResult} />
       )}
 
