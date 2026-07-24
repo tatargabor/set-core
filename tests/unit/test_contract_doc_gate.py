@@ -140,3 +140,57 @@ def test_the_document_the_gate_reads_is_the_one_that_is_pointed_at():
         "CLAUDE.md no longer points at the document this gate obliges — one of the two "
         "moved, and the gate is now guarding a file nobody is sent to."
     )
+
+
+def error_classes_the_reader_emits() -> set[str]:
+    """Every `errorClass` this side puts on a result when it cannot deliver an answer.
+
+    These are set-core's own words rather than the project's, and they are the reader's
+    only clue to whose side a failure is on — so an undocumented one is worse than an
+    undocumented field: it appears on screen, in English, looking like it means something
+    specific, with nothing to say what.
+    """
+    tree = ast.parse(READER.read_text())
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        # StatusResult.failure(command, "<class>", ...)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "failure"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+        ):
+            found.add(node.args[1].value)
+        # error_class="<class>"
+        for keyword in getattr(node, "keywords", None) or []:
+            if (
+                keyword.arg == "error_class"
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, str)
+            ):
+                found.add(keyword.value.value)
+    return found
+
+
+def test_every_error_class_the_reader_emits_is_named_in_the_living_record():
+    """Documentation does not stop at the field — it stops at the value.
+
+    Added after the consumer found this exact gap one level down: a field their gate
+    covered, whose new ENUM VALUE no test could have caught. They noted it had no
+    counterpart here. It had fourteen, none of them written down — the comfortable
+    direction for a claim to be wrong in, which is why it was worth measuring instead of
+    accepting.
+    """
+    classes = error_classes_the_reader_emits()
+    assert classes, "the AST walk found nothing — the failure paths were refactored"
+
+    record = RECORD.read_text()
+    missing = sorted(k for k in classes if not named_as_a_field(k, record))
+
+    assert not missing, (
+        f"{RECORD.relative_to(REPO)} never names {missing}, but this reader puts them on "
+        "screen as the reason an answer is absent. A reason nobody can look up is a gap "
+        "wearing an explanation."
+    )

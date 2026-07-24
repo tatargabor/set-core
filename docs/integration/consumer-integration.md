@@ -117,6 +117,28 @@ The general rule this stands for: *the declaration is the contract, not the docu
   could not have known it works. A refusal with neither field still produces a result, with
   a reason saying exactly that: the project reported a failure and gave no reason. Nothing
   in that path ever renders as success or as zero.
+
+  **What set-core itself says when it cannot get an answer — `errorClass`.** These are the
+  framework's own words, not the project's, and they are the reader's only clue to whose
+  side a failure is on. Grouped by that question, because it is the one a person actually
+  has:
+
+  - *We never got to ask.* `not-configured` (no contract declared here), `command-not-found`
+    (declared, but not present on disk), `not-a-write-command` (a read name sent to the write
+    path — refused before spawning), `invalid-argument` (an argument shape that could produce
+    a flag).
+  - *We asked and the attempt failed.* `spawn-failed`, `timeout`, `nonzero-exit`,
+    `response-too-large`.
+  - *We got something back and could not trust it.* `invalid-json`, `invalid-envelope`,
+    `missing-version`, `unsupported-version`, `missing-data`.
+  - *The project answered honestly that it could not answer.* `project-reported-failure` —
+    the only one of the fourteen that is not a fault on this side, and the reason it must
+    stay distinguishable from the rest.
+
+  The list is held by a gate rather than by care: an `errorClass` this reader emits and this
+  page does not name fails the build. It was added after the consumer found the same gap one
+  level down on their side — a documented field whose *values* were undocumented — and said
+  it had no counterpart here. It had fourteen.
 - **Precedence**: operator config beats the repo manifest. The person present when
   something is wrong must be able to redirect it without editing someone else's repo.
 - **Read and write are separate namespaces.** Write commands live in their own list
