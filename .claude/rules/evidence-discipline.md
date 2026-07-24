@@ -209,6 +209,33 @@ And prefer a restore that works on the file's actual state: `cp` a copy aside, o
 original back explicitly. A revert command chosen for the tracked case fails silently in the
 untracked one — which is exactly when new code is being mutation-tested.
 
+**And the mutation must reach the interpreter, which a `.pyc` can prevent.** Measured here
+while mutation-testing a new module: a loop of *mutate → pytest → restore* reported one
+mutation as **not caught**, and the same mutation run alone caught it immediately. The cause
+is CPython's bytecode invalidation, which compares **mtime (one-second granularity) and file
+size** — nothing else. Two different mutations of the same file happened to produce **byte-
+identical sizes** (`if not args.yes:` and `if args.dry_run:` both became `if False:`), and the
+whole loop ran inside one second, so the second run reused the *first* mutant's `.pyc`. The
+test then passed because that mutant left its branch intact.
+
+The direction is the expensive one, and it is the reverse of what it looks like: the loop says
+"your test does not catch this", inviting you to rewrite a test that was fine, when what
+actually happened is that the mutation never ran. Given how mutation testing works — small
+edits to the same file, in a fast loop, often replacing different conditions with the same
+constant — the size collision is not a freak coincidence; it is the expected case.
+
+So a mutation loop sets `PYTHONDONTWRITEBYTECODE=1` and clears `__pycache__` before each run:
+
+```bash
+find lib -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
+```
+
+The general shape is already in this file under another name: **the measuring apparatus is
+part of the system being measured.** A cache sits between the source you edited and the code
+that ran, so "I changed the file" is a proxy for "the changed code executed" — the same class
+as `cd`-ing into a worktree as a proxy for running its code. And when a mutation loop and a
+single run disagree, the loop is the one to distrust: it has more machinery in it.
+
 **Never open a file for writing in the same expression that reads it.** Measured on the
 other side of the agent channel, on a 290 KB append-only log: `open(p, "w").write(open(p)
 .read().replace(...))` truncated the file to **0 bytes**. Python evaluates `open(p, "w")`
