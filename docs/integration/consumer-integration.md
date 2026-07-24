@@ -161,12 +161,28 @@ memory system's automatic session-end extraction, and diagnostic output on error
 
 ## Next, in order
 
-1. **The acknowledgement surface.** The pain the consumer measured is state that lives
-   nowhere: manual post-deploy steps that exist only in one person's memory, per
-   environment. The read side already shows them; the write command exists on their side
-   and is idempotent. This is the first write path the framework will use, so the read/write
-   namespace split has to hold on this side too — a renderer walking the read list must be
-   structurally unable to call a write command.
+1. ~~**The acknowledgement surface.**~~ **Built.** The pain the consumer measured was state
+   that lives nowhere: manual post-deploy steps existing only in one person's memory, per
+   environment. They are now listed, and each offers a button.
+
+   **What the write path is, in one line: set-core never writes — it asks the project to
+   record.** Reads and writes are separated all the way down (declared list, function,
+   endpoint) rather than distinguished by a flag, because reading everything the project
+   offers happens on every page load, and a single list with a "this one mutates" attribute
+   is one refactor away from a page load acknowledging something.
+
+   **The affordance is declared, not derived.** The project attaches `actions` to the rows
+   where a write applies, with the arguments already computed. A path language was rejected
+   by both sides: its failures are silent, and both sides would have to maintain it.
+
+   **The confirmation states what the record is** — a statement by the person clicking, not
+   a measurement, verified by nothing. Not ceremony: the consumer produced a stray record
+   for a check nobody had performed, and this is the only place a person is told before
+   asserting it.
+
+   **Not yet exercised end to end.** No acknowledgement has been sent: a real click writes
+   into the consumer's repository, which needs the user's word, not ours. Structurally
+   verified instead — 15 rows offer a button, all disabled pending the required choice.
 2. ~~**The test *system*, not just the test environment.**~~ **Done on the consumer's side,
    and it appeared through set-core with zero framework changes** — the second time the
    declaration-driven design has been confirmed, and the first time deliberately.
