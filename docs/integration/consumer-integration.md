@@ -72,6 +72,7 @@ Two of them are load-bearing for every decision on this page:
 | Read-only status API + declared commands | `734c445f` | `--eval` → 400, undeclared → 404, neither reaches argv |
 | Project Status screen | `126c71c8` | live page: 6 sections, 9 tables, 185 rows, 0 JS errors |
 | Renderer honesty tests | `a2eea14a` | 11 tests |
+| Long scalar lists capped at 5 chips | `248a76c8` | one live command emits 17 in a cell; 2 of 4 tests measure, 2 guard |
 
 **The acceptance test is met for reading.** The screen is at `/p/<project>/status`, listed
 in the sidebar under Orchestration.
@@ -150,11 +151,45 @@ namespace and holds no state of its own about what it has sent. That is safe onl
 the write is idempotent — see the agreements above. If idempotency is ever dropped, this
 decision has to be re-opened, not worked around in the UI.
 
+### D2 — emphasis comes from the contract, never from a recognised field name
+
+*Decided 2026-07-24, on the channel (S#69, answering W#65). Evidence: `248a76c8`, and the
+`migrationCount` refusal that preceded it.*
+
+The consumer asked, reasonably, that one field of a blocker be given "separate weight" on
+screen, because it names the subset that someone actually has to act on. The request is
+right about the goal and wrong about the mechanism: implementing it as asked means the
+renderer recognises that field's **name**, which burns a consumer field name into the layer
+whose whole job is not to have any. The same request was refused earlier for a different
+field; accepting it now only because it is convenient would make the earlier refusal
+arbitrary rather than principled.
+
+**The offered mechanism instead** (built when the consumer confirms): a contract-level key
+on the object — `_emphasis: ["<key>"]`, in the shape of the existing `deprecated` — that the
+renderer honours without knowing anything about what it names. Two constraints, or it
+reproduces the defect classes this track keeps finding:
+
+1. **A declaration is not data.** If `_emphasis` names a key that is absent, the renderer
+   draws *nothing* — never "1 emphasised field missing". That is the false-absence shape.
+2. **The count comes from the data**; the declaration only says what to look for.
+
+There is a zero-contract-change fallback: field order. The blocker's own `detail` prose
+already states the subset, so moving that list to be the object's first list-valued field
+raises it without any mechanism at all. Ugly, free, and the consumer's call.
+
+### The property this keeps re-proving, measured seven times
+
+New producer fields reach the screen with **zero framework changes** — most recently 67 bug
+rows carrying two new planning fields, and a blocker carrying a nested list plus a nested
+table (`plannedIn` on 4, `wasPlannedIn` on 22). This is no longer a pleasant surprise; it is
+the contract's defining property, and the useful inversion is: **the day a new field needs a
+framework change, a name has been burned in somewhere, and that is the bug** — not the field.
+
 ### Still open
 
 | Decision | Owner | State |
 |---|---|---|
-| — | | nothing open |
+| `_emphasis` vs. field-order fallback | consumer | offered in S#69, awaiting their choice |
 
 ---
 
@@ -480,9 +515,22 @@ being guessed at.
    already live*, while this repo already differentiates by *what a change touches*. Those
    are two real axes and neither is the one that was planned.
 
-   **Still not started, and still a state rather than a delay:** the design belongs on the
-   channel, and their side is mid-build on the readiness answer. Starting here now would be
-   the parallel design the user ruled out.
+   **Started 2026-07-24, by the consumer, on the "plan a bug fix" half** — the goal's least
+   covered verb. Their finding, and it is the kind that only shows up once the data is
+   joined: of 23 open bugs, **22 have no change referencing them at all**. The data existed
+   the whole time (45 openspec files cite stable bug ids); nothing had ever put the two
+   sides next to each other. Two fields carry it, deliberately not merged into one:
+   `plannedIn` (an **active** change references the bug) and `wasPlannedIn` (only an
+   **archived** one does — "we believed it closed, and it is open"). Merging them would
+   erase exactly the discrepancy that is worth seeing.
+
+   **The set-core side was zero work** (see D2), which is now the seventh confirmation of
+   the declaration-driven design and the reason it is recorded as a property rather than a
+   result.
+
+   The design still belongs on the channel; what has started is the *data*, not the
+   framework's shape. Starting the router here now would still be the parallel design the
+   user ruled out.
 
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
