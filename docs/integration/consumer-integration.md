@@ -375,6 +375,35 @@ before the change is deployed anywhere. Two things worth keeping:
   (`4px` / `2px` / `1px`), so an "I could not check" never sits where a failure or a pass
   would be read.
 
+### The bug-id SHAPE is about to change, and this side is opaque to it — measured 2026-07-25
+
+The consumer is renumbering every bug identifier: the two current forms (`bugNumber` and a
+`#`-delimited stable id) both retire, replaced by a `<PREFIX>-<NNNN>` shape whose number is
+frozen at birth (so it is the same in every environment), with a committed old→new map. Two
+questions arrived on the channel; both answered by measurement rather than assurance.
+
+- **Does this side persist a bug identifier between two reads, so old references would go
+  dead?** No — measured across every layer. The reader "neither interprets nor persists"
+  what comes back (`lib/set_orch/project_status.py:19`); the transport's only cache is
+  `_CACHE`, in-memory, `CACHE_TTL_SECONDS = 30`, dropped on every write, dies with the
+  process, and the docstring forbids ever making it a disk cache
+  (`lib/set_orch/api/project_status.py:8`, `:49`); the frontend stores only UI preferences in
+  `localStorage`, never the fetched data (`ProjectStatus.tsx:14`, `StatusTable.tsx:16`, with a
+  spy test proving it). So renumbering is traceless here — the next read shows the new ids. The
+  only stale references are ones a *person* wrote down outside the surface; the committed map
+  is the right tool for those, and needs no format change for this side.
+- **Does the shape change touch this side's contract or code?** No. The reader owns the
+  envelope and nothing inside `data` (`project_status.py:16`) and never parses the id — no
+  `#`-split anywhere near it — so a `#`-less `SET-0042` is fine where an `email#…` was. The
+  producer bug this exposed (their `deriveReplyState` derives the source from the id's `#`,
+  so a renumbered id falls out of `REPLY_NOT_APPLICABLE_SOURCES` and inflates a "pending
+  reply" blocker) is theirs, in their `set-api.mjs`; this side renders their count and never
+  recomputes it, so the fix has no framework half. And this side pins no id **shape**: the
+  literal `email#` appears nowhere in the repo, and the held `bugfix-lane` design treats a
+  stable identifier as *shape rather than value*. So the shape change raises no contract
+  objection here — the recorded "always `email#…`" point is the consumer's own, and only their
+  user can override it.
+
 ### Still open
 
 | Decision | Owner | State |
