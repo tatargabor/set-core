@@ -138,7 +138,7 @@ export default function Manager() {
                           lines — the toggle made the whole table less legible,
                           which the row/badge counts could not see. */}
                       <Link
-                        to={`/p/${p.name}/orch`}
+                        to={`/p/${p.name}/status`}
                         className="flex items-center gap-2 hover:text-neutral-100"
                         title={p.archived ? `archived ${p.archivedAt?.slice(0, 10) ?? ''}` : undefined}
                       >

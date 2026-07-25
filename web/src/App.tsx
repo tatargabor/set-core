@@ -192,7 +192,7 @@ function LegacySetRedirect() {
     'memory': 'memory',
     'settings': 'settings',
   }
-  const mapped = rest && tabMap[rest] ? tabMap[rest] : 'orch'
+  const mapped = rest && tabMap[rest] ? tabMap[rest] : 'status'
   return <Navigate to={`/p/${project}/${mapped}`} replace />
 }
 
@@ -203,7 +203,7 @@ function LegacyManagerRedirect() {
     'issues': 'issues',
     'mutes': 'settings/mutes',
   }
-  const mapped = rest && pathMap[rest] ? pathMap[rest] : 'orch'
+  const mapped = rest && pathMap[rest] ? pathMap[rest] : 'status'
   return <Navigate to={`/p/${project}/${mapped}`} replace />
 }
 
@@ -239,8 +239,8 @@ export default function App() {
           {/* Settings */}
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/mutes" element={<MutesPage />} />
-          {/* Default: redirect to orch */}
-          <Route index element={<Navigate to="orch" replace />} />
+          {/* Default: redirect to project status — the default landing (user, 2026-07-25) */}
+          <Route index element={<Navigate to="status" replace />} />
         </Route>
 
         {/* Legacy redirects */}

@@ -141,28 +141,28 @@ registerGlobalItem({
 
 // --- Built-in apps ---
 
+// Project Status — the project's own view of itself, read through its contract.
+// Sits ABOVE Orchestration and is the default landing page (user, 2026-07-25):
+// "where the project stands" is the first question, "what set-core did" the second.
+registerApp({
+  id: 'project-status',
+  label: 'Project Status',
+  icon: Activity,
+  order: 10,
+  defaultRoute: '/p/:name/status',
+  matchPatterns: ['/p/:name/status'],
+  children: [],
+})
+
 // Orchestration — the main dashboard with tabs (Changes, Phases, Log, etc.)
 registerApp({
   id: 'orchestration',
   label: 'Orchestration',
   icon: LayoutDashboard,
-  order: 10,
+  order: 20,
   defaultRoute: '/p/:name/orch',
   matchPatterns: ['/p/:name/orch'],
   children: [],  // tabs live in Dashboard content, not sidebar
-})
-
-// Project Status — the project's own view of itself, read through its contract.
-// Sits directly under Orchestration on purpose: "what set-core did" and "where the
-// project stands" are the two halves of the same question.
-registerApp({
-  id: 'project-status',
-  label: 'Project Status',
-  icon: Activity,
-  order: 20,
-  defaultRoute: '/p/:name/status',
-  matchPatterns: ['/p/:name/status'],
-  children: [],
 })
 
 registerApp({

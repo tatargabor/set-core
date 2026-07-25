@@ -206,133 +206,142 @@ export default function ProjectStatus({ project }: Props) {
   const activeResult = entries.find(([n]) => n === activeName)?.[1]
 
   return (
-    // Full width, deliberately. The cap that used to be here was written when an answer
-    // was a handful of fields; a live one is 67 rows by nine columns, and half of them sat
-    // behind a scrollbar inside a container using half the screen. Horizontal scrolling
-    // belongs to the table, never to the page.
-    <div className="p-4 space-y-3 overflow-y-auto h-full">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-base font-semibold text-neutral-100">Project Status</h1>
-          <p className="text-xs text-neutral-500">
-            Read live from the project's own contract — not from set-core's records.
-          </p>
+    // Same three-zone shell as the Orchestration dashboard so the two read as one product
+    // (user, 2026-07-25): a StatusHeader-styled bar, a pill tab strip, then a scroll region.
+    // The vertical flex column with overflow-hidden keeps the header and tabs fixed while the
+    // answer below scrolls on its own — a live answer is 67 rows by nine columns, and its
+    // horizontal scrolling belongs to the table, never to the page.
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header bar — mirrors StatusHeader's chrome (bg, border, padding) so the two apps
+          share one visual language. */}
+      <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-neutral-100">{project}</h2>
+          <span
+            className="px-2 py-0.5 rounded text-sm font-medium bg-neutral-800 text-neutral-400"
+            title="Read live from the project's own contract — not from set-core's records."
+          >
+            Project Status
+          </span>
         </div>
+
+        {contract?.configured && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+            <span>via <span className="text-neutral-400">{contract.source}</span></span>
+            <code className="text-neutral-500 break-all">{contract.command}</code>
+            {contract.timeout !== null && <span>timeout {contract.timeout}s</span>}
+          </div>
+        )}
+
         <button
           onClick={() => load(true)}
           disabled={loading}
-          className="px-3 py-1.5 text-xs rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          className="ml-auto px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm rounded font-medium bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
         >
           {loading ? 'Asking…' : 'Ask again'}
         </button>
-      </header>
+      </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-900/60 bg-red-950/20 p-4 text-xs text-red-300">
-          Could not reach set-core's status route: {error}
-        </div>
-      )}
-
-      {contract && !contract.configured && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
-          <h2 className="text-sm font-medium text-neutral-200">
-            This project publishes no status contract
-          </h2>
-          <p className="text-xs text-neutral-500">
-            Nothing is wrong — most projects publish none. To make this page live, the
-            project drops a <code className="text-neutral-400">.set-endpoint.json</code> at
-            its root declaring the command set-core may run and which questions it answers,
-            or an operator sets <code className="text-neutral-400">status_api.command</code> in
-            its orchestration config.
-          </p>
-        </div>
-      )}
-
-      {contract?.configured && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-600">
-          <span>via <span className="text-neutral-400">{contract.source}</span></span>
-          <code className="text-neutral-500 break-all">{contract.command}</code>
-          {contract.timeout !== null && <span>timeout {contract.timeout}s</span>}
-        </div>
-      )}
-
-      {/* A single "*" gap is the contract-level one: configured, but nothing declared. */}
-      {data?.gaps?.['*'] && (
-        <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-xs text-amber-200">
-          {data.gaps['*']}
-        </div>
-      )}
-
+      {/* Tab bar — pill style, identical to the Orchestration dashboard's tab bar. */}
       {entries.length > 0 && (
-        <div className="flex items-center gap-3 border-b border-neutral-800">
-          <div
-            role="tablist"
-            className="flex items-center gap-1 overflow-x-auto scrollbar-hide -mb-px"
-          >
-            {entries.map(([name, result]) => {
-              const isActive = name === activeName
-              return (
-                <button
-                  key={name}
-                  role="tab"
-                  aria-selected={isActive}
-                  data-status-tab={name}
-                  onClick={() => setActive(name)}
-                  className={`px-3 py-1.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
-                    isActive
-                      ? 'border-blue-500 text-neutral-100'
-                      : 'border-transparent text-neutral-500 hover:text-neutral-300'
-                  }`}
-                >
-                  {name}
-                  {/* A failed command must be visible from every tab, not only its own —
-                      otherwise tabbing is how a broken thing starts looking fine. An
-                      UNASKED one gets a different, quiet mark: it is not broken, and one
-                      visual weight per meaning means red stays reserved for broken. */}
-                  {result && !result.ok && (
-                    <span className="ml-1.5 text-red-400" title="this command failed">●</span>
-                  )}
-                  {!result && (
-                    <span className="ml-1.5 text-neutral-600" title="not asked yet — expensive">○</span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+        <div
+          role="tablist"
+          className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900 overflow-x-auto max-w-full scrollbar-hide shrink-0"
+        >
+          {entries.map(([name, result]) => {
+            const isActive = name === activeName
+            return (
+              <button
+                key={name}
+                role="tab"
+                aria-selected={isActive}
+                data-status-tab={name}
+                onClick={() => setActive(name)}
+                className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm whitespace-nowrap rounded transition-colors ${
+                  isActive
+                    ? 'bg-neutral-800 text-neutral-200 font-medium'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                }`}
+              >
+                {name}
+                {/* A failed command must be visible from every tab, not only its own —
+                    otherwise tabbing is how a broken thing starts looking fine. An
+                    UNASKED one gets a different, quiet mark: it is not broken, and one
+                    visual weight per meaning means red stays reserved for broken. */}
+                {result && !result.ok && (
+                  <span className="ml-1.5 text-red-400" title="this command failed">●</span>
+                )}
+                {!result && (
+                  <span className="ml-1.5 text-neutral-600" title="not asked yet — expensive">○</span>
+                )}
+              </button>
+            )
+          })}
           {failing.length > 0 && (
-            <span className="ml-auto shrink-0 text-[11px] text-red-400 pb-1.5">
+            <span className="ml-auto shrink-0 pl-2 pr-1 text-[11px] text-red-400">
               {failing.length} of {entries.length} failed
             </span>
           )}
         </div>
       )}
 
-      {activeName && !activeResult && (
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
-          <h2 className="text-sm font-medium text-neutral-100">{activeName}</h2>
-          <p className="text-xs text-neutral-500">
-            The project marks this answer as expensive, so the page does not ask for it on
-            its own. Nothing is known about it yet — this is not a gap and not a zero.
-          </p>
-          <button
-            onClick={() => askOnDemand(activeName)}
-            disabled={asking === activeName}
-            className="px-3 py-1.5 text-xs rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {asking === activeName ? 'Asking…' : 'Ask now'}
-          </button>
-        </section>
-      )}
+      {/* Scroll region — the answer and every banner live here. */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+        {error && (
+          <div className="rounded-lg border border-red-900/60 bg-red-950/20 p-4 text-xs text-red-300">
+            Could not reach set-core's status route: {error}
+          </div>
+        )}
 
-      {activeName && activeResult && (
-        activeResult.ok
-          ? <Answer name={activeName} result={activeResult} onAction={runAction} />
-          : <Gap name={activeName} result={activeResult} />
-      )}
+        {contract && !contract.configured && (
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
+            <h2 className="text-sm font-medium text-neutral-200">
+              This project publishes no status contract
+            </h2>
+            <p className="text-xs text-neutral-500">
+              Nothing is wrong — most projects publish none. To make this page live, the
+              project drops a <code className="text-neutral-400">.set-endpoint.json</code> at
+              its root declaring the command set-core may run and which questions it answers,
+              or an operator sets <code className="text-neutral-400">status_api.command</code> in
+              its orchestration config.
+            </p>
+          </div>
+        )}
 
-      {!loading && contract?.configured && entries.length === 0 && !data?.gaps?.['*'] && (
-        <div className="text-sm text-neutral-500">The project declared no questions to ask.</div>
-      )}
+        {/* A single "*" gap is the contract-level one: configured, but nothing declared. */}
+        {data?.gaps?.['*'] && (
+          <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-xs text-amber-200">
+            {data.gaps['*']}
+          </div>
+        )}
+
+        {activeName && !activeResult && (
+          <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
+            <h2 className="text-sm font-medium text-neutral-100">{activeName}</h2>
+            <p className="text-xs text-neutral-500">
+              The project marks this answer as expensive, so the page does not ask for it on
+              its own. Nothing is known about it yet — this is not a gap and not a zero.
+            </p>
+            <button
+              onClick={() => askOnDemand(activeName)}
+              disabled={asking === activeName}
+              className="px-3 py-1.5 text-xs rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {asking === activeName ? 'Asking…' : 'Ask now'}
+            </button>
+          </section>
+        )}
+
+        {activeName && activeResult && (
+          activeResult.ok
+            ? <Answer name={activeName} result={activeResult} onAction={runAction} />
+            : <Gap name={activeName} result={activeResult} />
+        )}
+
+        {!loading && contract?.configured && entries.length === 0 && !data?.gaps?.['*'] && (
+          <div className="text-sm text-neutral-500">The project declared no questions to ask.</div>
+        )}
+      </div>
     </div>
   )
 }

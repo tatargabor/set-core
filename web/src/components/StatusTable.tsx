@@ -47,6 +47,18 @@ import {
  */
 export const CONTROL_MIN_ROWS = 8
 
+/**
+ * How many rows render before the rest go behind a single "show all" click.
+ *
+ * The table no longer scrolls inside its own box — that inner scrollbar sat inside the page's
+ * scrollbar, and two nested scrollbars is a worse answer than one. So the page is the only
+ * vertical scroller, and a 108-row answer would otherwise make the page enormous. The cap is
+ * the same bargain the chip list already strikes: show a workable slice, ALWAYS state how many
+ * are held back, and keep them one click away. A cap that hid rows silently would be the
+ * false-absence shape this surface refuses everywhere else.
+ */
+export const ROW_CAP = 25
+
 /** A column is categorical when it has few enough distinct values to be worth choosing between. */
 export const FACET_MAX_DISTINCT = 12
 /** …and few enough RELATIVE to the rows. Both bounds are needed — see below. */
@@ -151,6 +163,7 @@ export function StatusTable(
   const [picked, setPicked] = useState<Record<string, string[]>>({})
   const [sort, setSort] = useState<SortState | null>(null)
   const [open, setOpen] = useState<ReadonlySet<number>>(new Set<number>())
+  const [showAll, setShowAll] = useState(false)
 
   const controls = rows.length >= CONTROL_MIN_ROWS
   const facets = useMemo(
@@ -221,6 +234,9 @@ export function StatusTable(
   }
 
   const hidden = rows.length - indices.length
+  // The rows actually rendered — the filtered/sorted set, then capped unless expanded.
+  const visibleIndices = showAll ? indices : indices.slice(0, ROW_CAP)
+  const capped = indices.length - visibleIndices.length
 
   return (
     <div className="space-y-1">
@@ -260,14 +276,14 @@ export function StatusTable(
             onChange={e => setSearch(e.target.value)}
             placeholder="search rows…"
             aria-label="search rows"
-            className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-[11px] font-mono text-neutral-200 placeholder:text-neutral-600 w-56 focus:outline-none focus:border-neutral-600"
+            className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-xs text-neutral-200 placeholder:text-neutral-600 w-56 focus:outline-none focus:border-neutral-600"
           />
           {[...facets.entries()].map(([col, counts]) => {
             const chosen = picked[col] ?? []
             return (
               <details key={col} className="relative">
                 <summary
-                  className={`cursor-pointer list-none px-2 py-1 rounded border text-[11px] font-mono ${
+                  className={`cursor-pointer list-none px-2 py-1 rounded border text-xs ${
                     chosen.length
                       ? 'border-sky-700 bg-sky-950/40 text-sky-300'
                       : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200'
@@ -279,7 +295,7 @@ export function StatusTable(
                   {[...counts.entries()].map(([value, count]) => (
                     <label
                       key={value}
-                      className="flex items-center gap-2 px-1 py-0.5 text-[11px] font-mono text-neutral-300 hover:bg-neutral-800 rounded cursor-pointer"
+                      className="flex items-center gap-2 px-1 py-0.5 text-xs text-neutral-300 hover:bg-neutral-800 rounded cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -300,7 +316,7 @@ export function StatusTable(
               <button
                 key={`${col}:${v}`}
                 onClick={() => toggleFacet(col, v)}
-                className="px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800 text-[11px] font-mono text-sky-300 hover:bg-sky-900/60"
+                className="px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800 text-xs text-sky-300 hover:bg-sky-900/60"
                 title="click to remove this filter"
               >
                 {col}={v} {'×'}
@@ -310,17 +326,20 @@ export function StatusTable(
         </div>
       )}
 
-      <div className="overflow-auto rounded border border-neutral-800 max-h-[70vh]">
-        <table className="w-full text-xs font-mono tabular-nums">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-neutral-900 text-neutral-400">
-              {controls && <th className="w-6 px-1 py-1.5" />}
+      {/* overflow-x only: a wide table scrolls sideways within its own box, but the PAGE is
+          the single vertical scroller — no inner max-height, so no second vertical scrollbar
+          nested inside the page's. Matches how the orchestration change table renders. */}
+      <div className="overflow-x-auto rounded border border-neutral-800">
+        <table className="w-full text-sm tabular-nums">
+          <thead>
+            <tr className="bg-neutral-900 text-neutral-500 border-b border-neutral-800">
+              {controls && <th className="w-6 px-2 py-2" />}
               {cols.map(c => (
                 <th
                   key={c}
                   onClick={controls ? () => cycleSort(c) : undefined}
                   aria-sort={sort?.col === c ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                  className={`text-left font-medium px-2 py-1.5 whitespace-nowrap border-b border-neutral-800 ${
+                  className={`text-left font-medium px-3 py-2 whitespace-nowrap ${
                     controls ? 'cursor-pointer select-none hover:text-neutral-200' : ''
                   }`}
                 >
@@ -330,18 +349,18 @@ export function StatusTable(
                   )}
                 </th>
               ))}
-              {hasActions && <th className="text-left font-medium px-2 py-1.5 border-b border-neutral-800" />}
+              {hasActions && <th className="text-left font-medium px-3 py-2" />}
             </tr>
           </thead>
           <tbody>
-            {indices.map(i => {
+            {visibleIndices.map(i => {
               const row = rows[i]
               const isOpen = open.has(i)
               return [
                 <tr
                   key={`r${i}`}
-                  className={`border-t border-neutral-800/70 align-top ${
-                    controls ? 'hover:bg-neutral-900/60' : ''
+                  className={`border-b border-neutral-800/50 align-top ${
+                    controls ? 'hover:bg-neutral-900/50' : ''
                   }`}
                 >
                   {controls && (
@@ -354,7 +373,7 @@ export function StatusTable(
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) }
                       }}
-                      className="px-1 py-1 text-neutral-600 hover:text-neutral-200 cursor-pointer select-none"
+                      className="px-2 py-2 text-neutral-600 hover:text-neutral-200 cursor-pointer select-none"
                     >
                       {isOpen ? '▾' : '▸'}
                     </td>
@@ -366,13 +385,13 @@ export function StatusTable(
                         ? <Emphasis>{renderValue(row[c], 2)}</Emphasis>
                         : renderValue(row[c], 2)
                     return (
-                      <td key={c} className={controls ? 'px-2 py-1' : 'px-2 py-1.5 max-w-[26rem]'}>
+                      <td key={c} className={controls ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'}>
                         {controls ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
                       </td>
                     )
                   })}
                   {hasActions && (
-                    <td className="px-2 py-1 whitespace-nowrap">
+                    <td className="px-3 py-2 whitespace-nowrap">
                       <RowActions value={row[ACTIONS_KEY]} />
                     </td>
                   )}
@@ -392,6 +411,19 @@ export function StatusTable(
           </tbody>
         </table>
       </div>
+
+      {/* The cap, stated and reversible — never a silent truncation. Once expanded, the same
+          control folds it back so the delivered slice is recoverable without a reload. */}
+      {(capped > 0 || showAll) && indices.length > ROW_CAP && (
+        <button
+          onClick={() => setShowAll(v => !v)}
+          className="text-xs text-neutral-400 hover:text-neutral-200 underline decoration-dotted"
+        >
+          {showAll
+            ? `show fewer — first ${ROW_CAP} of ${indices.length}`
+            : `show all ${indices.length} rows — ${capped} more`}
+        </button>
+      )}
 
       {/* A filter that matches nothing must say so. An empty table reads as an empty
           answer, which is the false-absence shape with the reader's own click behind it. */}

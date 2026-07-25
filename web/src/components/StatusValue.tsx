@@ -63,7 +63,7 @@ function Scalar({ value }: { value: unknown }) {
       : <span className="text-neutral-500">no</span>
   }
   if (typeof value === 'number') {
-    return <span className="font-mono text-neutral-100">{value.toLocaleString()}</span>
+    return <span className="text-neutral-100 tabular-nums">{value.toLocaleString()}</span>
   }
   const text = String(value)
   if (text === '') return <Unknown label="(empty)" />
@@ -141,8 +141,8 @@ function SectionHeading(
   const disagrees = typeof decl.count === 'number' && actual !== null && decl.count !== actual
   return (
     <div className="flex items-baseline gap-2">
-      <span className={`text-xs ${style.label}`}>{decl.label || decl.key}</span>
-      <span className="text-[10px] text-neutral-600 font-mono" title="the project's own word for this section">
+      <span className={`text-sm ${style.label}`}>{decl.label || decl.key}</span>
+      <span className="text-[10px] text-neutral-600 font-mono uppercase tracking-wide" title="the project's own word for this section">
         {decl.severity || decl.key}
       </span>
       {/* No row count here when the two agree: the list below states it, and a heading
@@ -185,7 +185,7 @@ function SectionedGrid(
         </section>
       ))}
       {visible.length > 0 && (
-        <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-xs pt-1">
+        <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm pt-1">
           {visible.map(k => (
             <div key={k} className="contents">
               <dt className="text-neutral-500 truncate" title={k}>{k}</dt>
@@ -210,7 +210,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
   const { visible, hiddenCount } = partitionKeys(all, view)
   return (
     <div className="space-y-1">
-      <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-xs">
+      <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm">
         {visible.map(k => (
           <div key={k} className="contents">
             <dt className="text-neutral-500 truncate" title={k}>
@@ -248,7 +248,7 @@ function ChipList({ values, depth }: { values: unknown[]; depth: number }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       {shown.map((v, i) => (
-        <span key={i} className="px-1.5 py-0.5 rounded bg-neutral-800 text-[11px]">
+        <span key={i} className="px-1.5 py-0.5 rounded bg-neutral-800 text-xs">
           <StatusValue value={v} depth={depth + 1} />
         </span>
       ))}
