@@ -398,7 +398,15 @@ questions arrived on the channel; both answered by measurement rather than assur
   producer bug this exposed (their `deriveReplyState` derives the source from the id's `#`,
   so a renumbered id falls out of `REPLY_NOT_APPLICABLE_SOURCES` and inflates a "pending
   reply" blocker) is theirs, in their `set-api.mjs`; this side renders their count and never
-  recomputes it, so the fix has no framework half. And this side pins no id **shape**: the
+  recomputes it, so the fix has no framework half. Measured against a follow-up that assumed
+  this side keeps a "faithfully-adopted" copy of the producer's `covered()`/`bugNumber`
+  predicate: it does not — `find . -name 'set-api*.mjs'` is empty and there is no
+  `bugNumber`/`plannedIn`/`ID_RE`/`collectBugPlanning` anywhere in the source, so the "the two
+  predicates must stay identical" invariant is internal to their repo, not a cross-project
+  sync. Nor does this side traverse their `openspec/changes/archive/**` for bug ids (the 36
+  `plannedIn`/`wasPlannedIn` signals that renumbering would zero are producer-internal); if the
+  held `bugfix-lane` is ever built to read an archived id, their committed map is the runtime
+  resolver. And this side pins no id **shape**: the
   literal `email#` appears nowhere in the repo, and the held `bugfix-lane` design treats a
   stable identifier as *shape rather than value*. So the shape change raises no contract
   objection here — the recorded "always `email#…`" point is the consumer's own, and only their
