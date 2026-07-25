@@ -406,7 +406,17 @@ questions arrived on the channel; both answered by measurement rather than assur
   sync. Nor does this side traverse their `openspec/changes/archive/**` for bug ids (the 36
   `plannedIn`/`wasPlannedIn` signals that renumbering would zero are producer-internal); if the
   held `bugfix-lane` is ever built to read an archived id, their committed map is the runtime
-  resolver. And this side pins no id **shape**: the
+  resolver. **The producer's false-closed reply-source task (a `[x]` that was never
+  implemented, so the source was still derived from the retired id `#`-shape) was fixed and
+  the change archived (their commit `2ddb7032`); verified on this side by looking at the
+  rendered result, not the mechanism:** a refreshed read of `GET
+  /api/{project}/project-status` returns the with-fix reply distribution verbatim —
+  `notApplicable 87` (not the without-fix 67), `unmarked 4` (not 17), `pending 12`,
+  `notNeeded 2` — all 111 ids in the new shape and none `#`-bearing, the explicit `channel`
+  field present on every row and driving the derivation, and `REPLY_PENDING` a single blocker
+  rather than an inflated count. This side computes none of it (`notApplicable`/`unmarked`/
+  `replyState`/`summarizeReply` → 0 matches in the source), so the surface cannot diverge from
+  the producer's corrected answer. And this side pins no id **shape**: the
   literal `email#` appears nowhere in the repo, and the held `bugfix-lane` design treats a
   stable identifier as *shape rather than value*. So the shape change raises no contract
   objection here — the recorded "always `email#…`" point is the consumer's own, and only their
@@ -417,7 +427,6 @@ questions arrived on the channel; both answered by measurement rather than assur
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
-| A reply-summary count this side renders is distorted by a producer task marked done but not implemented (source still derived from the retired id `#`-shape instead of the new `channel` field) | consumer | their measurement: with 0 `#`-bearing ids left, ~20 internal FIXED items lose their not-applicable state and ≥5 go unmarked. This side holds none of the implicated code (`find` for the producer script and its contract test both empty; the commit is not in this repo) and renders the producer's count faithfully without recomputing it, so the fix is theirs — agreed the change is held from archival until it lands, and S#38 bars it from production regardless |
 
 ---
 
