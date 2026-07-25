@@ -417,6 +417,7 @@ questions arrived on the channel; both answered by measurement rather than assur
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
+| A reply-summary count this side renders is distorted by a producer task marked done but not implemented (source still derived from the retired id `#`-shape instead of the new `channel` field) | consumer | their measurement: with 0 `#`-bearing ids left, ~20 internal FIXED items lose their not-applicable state and ≥5 go unmarked. This side holds none of the implicated code (`find` for the producer script and its contract test both empty; the commit is not in this repo) and renders the producer's count faithfully without recomputing it, so the fix is theirs — agreed the change is held from archival until it lands, and S#38 bars it from production regardless |
 
 ---
 
