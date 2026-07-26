@@ -299,6 +299,24 @@ namespace and holds no state of its own about what it has sent. That is safe onl
 the write is idempotent — see the agreements above. If idempotency is ever dropped, this
 decision has to be re-opened, not worked around in the UI.
 
+**set-core keys the acknowledgement by nothing — measured 2026-07-26.** The consumer,
+carefully protecting its own scheme, moved a manual reminder to the end of a release list
+so that "the set's `(release, index)` acknowledgement keys don't shift", and flagged it as
+a requirement set-core imposes. Measured, set-core imposes no such thing. `write()`
+(`lib/set_orch/project_status.py:637`) holds no acknowledgement store — its docstring is
+explicit that set-core keeps "no copy and no memory of having asked" — and its one caller,
+`post_project_write` (`lib/set_orch/api/project_status.py:196`), forwards the request `args`
+verbatim to the project's own write command. No set-core caller constructs, hard-codes, or
+derives a `(release, index)` key (`grep -rniE '\bwrite\(|project-status/write' lib/ bin/
+web/src/` → the endpoint is the only caller). The frontend issues no acknowledgement write
+at all, and where it holds selection state it deliberately keys by NAME not index
+(`web/src/pages/ProjectStatus.tsx:127`) — the very fragility the reorder was avoiding. So
+the `(release, index)` key is the *project's* scheme on the project's side; the only thing
+set-core requires is idempotency, not index stability. If the consumer ever moves to a
+content-based key, nothing breaks here. This is the same attribution class as the earlier
+channel slips — a project-side mechanism credited to set-core — and it is corrected here by
+measurement so it does not enter either rule book wrong.
+
 ### D2 — emphasis comes from the contract, never from a recognised field name
 
 *Decided 2026-07-24, on the channel (S#69, answering W#65). Evidence: `248a76c8`, and the
