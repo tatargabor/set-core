@@ -422,6 +422,42 @@ questions arrived on the channel; both answered by measurement rather than assur
   objection here — the recorded "always `email#…`" point is the consumer's own, and only their
   user can override it.
 
+### The findings-parse "silently wrong" class — this side derives no readiness, measured 2026-07-26
+
+The consumer fixed a `review-findings.md` parser on their producer side (their `set-api.mjs`,
+their commit) that had **silenced an apply-blocking fact**: it read status only from a table
+row while the current findings use a bullet form (`- **Status:** …`), and every heading reset
+the section severity so `## CRITICAL` + `### F1` inheritance never fired — so a change with an
+open CRITICAL came back as `blocksApply: null` ("unknown") instead of `true`. This is the
+[false-absence / silently-wrong](../../.claude/rules/evidence-discipline.md) class: the reader
+announced "we don't know" about a blocker it was looking straight at.
+
+Two measurements say the class does **not** reach set-core, and the reason is the same
+verbatim-render property that keeps the reply distribution honest:
+
+- **The consumer-status reader derives no readiness.** `parse_envelope`
+  (`lib/set_orch/project_status.py:467`) validates the envelope only — `contractVersion`, `ok`,
+  presence of `data`, the `deprecated` list — and lifts `data` untouched;
+  `grep -niE "findings|blocksApply|criticalOpen|readiness|severity"` over both reader files
+  (`project_status.py`, `api/project_status.py`) returns no parse/derive site. So when the
+  producer's fix flips `blocksApply: null` → `true`, set-core renders the corrected value with
+  no code change. **This side never computed a readiness for the affected change**, so there
+  was no set-core "unknown" to correct — the "unknown → BLOCKED" fix is the producer's
+  derivation, which set-core only displays. The living record likewise records verbatim render,
+  not a derived readiness, so nothing here to fix.
+
+- **set-core's own findings parser is not vulnerable to either bug.** `_parse_review_findings`
+  (`lib/set_orch/verifier.py:656`) exists but serves set-core's OWN orchestration, reading
+  findings set-core itself writes (`_write_review_findings_md`, `:706`) — a separate mechanism
+  from the consumer reader. Measured against the two bugs: it reads a `- [ ] [SEVERITY]
+  file:line — summary` checkbox line, not a table (bug a absent); severity is taken inline
+  per-line, with no `##`-heading inheritance to reset (bug b structurally impossible). The
+  class requires section-inherited severity plus a table-only read; this parser has neither.
+
+The general shape, worth keeping because it recurs: **a producer that derives can silence;
+a reader that renders verbatim cannot.** set-core stays on the render side of that line by
+construction — see [D2](#d2--emphasis-comes-from-the-contract-never-from-a-recognised-field-name).
+
 ### Still open
 
 | Decision | Owner | State |
