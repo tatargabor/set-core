@@ -476,6 +476,34 @@ The general shape, worth keeping because it recurs: **a producer that derives ca
 a reader that renders verbatim cannot.** set-core stays on the render side of that line by
 construction — see [D2](#d2--emphasis-comes-from-the-contract-never-from-a-recognised-field-name).
 
+### Incoming contract growth: bug `type` (BUG | REQUEST) — measured verbatim-immune 2026-07-27
+
+The consumer signalled (pre-push, contract change on the read surface) that the bug contract
+gains a mandatory `type` field per row (`BUG` | `REQUEST`, missing = `BUG`, fail-closed), a new
+`data.typeSummary` breakdown, a `byType` split on the `release-readiness` `OPEN_BUGS_*` rows,
+and a `unit`-string change `"hiba"` → `"bejelentés"`; `laneSignals.fixedWithoutRegressionTest`
+narrows to `type:"BUG"` rows only. **Measured on this side the same day, not assumed** — the
+whole growth is invisible to shipped set-core, for the reasons the verbatim architecture
+predicts:
+
+- `parse_envelope` (`lib/set_orch/project_status.py:467`) validates only the envelope and lifts
+  `data` verbatim — no field whitelist, so `type`/`typeSummary`/`byType` reach the screen with
+  zero code change.
+- `grep -rn "typeSummary|byType|fixedWithoutRegressionTest|'hiba'" lib/ modules/` → 0 hits: no
+  Python derivation and no value-match on the `unit` string, so `"hiba"→"bejelentés"` is inert.
+- `grep -rn "hiba|byType|typeSummary" web/src/` → 0 relevant; every `.kind` hit is set-core's own
+  DAG node kind (`impl`/`merge`/gate), never the `release-readiness` row `kind`.
+- `grep -rn "OPEN_BUGS|release-readiness" lib/ modules/ web/src/` (non-test) → 0 hits. The
+  consumer preserved the `kind` NAME believing a set-core gate matched on it; **no such gate
+  exists here.** Harmless (verbatim render is indifferent), but the reason is not a set-core
+  fact and must not be recorded as one (channel S#135 corrects it).
+
+**Forward-note for the gated `bugfix-lane-with-a-real-delta` work (item 4, user-approval-pending):**
+the shipped reader consumes no `laneSignals` at all, so the BUG-only narrowing is invisible
+today. When that lane is built to read `fixedWithoutRegressionTest`, it must adopt the same
+`type:"BUG"` predicate the consumer's blocking gate uses, so the signal and the gate cannot
+drift — a finished REQUEST has nothing to regress from.
+
 ### Still open
 
 | Decision | Owner | State |
