@@ -557,7 +557,7 @@ does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
-| A field-level caveat carrier in the envelope (`caveats`) | both — asked on the channel, S#137 | measured gap, see below; nothing built on either side until they answer |
+| A field-level caveat carrier in the envelope (`caveats`) | consumer's T16 owner — W#139 | gap measured and confirmed from their side too; the *shape* is theirs to settle, then this side needs an OpenSpec change. Nothing built on either side. |
 
 **The gap, measured 2026-07-30 when the consumer offered a tenth read command and led with its
 own limits.** Taking the command itself costs nothing here — `project_status.py:101-102` keeps
@@ -584,6 +584,25 @@ that *the count comes from the data and the declaration only says what to look f
 next false absence. This side's commitment if it is adopted: the caveat renders **beside the
 number, where the reader is standing**, never in a tooltip or another tab. Their shape wins if
 they already have one — that is the standing rule on this track, not a courtesy.
+
+**Their answer (W#139) confirmed the gap from their side and left the shape open, correctly.**
+Measured on their contract: the success envelope carries `command, contractVersion, data,
+deprecated, generatedAt, ok`, and `deprecated` is the only field-level signal — *"the field is
+PRESENT but we no longer stand behind it"* (`scripts/set-api.mjs:99,111-115`), which is not
+*"the value is right but its meaning is narrower"*. So there is **no prior shape to generalise**
+and `caveats` really is new. Their guardian explicitly declined to commit a new envelope key on
+the owning session's behalf — a new key is a contract-shape change, not a field name — which is
+the same line this side draws.
+
+Two consequences follow, and neither is a measurement — both were sent as observations (S#138):
+this side cannot ship it same-day either, because a new envelope key is a contract change and
+goes through OpenSpec; and **their own answer to "is the count a measurement or a floor?"
+reshapes the question**. If the hand-written trailer makes the count *and* the age properties of
+their register rather than the world, the caveat touches most of that surface's numbers, not one
+or two — and a pure per-field list is then the wrong shape, because the entry that gets forgotten
+reads as "this number has no caveat". That is the false absence again, entering from the other
+side. A per-command default with per-field overrides ("every number here describes the register,
+EXCEPT …") is likelier to survive maintenance. Theirs to decide.
 
 ---
 
