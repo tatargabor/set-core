@@ -557,6 +557,33 @@ does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
+| A field-level caveat carrier in the envelope (`caveats`) | both — asked on the channel, S#137 | measured gap, see below; nothing built on either side until they answer |
+
+**The gap, measured 2026-07-30 when the consumer offered a tenth read command and led with its
+own limits.** Taking the command itself costs nothing here — `project_status.py:101-102` keeps
+no built-in list of contract commands, so a new name in `commands` is an entry, not a framework
+change (the ninth time that has held). What does *not* fit is the caveat they attached to it:
+their counts are correct numbers whose **meaning is narrower than the name suggests** (a
+"not-tracked" count describes their own register, not the world; a "tracked" count is a known
+lower bound because one trailer is still hand-written).
+
+The envelope carries three "do not read it that way" signals and none of them is this one:
+`gaps` is per-**command** (`:758`), `errorClass` is per-failure (`:390`), `deprecated` is per-
+**field-name** (`:395`). All three describe something being absent or wrong. Here the command
+succeeds, the field exists, and the value is right — only the reading is wider than the fact.
+So the number would land on screen at the same visual weight as every other number, and the
+caveat would stay in a channel entry: **the number travels, the caveat does not.** This is the
+false-absence class one layer up, and `web/src/components/statusShape.tsx:41-48` already spells
+that class out for `deprecated`.
+
+Proposed on the channel, deliberately as the existing shape rather than a new language: a
+framework-level `caveats` key, field name → one sentence, **written by the producer, never
+decided by the framework** — exactly how `deprecated` works — and inheriting its hard-won rule
+that *the count comes from the data and the declaration only says what to look for*
+(`presentDeprecations`, `:50`), or a caveat printed for a field they stopped sending becomes the
+next false absence. This side's commitment if it is adopted: the caveat renders **beside the
+number, where the reader is standing**, never in a tooltip or another tab. Their shape wins if
+they already have one — that is the standing rule on this track, not a courtesy.
 
 ---
 
