@@ -504,6 +504,54 @@ today. When that lane is built to read `fixedWithoutRegressionTest`, it must ado
 `type:"BUG"` predicate the consumer's blocking gate uses, so the signal and the gate cannot
 drift — a finished REQUEST has nothing to regress from.
 
+### D3 — the channel stays plain files; it does not move onto MCP tools
+
+*Decided 2026-07-29, against the user's own opening preference, because the measurement
+refuted the argument for it — including the argument this side had just made.*
+
+The proposal was to put `channel_status` / `channel_read(since,…)` / `channel_append` MCP
+tools over the same two files, so a session would see a delta instead of a 400 KB log. The
+token argument does not survive contact with the traffic:
+
+| day | this side → | consumer → |
+|---|---|---|
+| 07-24 | 133 | 120 |
+| 07-25 | 6 | 13 |
+| 07-26 | 4 | 7 |
+| 07-27 | 1 | 1 |
+| 07-28 | 0 | 2 |
+
+Mean entry ≈ 2.7 KB ≈ 700 tokens, so current traffic costs ~1400 tokens/day. And `tail -n N`
+*already* reads a delta — an MCP tool would not read less, only differently. The 400 KB file
+size is the arresting number and the irrelevant one: nobody reads the file whole.
+
+**What MCP would genuinely buy** (kept, so the decision can be revisited rather than
+re-argued): machine-generated timestamps and entry numbers — the two sides still number
+differently, `S#136` here versus nothing on theirs — a cursor that survives a compact, and
+writes without a permission prompt. **What it costs:** one more moving part (uv + venv +
+fastmcp) that can fail, where `cat >>` cannot. Neither side gains push notification either
+way; that stays the Monitor's job.
+
+**Revisit when** a third project joins (N×N file pairs stop being hand-manageable) or daily
+traffic returns to three figures. Neither holds today.
+
+*Two findings fell out of measuring this, both worth more than the decision.* First: the
+set-core MCP server **was never registered for set-core itself** — `.claude.json` had
+`mcpServers: {}` for this project and the repo's `.mcp.json` was empty, while 11 other
+projects had a stdio entry. `set-project init` deploys outward and never ran on the framework.
+Registered on 2026-07-29 (local scope); it needs a session restart to appear.
+
+Second, and it corrects a claim that had been sitting in `CLAUDE.md`: the reason given for
+the file channel — that `.set-control` is per-project so `send_message`/`get_inbox` cannot
+cross a project boundary — **is false**. `_find_control_worktree()`
+(`mcp-server/set_mcp_server.py:462`) walks the **global** registry
+(`~/.config/set-core/projects.json`, 38 entries) and returns the first project that has a
+`.set-control`, regardless of where the server started; both sides would resolve to the same
+worktree. The actual blockers are that no `.set-control` exists on either tree (both tools
+return `Error: No .set-control worktree found`) and that the git commit cycle was rejected.
+The sentence described what the resolution *ought* to scope to rather than what the function
+does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `CLAUDE.md:197`.
+
 ### Still open
 
 | Decision | Owner | State |
@@ -1142,9 +1190,27 @@ from an impression.
 
 ## Resuming after a compact or a fresh session
 
-The negotiated agreements are here; the conversation is not. The channel is `/tmp`-lived
-and rebuilds the contact — see the cross-project channel section in `CLAUDE.md` for how to
-find it, catch up, and check (never blindly re-arm) the watches.
+The negotiated agreements are here; the conversation is not. The channel rebuilds the
+contact — see the cross-project channel section in `CLAUDE.md` for how to find it, catch up,
+and check (never blindly re-arm) the watches. *(Corrected 2026-07-29: this said the channel
+is `/tmp`-lived, which stopped being true on 07-24 when both sides moved it to
+`~/.local/share/set-core/channels/<slug>/`. The move updated `CLAUDE.md` and the running
+watches and left this page behind — exactly the second-place defect that move was documented
+to avoid.)*
+
+**Both watches died at once, and it cost five days of silence — recorded because the failure
+is silent by construction.** Measured 2026-07-29: `pgrep -f 'NEW=.*<peer file>'` returned two
+hits, **both aged `00:00`** — the measuring command's own processes, so zero live watchers —
+and `CronList` returned no jobs. The last entry on this side was 07-27T08:34; the consumer
+wrote twice on 07-28 and got no answer. Nothing anywhere reported a problem, because a dead
+watch and a quiet peer produce identical evidence: no notifications.
+
+Two things follow. **The Monitor and the cron are not redundant if they die together** — they
+died in the same session end, which is the common cause neither guards against. So the check
+on resume is not optional and not satisfied by "the Monitor survives a compact" (it does; it
+does not survive the session). And **the peer is the only external detector**, which is why
+S#136 asks them to prod after 24 hours of silence on an entry that concerns this side. A
+watch nobody can see failing needs a witness outside the process.
 
 One rule from that section is worth repeating because it was learned expensively: **a word
 like "measured" obliges showing the evidence.** A plausible guess crossed this channel, was

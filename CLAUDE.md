@@ -195,10 +195,20 @@ one that does is still worth watching.
 ## Cross-project agent channel — TEMPORARY (from 2026-07-24)
 
 While set-core and a consumer project are being integrated, their two copilot sessions
-coordinate over a **file channel**, because no shared transport exists: `.set-control` is
-per-project (`mcp-server/set_mcp_server.py` resolves it under the project root), so the
-MCP `send_message` / `get_inbox` pair cannot cross a project boundary. **Remove this
+coordinate over a **file channel**, because no shared transport exists. **Remove this
 section once the real transport ships.**
+
+*Corrected 2026-07-29 — the stated reason was wrong, and wrong in the direction that closes
+off a working option.* This said `.set-control` is per-project, so `send_message`/`get_inbox`
+"cannot cross a project boundary". Measured: the registry is **global**
+(`~/.config/set-core/projects.json`, 38 entries), and `_find_control_worktree()`
+(`mcp-server/set_mcp_server.py:462`) walks it and returns the **first** project that has a
+`.set-control` directory — regardless of which project the server was started in. So both
+sides would resolve to the *same* worktree; the project boundary was never the obstacle. The
+real ones are that **no `.set-control` exists anywhere** (checked on both trees → both tools
+return `Error: No .set-control worktree found`), and that the git-based ~15 s commit cycle is
+rejected below. This is the proxy-instead-of-the-thing class applied to a code path: the
+sentence described what the resolution *ought* to scope to, not what the function does.
 
 **DECISION 2026-07-24 — do not revive the git-based control sync for this.** The existing
 agent-messaging path (`set-control-sync`, `.set-control` worktree, ~15 s commit cycle) is
