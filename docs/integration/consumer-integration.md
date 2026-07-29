@@ -1212,6 +1212,21 @@ does not survive the session). And **the peer is the only external detector**, w
 S#136 asks them to prod after 24 hours of silence on an entry that concerns this side. A
 watch nobody can see failing needs a witness outside the process.
 
+**And the cron fallback armed in response was deleted the same evening, because it does not
+guard the failure it was armed against.** Reasoned from the measurement above: the Monitor
+and the cron are *both* session-scoped, and they died from the same cause — the session
+ending. A second watcher inside the process that dies cannot witness that process dying. So
+its protection was zero against the one failure on record, while its cost was real: it fired
+every 13 minutes, and the harness requires a visible reply, so the "say nothing when there is
+nothing to do" instruction could not be honoured. That is the rule book's own warning
+arriving — *a fallback that chatters gets muted* — except it gets muted by irritating the
+user, which also mutes the honest signals next to it.
+
+What actually covers the gap is not another timer: the **peer** (S#136 asks them to prod
+after 24 h of silence on an entry that concerns this side — a witness genuinely outside the
+process), and the **resume check** in `CLAUDE.md`, which is where a new session already
+looks. A guard that only fires while the thing it guards is healthy is decoration.
+
 One rule from that section is worth repeating because it was learned expensively: **a word
 like "measured" obliges showing the evidence.** A plausible guess crossed this channel, was
 reasonably taken for a measurement, and reached both projects' rule books before anyone ran
