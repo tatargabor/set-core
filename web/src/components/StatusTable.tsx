@@ -71,11 +71,47 @@ function isScalar(v: unknown): boolean {
     || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
 }
 
-/** The text a cell contributes to search and to a facet — the value as the project gave it. */
+/**
+ * The text a cell contributes to a FACET — the value as the project gave it.
+ *
+ * Deliberately empty for a structured value: a facet keys on this string, and keying on a
+ * flattened object would produce one chip per row. Structured columns are excluded from facets
+ * by `isScalar` anyway; this keeps the two agreeing rather than relying on the caller.
+ */
 function cellText(v: unknown): string {
   if (v === null || v === undefined) return ''
   if (typeof v === 'object') return ''
   return String(v)
+}
+
+/**
+ * The text a cell contributes to SEARCH — every scalar leaf inside it.
+ *
+ * Split from `cellText` because the two answer different questions, and until this existed the
+ * search answered the wrong one: `cellText` returns `''` for any object, so a structured cell
+ * contributed NOTHING to the index. A project publishing a richer value — a source with a date
+ * and the people in it, rather than an opaque identifier — would have watched it disappear from
+ * search, and the box would have said "no rows" rather than "not indexed". The reassuring
+ * direction, on the one control a reader uses to decide something is not there.
+ *
+ * **Leaves only: no key names, no punctuation.** Serialising the object and searching the text is
+ * the obvious shortcut and it is wrong in a way that looks right — every row contains the word
+ * `date` if `date` is a key, so a search for it matches everything. A control that cannot narrow
+ * is what the facet bounds in this file already exist to prevent.
+ * `test_searching_the_serialised_object_would_match_a_key_name` holds the refuted version.
+ */
+export function searchText(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  if (typeof v !== 'object') return String(v)
+  const out: string[] = []
+  const walk = (x: unknown) => {
+    if (x === null || x === undefined) return
+    if (Array.isArray(x)) { x.forEach(walk); return }
+    if (typeof x === 'object') { Object.values(x as Record<string, unknown>).forEach(walk); return }
+    out.push(String(x))
+  }
+  walk(v)
+  return out.join(' ')
 }
 
 /**
@@ -179,7 +215,7 @@ export function StatusTable(
     if (controls) {
       const term = search.trim().toLowerCase()
       if (term) {
-        idx = idx.filter(i => cols.some(c => cellText(rows[i][c]).toLowerCase().includes(term)))
+        idx = idx.filter(i => cols.some(c => searchText(rows[i][c]).toLowerCase().includes(term)))
       }
       for (const [col, values] of activeFacets) {
         idx = idx.filter(i => values.includes(cellText(rows[i][col])))
