@@ -15,27 +15,32 @@ or, worse, build on an assumption about it.
 
 ---
 
-## FIRST — where the channel stands right now (2026-07-30 07:25, session restarted for MCP)
+## FIRST — where the channel stands right now (2026-07-30 14:15, restart completed)
 
-Written immediately before a deliberate session restart, so the next session does not read
-6000 lines to find the live thread. **This block is a pointer with a timestamp, not a
-standing summary — check the channel tail before trusting it.**
+Written across a deliberate session restart, so the next session does not read 6000 lines to
+find the live thread. **This block is a pointer with a timestamp, not a standing summary —
+check the channel tail before trusting it.**
 
 - **Live thread:** the `caveats` envelope key. Shape fully settled and additive; see the
   `caveats` rows and paragraphs in *Decisions → Still open* below. **Nothing is being built
   on either side.** The next move is theirs: their user must approve their T16 row, and they
   will say so on the channel. Only then does an OpenSpec change start here.
-- **Channel tail at restart:** this side `S#140`, their side `W#141`. Both are acknowledgements
-  — neither carries an unanswered question, so a quiet channel is the expected state, not a
-  fault.
-- **The Monitor died with the restart** — it is session-scoped, and this is exactly the failure
-  that cost five days of silence on 2026-07-28..29 (see *Resuming* below). **Re-arm it** on the
-  peer file, `persistent: true`, and check by identity first (`pgrep -af`, discard `00:00`-aged
-  hits — they are the measuring command). Do **not** re-add a cron fallback: it was deleted the
-  same evening because it is session-scoped too, so it cannot witness the death it guards.
+- **Channel tail now:** this side `S#141`, their side `W#141`. `S#141` announces the resume and
+  carries no question, so a quiet channel is the expected state, not a fault.
+- **The Monitor died with the restart and is re-armed** — measured by identity on 07-30 14:12,
+  not recalled: `pgrep -f 'NEW=.*wpc-pont'` returned PID 1776229 aged `00:04` (the watch) plus
+  two `00:00` hits (the measuring command itself). This is exactly the failure that cost five
+  days of silence on 2026-07-28..29 (see *Resuming* below). A cron fallback was deliberately
+  **not** re-added: it is session-scoped too, so it cannot witness the death it guards.
 - **Why the restart happened:** the set-core MCP server had never been registered for set-core
   itself; it is now (`claude mcp list` → `set-core … ✔ Connected`), and only a new session picks
   it up.
+- **What started here instead of waiting (07-30 14:13, decided under the delegation mandate):**
+  `bugfix-lane-with-a-real-delta` — item 4, the single live item, artifacts complete and zero
+  code. The reasoning is recorded at item 4 below; the short form is that the *recommended*
+  next build (problem-indicator declaration) needs channel agreement from a peer who is
+  himself blocked, while this one needs nothing from them. Announced as `S#141` so the choice
+  is not invisible to the other side.
 
 ---
 
@@ -811,7 +816,14 @@ it meets the same two gaps: this candidate, and backlog item 1 below (*no screen
 high-severity bug open while a release closes*). They are one mechanism — the project declares
 which values are problem indicators; set-core counts from the data. **Recommended to the user
 as the next build, ahead of finishing the `bugfix` lane; no approval given yet, so nothing is
-built.** The `bugfix` lane keeps its state: proposal, design, spec and tasks complete, no code.
+built.**
+
+*Updated 2026-07-30: the recommendation stands and is still unbuilt, but the ordering it implied
+does not hold, and leaving this sentence alone would have read as "the `bugfix` lane is waiting
+for its turn".* It is not: this candidate extends the abstraction layer, which goal 3 says the
+two sides design **together on the channel**, and the peer is blocked on their user's T16
+approval. So it is the next build *and* unstartable, which is not a contradiction — it is why
+the `bugfix` lane's implementation began on 07-30 (see item 4) instead of this.
 
 ### The first of those four gaps was closed by the project, the same evening
 
@@ -1270,6 +1282,28 @@ rescoping when anything cites the old order.** New items go on the end.
    project cannot obtain the bugfix discount on day one — it runs the signal at WARN, earns the
    promotion, and only then does the entrance get cheaper. The evidence is the price, which
    means it cannot be paid afterwards.
+
+   **IMPLEMENTATION STARTED 2026-07-30 14:13 — and the decision to start it is the part worth
+   recording, not the start.** The user said only *continue*, on a track where decisions are
+   delegated (`CLAUDE.md`, 2026-07-24: *a mandate to choose, not to guess*). Two builds were
+   candidates and the record's own recommendation was the **other** one — the problem-indicator
+   declaration, recommended to the user on 07-24 evening with no approval given. What decided it
+   is not preference but **which one is reachable**: the problem-indicator work is an extension
+   of the abstraction layer, and goal 3 requires the two sides to design that *together on the
+   channel*; the peer is blocked on their own user's T16 approval, so starting it here would be
+   precisely the parallel design the user ruled out. This item needs nothing from them. So the
+   recommendation is not overturned — it is **still the next build once the channel unblocks**;
+   it was simply not startable, and an unstartable recommendation is not a reason to idle.
+
+   **Its three measured premises were re-checked before any code, not carried forward from the
+   paragraph above** (the record's own rule: on resuming, re-check rather than re-derive):
+   `python3 -c "from set_orch.gate_profiles import UNIVERSAL_DEFAULTS as U; ..."` →
+   `feature == foundational` is **True** and is the **only** identical pair among the six keys;
+   `merger.py:2441` still exempts `('infrastructure', 'config', 'docs')` while `config`/`docs`
+   exist in no type list; `.claude/skills/set/decompose/SKILL.md:68` still hand-writes the same
+   six names. Also measured, and it is the reason nothing is urgent here: **`bugfix` is not a key
+   in `UNIVERSAL_DEFAULTS` at all**, so today it resolves as an unknown type and runs the
+   *strictest* chain — everything this change does is a loosening that has to be bought.
 
 **Where it runs:** locally. The user has ruled that set-core, the consumer's build, and
 `claude -p` agents keep running on this machine; nothing new moves into CI. What is already
