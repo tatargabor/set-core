@@ -67,7 +67,28 @@ Three measurements on `HEAD` set the bar, all of them defects already present:
 
 ## Impact
 
+*Corrected after implementation: this list named three files and the work touched six. An Impact
+list is a second copy of what a change touches, and it is the copy a reviewer reads instead of the
+diff — so an incomplete one understates the blast radius in exactly the situation where someone is
+relying on it. Recorded rather than silently extended.*
+
 - `lib/set_orch/gate_profiles.py` — the conditional lane, and the type list as one source.
-- `lib/set_orch/merger.py` — the stale exemption list.
+- `lib/set_orch/change_type_lanes.py` — **new.** The mapping reader and the entry condition.
+- `lib/set_orch/merger.py` — the stale exemption list, and catching the refusal at the
+  integration gate.
+- `lib/set_orch/verifier.py` — **not foreseen.** Catching the refusal is not optional: without it
+  the exception escapes into the verify path, and "the declaration was refused" would surface as a
+  crash rather than as a named failure with a reason class.
+- `lib/set_orch/templates.py` — **not foreseen, and it carried the largest copy.** Four of the
+  five verbatim enum copies were the planner's own JSON output schemas here, plus a sixth
+  three-name subset for cross-cutting changes. The planner emits `change_type`, and only these
+  prompts tell it what the legal values are — so leaving them out would have left the single
+  definition unreachable by the component that most needs it.
 - `.claude/skills/set/decompose/SKILL.md` — the restated enum; deployed to consumers via
   `set-project init`.
+
+**Unchanged, as the non-goals require — measured rather than asserted**
+(`git diff --numstat <base>..HEAD --` per file): `lane_signals.py`, `lane_evaluator.py` and
+`lane_gate.py`. The new module *imports* from the first and third (`_normalise_key`,
+`_KIND_HANDLERS`) rather than copying them, which is the same rule the rest of this change is
+about.
