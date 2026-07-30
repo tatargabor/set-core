@@ -430,6 +430,52 @@ def test_a_delegated_answer_makes_a_signal_eligible(tmp_path):
     assert cfg.get("test_files") == "warn"
 
 
+def test_the_signal_the_entry_accepts_is_the_signal_the_gate_then_RUNS(tmp_path, monkeypatch):
+    """The two halves joined, because separately each one is compatible with nothing happening.
+
+    `require_exit_obligation` answers *is there a route by which this can block*. That is a
+    statement about eligibility, and this repo's rule book names the class where a mechanism is
+    verified while the result stays silent. So the same tree, the same signal and the same
+    declared answer are pushed through BOTH: the lane is granted, and the gate then actually
+    invokes the project's published command and fires on what it returns.
+
+    The published shape here is the one a project would really send — a bare list of stable
+    identifiers under a nested plain path — because `lane_gate` refuses a per-row object and
+    forbids a projection in `field`, so anything else would be testing a shape nobody can use.
+    """
+    import types
+
+    from set_orch import project_status
+
+    signal = _signal(sole_enforcement=False)
+    signal["answer"] = {"command": "bugs", "field": "laneSignals.fixedWithoutRegressionTest"}
+    tree = _tree(tmp_path, signals={"s": signal}, lane_map={"bugfix": ["s"]})
+    profile = _Profile(promotions={"s": {"measured": "2026-06-01"}})
+
+    calls: list = []
+    monkeypatch.setattr(project_status, "resolve_status_config",
+                        lambda path: types.SimpleNamespace(commands=("bugs",),
+                                                           write_commands=()))
+    monkeypatch.setattr(project_status, "query",
+                        lambda path, command, args=None, config=None: (
+                            calls.append(command) or types.SimpleNamespace(
+                                ok=True, error_class=None,
+                                data={"laneSignals":
+                                      {"fixedWithoutRegressionTest": ["BUG-7"]}})))
+
+    # half one: the entrance is granted
+    cfg = resolve_gate_config(_Change("bugfix"), profile=profile, tree=tree)
+    assert cfg.get("test_files") == "warn"
+
+    # half two: the same signal is then really evaluated, by asking the project
+    from set_orch import lane_gate
+
+    report = lane_gate.build_report(str(tree), profile=profile)
+    assert calls == ["bugs"], "the published command was never invoked"
+    assert [o.status for o in report.outcomes] == ["fired"]
+    assert report.fired[0].violations == ("BUG-7",)
+
+
 def test_a_registered_handler_also_makes_a_signal_eligible(tmp_path, monkeypatch):
     """The other route to blocking, so the check is not secretly a `sole_enforcement` test.
 
