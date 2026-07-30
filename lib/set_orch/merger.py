@@ -1708,6 +1708,7 @@ def _run_integration_gates(
 
     Returns True if all gates pass, False if any blocking gate fails.
     """
+    from .change_type_lanes import ConditionalLaneRefused
     from .engine import DEFAULT_E2E_RETRY_LIMIT
     from .gate_profiles import resolve_gate_config
     from .gate_runner import GateResult
@@ -1725,7 +1726,19 @@ def _run_integration_gates(
         hashes.append(h)
         update_change_field(state_file, change_name, "gate_output_hashes", hashes[-5:])
 
-    gc = resolve_gate_config(change, profile)
+    try:
+        gc = resolve_gate_config(change, profile, tree=wt_path)
+    except ConditionalLaneRefused as refusal:
+        # The integration gate's contract is a bool, so the refusal becomes a blocked merge —
+        # which is the correct outcome and NOT the same statement as "a gate failed". Logged at
+        # ERROR with the reason class so the two are distinguishable in a run log, because the
+        # fix is a declaration change, not a code change.
+        logger.error(
+            "Integration gate: change type refused for %s (%s) — %s",
+            change_name, refusal.reason_class, refusal,
+        )
+        return False
+
     gates_executed = 0  # Track how many gates actually ran a subprocess
 
     # Load .env from worktree if exists (agents create .env during impl

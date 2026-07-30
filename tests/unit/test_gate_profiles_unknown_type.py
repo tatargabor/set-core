@@ -25,7 +25,23 @@ import types
 
 import pytest
 
-from set_orch.gate_profiles import UNIVERSAL_DEFAULTS, resolve_gate_config
+from set_orch.gate_profiles import (
+    CONDITIONAL_CHANGE_TYPES,
+    UNIVERSAL_DEFAULTS,
+    resolve_gate_config,
+)
+
+#: The stand-in for "a type this dictionary does not hold" — and it is asserted to still be
+#: unknown before it is used.
+#:
+#: This constant exists because the original version of the test below used the literal
+#: `"bugfix"` as its example of an unknown type. That was true when it was written and stopped
+#: being true the day a `bugfix` profile was added, at which point the test was comparing two
+#: KNOWN types and its name promised something it no longer measured. It failed loudly here only
+#: because the new type also carries an entry condition; a plain new type would have made it
+#: pass while measuring nothing. **An example chosen because it is absent needs a guard that it
+#: is still absent** — the same rule as counting from the data rather than from a declaration.
+UNKNOWN_EXAMPLE = "a-type-no-dictionary-holds"
 
 
 def _change(change_type):
@@ -36,13 +52,21 @@ def _gates(change_type):
     return dict(resolve_gate_config(_change(change_type))._gates)
 
 
+def test_the_unknown_example_is_actually_unknown():
+    """The guard described above, as its own test so its failure names the real cause."""
+    assert UNKNOWN_EXAMPLE not in UNIVERSAL_DEFAULTS, (
+        f"{UNKNOWN_EXAMPLE!r} became a real change type — every test below that uses it as an "
+        f"'unknown type' is now measuring a known one. Pick a new stand-in; do not delete this."
+    )
+
+
 def test_an_unknown_type_does_NOT_resolve_to_the_feature_gate_set():
     """The refuted inference, held in a test so it cannot be re-derived.
 
     `feature` softens `rules`; an unknown type does not. Anyone planning around the
     assumed fallback would expect a warn where a blocker stands.
     """
-    unknown = _gates("bugfix")
+    unknown = _gates(UNKNOWN_EXAMPLE)
     feature = _gates("feature")
 
     assert unknown != feature
@@ -74,10 +98,42 @@ def test_an_unknown_type_is_reported_rather_than_resolved_in_silence(caplog):
     assert "blocking" in logged, "the message must say what the operator will actually see"
 
 
-@pytest.mark.parametrize("known", sorted(UNIVERSAL_DEFAULTS))
+@pytest.mark.parametrize(
+    "known", sorted(set(UNIVERSAL_DEFAULTS) - CONDITIONAL_CHANGE_TYPES))
 def test_a_KNOWN_type_stays_silent(known, caplog):
-    """A warning that fires on every ordinary change is a warning nobody reads."""
+    """A warning that fires on every ordinary change is a warning nobody reads.
+
+    Conditional types are excluded because they cannot be resolved without a worktree at all —
+    see the companion test below, which covers them rather than leaving a hole. Excluding a case
+    from a parametrize and saying nothing is how coverage disappears while the count goes up.
+    """
     with caplog.at_level(logging.WARNING, logger="set_orch.gate_profiles"):
         _gates(known)
+
+    assert [r for r in caplog.records if "not one of" in r.getMessage()] == []
+
+
+@pytest.mark.parametrize("conditional", sorted(CONDITIONAL_CHANGE_TYPES))
+def test_a_GRANTED_conditional_type_also_stays_silent(conditional, tmp_path, caplog):
+    """The case the parametrize above excludes, covered here with its condition satisfied.
+
+    A conditional type is a known type, so resolving it must not produce the unknown-type
+    warning either — and the only way to reach that code path is to pay for the lane.
+    """
+    (tmp_path / "set").mkdir(parents=True)
+    (tmp_path / "set" / "lane-signals.json").write_text(
+        '{"exit": {"lane": "restoring", "condition": {"kind": "fixed-defect-without-test"},'
+        ' "scope": "per-change-verification", "baseline": [],'
+        ' "promotion": {"severity": "enforce", "measure": "a week at WARN"},'
+        ' "triggering_case": "2026-05-14 BUG-1 returned with no test", "exclusions": ["docs/**"]}}')
+    (tmp_path / "set" / "change-type-lanes.json").write_text(
+        '{"%s": ["exit"]}' % conditional)
+
+    class _Profile:
+        def lane_promotions(self):
+            return {"exit": {"measured": "2026-06-01"}}
+
+    with caplog.at_level(logging.WARNING, logger="set_orch.gate_profiles"):
+        resolve_gate_config(_change(conditional), profile=_Profile(), tree=tmp_path)
 
     assert [r for r in caplog.records if "not one of" in r.getMessage()] == []

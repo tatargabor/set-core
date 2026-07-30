@@ -113,6 +113,40 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
         "rules": "warn",
         "spec_verify": "run",
     },
+    # ── The cheaper entrance, and its delta stated where the profile lives ──
+    #
+    # **The delta against `feature`, in one line: `test_files` stops blocking.** Everything
+    # else is byte-identical to `feature` on purpose, and the difference is deliberately ONE
+    # gate rather than a bundle, because a bundle cannot be argued for or against.
+    #
+    # Why that gate and no other. `test_files` asks "did this change add test files?", which is
+    # a PROXY for "is this change tested". A conditional lane is only granted when the project
+    # runs a blocking exit obligation — a signal that fires when a fixed defect has no test
+    # citing it — and that measures the thing itself. So the entrance drops the proxy exactly
+    # where the exit measures the real property. This repo's own rule book calls measuring a
+    # proxy instead of the thing a defect class; here it is the trade being made explicit.
+    #
+    # What is deliberately NOT softened, and this is the load-bearing restraint: `spec_verify`
+    # stays blocking. The tempting argument is that a fix restores what the specification
+    # already says, so there is no delta to verify — but that is precisely the entrance
+    # question the design refuses to gate on (D4), because the most advanced practice available
+    # measured itself at 9.3% and asked that the half it demonstrably does not keep not be
+    # generalised. Softening `spec_verify` on that assumption would loosen the one check that
+    # catches the assumption being wrong, which is the reassuring direction.
+    #
+    # A profile equal to another profile is a false gate: it reads as meaning something and
+    # means nothing. `feature` and `foundational` are byte-identical in this very dictionary
+    # and nobody noticed until it was measured, which is why
+    # `test_the_bugfix_profile_differs_from_every_other_one` exists.
+    "bugfix": {
+        "build": "run",
+        "test": "run",
+        "scope_check": "run",
+        "test_files": "warn",
+        "review": "run",
+        "rules": "warn",
+        "spec_verify": "run",
+    },
     "cleanup-before": {
         "build": "run",
         "test": "warn",
@@ -137,9 +171,25 @@ UNIVERSAL_DEFAULTS: dict[str, dict[str, str]] = {
 _CHANGE_TYPE_ATTRS: dict[str, dict] = {
     "infrastructure": {"test_files_required": False},
     "schema": {"test_files_required": False},
+    # The other half of the one-gate delta: softening `test_files` to "warn" without this would
+    # leave the requirement enforced by a different attribute, so the discount would be
+    # announced and not delivered — a marker true of a narrower subject than its reader takes
+    # it for. Paid for by the exit obligation, exactly as the gate mode is.
+    "bugfix": {"test_files_required": False},
     "cleanup-before": {"test_files_required": False},
     "cleanup-after": {"test_files_required": False},
 }
+
+
+#: Change types whose ENTRY is conditional: declaring one is refused unless the project
+#: declares an enforced exit obligation for it (`change_type_lanes.require_exit_obligation`).
+#:
+#: A set rather than a hard-coded `== "bugfix"` so that the mechanism is one thing and its
+#: membership another — but deliberately a set of ONE. The 2026-07-19 verdict's ordering
+#: constraint is that a differentiated pipeline is built first and alone, and a taxonomy comes
+#: only once two provably different pipelines exist to choose between. Adding a second name
+#: here without a second delta would be the false gate that verdict names.
+CONDITIONAL_CHANGE_TYPES: frozenset[str] = frozenset({"bugfix"})
 
 
 # ── The set of valid change types — ONE home ────────────────────────
@@ -191,18 +241,31 @@ def resolve_gate_config(
     change,
     profile=None,
     directives: dict | None = None,
+    tree=None,
 ) -> GateConfig:
     """Resolve the gate configuration for a change.
 
     Resolution chain (later layers override earlier):
+    0. A conditional change type's entry condition — raises `ConditionalLaneRefused`
     1. Universal gate defaults (all "run")
     2. Universal per-change_type defaults
     3. Profile-registered gate defaults (register_gates)
     4. Profile gate_overrides()
     5. Per-change skip flags + gate_hints
     6. Orchestration directive overrides
+
+    `tree` is the worktree being verified. It is only read for a conditional change type, and
+    its absence is a refusal rather than a grant — see `require_exit_obligation`.
     """
     change_type = getattr(change, "change_type", None) or "feature"
+
+    # Step 0: A conditional type's entrance is checked BEFORE any default is applied, so that
+    # no path exists on which the discount is granted and then withdrawn. Raising here also
+    # means the refusal cannot be mistaken for a gate result: the change is not verified under
+    # a lane it does not have, which is the point of refusing instead of substituting.
+    if change_type in CONDITIONAL_CHANGE_TYPES:
+        from .change_type_lanes import require_exit_obligation
+        require_exit_obligation(change_type, tree, profile)
 
     # Step 1: Start with universal gates all "run"
     gates: dict[str, str] = {

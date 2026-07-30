@@ -4326,12 +4326,33 @@ def handle_change_done(
         # integration_result == "ok" — proceed to gates
 
     # ── Resolve gate config ──
+    from .change_type_lanes import ConditionalLaneRefused
     from .gate_profiles import resolve_gate_config
     from .profile_loader import load_profile
 
     profile = load_profile()
     directives = state.extras.get("directives", {})
-    gc = resolve_gate_config(change, profile, directives)
+    try:
+        gc = resolve_gate_config(change, profile, directives, tree=wt_path)
+    except ConditionalLaneRefused as refusal:
+        # A refused declaration is NOT a gate failure and must not be retried into passing:
+        # nothing about the worktree is wrong, the change asked for a lane the project has not
+        # paid for. Retrying would run the same refusal again and burn the retry budget, and
+        # substituting another change type's profile is what the design refuses — the harm is
+        # the false belief that the lane exists, not the gates.
+        reason = f"Change type refused: {refusal}"
+        logger.error("Verify gate: %s (%s) for %s",
+                     reason, refusal.reason_class, change_name)
+        update_change_field(state_file, change_name, "verify_result", reason)
+        update_change_field(state_file, change_name, "status", "failed")
+        if event_bus:
+            # VERIFY_GATE schema: every emit MUST include "gate" and "result".
+            event_bus.emit("VERIFY_GATE", change=change_name, data={
+                "gate": "change_type_entry",
+                "result": "refused",
+                "reason_class": refusal.reason_class,
+            })
+        return
     effective_max_retries = gc.max_retries if gc.max_retries is not None else max_verify_retries
 
     # ── Run gate pipeline ──
