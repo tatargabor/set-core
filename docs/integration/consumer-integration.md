@@ -15,6 +15,30 @@ or, worse, build on an assumption about it.
 
 ---
 
+## FIRST — where the channel stands right now (2026-07-30 07:25, session restarted for MCP)
+
+Written immediately before a deliberate session restart, so the next session does not read
+6000 lines to find the live thread. **This block is a pointer with a timestamp, not a
+standing summary — check the channel tail before trusting it.**
+
+- **Live thread:** the `caveats` envelope key. Shape fully settled and additive; see the
+  `caveats` rows and paragraphs in *Decisions → Still open* below. **Nothing is being built
+  on either side.** The next move is theirs: their user must approve their T16 row, and they
+  will say so on the channel. Only then does an OpenSpec change start here.
+- **Channel tail at restart:** this side `S#140`, their side `W#141`. Both are acknowledgements
+  — neither carries an unanswered question, so a quiet channel is the expected state, not a
+  fault.
+- **The Monitor died with the restart** — it is session-scoped, and this is exactly the failure
+  that cost five days of silence on 2026-07-28..29 (see *Resuming* below). **Re-arm it** on the
+  peer file, `persistent: true`, and check by identity first (`pgrep -af`, discard `00:00`-aged
+  hits — they are the measuring command). Do **not** re-add a cron fallback: it was deleted the
+  same evening because it is session-scoped too, so it cannot witness the death it guards.
+- **Why the restart happened:** the set-core MCP server had never been registered for set-core
+  itself; it is now (`claude mcp list` → `set-core … ✔ Connected`), and only a new session picks
+  it up.
+
+---
+
 ## Read this back — do not re-derive it, and do not trust a paraphrase of it
 
 Stated by the user on 2026-07-24: **the important decisions and details must be written down
