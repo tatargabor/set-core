@@ -42,6 +42,15 @@ copy.
   class, distinguishable from an unpromoted signal: the two need opposite next actions
   [REQ: an-exit-obligation-counts-only-when-it-blocks]
 
+- [x] 3.7 A signal declaring an `answer` delegation counts as blockable too — the implementation
+  of 3.6 checked two of the three routes by which a signal can fail a gate, and
+  `lane_gate._detector_for` tries delegation BEFORE any handler and independently of the handler
+  table. Same class as 3.6 one layer up: there the REQUIREMENT was narrower than its rationale,
+  here the requirement was right and the IMPLEMENTATION was narrower than the requirement. Its
+  direction was safe — a discount refused that had in fact been paid — and it disqualified
+  precisely the route a project already publishing the verified value would use
+  [REQ: an-exit-obligation-counts-only-when-it-blocks]
+
 ## 4. Prove the delta is real
 
 - [x] 4.1 A test asserting the `bugfix` profile is NOT equal to any other profile in the dictionary — the direct guard against the failure already in the tree, where `feature` and `foundational` are byte-identical [REQ: a-lane-entry-shall-not-be-able-to-exist-without-its-behavioural-delta]

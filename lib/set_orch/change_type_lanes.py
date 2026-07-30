@@ -243,19 +243,36 @@ def _can_block(signal: Any) -> bool:
     design forbids in the sentence "an obligation that does not block leaves the discount
     unpaid".
 
-    Two routes genuinely block, and both are asked for rather than assumed:
+    THREE routes genuinely block, and each is asked for rather than assumed:
 
+    - the signal declares an `answer` — a delegation to a value the project already publishes.
+      `lane_gate._detector_for` tries delegation **before** any handler and independently of the
+      handler table, so this route exists in every version;
     - a handler exists for the condition's kind, so at ENFORCE a firing signal fails the gate;
     - the project declared `sole_enforcement`, which makes an *unevaluable* signal block —
       their own statement that no other gate covers this defect class, so silence is a hole.
 
-    Consulted at call time, never cached: the handler table is a property of the running
-    version, and a project that becomes eligible when a handler ships should become eligible
-    without redeclaring anything.
+    **The `answer` route was missing from the first version of this function, and the pattern is
+    the same defect one layer up from the last one.** Last round the requirement was narrower
+    than its own rationale; this round the requirement said "can fail a gate in the running
+    version" — correctly — and the implementation checked two of the three ways that can happen.
+    Its direction was safe (a discount refused that had in fact been paid) and it disqualified
+    precisely the route an integration peer then proposed, which is how it surfaced.
+
+    None of the three GUARANTEES a gate failure at runtime: a delegated answer may not arrive, a
+    handler may return "could not decide". That residual silence is exactly what
+    `sole_enforcement` is for, and it stays the project's call — this function asks whether a
+    route exists, not whether it will succeed.
+
+    Consulted at call time, never cached: the handler table is a property of the running version,
+    and a project that becomes eligible when a handler ships should become eligible without
+    redeclaring anything.
     """
     from .lane_gate import _KIND_HANDLERS
 
     if getattr(signal, "sole_enforcement", False):
+        return True
+    if getattr(signal, "answer", None):
         return True
     return str((signal.condition or {}).get("kind", "")) in _KIND_HANDLERS
 

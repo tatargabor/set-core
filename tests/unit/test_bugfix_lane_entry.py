@@ -413,6 +413,23 @@ def test_an_enforced_signal_that_cannot_FIRE_does_not_buy_the_discount(tmp_path)
         "the refusal must name the one thing the project can do about it")
 
 
+def test_a_delegated_answer_makes_a_signal_eligible(tmp_path):
+    """The third route, and the one the first implementation missed.
+
+    `lane_gate._detector_for` tries a declared `answer` BEFORE any handler and independently of
+    the handler table, so a delegating signal can fire in every version. Omitting this refused a
+    discount that had in fact been paid — safe in direction, and it disqualified exactly the
+    route a project would reach for when it already publishes the verified value.
+    """
+    signal = _signal(sole_enforcement=False)
+    signal["answer"] = {"command": "bugs", "field": "fixedWithoutRegressionTest"}
+    tree = _tree(tmp_path, signals={"s": signal}, lane_map={"bugfix": ["s"]})
+    profile = _Profile(promotions={"s": {"measured": "2026-06-01"}})
+
+    cfg = resolve_gate_config(_Change("bugfix"), profile=profile, tree=tree)
+    assert cfg.get("test_files") == "warn"
+
+
 def test_a_registered_handler_also_makes_a_signal_eligible(tmp_path, monkeypatch):
     """The other route to blocking, so the check is not secretly a `sole_enforcement` test.
 
