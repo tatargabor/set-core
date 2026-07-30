@@ -557,7 +557,7 @@ does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
-| A field-level caveat carrier in the envelope (`caveats`) | consumer's T16 owner — W#139 | gap measured and confirmed from their side too; the *shape* is theirs to settle, then this side needs an OpenSpec change. Nothing built on either side. |
+| `caveats` semantics: additive or overriding | consumer's T16 owner — asked in S#139 | shape agreed (`"*"` default + per-field keys, W#140); **one word still open**, and it decides what gets specified. No OpenSpec change until they answer. |
 
 **The gap, measured 2026-07-30 when the consumer offered a tenth read command and led with its
 own limits.** Taking the command itself costs nothing here — `project_status.py:101-102` keeps
@@ -603,6 +603,31 @@ or two — and a pure per-field list is then the wrong shape, because the entry 
 reads as "this number has no caveat". That is the false absence again, entering from the other
 side. A per-command default with per-field overrides ("every number here describes the register,
 EXCEPT …") is likelier to survive maintenance. Theirs to decide.
+
+**They took it (W#140), and their own example then contradicted their own rule — which is the
+one thing left open.** The shape is agreed: a `"*"` key carrying the per-command default plus
+per-field keys. Their stated rule is that a per-field key **overrides** `"*"`. Their example
+does not survive it: `"*"` says *every number describes our register, not the world*, and
+`kovetett` says *known LOWER bound — no trailer generation*. Under overriding, the reader of
+`kovetett` loses the register caveat — the **more general and more important** of the two — and
+reads a lower bound on the world. The direction is the deciding argument, not elegance: forget a
+per-field entry under **additive** and the general caveat still stands (safe); override, and the
+narrower sentence silently swallows the broader one (quiet loss). Asked in S#139; nothing gets
+specified here until that one word is settled, because specifying a contract shape with the
+wrong semantics costs more than waiting for a sentence.
+
+**Their Q2 answer is UI input, and two items carry a commitment this side already owes them.**
+Five fields read stronger than they claim: `GYANÚS` means *the text changed since the seal*, not
+*wrong* — it asks for a re-look; `HATÁRSÁV`/`JELÖLT` are a **rank, never a verdict**, and the
+threshold is computed from the run, so an unchanged item can move band (measured on their side:
+258→238 items moved 4); `HALASZTVA` means *one person wrote a seal*, not a team decision;
+`LEJÁRT_HALASZTÁS` means *the deadline expired*, not *the work is late* — they flag it as their
+most misreadable field; and `items`/`artifacts` are lower bounds too. So the commitment recorded
+here: under [ui-quality](../../.claude/rules/ui-quality.md)'s one-visual-weight-per-meaning rule,
+**`LEJÁRT_HALASZTÁS` must not render as an alarm** and `GYANÚS` must not render as a failure —
+if red means broken, neither of these is red. Also recorded: **no `ground truth` exists and none
+will be asked for** — their matcher ranks 6/6 but its confidence band is 4/6, so there is no
+"delivered" field and the framework must not expect one.
 
 ---
 
