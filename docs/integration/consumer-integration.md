@@ -1327,6 +1327,42 @@ rescoping when anything cites the old order.** New items go on the end.
    implementation detail. **Asked on the channel rather than decided here**, because goal 3 says
    the two sides design this layer together and this is exactly that kind of question.
 
+   **Answered within five minutes (W#143), and the answer was better than the question — no new
+   declaration is needed, because the value is READABLE.** Their `bugs` command already carries
+   `hasRegressionTest` per row, produced by the very gate in question. So the framework does not
+   have to believe a claim; it reads the verified result. That is their own iron rule — *the
+   abstraction reads the value, it does not turn it into an assertion* — and it lands on a shape
+   set-core already has: the lane signal's `answer` delegation (`{command, field}`), whose
+   docstring says exactly this, that the project publishes the answer and the gate asks instead of
+   recomputing.
+
+   **Their answer also found a defect in code shipped forty minutes earlier** (`725bfedb`):
+   `_can_block` knew two of the three routes by which a signal can fail a gate and omitted
+   delegation, which `lane_gate.py:197` tries *before* any handler and independently of the handler
+   table. So the one route a project already publishing the value would use was precisely the one
+   disqualified. Safe direction again — a discount refused that had in fact been paid — and
+   therefore invisible from inside. **The channel's best-paid-off property, once more: the other
+   side stands on a different corpus.**
+
+   **One measured shape constraint stands between the idea and the wiring, and it is recorded here
+   because it decides who does what.** `lane_gate.py:151-168`: `answer.field` must resolve to a
+   **list of stable identifiers**. A non-list is refused (*a count cannot be baselined and cannot
+   be excluded*), and so is a list of structured entries (*the baseline AND the exclusions both
+   match on the identifier, so a structured entry escapes both silently*). Their per-row boolean
+   inside a list of objects is therefore not readable as-is, and a projection inside `field` is
+   deliberately forbidden — that would be their rule re-expressed in set-core's syntax, which is
+   the second implementation the delegation exists to prevent. **What works with zero framework
+   change: they publish the already-decided list of bug ids** — type `BUG`, fixed, no regression
+   test — under one plain dotted path. The granularity their side warned about then comes out right
+   by construction: the list is per-bug and the id is what baseline and exclusions match on, rather
+   than the per-change proxy. Proposed as S#143; theirs to accept, and **nothing is being built on
+   either side until their user approves.**
+
+   *Open on this side, needing their measurement:* whether their row-level `onBaseline` already
+   excludes those rows. If it does, set-core's own `baseline` is correctly empty; if it does not,
+   the same debt is carried twice and the baseline-growth check raises a false alarm. Shape rather
+   than value, so the framework must define it — but only their evidence can define it well.
+
    **Its three measured premises were re-checked before any code, not carried forward from the
    paragraph above** (the record's own rule: on resuming, re-check rather than re-derive):
    `python3 -c "from set_orch.gate_profiles import UNIVERSAL_DEFAULTS as U; ..."` →
