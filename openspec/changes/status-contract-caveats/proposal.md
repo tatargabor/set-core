@@ -41,8 +41,17 @@ in the design so the next reader can re-open a decision rather than merely inher
   caveat has to appear.
 
 ### Modified Capabilities
-<!-- None. The envelope's existing fields keep their requirements unchanged; `caveats` is
-     additive and an envelope without it behaves exactly as today. -->
+- `project-status-contract`: the envelope gains an optional `caveats` key, and a malformed one
+  must not invalidate the answer.
+
+*This said "None" until a gate refused it, and the correction is worth more than the entry.* The
+reasoning was that caveats are additive — which is true and is not the question. Adding a key the
+reader consumes **changes what the envelope is**, and the envelope belongs to that capability.
+`test_the_capability_spec_names_the_same_vocabulary_the_reader_emits` caught it on the first full
+suite run after the code shipped: the reader emitted a field its capability spec did not name.
+That guard was written for a future drift and this was its first. The main spec is synced now
+rather than at archive time, because the code is shipped and a specification silent about
+behaviour that exists is not a smaller specification but a wrong one.
 
 ## Impact
 

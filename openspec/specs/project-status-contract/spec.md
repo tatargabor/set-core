@@ -30,6 +30,11 @@ true — `data`, and MAY carry `generatedAt` and `deprecated`.
 - **AND** SHALL produce a result whose reason states plainly that the project reported a
   failure with no reason, when neither field is present
 
+#### Scenario: An envelope carrying a malformed caveats value still answers
+- **WHEN** an answer is otherwise valid and its `caveats` is not a mapping of key to sentence
+- **THEN** the reader SHALL keep `ok` true and carry `data` unchanged
+- **AND** SHALL carry no caveats rather than refusing the answer
+
 #### Scenario: No failure is ever an empty success
 - **WHEN** any validation step fails
 - **THEN** the result SHALL carry no `data` at all, so that a gap cannot be rendered as
