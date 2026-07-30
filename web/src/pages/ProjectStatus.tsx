@@ -33,6 +33,13 @@ import StatusValue, {
   DeprecationProvider,
   presentDeprecations,
 } from '../components/StatusValue'
+import {
+  CaveatProvider,
+  CaveatNote,
+  presentCaveats,
+  absentCaveatKeys,
+  COMMAND_LEVEL_CAVEAT,
+} from '../components/statusShape'
 
 interface Props {
   project?: string | null
@@ -91,6 +98,20 @@ function Answer({
   const declared = new Set(result.deprecated ?? [])
   const deprecated = presentDeprecations(result.data, declared)
 
+  // Caveats: the same rule one field along. The declaration says what to look for, the DATA
+  // says what is there — a caveat printed for a field the project stopped sending would be a
+  // false absence, which is what `presentDeprecations` was corrected for.
+  //
+  // ADDITIVE, never replacing: the "*" sentence always applies and always shows, and a
+  // per-field sentence ADDS to it. The direction is the argument — forget a per-field entry
+  // and the general caveat still stands; let it replace, and the narrower sentence silently
+  // swallows the broader one.
+  const caveats = result.caveats ?? {}
+  const starCaveat = caveats[COMMAND_LEVEL_CAVEAT]
+  const perField = presentCaveats(result.data, caveats)
+  const absentCaveats = absentCaveatKeys(result.data, caveats)
+  const [showAbsent, setShowAbsent] = useState(false)
+
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
@@ -105,16 +126,40 @@ function Answer({
               {showDeprecated ? 'hide' : 'show'} {deprecated.size} deprecated
             </button>
           )}
+          {absentCaveats.length > 0 && (
+            <button
+              onClick={() => setShowAbsent(v => !v)}
+              className="text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+              title="declared caveats whose key is not in this answer — diagnostics, not a fault"
+            >
+              {showAbsent ? 'hide' : 'show'} {absentCaveats.length} unmatched caveat{absentCaveats.length === 1 ? '' : 's'}
+            </button>
+          )}
           {result.contractVersion !== null && <span>contract v{result.contractVersion}</span>}
           {/* The project's own timestamp, shown verbatim — re-formatting it would mean
               deciding what its timezone meant. */}
           {result.generatedAt && <span title="as reported by the project">{result.generatedAt}</span>}
         </div>
       </div>
+      {/* Once, in the header — not repeated beside every value. It qualifies the command. */}
+      {starCaveat && <CaveatNote>{starCaveat}</CaveatNote>}
+      {showAbsent && absentCaveats.length > 0 && (
+        <div className="text-[11px] text-neutral-500 space-y-0.5">
+          <div className="text-neutral-600">
+            declared, but no field of this answer carries the key — legitimate when the value is
+            currently absent, a typo otherwise. The project decides; this only shows the question.
+          </div>
+          {absentCaveats.map((k: string) => (
+            <div key={k} className="font-mono text-neutral-400">{k}</div>
+          ))}
+        </div>
+      )}
       <DeprecationProvider value={{ names: deprecated, show: showDeprecated }}>
-        <ActionProvider value={onAction}>
-          <StatusValue value={result.data} />
-        </ActionProvider>
+        <CaveatProvider value={{ perField }}>
+          <ActionProvider value={onAction}>
+            <StatusValue value={result.data} />
+          </ActionProvider>
+        </CaveatProvider>
       </DeprecationProvider>
     </section>
   )

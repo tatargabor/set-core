@@ -64,6 +64,105 @@ export function presentDeprecations(value: unknown, names: ReadonlySet<string>):
 }
 
 /**
+ * The command-level caveat's key. It qualifies the COMMAND, not a field, so it is never
+ * looked for in the data — a walker that did would report it absent for every project that
+ * declares one, and the diagnostics list would then accuse every correct producer of a typo.
+ */
+export const COMMAND_LEVEL_CAVEAT = '*'
+
+/**
+ * Caveats that apply to the values being rendered.
+ *
+ * A caveat says a value is CORRECT and means something narrower than its name suggests — a
+ * count describing the producer's own register rather than the world, a total that is a known
+ * lower bound. Distinct from `deprecated`, which says the opposite: that the field is present
+ * and nobody stands behind it.
+ *
+ * `perField` holds only the keys actually FOUND in the answer — see `presentCaveats`. The `"*"`
+ * sentence is not in here: it is rendered once in the section header, so putting it in the
+ * per-field map would repeat it beside every value.
+ */
+export interface CaveatView {
+  perField: ReadonlyMap<string, string>
+}
+
+const CaveatCtx = createContext<CaveatView>({ perField: new Map() })
+
+export const CaveatProvider = CaveatCtx.Provider
+
+export function useCaveats(): CaveatView {
+  return useContext(CaveatCtx)
+}
+
+/**
+ * Which of the declared per-field caveat keys actually appear in this answer.
+ *
+ * The same rule as `presentDeprecations`, and it is inherited rather than reinvented: the
+ * declaration says what to look for, the DATA says what is there. A caveat printed for a field
+ * the project stopped sending would be a false absence — the mirror of the false value this
+ * family of signals exists to prevent.
+ *
+ * `"*"` is excluded before the walk, not filtered out of the result: it qualifies the command
+ * and lives in no field, so looking for it can only ever fail.
+ */
+export function presentCaveats(
+  value: unknown, caveats: Readonly<Record<string, string>>,
+): Map<string, string> {
+  const wanted = new Set(Object.keys(caveats).filter(k => k !== COMMAND_LEVEL_CAVEAT))
+  const found = new Map<string, string>()
+  if (wanted.size === 0) return found
+
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) { v.forEach(walk); return }
+    if (!isPlainObject(v)) return
+    for (const [k, child] of Object.entries(v)) {
+      if (wanted.has(k)) found.set(k, caveats[k])
+      walk(child)
+    }
+  }
+  walk(value)
+  return found
+}
+
+/**
+ * Declared per-field caveat keys that are NOT in this answer. Diagnostics, never a gate.
+ *
+ * The framework cannot tell a typo from a legitimate absence and must not pretend to: a
+ * producer's per-status breakdown may list only the statuses currently present, so a caveat
+ * keyed on a currently-zero status is correct AND absent. A gate firing daily on that is dead
+ * within a week and takes the real warning with it. The producer recognises which is which at a
+ * glance — this only makes the question visible.
+ */
+export function absentCaveatKeys(
+  value: unknown, caveats: Readonly<Record<string, string>>,
+): string[] {
+  const present = presentCaveats(value, caveats)
+  return Object.keys(caveats)
+    .filter(k => k !== COMMAND_LEVEL_CAVEAT && !present.has(k))
+    .sort()
+}
+
+/**
+ * A caveat, rendered beside the value it qualifies.
+ *
+ * **Weight is the requirement, not the styling taste.** One visual weight per meaning: if red
+ * means broken, a caveat is not red. A caveat says a correct number means something narrower —
+ * neither a failure nor a warning — and the producer's own wording may sound alarming without
+ * being an alarm. Nothing here reads the sentence to decide how to show it.
+ *
+ * Not a tooltip and not behind a disclosure, deliberately. The defect being fixed is that the
+ * number travels and the caveat does not; a caveat one interaction away has been filed, not
+ * carried.
+ */
+export function CaveatNote({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-[11px] leading-snug text-neutral-400 italic border-l border-neutral-700 pl-2 mt-0.5">
+      {children}
+    </div>
+  )
+}
+
+/**
  * An action the PROJECT attached to a row: a write it says can be performed here.
  *
  * `actions` is a framework-level key, like `deprecated` — one of the few names this

@@ -39,6 +39,8 @@ import {
   emphasisOf,
   isPlainObject,
   partitionKeys,
+  useCaveats,
+  CaveatNote,
   useDeprecation,
 } from './statusShape'
 import { StatusTable } from './StatusTable'
@@ -164,6 +166,7 @@ function SectionedGrid(
   { obj, depth, sections }: { obj: Record<string, unknown>; depth: number; sections: SectionDecl[] },
 ) {
   const view = useDeprecation()
+  const caveats = useCaveats()
   // A declared key that is absent draws NOTHING — not a placeholder, not a note. The
   // declaration says what to look for; the data decides what exists.
   const declared = sections.filter(d => d.key in obj && !view.names.has(d.key))
@@ -189,7 +192,10 @@ function SectionedGrid(
           {visible.map(k => (
             <div key={k} className="contents">
               <dt className="text-neutral-500 truncate" title={k}>{k}</dt>
-              <dd className="min-w-0"><StatusValue value={obj[k]} depth={depth + 1} /></dd>
+              <dd className="min-w-0">
+                <StatusValue value={obj[k]} depth={depth + 1} />
+                {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+              </dd>
             </div>
           ))}
         </dl>
@@ -202,6 +208,9 @@ function SectionedGrid(
 
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
   const view = useDeprecation()
+  // Beside the value, inside the same <dd>, never a tooltip: the defect being fixed is that
+  // the number travels and the caveat does not.
+  const caveats = useCaveats()
   const sections = sectionsOf(obj)
   if (sections.length > 0) return <SectionedGrid obj={obj} depth={depth} sections={sections} />
   const all = Object.keys(obj).filter(k => !META_KEYS.has(k))
@@ -218,7 +227,10 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
                 ? <DeprecatedLabel name={k} />
                 : emphasised.has(k) ? <Emphasis>{k}</Emphasis> : k}
             </dt>
-            <dd className="min-w-0"><StatusValue value={obj[k]} depth={depth + 1} /></dd>
+            <dd className="min-w-0">
+              <StatusValue value={obj[k]} depth={depth + 1} />
+              {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+            </dd>
           </div>
         ))}
       </dl>

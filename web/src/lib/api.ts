@@ -1306,6 +1306,13 @@ export interface StatusCommandResult {
   contractVersion: number | null
   /** Field names the project still emits but no longer stands behind. */
   deprecated?: string[]
+  /**
+   * Key → one sentence: this value is CORRECT and means something narrower than its name
+   * suggests. Distinct from `deprecated`, which says the opposite — that the field is present
+   * and nobody stands behind it. `"*"` qualifies the whole command; every other key names a
+   * field. Optional, and an answer without it behaves exactly as one did before it existed.
+   */
+  caveats?: Record<string, string>
 }
 
 export interface ProjectStatusResponse {
