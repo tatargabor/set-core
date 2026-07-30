@@ -1295,6 +1295,38 @@ rescoping when anything cites the old order.** New items go on the end.
    recommendation is not overturned — it is **still the next build once the channel unblocks**;
    it was simply not startable, and an unstartable recommendation is not a reason to idle.
 
+   **BUILT 2026-07-30 — 24 tasks, 8 acceptance criteria, `openspec validate --strict` clean,
+   failure-set diff against an isolated baseline empty (81 failed / 3180 passed / 21 errors here
+   against 81 / 3121 / 21 there, +59 new tests, 0 import leaks with the leak checker proven able
+   to fire).** Three commits: `8a7a85bd` (one home for the type list), `fcb072f6` (the
+   conditional lane), `1ce55967` (the hole in the first two).
+
+   **The delta is one gate, and the argument for it is in the code where the profile lives:**
+   `bugfix` softens `test_files` from blocking to warn, and nothing else. `test_files` asks *did
+   this change add test files*, which is a **proxy**; the exit obligation asks whether a fixed
+   defect has a test citing it, which is the thing. So the entrance drops the proxy exactly where
+   the exit measures the property. `spec_verify` stays blocking on purpose — softening it would
+   assume a fix restores the specification, which is the question D4 refuses to gate on after the
+   consumer measured their own compliance at 9.3% and asked that the half they do not keep not be
+   generalised.
+
+   **ONE QUESTION IS NOW OPEN AND IT IS THE CONSUMER'S TO SHAPE — measured, and it makes the
+   feature unusable by the project it was built for.** `require_exit_obligation` requires the
+   mapped signal to be able to *fail a gate*, not merely to sit at ENFORCE (see below for why).
+   Two routes qualify: a registered condition handler — and the handler table is empty by design
+   in this version — or the project declaring `sole_enforcement`, which means *no other gate of
+   ours enforces this defect class*. The consumer's blocking gate **does** enforce it (they
+   confirmed the predicate against their own gate source on the channel, W#142), so their honest
+   declaration is `false`, and they are therefore **ineligible for the discount precisely because
+   their own gate works**.
+
+   The fail direction is the safe one — a discount refused, never granted unpaid — so nothing is
+   at risk while this is open. But the obligation *is* enforced in their case; it is enforced
+   somewhere set-core cannot see. Closing that needs a declaration set-core does not have ("our
+   own gate enforces this class"), and an unverifiable claim is a contract-shape decision, not an
+   implementation detail. **Asked on the channel rather than decided here**, because goal 3 says
+   the two sides design this layer together and this is exactly that kind of question.
+
    **Its three measured premises were re-checked before any code, not carried forward from the
    paragraph above** (the record's own rule: on resuming, re-check rather than re-derive):
    `python3 -c "from set_orch.gate_profiles import UNIVERSAL_DEFAULTS as U; ..."` →
