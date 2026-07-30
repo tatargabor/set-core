@@ -15,6 +15,21 @@ or, worse, build on an assumption about it.
 
 ---
 
+## WHERE TO PICK THE WORK UP (2026-07-30, end of session)
+
+Two changes are open and **each carries its own RESUME HERE block at the top of its `tasks.md`** —
+what is done, what the next step actually is, and the traps already measured. Read those rather
+than reconstructing from this record:
+
+| change | state | next |
+|---|---|---|
+| `status-contract-caveats` | 26/30 — built, shipped, verified against a live producer | the four PROOF tasks (a committed browser test, the no-caveats baseline, mutation, full suites) |
+| `status-table-structured-cells-and-controls` | 3/30 — the search precondition is in | `2.1`, the column classifier: it is the keystone every later control depends on |
+
+**Archived this session:** `bugfix-lane-with-a-real-delta` → `openspec/specs/change-lane-profiles/`.
+
+---
+
 ## THE BUS IS BEING HANDED OVER — read `bus-handoff.md` before writing to the channel
 
 Decided by the user 2026-07-30: **another agent takes the cross-project bus over on bugfix

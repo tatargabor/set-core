@@ -1,3 +1,52 @@
+# RESUME HERE — 26/30 done, written 2026-07-30
+
+**The mechanism is built, shipped and verified against a live producer. What is left is PROOF, not
+features** — which is exactly the part this repo refuses to skip, so none of it is ticked.
+
+## What works today, measured through the whole chain
+
+The producer publishes `caveats` on every command (default `{}`), and their tenth command carries
+`"*"` plus four per-field keys. Through the framework's own API: **10 commands, 0 gaps**, all four
+per-field keys present in the data, so four caveats render beside their numbers and the
+absent-key diagnostics list is correctly **empty**.
+
+In a real browser, driven by clicking the way a reader reaches it: **5 notes — 1 in the section
+header (the `"*"`, 155 characters) and 4 inside `<dd>` elements**, heights 15–30 px (the
+150-character one wraps to two lines), no horizontal overflow, no page errors. Then looked at:
+numbers stay dominant, caveats read as secondary, nothing styled as an alarm.
+
+Commits: `dbc08388` (envelope), `67dbedae` (the missing `project-status-contract` delta),
+`66b7caae` (rendering), `649c1baf` (dist).
+
+## The four open tasks, and what each actually needs
+
+- **4.4 — a COMMITTED end-to-end test.** The browser check above was *run* and is not *committed*,
+  so nothing re-runs it. Needs a Playwright spec that clicks into the project, opens the status
+  surface, selects the command, and asserts an alarming-sounding key is not styled as an error.
+  Drive it by clicking; a harness that calls the component tests a different system.
+- **6.1 — the no-caveats baseline.** An envelope without `caveats` must produce byte-identical
+  output to before. Measure from a detached worktree at `82d735a2` with its own import roots, not
+  by assertion.
+- **6.2 — mutation-test the three rules**: additive→replacing, data-count→declaration-count,
+  diagnostics→gate. Assert the mutation landed, run, assert the restore landed by **re-reading the
+  file**, and clear `__pycache__` between runs. Use a helper that refuses an ambiguous pattern
+  rather than replacing the first match — that guard already caught one ambiguous pattern here.
+- **6.3 — full suites against the baseline**, with the session-end leak check asserting zero and
+  **the checker proven able to fire first** (it reported 6 leaks on a deliberate working-tree
+  import, which is what makes its zero mean something).
+
+Last full run at handoff: Python **81 failed / 3194 passed / 21 errors**, failure-set diff against
+the isolated baseline **empty**; web **147 passed**; `openspec validate --strict` clean.
+
+## One task deliberately not built as written
+
+**3.1** asked for a resolver merging the `"*"` sentence with the per-field one. Not built, and the
+task was wrong rather than the code: merging would repeat the command-level sentence beside every
+value, which requirement AC-7 of this same change forbids. Additivity is delivered by **placement**
+— header plus field. Do not "fix" this later without re-reading AC-7.
+
+---
+
 ## 1. Carry the declaration through the envelope
 
 - [x] 1.1 `StatusResult.caveats` — read from the envelope, defaulted to empty, never decided here. Mirror `deprecated`'s dataclass field and its comment about whose call it is [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
