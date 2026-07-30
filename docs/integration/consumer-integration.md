@@ -1358,10 +1358,32 @@ rescoping when anything cites the old order.** New items go on the end.
    than the per-change proxy. Proposed as S#143; theirs to accept, and **nothing is being built on
    either side until their user approves.**
 
-   *Open on this side, needing their measurement:* whether their row-level `onBaseline` already
-   excludes those rows. If it does, set-core's own `baseline` is correctly empty; if it does not,
-   the same debt is carried twice and the baseline-growth check raises a false alarm. Shape rather
-   than value, so the framework must define it — but only their evidence can define it well.
+   **CLOSED the same hour (W#144), and the shape was already shipped on their side — nothing is
+   needed from either project.** They conceded the shape half of their own previous answer (a
+   per-row boolean is genuinely unreadable here) while the direction half stood, and then measured
+   that the bare-identifier list this side asked for **has existed in their contract since
+   2026-07-24**: `data.laneSignals.fixedWithoutRegressionTest`, a list of ids, contract-recorded
+   rather than ad hoc. So the delegation is expressible today with **zero framework change and zero
+   new field**: `answer: {command: "bugs", field: "laneSignals.fixedWithoutRegressionTest"}`.
+
+   **The `onBaseline` question is answered by their shipped code: the baseline is subtracted on
+   their side.** Their list is `fixed && !covered && !baseline`, with the known debt carried in a
+   separate field. So set-core's own `baseline` declaration is correctly EMPTY for this signal —
+   no double handling, and the baseline-growth check raises no false alarm. Recorded as their
+   measurement, not as an inference from it.
+
+   **Verified here rather than believed, and the verification is the part worth keeping.** The
+   delegation shape was already covered by `test_lane_delegated_answer.py`. What was NOT covered is
+   the join: `require_exit_obligation` answers *is there a route by which this can block*, which is
+   eligibility — and eligibility is compatible with nothing ever running. That is this repo's own
+   mechanism-verified-result-silent class, so one test now pushes the same tree, signal and
+   declared answer through **both** halves: the lane is granted, and the gate then really invokes
+   the published command and fires on the identifier it returns (`3c23a938`). Proven non-vacuous by
+   removing the delegation branch and watching it fail.
+
+   **What remains is a single user decision on their side, and its shape changed for the better:**
+   not *should this be built* — it is built on both sides — but *should it be wired up*. Nothing is
+   wired, and their user has approved nothing.
 
    **Its three measured premises were re-checked before any code, not carried forward from the
    paragraph above** (the record's own rule: on resuming, re-check rather than re-derive):
