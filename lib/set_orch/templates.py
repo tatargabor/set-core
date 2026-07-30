@@ -9,9 +9,54 @@ from __future__ import annotations
 import logging
 import re
 
+from .gate_profiles import change_type_enum, valid_change_types
 from .truncate import smart_truncate_structured
 
 logger = logging.getLogger(__name__)
+
+# ── The change-type enum, derived rather than restated ──────────────
+#
+# Measured on `HEAD` before this: the verbatim pipe-separated enum (the six type names joined
+# by pipes) had FOUR copies in this file alone (the planner's JSON output schemas) and a fifth
+# in the deployed decompose skill, and the mandatory-values sentence restated the same names a
+# sixth time in prose. A type added to `UNIVERSAL_DEFAULTS` reached none — which is the whole
+# defect, because the planner emits `change_type` and only these prompts tell it what the
+# legal values are.
+#
+# Tokens rather than f-strings, and the reason is mechanical: every one of these templates is
+# a JSON skeleton full of `{` and `}`, so an f-string would have to escape each brace and the
+# next person editing the schema would get a `KeyError` at import. Several of them are also
+# `.format()`ed later with real fields, so a brace here is not free.
+#
+# The fail direction is deliberately loud: a future template that carries a token without
+# being wrapped in `_with_change_types` leaks `%%CHANGE_TYPES%%` into a prompt, where an
+# agent reads nonsense and someone notices. `test_no_template_leaks_a_change_type_token`
+# closes it properly.
+_CHANGE_TYPES_TOKEN = "%%CHANGE_TYPES%%"
+_CHANGE_TYPES_LIST_TOKEN = "%%CHANGE_TYPES_LIST%%"
+_CROSS_CUTTING_TYPES_TOKEN = "%%CROSS_CUTTING_TYPES%%"
+
+#: A DELIBERATE SUBSET, not a drifted copy — and the distinction is the whole reason it is
+#: named here instead of being widened to the full enum. A cross-cutting change spans domains
+#: because it is shared plumbing; a cross-cutting *feature* is a decomposition mistake, so the
+#: brief-level schema offers only these three and that narrowing is the advice.
+#:
+#: Found by the test that scans for piped type names, not by the sweep that preceded it: the
+#: sweep searched for the SIX-name string and this is three names, so it matched nothing. The
+#: general form is already in this repo's rule book — a pattern built from the shape you expect
+#: is blind to the variant you did not, and it fails in the reassuring direction. A subset is
+#: legitimate; a subset naming a type that does not exist is the defect, which is why
+#: `test_the_cross_cutting_subset_names_only_real_types` asserts membership rather than length.
+_CROSS_CUTTING_TYPES: tuple[str, ...] = ("infrastructure", "schema", "foundational")
+
+
+def _with_change_types(template: str) -> str:
+    """Substitute the change-type tokens from the single definition in `gate_profiles`."""
+    return (template
+            .replace(_CHANGE_TYPES_TOKEN, change_type_enum())
+            .replace(_CROSS_CUTTING_TYPES_TOKEN, "|".join(_CROSS_CUTTING_TYPES))
+            .replace(_CHANGE_TYPES_LIST_TOKEN,
+                     ", ".join(f"`{t}`" for t in valid_change_types())))
 
 # Maximum diff size before truncation
 MAX_DIFF_CHARS = 50_000
@@ -528,7 +573,7 @@ _DIGEST_FIELDS = """Digest-mode additional requirements:
 - If a change must incorporate a cross-cutting requirement owned by another change, list it in "also_affects_reqs" (not in "requirements").
 - Every non-removed REQ-* ID in the digest MUST appear in exactly one change's "requirements" array. Cross-cutting requirements appear in one change's "requirements" (primary owner) and other changes' "also_affects_reqs"."""
 
-_SPEC_OUTPUT_JSON = """{
+_SPEC_OUTPUT_JSON = _with_change_types("""{
   "phase_detected": "Description of which phase/section was selected and why",
   "reasoning": "Brief explanation of the decomposition choices",
   "changes": [
@@ -536,7 +581,7 @@ _SPEC_OUTPUT_JSON = """{
       "name": "change-name",
       "scope": "Detailed description...",
       "complexity": "S|M|L",
-      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
+      "change_type": "%%CHANGE_TYPES%%",
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
@@ -546,9 +591,9 @@ _SPEC_OUTPUT_JSON = """{
       "ikp_packs": []
     }
   ]
-}"""
+}""")
 
-_SPEC_OUTPUT_JSON_DIGEST = """{
+_SPEC_OUTPUT_JSON_DIGEST = _with_change_types("""{
   "phase_detected": "Description of which phase/section was selected and why",
   "reasoning": "Brief explanation of the decomposition choices",
   "changes": [
@@ -556,7 +601,7 @@ _SPEC_OUTPUT_JSON_DIGEST = """{
       "name": "change-name",
       "scope": "Detailed description...",
       "complexity": "S|M|L",
-      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
+      "change_type": "%%CHANGE_TYPES%%",
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
@@ -570,15 +615,15 @@ _SPEC_OUTPUT_JSON_DIGEST = """{
       "ikp_packs": []
     }
   ]
-}"""
+}""")
 
-_BRIEF_OUTPUT_JSON = """{
+_BRIEF_OUTPUT_JSON = _with_change_types("""{
   "changes": [
     {
       "name": "change-name",
       "scope": "Detailed description...",
       "complexity": "S|M|L",
-      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
+      "change_type": "%%CHANGE_TYPES%%",
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "depends_on": ["other-change-name"],
@@ -588,7 +633,7 @@ _BRIEF_OUTPUT_JSON = """{
       "ikp_packs": []
     }
   ]
-}"""
+}""")
 
 
 def render_planning_prompt(
@@ -805,7 +850,7 @@ Output ONLY valid JSON (no markdown, no explanation):
 
 # ─── Domain-Parallel Decompose Templates ─────────────────────────────
 
-_BRIEF_OUTPUT_SCHEMA = """{
+_BRIEF_OUTPUT_SCHEMA = _with_change_types("""{
   "domain_priorities": ["domain-name-1", "domain-name-2"],
   "resource_ownership": {
     "file/pattern": {"owner": "domain-name", "note": "why this domain owns it"}
@@ -815,7 +860,7 @@ _BRIEF_OUTPUT_SCHEMA = """{
       "name": "change-name",
       "scope": "Description of cross-cutting change",
       "affects_domains": ["domain1", "domain2"],
-      "change_type": "infrastructure|schema|foundational",
+      "change_type": "%%CROSS_CUTTING_TYPES%%",
       "complexity": "S|M"
     }
   ],
@@ -823,15 +868,15 @@ _BRIEF_OUTPUT_SCHEMA = """{
   "domain_constraints": {
     "domain-name": "Constraint text for this domain's decompose agent"
   }
-}"""
+}""")
 
-_DOMAIN_CHANGES_OUTPUT_SCHEMA = """{
+_DOMAIN_CHANGES_OUTPUT_SCHEMA = _with_change_types("""{
   "changes": [
     {
       "name": "change-name",
       "scope": "Detailed description...",
       "complexity": "S|M",
-      "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
+      "change_type": "%%CHANGE_TYPES%%",
       "model": "opus|sonnet",
       "has_manual_tasks": false,
       "gate_hints": {"gate_name": "skip|warn|run"},
@@ -844,7 +889,7 @@ _DOMAIN_CHANGES_OUTPUT_SCHEMA = """{
       ]
     }
   ]
-}"""
+}""")
 
 
 def _get_test_bundling_directives(project_path: str = ".") -> tuple[list[str], str, str]:
@@ -989,7 +1034,7 @@ These decisions are binding — respect them in your decomposition:
 {decisions_context}
 """
 
-    return f"""You are a software architect decomposing the "{domain_name}" domain into implementable changes.
+    return _with_change_types(f"""You are a software architect decomposing the "{domain_name}" domain into implementable changes.
 
 ## Domain: {domain_name}
 {domain_summary}
@@ -1015,14 +1060,14 @@ These decisions are binding — respect them in your decomposition:
 - Respect the domain_constraints for "{domain_name}" from the brief
 - Each change MUST include "requirements" listing the REQ-* IDs it implements
 - **SCOPE DEPTH**: The "scope" field is the ONLY description the implementing agent sees. The agent will NOT read the spec files or domain knowledge — only YOUR scope text. Therefore: embed the specific business rules, data formats, enum values, validation logic, and algorithm parameters DIRECTLY into the scope. A scope that says "implement order approval" is useless; a scope that says "implement approveOrder(): validate partnerId + items.length>0 + no '?' productIds, check creditLimitHuf (non-blocking warning), create StockReservation per item (ACTIVE status, atomic WHERE physicalQty >= reservedQty + needed), calculate confirmedDate = approvalDate + MAX(mfgLeadDays + surfaceLeadDays) + zone.deliveryDays via addBusinessDays(), generate ORDER_CONFIRMATION if billingWorkflow=POST_DELIVERY else PROFORMA" is actionable.
-- **Each change MUST set `change_type` to one of: `infrastructure`, `schema`, `foundational`, `feature`, `cleanup-before`, `cleanup-after`. The dispatcher's per-change model routing reads this field; if you omit it, the dispatcher falls back to the default model and the per-change routing is lost. This field is mandatory — do not leave it blank.**
+- **Each change MUST set `change_type` to one of: %%CHANGE_TYPES_LIST%%. The dispatcher's per-change model routing reads this field; if you omit it, the dispatcher falls back to the default model and the per-change routing is lost. This field is mandatory — do not leave it blank.**
 - **Each change in this domain that adds user-facing UI or HTTP routes MUST own at least one e2e spec file.** {e2e_path_clause} Do NOT defer test authoring to a separate test-only change — the implementing agent writes production code AND the e2e spec in the same worktree.
 - Do NOT emit standalone test-only changes. The ONLY allowed test-related change is the cross-cutting `{infra_name}` (declared by the orchestrator's brief, not by this domain agent).
 
 {_PLANNING_RULES}
 
 Output ONLY valid JSON (no markdown, no explanation):
-{_DOMAIN_CHANGES_OUTPUT_SCHEMA}"""
+{_DOMAIN_CHANGES_OUTPUT_SCHEMA}""")
 
 
 def render_merge_prompt(

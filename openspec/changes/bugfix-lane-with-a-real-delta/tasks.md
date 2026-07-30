@@ -1,9 +1,25 @@
 ## 1. Make the type list have one home
 
-- [ ] 1.1 Derive the valid change types from `UNIVERSAL_DEFAULTS` rather than restating them, and expose that as the single definition [REQ: the-set-of-valid-change-types-has-one-home]
-- [ ] 1.2 Remove `config` and `docs` from `merger.py:2442` — measured, they exist nowhere else, so the guard's exemption names two types nothing can produce. Correct rather than preserve: an exemption that matches nothing today is read as authoritative tomorrow [REQ: the-set-of-valid-change-types-has-one-home]
-- [ ] 1.3 `.claude/skills/set/decompose/SKILL.md:68` stops carrying a hand-written enum of the same six names. It deploys to consumers via `set-project init`, so a drifted copy travels [REQ: the-set-of-valid-change-types-has-one-home]
-- [ ] 1.4 A test that fails when any component names a change type absent from the single definition — the wrong pattern held in a test, so a later "tidy-up" cannot silently reintroduce a third copy [REQ: the-set-of-valid-change-types-has-one-home]
+**MEASUREMENT CORRECTED DURING IMPLEMENTATION — "three places" was under-counted, and the
+under-count is the finding.** The proposal, the design and the spec all say the list lives in
+three places. Measured on `HEAD` before any edit, the verbatim six-name pipe-separated enum had
+**five** live copies outside tests and specs — four in `templates.py` (the planner's JSON output
+schemas) and one in the deployed decompose skill — plus a sixth prose restatement of the
+mandatory values, plus `merger.py`'s exemption tuple.
+
+**And the sixth was found by the new test, not by the sweep**, which is the half worth keeping:
+`_BRIEF_OUTPUT_SCHEMA` carried a **three**-name enum (`infrastructure`, `schema`,
+`foundational`), so a search built from the six-name string matched nothing. A pattern shaped
+like the copy you expect is blind to the variant you did not, and it failed in the reassuring
+direction — reporting five when there were six. That subset turned out to be *deliberate*
+(a cross-cutting change is shared plumbing, never a feature), so it was named and validated
+rather than widened; widening it would have changed planning advice while claiming to remove a
+copy.
+
+- [x] 1.1 Derive the valid change types from `UNIVERSAL_DEFAULTS` rather than restating them, and expose that as the single definition [REQ: the-set-of-valid-change-types-has-one-home]
+- [x] 1.2 Remove `config` and `docs` from `merger.py:2442` — measured, they exist nowhere else, so the guard's exemption names two types nothing can produce. Correct rather than preserve: an exemption that matches nothing today is read as authoritative tomorrow [REQ: the-set-of-valid-change-types-has-one-home]
+- [x] 1.3 `.claude/skills/set/decompose/SKILL.md:68` stops carrying a hand-written enum of the same six names. It deploys to consumers via `set-project init`, so a drifted copy travels [REQ: the-set-of-valid-change-types-has-one-home]
+- [x] 1.4 A test that fails when any component names a change type absent from the single definition — the wrong pattern held in a test, so a later "tidy-up" cannot silently reintroduce a third copy [REQ: the-set-of-valid-change-types-has-one-home]
 
 ## 2. The project's mapping from its lanes to set-core's change types
 

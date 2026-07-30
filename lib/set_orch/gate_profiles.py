@@ -142,6 +142,51 @@ _CHANGE_TYPE_ATTRS: dict[str, dict] = {
 }
 
 
+# ── The set of valid change types — ONE home ────────────────────────
+#
+# `UNIVERSAL_DEFAULTS` above IS the definition: a type exists exactly when it has a gate
+# profile, which is the only thing a type *is* here. Everything else derives.
+#
+# Measured before this was written, and the figure in the change's own artifacts was
+# UNDER-counted — it said three places, which is the completeness-claim-is-a-summary class
+# arriving in the document that warns about it. The verbatim enum string
+# (the six names joined by pipes) had **five** live copies outside tests and specs:
+# four in `templates.py` (planner prompts) and one in the deployed decompose skill, plus
+# prose restatements in `templates.py`, `plan-review.md` and `profile_types.py`, plus
+# `merger.py`'s exemption tuple naming two types that exist nowhere else.
+#
+# Declaration order, NOT sorted, and that is load-bearing rather than incidental: the enum
+# is read by a planning agent, and the dict's order groups the types the way the pipeline
+# uses them (setup → schema → shared → feature → cleanup). `"|".join(valid_change_types())`
+# therefore reproduced the historical string byte-for-byte at the moment of substitution,
+# which is what made the substitution provably inert instead of merely plausible.
+
+
+def valid_change_types() -> tuple[str, ...]:
+    """The valid change types, in declaration order.
+
+    Derived, never restated. A component that needs the list calls this; a component that
+    writes the list out by hand is a second copy, and the second copy is the one that
+    drifts — see `test_change_type_list_has_one_home`.
+    """
+    return tuple(UNIVERSAL_DEFAULTS)
+
+
+def is_valid_change_type(name: str) -> bool:
+    """Whether `name` is a change type this set-core version defines."""
+    return name in UNIVERSAL_DEFAULTS
+
+
+def change_type_enum() -> str:
+    """The pipe-separated enum, for prompts and templates that must show the choices.
+
+    Exists so a prompt can *contain* the list without *holding* it. Four planner prompts
+    and one deployed skill file carried this string by hand; a type added to the dictionary
+    reached none of them.
+    """
+    return "|".join(valid_change_types())
+
+
 def resolve_gate_config(
     change,
     profile=None,

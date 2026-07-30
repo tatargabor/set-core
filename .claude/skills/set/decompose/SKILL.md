@@ -65,7 +65,7 @@ Decompose a specification document into an orchestration execution plan.
          "name": "kebab-case-name",
          "scope": "Detailed description of what to implement + test requirements",
          "complexity": "S|M|L",
-         "change_type": "infrastructure|schema|foundational|feature|cleanup-before|cleanup-after",
+         "change_type": "<one of the valid change types — see below>",
          "model": "opus|sonnet",
          "has_manual_tasks": false,
          "depends_on": ["other-change-name"],
@@ -109,6 +109,24 @@ Decompose a specification document into an orchestration execution plan.
    ```
 
 ## Decomposition Rules
+
+**The valid `change_type` values — read them, do not recall them.** The list is defined in
+exactly one place, the gate profile dictionary, because a change type *is* its gate profile.
+Print it:
+
+```bash
+python3 -c "from set_orch.gate_profiles import change_type_enum; print(change_type_enum())"
+```
+
+This file used to spell the six names out inline, and that copy is why the instruction exists:
+the same string had five hand-written copies across the framework, so a type added to the
+dictionary reached none of them — including this file, which is **deployed into your project**
+and therefore drifts on its own timetable. If the command above fails, stop and say so rather
+than guessing a value: an invented `change_type` is not rejected, it silently runs the
+strictest gate chain and the operator sees gates nobody configured.
+
+Some types carry an entry condition and are refused when it is unmet — the refusal names what
+is missing, so read the error rather than substituting another type.
 
 **Sizing:**
 - S: <10 tasks, M: 10-25 tasks, L: 25+ tasks (prefer splitting L into multiple changes)

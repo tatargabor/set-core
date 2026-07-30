@@ -1683,6 +1683,18 @@ def _detect_own_spec_files(wt_path: str) -> list[str]:
     return []
 
 
+#: Change types for which "no gate executed" is the expected outcome rather than a symptom.
+#:
+#: This tuple was `('infrastructure', 'config', 'docs')`. Measured: `config` and `docs` are
+#: not change types — they appear in no type list anywhere in the tree, so the exemption
+#: named two things nothing can produce. Corrected rather than preserved, deliberately: an
+#: exemption that matches nothing today is harmless today and read as authoritative
+#: tomorrow, which is exactly how it survived long enough to be quoted. Every name here is
+#: asserted to be a valid change type by `test_change_type_list_has_one_home`, so a third
+#: copy cannot drift back in silently.
+_ZERO_GATES_EXPECTED_TYPES: tuple[str, ...] = ("infrastructure",)
+
+
 def _run_integration_gates(
     change_name: str, change: Change, wt_path: str,
     state_file: str, profile: Any = None,
@@ -2439,7 +2451,7 @@ def _run_integration_gates(
     # Guard: warn if no gates actually executed for non-infrastructure changes
     if gates_executed == 0:
         change_type = getattr(change, 'change_type', '') or 'feature'
-        if change_type not in ('infrastructure', 'config', 'docs'):
+        if change_type not in _ZERO_GATES_EXPECTED_TYPES:
             logger.warning(
                 "Integration gate: NO gates executed for %s (type=%s) — "
                 "check project-type.yaml and profile detection. "
