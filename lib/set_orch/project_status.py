@@ -394,6 +394,17 @@ class StatusResult:
     #: `_deprecated_fields` for why this is the project's call and not the framework's.
     deprecated: tuple = ()
 
+    #: Key → one sentence: "this value is correct, and it means something narrower than its
+    #: name suggests". The producer writes every sentence; see `_caveats`.
+    #:
+    #: A sibling of `deprecated` rather than a variant of it, because they describe opposite
+    #: situations. `deprecated` says the field is present and nobody stands behind it.
+    #: `caveats` says the command succeeded, the field is present, the value is RIGHT — only
+    #: the reading is wider than the fact. None of the envelope's three existing "do not read
+    #: it that way" signals covers that: `gaps` is per command, `errorClass` is per failure,
+    #: `deprecated` is per field name, and all three describe something absent or wrong.
+    caveats: dict = field(default_factory=dict)
+
     @classmethod
     def failure(cls, command: str, error_class: str, error: str) -> "StatusResult":
         return cls(command=command, ok=False, error=error, error_class=error_class)
@@ -523,6 +534,7 @@ def parse_envelope(command: str, raw: str) -> StatusResult:
         contract_version=version,
         generated_at=_str_or_none(payload.get("generatedAt")),
         deprecated=_deprecated_fields(payload.get("deprecated")),
+        caveats=_caveats(payload.get("caveats")),
     )
 
 
@@ -547,6 +559,59 @@ def _deprecated_fields(raw: Any) -> tuple:
     return tuple(dict.fromkeys(
         str(item).strip() for item in raw if str(item).strip()
     ))
+
+
+#: The command-level caveat's key. It qualifies the COMMAND, not a field, so it is never looked
+#: for in the data — and forgetting that is not a small bug: the presence check would report it
+#: absent for every project that declares one, and the diagnostics listing would then accuse
+#: every correct producer of a typo.
+COMMAND_LEVEL_CAVEAT = "*"
+
+
+def _caveats(raw: Any) -> dict:
+    """Caveats the project attached to this answer. Read, never decided here.
+
+    A caveat says a value is CORRECT and narrower than its name suggests — a "not tracked" count
+    describing the producer's own register rather than the world, a "tracked" count that is a
+    lower bound because one of its inputs is written by hand. The number then travels (into a
+    screen, a summary, a decision) and the caveat does not, which is the whole defect.
+
+    **Every sentence is the producer's.** The framework holds no key and no text, and it must
+    hold none: the keys here are the producer's own vocabulary, and a framework-side list would
+    be right for whoever it was written against and quietly wrong for everyone else while looking
+    authoritative to both. Same argument as `_deprecated_fields`, one field along.
+
+    **Malformed input degrades to no caveats rather than to no answer.** The command succeeded
+    and the value is right; the caveat is what qualifies it. Refusing the whole answer because
+    its decoration is malformed would turn a cosmetic defect into a missing measurement — the
+    wrong direction, and the reverse of `_parse_answer`'s refusal, which is strict precisely
+    because ITS fallback silently substitutes a different computation.
+
+    Nothing is normalised: not case, not whitespace inside the key, not the key's shape. The key
+    has to match what the producer actually sends — a consumer's per-status keys were uppercase
+    and accented while their band keys were lowercase and unaccented, deliberately — and a
+    framework that "helpfully" normalised would match keys the producer never sent while missing
+    the ones they did.
+    """
+    if not isinstance(raw, dict):
+        if raw is not None:
+            # Shape, never content: a caveat's text is the project's own material and a log is a
+            # persistence carrier that crosses machines without anyone deciding it should.
+            logger.warning("status contract: 'caveats' is %s, not a mapping — ignored",
+                           type(raw).__name__)
+        return {}
+
+    out: dict = {}
+    dropped = 0
+    for key, sentence in raw.items():
+        if isinstance(key, str) and key and isinstance(sentence, str) and sentence.strip():
+            out[key] = sentence
+        else:
+            dropped += 1
+    if dropped:
+        logger.warning("status contract: %d caveat entr(ies) ignored — a caveat is one "
+                       "non-empty sentence under a non-empty key", dropped)
+    return out
 
 
 def _str_or_none(value: Any) -> Optional[str]:
@@ -775,6 +840,7 @@ class StatusSnapshot:
                     "generatedAt": r.generated_at,
                     "contractVersion": r.contract_version,
                     "deprecated": list(r.deprecated),
+                    "caveats": dict(r.caveats),
                 }
                 for name, r in self.results.items()
             },

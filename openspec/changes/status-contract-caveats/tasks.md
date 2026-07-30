@@ -1,10 +1,10 @@
 ## 1. Carry the declaration through the envelope
 
-- [ ] 1.1 `StatusResult.caveats` — read from the envelope, defaulted to empty, never decided here. Mirror `deprecated`'s dataclass field and its comment about whose call it is [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
-- [ ] 1.2 A validator alongside `_deprecated_fields`: accept a mapping of key → non-empty string, drop nothing silently, and refuse nothing on the grounds of an unrecognised key — the key space is the project's [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
-- [ ] 1.3 A malformed `caveats` (not a mapping, or values that are not strings) must not take the answer down. The command succeeded; the caveat is the decoration. Log the SHAPE only — a caveat's text is the project's material [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
-- [ ] 1.4 Expose it on the JSON the dashboard reads, beside `deprecated` [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
-- [ ] 1.5 A test asserting no caveat key or caveat sentence appears anywhere in `lib/` or `web/src/` — the wrong pattern held in a test, because the natural "improvement" is to special-case one producer's key [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
+- [x] 1.1 `StatusResult.caveats` — read from the envelope, defaulted to empty, never decided here. Mirror `deprecated`'s dataclass field and its comment about whose call it is [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
+- [x] 1.2 A validator alongside `_deprecated_fields`: accept a mapping of key → non-empty string, drop nothing silently, and refuse nothing on the grounds of an unrecognised key — the key space is the project's [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
+- [x] 1.3 A malformed `caveats` (not a mapping, or values that are not strings) must not take the answer down. The command succeeded; the caveat is the decoration. Log the SHAPE only — a caveat's text is the project's material [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
+- [x] 1.4 Expose it on the JSON the dashboard reads, beside `deprecated` [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
+- [x] 1.5 A test asserting the framework holds no caveat vocabulary. **Reshaped during implementation, and the reason is the confidentiality boundary:** the obvious form greps the source for a real producer's keys, which would require writing that producer's register vocabulary into this repository in order to prove the framework does not hold it — the test file becomes the carrier of exactly what the rule forbids. Asserted structurally instead: arbitrary keys (accented, non-Latin, spaced, mixed-case) survive unchanged, and exactly one caveat-key constant exists [REQ: a-project-declares-caveats-and-the-framework-interprets-none-of-them]
 
 ## 2. Presence counted from the data
 
