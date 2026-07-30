@@ -15,6 +15,19 @@ or, worse, build on an assumption about it.
 
 ---
 
+## THE BUS IS BEING HANDED OVER — read `bus-handoff.md` before writing to the channel
+
+Decided by the user 2026-07-30: **another agent takes the cross-project bus over on bugfix
+matters.** The operational instructions, the takeover checklist, and the four things a new owner
+will otherwise get wrong are in [`bus-handoff.md`](bus-handoff.md) — including the rule that
+outranks the rest, that **one file has one writer**, and the evidence for why (the peer produced
+two entries numbered `W#147` on the same day, from two sessions, contradicting each other).
+
+Also recorded there: a message asking the producer to publish `source` as a structure rather than
+a slug is **deliberately deferred and NOT sent**, and must not be folded into the bugfix thread.
+
+---
+
 ## FIRST — where the channel stands right now (2026-07-30 14:15, restart completed)
 
 Written across a deliberate session restart, so the next session does not read 6000 lines to
