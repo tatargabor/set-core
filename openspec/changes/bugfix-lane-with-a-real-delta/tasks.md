@@ -35,6 +35,13 @@ copy.
 - [x] 3.4 A project declaring no `bugfix` lane is untouched — measured against today's behaviour, not asserted [REQ: a-lane-entry-shall-not-be-able-to-exist-without-its-behavioural-delta]
 - [x] 3.5 Define what the cheaper entrance actually is, and state the delta against `feature` in the code where the profile lives, so the next reader can see the difference without diffing two dictionaries [REQ: a-lane-entry-shall-not-be-able-to-exist-without-its-behavioural-delta]
 
+- [x] 3.6 An ENFORCE signal that cannot FIRE does not satisfy the obligation either — added
+  after measuring, because the requirement's own words were satisfied while the discount stayed
+  unpaid. `_KIND_HANDLERS` is empty by design in this version, so every declared signal is
+  unevaluated, and an unevaluated outcome blocks only under `sole_enforcement`. Its own reason
+  class, distinguishable from an unpromoted signal: the two need opposite next actions
+  [REQ: an-exit-obligation-counts-only-when-it-blocks]
+
 ## 4. Prove the delta is real
 
 - [x] 4.1 A test asserting the `bugfix` profile is NOT equal to any other profile in the dictionary — the direct guard against the failure already in the tree, where `feature` and `foundational` are byte-identical [REQ: a-lane-entry-shall-not-be-able-to-exist-without-its-behavioural-delta]

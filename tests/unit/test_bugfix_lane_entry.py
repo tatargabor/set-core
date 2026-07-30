@@ -80,9 +80,16 @@ class _Profile:
         return self._lanes
 
 
-def _signal(promotion_severity="enforce"):
+def _signal(promotion_severity="enforce", sole_enforcement=True):
     """A well-formed declaration. Shape matters: no path pattern in the condition, so the
     self-inclusion refusal cannot fire, and no numeric threshold, so the volume refusal cannot.
+
+    `sole_enforcement` defaults to True here and that is not incidental. `lane_gate._KIND_HANDLERS`
+    is empty by design in this set-core version, so every declared signal is *unevaluated*, and
+    `lane_evaluator` blocks on an unevaluated outcome only where the project declared itself the
+    sole enforcement of the defect class. Without the flag, nothing this fixture declares could
+    fail a gate — so a fixture that omitted it would have been testing a discount granted
+    against an obligation that blocks nothing.
     """
     return {
         "lane": "restoring",          # deliberately NOT a set-core change type
@@ -93,6 +100,7 @@ def _signal(promotion_severity="enforce"):
                       "measure": "one week of WARN with no false positives"},
         "triggering_case": "2026-05-14 defect BUG-1 returned twice with no regression test",
         "exclusions": ["docs/**"],
+        "sole_enforcement": sole_enforcement,
     }
 
 
@@ -382,6 +390,62 @@ def test_a_warn_severity_exit_signal_does_not_buy_the_discount(tmp_path):
         resolve_gate_config(_Change("bugfix"), profile=_Profile(), tree=tree)
     assert exc.value.reason_class == ConditionalLaneRefused.NOT_ENFORCED
     assert "s" in str(exc.value)
+
+
+def test_an_enforced_signal_that_cannot_FIRE_does_not_buy_the_discount(tmp_path):
+    """ENFORCE severity is not the same statement as "this blocks", and the gap between them
+    was in the first implementation of this module.
+
+    `_KIND_HANDLERS` is empty by design in this version, so a declared signal is unevaluated;
+    an unevaluated outcome blocks only under `sole_enforcement`. Without it, the signal reaches
+    ENFORCE by promotion and can never fail a gate — the entrance gets cheaper and nothing stops
+    the defect returning. Verifying the severity mechanism while the result stays silent is the
+    class this module was written against, arriving inside it.
+    """
+    tree = _tree(tmp_path, signals={"s": _signal(sole_enforcement=False)},
+                 lane_map={"bugfix": ["s"]})
+    profile = _Profile(promotions={"s": {"measured": "2026-06-01"}})
+
+    with pytest.raises(ConditionalLaneRefused) as exc:
+        resolve_gate_config(_Change("bugfix"), profile=profile, tree=tree)
+    assert exc.value.reason_class == ConditionalLaneRefused.UNEVALUABLE
+    assert "sole_enforcement" in str(exc.value), (
+        "the refusal must name the one thing the project can do about it")
+
+
+def test_a_registered_handler_also_makes_a_signal_eligible(tmp_path, monkeypatch):
+    """The other route to blocking, so the check is not secretly a `sole_enforcement` test.
+
+    A project should become eligible when a handler ships, without redeclaring anything — which
+    is why the handler table is consulted at call time rather than cached.
+    """
+    from set_orch import lane_gate
+
+    monkeypatch.setitem(lane_gate._KIND_HANDLERS, "fixed-defect-without-test",
+                        lambda signal, path: [])
+    tree = _tree(tmp_path, signals={"s": _signal(sole_enforcement=False)},
+                 lane_map={"bugfix": ["s"]})
+    profile = _Profile(promotions={"s": {"measured": "2026-06-01"}})
+
+    cfg = resolve_gate_config(_Change("bugfix"), profile=profile, tree=tree)
+    assert cfg.get("test_files") == "warn"
+
+
+def test_unevaluable_and_not_enforced_are_distinguishable(tmp_path):
+    """Opposite next actions: record the measurement, versus declare sole enforcement."""
+    warn = _tree(tmp_path / "a", signals={"s": _signal(promotion_severity="warn")},
+                 lane_map={"bugfix": ["s"]})
+    silent = _tree(tmp_path / "b", signals={"s": _signal(sole_enforcement=False)},
+                   lane_map={"bugfix": ["s"]})
+    profile = _Profile(promotions={"s": {"measured": "2026-06-01"}})
+
+    with pytest.raises(ConditionalLaneRefused) as first:
+        require_exit_obligation("bugfix", warn, profile)
+    with pytest.raises(ConditionalLaneRefused) as second:
+        require_exit_obligation("bugfix", silent, profile)
+
+    assert first.value.reason_class == ConditionalLaneRefused.NOT_ENFORCED
+    assert second.value.reason_class == ConditionalLaneRefused.UNEVALUABLE
 
 
 def test_a_signal_whose_own_promotion_asks_for_warn_does_not_qualify(tmp_path):

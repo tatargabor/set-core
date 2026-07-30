@@ -216,6 +216,9 @@ class ConditionalLaneRefused(Exception):
     UNKNOWN_SIGNAL = "unknown-signal"
     #: The mapped signal is declared but still evaluates at WARN.
     NOT_ENFORCED = "not-enforced"
+    #: The mapped signal is at ENFORCE but cannot fire in this set-core version, and its
+    #: project has not declared it the sole enforcement of its class — so it blocks nothing.
+    UNEVALUABLE = "unevaluable"
     #: No tree was supplied, so the obligation could not be read at all.
     NO_TREE = "no-tree"
 
@@ -223,6 +226,38 @@ class ConditionalLaneRefused(Exception):
         self.change_type = change_type
         self.reason_class = reason_class
         super().__init__(message)
+
+
+def _can_block(signal: Any) -> bool:
+    """Whether an ENFORCE signal can actually fail a gate in THIS set-core version.
+
+    **The gap this closes was in the first implementation of this module, and it was the exact
+    class the module was written to prevent — the mechanism verified while the result stays
+    silent.** ENFORCE severity was treated as sufficient. Measured afterwards:
+    `lane_gate._KIND_HANDLERS` is empty by design (a handler is added only once some project
+    declares a condition that needs it), so every declared signal today is *unevaluated*; and
+    `lane_evaluator` sets `blocking=bool(signal.sole_enforcement)` on an unevaluated outcome
+    (`:253`, `:260`), while `LaneReport.blocks` counts only FIRED outcomes otherwise. So a
+    project could map a signal that reaches ENFORCE by promotion and can never fire — the
+    entrance gets cheaper and nothing stops the defect returning, which is precisely what the
+    design forbids in the sentence "an obligation that does not block leaves the discount
+    unpaid".
+
+    Two routes genuinely block, and both are asked for rather than assumed:
+
+    - a handler exists for the condition's kind, so at ENFORCE a firing signal fails the gate;
+    - the project declared `sole_enforcement`, which makes an *unevaluable* signal block —
+      their own statement that no other gate covers this defect class, so silence is a hole.
+
+    Consulted at call time, never cached: the handler table is a property of the running
+    version, and a project that becomes eligible when a handler ships should become eligible
+    without redeclaring anything.
+    """
+    from .lane_gate import _KIND_HANDLERS
+
+    if getattr(signal, "sole_enforcement", False):
+        return True
+    return str((signal.condition or {}).get("kind", "")) in _KIND_HANDLERS
 
 
 def require_exit_obligation(change_type: str, tree: Any, profile: Any = None) -> str:
@@ -271,16 +306,32 @@ def require_exit_obligation(change_type: str, tree: Any, profile: Any = None) ->
 
     unknown: list = []
     unpromoted: list = []
+    unevaluable: list = []
     for name in mapped:
         signal = by_name.get(name)
         if signal is None:
             unknown.append(name)
             continue
         severity, refusal = resolve_severity(signal, promotions)
-        if severity == ENFORCE:
-            logger.info("conditional lane granted: exit obligation is enforced")
-            return name
-        unpromoted.append((name, refusal))
+        if severity != ENFORCE:
+            unpromoted.append((name, refusal))
+            continue
+        if not _can_block(signal):
+            unevaluable.append(name)
+            continue
+        logger.info("conditional lane granted: exit obligation is enforced and can block")
+        return name
+
+    if unevaluable:
+        raise ConditionalLaneRefused(
+            change_type, ConditionalLaneRefused.UNEVALUABLE,
+            f"change_type {change_type!r} is mapped to signal(s) "
+            f"{', '.join(unevaluable)} which reach ENFORCE but cannot fail a gate in this "
+            f"set-core version: no handler is registered for their condition kind, and an "
+            f"unevaluated signal blocks only where its project declared "
+            f"`sole_enforcement: true`. An obligation that cannot block leaves the discount "
+            f"unpaid. Either declare `sole_enforcement` — a statement that no other gate of "
+            f"yours covers this defect class — or wait for a handler.")
 
     if unpromoted:
         detail = "; ".join(

@@ -120,14 +120,23 @@ def test_a_GRANTED_conditional_type_also_stays_silent(conditional, tmp_path, cap
     A conditional type is a known type, so resolving it must not produce the unknown-type
     warning either — and the only way to reach that code path is to pay for the lane.
     """
+    import json
+
     (tmp_path / "set").mkdir(parents=True)
-    (tmp_path / "set" / "lane-signals.json").write_text(
-        '{"exit": {"lane": "restoring", "condition": {"kind": "fixed-defect-without-test"},'
-        ' "scope": "per-change-verification", "baseline": [],'
-        ' "promotion": {"severity": "enforce", "measure": "a week at WARN"},'
-        ' "triggering_case": "2026-05-14 BUG-1 returned with no test", "exclusions": ["docs/**"]}}')
+    (tmp_path / "set" / "lane-signals.json").write_text(json.dumps({"exit": {
+        "lane": "restoring",
+        "condition": {"kind": "fixed-defect-without-test"},
+        "scope": "per-change-verification",
+        "baseline": [],
+        "promotion": {"severity": "enforce", "measure": "a week at WARN"},
+        "triggering_case": "2026-05-14 BUG-1 returned with no test",
+        "exclusions": ["docs/**"],
+        # Required for the lane to be granted at all: no condition handler is registered in
+        # this version, so an unevaluated signal blocks only where its project declares this.
+        "sole_enforcement": True,
+    }}))
     (tmp_path / "set" / "change-type-lanes.json").write_text(
-        '{"%s": ["exit"]}' % conditional)
+        json.dumps({conditional: ["exit"]}))
 
     class _Profile:
         def lane_promotions(self):

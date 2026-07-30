@@ -70,18 +70,44 @@ typo would present as a project that declared nothing, and the reason would be i
 
 ### Requirement: An exit obligation counts only when it blocks
 set-core SHALL treat a lane signal as an exit obligation only when it resolves to ENFORCE
-severity for the change being verified. A signal evaluating at WARN SHALL NOT satisfy the
-obligation.
+severity for the change being verified **and can fail a gate in the running set-core version.**
+A signal evaluating at WARN SHALL NOT satisfy the obligation, and neither SHALL a signal at
+ENFORCE that cannot fire.
 
 An obligation that does not block leaves the discount unpaid: the entrance becomes cheaper and
 nothing stops the defect returning. Lane signals already start at WARN and reach ENFORCE only
 when the project's own declared measurement has been recorded, so this reuses a mechanism that
 already refuses unproven promotions.
 
+**The second clause was added during implementation, after measuring — and the requirement as
+first written was narrower than its own rationale, which is why the code that satisfied it
+literally still left the discount unpaid.** ENFORCE severity is a statement about *how loudly a
+signal would speak*, not about whether it can speak at all. Measured: the condition-handler
+table is empty by design in this version (a handler is added only once a project declares a
+condition needing it), so every declared signal is *unevaluated*; and an unevaluated outcome
+fails the gate only where its project declared `sole_enforcement`. So a mapped signal could
+reach ENFORCE by promotion and never fire.
+
+That is the mechanism-verified-result-silent class arriving inside the module written against
+it, which is the reason it is recorded here rather than fixed quietly: *a requirement that names
+a mechanism must state what the mechanism has to achieve*, or the implementation can satisfy the
+words exactly and miss the point.
+
 #### Scenario: A WARN-severity exit signal does not buy the cheaper entrance
 - **WHEN** a project maps a lane signal to `bugfix` and that signal evaluates at WARN
 - **THEN** the `bugfix` declaration SHALL be refused
 - **AND** the error SHALL name the unpromoted signal rather than reporting the mapping absent
+
+#### Scenario: An enforced signal that cannot fire does not buy the cheaper entrance
+- **WHEN** a project maps a lane signal to `bugfix`, the signal resolves to ENFORCE, and it can
+  neither be evaluated by this set-core version nor blocks as its project's sole enforcement
+- **THEN** the `bugfix` declaration SHALL be refused
+- **AND** the error SHALL distinguish this from an unpromoted signal, and SHALL name what the
+  project can do about it
+
+The two need opposite next actions: one is answered by recording the promotion measurement, the
+other by declaring `sole_enforcement` — the project's own statement that no other gate of theirs
+covers the defect class, which is what makes framework silence a hole rather than a duplicate.
 
 #### Scenario: The discount is not available on day one
 - **WHEN** a project introduces an exit signal and immediately declares `bugfix`
