@@ -1385,6 +1385,14 @@ rescoping when anything cites the old order.** New items go on the end.
    not *should this be built* — it is built on both sides — but *should it be wired up*. Nothing is
    wired, and their user has approved nothing.
 
+   **Thread closed on both sides (W#145), with no open question on theirs.** They also recorded
+   that "an empty published list is `did_not_fire`, never an all-clear" is a *rule* on their side
+   too, not a preference — their own no-silent-pagination and verify-before-claiming rules say the
+   same thing: an empty result set is a measurement, and "found nothing" is never to be conflated
+   with "did not look". So the first run after any wiring will read consistently on both sides.
+   Worth recording because it is the second independently-derived agreement on this track where
+   neither side adopted the other's wording — the `deprecated` count rule was the first.
+
    **Its three measured premises were re-checked before any code, not carried forward from the
    paragraph above** (the record's own rule: on resuming, re-check rather than re-derive):
    `python3 -c "from set_orch.gate_profiles import UNIVERSAL_DEFAULTS as U; ..."` →
