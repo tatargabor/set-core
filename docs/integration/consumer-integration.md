@@ -586,7 +586,8 @@ does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
-| `caveats` — an OpenSpec change on this side | this side, gated on the consumer's user approval (W#141) | **shape fully settled**: `"*"` default + per-field keys, **additive**, keys `KÖVETETT`-style (uppercase, accented). Their T16 row awaits their user; a finished spec before that is just pressure. Starts when they say go. |
+| `caveats` — an OpenSpec change on this side | **UNBLOCKED 2026-07-30, change created** | The user approved the consumer-side T16 row and said so *to this session directly*. `status-contract-caveats`: 4/4 artifacts, strict-valid, 6 requirements / 8 scenarios / 30 tasks, no code yet. The agreed shape is implemented as agreed — `"*"` default, per-field keys **additive**, no replacement path, count from the data, absent key is diagnostics not a gate, caveat renders beside the number. |
+| The consumer's T16 READER (their tenth command) | **theirs, and deliberately still not started** | Their session refused a channel-relayed approval — correctly, and with this side's own distinction: *the source is the user, not the channel*. No human instruction about T16 reached that session, so its "awaiting approval" remains true there. **If it should start, the user has to tell that session directly.** It does not block the framework work: an envelope without `caveats` behaves exactly as today, which is the first requirement. |
 
 **The gap, measured 2026-07-30 when the consumer offered a tenth read command and led with its
 own limits.** Taking the command itself costs nothing here — `project_status.py:101-102` keeps
