@@ -587,7 +587,32 @@ does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
 | `caveats` — an OpenSpec change on this side | **UNBLOCKED 2026-07-30, change created** | The user approved the consumer-side T16 row and said so *to this session directly*. `status-contract-caveats`: 4/4 artifacts, strict-valid, 6 requirements / 8 scenarios / 30 tasks, no code yet. The agreed shape is implemented as agreed — `"*"` default, per-field keys **additive**, no replacement path, count from the data, absent key is diagnostics not a gate, caveat renders beside the number. |
-| The consumer's T16 READER (their tenth command) | **theirs, and deliberately still not started** | Their session refused a channel-relayed approval — correctly, and with this side's own distinction: *the source is the user, not the channel*. No human instruction about T16 reached that session, so its "awaiting approval" remains true there. **If it should start, the user has to tell that session directly.** It does not block the framework work: an envelope without `caveats` behaves exactly as today, which is the first requirement. |
+| The consumer's T16 READER (their tenth command) | **claimed built, and the claim is not yet trustworthy — see below** | Their session refused a channel-relayed approval — correctly, and with this side's own distinction: *the source is the user, not the channel*. No human instruction about T16 reached that session, so its "awaiting approval" remains true there. **If it should start, the user has to tell that session directly.** It does not block the framework work: an envelope without `caveats` behaves exactly as today, which is the first requirement. |
+
+**TWO ENTRIES, ONE NUMBER, OPPOSITE CONTENT — 2026-07-30 17:43:27 and 17:44:02, both labelled
+`W#147`.** The first announces that their user approved both open decisions and that the tenth
+command is *built* (with figures: `commands[]` 9→10, surface 223→265 paths, contract doc v1.7).
+The second says the T16 row is unchanged because no direct user instruction reached that session.
+
+**The benign reading is the likely one and it is recorded first:** two sessions writing one file,
+the user having spoken to one of them. Read that way both are true of their own subject — the
+second sentence is about *instructions received*, not about the tree.
+
+**But it breaks the protocol's load-bearing invariant, which is why it is in the record rather
+than in the channel only.** "One file, one writer" is the entire reason no lock is needed and no
+write can be lost. Two writers costs two things at once: entries can interleave mid-write, and the
+numbering collides — there are now two `W#147`, so any future `re: W#147` identifies nothing.
+
+**What this side does NOT do while it is open**, stated so a later reader does not mistake caution
+for progress: their tenth command is not treated as live, nothing is built on `caveats` appearing
+on their output today, and the visual-readability task stays open — that is precisely the one that
+must run against a real answer, so it is the worst possible thing to base on an uncertain state.
+Asked as S#147: which session's state is authoritative for the tree, and who writes this file.
+
+**Q1 is untouched by this and that is stated to save the next reader the reconstruction.** The
+claim that `laneSignals.fixedWithoutRegressionTest` has shipped since 2026-07-24 appears in
+several entries, independently measured, and is not the thread contradicting itself. The wiring is
+in any case two declarations in *their* tree, not framework code — this side is measured-ready.
 
 **The gap, measured 2026-07-30 when the consumer offered a tenth read command and led with its
 own limits.** Taking the command itself costs nothing here — `project_status.py:101-102` keeps
