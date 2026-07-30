@@ -557,7 +557,7 @@ does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
-| `caveats` semantics: additive or overriding | consumer's T16 owner — asked in S#139 | shape agreed (`"*"` default + per-field keys, W#140); **one word still open**, and it decides what gets specified. No OpenSpec change until they answer. |
+| `caveats` — an OpenSpec change on this side | this side, gated on the consumer's user approval (W#141) | **shape fully settled**: `"*"` default + per-field keys, **additive**, keys `KÖVETETT`-style (uppercase, accented). Their T16 row awaits their user; a finished spec before that is just pressure. Starts when they say go. |
 
 **The gap, measured 2026-07-30 when the consumer offered a tenth read command and led with its
 own limits.** Taking the command itself costs nothing here — `project_status.py:101-102` keeps
@@ -628,6 +628,41 @@ here: under [ui-quality](../../.claude/rules/ui-quality.md)'s one-visual-weight-
 if red means broken, neither of these is red. Also recorded: **no `ground truth` exists and none
 will be asked for** — their matcher ranks 6/6 but its confidence band is 4/6, so there is no
 "delivered" field and the framework must not expect one.
+
+**Settled as ADDITIVE (W#141), and they withdrew the overriding rule in one line** — reaching for
+the same direction-argument they already use elsewhere (an absent `type` means `BUG`; a NULL
+channel means *never send mail*): the question is not whether it can be wrong but **which way**.
+The `"*"` always applies and always shows; per-field keys **add**. No explicit-replacement
+marker either — if replacement is ever needed it gets its own named field rather than becoming
+the default's semantics.
+
+Two corrections came with it that this side could not have found. The key names in their first
+example were wrong: `stats` keys are **uppercase, accented Hungarian** (`KÖVETETT`, `GYANÚS`,
+`LEJÁRT_HALASZTÁS`, …) while `bands` keys are lowercase unaccented (`egyertelmu`, …) —
+deliberately different, and a caveat keyed on the wrong spelling **never fires and nothing
+reports it**. And `stats` lists only the statuses **actually present**: today `KÖVETETT`,
+`GYANÚS`, `HALASZTVA`, `LEJÁRT_HALASZTÁS` are all absent because they are zero and the seal file
+is empty, so no UI here may assume all seven keys arrive.
+
+**Measured here on their warning, and it holds: a mistyped key would be silent on this side too.**
+`partitionKeys` (`web/src/components/statusShape.tsx:247`) counts only names it *found*, and the
+Python path logs nothing for a declared-but-absent name. That silence was deliberate for
+`deprecated` — counting from the declaration is the false absence this whole mechanism exists to
+prevent — but for `caveats` the failure direction inverts: a mistyped `deprecated` key means a
+stale field stays *visible* (unpleasant, visible), while a mistyped `caveats` key means the
+caveat is *invisible* and the number is not. Exactly the outcome the feature exists to stop.
+
+**The additive choice already absorbs most of that, which neither side noticed while choosing
+it.** With a mistyped per-field key the `"*"` still renders, so the number carries the general
+caveat and only the narrower half is lost; under overriding the same typo would have cleared
+everything beside the number. The direction argument paid twice — once for a forgotten entry,
+once for a typo.
+
+**So the plan is diagnostics, not a gate.** The framework will not try to tell a typo from a
+legitimately-absent key — their `stats` shape makes the two indistinguishable — but it can list
+which declared caveat keys are absent from the current answer, where the producer recognises
+`KÖVETETT` as legitimate and `KÖVETTET` as a typo at a glance. A gate firing daily on a
+legitimately-zero status is dead within a week and takes the real warning with it.
 
 ---
 
