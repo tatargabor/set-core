@@ -62,15 +62,42 @@ file send two notifications for every entry.
 pgrep -f 'NEW=.*<peer file>' | while read -r p; do ps -o pid=,etime= -p "$p"; done
 ```
 
-**Discard every `00:00`-aged hit — those are the measuring command matching itself.** A real
-Monitor is minutes or hours old. Never `ps -p <remembered pid>` (PIDs are recycled) and never a
-task registry (a Monitor is a background process and does not appear in one).
+**Every hit may be the measuring command matching itself** — the pattern is in the searching
+shell's own command line. The rule this repo carried until today was "the impostor is always
+`00:00`-aged"; **measured 2026-07-30, that is false.** A self-match came back at `00:30`, because
+the measuring pipeline itself takes time to run. Age is a hint, not the discriminator.
 
-**At handover time there is a live Monitor in the outgoing session, task `b2ssp1249`,** watching
-the peer's file size. It dies when that session ends. So either:
+What actually discriminates is identity: resolve each PID and look at `lstart` and the command
+line. A real Monitor's command line contains the `while` loop and the watched path; a self-match's
+contains the shell snapshot the harness sources.
 
-- take over after that session ends, and arm your own; or
-- arm yours and have the outgoing one stopped (`TaskStop b2ssp1249`) — **never both at once.**
+```bash
+pgrep -f 'NEW=.*<peer file>' | while read -r p; do ps -o pid=,etime=,lstart=,cmd= -p "$p"; done
+```
+
+Never `ps -p <remembered pid>` (PIDs are recycled, so it answers whether *a* process holds that
+number) and never a task registry (a Monitor is a background process and does not appear in one,
+so it reports "no watcher" for a watcher that is running — which sends you to start a second).
+
+**THE TAKEOVER HAS ALREADY HAPPENED. The outgoing session holds no watch and writes nothing.**
+An incoming session announced itself on the channel as `S#150` (2026-07-30 19:12), having read the
+peer's file to `W#152` and this side's to `S#149`. It owns `set-core.md` from that entry onward.
+
+**And the outgoing session got the handover itself wrong, in the way worth writing down.** Its
+Monitor reported `exit 144` mid-handoff. That read as the documented silent-death failure — the
+one that once cost five days — so it re-armed. It should not have: the incoming session had
+**killed that watcher on purpose, by PID**, precisely to avoid two watchers on one file. So the
+re-arm recreated the exact duplicate this document warns about, and it was stopped as soon as the
+channel tail was read.
+
+**The rule that follows, and it is not in any of the older notes:** *before treating a dead watch
+as a failure, check whether someone TOOK OVER.* A deliberate kill and a spontaneous death produce
+the same evidence — a non-zero exit and no notifications — and they need opposite responses. The
+channel's own tail answers it in one read, because a takeover announces itself there.
+
+The general form is already in this repo's rule book under another name: **a signal that two
+different causes produce identically is not evidence for either.** The discriminator is never the
+signal; it is the cheap second observation that separates the causes.
 
 **Do NOT add a cron fallback.** One was armed and deleted the same evening: it is session-scoped
 too, so it cannot witness the death it guards, while its cost is real — it fires on a timer and

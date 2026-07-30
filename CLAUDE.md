@@ -316,7 +316,18 @@ only thing that survives — rebuild the contact from it, do not ask the user to
    invites killing one, which can leave zero.
 
    Resolve each PID instead of counting lines, and discriminate by age — a real Monitor is
-   hours old, the impostor is always `00:00`:
+   hours old — but **the impostor is NOT always `00:00`.** Measured 2026-07-30: a self-match came
+   back at `00:30`, because the measuring pipeline itself takes time to run. Age is a hint; the
+   discriminator is `lstart` plus the command line, since a real watcher's argv contains the loop
+   and the watched path while a self-match's contains the harness's shell snapshot.
+
+   **And a dead watch is not necessarily a failure: check whether another session TOOK OVER.**
+   Also measured that day — a Monitor exited non-zero because an incoming session had killed it by
+   PID to avoid two watchers on one file, the outgoing session read that as the silent-death
+   failure, re-armed, and recreated the duplicate. A deliberate kill and a spontaneous death
+   produce identical evidence and need opposite responses; the channel tail separates them in one
+   read.
+
 
    ```bash
    pgrep -f 'NEW=.*<watched file>' | while read -r p; do
