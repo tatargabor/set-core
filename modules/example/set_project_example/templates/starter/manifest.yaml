@@ -3,6 +3,12 @@ core:
   - rules/dungeon-integrity.md
   - rules/contribution-guide.md
 
+# See the mobile template: a forced re-init overwrites, so project-owned files declare
+# themselves here. These two are the example project's own rules once it is seeded.
+protected:
+  - rules/dungeon-integrity.md
+  - rules/contribution-guide.md
+
 modules:
   sample-dungeons:
     description: "Example .dungeon files and bestiary for a quick-start project"

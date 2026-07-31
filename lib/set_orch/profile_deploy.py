@@ -158,6 +158,17 @@ def _resolve_file_list(
     # Build entry list from core + selected modules
     raw_entries: List[Any] = list(manifest.get("core", []))
 
+    # A manifest may name its protected paths in a top-level list instead of flagging each
+    # entry — two templates do, and until this was added NOBODY READ THAT LIST. The manifest
+    # declared a guard that did not exist, which is the reassuring direction: the file said
+    # `protected: [capacitor.config.ts]` and a forced re-init overwrote it anyway.
+    #
+    # Read as a SET of paths and applied below, so both spellings mean the same thing. The
+    # per-entry flag still wins where both appear — it is the more specific statement.
+    declared_protected = {
+        str(p) for p in (manifest.get("protected") or []) if isinstance(p, (str, int))
+    }
+
     available_modules = manifest.get("modules", {})
     if modules:
         for mid in modules:
@@ -175,6 +186,12 @@ def _resolve_file_list(
         entry = _parse_file_entry(raw)
         if not entry.path or entry.path in seen:
             continue
+        # The top-level list only ever ADDS protection. It cannot clear a per-entry flag,
+        # because a manifest that says `protected: true` on an entry has already made the
+        # more specific statement, and a broad list quietly cancelling it would be the
+        # opposite of what either spelling looks like it means.
+        if entry.path in declared_protected:
+            entry.protected = True
         seen.add(entry.path)
         src = template_dir / entry.path
         if not src.exists():

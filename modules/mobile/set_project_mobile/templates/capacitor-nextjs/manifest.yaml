@@ -6,8 +6,13 @@ core:
   - rules/native-bridge.md
   - project-knowledge.yaml
 
+# A forced re-init (any registered project) overwrites by default, so anything the
+# PROJECT owns after the first seed has to say so here. Rules are knowledge, not scaffold:
+# a team edits them, and losing those edits to a redeploy is silent.
 protected:
   - capacitor.config.ts
+  - rules/capacitor-conventions.md
+  - rules/native-bridge.md
 
 modules:
   share-extension:
