@@ -335,7 +335,7 @@ export default function TokenChart({ changes, project }: Props) {
                         <td className="px-3 py-1.5 text-neutral-300">
                           {call.purpose}
                           {hasIters && (
-                            <span className="ml-1.5 text-neutral-600 text-[10px]">({iters.length} iter{iters.length !== 1 ? 's' : ''})</span>
+                            <span className="ml-1.5 text-neutral-600 text-xs">({iters.length} iter{iters.length !== 1 ? 's' : ''})</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
@@ -365,7 +365,7 @@ export default function TokenChart({ changes, project }: Props) {
                                 <span className="text-orange-500">● fresh</span>
                               )}
                               {it.session_id && (
-                                <span className="ml-2 text-neutral-700 font-mono text-[10px]">{it.session_id.slice(0, 8)}</span>
+                                <span className="ml-2 text-neutral-700 text-xs">{it.session_id.slice(0, 8)}</span>
                               )}
                             </td>
                             <td className="px-3 py-1"></td>

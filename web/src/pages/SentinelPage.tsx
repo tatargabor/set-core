@@ -119,7 +119,7 @@ function LogViewer({ lines }: { lines: string[] }) {
   }
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto p-3 font-mono text-xs">
+    <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto p-3 text-xs">
       {lines.map((line, i) => (
         <div key={i} className={`py-0.5 ${
           line.includes('ERROR') || line.includes('FAIL') ? 'text-red-400' :

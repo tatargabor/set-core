@@ -146,7 +146,7 @@ function SectionHeading(
   return (
     <div className="flex items-baseline gap-2">
       <span className={`text-sm ${style.label}`}>{decl.label || decl.key}</span>
-      <span className="text-[10px] text-neutral-600 font-mono uppercase tracking-wide" title="the project's own word for this section">
+      <span className="text-xs text-neutral-600 uppercase tracking-wide" title="the project's own word for this section">
         {decl.severity || decl.key}
       </span>
       {/* No row count here when the two agree: the list below states it, and a heading
@@ -154,7 +154,7 @@ function SectionHeading(
           only to name a disagreement, because THAT the list below cannot say. */}
       {disagrees && (
         <span
-          className="text-[11px] text-amber-500"
+          className="text-xs text-amber-500"
           title="the project's declared count and the rows it sent do not match"
         >
           declared {decl.count}, {actual} delivered
@@ -269,7 +269,7 @@ function ChipList({ values, depth }: { values: unknown[]; depth: number }) {
       {hidden > 0 && (
         <button
           onClick={() => setExpanded(v => !v)}
-          className="text-[11px] text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+          className="text-xs text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
         >
           {expanded ? 'show fewer' : `+${hidden} more`}
         </button>
@@ -324,7 +324,7 @@ export function StatusValue(
         ),
       )
       return (
-        <pre className="text-[11px] text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto">
+        <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto">
           {JSON.stringify(shown, null, 1)}
         </pre>
       )

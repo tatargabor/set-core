@@ -329,7 +329,7 @@ function BatchButton({ action, ids }: { action: BatchAction; ids: string[] }) {
           value={picked[k] ?? ''}
           onChange={e => setPicked(p => ({ ...p, [k]: e.target.value }))}
           aria-label={k}
-          className="bg-neutral-800 border border-neutral-700 rounded text-[11px] px-1 py-0.5 text-neutral-200"
+          className="bg-neutral-800 border border-neutral-700 rounded text-xs px-1 py-0.5 text-neutral-200"
         >
           <option value="">{k}…</option>
           {(action.choose?.[k] ?? []).map(o => <option key={o} value={o}>{o}</option>)}
@@ -349,7 +349,7 @@ function BatchButton({ action, ids }: { action: BatchAction; ids: string[] }) {
               ? `choose ${missing.join(', ')} first`
               : undefined
         }
-        className="px-2 py-0.5 text-[11px] rounded bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+        className="px-2 py-0.5 text-xs rounded bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
       >
         {busy ? '…' : `${action.label ?? action.command} (${ids.length})`}
       </button>
@@ -563,7 +563,7 @@ export function StatusTable(
       {/* The count line. Unfiltered it says exactly what it always said — a count of ROWS,
           never of "items", because the key above it names someone else's domain. Filtered,
           it is the one place that has to state what is NOT on screen. */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px]">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
         <span className="text-neutral-500" title="rows as delivered — set-core counts them, it does not interpret them">
           {filtering
             ? `${indices.length} of ${rows.length} rows shown`
@@ -592,7 +592,7 @@ export function StatusTable(
       {/* The selection line. It exists only once something is selected, and its whole job is to
           keep the reader's set from disagreeing with what the reader can see. */}
       {selectable && selectedCount > 0 && (
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px]">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
           <span className="text-emerald-400/90 tabular-nums" data-testid="selection-count">
             {selectedCount} selected
           </span>
@@ -868,7 +868,7 @@ export function StatusTable(
       {/* A filter that matches nothing must say so. An empty table reads as an empty
           answer, which is the false-absence shape with the reader's own click behind it. */}
       {filtering && indices.length === 0 && (
-        <div className="text-[11px] text-amber-500/90">
+        <div className="text-xs text-amber-500/90">
           No row matches these filters — {rows.length} row{rows.length === 1 ? '' : 's'} are
           hidden, not absent.
         </div>

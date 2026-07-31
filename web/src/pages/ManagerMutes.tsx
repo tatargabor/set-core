@@ -75,7 +75,7 @@ export default function ManagerMutes({ project: projectProp }: Props) {
           <div key={m.id} className="p-3 rounded-lg bg-neutral-900 border border-neutral-800">
             <div className="flex items-start justify-between gap-2">
               <div className="space-y-1 min-w-0">
-                <code className="text-xs text-neutral-300 font-mono break-all">{m.pattern}</code>
+                <code className="text-xs text-neutral-300 break-all">{m.pattern}</code>
                 <p className="text-xs text-neutral-500">{m.reason}</p>
                 <div className="flex gap-3 text-xs text-neutral-600">
                   <span>Suppressed: {m.match_count}x</span>

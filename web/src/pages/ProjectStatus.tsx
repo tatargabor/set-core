@@ -68,7 +68,7 @@ function Gap({ name, result }: { name: string; result: StatusCommandResult }) {
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-medium text-red-300">{name}</h2>
         {result.errorClass && (
-          <code className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/60 text-red-400">
+          <code className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-400">
             {result.errorClass}
           </code>
         )}
@@ -116,7 +116,7 @@ function Answer({
     <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-medium text-neutral-100">{name}</h2>
-        <div className="flex items-center gap-3 text-[11px] text-neutral-600">
+        <div className="flex items-center gap-3 text-xs text-neutral-600">
           {deprecated.size > 0 && (
             <button
               onClick={() => setShowDeprecated(v => !v)}
@@ -144,13 +144,13 @@ function Answer({
       {/* Once, in the header — not repeated beside every value. It qualifies the command. */}
       {starCaveat && <CaveatNote>{starCaveat}</CaveatNote>}
       {showAbsent && absentCaveats.length > 0 && (
-        <div className="text-[11px] text-neutral-500 space-y-0.5">
+        <div className="text-xs text-neutral-500 space-y-0.5">
           <div className="text-neutral-600">
             declared, but no field of this answer carries the key — legitimate when the value is
             currently absent, a typo otherwise. The project decides; this only shows the question.
           </div>
           {absentCaveats.map((k: string) => (
-            <div key={k} className="font-mono text-neutral-400">{k}</div>
+            <div key={k} className=" text-neutral-400">{k}</div>
           ))}
         </div>
       )}
@@ -271,7 +271,7 @@ export default function ProjectStatus({ project }: Props) {
         </div>
 
         {contract?.configured && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600">
             <span>via <span className="text-neutral-400">{contract.source}</span></span>
             <code className="text-neutral-500 break-all">{contract.command}</code>
             {contract.timeout !== null && <span>timeout {contract.timeout}s</span>}
@@ -323,7 +323,7 @@ export default function ProjectStatus({ project }: Props) {
             )
           })}
           {failing.length > 0 && (
-            <span className="ml-auto shrink-0 pl-2 pr-1 text-[11px] text-red-400">
+            <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-red-400">
               {failing.length} of {entries.length} failed
             </span>
           )}

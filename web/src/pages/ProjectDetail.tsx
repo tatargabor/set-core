@@ -50,7 +50,7 @@ export default function ProjectDetail() {
           </div>
           <div>
             <span className="text-neutral-500">Path: </span>
-            <span className="text-neutral-400 text-xs font-mono">{project.path}</span>
+            <span className="text-neutral-400 text-xs">{project.path}</span>
           </div>
         </div>
       </div>

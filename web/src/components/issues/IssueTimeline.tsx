@@ -96,7 +96,7 @@ function TimelineEntryView({ entry }: { entry: TimelineEntry }) {
   const color = entry.type === 'user' ? 'text-blue-300' : entry.type === 'agent' ? 'text-green-300' : actionColor(entry.action)
 
   return (
-    <div className="flex items-start gap-0 text-xs font-mono leading-relaxed">
+    <div className="flex items-start gap-0 text-xs leading-relaxed">
       <span className="text-neutral-600 shrink-0 w-[60px]">{time}</span>
       <span className={`shrink-0 w-[14px] text-center ${color}`}>{icon}</span>
       <span className="text-neutral-600 shrink-0 w-[46px] text-right pr-2">{label}</span>

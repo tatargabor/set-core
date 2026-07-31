@@ -115,7 +115,7 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
   }, [])
 
   return (
-    <div className="border border-neutral-700 bg-black p-3 mt-2 font-mono text-xs">
+    <div className="border border-neutral-700 bg-black p-3 mt-2 text-xs">
       {/* Header — ASCII bordered */}
       <div className="flex items-center gap-4 border-b border-neutral-800 pb-2 mb-3">
         <div className="text-neutral-100 font-bold">┌─ Drilldown: {span.change || '(no change)'}</div>

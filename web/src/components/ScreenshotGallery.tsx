@@ -181,7 +181,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                 title={`attempt #${n}: ${c.images} screenshots, ${c.others} other files`}
               >
                 attempt #{n}
-                <span className="ml-1 text-[10px] text-neutral-500">
+                <span className="ml-1 text-xs text-neutral-500">
                   ({c.images} img{c.others > 0 ? ` +${c.others}` : ''})
                 </span>
               </TabBtn>
@@ -202,7 +202,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
       )}
 
       {/* Row 3: summary strip (counts + image counter for the active tab) */}
-      <div className="flex items-center justify-between px-4 py-1 bg-neutral-900/40 border-b border-neutral-800 text-[11px] text-neutral-500">
+      <div className="flex items-center justify-between px-4 py-1 bg-neutral-900/40 border-b border-neutral-800 text-xs text-neutral-500">
         <span>
           {images.length} {images.length === 1 ? 'screenshot' : 'screenshots'}
           {nonImages.length > 0 && ` · ${nonImages.length} other files`}
@@ -245,12 +245,12 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
             {/* Caption row */}
             <div className="px-4 py-1.5 border-t border-neutral-800 bg-neutral-900/50 flex items-center gap-2 flex-shrink-0">
               {typeof selected?.attempt === 'number' && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-neutral-700 text-neutral-200">
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded uppercase bg-neutral-700 text-neutral-200">
                   #{selected.attempt}
                 </span>
               )}
               {selected?.result && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded uppercase ${
                   selected.result === 'fail'
                     ? 'bg-red-500/20 text-red-400'
                     : 'bg-green-500/15 text-green-500/80'
@@ -263,7 +263,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
               </span>
               {selected?.meta && (
                 <span
-                  className="text-[11px] text-neutral-500 flex-shrink-0"
+                  className="text-xs text-neutral-500 flex-shrink-0"
                   dangerouslySetInnerHTML={{ __html: selected.meta }}
                 />
               )}
@@ -343,10 +343,10 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                       }
                     >
                       {typeof a.attempt === 'number' && (
-                        <span className="text-[10px] font-semibold text-neutral-500">#{a.attempt}</span>
+                        <span className="text-xs font-semibold text-neutral-500">#{a.attempt}</span>
                       )}
                       <span className="truncate max-w-[180px]">{a.name}</span>
-                      <span className="text-[10px] text-neutral-600">{a.type}</span>
+                      <span className="text-xs text-neutral-600">{a.type}</span>
                     </a>
                   )
                 })}

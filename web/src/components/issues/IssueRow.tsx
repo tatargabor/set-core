@@ -38,7 +38,7 @@ export function IssueRow({ issue, selected, onSelect, checked, onCheck, showEnv 
         onClick={e => e.stopPropagation()}
         className="w-3.5 h-3.5 rounded border-neutral-600"
       />
-      <span className="text-xs text-neutral-500 font-mono w-16 shrink-0">{issue.id}</span>
+      <span className="text-xs text-neutral-500 w-16 shrink-0">{issue.id}</span>
       {showEnv && <span className="text-xs text-cyan-600 shrink-0 w-28 truncate">{issue.environment}</span>}
       <SeverityBadge severity={issue.severity} />
       <StateBadge state={issue.state} />

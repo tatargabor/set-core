@@ -52,18 +52,18 @@ export default function ImplNode({ data, selected }: Props) {
       <div className="flex items-center gap-1.5">
         <span className={`text-sm text-violet-300 ${isRunning ? 'animate-pulse' : ''}`}>✎</span>
         <span className="text-xs font-medium text-neutral-200 flex-1 truncate">impl</span>
-        <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1 rounded">
+        <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
           #{data.attempt}
         </span>
       </div>
-      <div className="mt-0.5 text-[11px] text-neutral-500">{formatMs(data.ms)}</div>
-      <div className="mt-0.5 text-[10px] text-neutral-600 flex items-center gap-1.5">
+      <div className="mt-0.5 text-xs text-neutral-500">{formatMs(data.ms)}</div>
+      <div className="mt-0.5 text-xs text-neutral-600 flex items-center gap-1.5">
         <span>#{data.attempt}</span>
         <span className="text-neutral-700">·</span>
         <span>{formatTime(data.startedAt)}</span>
       </div>
       {(model || hasTokens) && (
-        <div className="mt-0.5 text-[10px] text-neutral-600 flex items-center gap-1.5">
+        <div className="mt-0.5 text-xs text-neutral-600 flex items-center gap-1.5">
           {model && <span className="text-neutral-400">{model}</span>}
           {model && hasTokens && <span className="text-neutral-700">·</span>}
           {hasTokens && (

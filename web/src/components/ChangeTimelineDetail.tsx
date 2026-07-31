@@ -132,25 +132,25 @@ function NodeRow({ node, selected, sessionCount, onClick }: RowProps) {
         {isImpl ? 'impl' : node.kind.replace('_', ' ')}
       </span>
       {isImpl ? (
-        <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1 rounded">
+        <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
           #{node.attempt}
         </span>
       ) : node.runIndexForKind > 1 ? (
-        <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1 rounded">
+        <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
           ⟳{node.runIndexForKind}
         </span>
       ) : null}
-      {hasDowngrade && <span className="text-[11px] text-amber-400">⚖</span>}
-      <span className="text-[11px] text-neutral-500 w-12 text-right">{formatMs(node.ms)}</span>
-      <span className="text-[10px] text-neutral-600 ml-2">{formatTime(node.startedAt)}</span>
-      {model && <span className="text-[10px] text-neutral-400 ml-2">{model}</span>}
+      {hasDowngrade && <span className="text-xs text-amber-400">⚖</span>}
+      <span className="text-xs text-neutral-500 w-12 text-right">{formatMs(node.ms)}</span>
+      <span className="text-xs text-neutral-600 ml-2">{formatTime(node.startedAt)}</span>
+      {model && <span className="text-xs text-neutral-400 ml-2">{model}</span>}
       {hasTokens && (
-        <span className="text-[10px] text-neutral-500 ml-1">
+        <span className="text-xs text-neutral-500 ml-1">
           {formatTokens(node.inputTokens)}/{formatTokens(node.outputTokens)}
         </span>
       )}
       {isImpl && sessionCount != null && (
-        <span className="ml-auto text-[10px] text-neutral-600">
+        <span className="ml-auto text-xs text-neutral-600">
           {sessionCount} session{sessionCount !== 1 ? 's' : ''}
         </span>
       )}
@@ -174,11 +174,11 @@ function AttemptCard({ attempt, allSessions, selectedNodeId, onSelectNode }: Att
     <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 mb-3 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 bg-neutral-900/60">
         <span className="text-sm font-semibold text-neutral-200">Attempt #{attempt.n}</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${outcomeClass}`}>
+        <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${outcomeClass}`}>
           {attempt.outcome}
           {attempt.retryReason ? ` · ${attempt.retryReason}` : ''}
         </span>
-        <span className="text-[10px] text-neutral-500 ml-auto">
+        <span className="text-xs text-neutral-500 ml-auto">
           {formatMs(dur)} · {formatTime(attempt.startedAt)}
           {attempt.endedAt ? ` → ${formatTime(attempt.endedAt)}` : ' → running'}
         </span>
@@ -242,7 +242,7 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
 
   if (!node) {
     return (
-      <div className="h-full flex items-center justify-center p-6 text-[11px] text-neutral-600 italic">
+      <div className="h-full flex items-center justify-center p-6 text-xs text-neutral-600 italic">
         Click a row on the left to inspect its output or session log.
       </div>
     )
@@ -263,21 +263,21 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
             {isImpl ? `impl #${node.attempt}` : node.kind.replace('_', ' ')}
           </span>
           {!isImpl && node.runIndexForKind > 1 && (
-            <span className="text-[10px] text-neutral-400 bg-neutral-800 px-1 rounded">
+            <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
               run #{node.runIndexForKind}
             </span>
           )}
-          <span className="text-[10px] text-neutral-500 ml-auto">
+          <span className="text-xs text-neutral-500 ml-auto">
             {formatMs(node.ms)} · {formatTime(node.startedAt)}
           </span>
         </div>
         {node.verdictSource && (
-          <div className="mt-1 text-[10px] text-neutral-500">
+          <div className="mt-1 text-xs text-neutral-500">
             verdict source <span className="text-neutral-300">{node.verdictSource}</span>
           </div>
         )}
         {hasDowngrade && node.downgrades && node.downgrades.length > 0 && (
-          <div className="mt-1 text-[10px] text-amber-400 border border-amber-700/40 bg-amber-900/20 rounded p-1.5">
+          <div className="mt-1 text-xs text-amber-400 border border-amber-700/40 bg-amber-900/20 rounded p-1.5">
             downgrade {node.downgrades[0].from} → {node.downgrades[0].to}
             {node.downgrades[0].reason ? ` · ${node.downgrades[0].reason}` : ''}
           </div>
@@ -287,13 +287,13 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
       {isImpl ? (
         <div className="flex-1 min-h-0 flex flex-col">
           {attemptSessions.length === 0 ? (
-            <div className="p-3 text-[10px] text-neutral-600 italic">
+            <div className="p-3 text-xs text-neutral-600 italic">
               No session logs recorded for this attempt window.
             </div>
           ) : (
             <>
               <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800/50 overflow-x-auto shrink-0">
-                <span className="text-[10px] text-neutral-600 shrink-0 mr-1">sessions</span>
+                <span className="text-xs text-neutral-600 shrink-0 mr-1">sessions</span>
                 {attemptSessions.map((s, i) => {
                   const isActive = s.id === activeSessionId
                   const time = formatTime(s.mtime)
@@ -301,7 +301,7 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
                     <button
                       key={s.id}
                       onClick={() => setActiveSessionId(s.id)}
-                      className={`px-1.5 py-0.5 text-[10px] rounded shrink-0 transition-colors ${
+                      className={`px-1.5 py-0.5 text-xs rounded shrink-0 transition-colors ${
                         isActive
                           ? 'bg-blue-900/60 text-blue-300'
                           : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
@@ -315,13 +315,13 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
               </div>
               <div className="flex-1 min-h-0 overflow-auto p-2">
                 {sessionLoading ? (
-                  <div className="text-[10px] text-neutral-600 italic">Loading session...</div>
+                  <div className="text-xs text-neutral-600 italic">Loading session...</div>
                 ) : sessionLines && sessionLines.length > 0 ? (
-                  <pre className="bg-neutral-950/60 border border-neutral-800 rounded p-2 text-[11px] text-neutral-400 whitespace-pre-wrap leading-relaxed">
+                  <pre className="bg-neutral-950/60 border border-neutral-800 rounded p-2 text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed">
                     {sessionLines.join('\n')}
                   </pre>
                 ) : (
-                  <div className="text-[10px] text-neutral-600 italic">
+                  <div className="text-xs text-neutral-600 italic">
                     Click a session button above to load its log.
                   </div>
                 )}
@@ -332,11 +332,11 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
       ) : (
         <div className="flex-1 min-h-0 overflow-auto p-2">
           {node.output ? (
-            <pre className="bg-neutral-950/60 border border-neutral-800 rounded p-2 text-[11px] text-neutral-400 whitespace-pre-wrap leading-relaxed">
+            <pre className="bg-neutral-950/60 border border-neutral-800 rounded p-2 text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed">
               {node.output}
             </pre>
           ) : (
-            <div className="text-[10px] text-neutral-600 italic">
+            <div className="text-xs text-neutral-600 italic">
               No gate output captured (fast path or cached).
             </div>
           )}
@@ -440,7 +440,7 @@ export default function ChangeTimelineDetail({ project, changeName }: Props) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-4 text-[11px] text-neutral-500 px-3 py-2 border-b border-neutral-800 shrink-0">
+      <div className="flex items-center gap-4 text-xs text-neutral-500 px-3 py-2 border-b border-neutral-800 shrink-0">
         <span>
           {graph.attempts.length} attempt{graph.attempts.length !== 1 ? 's' : ''}
         </span>

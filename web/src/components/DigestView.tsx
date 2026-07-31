@@ -318,7 +318,7 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
               <span className="text-sm text-neutral-300 font-medium">{g.change}</span>
               {g.archived && (
                 <span
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-900/50"
+                  className="text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-900/50"
                   title={g.mergedAt ? `archived from cycle ${g.planVersion ?? ''}, merged ${g.mergedAt.slice(0, 10)}` : 'archived'}
                 >
                   ARCHIVED{g.planVersion ? ` v${g.planVersion}` : ''}
@@ -333,7 +333,7 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
             {(g.smokeTests.length > 0 || g.smokeResult) && (
               <>
                 <div className="flex items-center gap-2 px-3 py-0.5 pl-4 bg-blue-950/20">
-                  <span className="text-[10px] font-mono px-1 py-px rounded bg-blue-900/40 text-blue-400">SMOKE</span>
+                  <span className="text-xs px-1 py-px rounded bg-blue-900/40 text-blue-400">SMOKE</span>
                   <span className="text-xs text-neutral-500">inherited</span>
                   {g.smokeResult && (
                     <span className={`text-xs ${g.smokeResult === 'pass' ? 'text-green-500' : 'text-red-500'}`}>
@@ -367,7 +367,7 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
             {(g.ownTests.length > 0 || g.status) && (
               <>
                 <div className="flex items-center gap-2 px-3 py-0.5 pl-4 bg-amber-950/20">
-                  <span className="text-[10px] font-mono px-1 py-px rounded bg-amber-900/40 text-amber-400">FUNC</span>
+                  <span className="text-xs px-1 py-px rounded bg-amber-900/40 text-amber-400">FUNC</span>
                   <span className="text-xs text-neutral-500">own</span>
                   <span className={`text-xs ${g.status === 'pass' ? 'text-green-500' : g.status === 'fail' ? 'text-red-500' : 'text-neutral-500'}`}>
                     {g.status}
@@ -386,7 +386,7 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                     </span>
                     {acMatch ? (
                       <span className="text-neutral-400 truncate flex-1">
-                        <span className="text-blue-400 font-mono text-xs">{acMatch[1]}</span>
+                        <span className="text-blue-400 text-xs">{acMatch[1]}</span>
                         {' '}{acMatch[2]}
                       </span>
                     ) : (
@@ -539,7 +539,7 @@ function RiskBadge({ risk }: { risk: string }) {
   const cls = RISK_BADGE[risk.toUpperCase()] ?? RISK_BADGE.LOW
   const label = risk ? risk.charAt(0).toUpperCase() : ''
   if (!label) return null
-  return <span className={`${cls} text-[10px] px-1 py-0.5 rounded font-bold`}>{label}</span>
+  return <span className={`${cls} text-xs px-1 py-0.5 rounded font-bold`}>{label}</span>
 }
 
 function TestIcon({ result }: { result: string | null | undefined }) {
@@ -699,7 +699,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                       {!hasDetail && <span className="w-3" />}
                       <span className="text-xs text-neutral-500">{r.id}</span>
                       <span className="text-sm text-neutral-400 flex-1 truncate">{r.title}</span>
-                      {isNonTestable && <span className="text-[10px] px-1 py-0.5 rounded bg-neutral-800 text-neutral-500">N/T</span>}
+                      {isNonTestable && <span className="text-xs px-1 py-0.5 rounded bg-neutral-800 text-neutral-500">N/T</span>}
                       {testCoverage && !isNonTestable && scenarioCount > 0 && (
                         <span className={`text-xs ${hasGap ? 'text-red-400' : testCount === scenarioCount ? 'text-green-400' : 'text-yellow-400'}`}>
                           {testCount}/{scenarioCount}

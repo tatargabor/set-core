@@ -358,7 +358,7 @@ export default function Dashboard({ project, initialTab }: Props) {
 
         {/* Sentinel tab — raw stdout log */}
         {activeTab === 'sentinel' && (
-          <div className="h-full overflow-y-auto p-3 font-mono text-xs">
+          <div className="h-full overflow-y-auto p-3 text-xs">
             {sentinelLogLines.length === 0 ? (
               <div className="text-neutral-600">No sentinel log yet</div>
             ) : (

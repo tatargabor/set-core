@@ -156,7 +156,7 @@ export function absentCaveatKeys(
  */
 export function CaveatNote({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[11px] leading-snug text-neutral-400 italic border-l border-neutral-700 pl-2 mt-0.5">
+    <div className="text-xs leading-snug text-neutral-400 italic border-l border-neutral-700 pl-2 mt-0.5">
       {children}
     </div>
   )
@@ -240,7 +240,7 @@ function ActionButton({ action }: { action: RowAction }) {
     }
   }
 
-  if (done) return <span className="text-[11px] text-emerald-400">recorded</span>
+  if (done) return <span className="text-xs text-emerald-400">recorded</span>
 
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -249,7 +249,7 @@ function ActionButton({ action }: { action: RowAction }) {
           key={k}
           value={picked[k] ?? ''}
           onChange={e => setPicked(p => ({ ...p, [k]: e.target.value }))}
-          className="bg-neutral-800 border border-neutral-700 rounded text-[11px] px-1 py-0.5 text-neutral-200"
+          className="bg-neutral-800 border border-neutral-700 rounded text-xs px-1 py-0.5 text-neutral-200"
           aria-label={k}
         >
           <option value="">{k}…</option>
@@ -261,11 +261,11 @@ function ActionButton({ action }: { action: RowAction }) {
         disabled={busy || missing.length > 0}
         data-action={action.command}
         title={missing.length ? `choose ${missing.join(', ')} first` : undefined}
-        className="px-2 py-0.5 text-[11px] rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+        className="px-2 py-0.5 text-xs rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
       >
         {busy ? '…' : (action.label ?? action.command)}
       </button>
-      {error && <span className="text-[11px] text-red-400" title={error}>failed</span>}
+      {error && <span className="text-xs text-red-400" title={error}>failed</span>}
     </div>
   )
 }
@@ -413,7 +413,7 @@ export function partitionKeys(keys: string[], view: DeprecationView) {
 export function HiddenNote({ count }: { count: number }) {
   if (count === 0) return null
   return (
-    <div className="text-[11px] text-neutral-600 italic">
+    <div className="text-xs text-neutral-600 italic">
       {count} deprecated field{count === 1 ? '' : 's'} hidden
     </div>
   )

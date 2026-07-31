@@ -35,7 +35,7 @@ export default function TerminalNode({ data }: Props) {
         <span className="text-xl font-bold">{icon}</span>
         <span className="text-sm font-bold tracking-wide">{label}</span>
       </div>
-      <div className="text-[10px] opacity-80">
+      <div className="text-xs opacity-80">
         {merged && data.attemptNumber ? `attempt #${data.attemptNumber}` : null}
         {!merged && data.reason ? data.reason : null}
         {data.totalMs ? ` · ${formatMs(data.totalMs)}` : null}

@@ -43,7 +43,7 @@ function ProcessRow({ node, depth, project, onRefresh }: {
       <div className="flex items-center gap-2 py-1.5 px-2 hover:bg-neutral-800/30 rounded group" style={{ paddingLeft: `${8 + depth * 20}px` }}>
         {/* Tree connector */}
         {depth > 0 && (
-          <span className="text-neutral-700 text-xs font-mono">└─</span>
+          <span className="text-neutral-700 text-xs">└─</span>
         )}
         {/* Status dot — amber for orphan to flag re-parented processes
             that lost their supervisor (set-loop / playwright leftovers). */}
@@ -59,9 +59,9 @@ function ProcessRow({ node, depth, project, onRefresh }: {
           </span>
         )}
         {/* PID */}
-        <span className="text-xs text-neutral-500 font-mono shrink-0">{node.pid}</span>
+        <span className="text-xs text-neutral-500 shrink-0">{node.pid}</span>
         {/* Command */}
-        <span className="text-xs text-neutral-400 truncate flex-1 font-mono" title={node.command}>
+        <span className="text-xs text-neutral-400 truncate flex-1" title={node.command}>
           {cmd}
         </span>
         {/* Stats */}

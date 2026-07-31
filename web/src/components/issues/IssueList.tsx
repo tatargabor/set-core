@@ -108,7 +108,7 @@ export function IssueList({ issues, groups, selectedKey, onSelect, issueKeyFn, s
           <h3 className="text-xs text-neutral-500 uppercase tracking-wider px-3">Groups</h3>
           {groups.map(g => (
             <div key={g.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-400">
-              <span className="font-mono text-xs text-neutral-500">{g.id}</span>
+              <span className=" text-xs text-neutral-500">{g.id}</span>
               <span className="truncate">{g.name}</span>
               <span className="text-xs text-neutral-600">{g.issue_ids.length} issues</span>
             </div>

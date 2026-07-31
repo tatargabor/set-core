@@ -283,7 +283,7 @@ export function GanttTimeline({
         {ticks.map((tick, i) => (
           <g key={i}>
             <line x1={tick.x} y1={headerHeight - 4} x2={tick.x} y2={headerHeight} stroke="#525252" />
-            <text x={tick.x} y={headerHeight - 8} fill="#a3a3a3" fontSize={10} textAnchor="middle" fontFamily="monospace">
+            <text x={tick.x} y={headerHeight - 8} fill="#a3a3a3" fontSize={12} textAnchor="middle" fontFamily="monospace">
               {tick.label}
             </text>
             <line x1={tick.x} y1={headerHeight} x2={tick.x} y2={totalHeight} stroke="#1a1a1a" strokeWidth={1} strokeDasharray="2,4" />
@@ -336,7 +336,7 @@ export function GanttTimeline({
                     )}
                     {/* Parallel count indicator */}
                     {overlapCount > 1 && item.w > 20 && (
-                      <text x={item.x + 4} y={y + laneHeight / 2 + 3} fill="#fff" fontSize={8} fontFamily="monospace">x{overlapCount}</text>
+                      <text x={item.x + 4} y={y + laneHeight / 2 + 3} fill="#fff" fontSize={10} fontFamily="monospace">x{overlapCount}</text>
                     )}
                   </g>
                 )
@@ -365,7 +365,7 @@ export function GanttTimeline({
                 x={b.x + 3}
                 y={headerHeight + 10}
                 fill="#f59e0b"
-                fontSize={9}
+                fontSize={10}
                 fontFamily="monospace"
               >
                 Session {short}
@@ -383,7 +383,7 @@ export function GanttTimeline({
       {/* Tooltip — terminal-style ASCII border */}
       {tooltip && (
         <div
-          className="fixed z-50 bg-black border border-neutral-600 px-3 py-2 text-xs font-mono pointer-events-none shadow-lg"
+          className="fixed z-50 bg-black border border-neutral-600 px-3 py-2 text-xs pointer-events-none shadow-lg"
           style={{
             left: tooltip.x + 12,
             top: Math.max(8, tooltip.y - 60),
@@ -475,7 +475,7 @@ function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBrea
     // Compact mode: color dot + label + duration + pct (no bar graph).
     // Used when the breakdown sits in a narrow side column.
     return (
-      <div className="font-mono text-xs space-y-1">
+      <div className=" text-xs space-y-1">
         {breakdown.map((b) => (
           <div key={b.category} className="flex items-center gap-1.5">
             <span
@@ -494,7 +494,7 @@ function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBrea
   }
 
   return (
-    <div className="font-mono text-xs space-y-1">
+    <div className=" text-xs space-y-1">
       {breakdown.map((b) => (
         <div key={b.category} className="flex items-center gap-2">
           <span className="w-28 text-right text-neutral-400 truncate" title={getCategoryLabel(b.category)}>{getCategoryLabel(b.category)}</span>
@@ -739,10 +739,10 @@ export default function ActivityView({ project, isRunning }: Props) {
     setPxPerSecond(fit)
   }, [containerWidth, minTime, maxTime, manualZoom])
 
-  if (!project) return <div className="p-3 text-neutral-500 font-mono text-sm">No project selected</div>
+  if (!project) return <div className="p-3 text-neutral-500 text-sm">No project selected</div>
 
   return (
-    <div className="p-3 space-y-4 font-mono text-xs bg-black min-h-full">
+    <div className="p-3 space-y-4 text-xs bg-black min-h-full">
       {/* Error state */}
       {error && (
         <div className="text-red-400 bg-red-950/30 border border-red-900 px-3 py-2">
@@ -819,7 +819,7 @@ export default function ActivityView({ project, isRunning }: Props) {
                         </span>
                       )}
                       {isImplementingChild && (
-                        <span className="text-neutral-700 font-mono whitespace-pre flex-shrink-0">
+                        <span className="text-neutral-700 whitespace-pre flex-shrink-0">
                           {childPrefix}
                         </span>
                       )}

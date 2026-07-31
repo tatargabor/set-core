@@ -53,7 +53,7 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
         <div className="p-4 border-b border-neutral-800 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-sm text-neutral-400">{issue.id}</span>
+              <span className=" text-sm text-neutral-400">{issue.id}</span>
               <SeverityBadge severity={issue.severity} />
               <StateBadge state={issue.state} />
             </div>
@@ -140,7 +140,7 @@ function DiagnosisTab({ issue }: { issue: Issue }) {
         <div>
           <h4 className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Affected Files</h4>
           <ul className="text-sm text-neutral-400 space-y-0.5">
-            {d.affected_files.map((f, i) => <li key={i} className="font-mono text-xs">{f}</li>)}
+            {d.affected_files.map((f, i) => <li key={i} className=" text-xs">{f}</li>)}
           </ul>
         </div>
       )}
@@ -156,7 +156,7 @@ function DiagnosisTab({ issue }: { issue: Issue }) {
 function ErrorTab({ issue }: { issue: Issue }) {
   return (
     <div className="p-4 space-y-3 overflow-y-auto h-full">
-      <pre className="text-xs text-neutral-300 bg-neutral-900 rounded p-3 overflow-x-auto whitespace-pre-wrap font-mono max-h-96">
+      <pre className="text-xs text-neutral-300 bg-neutral-900 rounded p-3 overflow-x-auto whitespace-pre-wrap max-h-96">
         {issue.error_detail || 'No error detail available.'}
       </pre>
       <div className="flex gap-4 text-xs text-neutral-500">
@@ -201,7 +201,7 @@ function SessionTab({ issue, project }: { issue: Issue; project: string }) {
   return (
     <div ref={scrollRef} className="h-full overflow-y-auto p-4">
       {loading && lines.length === 0 && <div className="text-sm text-neutral-500">Loading session log...</div>}
-      <pre className="text-xs text-neutral-400 font-mono whitespace-pre-wrap leading-relaxed">
+      <pre className="text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed">
         {lines.join('\n')}
       </pre>
     </div>
