@@ -81,3 +81,9 @@ sys
 
 # Local-only integration working notes (never published)
 docs/integration/local/
+
+# set runtime session data — agent state, poll offsets, and set-copilot TRANSCRIPTS.
+# Gitignored rather than remembered: a dictation or meeting transcript is exactly the
+# kind of content that must never reach a public repository, and `git add -A` is the
+# command that would do it.
+.set/
