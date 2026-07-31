@@ -72,6 +72,23 @@ So the framework never synthesises a batch control from a row-level one, and the
 as its own scenario. The exact declaration shape is an open question (below) — this change reads a
 minimal shape and renders it; it does not send it.
 
+**Refined on the channel the same day (`W#154`), and it changes what a batch action IS.** The
+producer measured their own side: they have no write that takes a set, and they will not have one —
+their per-item engine works on **exactly one item at a time**, a fresh session each, which is the
+user's own "no parallel fixes" rule. So the correct semantics for a selection here is a **queue**:
+the framework hands over the identifiers, the producer consumes them one by one.
+
+That is not the derivation D2 rejects, and the difference is worth stating precisely because the
+two look identical from the outside. A *derived* batch is the framework deciding that a row action
+may be repeated. A *declared queue* is the producer saying "this action accepts a list and I will
+serialise it". The first is a guess about someone else's write; the second is their statement.
+
+**The consequence lands in the UI, not the parser:** a queue control must say what it does — *"add
+13 rows to the queue, processed one at a time"* — because a reader who is told "act on 13 rows"
+will expect thirteen outcomes and get one, then wait. So the declaration carries **which of the two
+it is**, and the confirmation text differs. A single word in a declaration, and without it the
+surface would be honest about the count and wrong about the event.
+
 ### D3. The selection summary counts the invisible part explicitly
 
 This is the surface's standing rule — *compacting must never hide a failure* — applied to the
