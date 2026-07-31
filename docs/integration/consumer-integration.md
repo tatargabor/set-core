@@ -25,6 +25,44 @@ than reconstructing from this record:
 |---|---|---|
 | `status-contract-caveats` | 26/30 — built, shipped, verified against a live producer | the four PROOF tasks (a committed browser test, the no-caveats baseline, mutation, full suites) |
 | `status-table-structured-cells-and-controls` | 3/30 — the search precondition is in | `2.1`, the column classifier: it is the keystone every later control depends on |
+| `status-row-selection` | 0/17 — artifacts only (`f30a8a25`) | `1.1`, the identifying column; the whole change stops before any write |
+
+### 2026-07-31 — the bug-fix flow, and why only its first quarter is being built
+
+**The user opened the status surface as the place to work FROM**, and described the whole flow:
+select the unfixed rows → plan them into an **open release** → start an **investigation** (runs on
+the producer's side, one at a time, a fresh session each) → the verdict returns through the
+contract → if fixable, into a **fix queue**, one fix at a time, no parallelism → the fix lands in
+the prepared release. And the part they singled out: an agent running in the background **has
+questions**, and those must surface on set-core's screen and the answers must reach the agent.
+
+*Recovered from a dictation in the producer-side session, not from this record* — the description
+was spoken, so no set-core transcript held it. Worth noting as a carrier: a spoken instruction to
+the other session is invisible to a grep here.
+
+**Measured before deciding anything** (live producer, through the framework's API, nothing written):
+
+- `bugs` — 173 rows, 50 open, **36 with an empty planning field**; both `laneSignals` lists empty,
+  which is a measurement and not silence (§3b of `bus-handoff.md`).
+- Narrowing to those rows **already works**: `status` (4 distinct), `severity` (4) and the planning
+  field (5) all fit the facet bounds; the two high-cardinality columns (81, 71) do not and are
+  reachable only by search.
+- `releases` — **one** open draft, 22 closed, and the draft carries **no item list**. A row's
+  planning field points at a *change*; another points at the release a fix already shipped in.
+
+**Therefore: "this bug belongs to that open release" does not exist as producer data yet**, and the
+framework builds nothing on it. What is unambiguously ours and needed by every later verb is the
+selection — hence `status-row-selection`, which ends before any write.
+
+**The design decision worth keeping** (D2 in that change): a batch action is declared by the project
+at the ANSWER level and is **never derived** from a row-level `actions`. Pressing a row button
+twenty times produces twenty independent assertions; a selection is one assertion about a set, and
+only the producer knows whether it has a write that takes one. The refuted version is held as a
+test so the derivation cannot be re-added as an "improvement".
+
+**On the channel as `S#151`:** the two measurements above, plus two questions — what shape a batch
+declaration takes (their key names, our shape-reading), and how an item will attach to an open
+release. Explicitly non-blocking; the selection is built either way.
 
 **Archived this session:** `bugfix-lane-with-a-real-delta` → `openspec/specs/change-lane-profiles/`.
 
