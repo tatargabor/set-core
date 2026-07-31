@@ -262,6 +262,30 @@ function isComplexCellValue(v: unknown): boolean {
  * "4 fields" for an object that has three would be the false-absence shape this surface
  * refuses everywhere else, just wearing a smaller number.
  */
+/**
+ * A column header, with a flattened object's prefix dimmed rather than removed.
+ *
+ * `flattenUniformObjects` spreads a uniform nested object into `health.reachable`,
+ * `health.httpStatus`, and so on. The prefix is load-bearing — it is what keeps two objects'
+ * `status` fields apart — but repeating it across seven adjacent headers spends the width
+ * seven times on the one part of the name every one of them shares, and it is the part that
+ * distinguishes nothing.
+ *
+ * So it stays in the DOM, in the accessible name, and in any test matching on the column key;
+ * it simply stops competing for the reader's attention. Deleting it would be the tempting
+ * version and it fails the moment a project sends two objects with a field in common.
+ */
+function ColumnLabel({ name }: { name: string }) {
+  const dot = name.indexOf('.')
+  if (dot < 0) return <>{name}</>
+  return (
+    <>
+      <span className="text-fg-ghost">{name.slice(0, dot + 1)}</span>
+      {name.slice(dot + 1)}
+    </>
+  )
+}
+
 function Displaced({ value }: { value: unknown }) {
   const label = Array.isArray(value)
     ? `${value.length} ${value.length === 1 ? 'row' : 'rows'}`
@@ -752,7 +776,7 @@ export function StatusTable(
                     controls ? 'cursor-pointer select-none hover:text-fg-strong' : ''
                   } ${c === idCol ? 'sticky left-0 z-[2] bg-surface-panel' : ''}`}
                 >
-                  {view.names.has(c) ? <DeprecatedLabel name={c} /> : c}
+                  {view.names.has(c) ? <DeprecatedLabel name={c} /> : <ColumnLabel name={c} />}
                   {sort?.col === c && (
                     <span className="ml-1 text-sky-400">{sort.dir === 'asc' ? '↑' : '↓'}</span>
                   )}

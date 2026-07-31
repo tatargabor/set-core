@@ -219,11 +219,38 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
   const emphasised = emphasisOf(obj)
   if (all.length === 0 && !(ACTIONS_KEY in obj)) return <Unknown label="(no fields)" />
   const { visible, hiddenCount } = partitionKeys(all, view)
+  // A record of many short scalars is a LIST, not a paragraph: stacked one per row it spends a
+  // full-width panel on a column of about 200px and pushes everything below it off the fold.
+  // Measured on a live answer — a six-key block used 12% of the width available to it.
+  //
+  // The condition is read from the data, never from a key name: every value a scalar, every
+  // rendered value short, and enough of them that columns beat a stack. A block with one long
+  // value stays stacked, because wrapping it into a narrow column is the cell-tower defect this
+  // surface spent the day removing.
+  const compact =
+    visible.length >= 6 &&
+    visible.every(k => {
+      const v = obj[k]
+      const scalar = v === null || v === undefined || typeof v !== 'object'
+      // The CAVEAT counts toward the row's width too, and leaving it out cost a regression the
+      // first time this shipped: a block of six short numbers went compact, and the sentence
+      // the project attached to each of them wrapped into a 200px column seven lines deep. The
+      // block was more readable stacked. A field is short when everything rendered on its line
+      // is short — the value AND whatever travels beside it.
+      const caveat = caveats.perField.get(k)
+      const caveatShort = !caveat || String(caveat).length <= 24
+      return scalar && String(v ?? '').length <= 24 && caveatShort
+    })
+
   return (
     <div className="space-y-1">
-      <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm">
+      <dl className={
+        compact
+          ? 'grid gap-x-8 gap-y-1 text-sm [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]'
+          : 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm'
+      }>
         {visible.map(k => (
-          <div key={k} className="contents">
+          <div key={k} className={compact ? 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4' : 'contents'}>
             <dt className="text-neutral-500 truncate" title={k}>
               {view.names.has(k)
                 ? <DeprecatedLabel name={k} />
