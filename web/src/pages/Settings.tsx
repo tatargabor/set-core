@@ -33,9 +33,30 @@ interface SettingsData {
 function ConfigValue({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3 py-1.5">
-      <span className="text-sm text-neutral-500 w-40 shrink-0">{label}</span>
-      <span className="text-sm text-neutral-300 break-all">{value ?? <span className="text-neutral-600">—</span>}</span>
+      <span className="text-sm text-fg-faint w-40 shrink-0">{label}</span>
+      <span className="text-sm text-fg-normal break-all">{value ?? <span className="text-fg-ghost">—</span>}</span>
     </div>
+  )
+}
+
+/**
+ * A titled panel holding one record's worth of key/value rows.
+ *
+ * `wide` is a claim about the CONTENT, not a layout preference: this panel carries values
+ * that need room — a filesystem path, a command line — and asking for the full row is how it
+ * says so. The alternative the page used to have was a single `max-w-3xl` column for
+ * everything, which is the same decision made once for six panels that do not agree: the
+ * 85-character state-file path wrapped to two lines inside 768px while 904px of the window
+ * sat empty to its right. Cramping and waste were one bug, not two.
+ */
+function Panel({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <section className={wide ? 'col-span-full' : undefined}>
+      <TuiSection label={label} />
+      <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-2 divide-y divide-neutral-800/50">
+        {children}
+      </div>
+    </section>
   )
 }
 
@@ -97,11 +118,23 @@ export default function Settings({ project }: Props) {
   const isRunning = orchStatus === 'running' || orchStatus === 'checkpoint'
 
   return (
-    <div className="p-6 space-y-6 h-full overflow-y-auto"><div className="max-w-3xl space-y-6">
-      <h1 className="text-lg font-semibold text-neutral-100">Settings</h1>
+    <div className="p-6 h-full overflow-y-auto">
+      <h1 className="text-lg font-semibold text-fg-loud mb-6">Settings</h1>
+
+      {/*
+        Panels flow into as many columns as the window affords, each at least 30rem wide, and
+        a panel carrying long values claims the whole row. Two things follow, and they are the
+        two findings this screen was chosen to answer: the vertical stack no longer pushes half
+        the page below the fold, and the width is spent where the values actually are rather
+        than being capped at one figure for every panel at once.
+
+        `items-start` because a record panel's height is its content's business — stretching a
+        four-row panel to match an eight-row neighbour invents empty space and calls it layout.
+      */}
+      <div className="grid gap-6 items-start [grid-template-columns:repeat(auto-fit,minmax(30rem,1fr))]">
 
       {/* Orchestration Control */}
-      <section>
+      <section className="col-span-full">
         <TuiSection label="Orchestration Control" />
         <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
           <div className="flex items-center justify-between">
@@ -174,55 +207,44 @@ export default function Settings({ project }: Props) {
         </div>
       </section>
 
-      {/* Paths */}
-      <section>
-        <TuiSection label="Paths" />
-        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
-          <ConfigValue label="Project path" value={data.project_path} />
-          <ConfigValue label="State file" value={data.state_path} />
-          <ConfigValue label="Config file" value={data.config_path} />
-          <ConfigValue label="Runs directory" value={data.runs_dir ? `${data.runs_dir} (${data.runs_count ?? '?'} runs)` : null} />
-        </div>
-      </section>
+      {/* Paths — `wide`: filesystem paths are the longest values this page carries. */}
+      <Panel label="Paths" wide>
+        <ConfigValue label="Project path" value={data.project_path} />
+        <ConfigValue label="State file" value={data.state_path} />
+        <ConfigValue label="Config file" value={data.config_path} />
+        <ConfigValue label="Runs directory" value={data.runs_dir ? `${data.runs_dir} (${data.runs_count ?? '?'} runs)` : null} />
+      </Panel>
 
-      {/* Status */}
-      <section>
-        <TuiSection label="Runtime" />
-        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
-          <ConfigValue label="Orchestrator PID" value={data.orchestrator_pid} />
-          <ConfigValue label="Sentinel PID" value={data.sentinel_pid} />
-          <ConfigValue label="Plan version" value={data.plan_version != null ? `v${data.plan_version}` : null} />
-          <ConfigValue label="CLAUDE.md" value={data.has_claude_md ? 'Present' : 'Not found'} />
-          <ConfigValue label="Project knowledge" value={data.has_project_knowledge ? 'Present' : 'Not found'} />
-        </div>
-      </section>
+      {/* Runtime */}
+      <Panel label="Runtime">
+        <ConfigValue label="Orchestrator PID" value={data.orchestrator_pid} />
+        <ConfigValue label="Sentinel PID" value={data.sentinel_pid} />
+        <ConfigValue label="Plan version" value={data.plan_version != null ? `v${data.plan_version}` : null} />
+        <ConfigValue label="CLAUDE.md" value={data.has_claude_md ? 'Present' : 'Not found'} />
+        <ConfigValue label="Project knowledge" value={data.has_project_knowledge ? 'Present' : 'Not found'} />
+      </Panel>
 
       {/* Processes */}
       <section>
         <TuiSection label="Processes" />
-        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
+        <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3">
           <ProcessTree project={project} />
         </div>
       </section>
 
       {/* Directives */}
       {directives && Object.keys(directives).length > 0 && (
-        <section>
-          <TuiSection label="Orchestration Directives" />
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
-            {Object.entries(directives).map(([k, v]) => (
-              <ConfigValue key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')} />
-            ))}
-          </div>
-        </section>
+        <Panel label="Orchestration Directives">
+          {Object.entries(directives).map(([k, v]) => (
+            <ConfigValue key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')} />
+          ))}
+        </Panel>
       )}
 
       {/* Data Sources */}
       {data.data_sources && (
-        <section>
-          <TuiSection label="Data Sources" />
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-2 divide-y divide-neutral-800/50">
-            {Object.entries(data.data_sources).map(([key, src]) => {
+        <Panel label="Data Sources">
+          {Object.entries(data.data_sources).map(([key, src]) => {
               const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
               let detail = src.available ? 'Available' : 'Not found'
               if (src.available && src.count != null) detail = `${src.count} file${src.count !== 1 ? 's' : ''}`
@@ -232,26 +254,26 @@ export default function Settings({ project }: Props) {
                   key={key}
                   label={label}
                   value={
-                    <span className={src.available ? 'text-green-400' : 'text-neutral-600'}>
+                    <span className={src.available ? 'text-status-active' : 'text-fg-ghost'}>
                       {detail}
                     </span>
                   }
                 />
               )
             })}
-          </div>
-        </section>
+        </Panel>
       )}
 
       {/* Raw config fallback */}
       {data.config_raw && !directives && (
         <section>
           <TuiSection label="Config (raw)" />
-          <pre className="bg-neutral-900/50 rounded-lg border border-neutral-800 p-4 text-sm text-neutral-400 whitespace-pre-wrap overflow-auto max-h-64">
+          <pre className="bg-surface-panel/50 rounded-lg border border-surface-line p-4 text-sm text-fg-muted whitespace-pre-wrap overflow-auto max-h-64">
             {data.config_raw}
           </pre>
         </section>
       )}
-    </div></div>
+      </div>
+    </div>
   )
 }

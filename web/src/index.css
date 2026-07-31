@@ -1,5 +1,67 @@
 @import "tailwindcss";
 
+/**
+ * Semantic tokens — the single place a colour means something.
+ *
+ * Every token references a Tailwind colour rather than restating a hex value, so this file
+ * is a RENAMING and not a repalette. That matters for how the migration can be checked: a
+ * screenshot diff after the classes are swapped should be empty everywhere except where the
+ * old code was genuinely inconsistent. If the tokens introduced new values, every screen
+ * would differ and the real inconsistencies would be invisible in the noise.
+ *
+ * Three groups, because measuring the 880 neutral and ~250 hued occurrences in the tree
+ * turned up three different jobs being done by one palette:
+ *
+ *   status  — what state a thing is in        (the `statusColor()` vocabulary)
+ *   text    — how loud a piece of text is     (hierarchy, not state)
+ *   log     — which syntactic category a log line belongs to
+ *
+ * Keeping `log` in its own namespace is the load-bearing part. Today a `cyan-400` marks the
+ * `[sentinel]` prefix in a log and means nothing anywhere else, while `purple-400` marks a
+ * log category and also appears on the worktrees page. One visual weight per meaning cannot
+ * hold while syntax highlighting and state share a vocabulary — so they are separated here,
+ * and a status token is never the right answer for a log line.
+ */
+@theme {
+  /* ── Status: the state a thing is in ──────────────────────────────────────────────
+     Named for meaning, never for hue. A screen asks for `text-status-fail`, and whether
+     that is red is this file's business alone. */
+  --color-status-done: var(--color-blue-400);
+  --color-status-active: var(--color-green-400);
+  --color-status-fail: var(--color-red-400);
+  --color-status-warn: var(--color-amber-400);
+  --color-status-stalled: var(--color-yellow-400);
+  --color-status-blocked: var(--color-orange-400);
+  --color-status-planned: var(--color-neutral-400);
+  --color-status-idle: var(--color-neutral-500);
+
+  /* ── Text: how loud, not what state ───────────────────────────────────────────────
+     The five neutrals carry 880 of the tree's colour classes, and almost none of them are
+     about state. Separating them is what lets the drift test say something true: after the
+     migration, a bare `text-neutral-*` in a component is a finding, because either it is
+     hierarchy (and has a token) or it is state (and has a different one). */
+  --color-fg-loud: var(--color-neutral-100);
+  --color-fg-strong: var(--color-neutral-200);
+  --color-fg-normal: var(--color-neutral-300);
+  --color-fg-muted: var(--color-neutral-400);
+  --color-fg-faint: var(--color-neutral-500);
+  --color-fg-ghost: var(--color-neutral-600);
+
+  /* ── Log syntax: which category a line belongs to ─────────────────────────────────
+     Deliberately its own namespace. These are the hues the log panels already use; giving
+     them names is what stops the next screen from reaching for `cyan` because it was free. */
+  --color-log-source: var(--color-cyan-400);
+  --color-log-category: var(--color-purple-400);
+  --color-log-warn: var(--color-amber-400);
+  --color-log-error: var(--color-red-400);
+
+  /* ── Surfaces ─────────────────────────────────────────────────────────────────────── */
+  --color-surface-page: var(--color-neutral-950);
+  --color-surface-panel: var(--color-neutral-900);
+  --color-surface-raised: var(--color-neutral-800);
+  --color-surface-line: var(--color-neutral-800);
+}
+
 body {
   margin: 0;
   background: #0a0a0a;
