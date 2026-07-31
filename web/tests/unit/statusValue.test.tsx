@@ -364,7 +364,31 @@ describe('a uniform nested object becomes columns, not a stack inside a cell', (
     const { container } = render(<StatusValue value={wide} />)
     const headers = Array.from(container.querySelectorAll('th')).map(th => th.textContent)
 
-    expect(headers).toEqual(['k'])
+    // One named column, plus the unnamed expander the row grew because its value is a
+    // structure the cell will not hold. Nine fields do not become nine columns.
+    expect(headers.filter(Boolean)).toEqual(['k'])
+  })
+
+  it('the header has exactly one cell per body cell — a table that displaces must not shift', () => {
+    // The invariant, held here because losing it is invisible and expensive: the expander
+    // column is driven by CONTENT while sorting and facets are driven by ROW COUNT, and for a
+    // while the body grew that column from one signal while the header still keyed on the
+    // other. Every header then sat one column left of the values it named — on precisely the
+    // tables that displace, which are the ones whose columns most need naming. Nothing threw,
+    // the suite stayed green, and the screen simply lied.
+    // RAGGED on purpose. A uniform nested shape is flattened into columns, so nothing is
+    // displaced and no expander appears — the first version of this test used one and passed
+    // against the bug it was written to catch. The rows must disagree for the structure to
+    // survive as a structure.
+    const displacing = [{ id: 'a', detail: { x: 1 } }, { id: 'b', detail: { y: 2 } }]
+    const { container } = render(<StatusValue value={displacing} />)
+
+    const headerCells = container.querySelectorAll('thead tr th').length
+    const firstBodyRow = container.querySelector('tbody tr')!
+    const bodyCells = firstBodyRow.querySelectorAll('td').length
+
+    expect(headerCells).toBe(bodyCells)
+    expect(headerCells).toBeGreaterThan(1)
   })
 
   it('keeps the values intact — flattening must not change what is shown', () => {

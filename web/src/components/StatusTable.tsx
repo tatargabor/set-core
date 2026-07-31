@@ -732,15 +732,25 @@ export function StatusTable(
                   />
                 </th>
               )}
-              {controls && <th className="w-6 px-2 py-2" />}
+              {/* `expandable`, not `controls`. When the body grew an expander column driven by
+                  content while this header still keyed on row count, every header sat one column
+                  to the left of the values it named — on exactly the tables that displace, which
+                  are the ones whose columns most need naming. */}
+              {expandable && <th className="w-6 px-2 py-2" />}
               {cols.map(c => (
                 <th
                   key={c}
                   onClick={controls ? () => cycleSort(c) : undefined}
                   aria-sort={sort?.col === c ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  // The identifying column holds its position while the rest scrolls under it.
+                  // The tab this exists for carries twelve columns and hides 2886px past the
+                  // right edge; scrolling to reach them used to take the row's identity with it,
+                  // so the reader arrived at a value with nothing to say which row it belonged
+                  // to. Which column identifies a row is decided from the VALUES — the first one
+                  // whose entries are all present and all distinct — never from its name.
                   className={`text-left font-medium px-3 py-2 whitespace-nowrap ${
-                    controls ? 'cursor-pointer select-none hover:text-neutral-200' : ''
-                  }`}
+                    controls ? 'cursor-pointer select-none hover:text-fg-strong' : ''
+                  } ${c === idCol ? 'sticky left-0 z-[2] bg-surface-panel' : ''}`}
                 >
                   {view.names.has(c) ? <DeprecatedLabel name={c} /> : c}
                   {sort?.col === c && (
@@ -809,7 +819,9 @@ export function StatusTable(
                         // all of them `td:nth-child(2)` — a positional selector measures the
                         // layout, not the data, and it fails on the next column either way.
                         data-col={c}
-                        className={expandable ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'}
+                        className={`${expandable ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'} ${
+                          c === idCol ? 'sticky left-0 z-[1] bg-surface-page' : ''
+                        }`}
                       >
                         {expandable ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
                       </td>
