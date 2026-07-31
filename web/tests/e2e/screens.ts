@@ -77,6 +77,35 @@ export async function discoverTabs(
  * So: ask for idle briefly, accept not getting it, and rely on the fixed settle instead. A
  * condition that can never be met is not a wait, it is a sleep with a misleading name.
  */
+/**
+ * Wait until a tab panel has actually rendered its answer.
+ *
+ * Every screen here fetches on mount, several through the project's own command, and the fixed
+ * settle photographed whichever ones happened to be ready. That is not a slow harness, it is a
+ * harness that measures a different screen each run: comparing two captures then reports
+ * hundreds of thousands of differing pixels for a screen nobody touched, and the real finding —
+ * a two-pixel-wide accent bar that shifted one shade — sits below that noise.
+ *
+ * The condition is deliberately about the ABSENCE of a loading state plus the PRESENCE of
+ * content, not a timeout. A wait that expires quietly is the same as no wait at all, so the
+ * caller is told when it did.
+ */
+async function waitForContent(page: Page): Promise<boolean> {
+  return page
+    .waitForFunction(
+      () => {
+        const main = document.querySelector('main') ?? document.body
+        const text = main.textContent ?? ''
+        if (/Loading|Waiting for data/i.test(text)) return false
+        return text.trim().length > 200
+      },
+      undefined,
+      { timeout: 20_000 },
+    )
+    .then(() => true)
+    .catch(() => false)
+}
+
 export async function settle(page: Page, waitFor?: string): Promise<boolean> {
   let arrived = true
   if (waitFor) {
@@ -88,6 +117,7 @@ export async function settle(page: Page, waitFor?: string): Promise<boolean> {
       .catch(() => false)
   }
   await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {})
-  await page.waitForTimeout(500)
-  return arrived
+  const loaded = await waitForContent(page)
+  await page.waitForTimeout(400)
+  return arrived && loaded
 }

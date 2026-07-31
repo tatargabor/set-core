@@ -131,10 +131,10 @@ export default function StatusHeader({ state, connected, project }: Props) {
     planning: 'bg-cyan-900 text-cyan-300',
     checkpoint: 'bg-yellow-900 text-yellow-300',
     completed: 'bg-blue-900 text-blue-300',
-    stopped: 'bg-neutral-800 text-neutral-400',
+    stopped: 'bg-surface-raised text-fg-muted',
     failed: 'bg-red-900 text-red-300',
     corrupt: 'bg-red-900 text-red-300',
-    idle: 'bg-neutral-800 text-neutral-500',
+    idle: 'bg-surface-raised text-fg-faint',
     done: 'bg-green-900 text-green-300',
     accepted: 'bg-green-900 text-green-300',
   }
@@ -175,10 +175,10 @@ export default function StatusHeader({ state, connected, project }: Props) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+    <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-surface-line bg-surface-panel/50 shrink-0">
       <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-neutral-100">{project}</h2>
-        <span className={`px-2 py-0.5 rounded text-sm font-medium ${badgeColor[statusBadge] ?? 'bg-neutral-800 text-neutral-400'}`}>
+        <h2 className="text-sm font-semibold text-fg-loud">{project}</h2>
+        <span className={`px-2 py-0.5 rounded text-sm font-medium ${badgeColor[statusBadge] ?? 'bg-surface-raised text-fg-muted'}`}>
           {statusBadge}
         </span>
         <span className={`hidden md:inline-block ${connected ? 'text-green-500' : 'text-red-500'}`} title={connected ? 'Connected' : 'Disconnected'}>{connected ? '\u25CF' : '\u25CB'}</span>
@@ -195,14 +195,14 @@ export default function StatusHeader({ state, connected, project }: Props) {
 
       {state && (
         <>
-          <div className="text-sm text-neutral-500 hidden md:block">
+          <div className="text-sm text-fg-faint hidden md:block">
             {state.plan_version && <span>v{state.plan_version}</span>}
             {state.active_seconds ? (
               <span className="ml-2">{formatDuration(state.active_seconds)}</span>
             ) : null}
           </div>
 
-          <div className="flex gap-3 ml-auto text-sm text-neutral-400">
+          <div className="flex gap-3 ml-auto text-sm text-fg-muted">
             <span>{done}/{changes.length} changes</span>
             <span className="hidden md:inline" title="Total = input + output">{formatTokens(totals.input + totals.output)}</span>
             {totals.cacheRead > 0 && (
@@ -242,14 +242,14 @@ export default function StatusHeader({ state, connected, project }: Props) {
       )}
 
       {!state && (
-        <span className="ml-auto text-sm text-neutral-500">Waiting for data...</span>
+        <span className="ml-auto text-sm text-fg-faint">Waiting for data...</span>
       )}
 
       {/* Sentinel controls — right side */}
       {mgrStatus && (
-        <div className="flex items-center gap-2 ml-auto md:ml-2 border-l border-neutral-800 pl-3">
-          <span className={`w-2 h-2 rounded-full shrink-0 ${sentinelAlive ? 'bg-green-400' : 'bg-neutral-600'}`} />
-          <span className="text-xs text-neutral-500 hidden md:inline">
+        <div className="flex items-center gap-2 ml-auto md:ml-2 border-l border-surface-line pl-3">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${sentinelAlive ? 'bg-green-400' : 'bg-surface-edge-soft'}`} />
+          <span className="text-xs text-fg-faint hidden md:inline">
             {sentinelAlive ? 'Sentinel' : 'Sentinel idle'}
           </span>
           {sentinelAlive ? (
@@ -257,14 +257,14 @@ export default function StatusHeader({ state, connected, project }: Props) {
               <button
                 disabled={sentinelBusy}
                 onClick={() => sentinelAct(() => stopSentinel(project))}
-                className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50"
+                className="px-2 py-0.5 text-xs rounded bg-surface-raised hover:bg-surface-strong text-fg-muted disabled:opacity-50"
               >
                 Stop
               </button>
               <button
                 disabled={sentinelBusy}
                 onClick={() => sentinelAct(() => restartSentinel(project, (activeSpec ?? spec) || undefined))}
-                className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50"
+                className="px-2 py-0.5 text-xs rounded bg-surface-raised hover:bg-surface-strong text-fg-muted disabled:opacity-50"
               >
                 Restart
               </button>
@@ -279,7 +279,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
                     onChange={e => setSpec(e.target.value)}
                     list="spec-paths"
                     placeholder="docs/"
-                    className="w-32 px-1.5 py-0.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-200 focus:outline-none focus:border-blue-500"
+                    className="w-32 px-1.5 py-0.5 text-xs bg-surface-raised border border-surface-edge rounded text-fg-strong focus:outline-none focus:border-blue-500"
                   />
                   <datalist id="spec-paths">
                     {specPaths.map(p => <option key={p} value={p} />)}

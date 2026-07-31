@@ -40,12 +40,14 @@
      about state. Separating them is what lets the drift test say something true: after the
      migration, a bare `text-neutral-*` in a component is a finding, because either it is
      hierarchy (and has a token) or it is state (and has a different one). */
+  --color-fg-brightest: var(--color-neutral-50);
   --color-fg-loud: var(--color-neutral-100);
   --color-fg-strong: var(--color-neutral-200);
   --color-fg-normal: var(--color-neutral-300);
   --color-fg-muted: var(--color-neutral-400);
   --color-fg-faint: var(--color-neutral-500);
   --color-fg-ghost: var(--color-neutral-600);
+  --color-fg-dim: var(--color-neutral-700);
 
   /* ── Log syntax: which category a line belongs to ─────────────────────────────────
      Deliberately its own namespace. These are the hues the log panels already use; giving
@@ -60,6 +62,9 @@
   --color-surface-panel: var(--color-neutral-900);
   --color-surface-raised: var(--color-neutral-800);
   --color-surface-line: var(--color-neutral-800);
+  --color-surface-strong: var(--color-neutral-700);
+  --color-surface-edge: var(--color-neutral-700);
+  --color-surface-edge-soft: var(--color-neutral-600);
 }
 
 body {

@@ -11,7 +11,7 @@ export default function ProjectSelector({ projects, current, onChange }: Props) 
     <select
       value={current ?? ''}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full bg-neutral-900 border border-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500"
+      className="w-full bg-surface-panel border border-surface-edge rounded px-2 py-1.5 text-sm text-fg-strong focus:outline-none focus:border-fg-faint"
     >
       {projects.length === 0 && (
         <option value="" disabled>No projects</option>

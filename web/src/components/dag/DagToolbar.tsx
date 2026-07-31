@@ -29,7 +29,7 @@ export default function DagToolbar({
   onAutoFollowChange,
 }: Props) {
   return (
-    <div className="flex items-center gap-4 px-3 py-1.5 border-b border-neutral-800 text-xs text-neutral-500 bg-neutral-950/50">
+    <div className="flex items-center gap-4 px-3 py-1.5 border-b border-surface-line text-xs text-fg-faint bg-surface-page/50">
       <span>
         {attemptCount} attempt{attemptCount !== 1 ? 's' : ''}
       </span>
@@ -47,17 +47,17 @@ export default function DagToolbar({
           onChange={(e) => onAutoFollowChange(e.target.checked)}
           className="accent-blue-500 w-3.5 h-3.5"
         />
-        <span className="text-xs text-neutral-500">Auto Follow</span>
+        <span className="text-xs text-fg-faint">Auto Follow</span>
       </label>
-      <div className="flex items-center bg-neutral-900 rounded border border-neutral-800">
+      <div className="flex items-center bg-surface-panel rounded border border-surface-line">
         {(['dag', 'linear'] as const).map((m) => (
           <button
             key={m}
             onClick={() => onViewModeChange(m)}
             className={`px-2 py-0.5 text-xs ${
               viewMode === m
-                ? 'bg-neutral-800 text-neutral-200'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'bg-surface-raised text-fg-strong'
+                : 'text-fg-faint hover:text-fg-normal'
             }`}
           >
             {m === 'dag' ? 'DAG' : 'Log'}

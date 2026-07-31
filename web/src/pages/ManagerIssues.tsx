@@ -37,12 +37,12 @@ export default function ManagerIssues({ project }: Props) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-neutral-800">
-        <Link to="/" className="text-neutral-500 hover:text-neutral-300 text-sm">Overview</Link>
-        <span className="text-neutral-700">/</span>
-        <span className="text-sm text-neutral-200">{project || 'All Projects'}</span>
-        <span className="text-neutral-700">/</span>
-        <span className="text-sm text-neutral-100 font-medium">Issues</span>
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-surface-line">
+        <Link to="/" className="text-fg-faint hover:text-fg-normal text-sm">Overview</Link>
+        <span className="text-fg-dim">/</span>
+        <span className="text-sm text-fg-strong">{project || 'All Projects'}</span>
+        <span className="text-fg-dim">/</span>
+        <span className="text-sm text-fg-loud font-medium">Issues</span>
         {stats.total_open > 0 && (
           <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
             {stats.total_open} open
@@ -52,7 +52,7 @@ export default function ManagerIssues({ project }: Props) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {loading && <div className="text-sm text-neutral-500">Loading issues...</div>}
+        {loading && <div className="text-sm text-fg-faint">Loading issues...</div>}
         {!loading && (
           <IssueList
             issues={issues}

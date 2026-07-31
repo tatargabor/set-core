@@ -64,14 +64,14 @@ function Scalar({ value }: { value: unknown }) {
   if (typeof value === 'boolean') {
     return value
       ? <span className="text-emerald-400">yes</span>
-      : <span className="text-neutral-500">no</span>
+      : <span className="text-fg-faint">no</span>
   }
   if (typeof value === 'number') {
-    return <span className="text-neutral-100 tabular-nums">{value.toLocaleString()}</span>
+    return <span className="text-fg-loud tabular-nums">{value.toLocaleString()}</span>
   }
   const text = String(value)
   if (text === '') return <Unknown label="(empty)" />
-  return <span className="text-neutral-200 break-words">{text}</span>
+  return <span className="text-fg-strong break-words">{text}</span>
 }
 
 /**
@@ -125,9 +125,9 @@ export function sectionsOf(obj: Record<string, unknown>): SectionDecl[] {
 
 /** Prominence by position — three steps, then flat. Weight, not hue: red stays reserved. */
 function sectionStyle(index: number): { rule: string; label: string } {
-  if (index === 0) return { rule: 'border-l-4 border-neutral-300', label: 'text-neutral-50 font-semibold' }
-  if (index === 1) return { rule: 'border-l-2 border-neutral-500', label: 'text-neutral-300 font-medium' }
-  return { rule: 'border-l border-neutral-700', label: 'text-neutral-500' }
+  if (index === 0) return { rule: 'border-l-4 border-fg-normal', label: 'text-fg-brightest font-semibold' }
+  if (index === 1) return { rule: 'border-l-2 border-fg-faint', label: 'text-fg-normal font-medium' }
+  return { rule: 'border-l border-surface-edge', label: 'text-fg-faint' }
 }
 
 /** How many rows a section's value actually holds, or null when it is not a list. */
@@ -146,7 +146,7 @@ function SectionHeading(
   return (
     <div className="flex items-baseline gap-2">
       <span className={`text-sm ${style.label}`}>{decl.label || decl.key}</span>
-      <span className="text-xs text-neutral-600 uppercase tracking-wide" title="the project's own word for this section">
+      <span className="text-xs text-fg-ghost uppercase tracking-wide" title="the project's own word for this section">
         {decl.severity || decl.key}
       </span>
       {/* No row count here when the two agree: the list below states it, and a heading
@@ -193,7 +193,7 @@ function SectionedGrid(
         <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm pt-1">
           {visible.map(k => (
             <div key={k} className="contents">
-              <dt className="text-neutral-500 truncate" title={k}>{k}</dt>
+              <dt className="text-fg-faint truncate" title={k}>{k}</dt>
               <dd className="min-w-0">
                 <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
                 {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
@@ -251,7 +251,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
       }>
         {visible.map(k => (
           <div key={k} className={compact ? 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4' : 'contents'}>
-            <dt className="text-neutral-500 truncate" title={k}>
+            <dt className="text-fg-faint truncate" title={k}>
               {view.names.has(k)
                 ? <DeprecatedLabel name={k} />
                 : emphasised.has(k) ? <Emphasis>{k}</Emphasis> : k}
@@ -289,14 +289,14 @@ function ChipList({ values, depth }: { values: unknown[]; depth: number }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       {shown.map((v, i) => (
-        <span key={i} className="px-1.5 py-0.5 rounded bg-neutral-800 text-xs">
+        <span key={i} className="px-1.5 py-0.5 rounded bg-surface-raised text-xs">
           <StatusValue value={v} depth={depth + 1} />
         </span>
       ))}
       {hidden > 0 && (
         <button
           onClick={() => setExpanded(v => !v)}
-          className="text-xs text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+          className="text-xs text-fg-faint hover:text-fg-normal underline decoration-dotted"
         >
           {expanded ? 'show fewer' : `+${hidden} more`}
         </button>
@@ -321,7 +321,7 @@ export function StatusValue(
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      return <span className="text-neutral-500 text-xs">none <span className="text-neutral-700">(0)</span></span>
+      return <span className="text-fg-faint text-xs">none <span className="text-fg-dim">(0)</span></span>
     }
     if (value.every(isPlainObject)) {
       // The row count moved INTO the table, because that is where a filter can make it
@@ -351,7 +351,7 @@ export function StatusValue(
         ),
       )
       return (
-        <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto">
+        <pre className="text-xs text-fg-muted bg-surface-panel rounded p-2 overflow-x-auto">
           {JSON.stringify(shown, null, 1)}
         </pre>
       )
@@ -368,7 +368,7 @@ export function StatusValue(
       // string was the 15th longest value on the whole surface, and the longest — about
       // nine times its size — renders fine at top level, where it has the page's width.
       // So do not "fix" this by asking the project to shorten anything.
-      <div className={depth > 0 ? 'rounded border border-neutral-800 bg-neutral-900/40 p-2 min-w-[18rem]' : ''}>
+      <div className={depth > 0 ? 'rounded border border-surface-line bg-surface-panel/40 p-2 min-w-[18rem]' : ''}>
         <KeyGrid obj={value} depth={depth} />
       </div>
     )

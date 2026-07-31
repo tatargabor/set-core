@@ -100,13 +100,13 @@ export default function Settings({ project }: Props) {
   }, [project])
 
   if (!project) {
-    return <div className="flex items-center justify-center h-full text-neutral-500">Select a project</div>
+    return <div className="flex items-center justify-center h-full text-fg-faint">Select a project</div>
   }
   if (loading) {
-    return <div className="p-6 text-neutral-500 text-sm">Loading...</div>
+    return <div className="p-6 text-fg-faint text-sm">Loading...</div>
   }
   if (!data) {
-    return <div className="p-6 text-neutral-500 text-sm">Failed to load settings</div>
+    return <div className="p-6 text-fg-faint text-sm">Failed to load settings</div>
   }
 
   const directives = data.config?.directives as Record<string, unknown> | undefined
@@ -136,23 +136,23 @@ export default function Settings({ project }: Props) {
       {/* Orchestration Control */}
       <section className="col-span-full">
         <TuiSection label="Orchestration Control" />
-        <div className="bg-neutral-900/50 rounded-lg border border-neutral-800 px-4 py-3">
+        <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-sm text-neutral-500">Status</span>
+              <span className="text-sm text-fg-faint">Status</span>
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-sm font-medium ${
                 isRunning ? 'bg-green-900/50 text-green-300' :
                 isShutdown ? 'bg-green-900/50 text-green-300' :
                 isStopped ? 'bg-amber-900/50 text-amber-300' :
                 orchStatus === 'done' ? 'bg-blue-900/50 text-blue-300' :
-                'bg-neutral-800 text-neutral-400'
+                'bg-surface-raised text-fg-muted'
               }`}>
                 <span className={
                   isRunning ? 'text-green-400' :
                   isShutdown ? 'text-green-400' :
                   isStopped ? 'text-amber-400' :
                   orchStatus === 'done' ? 'text-blue-400' :
-                  'text-neutral-500'
+                  'text-fg-faint'
                 }>{isRunning ? '\u25C9' : orchStatus === 'done' ? '\u25CF' : '\u25CB'}</span>
                 {isShutdown ? 'Paused (clean shutdown)' : isStopped ? 'Stopped (unexpected)' : orchStatus ?? 'unknown'}
               </span>
@@ -197,7 +197,7 @@ export default function Settings({ project }: Props) {
                 </button>
                 <button
                   onClick={() => setShowConfirm(false)}
-                  className="px-3 py-1 text-sm bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
+                  className="px-3 py-1 text-sm bg-surface-raised text-fg-normal rounded hover:bg-surface-strong"
                 >
                   Cancel
                 </button>

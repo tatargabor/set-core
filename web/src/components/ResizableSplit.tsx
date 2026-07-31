@@ -73,11 +73,11 @@ export default function ResizableSplit({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        className="h-1.5 shrink-0 bg-neutral-800 hover:bg-neutral-700 cursor-row-resize flex items-center justify-center"
+        className="h-1.5 shrink-0 bg-surface-raised hover:bg-surface-strong cursor-row-resize flex items-center justify-center"
       >
         <button
           onClick={() => setCollapsed(collapsed === 'bottom' ? 'none' : 'bottom')}
-          className="text-neutral-600 hover:text-neutral-400 text-sm px-2"
+          className="text-fg-ghost hover:text-fg-muted text-sm px-2"
         >
           {collapsed === 'bottom' ? '▲' : '▼'}
         </button>

@@ -23,9 +23,9 @@ const statusStyle: Record<string, string> = {
   fail: 'bg-red-900 text-red-300',
   critical: 'bg-red-800 text-red-200',
   redispatch: 'bg-amber-900 text-amber-300',
-  skip: 'bg-neutral-800 text-neutral-500',
-  skip_merged: 'bg-neutral-800 text-neutral-500',
-  pending: 'bg-neutral-800 text-neutral-600',
+  skip: 'bg-surface-raised text-fg-faint',
+  skip_merged: 'bg-surface-raised text-fg-faint',
+  pending: 'bg-surface-raised text-fg-ghost',
 }
 
 export default function GateBar({ test_result, smoke_result, e2e_result, review_result, build_result, spec_coverage_result, hasScreenshots, onScreenshots }: Props) {
@@ -39,7 +39,7 @@ export default function GateBar({ test_result, smoke_result, e2e_result, review_
   ].filter((g) => g.status)
 
   if (gates.length === 0) {
-    return <span className="text-neutral-600 text-sm">—</span>
+    return <span className="text-fg-ghost text-sm">—</span>
   }
 
   return (
@@ -57,7 +57,7 @@ export default function GateBar({ test_result, smoke_result, e2e_result, review_
         <button
           onClick={onScreenshots}
           title="View test artifacts"
-          className="ml-0.5 px-1 h-5 flex items-center justify-center rounded text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+          className="ml-0.5 px-1 h-5 flex items-center justify-center rounded text-xs text-fg-faint hover:text-fg-normal hover:bg-surface-raised transition-colors"
         >
           img
         </button>

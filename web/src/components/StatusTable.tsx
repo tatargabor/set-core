@@ -353,7 +353,7 @@ function BatchButton({ action, ids }: { action: BatchAction; ids: string[] }) {
           value={picked[k] ?? ''}
           onChange={e => setPicked(p => ({ ...p, [k]: e.target.value }))}
           aria-label={k}
-          className="bg-neutral-800 border border-neutral-700 rounded text-xs px-1 py-0.5 text-neutral-200"
+          className="bg-surface-raised border border-surface-edge rounded text-xs px-1 py-0.5 text-fg-strong"
         >
           <option value="">{k}…</option>
           {(action.choose?.[k] ?? []).map(o => <option key={o} value={o}>{o}</option>)}
@@ -588,7 +588,7 @@ export function StatusTable(
           never of "items", because the key above it names someone else's domain. Filtered,
           it is the one place that has to state what is NOT on screen. */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
-        <span className="text-neutral-500" title="rows as delivered — set-core counts them, it does not interpret them">
+        <span className="text-fg-faint" title="rows as delivered — set-core counts them, it does not interpret them">
           {filtering
             ? `${indices.length} of ${rows.length} rows shown`
             : `${rows.length} row${rows.length === 1 ? '' : 's'}`}
@@ -601,7 +601,7 @@ export function StatusTable(
         {filtering && (
           <button
             onClick={clearAll}
-            className="text-neutral-400 hover:text-neutral-200 underline decoration-dotted"
+            className="text-fg-muted hover:text-fg-strong underline decoration-dotted"
           >
             clear
           </button>
@@ -631,7 +631,7 @@ export function StatusTable(
           )}
           <button
             onClick={() => setSelected(new Set<string>())}
-            className="text-neutral-400 hover:text-neutral-200 underline decoration-dotted"
+            className="text-fg-muted hover:text-fg-strong underline decoration-dotted"
           >
             clear selection
           </button>
@@ -650,7 +650,7 @@ export function StatusTable(
           {batch
             ? <BatchButton action={batch} ids={selectedIds} />
             : (
-              <span className="text-neutral-500" data-testid="no-batch-action">
+              <span className="text-fg-faint" data-testid="no-batch-action">
                 this project offers no action on a selection
               </span>
             )}
@@ -673,7 +673,7 @@ export function StatusTable(
             onChange={e => setSearch(e.target.value)}
             placeholder="search rows…"
             aria-label="search rows"
-            className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-xs text-neutral-200 placeholder:text-neutral-600 w-56 focus:outline-none focus:border-neutral-600"
+            className="bg-surface-panel border border-surface-line rounded px-2 py-1 text-xs text-fg-strong placeholder:text-fg-ghost w-56 focus:outline-none focus:border-surface-edge-soft"
           />
           {[...facets.entries()].map(([col, counts]) => {
             const chosen = picked[col] ?? []
@@ -683,16 +683,16 @@ export function StatusTable(
                   className={`cursor-pointer list-none px-2 py-1 rounded border text-xs ${
                     chosen.length
                       ? 'border-sky-700 bg-sky-950/40 text-sky-300'
-                      : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+                      : 'border-surface-line bg-surface-panel text-fg-muted hover:text-fg-strong'
                   }`}
                 >
                   {col}{chosen.length > 0 && ` (${chosen.length})`} {'▾'}
                 </summary>
-                <div className="absolute z-20 mt-1 p-2 rounded border border-neutral-700 bg-neutral-900 shadow-xl max-h-72 overflow-auto min-w-[12rem]">
+                <div className="absolute z-20 mt-1 p-2 rounded border border-surface-edge bg-surface-panel shadow-xl max-h-72 overflow-auto min-w-[12rem]">
                   {[...counts.entries()].map(([value, count]) => (
                     <label
                       key={value}
-                      className="flex items-center gap-2 px-1 py-0.5 text-xs text-neutral-300 hover:bg-neutral-800 rounded cursor-pointer"
+                      className="flex items-center gap-2 px-1 py-0.5 text-xs text-fg-normal hover:bg-surface-raised rounded cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -701,7 +701,7 @@ export function StatusTable(
                         className="accent-sky-600"
                       />
                       <span className="truncate max-w-[16rem]" title={value}>{value}</span>
-                      <span className="ml-auto text-neutral-600 tabular-nums">{count}</span>
+                      <span className="ml-auto text-fg-ghost tabular-nums">{count}</span>
                     </label>
                   ))}
                 </div>
@@ -726,7 +726,7 @@ export function StatusTable(
       {/* overflow-x only: a wide table scrolls sideways within its own box, but the PAGE is
           the single vertical scroller — no inner max-height, so no second vertical scrollbar
           nested inside the page's. Matches how the orchestration change table renders. */}
-      <div className="overflow-x-auto rounded border border-neutral-800">
+      <div className="overflow-x-auto rounded border border-surface-line">
         <table
           // `w-auto`, not `w-full`. A table stretched to its container spreads its columns to
           // fill it, and the gaps land between the values a reader is comparing: measured on
@@ -743,7 +743,7 @@ export function StatusTable(
           className="w-auto text-sm tabular-nums"
         >
           <thead>
-            <tr className="bg-neutral-900 text-neutral-500 border-b border-neutral-800">
+            <tr className="bg-surface-panel text-fg-faint border-b border-surface-line">
               {selectable && (
                 <th className="w-6 px-2 py-2">
                   <input
@@ -792,8 +792,8 @@ export function StatusTable(
               return [
                 <tr
                   key={`r${i}`}
-                  className={`border-b border-neutral-800/50 align-top ${
-                    controls ? 'hover:bg-neutral-900/50' : ''
+                  className={`border-b border-surface-line/50 align-top ${
+                    controls ? 'hover:bg-surface-panel/50' : ''
                   }`}
                 >
                   {selectable && (
@@ -817,7 +817,7 @@ export function StatusTable(
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) }
                       }}
-                      className="px-2 py-2 text-neutral-600 hover:text-neutral-200 cursor-pointer select-none"
+                      className="px-2 py-2 text-fg-ghost hover:text-fg-strong cursor-pointer select-none"
                     >
                       {isOpen ? '▾' : '▸'}
                     </td>
@@ -861,7 +861,7 @@ export function StatusTable(
                   // The complete record, untruncated — the other half of clipping a cell.
                   // Rendered from the row AS DELIVERED, so nothing this table did to it
                   // (flattening, clipping, column order) reaches the detail.
-                  <tr key={`d${i}`} className="bg-neutral-950/60">
+                  <tr key={`d${i}`} className="bg-surface-page/60">
                     <td
                       colSpan={cols.length + (expandable ? 1 : 0) + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
                       className="px-3 py-2"
@@ -881,7 +881,7 @@ export function StatusTable(
       {(capped > 0 || showAll) && indices.length > ROW_CAP && (
         <button
           onClick={() => setShowAll(v => !v)}
-          className="text-xs text-neutral-400 hover:text-neutral-200 underline decoration-dotted"
+          className="text-xs text-fg-muted hover:text-fg-strong underline decoration-dotted"
         >
           {showAll
             ? `show fewer — first ${ROW_CAP} of ${indices.length}`

@@ -60,7 +60,7 @@ test('capture every screen', async ({ page }) => {
       const el = page.locator(`[${attr}="${t}"]`).first()
       if (!(await el.count())) continue
       await el.click().catch(() => {})
-      await settle(page)
+      if (!(await settle(page))) empty.push(`${s.id}--${t}`)
       await shot(page, `${s.id}--${t}`)
       taken.push(`${s.id}--${t}`)
     }

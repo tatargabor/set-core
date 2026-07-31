@@ -74,7 +74,7 @@ function Gap({ name, result }: { name: string; result: StatusCommandResult }) {
         )}
       </div>
       {hint && <p className="text-xs text-red-200/80">{hint}</p>}
-      {result.error && <p className="text-xs text-neutral-400">{result.error}</p>}
+      {result.error && <p className="text-xs text-fg-muted">{result.error}</p>}
     </section>
   )
 }
@@ -113,14 +113,14 @@ function Answer({
   const [showAbsent, setShowAbsent] = useState(false)
 
   return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
+    <section className="rounded-lg border border-surface-line bg-surface-panel/40 p-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium text-neutral-100">{name}</h2>
-        <div className="flex items-center gap-3 text-xs text-neutral-600">
+        <h2 className="text-sm font-medium text-fg-loud">{name}</h2>
+        <div className="flex items-center gap-3 text-xs text-fg-ghost">
           {deprecated.size > 0 && (
             <button
               onClick={() => setShowDeprecated(v => !v)}
-              className="text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+              className="text-fg-faint hover:text-fg-normal underline decoration-dotted"
               title="fields the project still emits but no longer stands behind"
             >
               {showDeprecated ? 'hide' : 'show'} {deprecated.size} deprecated
@@ -129,7 +129,7 @@ function Answer({
           {absentCaveats.length > 0 && (
             <button
               onClick={() => setShowAbsent(v => !v)}
-              className="text-neutral-500 hover:text-neutral-300 underline decoration-dotted"
+              className="text-fg-faint hover:text-fg-normal underline decoration-dotted"
               title="declared caveats whose key is not in this answer — diagnostics, not a fault"
             >
               {showAbsent ? 'hide' : 'show'} {absentCaveats.length} unmatched caveat{absentCaveats.length === 1 ? '' : 's'}
@@ -144,13 +144,13 @@ function Answer({
       {/* Once, in the header — not repeated beside every value. It qualifies the command. */}
       {starCaveat && <CaveatNote>{starCaveat}</CaveatNote>}
       {showAbsent && absentCaveats.length > 0 && (
-        <div className="text-xs text-neutral-500 space-y-0.5">
-          <div className="text-neutral-600">
+        <div className="text-xs text-fg-faint space-y-0.5">
+          <div className="text-fg-ghost">
             declared, but no field of this answer carries the key — legitimate when the value is
             currently absent, a typo otherwise. The project decides; this only shows the question.
           </div>
           {absentCaveats.map((k: string) => (
-            <div key={k} className=" text-neutral-400">{k}</div>
+            <div key={k} className=" text-fg-muted">{k}</div>
           ))}
         </div>
       )}
@@ -222,7 +222,7 @@ export default function ProjectStatus({ project }: Props) {
   )
 
   if (!project) {
-    return <div className="p-6 text-sm text-neutral-500">Select a project.</div>
+    return <div className="p-6 text-sm text-fg-faint">Select a project.</div>
   }
 
   const contract = data?.contract
@@ -259,11 +259,11 @@ export default function ProjectStatus({ project }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header bar — mirrors StatusHeader's chrome (bg, border, padding) so the two apps
           share one visual language. */}
-      <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-4 py-2 md:py-3 border-b border-surface-line bg-surface-panel/50 shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-neutral-100">{project}</h2>
+          <h2 className="text-sm font-semibold text-fg-loud">{project}</h2>
           <span
-            className="px-2 py-0.5 rounded text-sm font-medium bg-neutral-800 text-neutral-400"
+            className="px-2 py-0.5 rounded text-sm font-medium bg-surface-raised text-fg-muted"
             title="Read live from the project's own contract — not from set-core's records."
           >
             Project Status
@@ -271,9 +271,9 @@ export default function ProjectStatus({ project }: Props) {
         </div>
 
         {contract?.configured && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600">
-            <span>via <span className="text-neutral-400">{contract.source}</span></span>
-            <code className="text-neutral-500 break-all">{contract.command}</code>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-ghost">
+            <span>via <span className="text-fg-muted">{contract.source}</span></span>
+            <code className="text-fg-faint break-all">{contract.command}</code>
             {contract.timeout !== null && <span>timeout {contract.timeout}s</span>}
           </div>
         )}
@@ -291,7 +291,7 @@ export default function ProjectStatus({ project }: Props) {
       {entries.length > 0 && (
         <div
           role="tablist"
-          className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900 overflow-x-auto max-w-full scrollbar-hide shrink-0"
+          className="flex items-center gap-1 px-3 py-1 border-b border-surface-line bg-surface-panel overflow-x-auto max-w-full scrollbar-hide shrink-0"
         >
           {entries.map(([name, result]) => {
             const isActive = name === activeName
@@ -304,8 +304,8 @@ export default function ProjectStatus({ project }: Props) {
                 onClick={() => setActive(name)}
                 className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm whitespace-nowrap rounded transition-colors ${
                   isActive
-                    ? 'bg-neutral-800 text-neutral-200 font-medium'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                    ? 'bg-surface-raised text-fg-strong font-medium'
+                    : 'text-fg-faint hover:text-fg-normal hover:bg-surface-raised/50'
                 }`}
               >
                 {name}
@@ -317,7 +317,7 @@ export default function ProjectStatus({ project }: Props) {
                   <span className="ml-1.5 text-red-400" title="this command failed">●</span>
                 )}
                 {!result && (
-                  <span className="ml-1.5 text-neutral-600" title="not asked yet — expensive">○</span>
+                  <span className="ml-1.5 text-fg-ghost" title="not asked yet — expensive">○</span>
                 )}
               </button>
             )
@@ -339,15 +339,15 @@ export default function ProjectStatus({ project }: Props) {
         )}
 
         {contract && !contract.configured && (
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
-            <h2 className="text-sm font-medium text-neutral-200">
+          <div className="rounded-lg border border-surface-line bg-surface-panel/40 p-4 space-y-2">
+            <h2 className="text-sm font-medium text-fg-strong">
               This project publishes no status contract
             </h2>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-fg-faint">
               Nothing is wrong — most projects publish none. To make this page live, the
-              project drops a <code className="text-neutral-400">.set-endpoint.json</code> at
+              project drops a <code className="text-fg-muted">.set-endpoint.json</code> at
               its root declaring the command set-core may run and which questions it answers,
-              or an operator sets <code className="text-neutral-400">status_api.command</code> in
+              or an operator sets <code className="text-fg-muted">status_api.command</code> in
               its orchestration config.
             </p>
           </div>
@@ -361,9 +361,9 @@ export default function ProjectStatus({ project }: Props) {
         )}
 
         {activeName && !activeResult && (
-          <section className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
-            <h2 className="text-sm font-medium text-neutral-100">{activeName}</h2>
-            <p className="text-xs text-neutral-500">
+          <section className="rounded-lg border border-surface-line bg-surface-panel/40 p-4 space-y-3">
+            <h2 className="text-sm font-medium text-fg-loud">{activeName}</h2>
+            <p className="text-xs text-fg-faint">
               The project marks this answer as expensive, so the page does not ask for it on
               its own. Nothing is known about it yet — this is not a gap and not a zero.
             </p>
@@ -384,7 +384,7 @@ export default function ProjectStatus({ project }: Props) {
         )}
 
         {!loading && contract?.configured && entries.length === 0 && !data?.gaps?.['*'] && (
-          <div className="text-sm text-neutral-500">The project declared no questions to ask.</div>
+          <div className="text-sm text-fg-faint">The project declared no questions to ask.</div>
         )}
       </div>
     </div>

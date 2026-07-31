@@ -162,28 +162,28 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
               {/* Compact row */}
               <button
                 onClick={() => onSelect?.(c.name)}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors active:bg-neutral-800/50 ${
-                  isExpanded ? 'bg-neutral-900/70' : ''
+                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors active:bg-surface-raised/50 ${
+                  isExpanded ? 'bg-surface-panel/70' : ''
                 }`}
               >
                 <TuiStatus status={c.status} label={false} />
-                <span className="px-1.5 py-0.5 text-xs rounded bg-neutral-800/70 text-neutral-500 shrink-0" title={`Phase ${c.phase ?? 1}`}>P{c.phase ?? 1}</span>
-                <span className="text-sm text-neutral-200 truncate flex-1">{c.name}{c._archived && <span className="ml-1 text-xs text-neutral-600">(archived)</span>}</span>
-                <span className="text-sm text-neutral-500 shrink-0">{formatDuration(changeDuration(c))}</span>
+                <span className="px-1.5 py-0.5 text-xs rounded bg-surface-raised/70 text-fg-faint shrink-0" title={`Phase ${c.phase ?? 1}`}>P{c.phase ?? 1}</span>
+                <span className="text-sm text-fg-strong truncate flex-1">{c.name}{c._archived && <span className="ml-1 text-xs text-fg-ghost">(archived)</span>}</span>
+                <span className="text-sm text-fg-faint shrink-0">{formatDuration(changeDuration(c))}</span>
                 <span className="text-sm shrink-0"><TuiStatus status={c.status} /></span>
-                <span className="text-neutral-600 text-sm">{isExpanded ? '▲' : '▼'}</span>
+                <span className="text-fg-ghost text-sm">{isExpanded ? '▲' : '▼'}</span>
               </button>
 
               {/* Expanded details */}
               {isExpanded && (
-                <div className="px-3 pb-3 space-y-2 bg-neutral-900/30">
+                <div className="px-3 pb-3 space-y-2 bg-surface-panel/30">
                   {/* Tokens + model */}
-                  <div className="flex gap-4 text-sm text-neutral-400">
+                  <div className="flex gap-4 text-sm text-fg-muted">
                     <span>In: {formatTokens(c.input_tokens)}</span>
                     <span>Out: {formatTokens(c.output_tokens)}</span>
                     {c.context_tokens_end != null && (
                       <span
-                        className={c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-400'}
+                        className={c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-fg-muted'}
                         title={c.context_breakdown_start
                           ? `Base: ${Math.round(c.context_breakdown_start.base_context / 1000)}K | Memory: ${Math.round(c.context_breakdown_start.memory_injection / 1000)}K | Prompt: ${Math.round(c.context_breakdown_start.prompt_overhead / 1000)}K | Tools: ${Math.round(c.context_breakdown_start.tool_output / 1000)}K`
                           : undefined}
@@ -194,7 +194,7 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
                       </span>
                     )}
                     {c.session_count && <span>Sessions: {c.session_count}</span>}
-                    {c.model && <span className="text-neutral-500">{displayModel(c.model)}</span>}
+                    {c.model && <span className="text-fg-faint">{displayModel(c.model)}</span>}
                   </div>
 
                   {/* Gates */}
@@ -219,7 +219,7 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
 
                   {/* Gate detail */}
                   {isGateExpanded && hasGates && (
-                    <div className="rounded border border-neutral-800/50 bg-neutral-950/50 p-2">
+                    <div className="rounded border border-surface-line/50 bg-surface-page/50 p-2">
                       <ChangeTimeline change={c} />
                       <GateDetail change={c} />
                     </div>
@@ -227,7 +227,7 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
 
                   {/* Screenshots */}
                   {screenshotChange === c.name && (
-                    <div className="rounded border border-neutral-800/50 bg-neutral-950/50 p-2">
+                    <div className="rounded border border-surface-line/50 bg-surface-page/50 p-2">
                       <ScreenshotGallery
                         project={project}
                         changeName={c.name}
@@ -251,7 +251,7 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
     <>
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-sm text-neutral-500 border-b border-neutral-800">
+        <tr className="text-sm text-fg-faint border-b border-surface-line">
           <th className="text-center px-2 py-2 font-medium" title="Phase">Ph</th>
           <th className="text-left px-4 py-2 font-medium">Name</th>
           <th className="text-left px-2 py-2 font-medium">Status</th>
@@ -278,29 +278,29 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
             <tr
               ref={(el) => { rowRefs.current.set(c.name, el) }}
               onClick={clickable && onSelect ? () => onSelect(c.name) : undefined}
-              className={`border-b ${isGateExpanded ? 'border-b-0' : 'border-b'} border-neutral-800/50 transition-colors ${
-                clickable ? 'cursor-pointer hover:bg-neutral-900/50' : ''
-              } ${isSelected ? 'bg-neutral-900/70 border-l-2 border-l-blue-500' : ''}`}
+              className={`border-b ${isGateExpanded ? 'border-b-0' : 'border-b'} border-surface-line/50 transition-colors ${
+                clickable ? 'cursor-pointer hover:bg-surface-panel/50' : ''
+              } ${isSelected ? 'bg-surface-panel/70 border-l-2 border-l-blue-500' : ''}`}
             >
-              <td className="px-2 py-2 text-center text-xs text-neutral-500" title={`Phase ${c.phase ?? 1}`}>
+              <td className="px-2 py-2 text-center text-xs text-fg-faint" title={`Phase ${c.phase ?? 1}`}>
                 {c.phase ?? 1}
               </td>
-              <td className="px-4 py-2 text-neutral-200">
+              <td className="px-4 py-2 text-fg-strong">
                 {c.name}
                 {c._archived && (
-                  <span className="ml-2 text-xs text-neutral-600" title="From an earlier plan cycle — kept for history">(archived)</span>
+                  <span className="ml-2 text-xs text-fg-ghost" title="From an earlier plan cycle — kept for history">(archived)</span>
                 )}
               </td>
               <td className={`px-2 py-2 font-medium ${tuiStatusColor(c.status)}`}>
                 {c.status}
               </td>
-              <td className="px-2 py-2 text-center text-neutral-400">{c.session_count ?? '—'}</td>
-              <td className="px-2 py-2 text-right text-neutral-400">{formatDuration(changeDuration(c))}</td>
-              <td className="px-2 py-2 text-right text-neutral-400 text-sm">
+              <td className="px-2 py-2 text-center text-fg-muted">{c.session_count ?? '—'}</td>
+              <td className="px-2 py-2 text-right text-fg-muted">{formatDuration(changeDuration(c))}</td>
+              <td className="px-2 py-2 text-right text-fg-muted text-sm">
                 {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
                 {c.context_tokens_end != null && (
                   <span
-                    className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-neutral-500'}`}
+                    className={`ml-1 ${c.context_tokens_end / 200_000 >= 0.8 ? 'text-orange-400' : 'text-fg-faint'}`}
                     title={c.context_breakdown_start
                       ? `Base: ${Math.round(c.context_breakdown_start.base_context / 1000)}K | Memory: ${Math.round(c.context_breakdown_start.memory_injection / 1000)}K | Prompt: ${Math.round(c.context_breakdown_start.prompt_overhead / 1000)}K | Tools: ${Math.round(c.context_breakdown_start.tool_output / 1000)}K`
                       : undefined}
@@ -349,11 +349,11 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
                           setScreenshotChange(screenshotChange === c.name ? null : c.name)
                           refreshArtifactCounts(c.name)
                         }}
-                        className="px-2 py-0.5 text-xs rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors"
+                        className="px-2 py-0.5 text-xs rounded bg-surface-raised text-fg-muted hover:bg-surface-strong hover:text-fg-strong transition-colors"
                         title={`${attempts} attempt${attempts === 1 ? '' : 's'} · ${files} file${files === 1 ? '' : 's'} — click to open gallery`}
                       >
-                        <span className="text-neutral-500">{attempts}</span>
-                        <span className="text-neutral-600 mx-0.5">/</span>
+                        <span className="text-fg-faint">{attempts}</span>
+                        <span className="text-fg-ghost mx-0.5">/</span>
                         <span>{files}</span>
                       </button>
                     )
@@ -370,19 +370,19 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
                           setScreenshotChange(screenshotChange === c.name ? null : c.name)
                           refreshArtifactCounts(c.name)
                         }}
-                        className="px-2 py-0.5 text-xs rounded bg-neutral-800/50 text-neutral-600 hover:bg-neutral-700 hover:text-neutral-300 transition-colors"
+                        className="px-2 py-0.5 text-xs rounded bg-surface-raised/50 text-fg-ghost hover:bg-surface-strong hover:text-fg-normal transition-colors"
                         title="Open artifact gallery (scans worktree + archived attempts)"
                       >
                         scan
                       </button>
                     )
                   }
-                  return <span className="text-neutral-700">—</span>
+                  return <span className="text-fg-dim">—</span>
                 })()}
               </td>
             </tr>
             {isGateExpanded && hasGates && (
-              <tr className="border-b border-neutral-800/50 bg-neutral-950/50">
+              <tr className="border-b border-surface-line/50 bg-surface-page/50">
                 <td colSpan={9}>
                   <ChangeTimeline change={c} />
                   <GateDetail change={c} />
@@ -403,15 +403,15 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
         onClick={() => setScreenshotChange(null)}
       >
         <div
-          className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl w-[90vw] max-w-5xl flex flex-col"
+          className="bg-surface-panel border border-surface-edge rounded-lg shadow-2xl w-[90vw] max-w-5xl flex flex-col"
           style={{ maxHeight: '90vh' }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 flex-shrink-0">
-            <span className="text-sm text-neutral-300 font-medium">Test Artifacts: {screenshotChange}</span>
+          <div className="flex items-center justify-between px-4 py-2 border-b border-surface-line flex-shrink-0">
+            <span className="text-sm text-fg-normal font-medium">Test Artifacts: {screenshotChange}</span>
             <button
               onClick={() => setScreenshotChange(null)}
-              className="text-neutral-500 hover:text-neutral-300 text-lg leading-none"
+              className="text-fg-faint hover:text-fg-normal text-lg leading-none"
               title="Close (Esc)"
             >×</button>
           </div>

@@ -59,19 +59,19 @@ function ProjectLayout() {
 
   return (
     <SelectedLineageProvider project={project}>
-      <div className="flex h-screen bg-neutral-950 text-neutral-200">
+      <div className="flex h-screen bg-surface-page text-fg-strong">
         {/* Mobile top bar */}
-        <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-neutral-950 border-b border-neutral-800 md:hidden">
+        <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-surface-page border-b border-surface-line md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 -ml-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+            className="p-2 -ml-1 rounded text-fg-muted hover:text-fg-strong hover:bg-surface-raised"
             aria-label="Open menu"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 5h14M3 10h14M3 15h14" />
             </svg>
           </button>
-          <span className="text-sm font-semibold text-neutral-100 truncate">
+          <span className="text-sm font-semibold text-fg-loud truncate">
             {project || 'SET'}
           </span>
           <TuiStatus status={orchStatus} label={false} />
@@ -104,18 +104,18 @@ function GlobalLayout() {
   }, [location.pathname])
 
   return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-200">
-      <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-neutral-950 border-b border-neutral-800 md:hidden">
+    <div className="flex h-screen bg-surface-page text-fg-strong">
+      <div className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-2 bg-surface-page border-b border-surface-line md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="p-2 -ml-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+          className="p-2 -ml-1 rounded text-fg-muted hover:text-fg-strong hover:bg-surface-raised"
           aria-label="Open menu"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 5h14M3 10h14M3 15h14" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-neutral-100 truncate">SET</span>
+        <span className="text-sm font-semibold text-fg-loud truncate">SET</span>
       </div>
 
       <UnifiedSidebar

@@ -105,7 +105,7 @@ export default function ShutdownProgress({ project }: Props) {
           {totalDuration != null ? 'Shutdown complete' : 'Shutting down...'}
         </span>
         {totalDuration != null && (
-          <span className="text-neutral-500 text-sm">({(totalDuration / 1000).toFixed(1)}s)</span>
+          <span className="text-fg-faint text-sm">({(totalDuration / 1000).toFixed(1)}s)</span>
         )}
         {stale && !totalDuration && (
           <span className="text-amber-400 text-sm">Shutdown may have stalled</span>
@@ -119,8 +119,8 @@ export default function ShutdownProgress({ project }: Props) {
               {c.status === 'stopped' && <span className="text-green-400">{'\u2713'}</span>}
               {c.status === 'timed_out' && <span className="text-red-400">{'\u26A0'}</span>}
             </span>
-            <span className="text-neutral-300 flex-1">{c.name}</span>
-            <span className="text-neutral-500">
+            <span className="text-fg-normal flex-1">{c.name}</span>
+            <span className="text-fg-faint">
               {c.status === 'stopping' ? 'stopping...' :
                c.status === 'timed_out' ? 'timed out' :
                c.duration_ms != null ? `stopped (${(c.duration_ms / 1000).toFixed(1)}s)` : 'stopped'}

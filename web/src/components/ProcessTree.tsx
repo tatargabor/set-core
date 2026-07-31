@@ -40,10 +40,10 @@ function ProcessRow({ node, depth, project, onRefresh }: {
 
   return (
     <>
-      <div className="flex items-center gap-2 py-1.5 px-2 hover:bg-neutral-800/30 rounded group" style={{ paddingLeft: `${8 + depth * 20}px` }}>
+      <div className="flex items-center gap-2 py-1.5 px-2 hover:bg-surface-raised/30 rounded group" style={{ paddingLeft: `${8 + depth * 20}px` }}>
         {/* Tree connector */}
         {depth > 0 && (
-          <span className="text-neutral-700 text-xs">└─</span>
+          <span className="text-fg-dim text-xs">└─</span>
         )}
         {/* Status dot — amber for orphan to flag re-parented processes
             that lost their supervisor (set-loop / playwright leftovers). */}
@@ -59,15 +59,15 @@ function ProcessRow({ node, depth, project, onRefresh }: {
           </span>
         )}
         {/* PID */}
-        <span className="text-xs text-neutral-500 shrink-0">{node.pid}</span>
+        <span className="text-xs text-fg-faint shrink-0">{node.pid}</span>
         {/* Command */}
-        <span className="text-xs text-neutral-400 truncate flex-1" title={node.command}>
+        <span className="text-xs text-fg-muted truncate flex-1" title={node.command}>
           {cmd}
         </span>
         {/* Stats */}
-        <span className="text-xs text-neutral-600 shrink-0">{formatUptime(node.uptime_seconds)}</span>
-        <span className="text-xs text-neutral-600 shrink-0 w-12 text-right">{node.cpu_percent.toFixed(1)}%</span>
-        <span className="text-xs text-neutral-600 shrink-0 w-14 text-right">{node.memory_mb}MB</span>
+        <span className="text-xs text-fg-ghost shrink-0">{formatUptime(node.uptime_seconds)}</span>
+        <span className="text-xs text-fg-ghost shrink-0 w-12 text-right">{node.cpu_percent.toFixed(1)}%</span>
+        <span className="text-xs text-fg-ghost shrink-0 w-14 text-right">{node.memory_mb}MB</span>
         {/* Stop button */}
         <button
           onClick={handleStop}
@@ -129,12 +129,12 @@ export default function ProcessTree({ project }: Props) {
   const total = countNodes(processes)
 
   if (loading && processes.length === 0) {
-    return <div className="text-xs text-neutral-500 py-2">Loading processes...</div>
+    return <div className="text-xs text-fg-faint py-2">Loading processes...</div>
   }
 
   if (total === 0) {
     return (
-      <div className="text-xs text-neutral-600 py-2">No processes running</div>
+      <div className="text-xs text-fg-ghost py-2">No processes running</div>
     )
   }
 
@@ -142,7 +142,7 @@ export default function ProcessTree({ project }: Props) {
     <div className="space-y-2">
       {/* Header with Stop All */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-neutral-500">{total} process{total !== 1 ? 'es' : ''}</span>
+        <span className="text-xs text-fg-faint">{total} process{total !== 1 ? 'es' : ''}</span>
         <button
           onClick={handleStopAll}
           disabled={stoppingAll}
@@ -157,7 +157,7 @@ export default function ProcessTree({ project }: Props) {
       </div>
 
       {/* Process tree */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900/30 divide-y divide-neutral-800/30">
+      <div className="rounded-lg border border-surface-line bg-surface-panel/30 divide-y divide-neutral-800/30">
         {processes.map(node => (
           <ProcessRow key={node.pid} node={node} depth={0} project={project} onRefresh={load} />
         ))}

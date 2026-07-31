@@ -32,20 +32,20 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
   const durationS = result.duration_ms ? Math.round(result.duration_ms / 1000) : '?'
 
   return (
-    <div className="border border-neutral-800 rounded mb-1">
+    <div className="border border-surface-line rounded mb-1">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-800/50"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-raised/50"
       >
-        <span className="text-neutral-500">{open ? '▾' : '▸'}</span>
-        <span className="text-neutral-300">Cycle {result.cycle}</span>
+        <span className="text-fg-faint">{open ? '▾' : '▸'}</span>
+        <span className="text-fg-normal">Cycle {result.cycle}</span>
         <Badge result={result} />
-        <span className="text-neutral-600 ml-auto">{displayModel(result.model)} | {durationS}s</span>
+        <span className="text-fg-ghost ml-auto">{displayModel(result.model)} | {durationS}s</span>
       </button>
       {open && (
         <div className="px-3 pb-2">
           {result.summary && (
-            <p className="text-sm text-neutral-400 italic mb-1">{result.summary}</p>
+            <p className="text-sm text-fg-muted italic mb-1">{result.summary}</p>
           )}
           {result.audit_result === 'clean' && (
             <p className="text-sm text-green-400 font-semibold">All spec sections covered</p>
@@ -56,7 +56,7 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
           {result.audit_result === 'gaps_found' && result.gaps && result.gaps.length > 0 && (
             <table className="w-full text-sm border-collapse mt-1">
               <thead>
-                <tr className="text-neutral-500 border-b border-neutral-800">
+                <tr className="text-fg-faint border-b border-surface-line">
                   <th className="text-left py-1 pr-2">ID</th>
                   <th className="text-left py-1 pr-2">Severity</th>
                   <th className="text-left py-1 pr-2">Description</th>
@@ -68,16 +68,16 @@ function CycleEntry({ result, defaultOpen }: { result: AuditResult; defaultOpen:
                 {result.gaps.map((gap) => {
                   const sev = severityColor[gap.severity] ?? severityColor.minor
                   return (
-                    <tr key={gap.id} className={`${sev.bg} border-b border-neutral-800/50`}>
-                      <td className="py-1 pr-2 text-neutral-300">{gap.id}</td>
+                    <tr key={gap.id} className={`${sev.bg} border-b border-surface-line/50`}>
+                      <td className="py-1 pr-2 text-fg-normal">{gap.id}</td>
                       <td className="py-1 pr-2">
                         <span className={`px-1.5 py-0.5 rounded text-sm font-medium ${sev.chip}`}>
                           {gap.severity}
                         </span>
                       </td>
                       <td className={`py-1 pr-2 ${sev.text}`}>{gap.description}</td>
-                      <td className="py-1 pr-2 text-neutral-500">{gap.spec_reference ?? '-'}</td>
-                      <td className="py-1 text-neutral-400">{gap.suggested_scope ?? '-'}</td>
+                      <td className="py-1 pr-2 text-fg-faint">{gap.spec_reference ?? '-'}</td>
+                      <td className="py-1 text-fg-muted">{gap.suggested_scope ?? '-'}</td>
                     </tr>
                   )
                 })}

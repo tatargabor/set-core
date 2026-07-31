@@ -197,7 +197,7 @@ export default function TokenChart({ changes, project }: Props) {
 
   const SortHeader = ({ k, label, align }: { k: SortKey; label: string; align?: string }) => (
     <th
-      className={`px-3 py-2 text-xs font-medium text-neutral-400 cursor-pointer hover:text-neutral-200 select-none ${align === 'right' ? 'text-right' : 'text-left'}`}
+      className={`px-3 py-2 text-xs font-medium text-fg-muted cursor-pointer hover:text-fg-strong select-none ${align === 'right' ? 'text-right' : 'text-left'}`}
       onClick={() => handleSort(k)}
     >
       {label} {sortKey === k ? (sortAsc ? '\u25B2' : '\u25BC') : ''}
@@ -207,25 +207,25 @@ export default function TokenChart({ changes, project }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Summary header */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-neutral-800/50 shrink-0 flex-wrap">
-        <span className="text-sm font-medium text-neutral-300">
+      <div className="flex items-center gap-4 px-4 py-2 border-b border-surface-line/50 shrink-0 flex-wrap">
+        <span className="text-sm font-medium text-fg-normal">
           Total: {formatK(totals.total)}
         </span>
         <div className="flex items-center gap-3 text-sm">
           <span className="flex items-center gap-1">
             <span className="text-blue-400">{'\u2588'}</span>
-            <span className="text-neutral-400">Input {formatK(totals.input)}</span>
+            <span className="text-fg-muted">Input {formatK(totals.input)}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="text-green-400">{'\u2588'}</span>
-            <span className="text-neutral-400">Output {formatK(totals.output)}</span>
+            <span className="text-fg-muted">Output {formatK(totals.output)}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="text-purple-400">{'\u2588'}</span>
-            <span className="text-neutral-400">Cache {formatK(totals.cache)}</span>
+            <span className="text-fg-muted">Cache {formatK(totals.cache)}</span>
           </span>
         </div>
-        <span className="text-sm text-neutral-600 ml-auto">
+        <span className="text-sm text-fg-ghost ml-auto">
           {data.length} change{data.length !== 1 ? 's' : ''} with usage
         </span>
       </div>
@@ -279,14 +279,14 @@ export default function TokenChart({ changes, project }: Props) {
 
         {/* LLM Call Log Table */}
         {calls.length > 0 && (
-          <div className="border-t border-neutral-800/50 mt-1">
+          <div className="border-t border-surface-line/50 mt-1">
             <div className="px-4 py-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-neutral-300">LLM Call Log</span>
-              <span className="text-xs text-neutral-600">{calls.length} call{calls.length !== 1 ? 's' : ''}</span>
+              <span className="text-sm font-medium text-fg-normal">LLM Call Log</span>
+              <span className="text-xs text-fg-ghost">{calls.length} call{calls.length !== 1 ? 's' : ''}</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="bg-neutral-900/50 sticky top-0">
+                <thead className="bg-surface-panel/50 sticky top-0">
                   <tr>
                     <th className="px-1 py-1.5 w-4"></th>
                     <SortHeader k="timestamp" label="Time" />
@@ -324,29 +324,29 @@ export default function TokenChart({ changes, project }: Props) {
                     return (
                       <Fragment key={i}>
                       <tr
-                        className={`border-t border-neutral-800/30 hover:bg-neutral-800/30 ${call.active ? 'bg-green-950/30' : ''} ${hasIters ? 'cursor-pointer' : ''}`}
+                        className={`border-t border-surface-line/30 hover:bg-surface-raised/30 ${call.active ? 'bg-green-950/30' : ''} ${hasIters ? 'cursor-pointer' : ''}`}
                         onClick={hasIters ? toggle : undefined}
                       >
-                        <td className="px-1 py-1.5 text-neutral-500 text-center select-none w-4">
+                        <td className="px-1 py-1.5 text-fg-faint text-center select-none w-4">
                           {hasIters ? (isExpanded ? '▼' : '▶') : ''}
                         </td>
-                        <td className="px-3 py-1.5 text-neutral-500 whitespace-nowrap">{formatTime(call.timestamp)}</td>
-                        <td className="px-3 py-1.5 text-neutral-400">{getPhase(call.purpose_raw)}</td>
-                        <td className="px-3 py-1.5 text-neutral-300">
+                        <td className="px-3 py-1.5 text-fg-faint whitespace-nowrap">{formatTime(call.timestamp)}</td>
+                        <td className="px-3 py-1.5 text-fg-muted">{getPhase(call.purpose_raw)}</td>
+                        <td className="px-3 py-1.5 text-fg-normal">
                           {call.purpose}
                           {hasIters && (
-                            <span className="ml-1.5 text-neutral-600 text-xs">({iters.length} iter{iters.length !== 1 ? 's' : ''})</span>
+                            <span className="ml-1.5 text-fg-ghost text-xs">({iters.length} iter{iters.length !== 1 ? 's' : ''})</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           <span style={{ color: modelColor }} className="font-medium">{modelLabel}</span>
                         </td>
-                        <td className="px-3 py-1.5 text-neutral-400 max-w-[160px] truncate">{call.change || '-'}</td>
-                        <td className="px-3 py-1.5 text-neutral-600 text-xs">{call.source === 'orchestration' ? 'event' : 'session'}</td>
+                        <td className="px-3 py-1.5 text-fg-muted max-w-[160px] truncate">{call.change || '-'}</td>
+                        <td className="px-3 py-1.5 text-fg-ghost text-xs">{call.source === 'orchestration' ? 'event' : 'session'}</td>
                         <td className="px-3 py-1.5 text-right text-blue-400/80">{call.input_tokens ? formatK(call.input_tokens) : '-'}</td>
                         <td className="px-3 py-1.5 text-right text-green-400/80">{call.output_tokens ? formatK(call.output_tokens) : '-'}</td>
                         <td className="px-3 py-1.5 text-right text-purple-400/80">{call.cache_tokens ? formatK(call.cache_tokens) : '-'}</td>
-                        <td className="px-3 py-1.5 text-right text-neutral-500">{formatDuration(call.duration_ms)}</td>
+                        <td className="px-3 py-1.5 text-right text-fg-faint">{formatDuration(call.duration_ms)}</td>
                       </tr>
                       {isExpanded && iters.map((it) => {
                         const itEffectiveInput = it.input_tokens + it.cache_read_tokens + it.cache_create_tokens
@@ -354,10 +354,10 @@ export default function TokenChart({ changes, project }: Props) {
                           ? Math.max(0, (Date.parse(it.ended) - Date.parse(it.started)))
                           : 0
                         return (
-                          <tr key={`${i}-iter-${it.n}`} className="border-t border-neutral-900/50 bg-neutral-950/40 text-neutral-400">
-                            <td className="px-1 py-1 text-neutral-700 text-center">↳</td>
-                            <td className="px-3 py-1 whitespace-nowrap text-neutral-600">{it.started ? formatTime(it.started) : ''}</td>
-                            <td className="px-3 py-1 text-neutral-600">iter {it.n}</td>
+                          <tr key={`${i}-iter-${it.n}`} className="border-t border-surface-panel/50 bg-surface-page/40 text-fg-muted">
+                            <td className="px-1 py-1 text-fg-dim text-center">↳</td>
+                            <td className="px-3 py-1 whitespace-nowrap text-fg-ghost">{it.started ? formatTime(it.started) : ''}</td>
+                            <td className="px-3 py-1 text-fg-ghost">iter {it.n}</td>
                             <td className="px-3 py-1 whitespace-nowrap">
                               {it.resumed ? (
                                 <span className="text-green-500">● resume</span>
@@ -365,16 +365,16 @@ export default function TokenChart({ changes, project }: Props) {
                                 <span className="text-orange-500">● fresh</span>
                               )}
                               {it.session_id && (
-                                <span className="ml-2 text-neutral-700 text-xs">{it.session_id.slice(0, 8)}</span>
+                                <span className="ml-2 text-fg-dim text-xs">{it.session_id.slice(0, 8)}</span>
                               )}
                             </td>
                             <td className="px-3 py-1"></td>
                             <td className="px-3 py-1"></td>
-                            <td className="px-3 py-1 text-neutral-700 text-xs">{it.no_op ? 'no-op' : it.ff_exhausted ? 'ff-exhausted' : ''}</td>
+                            <td className="px-3 py-1 text-fg-dim text-xs">{it.no_op ? 'no-op' : it.ff_exhausted ? 'ff-exhausted' : ''}</td>
                             <td className="px-3 py-1 text-right text-blue-400/60">{itEffectiveInput ? formatK(itEffectiveInput) : '-'}</td>
                             <td className="px-3 py-1 text-right text-green-400/60">{it.output_tokens ? formatK(it.output_tokens) : '-'}</td>
                             <td className="px-3 py-1 text-right text-purple-400/60">{it.cache_read_tokens ? formatK(it.cache_read_tokens) : '-'}</td>
-                            <td className="px-3 py-1 text-right text-neutral-600">{itDuration ? formatDuration(itDuration) : '-'}</td>
+                            <td className="px-3 py-1 text-right text-fg-ghost">{itDuration ? formatDuration(itDuration) : '-'}</td>
                           </tr>
                         )
                       })}
@@ -382,14 +382,14 @@ export default function TokenChart({ changes, project }: Props) {
                     )
                   })}
                   {/* Summary row */}
-                  <tr className="border-t-2 border-neutral-700 bg-neutral-900/70 font-medium">
+                  <tr className="border-t-2 border-surface-edge bg-surface-panel/70 font-medium">
                     <td className="px-1 py-2"></td>
-                    <td className="px-3 py-2 text-neutral-400" colSpan={5}>Total ({calls.length} calls)</td>
-                    <td className="px-3 py-2 text-neutral-500 text-xs"></td>
+                    <td className="px-3 py-2 text-fg-muted" colSpan={5}>Total ({calls.length} calls)</td>
+                    <td className="px-3 py-2 text-fg-faint text-xs"></td>
                     <td className="px-3 py-2 text-right text-blue-400">{formatK(calls.reduce((s, c) => s + c.input_tokens, 0))}</td>
                     <td className="px-3 py-2 text-right text-green-400">{formatK(calls.reduce((s, c) => s + c.output_tokens, 0))}</td>
                     <td className="px-3 py-2 text-right text-purple-400">{formatK(calls.reduce((s, c) => s + c.cache_tokens, 0))}</td>
-                    <td className="px-3 py-2 text-right text-neutral-400">{formatDuration(calls.reduce((s, c) => s + c.duration_ms, 0))}</td>
+                    <td className="px-3 py-2 text-right text-fg-muted">{formatDuration(calls.reduce((s, c) => s + c.duration_ms, 0))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -398,7 +398,7 @@ export default function TokenChart({ changes, project }: Props) {
         )}
 
         {data.length === 0 && calls.length === 0 && (
-          <div className="p-4 text-sm text-neutral-500">No token usage data</div>
+          <div className="p-4 text-sm text-fg-faint">No token usage data</div>
         )}
       </div>
     </div>

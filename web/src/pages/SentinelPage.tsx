@@ -39,22 +39,22 @@ function RunSummary({ state }: { state: StateData | null }) {
           state.status === 'running' ? 'bg-green-900/50 text-green-300' :
           state.status === 'done' ? 'bg-blue-900/50 text-blue-300' :
           state.status === 'stopped' ? 'bg-amber-900/50 text-amber-300' :
-          'bg-neutral-800 text-neutral-400'
+          'bg-surface-raised text-fg-muted'
         }`}>
           {state.status}
         </span>
-        <span className="text-xs text-neutral-400">{changes.length} changes</span>
+        <span className="text-xs text-fg-muted">{changes.length} changes</span>
       </div>
 
       {/* Progress bar */}
       <div className="space-y-1">
-        <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-neutral-800">
+        <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-surface-raised">
           {merged > 0 && <div className="bg-green-500" style={{ width: `${(merged / changes.length) * 100}%` }} />}
           {done > 0 && <div className="bg-blue-500" style={{ width: `${(done / changes.length) * 100}%` }} />}
           {running > 0 && <div className="bg-yellow-500 animate-pulse" style={{ width: `${(running / changes.length) * 100}%` }} />}
           {failed > 0 && <div className="bg-red-500" style={{ width: `${(failed / changes.length) * 100}%` }} />}
         </div>
-        <div className="flex gap-4 text-xs text-neutral-500">
+        <div className="flex gap-4 text-xs text-fg-faint">
           {merged > 0 && <span className="text-green-400">{merged} merged</span>}
           {done > 0 && <span className="text-blue-400">{done} done</span>}
           {running > 0 && <span className="text-yellow-400">{running} running</span>}
@@ -65,8 +65,8 @@ function RunSummary({ state }: { state: StateData | null }) {
 
       {/* Token usage */}
       {(totalIn > 0 || totalOut > 0) && (
-        <div className="text-xs text-neutral-500">
-          Tokens: <span className="text-neutral-300">{formatTokens(totalIn)}</span> in / <span className="text-neutral-300">{formatTokens(totalOut)}</span> out
+        <div className="text-xs text-fg-faint">
+          Tokens: <span className="text-fg-normal">{formatTokens(totalIn)}</span> in / <span className="text-fg-normal">{formatTokens(totalOut)}</span> out
         </div>
       )}
 
@@ -78,18 +78,18 @@ function RunSummary({ state }: { state: StateData | null }) {
               c.status === 'merged' ? 'bg-green-400' :
               c.status === 'done' ? 'bg-blue-400' :
               c.status === 'running' ? 'bg-yellow-400 animate-pulse' :
-              c.status === 'pending' ? 'bg-neutral-600' :
+              c.status === 'pending' ? 'bg-surface-edge-soft' :
               'bg-red-400'
             }`} />
-            <span className="text-neutral-300 truncate flex-1">{c.name}</span>
+            <span className="text-fg-normal truncate flex-1">{c.name}</span>
             <span className={`shrink-0 ${
               c.status === 'merged' ? 'text-green-500' :
               c.status === 'running' ? 'text-yellow-500' :
-              c.status === 'pending' ? 'text-neutral-600' :
-              'text-neutral-500'
+              c.status === 'pending' ? 'text-fg-ghost' :
+              'text-fg-faint'
             }`}>{c.status}</span>
             {(c.input_tokens ?? 0) > 0 && (
-              <span className="text-neutral-600 shrink-0">{formatTokens(c.input_tokens!)}</span>
+              <span className="text-fg-ghost shrink-0">{formatTokens(c.input_tokens!)}</span>
             )}
           </div>
         ))}
@@ -115,7 +115,7 @@ function LogViewer({ lines }: { lines: string[] }) {
   }
 
   if (lines.length === 0) {
-    return <div className="text-xs text-neutral-600 p-3">No log data</div>
+    return <div className="text-xs text-fg-ghost p-3">No log data</div>
   }
 
   return (
@@ -126,7 +126,7 @@ function LogViewer({ lines }: { lines: string[] }) {
           line.includes('WARNING') || line.includes('WARN') ? 'text-amber-400' :
           line.includes('merged') || line.includes('PASS') || line.includes('SUCCESS') ? 'text-green-400' :
           line.includes('[sentinel]') ? 'text-cyan-400' :
-          'text-neutral-400'
+          'text-fg-muted'
         }`}>
           {line}
         </div>
@@ -191,17 +191,17 @@ export default function SentinelPage({ project }: Props) {
   }, [project])
 
   if (!project) {
-    return <div className="flex items-center justify-center h-full text-neutral-500">Select a project</div>
+    return <div className="flex items-center justify-center h-full text-fg-faint">Select a project</div>
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-neutral-500">Loading...</div>
+    return <div className="p-6 text-sm text-fg-faint">Loading...</div>
   }
 
   return (
     <div className="flex flex-col h-full">
       {/* Sentinel control */}
-      <div className="p-6 border-b border-neutral-800">
+      <div className="p-6 border-b border-surface-line">
         <SentinelControl
           project={project}
           alive={status?.sentinel.alive ?? false}
@@ -213,21 +213,21 @@ export default function SentinelPage({ project }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 px-6 py-2 border-b border-neutral-800 bg-neutral-900 shrink-0">
+      <div className="flex items-center gap-1 px-6 py-2 border-b border-surface-line bg-surface-panel shrink-0">
         {(['overview', 'log'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-1 text-sm rounded transition-colors capitalize ${
               activeTab === tab
-                ? 'bg-neutral-800 text-neutral-200 font-medium'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                ? 'bg-surface-raised text-fg-strong font-medium'
+                : 'text-fg-faint hover:text-fg-normal hover:bg-surface-raised/50'
             }`}
           >
             {tab}
           </button>
         ))}
-        <span className="text-xs text-neutral-600 ml-auto">{logLines.length} log lines</span>
+        <span className="text-xs text-fg-ghost ml-auto">{logLines.length} log lines</span>
       </div>
 
       {/* Content */}

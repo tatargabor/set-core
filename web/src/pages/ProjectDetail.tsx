@@ -11,7 +11,7 @@ export default function ProjectDetail() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="text-sm text-neutral-500">Loading project...</div>
+        <div className="text-sm text-fg-faint">Loading project...</div>
       </div>
     )
   }
@@ -32,32 +32,32 @@ export default function ProjectDetail() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link to="/manager" className="text-neutral-500 hover:text-neutral-300 text-sm">← Back</Link>
-          <h1 className="text-lg font-semibold text-neutral-100">{project.name}</h1>
+          <Link to="/manager" className="text-fg-faint hover:text-fg-normal text-sm">← Back</Link>
+          <h1 className="text-lg font-semibold text-fg-loud">{project.name}</h1>
           <ModeBadge mode={project.mode} />
         </div>
       </div>
 
       {/* Status overview */}
-      <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-900/50 space-y-2">
-        <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</h2>
+      <div className="border border-surface-line rounded-lg p-4 bg-surface-panel/50 space-y-2">
+        <h2 className="text-xs font-medium text-fg-faint uppercase tracking-wide">Status</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-neutral-500">Orchestrator: </span>
-            <span className={project.orchestrator?.alive ? 'text-green-400' : 'text-neutral-400'}>
+            <span className="text-fg-faint">Orchestrator: </span>
+            <span className={project.orchestrator?.alive ? 'text-green-400' : 'text-fg-muted'}>
               {project.orchestrator?.alive ? `running (PID ${project.orchestrator?.pid})` : 'idle'}
             </span>
           </div>
           <div>
-            <span className="text-neutral-500">Path: </span>
-            <span className="text-neutral-400 text-xs">{project.path}</span>
+            <span className="text-fg-faint">Path: </span>
+            <span className="text-fg-muted text-xs">{project.path}</span>
           </div>
         </div>
       </div>
 
       {/* Sentinel Control */}
-      <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-900/50">
-        <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-3">Sentinel Control</h2>
+      <div className="border border-surface-line rounded-lg p-4 bg-surface-panel/50">
+        <h2 className="text-xs font-medium text-fg-faint uppercase tracking-wide mb-3">Sentinel Control</h2>
         <SentinelControl
           project={project.name}
           alive={project.sentinel?.alive ?? false}
@@ -69,10 +69,10 @@ export default function ProjectDetail() {
       </div>
 
       {/* Issues summary */}
-      <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-900/50">
+      <div className="border border-surface-line rounded-lg p-4 bg-surface-panel/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Issues</h2>
+            <h2 className="text-xs font-medium text-fg-faint uppercase tracking-wide">Issues</h2>
             {project.issue_stats && <IssueCountBadge stats={project.issue_stats} />}
           </div>
           <Link

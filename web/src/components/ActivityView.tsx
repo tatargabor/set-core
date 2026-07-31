@@ -383,17 +383,17 @@ export function GanttTimeline({
       {/* Tooltip — terminal-style ASCII border */}
       {tooltip && (
         <div
-          className="fixed z-50 bg-black border border-neutral-600 px-3 py-2 text-xs pointer-events-none shadow-lg"
+          className="fixed z-50 bg-black border border-surface-edge-soft px-3 py-2 text-xs pointer-events-none shadow-lg"
           style={{
             left: tooltip.x + 12,
             top: Math.max(8, tooltip.y - 60),
             borderRadius: 0,
           }}
         >
-          <div className="text-neutral-100 font-bold">┌─ {getCategoryLabel(tooltip.span.category)}</div>
-          {tooltip.span.change && <div className="text-neutral-400">│ change: {tooltip.span.change}</div>}
-          <div className="text-neutral-400">│ {formatTime(tooltip.span.start)} → {formatTime(tooltip.span.end)}</div>
-          <div className="text-neutral-300">│ duration: {formatDuration(tooltip.span.duration_ms)}</div>
+          <div className="text-fg-loud font-bold">┌─ {getCategoryLabel(tooltip.span.category)}</div>
+          {tooltip.span.change && <div className="text-fg-muted">│ change: {tooltip.span.change}</div>}
+          <div className="text-fg-muted">│ {formatTime(tooltip.span.start)} → {formatTime(tooltip.span.end)}</div>
+          <div className="text-fg-normal">│ duration: {formatDuration(tooltip.span.duration_ms)}</div>
           {tooltip.span.result && (
             <div className={tooltip.span.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
               │ result: {tooltip.span.result}
@@ -401,10 +401,10 @@ export function GanttTimeline({
             </div>
           )}
           {tooltip.span.detail && (tooltip.span.detail.preview as string) && (
-            <div className="text-neutral-400">│ {(tooltip.span.detail.preview as string).slice(0, 80)}</div>
+            <div className="text-fg-muted">│ {(tooltip.span.detail.preview as string).slice(0, 80)}</div>
           )}
           {tooltip.span.detail && (tooltip.span.detail.trigger_tool as string) && (
-            <div className="text-neutral-500">│ via {(tooltip.span.detail.trigger_tool as string)}</div>
+            <div className="text-fg-faint">│ via {(tooltip.span.detail.trigger_tool as string)}</div>
           )}
           {/* Per-sub-phase percentage breakdown on `implementing` parents.
               Sub-phases intentionally do not cover the full parent duration
@@ -426,9 +426,9 @@ export function GanttTimeline({
                   )
                   return (
                     <>
-                      <div className="text-neutral-500 mt-1">├─ sub-phases:</div>
+                      <div className="text-fg-faint mt-1">├─ sub-phases:</div>
                       {ordered.map((c) => (
-                        <div key={c} className="text-neutral-400">
+                        <div key={c} className="text-fg-muted">
                           │  {c.padEnd(8)} {Math.round((totals[c] / parentMs) * 100)
                             .toString()
                             .padStart(2)}%
@@ -436,7 +436,7 @@ export function GanttTimeline({
                           {formatDuration(totals[c])}
                         </div>
                       ))}
-                      <div className="text-neutral-600">
+                      <div className="text-fg-ghost">
                         │  unclassified {Math.max(0, Math.round((1 - classified / parentMs) * 100))}% (wait/think)
                       </div>
                     </>
@@ -445,7 +445,7 @@ export function GanttTimeline({
               </>
             )}
           {!!onSpanClick && tooltip.span.duration_ms > 60_000 && (
-            <div className="text-neutral-500 mt-1">└─ click to drill down</div>
+            <div className="text-fg-faint mt-1">└─ click to drill down</div>
           )}
         </div>
       )}
@@ -482,11 +482,11 @@ function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBrea
               className="inline-block w-2 h-2 flex-shrink-0"
               style={{ backgroundColor: getCategoryColor(b.category) }}
             />
-            <span className="text-neutral-400 truncate flex-1 min-w-0" title={getCategoryLabel(b.category)}>
+            <span className="text-fg-muted truncate flex-1 min-w-0" title={getCategoryLabel(b.category)}>
               {getCategoryLabel(b.category)}
             </span>
-            <span className="text-neutral-300 flex-shrink-0">{formatDuration(b.total_ms)}</span>
-            <span className="text-neutral-500 w-9 text-right flex-shrink-0">{b.pct}%</span>
+            <span className="text-fg-normal flex-shrink-0">{formatDuration(b.total_ms)}</span>
+            <span className="text-fg-faint w-9 text-right flex-shrink-0">{b.pct}%</span>
           </div>
         ))}
       </div>
@@ -497,8 +497,8 @@ function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBrea
     <div className=" text-xs space-y-1">
       {breakdown.map((b) => (
         <div key={b.category} className="flex items-center gap-2">
-          <span className="w-28 text-right text-neutral-400 truncate" title={getCategoryLabel(b.category)}>{getCategoryLabel(b.category)}</span>
-          <div className="flex-1 h-4 bg-neutral-900 rounded overflow-hidden">
+          <span className="w-28 text-right text-fg-muted truncate" title={getCategoryLabel(b.category)}>{getCategoryLabel(b.category)}</span>
+          <div className="flex-1 h-4 bg-surface-panel rounded overflow-hidden">
             <div
               className="h-full rounded"
               style={{
@@ -508,8 +508,8 @@ function BreakdownBars({ breakdown, compact = false }: { breakdown: ActivityBrea
               }}
             />
           </div>
-          <span className="w-16 text-right text-neutral-300">{formatDuration(b.total_ms)}</span>
-          <span className="w-10 text-right text-neutral-500">{b.pct}%</span>
+          <span className="w-16 text-right text-fg-normal">{formatDuration(b.total_ms)}</span>
+          <span className="w-10 text-right text-fg-faint">{b.pct}%</span>
         </div>
       ))}
     </div>
@@ -739,7 +739,7 @@ export default function ActivityView({ project, isRunning }: Props) {
     setPxPerSecond(fit)
   }, [containerWidth, minTime, maxTime, manualZoom])
 
-  if (!project) return <div className="p-3 text-neutral-500 text-sm">No project selected</div>
+  if (!project) return <div className="p-3 text-fg-faint text-sm">No project selected</div>
 
   return (
     <div className="p-3 space-y-4 text-xs bg-black min-h-full">
@@ -752,32 +752,32 @@ export default function ActivityView({ project, isRunning }: Props) {
 
       {/* Summary header */}
       {data && (
-        <div className="flex items-center gap-6 text-neutral-300 border-b border-neutral-800 pb-2">
+        <div className="flex items-center gap-6 text-fg-normal border-b border-surface-line pb-2">
           <span>
-            Wall: <span className="text-neutral-100">{formatDuration(data.wall_time_ms)}</span>
+            Wall: <span className="text-fg-loud">{formatDuration(data.wall_time_ms)}</span>
           </span>
           <span>
-            Activity: <span className="text-neutral-100">{formatDuration(data.activity_time_ms)}</span>
+            Activity: <span className="text-fg-loud">{formatDuration(data.activity_time_ms)}</span>
           </span>
           <span title="Parallel efficiency = activity_time / wall_time. >1.0x means LLM verifier and agent sessions overlap, or multiple changes ran in parallel.">
-            Parallel: <span className="text-neutral-100">{data.parallel_efficiency}x</span>
+            Parallel: <span className="text-fg-loud">{data.parallel_efficiency}x</span>
           </span>
           <div className="flex-1" />
           <div className="flex items-center gap-2">
-            <button onClick={zoomOut} className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300">-</button>
-            <span className="text-neutral-500 w-20 text-center">
+            <button onClick={zoomOut} className="px-2 py-0.5 bg-surface-panel hover:bg-surface-raised border border-surface-edge text-fg-normal">-</button>
+            <span className="text-fg-faint w-20 text-center">
               {pxPerSecond < 0.1 ? pxPerSecond.toFixed(3) : pxPerSecond.toFixed(2)}px/s{manualZoom && '*'}
             </span>
-            <button onClick={zoomIn} className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300">+</button>
+            <button onClick={zoomIn} className="px-2 py-0.5 bg-surface-panel hover:bg-surface-raised border border-surface-edge text-fg-normal">+</button>
           </div>
           <button
             onClick={fetchData}
             disabled={loading}
-            className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 disabled:opacity-50"
+            className="px-2 py-0.5 bg-surface-panel hover:bg-surface-raised border border-surface-edge text-fg-normal disabled:opacity-50"
           >
             {loading ? '...' : 'Refresh'}
           </button>
-          {lastRefresh && <span className="text-neutral-600">Last: {lastRefresh}</span>}
+          {lastRefresh && <span className="text-fg-ghost">Last: {lastRefresh}</span>}
         </div>
       )}
 
@@ -803,8 +803,8 @@ export default function ActivityView({ project, isRunning }: Props) {
                   return (
                     <div
                       key={cat}
-                      className={`h-6 flex items-center text-neutral-400 text-right pr-2 truncate ${
-                        isImplementingParent ? 'cursor-pointer hover:text-neutral-200' : ''
+                      className={`h-6 flex items-center text-fg-muted text-right pr-2 truncate ${
+                        isImplementingParent ? 'cursor-pointer hover:text-fg-strong' : ''
                       }`}
                       title={
                         isImplementingParent
@@ -814,12 +814,12 @@ export default function ActivityView({ project, isRunning }: Props) {
                       onClick={isImplementingParent ? toggleSubPhases : undefined}
                     >
                       {isImplementingParent && (
-                        <span className="inline-block w-3 text-neutral-500 mr-0.5 flex-shrink-0">
+                        <span className="inline-block w-3 text-fg-faint mr-0.5 flex-shrink-0">
                           {subPhasesExpanded ? '▼' : '▶'}
                         </span>
                       )}
                       {isImplementingChild && (
-                        <span className="text-neutral-700 whitespace-pre flex-shrink-0">
+                        <span className="text-fg-dim whitespace-pre flex-shrink-0">
                           {childPrefix}
                         </span>
                       )}
@@ -855,7 +855,7 @@ export default function ActivityView({ project, isRunning }: Props) {
           {/* Breakdown — 1/4 width column on the right */}
           {data.breakdown.length > 0 && (
             <div className="lg:col-span-1 min-w-0 lg:pt-7">
-              <div className="text-neutral-500 mb-2">┌──── Breakdown ────┐</div>
+              <div className="text-fg-faint mb-2">┌──── Breakdown ────┐</div>
               <BreakdownBars breakdown={data.breakdown} compact />
             </div>
           )}
@@ -873,7 +873,7 @@ export default function ActivityView({ project, isRunning }: Props) {
 
       {/* Empty state */}
       {data && categories.length === 0 && (
-        <div className="text-neutral-600 text-center py-8">No activity data available</div>
+        <div className="text-fg-ghost text-center py-8">No activity data available</div>
       )}
     </div>
   )

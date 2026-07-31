@@ -4,7 +4,7 @@ import { sendSentinelMessage, type SentinelEvent, type SentinelFindingsData, typ
 // ─── Event styling ────────────────────────────────────────────────
 
 const EVENT_STYLES: Record<string, { icon: string; color: string }> = {
-  poll:             { icon: '●', color: 'text-neutral-500' },
+  poll:             { icon: '●', color: 'text-fg-faint' },
   crash:            { icon: '✗', color: 'text-red-400' },
   restart:          { icon: '↻', color: 'text-orange-400' },
   decision:         { icon: '✓', color: 'text-green-400' },
@@ -16,7 +16,7 @@ const EVENT_STYLES: Record<string, { icon: string; color: string }> = {
 }
 
 function eventStyle(type: string) {
-  return EVENT_STYLES[type] ?? { icon: '?', color: 'text-neutral-400' }
+  return EVENT_STYLES[type] ?? { icon: '?', color: 'text-fg-muted' }
 }
 
 // ─── Poll condensation ────────────────────────────────────────────
@@ -102,7 +102,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   open: 'text-yellow-400',
   fixed: 'text-green-400',
-  dismissed: 'text-neutral-500',
+  dismissed: 'text-fg-faint',
 }
 
 // ─── Main component ───────────────────────────────────────────────
@@ -156,27 +156,27 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
   return (
     <div className="flex flex-col h-full">
       {/* Status bar */}
-      <div className={`flex items-center gap-3 px-3 py-1.5 text-sm border-b border-neutral-800 ${
-        isActive ? 'bg-green-950/30' : 'bg-neutral-900'
+      <div className={`flex items-center gap-3 px-3 py-1.5 text-sm border-b border-surface-line ${
+        isActive ? 'bg-green-950/30' : 'bg-surface-panel'
       }`}>
-        <span className={isActive ? 'text-green-400' : 'text-neutral-600'}>{isActive ? '\u25C9' : '\u25CB'}</span>
-        <span className={isActive ? 'text-green-300' : 'text-neutral-500'}>
+        <span className={isActive ? 'text-green-400' : 'text-fg-ghost'}>{isActive ? '\u25C9' : '\u25CB'}</span>
+        <span className={isActive ? 'text-green-300' : 'text-fg-faint'}>
           {isActive ? 'ACTIVE' : 'NOT RUNNING'}
         </span>
-        {status.member && <span className="text-neutral-500">{status.member}</span>}
+        {status.member && <span className="text-fg-faint">{status.member}</span>}
         {status.started_at && (
-          <span className="text-neutral-600">since {formatTime(status.started_at)}</span>
+          <span className="text-fg-ghost">since {formatTime(status.started_at)}</span>
         )}
         {status.orchestrator_pid && (
-          <span className="text-neutral-600">PID {status.orchestrator_pid}</span>
+          <span className="text-fg-ghost">PID {status.orchestrator_pid}</span>
         )}
       </div>
 
       {/* Content area: events + findings side by side on desktop, stacked on mobile */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
         {/* Events stream */}
-        <div className="flex-1 min-h-0 flex flex-col border-r border-neutral-800">
-          <div className="px-3 py-1 text-sm font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
+        <div className="flex-1 min-h-0 flex flex-col border-r border-surface-line">
+          <div className="px-3 py-1 text-sm font-medium text-fg-faint uppercase tracking-wider border-b border-surface-line bg-surface-panel/50">
             Events
           </div>
           <div
@@ -185,13 +185,13 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
             className="flex-1 overflow-auto text-sm p-2 space-y-px"
           >
             {displayEvents.length === 0 && (
-              <div className="text-neutral-600 text-center py-8">No events yet</div>
+              <div className="text-fg-ghost text-center py-8">No events yet</div>
             )}
             {displayEvents.map(de => {
               if (de.type === 'condensed') {
                 return (
-                  <div key={de.key} className="text-neutral-600 pl-1 py-px">
-                    <span className="text-neutral-700">{formatTime(de.firstTs!)}–{formatTime(de.lastTs!)}</span>
+                  <div key={de.key} className="text-fg-ghost pl-1 py-px">
+                    <span className="text-fg-dim">{formatTime(de.firstTs!)}–{formatTime(de.lastTs!)}</span>
                     {' '}● {de.count} polls, state={de.state}
                   </div>
                 )
@@ -200,7 +200,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
               const style = eventStyle(e.type)
               return (
                 <div key={de.key} className={`flex gap-2 py-px ${style.color}`}>
-                  <span className="text-neutral-600 shrink-0">{formatTime(e.ts)}</span>
+                  <span className="text-fg-ghost shrink-0">{formatTime(e.ts)}</span>
                   <span className="shrink-0">{style.icon}</span>
                   <span className="truncate">{eventDetail(e)}</span>
                 </div>
@@ -214,7 +214,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
                 setAutoScroll(true)
                 eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
               }}
-              className="absolute bottom-14 right-4 px-2 py-1 text-sm bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
+              className="absolute bottom-14 right-4 px-2 py-1 text-sm bg-surface-raised text-fg-muted rounded hover:bg-surface-strong"
             >
               ↓ Latest
             </button>
@@ -224,19 +224,19 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
         {/* Right side: findings + assessments */}
         <div className="w-full lg:w-80 flex flex-col min-h-0 shrink-0">
           {/* Findings */}
-          <div className="px-3 py-1 text-sm font-medium text-neutral-500 uppercase tracking-wider border-b border-neutral-800 bg-neutral-900/50">
+          <div className="px-3 py-1 text-sm font-medium text-fg-faint uppercase tracking-wider border-b border-surface-line bg-surface-panel/50">
             Findings ({findings.findings.length})
           </div>
           <div className="flex-1 overflow-auto p-2 space-y-1.5 min-h-[100px]">
             {findings.findings.length === 0 && (
-              <div className="text-neutral-600 text-center py-4 text-sm">No findings yet</div>
+              <div className="text-fg-ghost text-center py-4 text-sm">No findings yet</div>
             )}
             {findings.findings.map(f => (
-              <div key={f.id} className={`text-sm rounded border px-2 py-1.5 ${SEVERITY_COLORS[f.severity] ?? 'bg-neutral-900 text-neutral-300 border-neutral-700'}`}>
+              <div key={f.id} className={`text-sm rounded border px-2 py-1.5 ${SEVERITY_COLORS[f.severity] ?? 'bg-surface-panel text-fg-normal border-surface-edge'}`}>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{f.id}</span>
                   <span className="text-sm opacity-70">{f.change}</span>
-                  <span className={`ml-auto text-sm ${STATUS_COLORS[f.status] ?? 'text-neutral-400'}`}>{f.status}</span>
+                  <span className={`ml-auto text-sm ${STATUS_COLORS[f.status] ?? 'text-fg-muted'}`}>{f.status}</span>
                 </div>
                 <div className="mt-0.5 opacity-90">{f.summary}</div>
               </div>
@@ -246,15 +246,15 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
           {/* Assessments */}
           {findings.assessments.length > 0 && (
             <>
-              <div className="px-3 py-1 text-sm font-medium text-neutral-500 uppercase tracking-wider border-t border-b border-neutral-800 bg-neutral-900/50">
+              <div className="px-3 py-1 text-sm font-medium text-fg-faint uppercase tracking-wider border-t border-b border-surface-line bg-surface-panel/50">
                 Assessment
               </div>
               <div className="p-2 space-y-1">
                 {findings.assessments.map((a, i) => (
-                  <div key={i} className="text-sm bg-neutral-900/50 border border-neutral-800 rounded px-2 py-1.5">
-                    <div className="text-neutral-400 font-medium">{a.scope}</div>
-                    <div className="text-neutral-300 mt-0.5">{a.summary}</div>
-                    {a.recommendation && <div className="text-neutral-500 mt-0.5">→ {a.recommendation}</div>}
+                  <div key={i} className="text-sm bg-surface-panel/50 border border-surface-line rounded px-2 py-1.5">
+                    <div className="text-fg-muted font-medium">{a.scope}</div>
+                    <div className="text-fg-normal mt-0.5">{a.summary}</div>
+                    {a.recommendation && <div className="text-fg-faint mt-0.5">→ {a.recommendation}</div>}
                   </div>
                 ))}
               </div>
@@ -264,7 +264,7 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
       </div>
 
       {/* Message input */}
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-neutral-800 bg-neutral-900/80">
+      <div className="flex items-center gap-2 px-3 py-2 border-t border-surface-line bg-surface-panel/80">
         <input
           type="text"
           value={message}
@@ -272,12 +272,12 @@ export default function SentinelPanel({ project, events, findings, status }: Pro
           onKeyDown={e => { if (e.key === 'Enter') handleSend() }}
           disabled={!isActive}
           placeholder={isActive ? 'Message to sentinel...' : 'Sentinel not running'}
-          className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 outline-none focus:border-neutral-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-surface-raised border border-surface-edge rounded px-3 py-1.5 text-sm text-fg-strong placeholder-neutral-600 outline-none focus:border-fg-faint disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={handleSend}
           disabled={!isActive || !message.trim() || sending}
-          className="px-3 py-1.5 text-sm bg-neutral-700 text-neutral-200 rounded hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-sm bg-surface-strong text-fg-strong rounded hover:bg-surface-edge-soft disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Send
         </button>

@@ -13,17 +13,17 @@ interface Phase {
 const phaseColors: Record<string, string> = {
   pass: 'bg-green-700',
   fail: 'bg-red-700',
-  skip: 'bg-neutral-700',
+  skip: 'bg-surface-strong',
   current: 'bg-blue-600 animate-pulse',
-  pending: 'bg-neutral-800',
+  pending: 'bg-surface-raised',
 }
 
 const phaseLabelColors: Record<string, string> = {
   pass: 'text-green-400',
   fail: 'text-red-400',
-  skip: 'text-neutral-600',
+  skip: 'text-fg-ghost',
   current: 'text-blue-400',
-  pending: 'text-neutral-600',
+  pending: 'text-fg-ghost',
 }
 
 function formatMs(ms?: number): string {
@@ -105,7 +105,7 @@ export default function ChangeTimeline({ change }: Props) {
   const phases = derivePhases(change)
 
   if (phases.length === 0) {
-    return <div className="px-4 py-2 text-sm text-neutral-600">No timeline data</div>
+    return <div className="px-4 py-2 text-sm text-fg-ghost">No timeline data</div>
   }
 
   // Calculate total for proportional widths

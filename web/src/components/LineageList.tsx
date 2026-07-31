@@ -75,17 +75,17 @@ export default function LineageList({ project, sidebarState }: Props) {
 
   if (!loaded) {
     return (
-      <div className="px-4 py-2 border-b border-neutral-800">
-        <span className="text-xs text-neutral-500 uppercase tracking-wider">Lineages</span>
-        <div className="mt-1 text-xs text-neutral-600">Loading…</div>
+      <div className="px-4 py-2 border-b border-surface-line">
+        <span className="text-xs text-fg-faint uppercase tracking-wider">Lineages</span>
+        <div className="mt-1 text-xs text-fg-ghost">Loading…</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="px-4 py-2 border-b border-neutral-800">
-        <span className="text-xs text-neutral-500 uppercase tracking-wider">Lineages</span>
+      <div className="px-4 py-2 border-b border-surface-line">
+        <span className="text-xs text-fg-faint uppercase tracking-wider">Lineages</span>
         <div className="mt-1 text-xs text-amber-400" title={error}>Unavailable</div>
       </div>
     )
@@ -103,8 +103,8 @@ export default function LineageList({ project, sidebarState }: Props) {
   })
 
   return (
-    <div className="px-2 py-2 border-b border-neutral-800">
-      <div className="px-2 pb-1 text-xs text-neutral-500 uppercase tracking-wider">Lineages</div>
+    <div className="px-2 py-2 border-b border-surface-line">
+      <div className="px-2 pb-1 text-xs text-fg-faint uppercase tracking-wider">Lineages</div>
       {sorted.map((l) => (
         <button
           key={l.id}
@@ -114,13 +114,13 @@ export default function LineageList({ project, sidebarState }: Props) {
           data-lineage={l.id}
           className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
             lineageId === l.id
-              ? 'bg-neutral-800 text-neutral-100'
-              : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
+              ? 'bg-surface-raised text-fg-loud'
+              : 'text-fg-muted hover:bg-surface-raised/50 hover:text-fg-normal'
           }`}
         >
           <span
             className={`w-2 h-2 rounded-full shrink-0 ${
-              l.is_live ? 'bg-green-400' : 'bg-neutral-700'
+              l.is_live ? 'bg-green-400' : 'bg-surface-strong'
             }`}
             aria-label={l.is_live ? 'live' : undefined}
           />

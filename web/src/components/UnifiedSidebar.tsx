@@ -104,7 +104,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
       )}
 
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-neutral-950 border-r border-neutral-800 flex flex-col
+        fixed inset-y-0 left-0 z-50 w-64 bg-surface-page border-r border-surface-line flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         md:relative md:translate-x-0 md:transition-[width] md:duration-150 ${collapsed ? 'md:w-14' : 'md:w-56'}
@@ -191,9 +191,9 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
             {/* Level 2: Sub-items for active app */}
             {activeApp && activeApp.children.length > 1 && !collapsed && (
               <>
-                <div className="border-t border-neutral-800" />
+                <div className="border-t border-surface-line" />
                 <nav className="px-3 py-2 space-y-0.5 flex-1 overflow-y-auto">
-                  <div className="px-3 py-1 text-xs text-neutral-600 uppercase tracking-wider font-medium">
+                  <div className="px-3 py-1 text-xs text-fg-ghost uppercase tracking-wider font-medium">
                     {activeApp.label}
                   </div>
                   {activeApp.children.map(child => (
@@ -221,14 +221,14 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
                 onClick={onClose}
               />
             ))}
-            <div className="px-4 py-3 text-sm text-neutral-600">
+            <div className="px-4 py-3 text-sm text-fg-ghost">
               Select a project
             </div>
           </div>
         )}
 
         {/* Footer: manager health */}
-        <div className="border-t border-neutral-800 px-3 py-2 mt-auto">
+        <div className="border-t border-surface-line px-3 py-2 mt-auto">
           <div className="flex items-center gap-2">
             <Link
               to="/"
@@ -246,7 +246,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
                   try { await restartManager() } catch {}
                   setTimeout(() => setRestarting(false), 5000)
                 }}
-                className="px-1.5 py-0.5 text-xs rounded text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800 disabled:opacity-50"
+                className="px-1.5 py-0.5 text-xs rounded text-fg-ghost hover:text-fg-muted hover:bg-surface-raised disabled:opacity-50"
                 title="Restart manager"
               >
                 ↻
@@ -259,7 +259,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
                   try { await startManager() } catch {}
                   setTimeout(() => setRestarting(false), 5000)
                 }}
-                className="px-1.5 py-0.5 text-xs rounded text-blue-600/50 hover:text-blue-400 hover:bg-neutral-800 disabled:opacity-50"
+                className="px-1.5 py-0.5 text-xs rounded text-blue-600/50 hover:text-blue-400 hover:bg-surface-raised disabled:opacity-50"
                 title="Start manager"
               >
                 Start
@@ -284,8 +284,8 @@ function SubItemLink({ item, active, project, onClick }: {
       onClick={onClick}
       className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-colors ${
         active
-          ? 'bg-neutral-800/70 text-neutral-200'
-          : 'text-neutral-500 hover:bg-neutral-800/30 hover:text-neutral-400'
+          ? 'bg-surface-raised/70 text-fg-strong'
+          : 'text-fg-faint hover:bg-surface-raised/30 hover:text-fg-muted'
       }`}
     >
       <span className="flex-1">{item.label}</span>
@@ -306,8 +306,8 @@ function GlobalLink({ item, active, badge, onClick }: {
       onClick={onClick}
       className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
         active
-          ? 'bg-neutral-800 text-neutral-100'
-          : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
+          ? 'bg-surface-raised text-fg-loud'
+          : 'text-fg-muted hover:bg-surface-raised/50 hover:text-fg-normal'
       }`}
     >
       <SidebarIcon icon={item.icon} className="w-5 text-center shrink-0" />

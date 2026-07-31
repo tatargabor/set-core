@@ -164,7 +164,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled, autoStar
         value={language}
         onChange={e => setLanguage(e.target.value as Language)}
         disabled={recording || disabled}
-        className="bg-neutral-800 text-neutral-300 text-sm rounded px-1 min-h-[44px] md:min-h-[32px] border border-neutral-700 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+        className="bg-surface-raised text-fg-normal text-sm rounded px-1 min-h-[44px] md:min-h-[32px] border border-surface-edge focus:outline-none focus:border-blue-500 disabled:opacity-50"
       >
         <option value="hu">HU</option>
         <option value="en">EN</option>
@@ -178,7 +178,7 @@ export default function VoiceInput({ onTranscript, onPartial, disabled, autoStar
         className={`flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg transition-all ${
           recording
             ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
-            : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200'
+            : 'bg-surface-raised hover:bg-surface-strong text-fg-muted hover:text-fg-strong'
         } disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

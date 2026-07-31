@@ -34,8 +34,8 @@ const typeColor: Record<string, string> = {
   schema: 'text-cyan-400',
   foundational: 'text-blue-400',
   feature: 'text-green-400',
-  'cleanup-before': 'text-neutral-500',
-  'cleanup-after': 'text-neutral-500',
+  'cleanup-before': 'text-fg-faint',
+  'cleanup-after': 'text-fg-faint',
 }
 
 export default function PlanViewer({ project }: Props) {
@@ -74,11 +74,11 @@ export default function PlanViewer({ project }: Props) {
   }, [project, selectedPlan])
 
   if (loading) {
-    return <div className="p-4 text-sm text-neutral-500">Loading plans...</div>
+    return <div className="p-4 text-sm text-fg-faint">Loading plans...</div>
   }
 
   if (plans.length === 0) {
-    return <div className="p-4 text-sm text-neutral-500">No plans found</div>
+    return <div className="p-4 text-sm text-fg-faint">No plans found</div>
   }
 
   const changes = planData?.changes ?? []
@@ -88,11 +88,11 @@ export default function PlanViewer({ project }: Props) {
       {/* Plan selector */}
       {plans.length > 1 && (
         <div className="px-4 pt-3 flex items-center gap-2">
-          <label className="text-sm text-neutral-500">Plan:</label>
+          <label className="text-sm text-fg-faint">Plan:</label>
           <select
             value={selectedPlan ?? ''}
             onChange={e => setSelectedPlan(e.target.value)}
-            className="bg-neutral-800 text-neutral-300 text-sm rounded px-2 py-1 border border-neutral-700"
+            className="bg-surface-raised text-fg-normal text-sm rounded px-2 py-1 border border-surface-edge"
           >
             {plans.map(p => (
               <option key={p.filename} value={p.filename}>
@@ -107,7 +107,7 @@ export default function PlanViewer({ project }: Props) {
       {changes.length > 0 ? (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-neutral-500 border-b border-neutral-800">
+            <tr className="text-fg-faint border-b border-surface-line">
               <th className="text-left px-4 py-1.5 font-medium">#</th>
               <th className="text-left px-2 py-1.5 font-medium">Name</th>
               <th className="text-center px-2 py-1.5 font-medium">Size</th>
@@ -118,19 +118,19 @@ export default function PlanViewer({ project }: Props) {
           </thead>
           <tbody>
             {changes.map((c, i) => (
-              <tr key={c.name} className="border-b border-neutral-800/30 hover:bg-neutral-900/50">
-                <td className="px-4 py-1.5 text-neutral-600">{i + 1}</td>
-                <td className="px-2 py-1.5 text-neutral-200">{c.name}</td>
-                <td className={`px-2 py-1.5 text-center font-medium ${complexityColor[c.complexity ?? ''] ?? 'text-neutral-500'}`}>
+              <tr key={c.name} className="border-b border-surface-line/30 hover:bg-surface-panel/50">
+                <td className="px-4 py-1.5 text-fg-ghost">{i + 1}</td>
+                <td className="px-2 py-1.5 text-fg-strong">{c.name}</td>
+                <td className={`px-2 py-1.5 text-center font-medium ${complexityColor[c.complexity ?? ''] ?? 'text-fg-faint'}`}>
                   {c.complexity ?? '?'}
                 </td>
-                <td className={`px-2 py-1.5 ${typeColor[c.change_type ?? ''] ?? 'text-neutral-500'}`}>
+                <td className={`px-2 py-1.5 ${typeColor[c.change_type ?? ''] ?? 'text-fg-faint'}`}>
                   {c.change_type ?? ''}
                 </td>
-                <td className="px-2 py-1.5 text-neutral-500">
+                <td className="px-2 py-1.5 text-fg-faint">
                   {c.dependencies?.length ? c.dependencies.join(', ') : '—'}
                 </td>
-                <td className="px-2 py-1.5 text-neutral-500 max-w-[300px] truncate" title={c.scope}>
+                <td className="px-2 py-1.5 text-fg-faint max-w-[300px] truncate" title={c.scope}>
                   {c.scope ? (c.scope.length > 60 ? c.scope.slice(0, 60) + '...' : c.scope) : '—'}
                 </td>
               </tr>
@@ -138,7 +138,7 @@ export default function PlanViewer({ project }: Props) {
           </tbody>
         </table>
       ) : (
-        <div className="px-4 py-2 text-sm text-neutral-500">
+        <div className="px-4 py-2 text-sm text-fg-faint">
           {planData ? 'Plan has no changes array' : 'Loading plan data...'}
         </div>
       )}

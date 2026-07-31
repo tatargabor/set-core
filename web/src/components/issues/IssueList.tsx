@@ -52,14 +52,14 @@ export function IssueList({ issues, groups, selectedKey, onSelect, issueKeyFn, s
       {/* Filters */}
       <div className="flex items-center gap-2">
         <select value={stateFilter} onChange={e => setStateFilter(e.target.value)}
-          className="text-xs bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-300">
+          className="text-xs bg-surface-raised border border-surface-edge rounded px-2 py-1 text-fg-normal">
           <option value="">All States</option>
           {['new','investigating','diagnosed','awaiting_approval','fixing','verifying','deploying','resolved','dismissed','muted','failed','skipped','cancelled'].map(s =>
             <option key={s} value={s}>{s}</option>
           )}
         </select>
         <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}
-          className="text-xs bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-300">
+          className="text-xs bg-surface-raised border border-surface-edge rounded px-2 py-1 text-fg-normal">
           <option value="">All Severity</option>
           {['unknown','low','medium','high','critical'].map(s =>
             <option key={s} value={s}>{s}</option>
@@ -83,34 +83,34 @@ export function IssueList({ issues, groups, selectedKey, onSelect, issueKeyFn, s
 
       {/* Done */}
       {done.length > 0 && (
-        <Section title="Done" count={done.length} color="text-neutral-500"
+        <Section title="Done" count={done.length} color="text-fg-faint"
           collapsed={!doneExpanded} onToggle={() => setDoneExpanded(!doneExpanded)}>
           {doneExpanded && done.map(renderRow)}
         </Section>
       )}
 
       {filtered.length === 0 && (
-        <div className="text-sm text-neutral-500 py-4 text-center">No issues</div>
+        <div className="text-sm text-fg-faint py-4 text-center">No issues</div>
       )}
 
       {/* Bulk actions */}
       {checked.size > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-neutral-800 rounded">
-          <span className="text-xs text-neutral-400">{checked.size} selected</span>
-          <button className="text-xs px-2 py-1 rounded bg-neutral-700 text-neutral-300 hover:bg-neutral-600">Group Selected</button>
-          <button className="text-xs px-2 py-1 rounded bg-neutral-700 text-neutral-300 hover:bg-neutral-600">Dismiss Selected</button>
+        <div className="flex items-center gap-2 px-3 py-2 bg-surface-raised rounded">
+          <span className="text-xs text-fg-muted">{checked.size} selected</span>
+          <button className="text-xs px-2 py-1 rounded bg-surface-strong text-fg-normal hover:bg-surface-edge-soft">Group Selected</button>
+          <button className="text-xs px-2 py-1 rounded bg-surface-strong text-fg-normal hover:bg-surface-edge-soft">Dismiss Selected</button>
         </div>
       )}
 
       {/* Groups */}
       {groups.length > 0 && (
-        <div className="border-t border-neutral-800 pt-3 space-y-1">
-          <h3 className="text-xs text-neutral-500 uppercase tracking-wider px-3">Groups</h3>
+        <div className="border-t border-surface-line pt-3 space-y-1">
+          <h3 className="text-xs text-fg-faint uppercase tracking-wider px-3">Groups</h3>
           {groups.map(g => (
-            <div key={g.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-400">
-              <span className=" text-xs text-neutral-500">{g.id}</span>
+            <div key={g.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-fg-muted">
+              <span className=" text-xs text-fg-faint">{g.id}</span>
               <span className="truncate">{g.name}</span>
-              <span className="text-xs text-neutral-600">{g.issue_ids.length} issues</span>
+              <span className="text-xs text-fg-ghost">{g.issue_ids.length} issues</span>
             </div>
           ))}
         </div>

@@ -156,7 +156,7 @@ export function absentCaveatKeys(
  */
 export function CaveatNote({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs leading-snug text-neutral-400 italic border-l border-neutral-700 pl-2 mt-0.5">
+    <div className="text-xs leading-snug text-fg-muted italic border-l border-surface-edge pl-2 mt-0.5">
       {children}
     </div>
   )
@@ -249,7 +249,7 @@ function ActionButton({ action }: { action: RowAction }) {
           key={k}
           value={picked[k] ?? ''}
           onChange={e => setPicked(p => ({ ...p, [k]: e.target.value }))}
-          className="bg-neutral-800 border border-neutral-700 rounded text-xs px-1 py-0.5 text-neutral-200"
+          className="bg-surface-raised border border-surface-edge rounded text-xs px-1 py-0.5 text-fg-strong"
           aria-label={k}
         >
           <option value="">{k}…</option>
@@ -391,7 +391,7 @@ export function Emphasis({ children }: { children: ReactNode }) {
   return (
     <span
       data-emphasis="true"
-      className="inline-block border-l-2 border-sky-500/70 pl-1.5 font-medium text-neutral-50"
+      className="inline-block border-l-2 border-sky-500/70 pl-1.5 font-medium text-fg-brightest"
       title="the project marked this as the field to act on"
     >
       {children}
@@ -413,7 +413,7 @@ export function partitionKeys(keys: string[], view: DeprecationView) {
 export function HiddenNote({ count }: { count: number }) {
   if (count === 0) return null
   return (
-    <div className="text-xs text-neutral-600 italic">
+    <div className="text-xs text-fg-ghost italic">
       {count} deprecated field{count === 1 ? '' : 's'} hidden
     </div>
   )

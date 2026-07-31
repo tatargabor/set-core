@@ -34,7 +34,7 @@ export default function Worktrees({ project }: Props) {
 
   if (!project) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-500">
+      <div className="flex items-center justify-center h-full text-fg-faint">
         Select a project
       </div>
     )
@@ -45,27 +45,27 @@ export default function Worktrees({ project }: Props) {
   return (
     <div className="flex h-full">
       {/* Worktree list */}
-      <div className="w-80 shrink-0 border-r border-neutral-800 overflow-auto">
-        <div className="p-3 border-b border-neutral-800">
-          <h2 className="text-sm font-semibold text-neutral-100">Worktrees ({worktrees.length})</h2>
+      <div className="w-80 shrink-0 border-r border-surface-line overflow-auto">
+        <div className="p-3 border-b border-surface-line">
+          <h2 className="text-sm font-semibold text-fg-loud">Worktrees ({worktrees.length})</h2>
         </div>
         {worktrees.length === 0 ? (
-          <p className="p-3 text-neutral-500 text-sm">No worktrees found</p>
+          <p className="p-3 text-fg-faint text-sm">No worktrees found</p>
         ) : (
           <div className="divide-y divide-neutral-800/50">
             {worktrees.map((wt) => (
               <button
                 key={wt.path}
                 onClick={() => setSelected(wt.branch === selected ? null : wt.branch)}
-                className={`w-full text-left p-3 hover:bg-neutral-900 transition-colors ${
-                  wt.branch === selected ? 'bg-neutral-900 border-l-2 border-blue-500' : ''
+                className={`w-full text-left p-3 hover:bg-surface-panel transition-colors ${
+                  wt.branch === selected ? 'bg-surface-panel border-l-2 border-blue-500' : ''
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-neutral-200 truncate">{wt.branch}</span>
-                  <span className="text-sm text-neutral-600">{wt.head?.slice(0, 7)}</span>
+                  <span className="text-sm text-fg-strong truncate">{wt.branch}</span>
+                  <span className="text-sm text-fg-ghost">{wt.head?.slice(0, 7)}</span>
                 </div>
-                <div className="flex gap-3 text-sm text-neutral-500">
+                <div className="flex gap-3 text-sm text-fg-faint">
                   {wt.iteration !== undefined && (
                     <span>iter {wt.iteration}{wt.max_iterations ? `/${wt.max_iterations}` : ''}</span>
                   )}
@@ -73,13 +73,13 @@ export default function Worktrees({ project }: Props) {
                     <span>{wt.logs.length} logs</span>
                   )}
                   {wt.activity?.updated_at && (
-                    <span className="ml-auto text-neutral-600" title={new Date(wt.activity.updated_at).toLocaleString()}>
+                    <span className="ml-auto text-fg-ghost" title={new Date(wt.activity.updated_at).toLocaleString()}>
                       {timeAgo(wt.activity.updated_at)}
                     </span>
                   )}
                 </div>
                 {wt.activity?.broadcast && (
-                  <p className="mt-1 text-sm text-neutral-400 truncate">{wt.activity.broadcast}</p>
+                  <p className="mt-1 text-sm text-fg-muted truncate">{wt.activity.broadcast}</p>
                 )}
                 {wt.has_reflection && (
                   <p className="mt-1 text-sm text-purple-400/70 truncate">{'💭'} has reflection</p>
@@ -95,7 +95,7 @@ export default function Worktrees({ project }: Props) {
         {selectedWt ? (
           <WorktreeDetail project={project} worktree={selectedWt} />
         ) : (
-          <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+          <div className="flex items-center justify-center h-full text-fg-ghost text-sm">
             Select a worktree to view agent logs
           </div>
         )}
@@ -160,27 +160,27 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
   return (
     <>
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
-        <span className="text-sm text-neutral-200">{worktree.branch}</span>
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-surface-line bg-surface-panel/50">
+        <span className="text-sm text-fg-strong">{worktree.branch}</span>
         {worktree.iteration !== undefined && (
-          <span className="text-sm text-neutral-500">
+          <span className="text-sm text-fg-faint">
             Iteration {worktree.iteration}{worktree.max_iterations ? ` / ${worktree.max_iterations}` : ''}
           </span>
         )}
         {worktree.activity?.updated_at && (
-          <span className="text-sm text-neutral-600" title={new Date(worktree.activity.updated_at).toLocaleString()}>
+          <span className="text-sm text-fg-ghost" title={new Date(worktree.activity.updated_at).toLocaleString()}>
             {shortTime(worktree.activity.updated_at)}
           </span>
         )}
-        <span className="text-sm text-neutral-600 truncate ml-auto">{worktree.path}</span>
+        <span className="text-sm text-fg-ghost truncate ml-auto">{worktree.path}</span>
       </div>
 
       {/* Activity bar */}
       {worktree.activity && (
-        <div className="px-4 py-1.5 border-b border-neutral-800 text-sm text-neutral-400 bg-neutral-900/30">
+        <div className="px-4 py-1.5 border-b border-surface-line text-sm text-fg-muted bg-surface-panel/30">
           {worktree.activity.broadcast && <span>{worktree.activity.broadcast}</span>}
           {worktree.activity.skill && (
-            <span className="ml-3 text-neutral-500">
+            <span className="ml-3 text-fg-faint">
               Skill: {worktree.activity.skill} {worktree.activity.skill_args ?? ''}
             </span>
           )}
@@ -189,22 +189,22 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
 
       {/* Reflection */}
       {reflectionContent && (
-        <div className="border-b border-neutral-800">
+        <div className="border-b border-surface-line">
           <button
             onClick={() => setReflectionExpanded(!reflectionExpanded)}
-            className="w-full px-4 py-1.5 text-sm text-left hover:bg-neutral-800/30 flex items-center gap-2"
+            className="w-full px-4 py-1.5 text-sm text-left hover:bg-surface-raised/30 flex items-center gap-2"
           >
-            <span className="text-neutral-500">{reflectionExpanded ? '\u25BE' : '\u25B8'}</span>
+            <span className="text-fg-faint">{reflectionExpanded ? '\u25BE' : '\u25B8'}</span>
             <span className="text-purple-400/80">Reflection</span>
             {!reflectionExpanded && (
-              <span className="text-neutral-500 truncate flex-1">
+              <span className="text-fg-faint truncate flex-1">
                 {reflectionContent.split('\n').find(l => l.trim().startsWith('-'))?.trim() ?? reflectionContent.slice(0, 60)}
               </span>
             )}
           </button>
           {reflectionExpanded && (
             <div className="px-4 pb-2 max-h-48 overflow-auto">
-              <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{reflectionContent}</pre>
+              <pre className="text-sm text-fg-muted whitespace-pre-wrap leading-relaxed">{reflectionContent}</pre>
             </div>
           )}
         </div>
@@ -212,7 +212,7 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
 
       {/* Log tabs */}
       {worktree.logs && worktree.logs.length > 0 && (
-        <div className="flex gap-0.5 px-2 pt-2 border-b border-neutral-800 overflow-x-auto">
+        <div className="flex gap-0.5 px-2 pt-2 border-b border-surface-line overflow-x-auto">
           {worktree.logs.map((name) => {
             const label = name.replace('ralph-iter-', '').replace('.log', '').replace('-chain', 'c')
             return (
@@ -221,8 +221,8 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
                 onClick={() => setActiveLog(name)}
                 className={`px-2 py-1 text-sm rounded-t transition-colors ${
                   name === activeLog
-                    ? 'bg-neutral-800 text-neutral-200'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                    ? 'bg-surface-raised text-fg-strong'
+                    : 'text-fg-faint hover:text-fg-normal hover:bg-surface-panel'
                 }`}
               >
                 {label}
@@ -234,9 +234,9 @@ function WorktreeDetail({ project, worktree }: { project: string; worktree: Work
 
       {/* Log content */}
       <div ref={logRef} className="flex-1 overflow-auto p-3 text-sm leading-5">
-        {loading && <p className="text-neutral-600">Loading...</p>}
+        {loading && <p className="text-fg-ghost">Loading...</p>}
         {!loading && logLines.length === 0 && (
-          <p className="text-neutral-600">No logs available</p>
+          <p className="text-fg-ghost">No logs available</p>
         )}
         {logLines.map((line, i) => (
           <div key={i} className={logLineColor(line)}>
@@ -254,5 +254,5 @@ function logLineColor(line: string): string {
   if (line.includes('✓') || line.includes('PASS') || line.includes('pass')) return 'text-green-400'
   if (line.includes('FAIL') || line.includes('fail')) return 'text-red-400'
   if (line.includes('>>>') || line.includes('---')) return 'text-cyan-400'
-  return 'text-neutral-400'
+  return 'text-fg-muted'
 }

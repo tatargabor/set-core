@@ -19,11 +19,11 @@ export function TuiProgress({ done, total, className }: {
 
   return (
     <span className={className ?? 'text-sm'}>
-      <span className={allDone ? 'text-blue-400' : 'text-neutral-400'}>{bar}</span>
+      <span className={allDone ? 'text-blue-400' : 'text-fg-muted'}>{bar}</span>
       {' '}
-      <span className="text-neutral-300">{done}/{total}</span>
+      <span className="text-fg-normal">{done}/{total}</span>
       {' '}
-      <span className="text-neutral-500">({pct}%)</span>
+      <span className="text-fg-faint">({pct}%)</span>
     </span>
   )
 }
@@ -47,7 +47,7 @@ export function TuiStatus({ status, label }: {
   } else if (status === 'merge-blocked') {
     char = '\u25CB'; color = 'text-orange-400'
   } else {
-    char = '\u25CB'; color = 'text-neutral-500'
+    char = '\u25CB'; color = 'text-fg-faint'
   }
 
   return (
@@ -63,7 +63,7 @@ export function TuiSection({ label, className }: {
   className?: string
 }) {
   return (
-    <div className={className ?? 'text-sm text-neutral-500 uppercase tracking-wider py-1'}>
+    <div className={className ?? 'text-sm text-fg-faint uppercase tracking-wider py-1'}>
       {'── '}{label}{' ──'}
     </div>
   )
@@ -75,6 +75,6 @@ export function statusColor(status: string): string {
   if (ACTIVE_STATUSES.has(status)) return 'text-green-400'
   if (FAIL_STATUSES.has(status)) return 'text-red-400'
   if (status === 'stalled') return 'text-yellow-400'
-  if (status === 'planned') return 'text-neutral-400'
-  return 'text-neutral-500'
+  if (status === 'planned') return 'text-fg-muted'
+  return 'text-fg-faint'
 }

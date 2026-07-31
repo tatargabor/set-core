@@ -30,7 +30,7 @@ const GATE_COLOR: Record<string, string> = {
   pass: 'text-green-400',
   fail: 'text-red-400',
   warn: 'text-amber-400',
-  skip: 'text-neutral-500',
+  skip: 'text-fg-faint',
   running: 'text-blue-400',
 }
 
@@ -47,8 +47,8 @@ function iconFor(result: GateResult): string {
 }
 
 function colorFor(result: GateResult): string {
-  if (!result) return 'text-neutral-600'
-  return GATE_COLOR[result] ?? 'text-neutral-600'
+  if (!result) return 'text-fg-ghost'
+  return GATE_COLOR[result] ?? 'text-fg-ghost'
 }
 
 function formatMs(ms: number | null): string {
@@ -121,36 +121,36 @@ function NodeRow({ node, selected, sessionCount, onClick }: RowProps) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left border-t border-neutral-800/70 transition-colors ${
-        selected ? 'bg-blue-900/30 ring-1 ring-inset ring-blue-500/40' : 'hover:bg-neutral-900/40'
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left border-t border-surface-line/70 transition-colors ${
+        selected ? 'bg-blue-900/30 ring-1 ring-inset ring-blue-500/40' : 'hover:bg-surface-panel/40'
       }`}
     >
       <span className={`text-sm font-medium w-4 ${color} ${isRunning ? 'animate-pulse' : ''}`}>
         {icon}
       </span>
-      <span className="text-xs font-medium text-neutral-200 capitalize w-20 truncate">
+      <span className="text-xs font-medium text-fg-strong capitalize w-20 truncate">
         {isImpl ? 'impl' : node.kind.replace('_', ' ')}
       </span>
       {isImpl ? (
-        <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
+        <span className="text-xs text-fg-muted bg-surface-raised px-1 rounded">
           #{node.attempt}
         </span>
       ) : node.runIndexForKind > 1 ? (
-        <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
+        <span className="text-xs text-fg-muted bg-surface-raised px-1 rounded">
           ⟳{node.runIndexForKind}
         </span>
       ) : null}
       {hasDowngrade && <span className="text-xs text-amber-400">⚖</span>}
-      <span className="text-xs text-neutral-500 w-12 text-right">{formatMs(node.ms)}</span>
-      <span className="text-xs text-neutral-600 ml-2">{formatTime(node.startedAt)}</span>
-      {model && <span className="text-xs text-neutral-400 ml-2">{model}</span>}
+      <span className="text-xs text-fg-faint w-12 text-right">{formatMs(node.ms)}</span>
+      <span className="text-xs text-fg-ghost ml-2">{formatTime(node.startedAt)}</span>
+      {model && <span className="text-xs text-fg-muted ml-2">{model}</span>}
       {hasTokens && (
-        <span className="text-xs text-neutral-500 ml-1">
+        <span className="text-xs text-fg-faint ml-1">
           {formatTokens(node.inputTokens)}/{formatTokens(node.outputTokens)}
         </span>
       )}
       {isImpl && sessionCount != null && (
-        <span className="ml-auto text-xs text-neutral-600">
+        <span className="ml-auto text-xs text-fg-ghost">
           {sessionCount} session{sessionCount !== 1 ? 's' : ''}
         </span>
       )}
@@ -171,14 +171,14 @@ function AttemptCard({ attempt, allSessions, selectedNodeId, onSelectNode }: Att
   const dur = attemptDuration(attempt)
 
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 mb-3 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 bg-neutral-900/60">
-        <span className="text-sm font-semibold text-neutral-200">Attempt #{attempt.n}</span>
+    <div className="rounded-lg border border-surface-line bg-surface-panel/40 mb-3 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-surface-line bg-surface-panel/60">
+        <span className="text-sm font-semibold text-fg-strong">Attempt #{attempt.n}</span>
         <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${outcomeClass}`}>
           {attempt.outcome}
           {attempt.retryReason ? ` · ${attempt.retryReason}` : ''}
         </span>
-        <span className="text-xs text-neutral-500 ml-auto">
+        <span className="text-xs text-fg-faint ml-auto">
           {formatMs(dur)} · {formatTime(attempt.startedAt)}
           {attempt.endedAt ? ` → ${formatTime(attempt.endedAt)}` : ' → running'}
         </span>
@@ -242,7 +242,7 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
 
   if (!node) {
     return (
-      <div className="h-full flex items-center justify-center p-6 text-xs text-neutral-600 italic">
+      <div className="h-full flex items-center justify-center p-6 text-xs text-fg-ghost italic">
         Click a row on the left to inspect its output or session log.
       </div>
     )
@@ -254,26 +254,26 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-neutral-800 bg-neutral-900/60 shrink-0">
+      <div className="px-3 py-2 border-b border-surface-line bg-surface-panel/60 shrink-0">
         <div className="flex items-center gap-2">
           <span className={`text-sm font-medium ${isImpl ? 'text-violet-300' : colorFor(node.result)}`}>
             {isImpl ? '✎' : iconFor(node.result)}
           </span>
-          <span className="text-sm font-semibold text-neutral-200 capitalize">
+          <span className="text-sm font-semibold text-fg-strong capitalize">
             {isImpl ? `impl #${node.attempt}` : node.kind.replace('_', ' ')}
           </span>
           {!isImpl && node.runIndexForKind > 1 && (
-            <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
+            <span className="text-xs text-fg-muted bg-surface-raised px-1 rounded">
               run #{node.runIndexForKind}
             </span>
           )}
-          <span className="text-xs text-neutral-500 ml-auto">
+          <span className="text-xs text-fg-faint ml-auto">
             {formatMs(node.ms)} · {formatTime(node.startedAt)}
           </span>
         </div>
         {node.verdictSource && (
-          <div className="mt-1 text-xs text-neutral-500">
-            verdict source <span className="text-neutral-300">{node.verdictSource}</span>
+          <div className="mt-1 text-xs text-fg-faint">
+            verdict source <span className="text-fg-normal">{node.verdictSource}</span>
           </div>
         )}
         {hasDowngrade && node.downgrades && node.downgrades.length > 0 && (
@@ -287,13 +287,13 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
       {isImpl ? (
         <div className="flex-1 min-h-0 flex flex-col">
           {attemptSessions.length === 0 ? (
-            <div className="p-3 text-xs text-neutral-600 italic">
+            <div className="p-3 text-xs text-fg-ghost italic">
               No session logs recorded for this attempt window.
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800/50 overflow-x-auto shrink-0">
-                <span className="text-xs text-neutral-600 shrink-0 mr-1">sessions</span>
+              <div className="flex items-center gap-1 px-3 py-1 border-b border-surface-line/50 overflow-x-auto shrink-0">
+                <span className="text-xs text-fg-ghost shrink-0 mr-1">sessions</span>
                 {attemptSessions.map((s, i) => {
                   const isActive = s.id === activeSessionId
                   const time = formatTime(s.mtime)
@@ -304,7 +304,7 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
                       className={`px-1.5 py-0.5 text-xs rounded shrink-0 transition-colors ${
                         isActive
                           ? 'bg-blue-900/60 text-blue-300'
-                          : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                          : 'text-fg-faint hover:text-fg-normal hover:bg-surface-panel'
                       }`}
                       title={s.full_label || s.label || s.id}
                     >
@@ -315,13 +315,13 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
               </div>
               <div className="flex-1 min-h-0 overflow-auto p-2">
                 {sessionLoading ? (
-                  <div className="text-xs text-neutral-600 italic">Loading session...</div>
+                  <div className="text-xs text-fg-ghost italic">Loading session...</div>
                 ) : sessionLines && sessionLines.length > 0 ? (
-                  <pre className="bg-neutral-950/60 border border-neutral-800 rounded p-2 text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed">
+                  <pre className="bg-surface-page/60 border border-surface-line rounded p-2 text-xs text-fg-muted whitespace-pre-wrap leading-relaxed">
                     {sessionLines.join('\n')}
                   </pre>
                 ) : (
-                  <div className="text-xs text-neutral-600 italic">
+                  <div className="text-xs text-fg-ghost italic">
                     Click a session button above to load its log.
                   </div>
                 )}
@@ -332,11 +332,11 @@ function DetailPane({ node, attempt, allSessions, project, changeName }: DetailP
       ) : (
         <div className="flex-1 min-h-0 overflow-auto p-2">
           {node.output ? (
-            <pre className="bg-neutral-950/60 border border-neutral-800 rounded p-2 text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed">
+            <pre className="bg-surface-page/60 border border-surface-line rounded p-2 text-xs text-fg-muted whitespace-pre-wrap leading-relaxed">
               {node.output}
             </pre>
           ) : (
-            <div className="text-xs text-neutral-600 italic">
+            <div className="text-xs text-fg-ghost italic">
               No gate output captured (fast path or cached).
             </div>
           )}
@@ -432,15 +432,15 @@ export default function ChangeTimelineDetail({ project, changeName }: Props) {
     return <div className="p-3 text-xs text-red-400">{error}</div>
   }
   if (!graph) {
-    return <div className="p-3 text-xs text-neutral-500">Loading timeline...</div>
+    return <div className="p-3 text-xs text-fg-faint">Loading timeline...</div>
   }
   if (graph.attempts.length === 0) {
-    return <div className="p-3 text-xs text-neutral-600">No journal data for this change yet.</div>
+    return <div className="p-3 text-xs text-fg-ghost">No journal data for this change yet.</div>
   }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-4 text-xs text-neutral-500 px-3 py-2 border-b border-neutral-800 shrink-0">
+      <div className="flex items-center gap-4 text-xs text-fg-faint px-3 py-2 border-b border-surface-line shrink-0">
         <span>
           {graph.attempts.length} attempt{graph.attempts.length !== 1 ? 's' : ''}
         </span>
@@ -453,7 +453,7 @@ export default function ChangeTimelineDetail({ project, changeName }: Props) {
         </span>
       </div>
       <div className="flex-1 min-h-0 flex">
-        <div className="w-[50%] min-w-[360px] overflow-auto p-3 border-r border-neutral-800">
+        <div className="w-[50%] min-w-[360px] overflow-auto p-3 border-r border-surface-line">
           {graph.attempts.map((a) => (
             <AttemptCard
               key={a.n}

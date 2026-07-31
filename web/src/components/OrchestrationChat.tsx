@@ -307,11 +307,11 @@ export default function OrchestrationChat({ project }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full max-h-[100dvh] bg-neutral-950 overflow-hidden">
+    <div className="flex flex-col h-full max-h-[100dvh] bg-surface-page overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-neutral-800">
+      <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-surface-line">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-300 font-medium">Agent Chat</span>
+          <span className="text-sm text-fg-normal font-medium">Agent Chat</span>
           {/* Connection indicator */}
           <span
             className={connected ? 'text-green-500' : 'text-red-500'}
@@ -319,7 +319,7 @@ export default function OrchestrationChat({ project }: Props) {
           >{connected ? '\u25CF' : '\u25CB'}</span>
           {/* Live orchestration state */}
           {orchState && orchState.total > 0 && (
-            <span className="text-sm text-neutral-500" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
+            <span className="text-sm text-fg-faint" title={Object.entries(orchState.by_status).map(([k, v]) => `${v} ${k}`).join(', ')}>
               {orchState.done}/{orchState.total}
             </span>
           )}
@@ -334,7 +334,7 @@ export default function OrchestrationChat({ project }: Props) {
         <button
           onClick={handleNewSession}
           disabled={!connected || isProcessing}
-          className="px-2 py-1 min-h-[44px] md:min-h-0 text-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-2 py-1 min-h-[44px] md:min-h-0 text-sm text-fg-muted hover:text-fg-strong hover:bg-surface-raised rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           New Session
         </button>
@@ -346,7 +346,7 @@ export default function OrchestrationChat({ project }: Props) {
           <button
             onClick={handleDiscussClick}
             disabled={!connected || isProcessing}
-            className="px-8 py-6 text-xl md:text-2xl font-semibold tracking-wide bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed text-white rounded-2xl shadow-lg transition-colors min-h-[88px] min-w-[280px]"
+            className="px-8 py-6 text-xl md:text-2xl font-semibold tracking-wide bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-surface-strong disabled:text-fg-faint disabled:cursor-not-allowed text-white rounded-2xl shadow-lg transition-colors min-h-[88px] min-w-[280px]"
           >
             DISCUSS WITH AGENT
           </button>
@@ -355,7 +355,7 @@ export default function OrchestrationChat({ project }: Props) {
               onClick={handleVoiceEntryClick}
               disabled={!connected || isProcessing}
               title="Start with voice input"
-              className="flex items-center justify-center gap-2 px-5 py-3 min-h-[56px] min-w-[200px] bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-200 rounded-xl border border-neutral-700 transition-colors"
+              className="flex items-center justify-center gap-2 px-5 py-3 min-h-[56px] min-w-[200px] bg-surface-raised hover:bg-surface-strong active:bg-surface-panel disabled:opacity-50 disabled:cursor-not-allowed text-fg-strong rounded-xl border border-surface-edge transition-colors"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
@@ -366,7 +366,7 @@ export default function OrchestrationChat({ project }: Props) {
               <span className="text-sm font-medium">Speak to agent</span>
             </button>
           )}
-          <p className="text-xs text-neutral-600 text-center max-w-xs">
+          <p className="text-xs text-fg-ghost text-center max-w-xs">
             No agent subprocess is running. Click above to start a conversation.
           </p>
         </div>
@@ -375,7 +375,7 @@ export default function OrchestrationChat({ project }: Props) {
       {/* Voice entry mode — show recorder in the center while capturing first utterance */}
       {voiceEntryMode && (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-8 min-h-0">
-          <div className="text-neutral-300 text-sm">Listening… speak your message</div>
+          <div className="text-fg-normal text-sm">Listening… speak your message</div>
           <VoiceInput
             onTranscript={handleVoiceTranscript}
             onPartial={() => {}}
@@ -383,7 +383,7 @@ export default function OrchestrationChat({ project }: Props) {
           />
           <button
             onClick={() => setVoiceEntryMode(false)}
-            className="text-xs text-neutral-500 hover:text-neutral-300 underline"
+            className="text-xs text-fg-faint hover:text-fg-normal underline"
           >
             Cancel
           </button>
@@ -397,7 +397,7 @@ export default function OrchestrationChat({ project }: Props) {
         className={`flex-1 overflow-auto overflow-x-hidden px-3 py-2 space-y-3 min-h-0 ${showSplash || voiceEntryMode ? 'hidden' : ''}`}
       >
         {messages.length === 0 && !showSplash && !voiceEntryMode && (
-          <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+          <div className="flex items-center justify-center h-full text-fg-ghost text-sm">
             Send a message to start a conversation with the agent
           </div>
         )}
@@ -410,10 +410,10 @@ export default function OrchestrationChat({ project }: Props) {
             <div
               className={`max-w-[85%] md:max-w-[70%] rounded-lg px-3 py-2 text-sm ${
                 msg.role === 'user'
-                  ? 'bg-blue-600/30 text-neutral-200'
+                  ? 'bg-blue-600/30 text-fg-strong'
                   : msg.role === 'system'
                   ? 'bg-red-900/30 text-red-300 border border-red-800/50'
-                  : 'bg-neutral-800/50 text-neutral-300'
+                  : 'bg-surface-raised/50 text-fg-normal'
               }`}
             >
               {/* Message text */}
@@ -421,16 +421,16 @@ export default function OrchestrationChat({ project }: Props) {
 
               {/* Tool blocks */}
               {msg.toolBlocks?.map(tool => (
-                <div key={tool.id} className="mt-2 border border-neutral-700 rounded overflow-hidden">
+                <div key={tool.id} className="mt-2 border border-surface-edge rounded overflow-hidden">
                   <button
                     onClick={() => toggleToolBlock(msg.id, tool.id)}
-                    className="w-full flex items-center gap-2 px-2 py-1 text-sm bg-neutral-800/80 hover:bg-neutral-700/80 transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-2 py-1 text-sm bg-surface-raised/80 hover:bg-surface-strong/80 transition-colors text-left"
                   >
                     <span className={`transition-transform ${tool.collapsed ? '' : 'rotate-90'}`}>
                       ▶
                     </span>
                     <span className="text-cyan-400">{tool.tool}</span>
-                    <span className="text-neutral-500 truncate flex-1">
+                    <span className="text-fg-faint truncate flex-1">
                       {tool.input.slice(0, 60)}
                     </span>
                     {tool.output !== undefined && (
@@ -438,13 +438,13 @@ export default function OrchestrationChat({ project }: Props) {
                     )}
                   </button>
                   {!tool.collapsed && (
-                    <div className="px-2 py-1 text-sm bg-neutral-900/50 max-h-40 overflow-auto">
-                      <div className="text-neutral-400 mb-1">Input:</div>
-                      <pre className="text-neutral-300 whitespace-pre-wrap break-all">{tool.input}</pre>
+                    <div className="px-2 py-1 text-sm bg-surface-panel/50 max-h-40 overflow-auto">
+                      <div className="text-fg-muted mb-1">Input:</div>
+                      <pre className="text-fg-normal whitespace-pre-wrap break-all">{tool.input}</pre>
                       {tool.output !== undefined && (
                         <>
-                          <div className="text-neutral-400 mt-2 mb-1">Output:</div>
-                          <pre className="text-neutral-300 whitespace-pre-wrap">{tool.output}</pre>
+                          <div className="text-fg-muted mt-2 mb-1">Output:</div>
+                          <pre className="text-fg-normal whitespace-pre-wrap">{tool.output}</pre>
                         </>
                       )}
                     </div>
@@ -454,7 +454,7 @@ export default function OrchestrationChat({ project }: Props) {
 
               {/* Cost info */}
               {msg.cost_usd !== undefined && (
-                <div className="mt-1 text-sm text-neutral-600">
+                <div className="mt-1 text-sm text-fg-ghost">
                   ${msg.cost_usd.toFixed(4)} · {((msg.duration_ms ?? 0) / 1000).toFixed(1)}s
                 </div>
               )}
@@ -469,7 +469,7 @@ export default function OrchestrationChat({ project }: Props) {
               setAutoScroll(true)
               scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
             }}
-            className="sticky bottom-2 ml-auto mr-2 px-3 py-1 bg-neutral-800 text-neutral-300 text-sm rounded-full shadow-lg hover:bg-neutral-700 transition-colors z-10"
+            className="sticky bottom-2 ml-auto mr-2 px-3 py-1 bg-surface-raised text-fg-normal text-sm rounded-full shadow-lg hover:bg-surface-strong transition-colors z-10"
           >
             Jump to bottom
           </button>
@@ -477,7 +477,7 @@ export default function OrchestrationChat({ project }: Props) {
       </div>
 
       {/* Input area — hidden while splash or voice entry mode is active */}
-      <div className={`flex-shrink-0 border-t border-neutral-800 p-2 ${showSplash || voiceEntryMode ? 'hidden' : ''}`}>
+      <div className={`flex-shrink-0 border-t border-surface-line p-2 ${showSplash || voiceEntryMode ? 'hidden' : ''}`}>
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -493,7 +493,7 @@ export default function OrchestrationChat({ project }: Props) {
             }
             disabled={!isInputEnabled}
             rows={1}
-            className="flex-1 bg-neutral-900 text-neutral-200 text-base md:text-sm rounded-lg px-3 py-2 min-h-[44px] max-h-32 resize-none border border-neutral-700 focus:border-blue-500 focus:outline-none disabled:opacity-50 placeholder-neutral-600"
+            className="flex-1 bg-surface-panel text-fg-strong text-base md:text-sm rounded-lg px-3 py-2 min-h-[44px] max-h-32 resize-none border border-surface-edge focus:border-blue-500 focus:outline-none disabled:opacity-50 placeholder-neutral-600"
             onInput={e => {
               const target = e.target as HTMLTextAreaElement
               target.style.height = 'auto'
@@ -510,7 +510,7 @@ export default function OrchestrationChat({ project }: Props) {
           <button
             onClick={handleSend}
             disabled={!isInputEnabled || !input.trim()}
-            className="px-3 min-h-[44px] bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-3 min-h-[44px] bg-blue-600 hover:bg-blue-500 disabled:bg-surface-strong disabled:text-fg-faint disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
           >
             Send
           </button>

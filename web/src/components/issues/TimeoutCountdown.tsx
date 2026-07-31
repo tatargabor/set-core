@@ -31,7 +31,7 @@ export function TimeoutCountdown({ deadline, startedAt }: { deadline: string; st
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="text-amber-400">⏱ {formatDuration(remaining)}</span>
-      <div className="w-20 h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+      <div className="w-20 h-1.5 bg-surface-raised rounded-full overflow-hidden">
         <div className="h-full bg-amber-400/60 rounded-full transition-all" style={{ width: `${pct}%` }} />
       </div>
     </div>

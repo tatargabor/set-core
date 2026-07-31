@@ -17,7 +17,7 @@ const SEV_STYLE: Record<string, string> = {
 const FINDING_STATUS_STYLE: Record<string, string> = {
   open: 'text-yellow-400',
   fixed: 'text-green-400',
-  dismissed: 'text-neutral-500',
+  dismissed: 'text-fg-faint',
 }
 
 function formatMs(ms: number): string {
@@ -51,7 +51,7 @@ export default function LearningsPanel({ project }: Props) {
     return <div className="p-4 text-red-400 text-sm">{error}</div>
   }
   if (!data) {
-    return <div className="p-4 text-neutral-500 text-sm">Loading learnings...</div>
+    return <div className="p-4 text-fg-faint text-sm">Loading learnings...</div>
   }
 
   const reflCount = data.reflections.with_reflection
@@ -79,8 +79,8 @@ export default function LearningsPanel({ project }: Props) {
             onClick={() => setSection(s.id)}
             className={`px-3 py-1 text-sm rounded transition-colors ${
               section === s.id
-                ? 'bg-neutral-700 text-neutral-200'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                ? 'bg-surface-strong text-fg-strong'
+                : 'text-fg-faint hover:text-fg-normal hover:bg-surface-raised/50'
             }`}
           >
             {s.label}
@@ -105,11 +105,11 @@ export default function LearningsPanel({ project }: Props) {
       {show('review') && (
         <SectionBlock title="Review Findings" count={reviewCount}>
           {data.review_findings.recurring_patterns.length > 0 && (
-            <div className="mb-3 p-2 bg-neutral-900/50 border border-neutral-800 rounded">
-              <div className="text-sm font-medium text-neutral-400 mb-1">Recurring Patterns</div>
+            <div className="mb-3 p-2 bg-surface-panel/50 border border-surface-line rounded">
+              <div className="text-sm font-medium text-fg-muted mb-1">Recurring Patterns</div>
               {data.review_findings.recurring_patterns.map((p, i) => (
-                <div key={i} className="text-sm text-neutral-300">
-                  <span className="text-neutral-500">{p.count}x</span> {p.pattern}
+                <div key={i} className="text-sm text-fg-normal">
+                  <span className="text-fg-faint">{p.count}x</span> {p.pattern}
                 </div>
               ))}
             </div>
@@ -141,11 +141,11 @@ export default function LearningsPanel({ project }: Props) {
           ) : (
             <div className="space-y-1.5">
               {data.sentinel_findings.findings.map((f: { id: string; severity: string; change: string; summary: string; status: string }) => (
-                <div key={f.id} className={`text-sm rounded border px-2 py-1.5 ${SEV_STYLE[f.severity] ?? 'bg-neutral-900 text-neutral-300 border-neutral-700'}`}>
+                <div key={f.id} className={`text-sm rounded border px-2 py-1.5 ${SEV_STYLE[f.severity] ?? 'bg-surface-panel text-fg-normal border-surface-edge'}`}>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{f.id}</span>
                     <span className="opacity-70">{f.change}</span>
-                    <span className={`ml-auto ${FINDING_STATUS_STYLE[f.status] ?? 'text-neutral-400'}`}>{f.status}</span>
+                    <span className={`ml-auto ${FINDING_STATUS_STYLE[f.status] ?? 'text-fg-muted'}`}>{f.status}</span>
                   </div>
                   <div className="mt-0.5 opacity-90">{f.summary}</div>
                 </div>
@@ -163,8 +163,8 @@ export default function LearningsPanel({ project }: Props) {
 function SectionBlock({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider mb-2">
-        {title} {count > 0 && <span className="text-neutral-500">({count})</span>}
+      <h3 className="text-sm font-semibold text-fg-normal uppercase tracking-wider mb-2">
+        {title} {count > 0 && <span className="text-fg-faint">({count})</span>}
       </h3>
       {children}
     </div>
@@ -172,7 +172,7 @@ function SectionBlock({ title, count, children }: { title: string; count: number
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="text-sm text-neutral-600 py-2">{children}</div>
+  return <div className="text-sm text-fg-ghost py-2">{children}</div>
 }
 
 function ReflectionRow({ reflection }: { reflection: ReflectionEntry }) {
@@ -180,18 +180,18 @@ function ReflectionRow({ reflection }: { reflection: ReflectionEntry }) {
   const preview = reflection.content.split('\n').find(l => l.trim().startsWith('-'))?.trim() ?? reflection.content.slice(0, 80)
 
   return (
-    <div className="border border-neutral-800 rounded mb-1">
+    <div className="border border-surface-line rounded mb-1">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-neutral-800/50 text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-surface-raised/50 text-left"
       >
-        <span className="text-neutral-500">{expanded ? '▾' : '▸'}</span>
-        <span className="font-medium text-neutral-300">{reflection.change}</span>
-        {!expanded && <span className="text-neutral-500 truncate flex-1">{preview}</span>}
+        <span className="text-fg-faint">{expanded ? '▾' : '▸'}</span>
+        <span className="font-medium text-fg-normal">{reflection.change}</span>
+        {!expanded && <span className="text-fg-faint truncate flex-1">{preview}</span>}
       </button>
       {expanded && (
         <div className="px-3 pb-2 max-h-64 overflow-auto">
-          <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{reflection.content}</pre>
+          <pre className="text-sm text-fg-muted whitespace-pre-wrap leading-relaxed">{reflection.content}</pre>
         </div>
       )}
     </div>
@@ -229,32 +229,32 @@ function FindingRow({ issue }: { issue: { severity: string; summary: string; fil
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="border border-neutral-800 rounded">
+    <div className="border border-surface-line rounded">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-neutral-800/50 text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-surface-raised/50 text-left"
       >
-        <span className="text-neutral-500">{expanded ? '▾' : '▸'}</span>
-        <span className={`px-1.5 py-0.5 rounded text-xs border ${SEV_STYLE[issue.severity] ?? 'bg-neutral-800 text-neutral-400 border-neutral-700'}`}>
+        <span className="text-fg-faint">{expanded ? '▾' : '▸'}</span>
+        <span className={`px-1.5 py-0.5 rounded text-xs border ${SEV_STYLE[issue.severity] ?? 'bg-surface-raised text-fg-muted border-surface-edge'}`}>
           {issue.severity}
         </span>
-        <span className="text-neutral-300 truncate flex-1">{issue.summary}</span>
-        <span className="text-neutral-600 shrink-0">{issue.change}</span>
+        <span className="text-fg-normal truncate flex-1">{issue.summary}</span>
+        <span className="text-fg-ghost shrink-0">{issue.change}</span>
       </button>
       {expanded && (
         <div className="px-3 pb-2 text-sm space-y-1">
           {issue.file && (
-            <div className="text-neutral-500">
-              File: <span className="text-neutral-400">{issue.file}</span>
+            <div className="text-fg-faint">
+              File: <span className="text-fg-muted">{issue.file}</span>
               {issue.line && <span> L{issue.line}</span>}
             </div>
           )}
           {issue.fix && (
-            <div className="text-neutral-500">
-              Fix: <span className="text-neutral-400">{issue.fix}</span>
+            <div className="text-fg-faint">
+              Fix: <span className="text-fg-muted">{issue.fix}</span>
             </div>
           )}
-          <div className="text-neutral-600">Attempt {issue.attempt}</div>
+          <div className="text-fg-ghost">Attempt {issue.attempt}</div>
         </div>
       )}
     </div>
@@ -269,7 +269,7 @@ function GatePerformance({ stats, retry }: { stats: Record<string, GateStatEntry
     <div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-neutral-500 text-left">
+          <tr className="text-fg-faint text-left">
             <th className="pb-1 font-medium">Gate</th>
             <th className="pb-1 font-medium">Pass Rate</th>
             <th className="pb-1 font-medium">Avg Time</th>
@@ -281,19 +281,19 @@ function GatePerformance({ stats, retry }: { stats: Record<string, GateStatEntry
             const pct = Math.round(s.pass_rate * 100)
             const barColor = pct >= 90 ? 'bg-green-600' : pct >= 70 ? 'bg-yellow-600' : 'bg-red-600'
             return (
-              <tr key={name} className="border-t border-neutral-800/50">
-                <td className="py-1 text-neutral-300 font-medium">{name}</td>
+              <tr key={name} className="border-t border-surface-line/50">
+                <td className="py-1 text-fg-normal font-medium">{name}</td>
                 <td className="py-1">
                   <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-neutral-800 rounded overflow-hidden">
+                    <div className="w-16 h-1.5 bg-surface-raised rounded overflow-hidden">
                       <div className={`h-full ${barColor} rounded`} style={{ width: `${pct}%` }} />
                     </div>
-                    <span className="text-neutral-400">{pct}%</span>
-                    <span className="text-neutral-600">({s.pass}/{s.pass + s.fail})</span>
+                    <span className="text-fg-muted">{pct}%</span>
+                    <span className="text-fg-ghost">({s.pass}/{s.pass + s.fail})</span>
                   </div>
                 </td>
-                <td className="py-1 text-neutral-500">{formatMs(s.avg_ms)}</td>
-                <td className="py-1 text-neutral-500">{s.fail}</td>
+                <td className="py-1 text-fg-faint">{formatMs(s.avg_ms)}</td>
+                <td className="py-1 text-fg-faint">{s.fail}</td>
               </tr>
             )
           })}
@@ -301,7 +301,7 @@ function GatePerformance({ stats, retry }: { stats: Record<string, GateStatEntry
       </table>
 
       {retry.total_retries > 0 && (
-        <div className="mt-2 text-sm text-neutral-500">
+        <div className="mt-2 text-sm text-fg-faint">
           Total gate time: {formatMs(retry.total_gate_ms)}
           {' · '}{retry.total_retries} retries ({retry.retry_pct}% of changes)
           {retry.most_retried_gate && <span> · Most retried: {retry.most_retried_gate}</span>}
@@ -311,7 +311,7 @@ function GatePerformance({ stats, retry }: { stats: Record<string, GateStatEntry
       {gates.length > 0 && (
         <button
           onClick={() => setShowBreakdown(!showBreakdown)}
-          className="mt-1 text-sm text-neutral-600 hover:text-neutral-400"
+          className="mt-1 text-sm text-fg-ghost hover:text-fg-muted"
         >
           {showBreakdown ? '▾ Hide' : '▸ Per change type breakdown'}
         </button>

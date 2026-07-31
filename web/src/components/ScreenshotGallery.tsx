@@ -109,14 +109,14 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
   }, [images.length, onClose])
 
   if (loading) {
-    return <div className="px-4 py-6 text-sm text-neutral-500">Loading artifacts...</div>
+    return <div className="px-4 py-6 text-sm text-fg-faint">Loading artifacts...</div>
   }
 
   if (artifacts.length === 0) {
     return (
-      <div className="px-4 py-6 text-sm text-neutral-500 space-y-1">
+      <div className="px-4 py-6 text-sm text-fg-faint space-y-1">
         <div>No test artifacts found.</div>
-        <div className="text-xs text-neutral-600">
+        <div className="text-xs text-fg-ghost">
           Playwright runs with <code>screenshot: only-on-failure</code> —
           nothing is written when every test passes. Previous failing
           attempts would be archived under{' '}
@@ -149,8 +149,8 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
       title={title}
       className={`px-3 py-1.5 text-xs transition-colors border-b-2 -mb-px whitespace-nowrap ${
         active
-          ? 'border-blue-500 text-neutral-100 bg-neutral-900/40'
-          : 'border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
+          ? 'border-blue-500 text-fg-loud bg-surface-panel/40'
+          : 'border-transparent text-fg-faint hover:text-fg-normal hover:bg-surface-panel/30'
       }`}
     >
       {children}
@@ -167,7 +167,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
           scrollbar would appear on the right side of the tab row. */}
       {attempts.length > 0 && (
         <div
-          className="flex items-center gap-0 px-3 border-b border-neutral-800 overflow-x-auto"
+          className="flex items-center gap-0 px-3 border-b border-surface-line overflow-x-auto"
           style={{ overflowY: 'hidden' }}
         >
           {attempts.map(n => {
@@ -181,7 +181,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                 title={`attempt #${n}: ${c.images} screenshots, ${c.others} other files`}
               >
                 attempt #{n}
-                <span className="ml-1 text-xs text-neutral-500">
+                <span className="ml-1 text-xs text-fg-faint">
                   ({c.images} img{c.others > 0 ? ` +${c.others}` : ''})
                 </span>
               </TabBtn>
@@ -192,7 +192,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
           <div className="ml-auto pr-1">
             <button
               onClick={loadArtifacts}
-              className="text-xs text-neutral-600 hover:text-neutral-300 px-1.5 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+              className="text-xs text-fg-ghost hover:text-fg-normal px-1.5 py-0.5 rounded hover:bg-surface-raised transition-colors"
               title="Re-scan worktree for artifacts"
             >
               Refresh
@@ -202,7 +202,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
       )}
 
       {/* Row 3: summary strip (counts + image counter for the active tab) */}
-      <div className="flex items-center justify-between px-4 py-1 bg-neutral-900/40 border-b border-neutral-800 text-xs text-neutral-500">
+      <div className="flex items-center justify-between px-4 py-1 bg-surface-panel/40 border-b border-surface-line text-xs text-fg-faint">
         <span>
           {images.length} {images.length === 1 ? 'screenshot' : 'screenshots'}
           {nonImages.length > 0 && ` · ${nonImages.length} other files`}
@@ -218,11 +218,11 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
         {images.length > 0 ? (
           <>
             {/* Main preview */}
-            <div className="flex-1 min-h-[280px] relative bg-neutral-950 flex items-center justify-center px-2 py-2">
+            <div className="flex-1 min-h-[280px] relative bg-surface-page flex items-center justify-center px-2 py-2">
               {selectedIndex > 0 && (
                 <button
                   onClick={() => setSelectedIndex(i => i - 1)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-neutral-800/80 hover:bg-neutral-700 rounded-full flex items-center justify-center text-neutral-300 z-10"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-surface-raised/80 hover:bg-surface-strong rounded-full flex items-center justify-center text-fg-normal z-10"
                 >
                   &lt;
                 </button>
@@ -230,7 +230,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
               {selectedIndex < images.length - 1 && (
                 <button
                   onClick={() => setSelectedIndex(i => i + 1)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-neutral-800/80 hover:bg-neutral-700 rounded-full flex items-center justify-center text-neutral-300 z-10"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-surface-raised/80 hover:bg-surface-strong rounded-full flex items-center justify-center text-fg-normal z-10"
                 >
                   &gt;
                 </button>
@@ -243,9 +243,9 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
             </div>
 
             {/* Caption row */}
-            <div className="px-4 py-1.5 border-t border-neutral-800 bg-neutral-900/50 flex items-center gap-2 flex-shrink-0">
+            <div className="px-4 py-1.5 border-t border-surface-line bg-surface-panel/50 flex items-center gap-2 flex-shrink-0">
               {typeof selected?.attempt === 'number' && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded uppercase bg-neutral-700 text-neutral-200">
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded uppercase bg-surface-strong text-fg-strong">
                   #{selected.attempt}
                 </span>
               )}
@@ -258,12 +258,12 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                   {selected.result === 'fail' ? 'FAIL' : 'PASS'}
                 </span>
               )}
-              <span className="text-xs text-neutral-400 truncate flex-1" title={selected?.test || ''}>
+              <span className="text-xs text-fg-muted truncate flex-1" title={selected?.test || ''}>
                 {testLabel}
               </span>
               {selected?.meta && (
                 <span
-                  className="text-xs text-neutral-500 flex-shrink-0"
+                  className="text-xs text-fg-faint flex-shrink-0"
                   dangerouslySetInnerHTML={{ __html: selected.meta }}
                 />
               )}
@@ -271,7 +271,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
 
             {/* Thumbnail strip — horizontal scroll, fixed height so it never
                 eats the viewer area. */}
-            <div className="flex gap-1 px-3 py-2 overflow-x-auto bg-neutral-900/30 flex-shrink-0" style={{ height: 68 }}>
+            <div className="flex gap-1 px-3 py-2 overflow-x-auto bg-surface-panel/30 flex-shrink-0" style={{ height: 68 }}>
               {images.map((img, i) => (
                 <button
                   key={img.path}
@@ -281,7 +281,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                       ? 'border-blue-500 opacity-100 scale-105'
                       : img.result === 'fail'
                         ? 'border-red-500/60 opacity-80 hover:opacity-100'
-                        : 'border-transparent opacity-60 hover:opacity-90 hover:border-neutral-600'
+                        : 'border-transparent opacity-60 hover:opacity-90 hover:border-surface-edge-soft'
                   }`}
                   title={img.label || img.test?.replace(/-chromium$/, '').replace(/-/g, ' ')}
                 >
@@ -299,7 +299,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-sm text-neutral-500 min-h-[200px]">
+          <div className="flex-1 flex items-center justify-center text-sm text-fg-faint min-h-[200px]">
             No screenshots in this attempt
             {nonImages.length > 0 && ' — see other files below'}
             .
@@ -309,15 +309,15 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
         {/* Non-image artifacts: collapsible drawer so 121 items don't flood
             the dialog. Header is always visible with the count. */}
         {nonImages.length > 0 && (
-          <div className="border-t border-neutral-800 flex-shrink-0">
+          <div className="border-t border-surface-line flex-shrink-0">
             <button
               onClick={() => setOtherFilesOpen(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-2 text-xs text-neutral-400 hover:bg-neutral-900/30 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-2 text-xs text-fg-muted hover:bg-surface-panel/30 transition-colors"
             >
               <span>
-                Other files <span className="text-neutral-600">({nonImages.length})</span>
+                Other files <span className="text-fg-ghost">({nonImages.length})</span>
               </span>
-              <span className="text-neutral-500">{otherFilesOpen ? '▼ hide' : '▶ show'}</span>
+              <span className="text-fg-faint">{otherFilesOpen ? '▼ hide' : '▶ show'}</span>
             </button>
             {otherFilesOpen && (
               <div
@@ -335,7 +335,7 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                       {...(openInline
                         ? { target: '_blank', rel: 'noopener noreferrer' }
                         : { download: a.name })}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded border border-neutral-800 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-200 transition-colors"
+                      className="flex items-center gap-1.5 px-2 py-1 rounded border border-surface-line text-xs text-fg-muted hover:border-surface-edge-soft hover:text-fg-strong transition-colors"
                       title={
                         (typeof a.attempt === 'number' ? `attempt #${a.attempt} · ` : '') +
                         (a.test ?? '') + ' · ' +
@@ -343,10 +343,10 @@ export default function ScreenshotGallery({ project, changeName, onClose }: Prop
                       }
                     >
                       {typeof a.attempt === 'number' && (
-                        <span className="text-xs font-semibold text-neutral-500">#{a.attempt}</span>
+                        <span className="text-xs font-semibold text-fg-faint">#{a.attempt}</span>
                       )}
                       <span className="truncate max-w-[180px]">{a.name}</span>
-                      <span className="text-xs text-neutral-600">{a.type}</span>
+                      <span className="text-xs text-fg-ghost">{a.type}</span>
                     </a>
                   )
                 })}

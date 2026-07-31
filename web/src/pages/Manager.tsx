@@ -9,9 +9,9 @@ const statusStyle: Record<string, { char: string; color: string; label: string }
   checkpoint: { char: '\u25C9', color: 'text-yellow-400', label: 'Checkpoint' },
   completed: { char: '\u25CF', color: 'text-blue-400', label: 'Completed' },
   done: { char: '\u25CF', color: 'text-blue-400', label: 'Done' },
-  stopped: { char: '\u25CB', color: 'text-neutral-500', label: 'Stopped' },
+  stopped: { char: '\u25CB', color: 'text-fg-faint', label: 'Stopped' },
   failed: { char: '\u2715', color: 'text-red-400', label: 'Failed' },
-  idle: { char: '\u25CB', color: 'text-neutral-600', label: 'Idle' },
+  idle: { char: '\u25CB', color: 'text-fg-ghost', label: 'Idle' },
   error: { char: '\u2715', color: 'text-red-400', label: 'Error' },
   corrupt: { char: '\u2715', color: 'text-red-400', label: 'Corrupt' },
 }
@@ -82,13 +82,13 @@ export default function Manager() {
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <div className="flex items-baseline gap-3 mb-4 md:mb-6">
-        <h1 className="text-lg md:text-xl font-semibold text-neutral-100">Projects</h1>
+        <h1 className="text-lg md:text-xl font-semibold text-fg-loud">Projects</h1>
         {archivedCount > 0 && (
           // Hidden rows must stay counted where the reader is standing — a
           // shorter list otherwise reads as "that is everything".
           <button
             onClick={() => setShowArchived(v => !v)}
-            className="text-xs text-neutral-500 hover:text-neutral-300 underline underline-offset-2 transition-colors"
+            className="text-xs text-fg-faint hover:text-fg-normal underline underline-offset-2 transition-colors"
           >
             {showArchived ? 'hide' : 'show'} {archivedCount} archived
           </button>
@@ -96,12 +96,12 @@ export default function Manager() {
       </div>
 
       {loading && projects.length === 0 && (
-        <div className="text-sm text-neutral-500">Loading...</div>
+        <div className="text-sm text-fg-faint">Loading...</div>
       )}
 
       {!loading && sorted.length === 0 && (
-        <div className="text-sm text-neutral-500 bg-neutral-900 rounded-lg p-4">
-          No projects found. Register one with: <code className="text-neutral-300">set-project init</code>
+        <div className="text-sm text-fg-faint bg-surface-panel rounded-lg p-4">
+          No projects found. Register one with: <code className="text-fg-normal">set-project init</code>
         </div>
       )}
 
@@ -109,13 +109,13 @@ export default function Manager() {
           container, anchoring the sticky header to a box that never scrolls —
           measured, the header still slid to y=-916. Rounding lives on the border. */}
       {sorted.length > 0 && (
-        <div className="border border-neutral-800 rounded-lg">
+        <div className="border border-surface-line rounded-lg">
           <table className="w-full text-sm">
             {/* Sticky since the page became scrollable: at 38 rows the header
                 scrolls away, and an unlabelled column of numbers is not data
                 anyone can read. */}
-            <thead className="sticky top-0 z-10 bg-neutral-950">
-              <tr className="border-b border-neutral-800 text-xs text-neutral-500 uppercase tracking-wider">
+            <thead className="sticky top-0 z-10 bg-surface-page">
+              <tr className="border-b border-surface-line text-xs text-fg-faint uppercase tracking-wider">
                 <th className="text-left px-4 py-2 font-medium">Name</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
                 <th className="text-right px-4 py-2 font-medium">Changes</th>
@@ -130,7 +130,7 @@ export default function Manager() {
                 const s = statusStyle[p.status ?? 'idle'] ?? statusStyle.idle
                 const hasChanges = (p.changes_total ?? 0) > 0
                 return (
-                  <tr key={p.name} className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                  <tr key={p.name} className="border-b border-surface-line/50 hover:bg-surface-raised/30 transition-colors">
                     <td className="px-4 py-2.5">
                       {/* The archived mark rides on the status glyph rather than
                           adding a badge: a badge widened this column enough to
@@ -139,13 +139,13 @@ export default function Manager() {
                           which the row/badge counts could not see. */}
                       <Link
                         to={`/p/${p.name}/status`}
-                        className="flex items-center gap-2 hover:text-neutral-100"
+                        className="flex items-center gap-2 hover:text-fg-loud"
                         title={p.archived ? `archived ${p.archivedAt?.slice(0, 10) ?? ''}` : undefined}
                       >
-                        <span className={`shrink-0 ${p.archived ? 'text-neutral-700' : s.color}`}>
+                        <span className={`shrink-0 ${p.archived ? 'text-fg-dim' : s.color}`}>
                           {p.archived ? '◌' : s.char}
                         </span>
-                        <span className={p.archived ? 'text-neutral-500' : 'text-neutral-200 font-medium'}>
+                        <span className={p.archived ? 'text-fg-faint' : 'text-fg-strong font-medium'}>
                           {p.name}
                         </span>
                       </Link>
@@ -153,27 +153,27 @@ export default function Manager() {
                     <td className="px-4 py-2.5">
                       <span className={`text-xs ${s.color}`}>{s.label}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                    <td className="px-4 py-2.5 text-right text-fg-muted">
                       {hasChanges ? `${p.changes_merged}/${p.changes_total}` : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                    <td className="px-4 py-2.5 text-right text-fg-muted">
                       {formatTokens(p.total_tokens)}
                       {(p as any).cache_tokens > 0 && (
                         <span className="text-purple-400/50 text-xs ml-1">({formatTokens((p as any).cache_tokens)} cached)</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-neutral-400">
+                    <td className="px-4 py-2.5 text-right text-fg-muted">
                       {formatDuration(p.active_seconds)}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {(p.issues_open ?? 0) > 0
                         ? <span className="text-amber-400">{p.issues_open} open</span>
                         : (p.issues_total ?? 0) > 0
-                          ? <span className="text-neutral-500">{p.issues_total} closed</span>
-                          : <span className="text-neutral-600">—</span>
+                          ? <span className="text-fg-faint">{p.issues_total} closed</span>
+                          : <span className="text-fg-ghost">—</span>
                       }
                     </td>
-                    <td className="px-4 py-2.5 text-right text-neutral-500">
+                    <td className="px-4 py-2.5 text-right text-fg-faint">
                       {timeAgo(p.last_updated)}
                     </td>
                   </tr>

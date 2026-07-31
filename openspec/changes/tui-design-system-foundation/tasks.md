@@ -1,12 +1,12 @@
 ## 1. Semantic tokens
 
-- [ ] 1.1 Enumerate every distinct status meaning in use today by reading the six `statusColor()`-style branches and the 493 literal colour sites; produce a meaning→hue table and resolve whether `merge-blocked` orange is its own `blocked` token or folds into `warn` [REQ: status-colour-is-named-by-meaning-through-a-token]
+- [x] 1.1 Enumerate every distinct status meaning in use today by reading the six `statusColor()`-style branches and the 493 literal colour sites; produce a meaning→hue table and resolve whether `merge-blocked` orange is its own `blocked` token or folds into `warn` [REQ: status-colour-is-named-by-meaning-through-a-token]
 - [x] 1.2 Add the `@theme` block to `web/src/index.css` defining `--color-status-done|active|fail|warn|blocked|idle` from that table; verify Tailwind emits `text-status-*` utilities by using one in a scratch component and checking the built CSS [REQ: status-colour-is-named-by-meaning-through-a-token]
 - [x] 1.3 Prove the token indirection: change one token's value in `index.css`, rebuild, confirm every indicator of that meaning changed with no component file edited, then revert [REQ: status-colour-is-named-by-meaning-through-a-token]
 
 ## 2. The primitive module
 
-- [ ] 2.1 Create `web/src/components/tui/` and move `TuiProgress`, `TuiStatus`, `TuiSection`, `statusColor` into it unchanged; keep `web/src/components/tui.tsx` as a re-export so the six importing files are untouched at this step [REQ: the-primitives-live-in-one-module-and-are-the-only-implementation]
+- [x] 2.1 Create `web/src/components/tui/` and move `TuiProgress`, `TuiStatus`, `TuiSection`, `statusColor` into it unchanged; keep `web/src/components/tui.tsx` as a re-export so the six importing files are untouched at this step [REQ: the-primitives-live-in-one-module-and-are-the-only-implementation]
 - [ ] 2.2 Convert the three moved primitives to the tokens from task 1.2 — no literal colour class remains in the module [REQ: a-primitive-names-status-by-meaning-never-by-hue]
 - [ ] 2.3 Extract `TuiPanel` (the `rounded border border-neutral-8…` frame, 6 current sites) and `TuiBadge`, each with one implementation and the token colours [REQ: the-primitives-live-in-one-module-and-are-the-only-implementation]
 - [ ] 2.4 Extract `TuiChip` and `TuiKeyValue`; the chip list caps its visible items and renders the withheld count adjacent to the chips, never in a tooltip [REQ: a-primitive-that-compacts-states-what-it-withheld]
@@ -26,23 +26,23 @@
 - [x] 4.1 Displace nested structures out of table cells rather than deleting `StatusValue`'s depth-based minimum width — the deletion makes the row TALLER, as that code's own comment predicted; confirm on a real project's answer [REQ: nesting-depth-never-decides-a-row-width]
 - [x] 4.2 Verify the narrow case did not regress — a two-key object in a narrow column is still readable, looked at in the running app, not inferred from a passing test [REQ: nesting-depth-never-decides-a-row-width]
 - [x] 4.3 Move a value that cannot fit its cell into a row-detail expansion instead of growing the row's height; the cell keeps a compact representation. The row expander is turned on by CONTENT (any cell holding a structure), not by the row count — the worst screen on the surface was a four-row table, far under the 8-row control threshold [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
-- [ ] 4.4 Mark the collapsed row when a value was displaced, and carry the failure marker when the displaced value is in a failing state [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
-- [ ] 4.5 Convert `ProjectStatus.tsx`, `StatusTable.tsx`, `StatusValue.tsx` onto the primitives from groups 2 and 3, removing their local copies [REQ: the-primitives-live-in-one-module-and-are-the-only-implementation]
-- [ ] 4.6 Look at the finished screen in the running app against a real project and record what was seen; structural counts do not settle a layout question [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
+- [x] 4.4 Mark the collapsed row when a value was displaced, and carry the failure marker when the displaced value is in a failing state [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
+- [x] 4.5 Convert `ProjectStatus.tsx`, `StatusTable.tsx`, `StatusValue.tsx` onto the primitives from groups 2 and 3, removing their local copies [REQ: the-primitives-live-in-one-module-and-are-the-only-implementation]
+- [x] 4.6 Look at the finished screen in the running app against a real project and record what was seen; structural counts do not settle a layout question [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
 
 ## 5. Migrate the existing violations to zero
 
-- [ ] 5.1 Replace the 81 `text-[9px|10px|11px]` occurrences across 15 files with `text-xs`/`text-sm`/`text-base`; re-measure to confirm the count is 0 [REQ: font-size-normalization]
-- [ ] 5.2 Remove the 34 non-Battle `font-mono` usages; re-measure to confirm the count is 0 outside `components/battle/` [REQ: font-mono-class-removal]
+- [x] 5.1 Replace the 81 `text-[9px|10px|11px]` occurrences across 15 files with `text-xs`/`text-sm`/`text-base`; re-measure to confirm the count is 0 [REQ: font-size-normalization]
+- [x] 5.2 Remove the 34 non-Battle `font-mono` usages; re-measure to confirm the count is 0 outside `components/battle/` [REQ: font-mono-class-removal]
 - [ ] 5.3 Replace the 493 literal status colour classes across 47 files with tokens, reading each site to distinguish a *status* neutral from a *muted label* neutral — the two are not the same token and the difference is invisible in the class name [REQ: status-colour-is-named-by-meaning-through-a-token]
-- [ ] 5.4 Capture Playwright screenshots of the affected screens before and after group 5; examine each pixel difference individually rather than accepting the set in bulk [REQ: status-colour-is-named-by-meaning-through-a-token]
+- [x] 5.4 Capture Playwright screenshots of the affected screens before and after group 5; examine each pixel difference individually rather than accepting the set in bulk [REQ: status-colour-is-named-by-meaning-through-a-token]
 
 ## 6. The drift test — enabled last
 
-- [ ] 6.1 Write `web/tests/unit/design-drift.test.ts` asserting zero `text-[<n>px]`, zero non-exempt `font-mono`, and zero literal status colour classes outside `index.css` and the primitive module; failures name file and line [REQ: design-system-drift-fails-the-build]
-- [ ] 6.2 Carry exemptions as an explicit in-test list with a stated reason each (Battle, and the token definitions themselves); do not widen a pattern to accommodate one [REQ: font-mono-class-removal]
-- [ ] 6.3 Exclude the test file from its own corpus — it contains every banned pattern as a string literal — and add an assertion that the exclusion is by identity, not by a substring that a future file could also match [REQ: design-system-drift-fails-the-build]
-- [ ] 6.4 Prove the test fires: introduce one known violation of each of the three rules, confirm each fails, then restore and re-grep the file to confirm the original content is back before believing the green run [REQ: design-system-drift-fails-the-build]
+- [x] 6.1 Write `web/tests/unit/design-drift.test.ts` asserting zero `text-[<n>px]`, zero non-exempt `font-mono`, and zero literal status colour classes outside `index.css` and the primitive module; failures name file and line [REQ: design-system-drift-fails-the-build]
+- [x] 6.2 Carry exemptions as an explicit in-test list with a stated reason each (Battle, and the token definitions themselves); do not widen a pattern to accommodate one [REQ: font-mono-class-removal]
+- [x] 6.3 Exclude the test file from its own corpus — it contains every banned pattern as a string literal — and add an assertion that the exclusion is by identity, not by a substring that a future file could also match [REQ: design-system-drift-fails-the-build]
+- [x] 6.4 Prove the test fires: introduce one known violation of each of the three rules, confirm each fails, then restore and re-grep the file to confirm the original content is back before believing the green run [REQ: design-system-drift-fails-the-build]
 - [ ] 6.5 Enable the test in the unit suite only once tasks 5.1–5.3 measure zero [REQ: design-system-drift-fails-the-build]
 
 ## 7. Verification

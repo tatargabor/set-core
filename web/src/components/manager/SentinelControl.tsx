@@ -58,13 +58,13 @@ export function SentinelControl({ project, alive, startedAt, crashCount, activeS
     <div className="space-y-3">
       {/* Status */}
       <div className="flex items-center gap-2">
-        <span className={`w-2.5 h-2.5 rounded-full ${alive ? 'bg-green-400' : 'bg-neutral-600'}`} />
-        <span className="text-sm font-medium text-neutral-200">Sentinel</span>
+        <span className={`w-2.5 h-2.5 rounded-full ${alive ? 'bg-green-400' : 'bg-surface-edge-soft'}`} />
+        <span className="text-sm font-medium text-fg-strong">Sentinel</span>
         {alive && startedAt && (
-          <span className="text-xs text-neutral-500">running {formatUptime(startedAt)}</span>
+          <span className="text-xs text-fg-faint">running {formatUptime(startedAt)}</span>
         )}
         {!alive && (
-          <span className="text-xs text-neutral-500">idle</span>
+          <span className="text-xs text-fg-faint">idle</span>
         )}
         {crashCount != null && crashCount > 0 && (
           <span className="text-xs text-red-400/60">({crashCount} crashes)</span>
@@ -74,7 +74,7 @@ export function SentinelControl({ project, alive, startedAt, crashCount, activeS
       {/* Spec path input + buttons */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1" ref={dropdownRef}>
-          <label className="text-xs text-neutral-500 block mb-1">Spec path</label>
+          <label className="text-xs text-fg-faint block mb-1">Spec path</label>
           <input
             type="text"
             value={displaySpec}
@@ -82,24 +82,24 @@ export function SentinelControl({ project, alive, startedAt, crashCount, activeS
             onFocus={() => !alive && setShowDropdown(true)}
             disabled={alive}
             placeholder="docs/"
-            className={`w-full px-2 py-1.5 text-sm border rounded text-neutral-200 placeholder:text-neutral-600 focus:outline-none ${
+            className={`w-full px-2 py-1.5 text-sm border rounded text-fg-strong placeholder:text-fg-ghost focus:outline-none ${
               alive
-                ? 'bg-neutral-900 border-neutral-800 text-neutral-400 cursor-not-allowed'
-                : 'bg-neutral-800 border-neutral-700 focus:border-blue-500'
+                ? 'bg-surface-panel border-surface-line text-fg-muted cursor-not-allowed'
+                : 'bg-surface-raised border-surface-edge focus:border-blue-500'
             }`}
           />
           {!alive && showDropdown && (
-            <div className="absolute z-10 mt-1 w-full bg-neutral-800 border border-neutral-700 rounded shadow-lg max-h-40 overflow-y-auto">
+            <div className="absolute z-10 mt-1 w-full bg-surface-raised border border-surface-edge rounded shadow-lg max-h-40 overflow-y-auto">
               {filtered.length > 0 ? filtered.map(p => (
                 <button
                   key={p}
                   onClick={() => { setSpec(p); setShowDropdown(false) }}
-                  className="block w-full text-left px-2 py-1.5 text-sm text-neutral-300 hover:bg-neutral-700"
+                  className="block w-full text-left px-2 py-1.5 text-sm text-fg-normal hover:bg-surface-strong"
                 >
                   {p}
                 </button>
               )) : (
-                <div className="px-2 py-1.5 text-xs text-neutral-500">
+                <div className="px-2 py-1.5 text-xs text-fg-faint">
                   {specPaths.length === 0 ? 'Manager offline — type path manually' : 'No matching paths'}
                 </div>
               )}
@@ -113,14 +113,14 @@ export function SentinelControl({ project, alive, startedAt, crashCount, activeS
               <button
                 disabled={busy}
                 onClick={() => act(() => stopSentinel(project))}
-                className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs rounded bg-surface-raised hover:bg-surface-strong text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? 'Stopping…' : 'Stop'}
               </button>
               <button
                 disabled={busy}
                 onClick={() => act(() => restartSentinel(project, (activeSpec ?? spec) || undefined))}
-                className="px-3 py-1.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs rounded bg-surface-raised hover:bg-surface-strong text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? 'Restarting…' : 'Restart'}
               </button>

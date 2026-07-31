@@ -27,7 +27,7 @@ export function IssueRow({ issue, selected, onSelect, checked, onCheck, showEnv 
   return (
     <div
       className={`flex items-center gap-2 px-3 py-2 cursor-pointer rounded transition-colors ${
-        selected ? 'bg-neutral-800' : 'hover:bg-neutral-800/50'
+        selected ? 'bg-surface-raised' : 'hover:bg-surface-raised/50'
       }`}
       onClick={onSelect}
     >
@@ -36,22 +36,22 @@ export function IssueRow({ issue, selected, onSelect, checked, onCheck, showEnv 
         checked={checked}
         onChange={e => { e.stopPropagation(); onCheck(issue.id, e.target.checked) }}
         onClick={e => e.stopPropagation()}
-        className="w-3.5 h-3.5 rounded border-neutral-600"
+        className="w-3.5 h-3.5 rounded border-surface-edge-soft"
       />
-      <span className="text-xs text-neutral-500 w-16 shrink-0">{issue.id}</span>
+      <span className="text-xs text-fg-faint w-16 shrink-0">{issue.id}</span>
       {showEnv && <span className="text-xs text-cyan-600 shrink-0 w-28 truncate">{issue.environment}</span>}
       <SeverityBadge severity={issue.severity} />
       <StateBadge state={issue.state} />
-      <span className="text-sm text-neutral-300 truncate flex-1">{issue.error_summary}</span>
-      {issue.group_id && <span className="text-xs text-neutral-600 shrink-0">{issue.group_id}</span>}
+      <span className="text-sm text-fg-normal truncate flex-1">{issue.error_summary}</span>
+      {issue.group_id && <span className="text-xs text-fg-ghost shrink-0">{issue.group_id}</span>}
       {issue.state === 'awaiting_approval' && issue.timeout_deadline && (
         <TimeoutCountdown deadline={issue.timeout_deadline} startedAt={issue.timeout_started_at} />
       )}
       {issue.state !== 'awaiting_approval' && (
-        <span className="text-xs text-neutral-600 shrink-0">{timeAgo(issue.detected_at)}</span>
+        <span className="text-xs text-fg-ghost shrink-0">{timeAgo(issue.detected_at)}</span>
       )}
       {issue.occurrence_count > 1 && (
-        <span className="text-xs text-neutral-500 shrink-0">x{issue.occurrence_count}</span>
+        <span className="text-xs text-fg-faint shrink-0">x{issue.occurrence_count}</span>
       )}
     </div>
   )

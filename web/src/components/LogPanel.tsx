@@ -15,11 +15,11 @@ function orchLineColor(line: string): string {
   if (line.includes('WARN')) return 'text-yellow-400'
   if (line.includes('REPLAN')) return 'text-cyan-400'
   if (line.includes('CHECKPOINT')) return 'text-yellow-300'
-  return 'text-neutral-400'
+  return 'text-fg-muted'
 }
 
 function sessionLineColor(line: string): string {
-  if (line.startsWith('>>>')) return 'text-neutral-200'
+  if (line.startsWith('>>>')) return 'text-fg-strong'
   if (line.startsWith('  [Read]') || line.startsWith('  [Glob]') || line.startsWith('  [Grep]'))
     return 'text-cyan-500/70'
   if (line.startsWith('  [Write]') || line.startsWith('  [Edit]'))
@@ -27,12 +27,12 @@ function sessionLineColor(line: string): string {
   if (line.startsWith('  [Bash]'))
     return 'text-purple-400/80'
   if (line.startsWith('  ['))
-    return 'text-neutral-500'
+    return 'text-fg-faint'
   if (line.startsWith('---'))
-    return 'text-neutral-600'
+    return 'text-fg-ghost'
   if (line.includes('ERROR') || line.includes('error')) return 'text-red-400'
   if (line.includes('WARN') || line.includes('warning')) return 'text-yellow-400'
-  return 'text-neutral-400'
+  return 'text-fg-muted'
 }
 
 const SPLIT_RATIO_KEY = 'set-log-split-ratio'
@@ -73,9 +73,9 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
 
   return (
     <div className="relative flex flex-col h-full min-w-0">
-      <div className="flex items-center px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50">
-        <span className="text-sm text-neutral-500 font-medium">{label}</span>
-        <span className="ml-auto text-sm text-neutral-600">
+      <div className="flex items-center px-2 py-0.5 border-b border-surface-line bg-surface-panel/50">
+        <span className="text-sm text-fg-faint font-medium">{label}</span>
+        <span className="ml-auto text-sm text-fg-ghost">
           {lineCount ?? lines.length} lines
           {live && <span className="ml-1.5 text-green-600 animate-pulse">LIVE</span>}
         </span>
@@ -89,7 +89,7 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
           <div key={i} className={`whitespace-pre-wrap break-all ${colorFn(line)}`}>{line}</div>
         ))}
         {lines.length === 0 && (
-          <p className="text-neutral-600">No data</p>
+          <p className="text-fg-ghost">No data</p>
         )}
       </div>
       {!autoScroll && (
@@ -98,7 +98,7 @@ function LogPane({ lines, colorFn, label, lineCount, live }: {
             setAutoScroll(true)
             if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
           }}
-          className="absolute bottom-2 right-2 px-1.5 py-0.5 text-sm bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
+          className="absolute bottom-2 right-2 px-1.5 py-0.5 text-sm bg-surface-raised text-fg-muted rounded hover:bg-surface-strong"
         >
           Bottom
         </button>
@@ -122,7 +122,7 @@ const gateResultStyle: Record<string, string> = {
   pass: 'text-green-400',
   fail: 'text-red-400',
   critical: 'text-red-500 font-semibold',
-  skip: 'text-neutral-500',
+  skip: 'text-fg-faint',
 }
 
 function buildGateTabs(change: ChangeInfo, journal: ChangeJournal | null): GateTab[] {
@@ -171,8 +171,8 @@ function GateOutputPane({
   return (
     <div className="h-full flex flex-col">
       {hasHistory && (
-        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto shrink-0">
-          <span className="text-sm text-neutral-600 shrink-0 mr-1">Runs</span>
+        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-surface-line bg-surface-panel/30 overflow-x-auto shrink-0">
+          <span className="text-sm text-fg-ghost shrink-0 mr-1">Runs</span>
           {gate.runs!.map((run, idx) => {
             const isActive = idx === activeRunIndex
             const icon = runIcon(run.result)
@@ -183,7 +183,7 @@ function GateOutputPane({
                 className={`px-1.5 py-0.5 text-sm rounded shrink-0 ${
                   isActive
                     ? 'bg-blue-900/60 text-blue-300'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                    : 'text-fg-faint hover:text-fg-normal hover:bg-surface-panel'
                 }`}
                 title={run.ts || ''}
               >
@@ -195,17 +195,17 @@ function GateOutputPane({
       )}
       <div className="h-full flex flex-col p-3 flex-1 min-h-0">
         <div className="flex items-center gap-3 mb-2 shrink-0">
-          <span className="text-sm font-medium text-neutral-300">{gate.label}</span>
-          <span className={`text-sm ${gateResultStyle[displayResult ?? ''] ?? 'text-neutral-400'}`}>{displayResult}</span>
+          <span className="text-sm font-medium text-fg-normal">{gate.label}</span>
+          <span className={`text-sm ${gateResultStyle[displayResult ?? ''] ?? 'text-fg-muted'}`}>{displayResult}</span>
           {displayMs != null && (
-            <span className="text-sm text-neutral-500">{(displayMs / 1000).toFixed(1)}s</span>
+            <span className="text-sm text-fg-faint">{(displayMs / 1000).toFixed(1)}s</span>
           )}
         </div>
         <div className="flex-1 overflow-auto">
           {displayOutput ? (
-            <pre className="text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{displayOutput}</pre>
+            <pre className="text-sm text-fg-muted whitespace-pre-wrap leading-relaxed">{displayOutput}</pre>
           ) : (
-            <span className="text-sm text-neutral-600">No output</span>
+            <span className="text-sm text-fg-ghost">No output</span>
           )}
         </div>
       </div>
@@ -391,11 +391,11 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
   const sessionPane = (
     <div className="h-full min-w-0 flex flex-col">
       {/* Sub-tab bar: Task | Build | Test | E2E | ... | Merge */}
-      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/50 overflow-x-auto shrink-0">
+      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-surface-line bg-surface-panel/50 overflow-x-auto shrink-0">
         <button
           onClick={() => setActiveSubTab('task')}
           className={`px-1.5 py-0.5 text-sm rounded shrink-0 ${
-            activeSubTab === 'task' ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
+            activeSubTab === 'task' ? 'bg-blue-900/60 text-blue-300' : 'text-fg-faint hover:text-fg-normal'
           }`}
         >
           Session
@@ -405,7 +405,7 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
             key={g.id}
             onClick={() => setActiveSubTab(g.id)}
             className={`px-1.5 py-0.5 text-sm rounded shrink-0 flex items-center gap-1 ${
-              activeSubTab === g.id ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
+              activeSubTab === g.id ? 'bg-blue-900/60 text-blue-300' : 'text-fg-faint hover:text-fg-normal'
             }`}
           >
             {g.label}
@@ -418,7 +418,7 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
           <button
             onClick={() => setActiveSubTab('merge')}
             className={`px-1.5 py-0.5 text-sm rounded shrink-0 ${
-              activeSubTab === 'merge' ? 'bg-blue-900/60 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'
+              activeSubTab === 'merge' ? 'bg-blue-900/60 text-blue-300' : 'text-fg-faint hover:text-fg-normal'
             }`}
           >
             Merge
@@ -431,8 +431,8 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
         {activeSubTab === 'task' ? (
           <>
             {/* Session picker */}
-            <div className="flex items-center gap-1 px-2 py-0.5 border-b border-neutral-800 bg-neutral-900/30 overflow-x-auto">
-              <span className="text-sm text-neutral-600 shrink-0 mr-1">{selectedChange.name}</span>
+            <div className="flex items-center gap-1 px-2 py-0.5 border-b border-surface-line bg-surface-panel/30 overflow-x-auto">
+              <span className="text-sm text-fg-ghost shrink-0 mr-1">{selectedChange.name}</span>
               {sessions.map((s, i) => {
                 const isActive = activeSessionId === s.id
                 const isLatest = i === 0
@@ -442,8 +442,8 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
                     onClick={() => loadSession(s.id)}
                     className={`px-1.5 py-0.5 text-sm rounded transition-colors shrink-0 ${
                       isActive
-                        ? 'bg-neutral-800 text-neutral-200'
-                        : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                        ? 'bg-surface-raised text-fg-strong'
+                        : 'text-fg-faint hover:text-fg-normal hover:bg-surface-panel'
                     }`}
                     title={s.full_label || `Session ${s.id.slice(0, 8)}… — ${new Date(s.mtime).toLocaleString()}`}
                   >
@@ -452,11 +452,11 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
                 )
               })}
               {sessions.length === 0 && (
-                <span className="text-sm text-neutral-600">No sessions</span>
+                <span className="text-sm text-fg-ghost">No sessions</span>
               )}
             </div>
             {sessionLoading ? (
-              <div className="p-2 text-sm text-neutral-600">Loading session...</div>
+              <div className="p-2 text-sm text-fg-ghost">Loading session...</div>
             ) : (
               <LogPane
                 lines={sessionLines}
@@ -476,7 +476,7 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
           // Gate output pane
           (() => {
             const gate = gateTabs.find(g => g.id === activeSubTab)
-            if (!gate) return <div className="p-2 text-sm text-neutral-600">No data</div>
+            if (!gate) return <div className="p-2 text-sm text-fg-ghost">No data</div>
             const idx =
               gate.runs && gate.runs.length > 0
                 ? (activeRunIndex[gate.id] ?? gate.runs.length - 1)
@@ -513,7 +513,7 @@ export default function LogPanel({ orchLines, selectedChange, project, autoFollo
       <div
         onMouseDown={onMouseDown}
         className={`w-1 cursor-col-resize flex-shrink-0 transition-colors ${
-          dragging ? 'bg-blue-500' : 'bg-neutral-800 hover:bg-neutral-600'
+          dragging ? 'bg-blue-500' : 'bg-surface-raised hover:bg-surface-edge-soft'
         }`}
       />
       <div style={{ width: `${(1 - splitRatio) * 100}%` }}>

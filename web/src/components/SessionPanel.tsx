@@ -16,19 +16,19 @@ function outcomeIndicator(outcome?: string): string {
 
 function outcomeChar(outcome?: string): { char: string; color: string } {
   if (outcome === 'active') return { char: '\u25C9', color: 'text-green-400' }
-  if (outcome === 'success') return { char: '\u25CF', color: 'text-neutral-500' }
+  if (outcome === 'success') return { char: '\u25CF', color: 'text-fg-faint' }
   if (outcome === 'error') return { char: '\u2715', color: 'text-red-400' }
-  return { char: '\u25CB', color: 'text-neutral-600' }
+  return { char: '\u25CB', color: 'text-fg-ghost' }
 }
 
 function colorLine(line: string): string {
-  if (line.startsWith('>>>')) return 'text-neutral-200'
+  if (line.startsWith('>>>')) return 'text-fg-strong'
   if (line.startsWith('  [Edit]') || line.startsWith('  [Write]')) return 'text-yellow-400'
   if (line.startsWith('  [Bash]')) return 'text-green-400'
   if (line.startsWith('  [Read]') || line.startsWith('  [Glob]') || line.startsWith('  [Grep]')) return 'text-blue-400'
   if (line.startsWith('  [')) return 'text-cyan-400'
-  if (line.startsWith('---')) return 'text-neutral-600'
-  return 'text-neutral-400'
+  if (line.startsWith('---')) return 'text-fg-ghost'
+  return 'text-fg-muted'
 }
 
 export default function SessionPanel({ project, change }: Props) {
@@ -111,7 +111,7 @@ export default function SessionPanel({ project, change }: Props) {
   const selectedLabel = sessions.find(s => s.id === selected)?.label || selected?.slice(0, 8) || '—'
 
   if (error) return <div className="p-4 text-sm text-red-400">{error}</div>
-  if (sessions.length === 0) return <div className="p-4 text-sm text-neutral-500">No sessions found{change ? ` for ${change}` : ''}</div>
+  if (sessions.length === 0) return <div className="p-4 text-sm text-fg-faint">No sessions found{change ? ` for ${change}` : ''}</div>
 
   return (
     <div className="flex flex-col md:flex-row h-full">
@@ -122,20 +122,20 @@ export default function SessionPanel({ project, change }: Props) {
         </div>
       )}
       {/* Mobile: dropdown session picker */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 md:hidden shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-line md:hidden shrink-0">
         <button
           onClick={() => setListOpen(!listOpen)}
-          className="flex items-center gap-2 px-2 py-1 bg-neutral-800 rounded text-sm text-neutral-300"
+          className="flex items-center gap-2 px-2 py-1 bg-surface-raised rounded text-sm text-fg-normal"
         >
           <span className="truncate max-w-[200px]">{selectedLabel}</span>
-          <span className="text-neutral-500">{listOpen ? '▲' : '▼'}</span>
+          <span className="text-fg-faint">{listOpen ? '▲' : '▼'}</span>
         </button>
-        <span className="text-sm text-neutral-600 ml-auto">{sessions.length} sessions</span>
+        <span className="text-sm text-fg-ghost ml-auto">{sessions.length} sessions</span>
       </div>
 
       {/* Mobile: collapsible session list */}
       {listOpen && (
-        <div className="md:hidden max-h-48 overflow-y-auto border-b border-neutral-800 shrink-0">
+        <div className="md:hidden max-h-48 overflow-y-auto border-b border-surface-line shrink-0">
           {sessions.map(s => {
             const isActive = s.id === selected
             const age = timeSince(s.mtime)
@@ -143,15 +143,15 @@ export default function SessionPanel({ project, change }: Props) {
               <button
                 key={s.id}
                 onClick={() => { setSelected(s.id); setListOpen(false) }}
-                className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${outcomeIndicator(s.outcome)} ${
-                  isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
+                className={`w-full text-left px-3 py-2 border-b border-surface-line/30 transition-colors ${outcomeIndicator(s.outcome)} ${
+                  isActive ? 'bg-surface-raised text-fg-strong' : 'text-fg-muted hover:bg-surface-raised/50'
                 }`}
               >
                 <div className="flex items-center gap-1.5 text-sm font-medium truncate">
                   <span className={`shrink-0 ${outcomeChar(s.outcome).color}`}>{outcomeChar(s.outcome).char}</span>
                   {s.label || s.id.slice(0, 8)}
                 </div>
-                <div className="text-sm text-neutral-600 truncate pl-3" title={s.full_label}>
+                <div className="text-sm text-fg-ghost truncate pl-3" title={s.full_label}>
                   {s.change && <span className="text-blue-400/60">{s.change} · </span>}
                   {age} · {(s.size / 1024).toFixed(0)}KB
                 </div>
@@ -162,7 +162,7 @@ export default function SessionPanel({ project, change }: Props) {
       )}
 
       {/* Desktop: session list sidebar */}
-      <div className="hidden md:block w-56 shrink-0 border-r border-neutral-800 overflow-y-auto">
+      <div className="hidden md:block w-56 shrink-0 border-r border-surface-line overflow-y-auto">
         {sessions.map(s => {
           const isActive = s.id === selected
           const age = timeSince(s.mtime)
@@ -170,8 +170,8 @@ export default function SessionPanel({ project, change }: Props) {
             <button
               key={s.id}
               onClick={() => setSelected(s.id)}
-              className={`w-full text-left px-3 py-2 border-b border-neutral-800/30 transition-colors ${outcomeIndicator(s.outcome)} ${
-                isActive ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
+              className={`w-full text-left px-3 py-2 border-b border-surface-line/30 transition-colors ${outcomeIndicator(s.outcome)} ${
+                isActive ? 'bg-surface-raised text-fg-strong' : 'text-fg-muted hover:bg-surface-raised/50'
               }`}
             >
               <div className="flex items-center gap-1.5 text-sm font-medium truncate">
@@ -181,7 +181,7 @@ export default function SessionPanel({ project, change }: Props) {
               {s.change && (
                 <div className="text-xs text-blue-400/60 truncate pl-5">{s.change}</div>
               )}
-              <div className="text-sm text-neutral-600 truncate pl-5" title={s.full_label}>
+              <div className="text-sm text-fg-ghost truncate pl-5" title={s.full_label}>
                 {age} · {(s.size / 1024).toFixed(0)}KB
               </div>
             </button>
@@ -192,7 +192,7 @@ export default function SessionPanel({ project, change }: Props) {
       {/* Session content */}
       <div className="flex-1 overflow-y-auto p-3 text-sm leading-5 min-h-0">
         {loading && lines.length === 0 ? (
-          <div className="text-neutral-500">Loading session...</div>
+          <div className="text-fg-faint">Loading session...</div>
         ) : (
           lines.map((line, i) => (
             <div key={i} className={`whitespace-pre-wrap break-all ${colorLine(line)}`}>

@@ -42,7 +42,7 @@ export default function ImplNode({ data, selected }: Props) {
 
   return (
     <div
-      className={`relative rounded-md border bg-neutral-900/80 border-violet-500/40 w-[150px] h-[100px] px-2 py-1.5 ${
+      className={`relative rounded-md border bg-surface-panel/80 border-violet-500/40 w-[150px] h-[100px] px-2 py-1.5 ${
         selected ? 'ring-2 ring-violet-500/60' : ''
       }`}
     >
@@ -51,26 +51,26 @@ export default function ImplNode({ data, selected }: Props) {
       <Handle type="source" position={Position.Right} style={{ background: '#404040' }} />
       <div className="flex items-center gap-1.5">
         <span className={`text-sm text-violet-300 ${isRunning ? 'animate-pulse' : ''}`}>✎</span>
-        <span className="text-xs font-medium text-neutral-200 flex-1 truncate">impl</span>
-        <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
+        <span className="text-xs font-medium text-fg-strong flex-1 truncate">impl</span>
+        <span className="text-xs text-fg-muted bg-surface-raised px-1 rounded">
           #{data.attempt}
         </span>
       </div>
-      <div className="mt-0.5 text-xs text-neutral-500">{formatMs(data.ms)}</div>
-      <div className="mt-0.5 text-xs text-neutral-600 flex items-center gap-1.5">
+      <div className="mt-0.5 text-xs text-fg-faint">{formatMs(data.ms)}</div>
+      <div className="mt-0.5 text-xs text-fg-ghost flex items-center gap-1.5">
         <span>#{data.attempt}</span>
-        <span className="text-neutral-700">·</span>
+        <span className="text-fg-dim">·</span>
         <span>{formatTime(data.startedAt)}</span>
       </div>
       {(model || hasTokens) && (
-        <div className="mt-0.5 text-xs text-neutral-600 flex items-center gap-1.5">
-          {model && <span className="text-neutral-400">{model}</span>}
-          {model && hasTokens && <span className="text-neutral-700">·</span>}
+        <div className="mt-0.5 text-xs text-fg-ghost flex items-center gap-1.5">
+          {model && <span className="text-fg-muted">{model}</span>}
+          {model && hasTokens && <span className="text-fg-dim">·</span>}
           {hasTokens && (
             <span>
-              <span className="text-neutral-500">{formatTokens(data.inputTokens)}</span>
-              <span className="text-neutral-700">/</span>
-              <span className="text-neutral-500">{formatTokens(data.outputTokens)}</span>
+              <span className="text-fg-faint">{formatTokens(data.inputTokens)}</span>
+              <span className="text-fg-dim">/</span>
+              <span className="text-fg-faint">{formatTokens(data.outputTokens)}</span>
             </span>
           )}
         </div>

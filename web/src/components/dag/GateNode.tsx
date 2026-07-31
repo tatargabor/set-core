@@ -16,7 +16,7 @@ const RESULT_TEXT: Record<string, string> = {
   pass: 'text-green-400',
   fail: 'text-red-400',
   warn: 'text-amber-400',
-  skip: 'text-neutral-500',
+  skip: 'text-fg-faint',
   running: 'text-blue-400',
 }
 
@@ -24,7 +24,7 @@ const RESULT_BORDER: Record<string, string> = {
   pass: 'border-green-500/40',
   fail: 'border-red-500/50',
   warn: 'border-amber-500/40',
-  skip: 'border-neutral-700',
+  skip: 'border-surface-edge',
   running: 'border-blue-500/50',
 }
 
@@ -34,13 +34,13 @@ function iconFor(result: GateResult): string {
 }
 
 function colorFor(result: GateResult): string {
-  if (!result) return 'text-neutral-600'
-  return RESULT_TEXT[result] ?? 'text-neutral-600'
+  if (!result) return 'text-fg-ghost'
+  return RESULT_TEXT[result] ?? 'text-fg-ghost'
 }
 
 function borderFor(result: GateResult): string {
-  if (!result) return 'border-neutral-700'
-  return RESULT_BORDER[result] ?? 'border-neutral-700'
+  if (!result) return 'border-surface-edge'
+  return RESULT_BORDER[result] ?? 'border-surface-edge'
 }
 
 function formatMs(ms: number | null): string {
@@ -89,7 +89,7 @@ export default function GateNode({ data, selected }: Props) {
 
   return (
     <div
-      className={`relative rounded-md border bg-neutral-900/80 w-[150px] h-[100px] px-2 py-1.5 ${border} ${
+      className={`relative rounded-md border bg-surface-panel/80 w-[150px] h-[100px] px-2 py-1.5 ${border} ${
         selected ? 'ring-2 ring-blue-500/60' : ''
       }`}
     >
@@ -105,33 +105,33 @@ export default function GateNode({ data, selected }: Props) {
         <span className={`text-sm font-medium ${color} ${isRunning ? 'animate-pulse' : ''}`}>
           {icon}
         </span>
-        <span className="text-xs font-medium text-neutral-200 capitalize flex-1 truncate">
+        <span className="text-xs font-medium text-fg-strong capitalize flex-1 truncate">
           {data.kind.replace('_', ' ')}
         </span>
         {showRunBadge && (
-          <span className="text-xs text-neutral-400 bg-neutral-800 px-1 rounded">
+          <span className="text-xs text-fg-muted bg-surface-raised px-1 rounded">
             ⟳{data.runIndexForKind}
           </span>
         )}
         {hasDowngrade && <span className="text-xs text-amber-400">⚖</span>}
       </div>
-      <div className="mt-0.5 text-xs text-neutral-500">
+      <div className="mt-0.5 text-xs text-fg-faint">
         {formatMs(data.ms)}
       </div>
-      <div className="mt-0.5 text-xs text-neutral-600 flex items-center gap-1.5">
+      <div className="mt-0.5 text-xs text-fg-ghost flex items-center gap-1.5">
         <span>#{data.attempt}</span>
-        <span className="text-neutral-700">·</span>
+        <span className="text-fg-dim">·</span>
         <span>{formatTime(data.startedAt)}</span>
       </div>
       {(model || hasTokens) && (
-        <div className="mt-0.5 text-xs text-neutral-600 flex items-center gap-1.5">
-          {model && <span className="text-neutral-400">{model}</span>}
-          {model && hasTokens && <span className="text-neutral-700">·</span>}
+        <div className="mt-0.5 text-xs text-fg-ghost flex items-center gap-1.5">
+          {model && <span className="text-fg-muted">{model}</span>}
+          {model && hasTokens && <span className="text-fg-dim">·</span>}
           {hasTokens && (
             <span>
-              <span className="text-neutral-500">{formatTokens(data.inputTokens)}</span>
-              <span className="text-neutral-700">/</span>
-              <span className="text-neutral-500">{formatTokens(data.outputTokens)}</span>
+              <span className="text-fg-faint">{formatTokens(data.inputTokens)}</span>
+              <span className="text-fg-dim">/</span>
+              <span className="text-fg-faint">{formatTokens(data.outputTokens)}</span>
             </span>
           )}
         </div>

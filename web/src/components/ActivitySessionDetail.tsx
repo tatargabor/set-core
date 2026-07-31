@@ -115,36 +115,36 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
   }, [])
 
   return (
-    <div className="border border-neutral-700 bg-black p-3 mt-2 text-xs">
+    <div className="border border-surface-edge bg-black p-3 mt-2 text-xs">
       {/* Header — ASCII bordered */}
-      <div className="flex items-center gap-4 border-b border-neutral-800 pb-2 mb-3">
-        <div className="text-neutral-100 font-bold">┌─ Drilldown: {span.change || '(no change)'}</div>
-        <div className="text-neutral-500">│ {formatDuration(span.duration_ms)}</div>
+      <div className="flex items-center gap-4 border-b border-surface-line pb-2 mb-3">
+        <div className="text-fg-loud font-bold">┌─ Drilldown: {span.change || '(no change)'}</div>
+        <div className="text-fg-faint">│ {formatDuration(span.duration_ms)}</div>
         {data && (
           <>
-            <div className="text-neutral-500">│ {data.total_llm_calls} LLM calls</div>
-            <div className="text-neutral-500">│ {data.total_tool_calls} tool calls</div>
+            <div className="text-fg-faint">│ {data.total_llm_calls} LLM calls</div>
+            <div className="text-fg-faint">│ {data.total_tool_calls} tool calls</div>
             {data.subagent_count > 0 && (
-              <div className="text-neutral-300">│ {data.subagent_count} subagents</div>
+              <div className="text-fg-normal">│ {data.subagent_count} subagents</div>
             )}
-            {data.cache_hit && <div className="text-neutral-600">│ (cached)</div>}
+            {data.cache_hit && <div className="text-fg-ghost">│ (cached)</div>}
           </>
         )}
         <div className="flex-1" />
         <button
           onClick={onClose}
-          className="text-neutral-500 hover:text-neutral-100 px-2"
+          className="text-fg-faint hover:text-fg-loud px-2"
           title="Close drilldown"
         >
           ×
         </button>
       </div>
 
-      {loading && <div className="text-neutral-500 py-4">Loading drilldown…</div>}
+      {loading && <div className="text-fg-faint py-4">Loading drilldown…</div>}
       {error && <div className="text-red-400 py-2">{error}</div>}
 
       {data && data.sub_spans.length === 0 && (
-        <div className="text-neutral-600 py-4">
+        <div className="text-fg-ghost py-4">
           No session data available. The agent may not have written any session JSONL files yet,
           or the worktree was cleaned up after the run.
         </div>
@@ -155,13 +155,13 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
           {/* Mini-Gantt — ~58% width (col-span-7 of 12) */}
           {categories.length > 0 && (
             <div className="lg:col-span-7 min-w-0">
-              <div className="text-neutral-500 mb-2">┌──── Timeline ────┐</div>
+              <div className="text-fg-faint mb-2">┌──── Timeline ────┐</div>
               <div className="flex">
                 <div className="flex-shrink-0 w-32 pt-7">
                   {categories.map((cat) => (
                     <div
                       key={cat}
-                      className="h-6 flex items-center text-neutral-400 text-right pr-2 truncate"
+                      className="h-6 flex items-center text-fg-muted text-right pr-2 truncate"
                       title={getCategoryLabel(cat)}
                     >
                       <span
@@ -191,7 +191,7 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
           {/* Top operations — ~25% width (col-span-3 of 12) */}
           {data.top_operations.length > 0 && (
             <div className="lg:col-span-3 min-w-0">
-              <div className="text-neutral-500 mb-2">┌──── Top operations ────┐</div>
+              <div className="text-fg-faint mb-2">┌──── Top operations ────┐</div>
               <div className="space-y-1">
                 {data.top_operations.map((op, i) => (
                   <div key={i} className="flex items-center gap-1.5">
@@ -199,8 +199,8 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
                       className="inline-block w-2 h-2 flex-shrink-0"
                       style={{ backgroundColor: getCategoryColor(op.category) }}
                     />
-                    <span className="text-neutral-200 flex-shrink-0">{formatDuration(op.duration_ms)}</span>
-                    <span className="text-neutral-500 truncate flex-1 min-w-0" title={`${getCategoryLabel(op.category)} — ${op.preview}`}>
+                    <span className="text-fg-strong flex-shrink-0">{formatDuration(op.duration_ms)}</span>
+                    <span className="text-fg-faint truncate flex-1 min-w-0" title={`${getCategoryLabel(op.category)} — ${op.preview}`}>
                       {op.preview || getCategoryLabel(op.category)}
                     </span>
                   </div>
@@ -211,7 +211,7 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
 
           {/* Breakdown — ~17% width (col-span-2 of 12) */}
           <div className="lg:col-span-2 min-w-0">
-            <div className="text-neutral-500 mb-2">┌──── Breakdown ────┐</div>
+            <div className="text-fg-faint mb-2">┌──── Breakdown ────┐</div>
             <div className="space-y-1">
               {breakdown.map((b) => (
                 <div key={b.category} className="flex items-center gap-1.5">
@@ -220,12 +220,12 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
                     style={{ backgroundColor: getCategoryColor(b.category) }}
                   />
                   <span
-                    className="text-neutral-400 truncate flex-1 min-w-0"
+                    className="text-fg-muted truncate flex-1 min-w-0"
                     title={getCategoryLabel(b.category)}
                   >
                     {getCategoryLabel(b.category)}
                   </span>
-                  <span className="text-neutral-500 w-9 text-right flex-shrink-0">{b.pct}%</span>
+                  <span className="text-fg-faint w-9 text-right flex-shrink-0">{b.pct}%</span>
                 </div>
               ))}
             </div>

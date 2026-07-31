@@ -9,7 +9,7 @@ function lineColor(line: string): string {
   if (line.includes('WARN')) return 'text-yellow-400'
   if (line.includes('REPLAN')) return 'text-cyan-400'
   if (line.includes('CHECKPOINT')) return 'text-yellow-300'
-  return 'text-neutral-400'
+  return 'text-fg-muted'
 }
 
 export default function LogStream({ lines }: Props) {
@@ -30,9 +30,9 @@ export default function LogStream({ lines }: Props) {
 
   return (
     <div className="relative h-full flex flex-col">
-      <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-800 bg-neutral-900/50">
-        <span className="text-sm text-neutral-500 font-medium">Log</span>
-        <span className="text-sm text-neutral-600">{lines.length} lines</span>
+      <div className="flex items-center justify-between px-3 py-1 border-b border-surface-line bg-surface-panel/50">
+        <span className="text-sm text-fg-faint font-medium">Log</span>
+        <span className="text-sm text-fg-ghost">{lines.length} lines</span>
       </div>
       <div
         ref={containerRef}
@@ -53,7 +53,7 @@ export default function LogStream({ lines }: Props) {
               containerRef.current.scrollTop = containerRef.current.scrollHeight
             }
           }}
-          className="absolute bottom-3 right-3 px-2 py-1 text-sm bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
+          className="absolute bottom-3 right-3 px-2 py-1 text-sm bg-surface-raised text-fg-normal rounded hover:bg-surface-strong"
         >
           Jump to bottom
         </button>

@@ -59,7 +59,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
               MCP Authentication Required
             </span>
             <span className="text-orange-400/70 text-sm">
-              Design MCP needs authentication. Run <code className="bg-neutral-800 px-1 rounded">/mcp</code> → select server → Authenticate in Claude Code, then approve.
+              Design MCP needs authentication. Run <code className="bg-surface-raised px-1 rounded">/mcp</code> → select server → Authenticate in Claude Code, then approve.
             </span>
           </>
         ) : (
@@ -85,7 +85,7 @@ export default function CheckpointBanner({ project, checkpointType, onDismiss }:
         className={`px-3 py-1.5 text-sm rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
           confirmStop
             ? 'bg-red-700 text-white hover:bg-red-600'
-            : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'
+            : 'bg-surface-strong text-fg-normal hover:bg-surface-edge-soft'
         }`}
       >
         {confirmStop ? 'Confirm Stop' : 'Stop'}

@@ -17,7 +17,7 @@ const stepStyle: Record<string, string> = {
   completed: 'bg-green-900 text-green-300',
   current: 'bg-blue-800 text-blue-200 animate-pulse',
   fixing: 'bg-amber-900 text-amber-300 animate-pulse',
-  pending: 'bg-neutral-800 text-neutral-600',
+  pending: 'bg-surface-raised text-fg-ghost',
 }
 
 function getStepStatus(stepKey: string, currentStep: string | undefined): string {

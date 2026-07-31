@@ -233,7 +233,7 @@ export default function Dashboard({ project, initialTab }: Props) {
 
   if (!project) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-500">
+      <div className="flex items-center justify-center h-full text-fg-faint">
         Select a project to begin
       </div>
     )
@@ -319,7 +319,7 @@ export default function Dashboard({ project, initialTab }: Props) {
       {/* Tab bar — shrink-0 keeps it fixed at top within flex column */}
       <div
         ref={tabBarRef}
-        className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800 bg-neutral-900 overflow-x-auto max-w-full scrollbar-hide shrink-0"
+        className="flex items-center gap-1 px-3 py-1 border-b border-surface-line bg-surface-panel overflow-x-auto max-w-full scrollbar-hide shrink-0"
       >
         {tabs.filter(t => !t.hidden).map(t => (
           <button
@@ -335,8 +335,8 @@ export default function Dashboard({ project, initialTab }: Props) {
             data-tab={t.id}
             className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm whitespace-nowrap rounded transition-colors ${
               activeTab === t.id
-                ? 'bg-neutral-800 text-neutral-200 font-medium'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                ? 'bg-surface-raised text-fg-strong font-medium'
+                : 'text-fg-faint hover:text-fg-normal hover:bg-surface-raised/50'
             }`}
           >
             {t.label}
@@ -360,15 +360,15 @@ export default function Dashboard({ project, initialTab }: Props) {
         {activeTab === 'sentinel' && (
           <div className="h-full overflow-y-auto p-3 text-xs">
             {sentinelLogLines.length === 0 ? (
-              <div className="text-neutral-600">No sentinel log yet</div>
+              <div className="text-fg-ghost">No sentinel log yet</div>
             ) : (
               sentinelLogLines.map((line, i) => (
                 <div key={i} className={`py-0.5 whitespace-pre-wrap ${
                   line.includes('ERROR') || line.includes('FAIL') ? 'text-red-400' :
                   line.includes('WARNING') || line.includes('WARN') ? 'text-amber-400' :
                   line.includes('merged') || line.includes('SUCCESS') || line.includes('fixed') ? 'text-green-400' :
-                  line.startsWith('#') || line.startsWith('|') ? 'text-neutral-300' :
-                  'text-neutral-500'
+                  line.startsWith('#') || line.startsWith('|') ? 'text-fg-normal' :
+                  'text-fg-faint'
                 }`}>
                   {line}
                 </div>
@@ -389,7 +389,7 @@ export default function Dashboard({ project, initialTab }: Props) {
                gives exact halves regardless of content size. shrink-0 is
                removed so flexbox can compute both heights from basis. */
             <div className="h-full flex flex-col">
-              <div className="basis-0 grow shrink min-h-0 overflow-auto border-b border-neutral-800">
+              <div className="basis-0 grow shrink min-h-0 overflow-auto border-b border-surface-line">
                 <ShutdownProgress project={project} />
                 <ChangeTable
                   changes={changes}
@@ -400,7 +400,7 @@ export default function Dashboard({ project, initialTab }: Props) {
                 />
               </div>
               <div className="basis-0 grow shrink min-h-0 relative">
-                <Suspense fallback={<div className="p-3 text-sm text-neutral-500">Loading DAG...</div>}>
+                <Suspense fallback={<div className="p-3 text-sm text-fg-faint">Loading DAG...</div>}>
                   <ChangeDagPanel
                     project={project}
                     changeName={selectedChange}

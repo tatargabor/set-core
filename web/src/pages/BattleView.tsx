@@ -119,16 +119,16 @@ function PlayerNameInput() {
     return (
       <button
         onClick={() => setEditing(true)}
-        className="mt-4 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+        className="mt-4 text-xs text-fg-faint hover:text-fg-normal transition-colors"
       >
-        Player: <span className="text-neutral-300">{name}</span> (click to change)
+        Player: <span className="text-fg-normal">{name}</span> (click to change)
       </button>
     )
   }
 
   return (
     <div className="mt-4 flex items-center gap-2">
-      <span className="text-xs text-neutral-500">Player name:</span>
+      <span className="text-xs text-fg-faint">Player name:</span>
       <input
         type="text"
         value={name}
@@ -136,12 +136,12 @@ function PlayerNameInput() {
         onKeyDown={e => e.key === 'Enter' && save()}
         maxLength={20}
         placeholder="Your name"
-        className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 w-32 focus:outline-none focus:border-neutral-500"
+        className="bg-surface-panel border border-surface-edge rounded px-2 py-1 text-xs text-fg-strong w-32 focus:outline-none focus:border-fg-faint"
         autoFocus
       />
       <button
         onClick={save}
-        className="px-2 py-1 text-xs bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700"
+        className="px-2 py-1 text-xs bg-surface-raised text-fg-normal rounded hover:bg-surface-strong"
       >
         Save
       </button>
@@ -377,11 +377,11 @@ export default function BattleView({ project, changes, isVisible }: Props) {
 
       {!hasChanges ? (
         <div className="flex-1 overflow-auto">
-          <div className="flex flex-col items-center justify-center text-neutral-500 py-8">
+          <div className="flex flex-col items-center justify-center text-fg-faint py-8">
             <span className="text-4xl mb-4">(-_-) zzz</span>
             <span className="text-sm">Waiting for orchestration...</span>
             {scoreState.highScore > 0 && (
-              <span className="text-xs text-neutral-600 mt-2">High Score: {scoreState.highScore.toLocaleString()}</span>
+              <span className="text-xs text-fg-ghost mt-2">High Score: {scoreState.highScore.toLocaleString()}</span>
             )}
             <div className="mt-4">
               <AchievementBar unlocked={scoreState.achievements} />
@@ -409,7 +409,7 @@ export default function BattleView({ project, changes, isVisible }: Props) {
             onRalphHit={handleRalphHit}
           />
 
-          <div className="shrink-0 border-t border-neutral-800 px-1 py-0.5">
+          <div className="shrink-0 border-t border-surface-line px-1 py-0.5">
             <AchievementBar unlocked={scoreState.achievements} />
           </div>
         </>

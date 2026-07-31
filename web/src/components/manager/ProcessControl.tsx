@@ -33,10 +33,10 @@ export function ProcessControl({ label, alive, startedAt, crashCount, onStart, o
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2 min-w-0">
-        <span className={`w-2 h-2 rounded-full ${alive ? 'bg-green-400' : 'bg-neutral-600'}`} />
-        <span className="text-sm text-neutral-300">{label}</span>
+        <span className={`w-2 h-2 rounded-full ${alive ? 'bg-green-400' : 'bg-surface-edge-soft'}`} />
+        <span className="text-sm text-fg-normal">{label}</span>
         {alive && startedAt && (
-          <span className="text-xs text-neutral-500">{formatUptime(startedAt)}</span>
+          <span className="text-xs text-fg-faint">{formatUptime(startedAt)}</span>
         )}
         {!alive && crashCount != null && crashCount > 0 && (
           <span className="text-xs text-red-400/60">({crashCount} crashes)</span>
@@ -45,8 +45,8 @@ export function ProcessControl({ label, alive, startedAt, crashCount, onStart, o
       <div className="flex items-center gap-1">
         {alive ? (
           <>
-            <button disabled={busy} onClick={() => act(onStop)} className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Stopping…' : 'Stop'}</button>
-            <button disabled={busy} onClick={() => act(onRestart)} className="px-2 py-0.5 text-xs rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Restarting…' : 'Restart'}</button>
+            <button disabled={busy} onClick={() => act(onStop)} className="px-2 py-0.5 text-xs rounded bg-surface-raised hover:bg-surface-strong text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Stopping…' : 'Stop'}</button>
+            <button disabled={busy} onClick={() => act(onRestart)} className="px-2 py-0.5 text-xs rounded bg-surface-raised hover:bg-surface-strong text-fg-muted disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Restarting…' : 'Restart'}</button>
           </>
         ) : (
           <button disabled={busy} onClick={() => act(onStart)} className="px-2 py-0.5 text-xs rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Starting…' : 'Start'}</button>

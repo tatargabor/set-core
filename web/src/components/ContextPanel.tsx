@@ -28,7 +28,7 @@ export default function ContextPanel({ project }: { project: string }) {
     return <div className="p-4 text-sm text-red-400">Failed to load context analysis: {error}</div>
   }
   if (!data) {
-    return <div className="p-4 text-sm text-neutral-500">Loading context analysis...</div>
+    return <div className="p-4 text-sm text-fg-faint">Loading context analysis...</div>
   }
 
   const chartData = data.changes
@@ -47,23 +47,23 @@ export default function ContextPanel({ project }: { project: string }) {
     <div className="p-4 space-y-6">
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-3">
-        <div className="border border-neutral-800 rounded-lg p-3 bg-neutral-900/50">
-          <div className="text-xs text-neutral-500">Total Input</div>
-          <div className="text-lg font-semibold text-neutral-100">{fmtK(data.summary.total_input)}</div>
+        <div className="border border-surface-line rounded-lg p-3 bg-surface-panel/50">
+          <div className="text-xs text-fg-faint">Total Input</div>
+          <div className="text-lg font-semibold text-fg-loud">{fmtK(data.summary.total_input)}</div>
         </div>
-        <div className="border border-neutral-800 rounded-lg p-3 bg-neutral-900/50">
-          <div className="text-xs text-neutral-500">Avg Base Ratio</div>
-          <div className="text-lg font-semibold text-neutral-100">
+        <div className="border border-surface-line rounded-lg p-3 bg-surface-panel/50">
+          <div className="text-xs text-fg-faint">Avg Base Ratio</div>
+          <div className="text-lg font-semibold text-fg-loud">
             {data.summary.avg_base_ratio != null ? pct(data.summary.avg_base_ratio, 1) : 'N/A'}
           </div>
         </div>
-        <div className="border border-neutral-800 rounded-lg p-3 bg-neutral-900/50">
-          <div className="text-xs text-neutral-500">Most Expensive</div>
-          <div className="text-sm font-semibold text-neutral-100 truncate">{data.summary.most_expensive ?? 'N/A'}</div>
+        <div className="border border-surface-line rounded-lg p-3 bg-surface-panel/50">
+          <div className="text-xs text-fg-faint">Most Expensive</div>
+          <div className="text-sm font-semibold text-fg-loud truncate">{data.summary.most_expensive ?? 'N/A'}</div>
         </div>
-        <div className="border border-neutral-800 rounded-lg p-3 bg-neutral-900/50">
-          <div className="text-xs text-neutral-500">Avg Efficiency</div>
-          <div className="text-lg font-semibold text-neutral-100">
+        <div className="border border-surface-line rounded-lg p-3 bg-surface-panel/50">
+          <div className="text-xs text-fg-faint">Avg Efficiency</div>
+          <div className="text-lg font-semibold text-fg-loud">
             {data.summary.avg_efficiency != null ? `${(data.summary.avg_efficiency * 100).toFixed(1)}%` : 'N/A'}
           </div>
         </div>
@@ -71,8 +71,8 @@ export default function ContextPanel({ project }: { project: string }) {
 
       {/* Stacked bar chart */}
       {chartData.length > 0 && (
-        <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-900/50">
-          <h3 className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-3">
+        <div className="border border-surface-line rounded-lg p-4 bg-surface-panel/50">
+          <h3 className="text-xs font-medium text-fg-faint uppercase tracking-wide mb-3">
             Context Breakdown by Change (avg per iteration)
           </h3>
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 40)}>
@@ -99,10 +99,10 @@ export default function ContextPanel({ project }: { project: string }) {
       )}
 
       {/* Per-change table */}
-      <div className="border border-neutral-800 rounded-lg bg-neutral-900/50 overflow-hidden">
+      <div className="border border-surface-line rounded-lg bg-surface-panel/50 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-neutral-800 text-neutral-500">
+            <tr className="border-b border-surface-line text-fg-faint">
               <th className="text-left p-2 font-medium">Change</th>
               <th className="text-right p-2 font-medium">Iters</th>
               <th className="text-right p-2 font-medium">Base</th>
@@ -120,17 +120,17 @@ export default function ContextPanel({ project }: { project: string }) {
                 ? c.base_context_tokens / c.total_input_tokens
                 : 0
               return (
-                <tr key={c.name} className="border-b border-neutral-800/50 hover:bg-neutral-800/30">
-                  <td className="p-2 text-neutral-200 truncate max-w-[200px]" title={c.name}>{c.name}</td>
-                  <td className="p-2 text-right text-neutral-400">{c.iterations}</td>
-                  <td className={`p-2 text-right ${baseRatio > 0.3 ? 'text-orange-400' : 'text-neutral-400'}`}>
+                <tr key={c.name} className="border-b border-surface-line/50 hover:bg-surface-raised/30">
+                  <td className="p-2 text-fg-strong truncate max-w-[200px]" title={c.name}>{c.name}</td>
+                  <td className="p-2 text-right text-fg-muted">{c.iterations}</td>
+                  <td className={`p-2 text-right ${baseRatio > 0.3 ? 'text-orange-400' : 'text-fg-muted'}`}>
                     {bd ? fmtK(bd.base_context) : '-'}
                   </td>
-                  <td className="p-2 text-right text-neutral-400">{bd ? fmtK(bd.memory_injection) : '-'}</td>
-                  <td className="p-2 text-right text-neutral-400">{bd ? fmtK(bd.prompt_overhead) : '-'}</td>
-                  <td className="p-2 text-right text-neutral-400">{bd ? fmtK(bd.tool_output) : '-'}</td>
-                  <td className="p-2 text-right text-neutral-200 font-medium">{fmtK(c.total_input_tokens)}</td>
-                  <td className={`p-2 text-right ${c.efficiency_ratio < 0.05 ? 'text-red-400' : 'text-neutral-400'}`}>
+                  <td className="p-2 text-right text-fg-muted">{bd ? fmtK(bd.memory_injection) : '-'}</td>
+                  <td className="p-2 text-right text-fg-muted">{bd ? fmtK(bd.prompt_overhead) : '-'}</td>
+                  <td className="p-2 text-right text-fg-muted">{bd ? fmtK(bd.tool_output) : '-'}</td>
+                  <td className="p-2 text-right text-fg-strong font-medium">{fmtK(c.total_input_tokens)}</td>
+                  <td className={`p-2 text-right ${c.efficiency_ratio < 0.05 ? 'text-red-400' : 'text-fg-muted'}`}>
                     {(c.efficiency_ratio * 100).toFixed(1)}%
                   </td>
                 </tr>

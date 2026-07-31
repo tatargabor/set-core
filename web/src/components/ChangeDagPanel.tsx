@@ -312,7 +312,7 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
             <div className="text-xs text-red-400/80">{error}</div>
             <button
               onClick={() => setViewMode('linear')}
-              className="mt-3 px-2 py-1 text-xs rounded bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+              className="mt-3 px-2 py-1 text-xs rounded bg-surface-raised text-fg-strong hover:bg-surface-strong"
             >
               Switch to Linear view
             </button>
@@ -338,14 +338,14 @@ export default function ChangeDagPanel({ project, changeName, autoFollow, onAuto
       <div className="h-full flex flex-col">
         {toolbar}
         <div className="flex-1 flex items-center justify-center p-6">
-          <div className="max-w-sm rounded border border-neutral-800 bg-neutral-900/50 p-4 text-center">
-            <div className="text-sm text-neutral-300 mb-1">No journal data for this change yet</div>
-            <div className="text-xs text-neutral-500 mb-3">
+          <div className="max-w-sm rounded border border-surface-line bg-surface-panel/50 p-4 text-center">
+            <div className="text-sm text-fg-normal mb-1">No journal data for this change yet</div>
+            <div className="text-xs text-fg-faint mb-3">
               The DAG fills in as gates run. Switch to Linear view to see session cards.
             </div>
             <button
               onClick={() => setViewMode('linear')}
-              className="px-2.5 py-1 text-xs rounded bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+              className="px-2.5 py-1 text-xs rounded bg-surface-raised text-fg-strong hover:bg-surface-strong"
             >
               Switch to Linear view
             </button>

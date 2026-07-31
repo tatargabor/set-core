@@ -116,18 +116,18 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
   return (
     <>
       <div
-        className="grid items-center gap-x-3 py-1.5 px-3 hover:bg-neutral-900/30 transition-colors"
+        className="grid items-center gap-x-3 py-1.5 px-3 hover:bg-surface-panel/30 transition-colors"
         style={{ gridTemplateColumns: GRID_COLS }}
       >
         {/* Name with tree indent */}
         <div className="flex items-center gap-1.5 min-w-0" style={{ paddingLeft: `${depth * 20}px` }}>
           {depth > 0 && (
-            <span className="text-neutral-700 text-sm shrink-0">└</span>
+            <span className="text-fg-dim text-sm shrink-0">└</span>
           )}
           <TuiStatus status={displayStatus} label={false} />
-          <span className="text-sm text-neutral-200 truncate">{c.name}</span>
+          <span className="text-sm text-fg-strong truncate">{c.name}</span>
           {blockedBy && (
-            <span className="text-sm text-neutral-600 shrink-0 truncate">← {blockedBy}</span>
+            <span className="text-sm text-fg-ghost shrink-0 truncate">← {blockedBy}</span>
           )}
         </div>
 
@@ -137,25 +137,25 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
         </span>
 
         {/* Complexity */}
-        <span className="text-sm text-neutral-500 text-center">
+        <span className="text-sm text-fg-faint text-center">
           {c.complexity ?? '—'}
         </span>
 
         {/* Type */}
-        <span className="text-sm text-neutral-600 truncate">
+        <span className="text-sm text-fg-ghost truncate">
           {c.change_type ?? '—'}
         </span>
 
         {/* Sessions */}
-        <span className="text-sm text-neutral-500 text-center">
+        <span className="text-sm text-fg-faint text-center">
           {c.session_count ?? '—'}
         </span>
 
         {/* Duration */}
-        <span className="text-sm text-neutral-500 text-right">{formatDuration(dur)}</span>
+        <span className="text-sm text-fg-faint text-right">{formatDuration(dur)}</span>
 
         {/* Tokens */}
-        <span className="text-sm text-neutral-500 text-right">
+        <span className="text-sm text-fg-faint text-right">
           {formatTokens(c.input_tokens)}/{formatTokens(c.output_tokens)}
         </span>
 
@@ -278,34 +278,34 @@ export default function PhaseView({ changes, state }: Props) {
         return (
           <div key={key} data-testid={`phase-group-${key}`}>
             {/* Phase header */}
-            <div className="flex items-center gap-3 px-3 py-2.5 bg-neutral-900/50">
+            <div className="flex items-center gap-3 px-3 py-2.5 bg-surface-panel/50">
               <span className="text-sm">{phaseStatusIcon[phaseStatus] ?? '⏳'}</span>
-              <span className="text-sm font-medium text-neutral-200">{headerLabel}</span>
+              <span className="text-sm font-medium text-fg-strong">{headerLabel}</span>
               {meta.lineage && (
-                <span className="text-xs text-neutral-500" title={`Lineage: ${meta.lineage}`}>
+                <span className="text-xs text-fg-faint" title={`Lineage: ${meta.lineage}`}>
                   {meta.lineage}
                 </span>
               )}
               <span className={`text-sm ${
                 phaseStatus === 'completed' ? 'text-blue-400' :
                 phaseStatus === 'running' ? 'text-green-400' :
-                'text-neutral-500'
+                'text-fg-faint'
               }`}>{phaseStatus}</span>
 
               <span className="flex-1" />
 
-              <span className="text-sm text-neutral-400">{doneCount}/{totalCount}</span>
+              <span className="text-sm text-fg-muted">{doneCount}/{totalCount}</span>
               {totalTokens > 0 && (
-                <span className="text-sm text-neutral-500">{formatTokens(totalTokens)}</span>
+                <span className="text-sm text-fg-faint">{formatTokens(totalTokens)}</span>
               )}
               {totalDuration > 0 && (
-                <span className="text-sm text-neutral-500">{formatDuration(totalDuration)}</span>
+                <span className="text-sm text-fg-faint">{formatDuration(totalDuration)}</span>
               )}
             </div>
 
             {/* Column headers */}
             <div
-              className="grid items-center gap-x-3 px-3 py-1 text-sm text-neutral-600 border-b border-neutral-800/30"
+              className="grid items-center gap-x-3 px-3 py-1 text-sm text-fg-ghost border-b border-surface-line/30"
               style={{ gridTemplateColumns: GRID_COLS }}
             >
               <span>Name</span>
@@ -328,12 +328,12 @@ export default function PhaseView({ changes, state }: Props) {
         )
       })}
       {unattributedCount > 0 && (
-        <div className="px-3 py-2 text-xs text-neutral-500 flex items-center gap-2">
+        <div className="px-3 py-2 text-xs text-fg-faint flex items-center gap-2">
           <span>{unattributedCount} unattributed legacy change{unattributedCount === 1 ? '' : 's'}</span>
           <button
             type="button"
             onClick={() => setShowUnattributed(v => !v)}
-            className="px-2 py-0.5 rounded border border-neutral-700 hover:bg-neutral-800 text-neutral-400"
+            className="px-2 py-0.5 rounded border border-surface-edge hover:bg-surface-raised text-fg-muted"
             data-testid="toggle-unattributed"
           >
             {showUnattributed ? 'Hide unattributed' : 'Show unattributed'}

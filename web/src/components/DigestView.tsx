@@ -46,7 +46,7 @@ function ACItems({ req, coverage }: {
   return (
     <div className="pl-6 py-1 space-y-0.5">
       {ac.map((item, i) => (
-        <div key={i} className={`text-sm flex items-start gap-1.5 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+        <div key={i} className={`text-sm flex items-start gap-1.5 ${done ? 'text-blue-400' : 'text-fg-faint'}`}>
           <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
           <span>{item}</span>
         </div>
@@ -114,7 +114,7 @@ export default function DigestView({ project }: Props) {
   }, [changes])
 
   if (error) return <div className="p-4 text-sm text-red-400">{error}</div>
-  if (!data) return <div className="p-4 text-sm text-neutral-500">Loading digest...</div>
+  if (!data) return <div className="p-4 text-sm text-fg-faint">Loading digest...</div>
   if (!data.exists) return <DigestPendingView project={project} />
 
   const reqs = extractReqs(data)
@@ -145,22 +145,22 @@ export default function DigestView({ project }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-3 py-1 border-b border-neutral-800/50 shrink-0 overflow-x-auto">
+      <div className="flex items-center gap-1 px-3 py-1 border-b border-surface-line/50 shrink-0 overflow-x-auto">
         {tabs.filter(t => !t.hidden).map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`px-3 py-1 min-h-[44px] md:min-h-0 md:py-0.5 text-sm whitespace-nowrap rounded transition-colors ${
               tab === t.id
-                ? 'bg-neutral-700 text-neutral-200'
-                : 'text-neutral-500 hover:text-neutral-300'
+                ? 'bg-surface-strong text-fg-strong'
+                : 'text-fg-faint hover:text-fg-normal'
             }`}
           >
             {t.label}
           </button>
         ))}
         {data.index && (
-          <span className="ml-auto text-sm text-neutral-600">
+          <span className="ml-auto text-sm text-fg-ghost">
             {data.index.file_count} files | {new Date(data.index.timestamp).toLocaleDateString()}
           </span>
         )}
@@ -286,13 +286,13 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
       + g.ownTests.filter(t => t.result === 'fail').length, 0)
 
   if (byChange.length === 0) {
-    return <div className="p-4 text-neutral-500 text-sm">No E2E test results yet.</div>
+    return <div className="p-4 text-fg-faint text-sm">No E2E test results yet.</div>
   }
 
   return (
     <div className="flex flex-col h-full">
       {/* Summary */}
-      <div className="px-3 py-1.5 border-b border-neutral-800/50 text-xs text-neutral-500 shrink-0">
+      <div className="px-3 py-1.5 border-b border-surface-line/50 text-xs text-fg-faint shrink-0">
         {totalTests} tests across {byChange.length} change(s)
         {' | '}<span className="text-green-400">{totalPassed} passed</span>
         {totalFailed > 0 && <>{' | '}<span className="text-red-400">{totalFailed} failed</span></>}
@@ -305,17 +305,17 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
         {byChange.map(g => (
           <div
             key={g.change}
-            className={`border-b border-neutral-800/30 ${g.archived ? 'opacity-70 bg-neutral-900/10' : ''}`}
+            className={`border-b border-surface-line/30 ${g.archived ? 'opacity-70 bg-surface-panel/10' : ''}`}
             data-archived={g.archived ? 'true' : undefined}
           >
             {/* Change header */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-panel/30">
               <span className={`text-xs px-1.5 py-0.5 rounded ${
                 g.status === 'pass' ? 'bg-green-900/40 text-green-400' :
                 g.status === 'fail' ? 'bg-red-900/40 text-red-400' :
-                'bg-neutral-800 text-neutral-400'
+                'bg-surface-raised text-fg-muted'
               }`}>{g.status}</span>
-              <span className="text-sm text-neutral-300 font-medium">{g.change}</span>
+              <span className="text-sm text-fg-normal font-medium">{g.change}</span>
               {g.archived && (
                 <span
                   className="text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-900/50"
@@ -324,7 +324,7 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                   ARCHIVED{g.planVersion ? ` v${g.planVersion}` : ''}
                 </span>
               )}
-              <span className="text-xs text-neutral-500 ml-auto">
+              <span className="text-xs text-fg-faint ml-auto">
                 {g.smokeTests.length + g.ownTests.length} test(s)
               </span>
             </div>
@@ -334,13 +334,13 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
               <>
                 <div className="flex items-center gap-2 px-3 py-0.5 pl-4 bg-blue-950/20">
                   <span className="text-xs px-1 py-px rounded bg-blue-900/40 text-blue-400">SMOKE</span>
-                  <span className="text-xs text-neutral-500">inherited</span>
+                  <span className="text-xs text-fg-faint">inherited</span>
                   {g.smokeResult && (
                     <span className={`text-xs ${g.smokeResult === 'pass' ? 'text-green-500' : 'text-red-500'}`}>
                       {g.smokeResult}
                     </span>
                   )}
-                  <span className="text-xs text-neutral-600 ml-auto">
+                  <span className="text-xs text-fg-ghost ml-auto">
                     {g.smokeTests.length || g.smokeCount || 0} test(s)
                     {g.smokeMs ? ` · ${fmtMs(g.smokeMs)}` : ''}
                   </span>
@@ -350,13 +350,13 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                     <span className={t.result === 'pass' ? 'text-green-400' : 'text-red-400'}>
                       {t.result === 'pass' ? '✓' : '✗'}
                     </span>
-                    <span className="text-neutral-400 truncate flex-1">{t.name}</span>
-                    <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
-                    {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
+                    <span className="text-fg-muted truncate flex-1">{t.name}</span>
+                    <span className="text-xs text-fg-ghost shrink-0">{t.file}</span>
+                    {t.duration && <span className="text-xs text-fg-ghost shrink-0">{t.duration}</span>}
                   </div>
                 ))}
                 {g.smokeTests.length === 0 && g.smokeResult && (
-                  <div className="px-8 py-0.5 text-xs text-neutral-600">
+                  <div className="px-8 py-0.5 text-xs text-fg-ghost">
                     {g.smokeCount || '?'} test(s) — {g.smokeResult} (no parsed output)
                   </div>
                 )}
@@ -368,11 +368,11 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
               <>
                 <div className="flex items-center gap-2 px-3 py-0.5 pl-4 bg-amber-950/20">
                   <span className="text-xs px-1 py-px rounded bg-amber-900/40 text-amber-400">FUNC</span>
-                  <span className="text-xs text-neutral-500">own</span>
-                  <span className={`text-xs ${g.status === 'pass' ? 'text-green-500' : g.status === 'fail' ? 'text-red-500' : 'text-neutral-500'}`}>
+                  <span className="text-xs text-fg-faint">own</span>
+                  <span className={`text-xs ${g.status === 'pass' ? 'text-green-500' : g.status === 'fail' ? 'text-red-500' : 'text-fg-faint'}`}>
                     {g.status}
                   </span>
-                  <span className="text-xs text-neutral-600 ml-auto">
+                  <span className="text-xs text-fg-ghost ml-auto">
                     {g.ownTests.length || g.ownCount || 0} test(s)
                     {g.ownMs ? ` · ${fmtMs(g.ownMs)}` : ''}
                   </span>
@@ -385,20 +385,20 @@ function E2EPanel({ changes }: { changes: ChangeInfo[] }) {
                       {t.result === 'pass' ? '✓' : '✗'}
                     </span>
                     {acMatch ? (
-                      <span className="text-neutral-400 truncate flex-1">
+                      <span className="text-fg-muted truncate flex-1">
                         <span className="text-blue-400 text-xs">{acMatch[1]}</span>
                         {' '}{acMatch[2]}
                       </span>
                     ) : (
-                      <span className="text-neutral-400 truncate flex-1">{t.name}</span>
+                      <span className="text-fg-muted truncate flex-1">{t.name}</span>
                     )}
-                    <span className="text-xs text-neutral-600 shrink-0">{t.file}</span>
-                    {t.duration && <span className="text-xs text-neutral-600 shrink-0">{t.duration}</span>}
+                    <span className="text-xs text-fg-ghost shrink-0">{t.file}</span>
+                    {t.duration && <span className="text-xs text-fg-ghost shrink-0">{t.duration}</span>}
                   </div>
                   )
                 })}
                 {g.ownTests.length === 0 && g.status && !g.smokeResult && (
-                  <div className="px-8 py-0.5 text-xs text-neutral-600">
+                  <div className="px-8 py-0.5 text-xs text-fg-ghost">
                     Gate result: {g.status} (no parsed test lines)
                   </div>
                 )}
@@ -447,22 +447,22 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <TuiProgress done={doneCount} total={totalReqs} className="text-sm" />
         {uncovered.length > 0 && <span className="text-yellow-400">{uncovered.length} uncovered</span>}
-        <span className="text-neutral-500">{Object.keys(domains).length} domains</span>
+        <span className="text-fg-faint">{Object.keys(domains).length} domains</span>
       </div>
 
       {/* Requirements table — compact, capped on mobile */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-neutral-500 border-b border-neutral-800">
+          <tr className="text-fg-faint border-b border-surface-line">
             <th className="text-left px-2 py-1 font-medium">
               <span>Req</span>
               <button
                 onClick={() => setExpandedReqs(new Set(reqs.map((r, i) => (r.acceptance_criteria?.length ?? 0) > 0 ? i : -1).filter(i => i >= 0)))}
-                className="ml-2 px-1.5 py-0.5 text-sm text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Expand All"
+                className="ml-2 px-1.5 py-0.5 text-sm text-fg-muted hover:text-fg-strong bg-surface-raised hover:bg-surface-strong rounded" title="Expand All"
               >Expand All</button>
               <button
                 onClick={() => setExpandedReqs(new Set())}
-                className="ml-1 px-1.5 py-0.5 text-sm text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded" title="Collapse All"
+                className="ml-1 px-1.5 py-0.5 text-sm text-fg-muted hover:text-fg-strong bg-surface-raised hover:bg-surface-strong rounded" title="Collapse All"
               >Collapse</button>
             </th>
             <th className="text-left px-2 py-1 font-medium hidden md:table-cell">Title</th>
@@ -479,22 +479,22 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
             return (
               <Fragment key={idx}>
                 <tr
-                  className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer hover:bg-neutral-900/50' : ''}`}
+                  className={`border-b border-surface-line/30 ${hasAC ? 'cursor-pointer hover:bg-surface-panel/50' : ''}`}
                   onClick={hasAC ? () => toggleReq(idx) : undefined}
                 >
-                  <td className="px-2 py-1 text-neutral-300 truncate max-w-[100px]" title={r.brief}>
-                    {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
+                  <td className="px-2 py-1 text-fg-normal truncate max-w-[100px]" title={r.brief}>
+                    {hasAC && <span className="text-fg-ghost mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
                     {r.id}
                   </td>
-                  <td className="px-2 py-1 text-neutral-400 truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
-                  <td className="px-2 py-1 text-neutral-500 truncate max-w-[80px]">{r.domain}</td>
-                  <td className="px-2 py-1 text-neutral-500 truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
+                  <td className="px-2 py-1 text-fg-muted truncate max-w-[200px] hidden md:table-cell" title={r.brief}>{r.title}</td>
+                  <td className="px-2 py-1 text-fg-faint truncate max-w-[80px]">{r.domain}</td>
+                  <td className="px-2 py-1 text-fg-faint truncate max-w-[100px]">{cov?.change ?? '\u2014'}</td>
                   <td className="px-2 py-1">
                     <TuiStatus status={cov?.status ?? 'uncovered'} />
                   </td>
                 </tr>
                 {isExpanded && hasAC && (
-                  <tr className="border-b border-neutral-800/30 bg-neutral-950/30">
+                  <tr className="border-b border-surface-line/30 bg-surface-page/30">
                     <td colSpan={5}>
                       <ACItems req={r} coverage={coverage} />
                     </td>
@@ -509,7 +509,7 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
       {hasMore && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full py-1.5 text-sm text-neutral-400 hover:text-neutral-200 bg-neutral-800/50 rounded transition-colors"
+          className="w-full py-1.5 text-sm text-fg-muted hover:text-fg-strong bg-surface-raised/50 rounded transition-colors"
         >
           Show all {reqs.length} requirements ({reqs.length - MOBILE_LIMIT} more)
         </button>
@@ -519,8 +519,8 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
       {Object.keys(domainCounts).length > 0 && (
         <div className="flex flex-wrap gap-1">
           {Object.entries(domainCounts).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
-            <span key={domain} className="px-1.5 py-0.5 bg-neutral-900/50 rounded text-sm text-neutral-400">
-              {domain} <span className="text-neutral-600">{count}</span>
+            <span key={domain} className="px-1.5 py-0.5 bg-surface-panel/50 rounded text-sm text-fg-muted">
+              {domain} <span className="text-fg-ghost">{count}</span>
             </span>
           ))}
         </div>
@@ -532,7 +532,7 @@ function OverviewPanel({ reqs, coverage, uncovered, domains }: {
 const RISK_BADGE: Record<string, string> = {
   HIGH: 'bg-red-900/60 text-red-300',
   MEDIUM: 'bg-yellow-900/60 text-yellow-300',
-  LOW: 'bg-neutral-800 text-neutral-400',
+  LOW: 'bg-surface-raised text-fg-muted',
 }
 
 function RiskBadge({ risk }: { risk: string }) {
@@ -567,7 +567,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
   )
 
   if (reqsWithAC.length === 0) {
-    return <div className="p-4 text-sm text-neutral-500">No acceptance criteria extracted</div>
+    return <div className="p-4 text-sm text-fg-faint">No acceptance criteria extracted</div>
   }
 
   const allDomains = [...new Set(reqsWithAC.map(r => r.domain))].sort()
@@ -623,8 +623,8 @@ function ACPanel({ reqs, coverage, testCoverage }: {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-800/50 shrink-0">
-        <span className="text-sm text-neutral-500">AC</span>
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-surface-line/50 shrink-0">
+        <span className="text-sm text-fg-faint">AC</span>
         <TuiProgress done={checkedAC} total={totalAC} className="text-sm" />
         {testCoverage && (
           <span className={`text-xs px-1.5 py-0.5 rounded ${
@@ -638,7 +638,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
         <select
           value={domainFilter ?? ''}
           onChange={e => setDomainFilter(e.target.value || null)}
-          className="bg-neutral-800 text-neutral-300 text-sm rounded px-2 py-0.5 border border-neutral-700 ml-auto"
+          className="bg-surface-raised text-fg-normal text-sm rounded px-2 py-0.5 border border-surface-edge ml-auto"
         >
           <option value="">All domains</option>
           {allDomains.map(d => <option key={d} value={d}>{d}</option>)}
@@ -647,7 +647,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
 
       {/* Coverage summary bar */}
       {testCoverage && (
-        <div className="px-3 py-1.5 border-b border-neutral-800/50 text-xs text-neutral-500">
+        <div className="px-3 py-1.5 border-b border-surface-line/50 text-xs text-fg-faint">
           Coverage: {testCoverage.covered_reqs.length}/{testCoverage.covered_reqs.length + testCoverage.uncovered_reqs.length} reqs
           {' | '}{testCoverage.total_tests} tests ({testCoverage.passed}✓ {testCoverage.failed}✗)
           {testCoverage.non_testable_reqs.length > 0 && <>{' | '}{testCoverage.non_testable_reqs.length} non-testable</>}
@@ -664,15 +664,15 @@ function ACPanel({ reqs, coverage, testCoverage }: {
           const isExpanded = expandedDomains.has(domain)
 
           return (
-            <div key={domain} className="border-b border-neutral-800/50">
+            <div key={domain} className="border-b border-surface-line/50">
               <div
-                className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/30 cursor-pointer hover:bg-neutral-800/40"
+                className="flex items-center gap-2 px-3 py-1.5 bg-surface-panel/30 cursor-pointer hover:bg-surface-raised/40"
                 onClick={() => toggleDomain(domain)}
               >
-                <span className="text-neutral-600 text-xs w-3">{isExpanded ? '▾' : '▸'}</span>
-                <span className="text-sm font-medium text-neutral-300">{domain}</span>
-                <span className="text-sm text-neutral-500">({domTotal})</span>
-                <span className="text-sm text-neutral-500 ml-auto">{domDone}/{domTotal}</span>
+                <span className="text-fg-ghost text-xs w-3">{isExpanded ? '▾' : '▸'}</span>
+                <span className="text-sm font-medium text-fg-normal">{domain}</span>
+                <span className="text-sm text-fg-faint">({domTotal})</span>
+                <span className="text-sm text-fg-faint ml-auto">{domDone}/{domTotal}</span>
                 {domGaps > 0 && <span className="text-xs text-red-400">{domGaps} gap{domGaps > 1 ? 's' : ''}</span>}
                 {domDone === domTotal && domTotal > 0 && <span className="text-green-400 text-xs">✓</span>}
               </div>
@@ -692,14 +692,14 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                 return (
                   <div key={r.id}>
                     <div
-                      className={`flex items-center gap-2 px-3 py-1 pl-6 ${hasDetail ? 'cursor-pointer hover:bg-neutral-800/30' : ''} ${hasGap ? 'bg-red-950/20' : ''}`}
+                      className={`flex items-center gap-2 px-3 py-1 pl-6 ${hasDetail ? 'cursor-pointer hover:bg-surface-raised/30' : ''} ${hasGap ? 'bg-red-950/20' : ''}`}
                       onClick={() => hasDetail && toggleReq(r.id)}
                     >
-                      {hasDetail && <span className="text-neutral-600 text-xs w-3">{isReqExpanded ? '▾' : '▸'}</span>}
+                      {hasDetail && <span className="text-fg-ghost text-xs w-3">{isReqExpanded ? '▾' : '▸'}</span>}
                       {!hasDetail && <span className="w-3" />}
-                      <span className="text-xs text-neutral-500">{r.id}</span>
-                      <span className="text-sm text-neutral-400 flex-1 truncate">{r.title}</span>
-                      {isNonTestable && <span className="text-xs px-1 py-0.5 rounded bg-neutral-800 text-neutral-500">N/T</span>}
+                      <span className="text-xs text-fg-faint">{r.id}</span>
+                      <span className="text-sm text-fg-muted flex-1 truncate">{r.title}</span>
+                      {isNonTestable && <span className="text-xs px-1 py-0.5 rounded bg-surface-raised text-fg-faint">N/T</span>}
                       {testCoverage && !isNonTestable && scenarioCount > 0 && (
                         <span className={`text-xs ${hasGap ? 'text-red-400' : testCount === scenarioCount ? 'text-green-400' : 'text-yellow-400'}`}>
                           {testCount}/{scenarioCount}
@@ -707,7 +707,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                       )}
                       {cov && (
                         <>
-                          <span className="text-neutral-600 truncate max-w-[80px] text-xs">
+                          <span className="text-fg-ghost truncate max-w-[80px] text-xs">
                             {cov.change}
                             {cov.merged_by_archived && (
                               <span className="ml-1 text-amber-400" title={cov.merged_at ? `merged ${cov.merged_at.slice(0, 10)}` : 'archived'}>
@@ -730,12 +730,12 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                         return (
                           <div key={i} className="pl-12 pr-3 py-0.5">
                             <div className="flex items-center gap-1.5 text-sm">
-                              {tc ? <TestIcon result={tc.result} /> : reqCovered ? <span className="text-green-600">●</span> : <span className="text-neutral-600">○</span>}
-                              <span className="text-neutral-300">{sc.name}</span>
+                              {tc ? <TestIcon result={tc.result} /> : reqCovered ? <span className="text-green-600">●</span> : <span className="text-fg-ghost">○</span>}
+                              <span className="text-fg-normal">{sc.name}</span>
                               {tc && <RiskBadge risk={tc.risk} />}
                               {/* Level 4: test file inline */}
                               {tc?.test_file && (
-                                <span className="text-xs text-neutral-600 ml-auto truncate max-w-[200px]">
+                                <span className="text-xs text-fg-ghost ml-auto truncate max-w-[200px]">
                                   {tc.test_file}
                                 </span>
                               )}
@@ -744,7 +744,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
                             </div>
                             {/* WHEN/THEN compact */}
                             {(sc.when || sc.then) && (
-                              <div className="text-xs text-neutral-600 pl-5 space-y-0">
+                              <div className="text-xs text-fg-ghost pl-5 space-y-0">
                                 {sc.when && <div>WHEN {sc.when}</div>}
                                 {sc.then && <div>THEN {sc.then}</div>}
                               </div>
@@ -756,7 +756,7 @@ function ACPanel({ reqs, coverage, testCoverage }: {
 
                     {/* Backward compat: plain AC checkboxes when no scenarios */}
                     {isReqExpanded && (!hasScenarios || scenarioCount === 0) && (r.acceptance_criteria ?? []).map((ac, i) => (
-                      <div key={i} className={`text-sm flex items-start gap-1.5 pl-10 pr-3 py-0.5 ${done ? 'text-blue-400' : 'text-neutral-500'}`}>
+                      <div key={i} className={`text-sm flex items-start gap-1.5 pl-10 pr-3 py-0.5 ${done ? 'text-blue-400' : 'text-fg-faint'}`}>
                         <span className="shrink-0 mt-0.5">{done ? '\u2611' : '\u2610'}</span>
                         <span>{ac}</span>
                       </div>
@@ -788,8 +788,8 @@ function CoverageReportPanel({ project }: { project: string }) {
     return () => { cancelled = true }
   }, [project])
 
-  if (exists === null) return <div className="p-4 text-sm text-neutral-500">Loading coverage report...</div>
-  if (!exists || !content) return <div className="p-4 text-sm text-neutral-500">No coverage report generated yet</div>
+  if (exists === null) return <div className="p-4 text-sm text-fg-faint">Loading coverage report...</div>
+  if (!exists || !content) return <div className="p-4 text-sm text-fg-faint">No coverage report generated yet</div>
 
   return <MarkdownPanel content={content} />
 }
@@ -854,11 +854,11 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
   return (
     <div className="flex flex-col md:flex-row h-full">
       {/* Mobile: dropdown domain picker with progress */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800 md:hidden shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-line md:hidden shrink-0">
         <select
           value={selected ?? ''}
           onChange={e => setSelected(e.target.value || null)}
-          className="bg-neutral-800 text-neutral-300 text-sm rounded px-2 py-1 border border-neutral-700 flex-1"
+          className="bg-surface-raised text-fg-normal text-sm rounded px-2 py-1 border border-surface-edge flex-1"
         >
           {sortedDomains.map(name => {
             const s = domainStats[name]
@@ -872,7 +872,7 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
       </div>
 
       {/* Desktop: domain list sidebar with mini progress bars */}
-      <div className="hidden md:block w-44 shrink-0 border-r border-neutral-800 overflow-y-auto">
+      <div className="hidden md:block w-44 shrink-0 border-r border-surface-line overflow-y-auto">
         {sortedDomains.map(name => {
           const s = domainStats[name]
           return (
@@ -880,7 +880,7 @@ function DomainsPanel({ domains, reqs, coverage, dependencies, ambiguities }: {
               key={name}
               onClick={() => setSelected(name)}
               className={`w-full text-left px-2 py-1.5 min-h-[44px] md:min-h-0 transition-colors ${
-                selected === name ? 'bg-neutral-800 text-neutral-200' : 'text-neutral-400 hover:bg-neutral-800/50'
+                selected === name ? 'bg-surface-raised text-fg-strong' : 'text-fg-muted hover:bg-surface-raised/50'
               }`}
             >
               <div className="text-sm truncate">{name}</div>
@@ -983,14 +983,14 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
     <div className="p-3 space-y-3">
       {/* Summary + Progress */}
       <div>
-        <div className="text-neutral-200 font-medium text-base mb-1">{name}</div>
-        {summary && <div className="text-neutral-400 text-sm mb-2">{summary}</div>}
+        <div className="text-fg-strong font-medium text-base mb-1">{name}</div>
+        {summary && <div className="text-fg-muted text-sm mb-2">{summary}</div>}
         <div className="text-sm">
           <TuiProgress done={done} total={total} className="text-sm" />
         </div>
         {totalAC > 0 && (
           <div className="text-sm mt-1">
-            <span className="text-neutral-500">AC </span>
+            <span className="text-fg-faint">AC </span>
             <TuiProgress done={doneAC} total={totalAC} className="text-sm" />
           </div>
         )}
@@ -1010,15 +1010,15 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                 return (
                   <Fragment key={r.id}>
                     <tr
-                      className={`border-b border-neutral-800/30 ${hasAC ? 'cursor-pointer' : ''} hover:bg-neutral-900/50 ${isDone ? 'opacity-60' : ''}`}
+                      className={`border-b border-surface-line/30 ${hasAC ? 'cursor-pointer' : ''} hover:bg-surface-panel/50 ${isDone ? 'opacity-60' : ''}`}
                       onClick={hasAC ? () => setExpandedReq(isExpanded ? null : r.id) : undefined}
                     >
-                      <td className="px-1 py-1 text-neutral-400 w-28 truncate" title={r.brief}>
-                        {hasAC && <span className="text-neutral-600 mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
+                      <td className="px-1 py-1 text-fg-muted w-28 truncate" title={r.brief}>
+                        {hasAC && <span className="text-fg-ghost mr-1">{isExpanded ? '\u25BE' : '\u25B8'}</span>}
                         {r.id}
                       </td>
-                      <td className="px-1 py-1 text-neutral-400 truncate max-w-[200px]" title={r.brief}>{r.title}</td>
-                      <td className="px-1 py-1 text-neutral-500 truncate max-w-[140px]">
+                      <td className="px-1 py-1 text-fg-muted truncate max-w-[200px]" title={r.brief}>{r.title}</td>
+                      <td className="px-1 py-1 text-fg-faint truncate max-w-[140px]">
                         {cov?.change ?? '\u2014'}
                         {cov?.merged_by_archived && (
                           <span className="ml-1 text-xs text-amber-400" title={cov.merged_at ? `merged ${cov.merged_at.slice(0, 10)}` : 'archived'}>
@@ -1031,7 +1031,7 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                       </td>
                     </tr>
                     {isExpanded && hasAC && (
-                      <tr className="border-b border-neutral-800/30 bg-neutral-950/30">
+                      <tr className="border-b border-surface-line/30 bg-surface-page/30">
                         <td colSpan={4}>
                           <ACItems req={r} coverage={coverage} />
                         </td>
@@ -1058,11 +1058,11 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
                     a.type === 'contradictory' ? 'bg-red-900/50 text-red-400' :
                     a.type === 'underspecified' ? 'bg-yellow-900/50 text-yellow-400' :
                     a.type === 'missing_reference' ? 'bg-orange-900/50 text-orange-400' :
-                    'bg-neutral-800 text-neutral-400'
+                    'bg-surface-raised text-fg-muted'
                   }`}>{a.type}</span>
-                  <span className="text-neutral-400">{a.description}</span>
+                  <span className="text-fg-muted">{a.description}</span>
                   {a.resolution === 'planner-resolved' && a.resolution_note && (
-                    <div className="text-sm text-neutral-500 mt-0.5 pl-2 border-l border-neutral-700">
+                    <div className="text-sm text-fg-faint mt-0.5 pl-2 border-l border-surface-edge">
                       Resolved: {a.resolution_note}
                     </div>
                   )}
@@ -1079,11 +1079,11 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
           <TuiSection label="DEPENDENCIES" />
           {outByDomain.length > 0 && (
             <div className="mb-1">
-              <div className="text-sm text-neutral-500 mb-0.5">Depends on:</div>
+              <div className="text-sm text-fg-faint mb-0.5">Depends on:</div>
               {outByDomain.map(([dom, edges]) => (
-                <div key={dom} className="text-sm text-neutral-400 pl-2">
-                  <span className="text-neutral-300">{dom}</span>
-                  <span className="text-neutral-600 ml-1">
+                <div key={dom} className="text-sm text-fg-muted pl-2">
+                  <span className="text-fg-normal">{dom}</span>
+                  <span className="text-fg-ghost ml-1">
                     ({edges.map(e => `${e.fromReq}\u2192${e.toReq}`).join(', ')})
                   </span>
                 </div>
@@ -1092,11 +1092,11 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
           )}
           {inByDomain.length > 0 && (
             <div>
-              <div className="text-sm text-neutral-500 mb-0.5">Depended on by:</div>
+              <div className="text-sm text-fg-faint mb-0.5">Depended on by:</div>
               {inByDomain.map(([dom, edges]) => (
-                <div key={dom} className="text-sm text-neutral-400 pl-2">
-                  <span className="text-neutral-300">{dom}</span>
-                  <span className="text-neutral-600 ml-1">
+                <div key={dom} className="text-sm text-fg-muted pl-2">
+                  <span className="text-fg-normal">{dom}</span>
+                  <span className="text-fg-ghost ml-1">
                     ({edges.map(e => `${e.fromReq}\u2192${e.toReq}`).join(', ')})
                   </span>
                 </div>
@@ -1111,9 +1111,9 @@ function DomainCard({ name, summary, domReqs, coverage, incoming, outgoing, ambi
         <div>
           <TuiSection label="SOURCES" />
           {sources.map(([path, count]) => (
-            <div key={path} className="text-sm text-neutral-400 pl-2">
+            <div key={path} className="text-sm text-fg-muted pl-2">
               <span>{path}</span>
-              <span className="text-neutral-600 ml-1">({count} reqs)</span>
+              <span className="text-fg-ghost ml-1">({count} reqs)</span>
             </div>
           ))}
         </div>
@@ -1194,7 +1194,7 @@ function DepTreePanel({ coverage, dependencies }: {
   }
 
   if (changeNodes.size === 0) {
-    return <div className="p-4 text-sm text-neutral-500">No dependency data available</div>
+    return <div className="p-4 text-sm text-fg-faint">No dependency data available</div>
   }
 
   const rendered = new Set<string>()
@@ -1212,19 +1212,19 @@ function DepTreePanel({ coverage, dependencies }: {
     return (
       <div key={name}>
         <div
-          className={`flex items-center gap-2 py-1 px-2 hover:bg-neutral-800/50 rounded cursor-pointer ${isDone ? 'opacity-60' : ''}`}
+          className={`flex items-center gap-2 py-1 px-2 hover:bg-surface-raised/50 rounded cursor-pointer ${isDone ? 'opacity-60' : ''}`}
           style={{ paddingLeft: `${depth * 20 + 8}px` }}
           onClick={() => hasKids && toggle(name)}
         >
           {hasKids ? (
-            <span className="text-neutral-500 w-3 text-center text-sm">{isExpanded ? '\u25BE' : '\u25B8'}</span>
+            <span className="text-fg-faint w-3 text-center text-sm">{isExpanded ? '\u25BE' : '\u25B8'}</span>
           ) : (
             <span className="w-3" />
           )}
-          <span className="text-sm text-neutral-300 truncate">{name}</span>
+          <span className="text-sm text-fg-normal truncate">{name}</span>
           <span className="text-sm ml-auto shrink-0"><TuiStatus status={info.status} /></span>
-          <span className="text-sm text-neutral-600 shrink-0">{info.reqCount} reqs</span>
-          {hasKids && <span className="text-sm text-neutral-600 shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
+          <span className="text-sm text-fg-ghost shrink-0">{info.reqCount} reqs</span>
+          {hasKids && <span className="text-sm text-fg-ghost shrink-0">{kids.length} dep{kids.length > 1 ? 's' : ''}</span>}
         </div>
         {isExpanded && kids.map(kid => renderNode(kid, depth + 1))}
       </div>
@@ -1233,7 +1233,7 @@ function DepTreePanel({ coverage, dependencies }: {
 
   return (
     <div className="space-y-0.5 p-2">
-      <div className="text-sm text-neutral-500 px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
+      <div className="text-sm text-fg-faint px-2 pb-1">{changeNodes.size} changes, {edges.length} dependencies</div>
       {roots.map(r => renderNode(r, 0))}
       {[...changeNodes.keys()].filter(c => !rendered.has(c)).map(c => renderNode(c, 0))}
     </div>
@@ -1268,17 +1268,17 @@ function MarkdownPanel({ content }: { content: string }) {
       elements.push(
         <table key={`tbl-${i}`} className="w-full text-sm my-2 border-collapse">
           <thead>
-            <tr className="border-b border-neutral-700">
+            <tr className="border-b border-surface-edge">
               {headers.map((h, hi) => (
-                <th key={hi} className="text-left px-2 py-1 font-medium text-neutral-300">{h}</th>
+                <th key={hi} className="text-left px-2 py-1 font-medium text-fg-normal">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, ri) => (
-              <tr key={ri} className="border-b border-neutral-800/30 hover:bg-neutral-900/50">
+              <tr key={ri} className="border-b border-surface-line/30 hover:bg-surface-panel/50">
                 {row.map((cell, ci) => (
-                  <td key={ci} className="px-2 py-1 text-neutral-400">{cell}</td>
+                  <td key={ci} className="px-2 py-1 text-fg-muted">{cell}</td>
                 ))}
               </tr>
             ))}
@@ -1290,21 +1290,21 @@ function MarkdownPanel({ content }: { content: string }) {
 
     // Regular line rendering
     if (line.startsWith('# ')) {
-      elements.push(<div key={i} className="text-neutral-100 font-bold mt-4 mb-1 text-base">{line.slice(2)}</div>)
+      elements.push(<div key={i} className="text-fg-loud font-bold mt-4 mb-1 text-base">{line.slice(2)}</div>)
     } else if (line.startsWith('## ')) {
-      elements.push(<div key={i} className="text-neutral-200 font-semibold mt-3 mb-1 text-sm">{line.slice(3)}</div>)
+      elements.push(<div key={i} className="text-fg-strong font-semibold mt-3 mb-1 text-sm">{line.slice(3)}</div>)
     } else if (line.startsWith('### ')) {
-      elements.push(<div key={i} className="text-neutral-300 font-medium mt-2 mb-0.5 text-sm">{line.slice(4)}</div>)
+      elements.push(<div key={i} className="text-fg-normal font-medium mt-2 mb-0.5 text-sm">{line.slice(4)}</div>)
     } else if (line.startsWith('**') && line.endsWith('**')) {
-      elements.push(<div key={i} className="text-neutral-300 font-medium mt-2">{line.slice(2, -2)}</div>)
+      elements.push(<div key={i} className="text-fg-normal font-medium mt-2">{line.slice(2, -2)}</div>)
     } else if (line.startsWith('**')) {
-      elements.push(<div key={i} className="text-neutral-300">{line}</div>)
+      elements.push(<div key={i} className="text-fg-normal">{line}</div>)
     } else if (line.startsWith('- [x] ')) {
       elements.push(<div key={i} className="pl-3 text-blue-400">{line}</div>)
     } else if (line.startsWith('- [ ] ')) {
-      elements.push(<div key={i} className="pl-3 text-neutral-500">{line}</div>)
+      elements.push(<div key={i} className="pl-3 text-fg-faint">{line}</div>)
     } else if (line.startsWith('- ')) {
-      elements.push(<div key={i} className="pl-3 text-neutral-400">{line}</div>)
+      elements.push(<div key={i} className="pl-3 text-fg-muted">{line}</div>)
     } else {
       elements.push(<div key={i}>{line || '\u00A0'}</div>)
     }
@@ -1312,20 +1312,20 @@ function MarkdownPanel({ content }: { content: string }) {
   }
 
   return (
-    <div className="p-3 text-sm text-neutral-400 whitespace-pre-wrap leading-5">
+    <div className="p-3 text-sm text-fg-muted whitespace-pre-wrap leading-5">
       {elements}
     </div>
   )
 }
 
 function colorSessionLine(line: string): string {
-  if (line.startsWith('>>>')) return 'text-neutral-200'
+  if (line.startsWith('>>>')) return 'text-fg-strong'
   if (line.startsWith('  [Edit]') || line.startsWith('  [Write]')) return 'text-yellow-400'
   if (line.startsWith('  [Bash]')) return 'text-green-400'
   if (line.startsWith('  [Read]') || line.startsWith('  [Glob]') || line.startsWith('  [Grep]')) return 'text-blue-400'
   if (line.startsWith('  [')) return 'text-cyan-400'
-  if (line.startsWith('---')) return 'text-neutral-600'
-  return 'text-neutral-400'
+  if (line.startsWith('---')) return 'text-fg-ghost'
+  return 'text-fg-muted'
 }
 
 function DigestPendingView({ project }: { project: string }) {
@@ -1401,22 +1401,22 @@ function DigestPendingView({ project }: { project: string }) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-2 border-b border-neutral-800/50 shrink-0">
+      <div className="px-4 py-2 border-b border-surface-line/50 shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-300 font-medium">Digest generating...</span>
+          <span className="text-sm text-fg-normal font-medium">Digest generating...</span>
           <span className="text-green-500 animate-pulse">{'\u25CF'}</span>
         </div>
-        <div className="text-sm text-neutral-500 mt-0.5">
+        <div className="text-sm text-fg-faint mt-0.5">
           Parsing specs into requirements, domains, and coverage map
         </div>
       </div>
 
       {/* Orchestration log (digest-relevant lines) */}
       {logLines.length > 0 && (
-        <div className="px-4 py-2 border-b border-neutral-800/50 shrink-0 max-h-32 overflow-y-auto">
+        <div className="px-4 py-2 border-b border-surface-line/50 shrink-0 max-h-32 overflow-y-auto">
           <TuiSection label="ORCHESTRATION LOG" />
           {logLines.map((line, i) => (
-            <div key={i} className="text-sm text-neutral-400 whitespace-pre-wrap break-all leading-4">
+            <div key={i} className="text-sm text-fg-muted whitespace-pre-wrap break-all leading-4">
               {line}
             </div>
           ))}
@@ -1427,7 +1427,7 @@ function DigestPendingView({ project }: { project: string }) {
       <div className="flex-1 overflow-y-auto min-h-0 p-3">
         {digestSession ? (
           <>
-            <div className="text-sm text-neutral-600 mb-2">
+            <div className="text-sm text-fg-ghost mb-2">
               {digestSession.label} session · {(digestSession.size / 1024).toFixed(0)}KB
             </div>
             {sessionLines.map((line, i) => (
@@ -1438,7 +1438,7 @@ function DigestPendingView({ project }: { project: string }) {
             <div ref={bottomRef} />
           </>
         ) : (
-          <div className="text-sm text-neutral-500">Waiting for session to start...</div>
+          <div className="text-sm text-fg-faint">Waiting for session to start...</div>
         )}
       </div>
     </div>
