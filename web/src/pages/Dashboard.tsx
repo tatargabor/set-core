@@ -396,6 +396,7 @@ export default function Dashboard({ project, initialTab }: Props) {
                   project={project}
                   selected={selectedChange}
                   onSelect={setSelectedChange}
+                  loading={state === null}
                 />
               </div>
               <div className="basis-0 grow shrink min-h-0 relative">
@@ -417,6 +418,7 @@ export default function Dashboard({ project, initialTab }: Props) {
                 project={project}
                 selected={selectedChange}
                 onSelect={setSelectedChange}
+                loading={state === null}
               />
             </div>
           )

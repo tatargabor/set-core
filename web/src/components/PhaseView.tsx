@@ -92,7 +92,20 @@ function buildTree(phaseChanges: ChangeInfo[]): TreeNode[] {
 }
 
 // Grid column template: name(tree) | status | complexity | type | sessions | duration | tokens | gates
-const GRID_COLS = 'minmax(160px,1.5fr) 80px 40px 60px 30px 65px 95px minmax(100px,1fr)'
+/**
+ * Column widths, and a gap so that two numbers can never touch.
+ *
+ * The fixed 65px/95px this replaces were too narrow for the values the columns actually carry,
+ * and with no gap between grid tracks an overlong value simply printed into its neighbour:
+ * `70978m32s` beside `9.9M/323.4k` rendered as `70978m32Z9.9M/323.4k`. Two separate figures
+ * became one unreadable string, and nothing about it looked like an error — it looked like a
+ * value.
+ *
+ * So the numeric tracks size to their content with a floor (`minmax(...,auto)`) and the grid
+ * carries a gap. A width chosen for today's longest value is a measurement with an expiry date;
+ * a gap is what makes the failure legible when that day comes.
+ */
+const GRID_COLS = 'minmax(160px,1.5fr) 80px 40px 60px 30px minmax(72px,auto) minmax(104px,auto) minmax(100px,1fr)'
 
 function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: number; phaseChanges: ChangeInfo[] }) {
   const c = node.change
@@ -103,7 +116,7 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
   return (
     <>
       <div
-        className="grid items-center py-1.5 px-3 hover:bg-neutral-900/30 transition-colors"
+        className="grid items-center gap-x-3 py-1.5 px-3 hover:bg-neutral-900/30 transition-colors"
         style={{ gridTemplateColumns: GRID_COLS }}
       >
         {/* Name with tree indent */}
@@ -168,6 +181,10 @@ function ChangeRow({ node, depth, phaseChanges }: { node: TreeNode; depth: numbe
 }
 
 export default function PhaseView({ changes, state }: Props) {
+  // Derived, not a new prop: this view already receives the state object, and `null` there is
+  // exactly "the answer has not arrived". Adding a second signal for the same fact is how the
+  // two drift apart.
+  const loading = state === null
   // All-lineages mode was removed — the view is always lineage-scoped to
   // the sidebar selection, so phase groups no longer split by lineage.
   const [showUnattributed, setShowUnattributed] = useState(false)
@@ -188,7 +205,9 @@ export default function PhaseView({ changes, state }: Props) {
   )
 
   if (attributedChanges.length === 0 && unattributedCount === 0) {
-    return <div className="p-4 text-neutral-500 text-sm">No changes</div>
+    // Same distinction the change table now makes: an empty list is not an answer until we
+    // know one arrived. See ChangeTable's `loading` prop for the screen that proved it.
+    return <div className="p-4 text-fg-faint text-sm">{loading ? 'Loading phases…' : 'No changes'}</div>
   }
 
   // Section 9.2 / AC-20 — when two plan versions share a phase number
@@ -286,7 +305,7 @@ export default function PhaseView({ changes, state }: Props) {
 
             {/* Column headers */}
             <div
-              className="grid items-center px-3 py-1 text-sm text-neutral-600 border-b border-neutral-800/30"
+              className="grid items-center gap-x-3 px-3 py-1 text-sm text-neutral-600 border-b border-neutral-800/30"
               style={{ gridTemplateColumns: GRID_COLS }}
             >
               <span>Name</span>

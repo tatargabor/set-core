@@ -16,6 +16,16 @@ interface Props {
   project: string
   selected?: string | null
   onSelect?: (name: string | null) => void
+  /**
+   * Has the answer arrived yet?
+   *
+   * Without it an empty array means both "this project has no changes" and "we have not been
+   * told yet", and the table said the first while the header two rows above said the second.
+   * Captured on a live screen: `No changes` under a title bar reading `Waiting for data…`, on a
+   * project with eighteen of them. An unknown rendered as a zero is the false-absence shape the
+   * status surface refuses by requirement; the same rule applies here.
+   */
+  loading?: boolean
 }
 
 
@@ -49,7 +59,7 @@ interface ArtifactCounts {
   images: number
 }
 
-export default function ChangeTable({ changes, project, selected, onSelect }: Props) {
+export default function ChangeTable({ changes, project, selected, onSelect, loading }: Props) {
   const [expandedGate, setExpandedGate] = useState<string | null>(null)
   const [screenshotChange, setScreenshotChange] = useState<string | null>(null)
   const isMobile = useIsMobile()
@@ -120,7 +130,9 @@ export default function ChangeTable({ changes, project, selected, onSelect }: Pr
 
   if (changes.length === 0) {
     return (
-      <div className="p-4 text-neutral-500 text-sm">No changes</div>
+      <div className="p-4 text-fg-faint text-sm">
+        {loading ? 'Loading changes…' : 'No changes'}
+      </div>
     )
   }
 
