@@ -229,6 +229,13 @@ function Cell({ children, text }: { children: ReactNode; text: string }) {
  */
 const INLINE_CHIP_MAX = 2
 
+/**
+ * Roughly the number of monospace characters that fit the cell's 22rem clip before the ellipsis.
+ * Approximate on purpose: it decides whether a row can be OPENED, and erring toward offering the
+ * expander costs a chevron, while erring the other way leaves text with no way to reach it.
+ */
+const CELL_CLIP_CHARS = 42
+
 function isComplexCellValue(v: unknown): boolean {
   if (isPlainObject(v)) return true
   if (!Array.isArray(v)) return false
@@ -395,7 +402,16 @@ export function StatusTable(
    * genuinely do not need them. Displacement is about SHAPE, so it is decided separately.
    */
   const displaces = useMemo(
-    () => rows.some(r => cols.some(c => isComplexCellValue(r[c]))),
+    () => rows.some(r => cols.some(c => {
+      const v = r[c]
+      if (isComplexCellValue(v)) return true
+      // Long prose is withheld just as surely as a structure is — measured across the status
+      // tabs, cells were hiding 93%, 78%, 77% and 70% of their text behind an ellipsis whose
+      // only escape was a `title` tooltip. A tooltip is not an answer: it is unreachable on
+      // touch, uncopyable, and this surface's own rule says what a compaction withheld must be
+      // reachable where the reader is standing. The threshold is the clip width the cell uses.
+      return typeof v === 'string' && v.length > CELL_CLIP_CHARS
+    })),
     [rows, cols],
   )
   const expandable = controls || displaces
@@ -687,7 +703,21 @@ export function StatusTable(
           the single vertical scroller — no inner max-height, so no second vertical scrollbar
           nested inside the page's. Matches how the orchestration change table renders. */}
       <div className="overflow-x-auto rounded border border-neutral-800">
-        <table className="w-full text-sm tabular-nums">
+        <table
+          // `w-auto`, not `w-full`. A table stretched to its container spreads its columns to
+          // fill it, and the gaps land between the values a reader is comparing: measured on
+          // the config tab, a 3-column table of short identifiers spread `name` to 590px for
+          // values around 110px, putting 400px of nothing between a name and its state.
+          //
+          // Scanning a row is the whole job of a table, and horizontal distance is what makes
+          // it hard. So the table takes the width its content needs; when that exceeds the
+          // container it overflows as before, and when it is less the panel simply has room
+          // to spare — which is honest, and much easier to read than manufactured gaps.
+          // NOT `min-w-full`. The first attempt paired `w-auto` with it and the change did
+          // nothing: a minimum of 100% forces the container width back on, so `w-auto` never
+          // applied. A hedge added for safety cancelled the fix it was hedging.
+          className="w-auto text-sm tabular-nums"
+        >
           <thead>
             <tr className="bg-neutral-900 text-neutral-500 border-b border-neutral-800">
               {selectable && (
