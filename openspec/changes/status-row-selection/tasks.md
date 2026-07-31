@@ -87,6 +87,19 @@ them is discoverable from the code:
   count beside it, and is the checkbox column readable at the table's real density
   [REQ: the-selection-states-its-own-size-and-what-it-withholds]
 
+## 6. Wired to the live declaration (added after the scope widened)
+
+- [x] 6.1 A refused write reports the PROJECT's reason, not an exit code — their write commands are
+  exit-code + stderr contracts, so that text is the only place the reason exists
+  [REQ: a-refused-write-hands-back-the-projects-own-reason]
+- [x] 6.2 The log keeps carrying the SHAPE only (command, exit code, byte count) — held by a test
+  that fails if someone logs the reason alongside returning it
+  [REQ: a-refused-write-hands-back-the-projects-own-reason]
+- [x] 6.3 Measured against the live producer AFTER they published the declaration: the control
+  appears, is disabled with a stated reason, offers their computed options, and enables on choice.
+  Verified with every browser dialog refused and zero dialogs seen — nothing was written
+  [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
+
 ## Acceptance Criteria (from spec scenarios)
 
 ### A reader can select rows, and the selection survives what narrows the table
