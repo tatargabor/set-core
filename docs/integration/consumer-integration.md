@@ -94,7 +94,7 @@ check the channel tail before trusting it.**
 - **Channel tail now:** this side `S#141`, their side `W#141`. `S#141` announces the resume and
   carries no question, so a quiet channel is the expected state, not a fault.
 - **The Monitor died with the restart and is re-armed** — measured by identity on 07-30 14:12,
-  not recalled: `pgrep -f 'NEW=.*wpc-pont'` returned PID 1776229 aged `00:04` (the watch) plus
+  not recalled: `pgrep -f "NEW=.*<peer file>"` returned PID 1776229 aged `00:04` (the watch) plus
   two `00:00` hits (the measuring command itself). This is exactly the failure that cost five
   days of silence on 2026-07-28..29 (see *Resuming* below). A cron fallback was deliberately
   **not** re-added: it is session-scoped too, so it cannot witness the death it guards.

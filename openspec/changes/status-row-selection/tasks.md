@@ -15,36 +15,36 @@ them is discoverable from the code:
 
 ## 1. Selection state, keyed by identity
 
-- [ ] 1.1 Compute the table's identifying column: the first column whose values are scalar and
+- [x] 1.1 Compute the table's identifying column: the first column whose values are scalar and
   unique across all rows. No field name is recognised — the column is chosen from the values
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 1.2 Hold the selection as a set of keys (identifying value, or row position when 1.1 finds no
+- [x] 1.2 Hold the selection as a set of keys (identifying value, or row position when 1.1 finds no
   unique column), so re-sorting and re-filtering cannot change which rows are selected
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 1.3 In position-key fallback mode, state in the UI that sorting will invalidate the selection —
+- [x] 1.3 In position-key fallback mode, state in the UI that sorting will invalidate the selection —
   before the reader sorts, not after
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 1.4 A key that matches no row in the current answer is not counted as selected — a refreshed
+- [x] 1.4 A key that matches no row in the current answer is not counted as selected — a refreshed
   answer that dropped a row must not leave a count that overstates what an action could reach
   [REQ: the-selection-states-its-own-size-and-what-it-withholds]
 
 ## 2. The controls
 
-- [ ] 2.1 A checkbox per row, in a column that does not disturb the existing column layout
+- [x] 2.1 A checkbox per row, in a column that does not disturb the existing column layout
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 2.2 A select-all control that acts on the rows currently showing, and NAMES that limit on the
+- [x] 2.2 A select-all control that acts on the rows currently showing, and NAMES that limit on the
   control itself [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 2.3 No selection control at all when the table has no rows — a control that cannot select
+- [x] 2.3 No selection control at all when the table has no rows — a control that cannot select
   anything reads as broken
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 2.4 A clear-selection control, reachable while part of the selection is hidden
+- [x] 2.4 A clear-selection control, reachable while part of the selection is hidden
   [REQ: the-selection-states-its-own-size-and-what-it-withholds]
 
 ## 3. The summary that cannot lie
 
-- [ ] 3.1 State the selected count; whenever any selected row is hidden by a search, a filter or the
+- [x] 3.1 State the selected count; whenever any selected row is hidden by a search, a filter or the
   row cap, state how many [REQ: the-selection-states-its-own-size-and-what-it-withholds]
-- [ ] 3.2 A test that a selection of N with M hidden never displays as N−M anywhere the reader can
+- [x] 3.2 A test that a selection of N with M hidden never displays as N−M anywhere the reader can
   see — the false-absence direction is the one that shrinks an action's blast radius silently
   [REQ: the-selection-states-its-own-size-and-what-it-withholds]
 
@@ -56,30 +56,34 @@ them is discoverable from the code:
 - [ ] 4.2 Render one control for the whole selection when a batch action is declared, stating the
   TOTAL it would act on — including hidden rows
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
-- [ ] 4.3 Where no batch action is declared, the summary says so in words; no disabled control with
+- [x] 4.3 Where no batch action is declared, the summary says so in words; no disabled control with
   an unstated reason
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
-- [ ] 4.4 A test holding the refuted approach: rows carry a row-level action and no batch action is
+- [x] 4.4 A test holding the refuted approach: rows carry a row-level action and no batch action is
   declared → NO batch control appears. This is the "obvious improvement" a later session would add,
   and it would turn one assertion about a set into N independent assertions
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
-- [ ] 4.5 Nothing is sent this round — assert that selecting rows and clicking any rendered batch
+- [x] 4.5 Nothing is sent this round — assert that selecting rows and clicking any rendered batch
   control performs no write
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
 
 ## 5. Prove it
 
-- [ ] 5.1 A table without selection behaves byte-identically to today — measured against the
-  pre-change render, not asserted
+- [ ] 5.1 **WITHDRAWN as written, and the reason is the finding.** "Byte-identical" was the wrong
+  bar: the table gains a column, so its DOM changes by design. Three existing tests proved it by
+  breaking — all three read `td:nth-child(2)`, which measures the LAYOUT rather than the data. They
+  were repointed at `data-col="<name>"` instead of at `nth-child(3)`, because the positional
+  selector would break again on the next column. What replaces this task: 170/170 web unit tests
+  pass, and the three repointed assertions are unchanged in substance
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 5.2 Mutation-test each rule one at a time: identity key → index key, hidden-count → visible-count,
+- [x] 5.2 Mutation-test each rule one at a time: identity key → index key, hidden-count → visible-count,
   declared-batch → derived-from-row. Apply, assert the mutation landed, run, then assert the RESTORE
   landed by re-reading the file
   [REQ: the-selection-states-its-own-size-and-what-it-withholds]
-- [ ] 5.3 Drive the page the way a reader reaches it — click the checkbox, change the filter, read the
+- [x] 5.3 Drive the page the way a reader reaches it — click the checkbox, change the filter, read the
   summary. Never call the selection helper directly
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table]
-- [ ] 5.4 Look at the screen with a real answer loaded: does the selection summary contradict the row
+- [x] 5.4 Look at the screen with a real answer loaded: does the selection summary contradict the row
   count beside it, and is the checkbox column readable at the table's real density
   [REQ: the-selection-states-its-own-size-and-what-it-withholds]
 
@@ -87,30 +91,30 @@ them is discoverable from the code:
 
 ### A reader can select rows, and the selection survives what narrows the table
 
-- [ ] AC-1: WHEN rows are selected and the reader then narrows the table so some no longer show
+- [x] AC-1: WHEN rows are selected and the reader then narrows the table so some no longer show
   THEN those rows remain selected, and are still selected when the narrowing is removed
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table, scenario: a-filter-changes-after-rows-are-selected]
-- [ ] AC-2: WHEN the reader selects all rows with one control while a filter is active THEN only the
+- [x] AC-2: WHEN the reader selects all rows with one control while a filter is active THEN only the
   rows currently showing are added, and the control names that limit
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table, scenario: select-all-acts-on-what-is-showing-and-says-so]
-- [ ] AC-3: WHEN a table has no rows at all THEN no selection control is offered
+- [x] AC-3: WHEN a table has no rows at all THEN no selection control is offered
   [REQ: a-reader-can-select-rows-and-the-selection-survives-what-narrows-the-table, scenario: a-table-with-no-rows]
 
 ### The selection states its own size and what it withholds
 
-- [ ] AC-4: WHEN some selected rows are hidden by a filter, a search or the row cap THEN the count of
+- [x] AC-4: WHEN some selected rows are hidden by a filter, a search or the row cap THEN the count of
   hidden-but-selected rows is shown beside the selection count
   [REQ: the-selection-states-its-own-size-and-what-it-withholds, scenario: selected-rows-hidden-by-a-narrowing-control]
-- [ ] AC-5: WHEN any row is selected THEN a clear-selection control is available without first
+- [x] AC-5: WHEN any row is selected THEN a clear-selection control is available without first
   removing the narrowing that hides part of it
   [REQ: the-selection-states-its-own-size-and-what-it-withholds, scenario: clearing-the-selection-is-always-reachable]
 
 ### A batch action is offered only where the project declares one, and its absence is stated
 
-- [ ] AC-6: WHEN rows are selected and the answer carries no batch action THEN the summary states
+- [x] AC-6: WHEN rows are selected and the answer carries no batch action THEN the summary states
   that this project offers no action on a selection, with no disabled control whose reason is unstated
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated, scenario: a-project-declares-no-batch-action]
-- [ ] AC-7: WHEN rows carry a row-level action and no batch action is declared THEN no batch control
+- [x] AC-7: WHEN rows carry a row-level action and no batch action is declared THEN no batch control
   appears
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated, scenario: a-row-level-action-exists-but-no-batch-action]
 - [ ] AC-8: WHEN the answer declares a batch action and at least one row is selected THEN one control
