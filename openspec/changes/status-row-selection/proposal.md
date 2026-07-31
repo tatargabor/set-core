@@ -40,8 +40,11 @@ and is the precondition for every later verb: **the selection itself.**
 - **Where no batch action is declared, the absence is READABLE** — the selection summary says so
   in words. A selection that can be made and then does nothing, with no explanation, is a false
   affordance; and silence here would be indistinguishable from a broken button.
-- **Nothing is started.** No investigation, no fix queue, no release planning. This change ends at
-  a selection that can be handed to an action once one exists.
+- **The declared action is wired, and nothing else is.** SCOPE WIDENED mid-change, by the user,
+  on new information: the producer's engine turned out to already exist, with a command that takes
+  the selected identifiers and a target release. So the control is built and sends that one
+  declared command. Still NOT here: investigation, the fix queue, and the agent's question round —
+  each is its own change.
 
 ## Capabilities
 
@@ -52,6 +55,10 @@ and is the precondition for every later verb: **the selection itself.**
 - `project-status-surface`: rows become selectable; the selection states its own size and what it
   withholds; a batch action appears only where the project declares one, and its absence is stated
   rather than silent.
+- `project-status-contract`: a refused write reports the PROJECT's reason rather than an exit
+  code. Added after the producer corrected an assumption on the channel: their write commands are
+  exit-code + stderr contracts, not envelopes, so that text is the only place the reason exists.
+  The log's half of the rule does not move — shape yes, content never.
 
 ## Impact
 
@@ -61,10 +68,11 @@ and is the precondition for every later verb: **the selection itself.**
   existing row-level `actions` parser; the shared framework-level key list.
 - `web/tests/unit/` — new specs, including the refuted patterns held as tests.
 
-**Deliberately NOT changed:** no write is sent (there is no batch action to send yet), no field
-name becomes meaningful, the row-level `actions` path is untouched, and no selection is persisted
-anywhere — it lives in the page, like the filters do.
+**Deliberately NOT changed:** no field name becomes meaningful, the row-level `actions` path is
+untouched, and no selection is persisted anywhere — it lives in the page, like the filters do.
 
-**A question for the producer, deliberately not answered here:** what shape a batch action takes
-(one call carrying the identifiers, or the framework repeating a row call), and how a bug is
-attached to an open release. That belongs on the channel, as its own thread.
+**Both questions this change opened were answered on the channel, and both answers changed it.**
+The batch shape is a QUEUE, not a set mutation — the producer serialises the list, so the
+confirmation promises one-at-a-time rather than N results. And the bug→release link, which did not
+exist as data when this was written, arrived as a command argument rather than a field. Neither was
+guessed here; both were measured on their side and agreed before anything was built.

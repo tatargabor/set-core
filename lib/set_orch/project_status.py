@@ -699,6 +699,30 @@ def is_valid_flag_name(name: str) -> bool:
     return bool(_COMMAND_NAME.match(name or ""))
 
 
+#: How much of a failed write's stderr reaches the reader. Enough for a sentence or two of
+#: explanation, far short of a dump — a stack trace pasted into a status line is unreadable,
+#: and the surface's own rule is that a control must be readable where the reader stands.
+MAX_WRITE_ERROR_CHARS = 400
+
+
+def _write_failure_reason(stderr: bytes, returncode: int) -> str:
+    """The project's own reason for refusing a write, or an honest statement that it gave none.
+
+    Takes the LAST lines rather than the first: a tool that logs progress before failing puts
+    the reason at the end, and taking the head would reliably show the least useful part.
+
+    When stderr is empty the message says so explicitly instead of falling back to a bare exit
+    code. "exited 1 and said nothing" is a different problem from "exited 1 because X", and a
+    reader who cannot tell them apart will look for the reason in the wrong place.
+    """
+    text = stderr.decode("utf-8", errors="replace").strip()
+    if not text:
+        return f"the write command exited {returncode} and wrote nothing explaining why"
+    if len(text) > MAX_WRITE_ERROR_CHARS:
+        text = "…" + text[-MAX_WRITE_ERROR_CHARS:]
+    return text
+
+
 def write(
     project_path: str | Path,
     command: str,
@@ -798,12 +822,25 @@ def write(
         )
 
     if proc.returncode != 0:
+        # The LOG gets the shape only — a length, never the text. The log is persistence and
+        # can leave the machine; that rule is unchanged.
         logger.warning(
             "project_status: WRITE '%s' exited %d (%d bytes on stderr)",
             command, proc.returncode, len(proc.stderr),
         )
+        # The ANSWER carries the project's own words, and this is the asymmetry that matters.
+        # A read that fails leaves a gap the surface already explains. A write that fails was
+        # asked for by a person who is standing there, and "the write command exited 1" tells
+        # them nothing they can act on — while the project's line usually says exactly what to
+        # do next ("that release is not an open draft; the open ones are: …").
+        #
+        # Measured on a live producer: their write commands are exit-code + stderr contracts,
+        # not envelopes, so this text is the ONLY place the reason exists. Displaying it is the
+        # same act as displaying any other value they publish; the confidentiality boundary is
+        # persistence, not display.
         return StatusResult.failure(
-            command, "nonzero-exit", f"the write command exited {proc.returncode}",
+            command, "nonzero-exit",
+            _write_failure_reason(proc.stderr, proc.returncode),
         )
 
     return parse_envelope(command, proc.stdout.decode("utf-8", errors="replace"))
