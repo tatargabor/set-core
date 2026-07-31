@@ -116,3 +116,38 @@ body {
 #root {
   min-height: 100svh;
 }
+
+/**
+ * A visible focus ring, on everything that takes focus.
+ *
+ * Measured before adding it: ~20 000 lines of dashboard carried **12** `aria-*` attributes and
+ * **9** `onKeyDown` handlers, and the browser default ring is close to invisible against
+ * `#0a0a0a`. So a keyboard reader could tab through the whole surface without ever seeing where
+ * they were — not a styling gap, but the surface being unusable without a mouse.
+ *
+ * `:focus-visible` rather than `:focus`, so a mouse click does not leave a ring behind. The
+ * offset keeps it clear of the glyphs in a monospace grid where rows are tight.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-status-done);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/**
+ * Table headers hold their position while the body scrolls.
+ *
+ * Measured, not stylistic: one status tab delivers **174 rows** over twelve columns whose headers
+ * are the only thing distinguishing an identifier from a date from a count. Scroll past the first
+ * screenful and every remaining row is unlabelled — the reader scrolls back up to read a column
+ * name, then back down to find their row again.
+ *
+ * `background` is set explicitly because a transparent sticky header lets the rows it is meant to
+ * label slide underneath and print through it.
+ */
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-neutral-900);
+}

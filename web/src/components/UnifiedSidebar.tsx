@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { getApps, getGlobalItems, type SidebarApp, type SidebarSubItem, type GlobalItem } from '../lib/sidebarRegistry'
@@ -51,10 +51,45 @@ function detectActiveApp(apps: SidebarApp[], pathname: string, project: string |
   return apps[0]?.id ?? null
 }
 
+/**
+ * Is the rail collapsed to icons?
+ *
+ * Persisted, unlike anything the status surface keeps: this is a preference about the CHROME,
+ * carrying no value the project reported, so `localStorage` holds nothing a reader would mind
+ * leaving behind. The rule the table obeys — never persist a control whose value IS the
+ * producer's data — is about the data, not about storage.
+ */
+const COLLAPSE_KEY = 'set:sidebar-collapsed'
+
+function useCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+  })
+  const toggle = useCallback(() => {
+    setCollapsed(c => {
+      try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1') } catch { /* private mode */ }
+      return !c
+    })
+  }, [])
+  // Ctrl/Cmd+B, the convention every editor this audience already uses has settled on.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        toggle()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggle])
+  return [collapsed, toggle]
+}
+
 export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarState }: Props) {
   const location = useLocation()
   const { issueStats, totalOpen, managerOnline } = useSidebarStats()
   const [restarting, setRestarting] = useState(false)
+  const [collapsed, toggleCollapsed] = useCollapsed()
 
   const apps = getApps()
   const globalItems = getGlobalItems()
@@ -72,24 +107,45 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
         fixed inset-y-0 left-0 z-50 w-64 bg-neutral-950 border-r border-neutral-800 flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0 md:w-56 md:transition-none
+        md:relative md:translate-x-0 md:transition-[width] md:duration-150 ${collapsed ? 'md:w-14' : 'md:w-56'}
       `}>
-        {/* Header */}
-        <Link to="/" className="block p-4 border-b border-neutral-800 hover:bg-neutral-900 transition-colors">
-          <h1 className="text-sm font-semibold text-neutral-100 tracking-wide">SET</h1>
-          <p className="text-sm text-neutral-500 tracking-wide">Ship Exactly This!</p>
-        </Link>
+        {/* Header — the title collapses to the mark; the toggle stays reachable in both states. */}
+        {/* Collapsed, the rail is 56px wide and the toggle cannot sit beside the mark without
+            landing on it — measured, it overlapped. So the header stacks instead of overlaying:
+            an absolutely-positioned control on a rail this narrow has no space that is not
+            already someone's. */}
+        <div className={`flex border-b border-surface-line ${collapsed ? 'flex-col items-stretch' : 'items-center'}`}>
+          <Link
+            to="/"
+            title="SET — Ship Exactly This!"
+            className={`flex-1 min-w-0 hover:bg-surface-panel transition-colors ${collapsed ? 'py-3 text-center' : 'p-4'}`}
+          >
+            <h1 className="text-sm font-semibold text-fg-loud tracking-wide">SET</h1>
+            {!collapsed && <p className="text-sm text-fg-faint tracking-wide">Ship Exactly This!</p>}
+          </Link>
+          <button
+            onClick={toggleCollapsed}
+            title={collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            className={`hidden md:block shrink-0 text-fg-ghost hover:text-fg-normal hover:bg-surface-panel transition-colors ${
+              collapsed ? 'w-full py-1 border-t border-surface-line text-center' : 'px-2 py-4'
+            }`}
+          >
+            {collapsed ? '\u00BB' : '\u00AB'}
+          </button>
+        </div>
 
         {/* Project name (when inside a project) */}
-        {project && (
-          <div className="px-4 py-2 border-b border-neutral-800">
-            <span className="text-xs text-neutral-500">Project</span>
-            <div className="text-sm font-medium text-neutral-200 truncate">{project}</div>
+        {project && !collapsed && (
+          <div className="px-4 py-2 border-b border-surface-line">
+            <span className="text-xs text-fg-faint">Project</span>
+            <div className="text-sm font-medium text-fg-strong truncate">{project}</div>
           </div>
         )}
 
         {/* Lineage selector — rendered between the project-name block and the app menu (Section 14.1). */}
-        {project && <LineageList project={project} sidebarState={sidebarState ?? null} />}
+        {project && !collapsed && <LineageList project={project} sidebarState={sidebarState ?? null} />}
 
         {project ? (
           <>
@@ -105,18 +161,27 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
                     key={app.id}
                     to={resolve(app.defaultRoute, project)}
                     onClick={onClose}
-                    className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
+                    // The label is the ONLY thing that names this destination, so when it is
+                    // hidden the `title` has to carry it — an icon rail without tooltips is a
+                    // memory test. The badge survives collapse as a dot: a count the reader
+                    // cannot see is a failure hidden by compacting.
+                    title={collapsed ? app.label + (issueBadge ? ` (${issueBadge})` : '') : undefined}
+                    className={`relative flex items-center gap-2 py-2 rounded text-sm transition-colors ${
+                      collapsed ? 'justify-center px-0' : 'px-3'
+                    } ${
                       isActive
-                        ? 'bg-neutral-800 text-neutral-100'
-                        : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
+                        ? 'bg-surface-raised text-fg-loud'
+                        : 'text-fg-muted hover:bg-surface-raised/50 hover:text-fg-normal'
                     }`}
                   >
                     <SidebarIcon icon={app.icon} className="w-5 text-center shrink-0" />
-                    <span className="flex-1">{app.label}</span>
+                    {!collapsed && <span className="flex-1">{app.label}</span>}
                     {issueBadge != null && issueBadge > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
-                        {issueBadge}
-                      </span>
+                      collapsed
+                        ? <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-status-warn" />
+                        : <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-status-warn">
+                            {issueBadge}
+                          </span>
                     )}
                   </Link>
                 )
@@ -124,7 +189,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
             </div>
 
             {/* Level 2: Sub-items for active app */}
-            {activeApp && activeApp.children.length > 1 && (
+            {activeApp && activeApp.children.length > 1 && !collapsed && (
               <>
                 <div className="border-t border-neutral-800" />
                 <nav className="px-3 py-2 space-y-0.5 flex-1 overflow-y-auto">
@@ -157,7 +222,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
               />
             ))}
             <div className="px-4 py-3 text-sm text-neutral-600">
-              Select a project above
+              Select a project
             </div>
           </div>
         )}
@@ -165,9 +230,13 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
         {/* Footer: manager health */}
         <div className="border-t border-neutral-800 px-3 py-2 mt-auto">
           <div className="flex items-center gap-2">
-            <Link to="/" className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-300 flex-1">
-              <span className={`w-2 h-2 rounded-full ${managerOnline ? 'bg-green-400' : 'bg-red-400'}`} />
-              <span>Manager: {restarting ? 'restarting...' : managerOnline ? 'running' : 'offline'}</span>
+            <Link
+              to="/"
+              title={collapsed ? `Manager: ${managerOnline ? 'running' : 'offline'}` : undefined}
+              className={`flex items-center gap-2 text-sm text-fg-faint hover:text-fg-normal flex-1 ${collapsed ? 'justify-center' : ''}`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${managerOnline ? 'bg-status-active' : 'bg-status-fail'}`} />
+              {!collapsed && <span>Manager: {restarting ? 'restarting...' : managerOnline ? 'running' : 'offline'}</span>}
             </Link>
             {managerOnline ? (
               <button
