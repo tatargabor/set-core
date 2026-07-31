@@ -50,10 +50,10 @@ them is discoverable from the code:
 
 ## 4. A batch action only where it is declared
 
-- [ ] 4.1 Parse a project-declared batch action from the ANSWER level, alongside the existing
+- [x] 4.1 Parse a project-declared batch action from the ANSWER level, alongside the existing
   row-level `actions` parser, and add its key to the framework-level key list
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
-- [ ] 4.2 Render one control for the whole selection when a batch action is declared, stating the
+- [x] 4.2 Render one control for the whole selection when a batch action is declared, stating the
   TOTAL it would act on — including hidden rows
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated]
 - [x] 4.3 Where no batch action is declared, the summary says so in words; no disabled control with
@@ -117,6 +117,6 @@ them is discoverable from the code:
 - [x] AC-7: WHEN rows carry a row-level action and no batch action is declared THEN no batch control
   appears
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated, scenario: a-row-level-action-exists-but-no-batch-action]
-- [ ] AC-8: WHEN the answer declares a batch action and at least one row is selected THEN one control
+- [x] AC-8: WHEN the answer declares a batch action and at least one row is selected THEN one control
   is offered for the whole selection, stating how many rows it would act on including hidden ones
   [REQ: a-batch-action-is-offered-only-where-the-project-declares-one-and-its-absence-is-stated, scenario: a-declared-batch-action-is-rendered]

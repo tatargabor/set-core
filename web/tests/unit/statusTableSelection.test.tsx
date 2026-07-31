@@ -13,7 +13,7 @@
  * search box. Calling the selection helper directly would test a system where every control
  * already works.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import StatusValue from '../../src/components/StatusValue'
 import { identityColumn, CONTROL_MIN_ROWS, ROW_CAP } from '../../src/components/StatusTable'
@@ -272,5 +272,136 @@ describe('what selection must not do to the table', () => {
     expect(rowBoxes()).toHaveLength(12)
     expect(screen.queryByLabelText('select the 12 rows showing')).not.toBeNull()
     expect(checkboxes().length).toBeGreaterThan(13) // facets included — measured, not assumed
+  })
+})
+
+describe('a DECLARED batch action, and what the confirmation must promise', () => {
+  /** A list with the declaration beside it, the way the envelope carries it. */
+  const withBatch = (extra: Record<string, unknown> = {}) => ({
+    tételek: rows(12),
+    batchActions: {
+      tételek: {
+        command: 'plan',
+        label: 'Betervezés',
+        kind: 'queue',
+        idField: 'kód',
+        choose: { release: ['v1.21.0', 'v1.22.0'] },
+        ...extra,
+      },
+    },
+  })
+
+  const renderWith = (value: unknown, run = async () => ({ ok: true })) =>
+    render(<ActionProvider value={run}><StatusValue value={value} /></ActionProvider>)
+
+  it('renders one control for the whole selection, stating the total', () => {
+    renderWith(withBatch())
+    fireEvent.click(rowBoxes()[0])
+    fireEvent.click(rowBoxes()[1])
+    const btn = screen.getByTestId('batch-action')
+    expect(btn.textContent).toContain('Betervezés')
+    expect(btn.textContent).toContain('(2)')
+    expect(screen.queryByTestId('no-batch-action')).toBeNull()
+  })
+
+  it('counts hidden rows in the control, not just the visible ones', () => {
+    renderWith(withBatch())
+    fireEvent.click(rowBoxes()[0])
+    fireEvent.click(rowBoxes()[1])
+    fireEvent.click(rowBoxes()[2])
+    fireEvent.change(screen.getByLabelText('search rows'), { target: { value: 'ZQ-0000' } })
+    // One row shows; the control still offers to act on all three.
+    expect(screen.getByTestId('batch-action').textContent).toContain('(3)')
+  })
+
+  it('stays disabled with a STATED reason until a required choice is made', () => {
+    renderWith(withBatch())
+    fireEvent.click(rowBoxes()[0])
+    const btn = screen.getByTestId('batch-action') as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toContain('release')
+
+    fireEvent.change(screen.getByLabelText('release'), { target: { value: 'v1.21.0' } })
+    expect((screen.getByTestId('batch-action') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('hands over the identifiers from the field the PROJECT named', () => {
+    const calls: Array<{ cmd: string; args: Record<string, unknown> }> = []
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderWith(withBatch(), async (cmd: string, args: Record<string, unknown>) => {
+      calls.push({ cmd, args }); return { ok: true }
+    })
+    fireEvent.click(rowBoxes()[0])
+    fireEvent.click(rowBoxes()[2])
+    fireEvent.change(screen.getByLabelText('release'), { target: { value: 'v1.22.0' } })
+    fireEvent.click(screen.getByTestId('batch-action'))
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].cmd).toBe('plan')
+    expect(calls[0].args.ids).toEqual(['ZQ-0000', 'ZQ-0002'])
+    expect(calls[0].args.release).toBe('v1.22.0')
+    confirm.mockRestore()
+  })
+
+  it('the QUEUE confirmation promises one-at-a-time, and the SET one does not', () => {
+    const seen: string[] = []
+    const confirm = vi.spyOn(window, 'confirm').mockImplementation((m?: string) => {
+      seen.push(String(m)); return false // refuse: this test is about the WORDS
+    })
+
+    renderWith(withBatch())
+    fireEvent.click(rowBoxes()[0])
+    fireEvent.change(screen.getByLabelText('release'), { target: { value: 'v1.21.0' } })
+    fireEvent.click(screen.getByTestId('batch-action'))
+    expect(seen[0]).toContain('ONE AT A TIME')
+    cleanup()
+
+    renderWith(withBatch({ kind: 'set' }))
+    fireEvent.click(rowBoxes()[0])
+    fireEvent.change(screen.getByLabelText('release'), { target: { value: 'v1.21.0' } })
+    fireEvent.click(screen.getByTestId('batch-action'))
+    expect(seen[1]).toContain('ONE operation')
+    expect(seen[1]).not.toContain('ONE AT A TIME')
+    confirm.mockRestore()
+  })
+
+  it('refusing the confirmation sends nothing', () => {
+    const calls: string[] = []
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWith(withBatch(), async (cmd: string) => { calls.push(cmd); return { ok: true } })
+    fireEvent.click(rowBoxes()[0])
+    fireEvent.change(screen.getByLabelText('release'), { target: { value: 'v1.21.0' } })
+    fireEvent.click(screen.getByTestId('batch-action'))
+    expect(calls).toHaveLength(0)
+    confirm.mockRestore()
+  })
+
+  it('states how many selected rows cannot be handed over, rather than shortening the list', () => {
+    // Three rows lack the named identifier. A control reading "(9)" over a selection of 12,
+    // with no explanation, is a discrepancy the reader has to solve — and the silent version
+    // hands over a shorter list than anyone chose.
+    const ragged = rows(12).map((r, i) => (i < 3 ? { ...r, kód: null } : r))
+    renderWith({ tételek: ragged, batchActions: {
+      tételek: { command: 'plan', idField: 'kód', kind: 'queue' },
+    } })
+    fireEvent.click(screen.getByLabelText('select the 12 rows showing'))
+    expect(screen.getByTestId('selection-count').textContent).toContain('12 selected')
+    expect(screen.getByTestId('selection-unidentified').textContent).toContain('3')
+    expect(screen.getByTestId('batch-action').textContent).toContain('(9)')
+  })
+
+  it('a declaration keyed to ANOTHER list does not reach this one', () => {
+    // The declaration is keyed by list name for exactly this reason: an answer holding two
+    // lists must not offer one list's action on the other's rows.
+    renderWith({ tételek: rows(12), batchActions: { másik: { command: 'plan' } } })
+    fireEvent.click(rowBoxes()[0])
+    expect(screen.queryByTestId('batch-action')).toBeNull()
+    expect(screen.queryByTestId('no-batch-action')).not.toBeNull()
+  })
+
+  it('a declaration without a command is not an action', () => {
+    renderWith({ tételek: rows(12), batchActions: { tételek: { label: 'majdnem' } } })
+    fireEvent.click(rowBoxes()[0])
+    expect(screen.queryByTestId('batch-action')).toBeNull()
   })
 })

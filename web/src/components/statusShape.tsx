@@ -188,7 +188,12 @@ export type ActionRunner = (
   args: Record<string, unknown>,
 ) => Promise<{ ok: boolean; error?: string | null }>
 
-const ActionCtx = createContext<ActionRunner | null>(null)
+/**
+ * Exported so the batch control can use the SAME runner as the row control. A second context
+ * would be a second write path, and the read/write separation this surface depends on is only
+ * as good as the number of ways a write can be reached.
+ */
+export const ActionCtx = createContext<ActionRunner | null>(null)
 export const ActionProvider = ActionCtx.Provider
 
 function parseActions(value: unknown): RowAction[] {
@@ -291,8 +296,60 @@ export function RowActions({ value }: { value: unknown }) {
  */
 export const EMPHASIS_KEY = '_emphasis'
 
+/**
+ * An action the project declares for a SET of rows, keyed by the list it applies to.
+ *
+ * Sits beside the list rather than on a row, and that placement is the whole point: pressing a
+ * row's button twenty times produces twenty independent assertions, while a selection is ONE
+ * statement about a set. The framework therefore never derives this from `actions` — only the
+ * project knows whether it has a write that takes a list.
+ *
+ * `kind` carries the distinction the producer measured on their own side: they have no write
+ * that consumes a set, but they do have an engine that consumes a list ONE AT A TIME. Those two
+ * are honest about the same count and describe different events, so the confirmation text
+ * differs — "add 13 rows to the queue, processed one at a time" versus "act on 13 rows". A
+ * reader told the second expects thirteen outcomes and gets one, then waits.
+ *
+ * `choose` works exactly as it does for a row action: the PROJECT computes the options (its open
+ * releases, in the case this was designed for). The framework renders a dropdown and derives
+ * nothing — a path language would fail silently and both sides would have to maintain it.
+ */
+export interface BatchAction {
+  command: string
+  label?: string
+  /** `queue` = the project serialises the list. `set` = one call for the whole set. */
+  kind?: 'queue' | 'set'
+  /** Which field of a row carries the identifier to hand over. The project names it. */
+  idField?: string
+  args?: Record<string, unknown>
+  choose?: Record<string, string[]>
+}
+
+export const BATCH_ACTIONS_KEY = 'batchActions'
+
+/**
+ * The batch action declared for one named list, or null.
+ *
+ * Deliberately strict about `command` only. Everything else is optional and has a stated default,
+ * because a declaration that is REFUSED for a missing optional field would make the surface go
+ * silent about an action the project believes it offered — the false-absence direction, on the
+ * one control that starts work.
+ */
+export function batchActionFor(parent: unknown, listKey: string): BatchAction | null {
+  if (!isPlainObject(parent)) return null
+  const table = parent[BATCH_ACTIONS_KEY]
+  if (!isPlainObject(table)) return null
+  const declared = table[listKey]
+  if (!isPlainObject(declared) || typeof declared.command !== 'string') return null
+  return declared as unknown as BatchAction
+}
+
 /** Framework-level keys — the only names this renderer knows, none of them a domain name. */
-export const META_KEYS: ReadonlySet<string> = new Set([ACTIONS_KEY, EMPHASIS_KEY])
+export const META_KEYS: ReadonlySet<string> = new Set([
+  ACTIONS_KEY,
+  EMPHASIS_KEY,
+  BATCH_ACTIONS_KEY,
+])
 
 /**
  * Which marked names are actually present on this object.

@@ -30,6 +30,8 @@
 import { useState } from 'react'
 import {
   ACTIONS_KEY,
+  type BatchAction,
+  batchActionFor,
   DeprecatedLabel,
   Emphasis,
   HiddenNote,
@@ -184,7 +186,7 @@ function SectionedGrid(
       {declared.map((decl, i) => (
         <section key={decl.key} className={`${sectionStyle(i).rule} pl-2 space-y-1`}>
           <SectionHeading decl={decl} index={i} actual={rowsIn(obj[decl.key])} />
-          <StatusValue value={obj[decl.key]} depth={depth + 1} />
+          <StatusValue value={obj[decl.key]} depth={depth + 1} batch={batchActionFor(obj, decl.key)} />
         </section>
       ))}
       {visible.length > 0 && (
@@ -193,7 +195,7 @@ function SectionedGrid(
             <div key={k} className="contents">
               <dt className="text-neutral-500 truncate" title={k}>{k}</dt>
               <dd className="min-w-0">
-                <StatusValue value={obj[k]} depth={depth + 1} />
+                <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
                 {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
               </dd>
             </div>
@@ -228,7 +230,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
                 : emphasised.has(k) ? <Emphasis>{k}</Emphasis> : k}
             </dt>
             <dd className="min-w-0">
-              <StatusValue value={obj[k]} depth={depth + 1} />
+              <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
               {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
             </dd>
           </div>
@@ -276,7 +278,18 @@ function ChipList({ values, depth }: { values: unknown[]; depth: number }) {
   )
 }
 
-export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+export function StatusValue(
+  { value, depth = 0, batch = null }: {
+    value: unknown
+    depth?: number
+    /**
+     * A batch action the PARENT object declared for THIS list. Passed down rather than looked
+     * up here, because by the time a list is being rendered its own key is gone — and the
+     * declaration is keyed by that name. A list reached any other way simply has none.
+     */
+    batch?: BatchAction | null
+  },
+) {
   const view = useDeprecation()
 
   if (Array.isArray(value)) {
@@ -292,6 +305,7 @@ export function StatusValue({ value, depth = 0 }: { value: unknown; depth?: numb
         <StatusTable
           rows={value as Record<string, unknown>[]}
           renderValue={(v, d) => <StatusValue value={v} depth={d} />}
+          batch={batch}
         />
       )
     }

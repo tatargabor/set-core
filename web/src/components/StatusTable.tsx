@@ -22,9 +22,11 @@
  * one project, and is exactly the coupling the renderer exists to avoid.
  */
 
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import {
   ACTIONS_KEY,
+  ActionCtx,
+  type BatchAction,
   DeprecatedLabel,
   Emphasis,
   HiddenNote,
@@ -209,10 +211,96 @@ function Cell({ children, text }: { children: ReactNode; text: string }) {
   )
 }
 
+/**
+ * The one control that acts on a selection — rendered only where the project declared it.
+ *
+ * The confirmation says what the event IS, not only how many rows it covers. A queue hands the
+ * list over and the project consumes it one at a time, so a reader told "act on 13 rows" would
+ * expect thirteen outcomes, get one, and wait. That distinction came from the producer measuring
+ * their own engine, and it is carried by `kind` rather than guessed here.
+ */
+function BatchButton({ action, ids }: { action: BatchAction; ids: string[] }) {
+  const run = useContext(ActionCtx)
+  const chooseKeys = Object.keys(action.choose ?? {})
+  const [picked, setPicked] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!run) return null
+  const missing = chooseKeys.filter(k => !picked[k])
+  const blocked = busy || ids.length === 0 || missing.length > 0
+
+  const go = async () => {
+    const queue = (action.kind ?? 'queue') === 'queue'
+    const what = Object.entries(picked).map(([k, v]) => `${k}=${v}`).join(', ')
+    if (!window.confirm(
+      `${action.label ?? action.command} — ${ids.length} row${ids.length === 1 ? '' : 's'}` +
+      `${what ? ` · ${what}` : ''}\n\n` +
+      (queue
+        ? `These are handed to the project as a LIST. It processes them ONE AT A TIME — you `
+          + `will not get ${ids.length} results back now.\n\n`
+        : `This applies as ONE operation to all ${ids.length}.\n\n`) +
+      `Continue?`,
+    )) return
+
+    setBusy(true); setError(null)
+    try {
+      const res = await run(action.command, { ...(action.args ?? {}), ...picked, ids })
+      if (res.ok) setDone(`${ids.length} handed over`)
+      else setError(res.error || 'the project refused it')
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (done) return <span className="text-emerald-400" data-testid="batch-done">{done}</span>
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      {chooseKeys.map(k => (
+        <select
+          key={k}
+          value={picked[k] ?? ''}
+          onChange={e => setPicked(p => ({ ...p, [k]: e.target.value }))}
+          aria-label={k}
+          className="bg-neutral-800 border border-neutral-700 rounded text-[11px] px-1 py-0.5 text-neutral-200"
+        >
+          <option value="">{k}…</option>
+          {(action.choose?.[k] ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ))}
+      <button
+        onClick={go}
+        disabled={blocked}
+        data-testid="batch-action"
+        data-action={action.command}
+        // A disabled control must say WHY, here as much as anywhere: an unstated reason reads
+        // as a broken button, which is the same thing as no explanation at all.
+        title={
+          ids.length === 0
+            ? 'no selected row carries the identifier this action needs'
+            : missing.length
+              ? `choose ${missing.join(', ')} first`
+              : undefined
+        }
+        className="px-2 py-0.5 text-[11px] rounded bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+      >
+        {busy ? '…' : `${action.label ?? action.command} (${ids.length})`}
+      </button>
+      {error && <span className="text-red-400" title={error}>failed</span>}
+    </span>
+  )
+}
+
 export function StatusTable(
-  { rows: rawRows, renderValue }: {
+  { rows: rawRows, renderValue, batch = null }: {
     rows: Row[]
     renderValue: (value: unknown, depth: number) => ReactNode
+    /** What the project declared may be done to a SELECTION of these rows, if anything. */
+    batch?: BatchAction | null
   },
 ) {
   const view = useDeprecation()
@@ -339,6 +427,26 @@ export function StatusTable(
   const allVisibleSelected = visibleIndices.length > 0
     && visibleIndices.every(i => selected.has(keyOf(i)))
 
+  // What actually gets handed over: the identifier the PROJECT named, read from the selected
+  // rows. Not the framework's own key — those two are the same value on today's producer and
+  // there is no reason they must stay so, and handing over the wrong one is invisible from
+  // both sides. Rows whose named field is absent are dropped here and counted below, because
+  // sending an `undefined` identifier is the silent failure this whole layer refuses.
+  const selectedIds = useMemo(() => {
+    if (!batch) return []
+    const field = batch.idField ?? idCol
+    if (!field) return []
+    const out: string[] = []
+    for (let i = 0; i < rows.length; i++) {
+      if (!selected.has(keyOf(i))) continue
+      const v = rows[i][field]
+      if (isMissing(v) || !isScalar(v)) continue
+      out.push(String(v))
+    }
+    return out
+  }, [batch, idCol, rows, selected, keyOf])
+  const unidentified = selectedCount - selectedIds.length
+
   const toggleSelected = (i: number) => {
     const k = keyOf(i)
     setSelected(prev => {
@@ -416,9 +524,22 @@ export function StatusTable(
           {/* Nothing can be done with a selection until the project says what. Saying that is
               not decoration: a selection that can be made and then does nothing, silently, is
               indistinguishable from a control that is broken. */}
-          <span className="text-neutral-500" data-testid="no-batch-action">
-            this project offers no action on a selection
-          </span>
+          {/* Selected rows that cannot be handed over, because the field the project named is
+              absent on them. Stated, never dropped: a button reading "(11)" over a selection of
+              13 is a discrepancy the reader would have to notice and explain, and the silent
+              version of it hands over a shorter list than anyone chose. */}
+          {batch && unidentified > 0 && (
+            <span className="text-amber-500/90 tabular-nums" data-testid="selection-unidentified">
+              {unidentified} cannot be handed over — no {batch.idField ?? idCol} on them
+            </span>
+          )}
+          {batch
+            ? <BatchButton action={batch} ids={selectedIds} />
+            : (
+              <span className="text-neutral-500" data-testid="no-batch-action">
+                this project offers no action on a selection
+              </span>
+            )}
           {!idCol && (
             <span
               className="text-amber-500/90"
