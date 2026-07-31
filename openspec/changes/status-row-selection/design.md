@@ -134,6 +134,17 @@ about which one people expect, and it fails toward the smaller set.
    declare an explicit repeat.) Goes to the channel as its own thread.
 2. **How an item is attached to an open release** — does not exist as producer data yet; theirs to
    shape, ours to render.
+**A constraint decided in advance, because it will be tempting later (channel `W#160`/`S#157`).**
+The producer's engine gates its batch path behind a human opt-in (an environment flag). If a
+control here ever starts that path, **the framework must never set that flag itself.** It could —
+it is one key in a spawn — and doing so would empty out exactly the human decision the gate
+encodes. A framework that switches off the other side's gate for its own convenience is not
+integrating with it; and the next session would read the line as established practice. Two
+consequences for any later control: the single-item and the batch path are **different
+operations**, not one with a parameter; and when the batch path refuses, the surface shows the
+PRODUCER's reason — a silent "failed" there reads as "set-core is broken" when the truth is
+"someone has to approve this".
+
 3. **Whether the eventual investigation/fix-queue controls belong on this selection at all**, or on
    a separate screen — the user's description allows either, and the answer depends on where the
    agent's questions surface.
