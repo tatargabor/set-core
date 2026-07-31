@@ -1679,6 +1679,19 @@ Surfaced sideways: the consumer's session announced that another session had 36 
   the project's own namespace and are the project's after the first seed) and **7 are not**, all
   under `framework-rules/web/`, which is the framework's namespace and is *meant* to keep flowing.
   That split is correct and deliberate.
+- **CORRECTION, made the same hour, and the mistake is the lesson.** The warning sent from this
+  finding said those 7 files would be overwritten on a re-init. **They are not.** All seven carry
+  `protected: true`, and under force that means: *if the project changed it, skip it*
+  (`profile_deploy.py:432-437`, sha256 compare at `:226`). The other file the consumer flagged
+  deploys through the BASH engine, where the provenance ledger refuses the same way — *"modified by
+  the project since the last deploy"* (`deploy_provenance.sh:213-218`). Nothing of theirs was at
+  risk, and the migration work the warning implied was unnecessary.
+
+  *The mechanism of the error, which is worth more than the correction:* **one flag was read
+  (`once`), its absence was taken for a behaviour, and the code that actually decides was three
+  lines further down.** After a day spent on failures that lean reassuring, this one leaned
+  alarming — and a false alarm is not "the safe direction": it orders work that is not needed and
+  it spends the credibility the next warning will need.
 - **`modules/mobile` and `modules/example` use the OLDER manifest form** — a `core:` list with a
   separate `protected:` list — and their `rules/*.md` entries are in **neither** `once` nor
   `protected`. For those project types a re-init would overwrite the project's OWN rules.
