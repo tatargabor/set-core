@@ -64,6 +64,24 @@ test so the derivation cannot be re-added as an "improvement".
 declaration takes (their key names, our shape-reading), and how an item will attach to an open
 release. Explicitly non-blocking; the selection is built either way.
 
+**Resolved the same day, and the resolution is a rule rather than a compromise.** Both sides had
+politely refused to name the envelope key — this side wrote "you propose the names", theirs wrote
+"I will not invent a name on the bus". Two correct instincts that together **deadlock**. The
+contract's own rule breaks it: *the framework defines the SHAPE, the project supplies the VALUE*,
+and `actions`, `caveats`, `deprecated`, `_emphasis` and `sections` were all framework names
+already — none was proposed by a producer. So the key is named here, and a veto is theirs to
+exercise. They did not: measured against their live answer, `batchActions` sits as a sibling of
+their existing keys exactly as `laneSignals` does, and `idField: "id"` matches the identifier
+their own invariant check now guards.
+
+**What the producer added, unasked, and it is the better half of the exchange:** they turned the
+"tell us if the identifier field moves" request into a **mechanical gate** in their per-patrol
+shape check, rather than a promise. A promise survives exactly as long as both sides remember it.
+
+**Built here:** `status-row-selection` is 26/27, wired to that shape and mutation-proven, and it
+sends nothing until the declaration appears. The producer schedules their own write (manifest +
+the key) around a live dev run on the shared tree — sequencing, not a reopened decision.
+
 **Archived this session:** `bugfix-lane-with-a-real-delta` → `openspec/specs/change-lane-profiles/`.
 
 ---
