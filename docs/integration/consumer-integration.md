@@ -96,10 +96,22 @@ convenience layer (a per-row `plannable` flag) was explicitly NOT ordered; if it
 carries one constraint agreed on the channel: it may never disable a row silently, because a
 silent refusal is the same class as a silent "failed".
 
-**And the decision this side wrote down carried a wrong set, which the producer caught against
-their own schema.** The channel entry named `{FIXED, WONTFIX, NOT_REPRODUCIBLE}` as "closed" —
-taken from an ad-hoc analysis run here, not from their schema, where `NOT_REPRODUCIBLE` is
-explicitly *parked, not closed*. Refusing to plan a parked item would have removed the way back.
+**And a set this side named turned out to sit on a contradiction inside the producer — but the
+first account of it, written here, blamed the wrong party.** The channel entry named
+`{FIXED, WONTFIX, NOT_REPRODUCIBLE}` as "closed". Their guard uses a different set, and this side's
+immediate reaction was to record the difference as its own error, "taken from an ad-hoc analysis
+run here".
+
+**That was wrong, and checking took thirty seconds.** The set came from THEIR published answer:
+`data.typeSummary.note` states it in words — *"a nyitott = nem lezárt (status ∉
+FIXED/WONTFIX/NOT_REPRODUCIBLE)"* — and it matches their own canonical constant. The real
+divergence is internal to the producer: a schema comment calls one status *parked, not closed*
+while the canonical constant treats it as closed, and their guard followed the comment.
+
+*The transferable half, and it belongs beside the others:* **a hasty self-correction puts bad data
+into the record exactly as a hasty claim does** — and it is harder to catch, because it reads as
+diligence. When the other side says "I departed from what you asked", the first move is not an
+apology; it is the same one as always: look at where the data came from.
 
 Measured after the warning, three ways: the framework classifies no status anywhere (no domain
 status name in `web/src`, `lib/set_orch` or `modules` — checked with a control measurement, since
