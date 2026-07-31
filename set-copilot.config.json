@@ -1,0 +1,110 @@
+{
+  "language": "hu",
+  "knowledge": {
+    "adapter": ".set-copilot/openspec-adapter.mjs",
+    "sources": [
+      "openspec/specs",
+      "openspec/project.md",
+      "docs/guide",
+      "docs/reference",
+      "docs/README.md",
+      "docs/INDEX.md",
+      "docs/roadmap.md",
+      "docs/architecture.md",
+      "docs/research",
+      "benchmark",
+      "local-docs",
+      "docs/archive",
+      ".claude/rules",
+      "CLAUDE.md",
+      "README.md"
+    ],
+    "autoKeywords": true,
+    "deferredMarkers": [
+      "deferred:\\s*\\S+",
+      "out[- ]of[- ]scope",
+      "not in scope",
+      "postponed",
+      "won'?t (do|fix)",
+      "\\bTBD\\b",
+      "későbbre",
+      "elhalasztva",
+      "nem cél"
+    ],
+    "keywords": [
+      { "topic": "orchestration", "stems": ["orchestrat", "orkesztr", "vezényl"] },
+      { "topic": "worktree", "stems": ["worktree", "munkafa"] },
+      { "topic": "decompose", "stems": ["decompos", "dekompoz", "felbont"] },
+      { "topic": "sentinel", "stems": ["sentinel", "őrszem"] },
+      { "topic": "ralph-loop", "stems": ["ralph", "loop", "hurok"] },
+      { "topic": "gate", "stems": ["gate", "kapu", "verify gate"] },
+      { "topic": "verify", "stems": ["verify", "verifik", "ellenőrz"] },
+      { "topic": "archive", "stems": ["archive", "archivál", "archív"] },
+      { "topic": "openspec", "stems": ["openspec", "open spec"] },
+      { "topic": "spec-writing", "stems": ["spec[- ]?ír", "spec[- ]?writ", "specifikáci", "delta spec"] },
+      { "topic": "memory", "stems": ["memory", "memória", "shodh", "emlékez"] },
+      { "topic": "mcp", "stems": ["mcp", "model context protocol"] },
+      { "topic": "design-pipeline", "stems": ["design pipeline", "set[- ]?design", "v0 design", "dizájn"] },
+      { "topic": "ikp", "stems": ["ikp", "integration knowledge pack"] },
+      { "topic": "e2e", "stems": ["e2e", "end[- ]?to[- ]?end", "playwright"] },
+      { "topic": "coverage", "stems": ["coverage", "lefedettség"] },
+      { "topic": "traceability", "stems": ["traceab", "trace", "nyomonkövet", "követhető"] },
+      { "topic": "agent-dispatch", "stems": ["dispatch", "kiosztás", "subagent", "agent fleet"] },
+      { "topic": "token-budget", "stems": ["token", "kvóta", "budget", "keret"] },
+      { "topic": "claude-code", "stems": ["claude code", "claude[- ]?kód"] },
+      { "topic": "set-capture", "stems": ["set[- ]?capture", "capture"] },
+      { "topic": "set-copilot", "stems": ["copilot", "kopilot"] }
+    ]
+  },
+  "copilot": {
+    "instructions": ".set-copilot/instructions.md",
+    "engagement": "participant",
+    "maxLines": 6,
+    "allowWebResearch": true,
+    "alerts": [
+      {
+        "key": "refute",
+        "emoji": "❌",
+        "label": "CÁFOLAT",
+        "priority": "high",
+        "notify": true,
+        "when": "a claim just made is contradicted by the specs, the rules, or a verifiable outside fact. Say it plainly and name the source (capability slug, file, or URL). Do not soften it — an unchallenged wrong claim shapes the rest of the conversation."
+      },
+      {
+        "key": "confirm",
+        "emoji": "✅",
+        "label": "MEGERŐSÍTÉS",
+        "priority": "medium",
+        "when": "a claim just made is supported by the specs or an outside source, AND the speakers sound unsure or are about to go looking. Confirm it with the source so they can move on. Do NOT confirm what nobody doubted."
+      },
+      {
+        "key": "add",
+        "emoji": "💡",
+        "label": "KIEGÉSZÍTÉS",
+        "priority": "medium",
+        "when": "you know the fact they are circling but have not said — the capability that already covers this, the number, the prior outcome, the constraint they are about to break. Add it as a colleague would, not as an alert."
+      },
+      {
+        "key": "research",
+        "emoji": "🔎",
+        "label": "HÁTTÉR",
+        "priority": "medium",
+        "when": "an outside fact would settle the point — how a tool actually behaves, what a standard says, what the state of the art is. Look it up (prefer a pause) and bring back the answer with its source. Say when you are unsure."
+      },
+      {
+        "key": "in-flight",
+        "emoji": "🚧",
+        "label": "FOLYAMATBAN",
+        "priority": "medium",
+        "when": "the topic is covered by an ACTIVE change (openspec/changes/<slug>), not by a shipped spec. Say which change and how far along it is — 'proposed, not built' is a different answer from 'we have that'."
+      },
+      {
+        "key": "new decision",
+        "emoji": "✏",
+        "label": "DÖNTÉS",
+        "priority": "low",
+        "when": "the two of them decide something worth recording — a scope choice, a boundary between spec-authoring and orchestration, a design call. Summarize it in one line so it can be written down after."
+      }
+    ]
+  }
+}
