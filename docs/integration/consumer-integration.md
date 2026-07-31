@@ -96,6 +96,23 @@ convenience layer (a per-row `plannable` flag) was explicitly NOT ordered; if it
 carries one constraint agreed on the channel: it may never disable a row silently, because a
 silent refusal is the same class as a silent "failed".
 
+**And the decision this side wrote down carried a wrong set, which the producer caught against
+their own schema.** The channel entry named `{FIXED, WONTFIX, NOT_REPRODUCIBLE}` as "closed" —
+taken from an ad-hoc analysis run here, not from their schema, where `NOT_REPRODUCIBLE` is
+explicitly *parked, not closed*. Refusing to plan a parked item would have removed the way back.
+
+Measured after the warning, three ways: the framework classifies no status anywhere (no domain
+status name in `web/src`, `lib/set_orch` or `modules` — checked with a control measurement, since
+an empty grep proves nothing on its own), so the surface cannot mislabel anything; and **the
+numbers in this record are right for the wrong reason** — today's distribution contains **zero**
+`NOT_REPRODUCIBLE`, so the wrong set and the canonical one produce the same 50. The next parked
+item would have broken it silently.
+
+*The transferable part:* a field whose NAME and TYPE are unchanged while its MEANING differs from
+what the reader assumed is invisible to a contract test. What caught it was stating the set out
+loud in a channel entry, where the other side could check it against their schema. Had the entry
+said only "refuse closed items", the gap would have stayed here.
+
 **Archived this session:** `bugfix-lane-with-a-real-delta` → `openspec/specs/change-lane-profiles/`.
 
 ---
