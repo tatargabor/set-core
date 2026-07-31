@@ -1662,3 +1662,33 @@ the one-line check that disproved it. The same failure recurred four times in on
 formatting fields — SHAs, counts, timestamps — precisely because nobody reads those as
 claims. *If a field is machine-processed, it cannot be "formatting", however much it looks
 like it.*
+
+---
+
+## Open gap found 2026-07-31 — a re-init overwrites project-owned rules in two modules
+
+Surfaced sideways: the consumer's session announced that another session had 36 modified
+`.claude/rules/*.md` in their tree, which prompted a check of what a redeploy would do to them.
+
+**Measured, in this order:**
+
+- `bin/set-project:747-751` — a **re-init runs with `--force`**, because the project is already
+  registered. So the "never touch an existing file" rule (`profile_deploy.py:406`) does not apply
+  to any established consumer; under force, the manifest's `once` flag is what decides.
+- `modules/web/.../nextjs/manifest.yaml` — 30 rule entries: **23 are `once: true`** (they land in
+  the project's own namespace and are the project's after the first seed) and **7 are not**, all
+  under `framework-rules/web/`, which is the framework's namespace and is *meant* to keep flowing.
+  That split is correct and deliberate.
+- **`modules/mobile` and `modules/example` use the OLDER manifest form** — a `core:` list with a
+  separate `protected:` list — and their `rules/*.md` entries are in **neither** `once` nor
+  `protected`. For those project types a re-init would overwrite the project's OWN rules.
+
+**Not fixed here, and stated rather than quietly noted:** no measured consumer uses those project
+types today, so this is a latent hole rather than a live one. It belongs to the same family as the
+2026-07-24 finding that "every write path is guarded" had been counted in files: the guarantee
+holds for the shape that was enumerated, and a second manifest FORM was never enumerated.
+
+**The consumer was warned with the file:line evidence** (channel `S#164`), plus the operational
+advice: run `set-project init --dry-run` first, and if a general improvement was made inside
+`framework-rules/`, send it here instead of keeping it there — otherwise the next init takes it
+away rather than carrying it forward.
