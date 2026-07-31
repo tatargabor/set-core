@@ -113,6 +113,19 @@ into the record exactly as a hasty claim does** — and it is harder to catch, b
 diligence. When the other side says "I departed from what you asked", the first move is not an
 apology; it is the same one as always: look at where the data came from.
 
+**Closed the same day, and the resolution is worth more than the bug.** The producer found their
+own two sets answered *two different questions* — what to show a customer as open, and what the
+fix cycle may pick up — and that both answers were right for their own question. They named the
+questions instead of unifying the sets; unifying would have silently deleted one of them. **Nothing
+moves on this side:** their published note and counts stay as they are, so the "open" number on the
+screen is stable. An earlier prediction here that it would shift is withdrawn.
+
+*And the limit worth stating plainly:* the framework cannot detect this class. Contract checking
+looks at shape — name, type, presence — and this gap hides exactly where all three agree. What
+caught it, three times in one day, was a concept being **stated in words on the channel** where the
+other side could check it against their source. That is not automatable; making a habit of naming
+CONCEPTS rather than just field names is.
+
 Measured after the warning, three ways: the framework classifies no status anywhere (no domain
 status name in `web/src`, `lib/set_orch` or `modules` — checked with a control measurement, since
 an empty grep proves nothing on its own), so the surface cannot mislabel anything; and **the
