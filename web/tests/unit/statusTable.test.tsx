@@ -142,7 +142,9 @@ describe('hiding rows is never silent', () => {
 
 describe('sorting can be undone back to the project’s order', () => {
   const values = () =>
-    [...document.querySelectorAll('tbody tr td:nth-child(2)')].map(td => td.textContent)
+    // By column name, not by position: this helper read `td:nth-child(2)` until a checkbox
+    // column shifted every cell one to the right and broke three tests at once.
+    [...document.querySelectorAll('tbody tr td[data-col="n"]')].map(td => td.textContent)
 
   const table = () => {
     render(<StatusValue value={[
@@ -323,7 +325,7 @@ describe('set-core’s own vocabulary is never applied to a project’s values',
     render(<StatusValue value={Array.from({ length: 12 }, (_, i) => ({
       zonk: i % 2 ? 'failed' : 'quux',
     }))} />)
-    const cells = [...document.querySelectorAll('tbody tr td:nth-child(2) span')]
+    const cells = [...document.querySelectorAll('tbody tr td[data-col="zonk"] span')]
     const classes = new Set(cells.map(c => c.className))
 
     expect(cells.length).toBeGreaterThan(0)

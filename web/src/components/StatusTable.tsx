@@ -22,7 +22,7 @@
  * one project, and is exactly the coupling the renderer exists to avoid.
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import {
   ACTIONS_KEY,
   DeprecatedLabel,
@@ -166,6 +166,38 @@ export function compareValues(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b), undefined, { numeric: true })
 }
 
+/**
+ * The column whose values identify a row — chosen from the VALUES, never from a name.
+ *
+ * A selection has to survive sorting and filtering, so it cannot be a set of row indices: after a
+ * sort, index 3 is a different row than the one that was clicked, and the selection would silently
+ * point at rows nobody chose. So a selected row is remembered by its identifying value.
+ *
+ * The framework may not recognise `id`, `key` or any other domain name — the surface's first
+ * requirement forbids it, and the first producer that names its identifier differently would break
+ * it. Instead: the first column that is scalar, present in every row, and unique across all of
+ * them. That is a property of the data, so it holds for a producer writing in any language.
+ *
+ * Returns null when no column qualifies. The caller then falls back to row position AND SAYS SO —
+ * a fallback that is silent would let a sort reselect different rows, which is the exact defect
+ * this function exists to prevent.
+ */
+export function identityColumn(rows: Row[], cols: string[]): string | null {
+  if (rows.length === 0) return null
+  for (const col of cols) {
+    const seen = new Set<string>()
+    for (const r of rows) {
+      const v = r[col]
+      if (!isScalar(v) || isMissing(v)) break
+      const text = String(v)
+      if (seen.has(text)) break
+      seen.add(text)
+    }
+    if (seen.size === rows.length) return col
+  }
+  return null
+}
+
 interface SortState { col: string; dir: 'asc' | 'desc' }
 
 /** The cell as it appears in a dense row: one line, clipped, with the whole value in reach. */
@@ -200,6 +232,9 @@ export function StatusTable(
   const [sort, setSort] = useState<SortState | null>(null)
   const [open, setOpen] = useState<ReadonlySet<number>>(new Set<number>())
   const [showAll, setShowAll] = useState(false)
+  // Keys, not indices — see identityColumn. Memory only, like every other control here: a
+  // selection written to the address bar would carry the producer's own identifiers off the page.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set<string>())
 
   const controls = rows.length >= CONTROL_MIN_ROWS
   const facets = useMemo(
@@ -274,6 +309,57 @@ export function StatusTable(
   const visibleIndices = showAll ? indices : indices.slice(0, ROW_CAP)
   const capped = indices.length - visibleIndices.length
 
+  // ── Selection ───────────────────────────────────────────────────────────────────────────
+  const idCol = useMemo(() => identityColumn(rows, cols), [rows, cols])
+  const keyOf = useCallback(
+    (i: number) => (idCol ? String(rows[i][idCol]) : `#${i}`),
+    [idCol, rows],
+  )
+  const selectable = rows.length > 0 && controls
+
+  // A key that matches no row in the CURRENT answer is not selected. A refreshed answer that
+  // dropped a row would otherwise leave a count claiming more rows than an action could reach —
+  // an overstatement in the direction that looks like nothing is wrong.
+  const presentKeys = useMemo(
+    () => new Set(rows.map((_, i) => keyOf(i))),
+    [rows, keyOf],
+  )
+  const selectedCount = useMemo(
+    () => [...selected].filter(k => presentKeys.has(k)).length,
+    [selected, presentKeys],
+  )
+  const visibleKeys = useMemo(() => new Set(visibleIndices.map(keyOf)), [visibleIndices, keyOf])
+  // Selected rows the reader cannot currently see — a filter, a search or the row cap. Stating
+  // this is the whole point: a selection of 13 with 9 hidden reads as 4 unless it is said out
+  // loud, and every later action would act on 13.
+  const selectedHidden = useMemo(
+    () => [...selected].filter(k => presentKeys.has(k) && !visibleKeys.has(k)).length,
+    [selected, presentKeys, visibleKeys],
+  )
+  const allVisibleSelected = visibleIndices.length > 0
+    && visibleIndices.every(i => selected.has(keyOf(i)))
+
+  const toggleSelected = (i: number) => {
+    const k = keyOf(i)
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(k)) next.delete(k); else next.add(k)
+      return next
+    })
+  }
+
+  // Acts on the rows SHOWING, never on the whole table. The control names that limit rather
+  // than relying on the reader to guess which of the two defensible meanings it has.
+  const toggleAllVisible = () => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      for (const i of visibleIndices) {
+        if (allVisibleSelected) next.delete(keyOf(i)); else next.add(keyOf(i))
+      }
+      return next
+    })
+  }
+
   return (
     <div className="space-y-1">
       {/* The count line. Unfiltered it says exactly what it always said — a count of ROWS,
@@ -304,6 +390,46 @@ export function StatusTable(
           </span>
         )}
       </div>
+
+      {/* The selection line. It exists only once something is selected, and its whole job is to
+          keep the reader's set from disagreeing with what the reader can see. */}
+      {selectable && selectedCount > 0 && (
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px]">
+          <span className="text-emerald-400/90 tabular-nums" data-testid="selection-count">
+            {selectedCount} selected
+          </span>
+          {selectedHidden > 0 && (
+            <span
+              className="text-amber-500/90 tabular-nums"
+              data-testid="selection-hidden"
+              title="selected rows this view is not showing — an action would still act on them"
+            >
+              {selectedHidden} of them not shown here
+            </span>
+          )}
+          <button
+            onClick={() => setSelected(new Set<string>())}
+            className="text-neutral-400 hover:text-neutral-200 underline decoration-dotted"
+          >
+            clear selection
+          </button>
+          {/* Nothing can be done with a selection until the project says what. Saying that is
+              not decoration: a selection that can be made and then does nothing, silently, is
+              indistinguishable from a control that is broken. */}
+          <span className="text-neutral-500" data-testid="no-batch-action">
+            this project offers no action on a selection
+          </span>
+          {!idCol && (
+            <span
+              className="text-amber-500/90"
+              data-testid="selection-positional"
+              title="no column identifies a row uniquely, so rows are remembered by position"
+            >
+              sorting will invalidate this selection — no column identifies these rows
+            </span>
+          )}
+        </div>
+      )}
 
       {controls && (
         <div className="flex flex-wrap items-center gap-2 pb-1">
@@ -369,6 +495,18 @@ export function StatusTable(
         <table className="w-full text-sm tabular-nums">
           <thead>
             <tr className="bg-neutral-900 text-neutral-500 border-b border-neutral-800">
+              {selectable && (
+                <th className="w-6 px-2 py-2">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    aria-label={`select the ${visibleIndices.length} rows showing`}
+                    title={`select the ${visibleIndices.length} rows showing — not the whole table`}
+                    className="accent-emerald-600 align-middle"
+                  />
+                </th>
+              )}
               {controls && <th className="w-6 px-2 py-2" />}
               {cols.map(c => (
                 <th
@@ -399,6 +537,17 @@ export function StatusTable(
                     controls ? 'hover:bg-neutral-900/50' : ''
                   }`}
                 >
+                  {selectable && (
+                    <td className="px-2 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(keyOf(i))}
+                        onChange={() => toggleSelected(i)}
+                        aria-label="select this row"
+                        className="accent-emerald-600 align-middle"
+                      />
+                    </td>
+                  )}
                   {controls && (
                     <td
                       role="button"
@@ -421,7 +570,15 @@ export function StatusTable(
                         ? <Emphasis>{renderValue(row[c], 2)}</Emphasis>
                         : renderValue(row[c], 2)
                     return (
-                      <td key={c} className={controls ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'}>
+                      <td
+                        key={c}
+                        // Named so a test can reach a cell by its COLUMN rather than by its
+                        // position. Three tests broke the day a checkbox column was added,
+                        // all of them `td:nth-child(2)` — a positional selector measures the
+                        // layout, not the data, and it fails on the next column either way.
+                        data-col={c}
+                        className={controls ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'}
+                      >
                         {controls ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
                       </td>
                     )
@@ -437,7 +594,10 @@ export function StatusTable(
                   // Rendered from the row AS DELIVERED, so nothing this table did to it
                   // (flattening, clipping, column order) reaches the detail.
                   <tr key={`d${i}`} className="bg-neutral-950/60">
-                    <td colSpan={cols.length + 1 + (hasActions ? 1 : 0)} className="px-3 py-2">
+                    <td
+                      colSpan={cols.length + 1 + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
+                      className="px-3 py-2"
+                    >
                       {renderValue(rawRows[i] ?? row, 1)}
                     </td>
                   </tr>
