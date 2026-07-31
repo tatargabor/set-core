@@ -82,6 +82,20 @@ shape check, rather than a promise. A promise survives exactly as long as both s
 sends nothing until the declaration appears. The producer schedules their own write (manifest +
 the key) around a live dev run on the shared tree — sequencing, not a reopened decision.
 
+**Closed 2026-07-31, and the finding is more useful than the fix.** Looking at the live screen —
+the step structural counts cannot replace — showed three already-FIXED rows selected with the
+button active. The producer then verified from their code that `plan` validates the RELEASE and
+not the item's state, so a resolved item plans successfully today. That corrected a sentence this
+side had already written down as settled ("the write is where validation lives"): it was true of
+one argument and not of the other, and nobody would have found it by reading either side's spec.
+
+**The user chose the engine-side guard, and the argument for it is reusable:** *the gate belongs
+where the effect is.* A surface-only signal would have made the UI refuse while the same command
+stayed callable directly — the guard standing near the alarming word rather than at the write. The
+convenience layer (a per-row `plannable` flag) was explicitly NOT ordered; if it is ever built, it
+carries one constraint agreed on the channel: it may never disable a row silently, because a
+silent refusal is the same class as a silent "failed".
+
 **Archived this session:** `bugfix-lane-with-a-real-delta` → `openspec/specs/change-lane-profiles/`.
 
 ---
