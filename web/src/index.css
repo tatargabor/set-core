@@ -69,6 +69,50 @@ body {
   font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Monaco, Consolas, monospace;
 }
 
+/**
+ * Scrollbars.
+ *
+ * The platform default on this desktop is a wide track with stepper arrows, drawn at a
+ * contrast that competes with the data. On a page carrying three scrollable table boxes it
+ * puts three heavy horizontal bars across the content, and each one is loudest exactly where
+ * it matters least: the thumb fills most of its track, so the bar announces a few hundred
+ * pixels of hidden width in the visual weight of a primary control.
+ *
+ * A scrollbar here has one job — say that the box continues, and let it be dragged. So it is
+ * thin, has no steppers, and its track is transparent. It is deliberately still VISIBLE:
+ * `scrollbar-width: none` would look tidier and would remove the only standing signal that
+ * content extends past the edge, which is the compact-that-hides this surface refuses. Overlay
+ * scrollbars that fade out have the same defect on a slower timer.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-700) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-700);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-600);
+}
+
+/* Steppers are not a thing this design has; hiding them also reclaims their width. */
+*::-webkit-scrollbar-button {
+  display: none;
+}
+
 #root {
   min-height: 100svh;
 }

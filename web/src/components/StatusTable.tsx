@@ -37,6 +37,7 @@ import {
   emphasisMatches,
   emphasisOf,
   flattenUniformObjects,
+  isPlainObject,
   partitionKeys,
   useDeprecation,
 } from './statusShape'
@@ -212,6 +213,61 @@ function Cell({ children, text }: { children: ReactNode; text: string }) {
 }
 
 /**
+ * Is this value one that a table cell cannot hold at its own size?
+ *
+ * Objects, lists of objects, and lists of more than two scalars.
+ *
+ * That last clause replaces the opposite rule, and the correction is worth keeping because the
+ * reasoning behind it sounded right. A chip list already compacts itself and states what it
+ * withheld — `+4 more` — so displacing one looked like taking a working control away. Measured
+ * after the objects were displaced: it is not the chip list's CAP that fails in a cell, it is
+ * its WRAP. Five chips at roughly 70px in a 90px column stack five rows deep, and that residual
+ * stack was the whole of the remaining tower — max row 154px against a 37px median.
+ *
+ * So the bound is the line, not the item count: a value that cannot occupy one line in a cell
+ * does not belong in the cell. Two chips fit; more do not.
+ */
+const INLINE_CHIP_MAX = 2
+
+function isComplexCellValue(v: unknown): boolean {
+  if (isPlainObject(v)) return true
+  if (!Array.isArray(v)) return false
+  return v.some(isPlainObject) || v.length > INLINE_CHIP_MAX
+}
+
+/**
+ * What a cell shows in place of a structure it cannot hold.
+ *
+ * The finding this answers was measured twice, and the second measurement overturned the first
+ * remedy. Nesting — not length — decides a cell's width: the same value renders comfortably at
+ * top level and collapses inside a cell, because a nested object's label column alone wants
+ * 8rem and whatever is left goes to the value. The obvious fix was to drop the minimum width
+ * that `StatusValue` applies to nested objects. It is the wrong fix, and the code there says
+ * so in its own comment: without the minimum, the value column falls to roughly one character
+ * per line and the row gets TALLER. Removing a symptom's brace is not the same as removing the
+ * cause.
+ *
+ * So the structure does not render in the cell at all. It moves to the row detail, which
+ * already existed and already renders the record exactly as delivered, and the cell keeps a
+ * summary saying what moved and how much of it there is.
+ *
+ * The count is taken from the DATA, never from a declaration — a summary that announced
+ * "4 fields" for an object that has three would be the false-absence shape this surface
+ * refuses everywhere else, just wearing a smaller number.
+ */
+function Displaced({ value }: { value: unknown }) {
+  const label = Array.isArray(value)
+    ? `${value.length} ${value.length === 1 ? 'row' : 'rows'}`
+    : `${Object.keys(value as Record<string, unknown>).filter(k => !META_KEYS.has(k)).length} fields`
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap text-fg-faint">
+      <span aria-hidden>▤</span>
+      <span className="underline decoration-dotted underline-offset-2">{label}</span>
+    </span>
+  )
+}
+
+/**
  * The one control that acts on a selection — rendered only where the project declared it.
  *
  * The confirmation says what the event IS, not only how many rows it covers. A queue hands the
@@ -325,6 +381,24 @@ export function StatusTable(
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set<string>())
 
   const controls = rows.length >= CONTROL_MIN_ROWS
+
+  /**
+   * Does any cell hold a structure the cell cannot show?
+   *
+   * This is what turns the row expander on, INDEPENDENTLY of the row count. The count alone
+   * was the rule, and it produced the worst screen on the surface: a four-row table, well under
+   * the threshold, whose cells carried nested objects and nested tables. No controls meant no
+   * expander, so the structures rendered in place and one row grew to 383px against a 117px
+   * median — and there was nowhere for them to go even if the cell had refused them.
+   *
+   * A small table still gets no search box and no facets; those are about VOLUME, and four rows
+   * genuinely do not need them. Displacement is about SHAPE, so it is decided separately.
+   */
+  const displaces = useMemo(
+    () => rows.some(r => cols.some(c => isComplexCellValue(r[c]))),
+    [rows, cols],
+  )
+  const expandable = controls || displaces
   const facets = useMemo(
     () => (controls ? facetColumns(rows, cols) : new Map<string, Map<string, number>>()),
     [controls, rows, cols],
@@ -669,7 +743,7 @@ export function StatusTable(
                       />
                     </td>
                   )}
-                  {controls && (
+                  {expandable && (
                     <td
                       role="button"
                       tabIndex={0}
@@ -685,11 +759,18 @@ export function StatusTable(
                     </td>
                   )}
                   {cols.map(c => {
+                    // A structure moves to the row detail; everything else renders in place.
+                    // The emphasis wrapper stays OUTSIDE that choice on purpose: a project that
+                    // declared this field important said so about the field, not about the shape
+                    // its value happened to take, so a displaced value keeps its emphasis and a
+                    // reader can still see which row to open.
+                    const raw = row[c]
+                    const inner = isComplexCellValue(raw) ? <Displaced value={raw} /> : renderValue(raw, 2)
                     const content = !(c in row)
                       ? <Unknown />
                       : emphasisMatches(c, emphasised[i] ?? new Set())
-                        ? <Emphasis>{renderValue(row[c], 2)}</Emphasis>
-                        : renderValue(row[c], 2)
+                        ? <Emphasis>{inner}</Emphasis>
+                        : inner
                     return (
                       <td
                         key={c}
@@ -698,9 +779,9 @@ export function StatusTable(
                         // all of them `td:nth-child(2)` — a positional selector measures the
                         // layout, not the data, and it fails on the next column either way.
                         data-col={c}
-                        className={controls ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'}
+                        className={expandable ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'}
                       >
-                        {controls ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
+                        {expandable ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
                       </td>
                     )
                   })}
@@ -716,7 +797,7 @@ export function StatusTable(
                   // (flattening, clipping, column order) reaches the detail.
                   <tr key={`d${i}`} className="bg-neutral-950/60">
                     <td
-                      colSpan={cols.length + 1 + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
+                      colSpan={cols.length + (expandable ? 1 : 0) + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
                       className="px-3 py-2"
                     >
                       {renderValue(rawRows[i] ?? row, 1)}

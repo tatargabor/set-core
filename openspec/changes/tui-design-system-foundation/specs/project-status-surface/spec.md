@@ -5,14 +5,24 @@ A value's position in the answer's structure SHALL NOT set a minimum width. A ne
 a nested list, or a value inside a table cell SHALL be laid out within the width its container
 already has, and SHALL NOT force the container wider.
 
-Specifically, the renderer SHALL NOT apply a minimum-width class to a value on the grounds of
-its nesting depth. Today `web/src/components/StatusValue.tsx:344` applies `min-w-[18rem]` when
-`depth > 0`, so a two-key object inside a table cell pushes the whole table past the viewport
-while the same object at top level renders comfortably.
-
 The measurement behind this: on a real answer the offending value was the **15th longest**
 string the surface carried, and the longest — roughly nine times its size — rendered fine.
 Length was not the variable; nesting was.
+
+**The remedy is displacement, not removing the minimum width.** An earlier draft of this
+requirement named the fix as deleting the `min-w-[18rem]` that `StatusValue` applies to nested
+objects. Implementing it proved that wrong, and the code being deleted said so in its own
+comment: without the minimum, a nested object's value column falls to roughly one character per
+line and the row gets **taller**. The minimum was a brace holding up a symptom; removing it
+removes the brace, not the cause.
+
+So the requirement is on the CELL, not on the value: a table cell SHALL NOT render a nested
+structure at all. It renders a summary and the structure moves to the row detail, where the
+full page width is available and the minimum width is unremarkable.
+
+Measured on the screen this requirement exists for, before and after: the tallest row fell from
+**383px to 154px** against a median that fell from 117px to 37px, with no new overflow and no
+new towers on any of the other 28 screens.
 
 #### Scenario: A nested object inside a cell does not widen the table
 - **WHEN** a row contains a cell whose value is an object with several keys

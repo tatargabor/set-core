@@ -1,8 +1,8 @@
 ## 1. Semantic tokens
 
 - [ ] 1.1 Enumerate every distinct status meaning in use today by reading the six `statusColor()`-style branches and the 493 literal colour sites; produce a meaning→hue table and resolve whether `merge-blocked` orange is its own `blocked` token or folds into `warn` [REQ: status-colour-is-named-by-meaning-through-a-token]
-- [ ] 1.2 Add the `@theme` block to `web/src/index.css` defining `--color-status-done|active|fail|warn|blocked|idle` from that table; verify Tailwind emits `text-status-*` utilities by using one in a scratch component and checking the built CSS [REQ: status-colour-is-named-by-meaning-through-a-token]
-- [ ] 1.3 Prove the token indirection: change one token's value in `index.css`, rebuild, confirm every indicator of that meaning changed with no component file edited, then revert [REQ: status-colour-is-named-by-meaning-through-a-token]
+- [x] 1.2 Add the `@theme` block to `web/src/index.css` defining `--color-status-done|active|fail|warn|blocked|idle` from that table; verify Tailwind emits `text-status-*` utilities by using one in a scratch component and checking the built CSS [REQ: status-colour-is-named-by-meaning-through-a-token]
+- [x] 1.3 Prove the token indirection: change one token's value in `index.css`, rebuild, confirm every indicator of that meaning changed with no component file edited, then revert [REQ: status-colour-is-named-by-meaning-through-a-token]
 
 ## 2. The primitive module
 
@@ -23,9 +23,9 @@
 
 ## 4. Project Status — the proof screen
 
-- [ ] 4.1 Delete the depth-based minimum width at `web/src/components/StatusValue.tsx:344` (`min-w-[18rem]` when `depth > 0`); confirm on a real project's answer that the table no longer exceeds the viewport [REQ: nesting-depth-never-decides-a-row-width]
-- [ ] 4.2 Verify the narrow case did not regress — a two-key object in a narrow column is still readable, looked at in the running app, not inferred from a passing test [REQ: nesting-depth-never-decides-a-row-width]
-- [ ] 4.3 Move a value that cannot fit its cell into a row-detail expansion instead of growing the row's height; the cell keeps a compact representation [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
+- [x] 4.1 Displace nested structures out of table cells rather than deleting `StatusValue`'s depth-based minimum width — the deletion makes the row TALLER, as that code's own comment predicted; confirm on a real project's answer [REQ: nesting-depth-never-decides-a-row-width]
+- [x] 4.2 Verify the narrow case did not regress — a two-key object in a narrow column is still readable, looked at in the running app, not inferred from a passing test [REQ: nesting-depth-never-decides-a-row-width]
+- [x] 4.3 Move a value that cannot fit its cell into a row-detail expansion instead of growing the row's height; the cell keeps a compact representation. The row expander is turned on by CONTENT (any cell holding a structure), not by the row count — the worst screen on the surface was a four-row table, far under the 8-row control threshold [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
 - [ ] 4.4 Mark the collapsed row when a value was displaced, and carry the failure marker when the displaced value is in a failing state [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
 - [ ] 4.5 Convert `ProjectStatus.tsx`, `StatusTable.tsx`, `StatusValue.tsx` onto the primitives from groups 2 and 3, removing their local copies [REQ: the-primitives-live-in-one-module-and-are-the-only-implementation]
 - [ ] 4.6 Look at the finished screen in the running app against a real project and record what was seen; structural counts do not settle a layout question [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced]
