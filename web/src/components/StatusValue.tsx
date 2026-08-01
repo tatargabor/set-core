@@ -36,6 +36,8 @@ import {
   Emphasis,
   HiddenNote,
   META_KEYS,
+  charBudgetFor,
+  tableCharWidth,
   RowActions,
   Unknown,
   emphasisOf,
@@ -58,6 +60,42 @@ export {
   useDeprecation,
 } from './statusShape'
 export type { ActionRunner, DeprecationView, RowAction } from './statusShape'
+
+/**
+ * The narrowest a grid column ever gets, in px — the `minmax` floor below, as a number.
+ *
+ * On a 1920 px screen the panel is ~1650 px wide, so this floor yields two columns of about
+ * 825 px. That is the width a block has to fit into to earn a place beside a neighbour.
+ */
+const HALF_WIDTH_PX = 825
+
+/**
+ * What the table spends before a single data character is drawn, in characters.
+ *
+ * A selection checkbox, a row-expander caret, and the panel's own padding — about 92 px, which
+ * is 11 characters here. Left out of the first estimate, and it is exactly the margin that
+ * decided the case that clipped: 96 characters of table against a 98-character budget looked
+ * like a fit, and was not, because 11 characters of it were never available.
+ */
+const TABLE_CHROME_CHARS = 11
+
+/**
+ * Does this block need the whole row, or will it sit happily beside a neighbour?
+ *
+ * Answered from the SHAPE of the data, never from what a field is called — a renderer that
+ * learns which key means "the big one" stops working for the next project's contract.
+ *
+ * The first version of this counted top-level keys, and got it wrong in the direction that
+ * clips: a `review` object holding four keys is ONE key and FOUR columns, so a 7-column table
+ * was placed in a half-width slot and lost `review.criti…` off its right edge. `tableCharWidth`
+ * flattens first and measures what the table will actually draw, header included.
+ */
+function needsFullWidth(v: unknown): boolean {
+  if (!Array.isArray(v)) return false
+  const rows = v.filter(isPlainObject)
+  if (rows.length === 0) return false
+  return tableCharWidth(rows) > charBudgetFor(HALF_WIDTH_PX) - TABLE_CHROME_CHARS
+}
 
 function Scalar({ value }: { value: unknown }) {
   if (value === null || value === undefined) return <Unknown />
@@ -302,13 +340,30 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
           </div>
         ))}
       </dl>
-      {blocks.map(k => (
-        <section key={k} className="space-y-1 pt-1">
-          <div className="text-sm text-fg-faint">{k}</div>
-          <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
-          {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
-        </section>
-      ))}
+      {/*
+        Blocks sit SIDE BY SIDE when they fit, instead of stacking full-width down the page.
+
+        Reported by the user, twice, against two different tabs: "kihasználatlan helyek jobbra".
+        Measured on a 1920 px screen — a 7-column table rendered ~700 px wide with ~950 px of the
+        panel empty beside it, and the next block waiting a screenful below. Nothing was wrong
+        with either block; the page was simply spending its width on nothing.
+
+        `auto-fit` with a 38rem floor, not a column count: at 1920 px that is two columns of
+        ~825 px, at laptop width one. No breakpoint to maintain, and no screen size where a block
+        is squeezed below its floor. Only rendered when there is more than one block — a grid of
+        one is a stack with extra machinery.
+      */}
+      <div className={blocks.length > 1
+        ? 'grid gap-x-8 gap-y-1 items-start [grid-template-columns:repeat(auto-fit,minmax(38rem,1fr))]'
+        : undefined}>
+        {blocks.map(k => (
+          <section key={k} className={`space-y-1 pt-1${needsFullWidth(obj[k]) ? ' col-span-full' : ''}`}>
+            <div className="text-sm text-fg-faint">{k}</div>
+            <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+            {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+          </section>
+        ))}
+      </div>
       <HiddenNote count={hiddenCount} />
       <RowActions value={obj[ACTIONS_KEY]} />
     </div>

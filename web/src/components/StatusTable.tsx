@@ -22,7 +22,7 @@
  * one project, and is exactly the coupling the renderer exists to avoid.
  */
 
-import { useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ACTIONS_KEY,
   ActionCtx,
@@ -30,6 +30,7 @@ import {
   DeprecatedLabel,
   Emphasis,
   HiddenNote,
+  CELL_CLIP_CHARS,
   META_KEYS,
   RowActions,
   Unknown,
@@ -234,7 +235,7 @@ const INLINE_CHIP_MAX = 2
  * Approximate on purpose: it decides whether a row can be OPENED, and erring toward offering the
  * expander costs a chevron, while erring the other way leaves text with no way to reach it.
  */
-const CELL_CLIP_CHARS = 42
+
 
 function isComplexCellValue(v: unknown): boolean {
   if (isPlainObject(v)) return true
@@ -296,6 +297,41 @@ function Displaced({ value }: { value: unknown }) {
       <span className="underline decoration-dotted underline-offset-2">{label}</span>
     </span>
   )
+}
+
+/**
+ * What a sideways-scrolling table is not showing, counted from the DOM.
+ *
+ * A wide table already scrolled — the box has `overflow-x-auto` — but nothing SAID so, and the
+ * columns simply ended at the panel edge mid-word. Measured on the landing tab: two tables lost
+ * their last column that way, and the screen looked complete. This surface's rule is that
+ * anything hidden is marked where the reader is standing, so the count goes on the row-count
+ * line, beside "N rows", not somewhere down at the scrollbar.
+ *
+ * Counted from the header cells' geometry rather than from a column list, because the question
+ * is which columns are OFF THE VIEWPORT — a fact about layout that only the browser knows. It
+ * re-counts on scroll and on resize; a figure taken once would be wrong the moment either moved.
+ */
+function useSideScroll(ref: React.RefObject<HTMLDivElement | null>) {
+  const [state, setState] = useState({ hiddenCols: 0, atEnd: true })
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth
+      if (max <= 1) { setState({ hiddenCols: 0, atEnd: true }); return }
+      const right = el.scrollLeft + el.clientWidth
+      const ths = Array.from(el.querySelectorAll<HTMLElement>('thead th'))
+      const hiddenCols = ths.filter(th => th.offsetLeft + th.offsetWidth > right + 1).length
+      setState({ hiddenCols, atEnd: el.scrollLeft >= max - 1 })
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => { el.removeEventListener('scroll', update); ro.disconnect() }
+  }, [ref])
+  return state
 }
 
 /**
@@ -452,6 +488,8 @@ export function StatusTable(
    * the flow is applied to whatever survived them and nothing about what is withheld changes.
    */
   const flowsAsList = cols.length === 1 && rows.length >= 12
+  const scrollBox = useRef<HTMLDivElement>(null)
+  const { hiddenCols, atEnd } = useSideScroll(scrollBox)
   const facets = useMemo(
     () => (controls ? facetColumns(rows, cols) : new Map<string, Map<string, number>>()),
     [controls, rows, cols],
@@ -611,6 +649,14 @@ export function StatusTable(
             {hidden} hidden by filters
           </span>
         )}
+        {hiddenCols > 0 && (
+          <span
+            className="text-fg-faint"
+            title="this table is wider than the panel — scroll it sideways to reach these columns"
+          >
+            {hiddenCols} column{hiddenCols === 1 ? '' : 's'} off to the right &rarr;
+          </span>
+        )}
         {filtering && (
           <button
             onClick={clearAll}
@@ -739,7 +785,14 @@ export function StatusTable(
       {/* overflow-x only: a wide table scrolls sideways within its own box, but the PAGE is
           the single vertical scroller — no inner max-height, so no second vertical scrollbar
           nested inside the page's. Matches how the orchestration change table renders. */}
-      <div className="overflow-x-auto rounded border border-surface-line">
+      <div className="relative">
+      {/* The fade is the affordance; the count above is the fact. A gradient alone would say
+          "there is more" without saying how much, and this surface does not report a hidden
+          quantity it has not counted. */}
+      {!atEnd && (
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 rounded-r bg-gradient-to-l from-surface-page to-transparent" />
+      )}
+      <div ref={scrollBox} className="overflow-x-auto rounded border border-surface-line">
         <table
           // `w-auto`, not `w-full`. A table stretched to its container spreads its columns to
           // fill it, and the gaps land between the values a reader is comparing: measured on
@@ -896,6 +949,7 @@ export function StatusTable(
             })}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* The cap, stated and reversible — never a silent truncation. Once expanded, the same

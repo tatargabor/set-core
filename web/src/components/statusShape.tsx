@@ -455,6 +455,54 @@ export function columnsOf(rows: Record<string, unknown>[]): string[] {
   return cols
 }
 
+/**
+ * A cell stops showing text past this many characters and offers the row detail instead.
+ *
+ * Defined here rather than beside the table because the layout decision below has to predict
+ * exactly what the table will do. Two copies of this number would agree on the day they were
+ * written and silently disagree afterwards, and the disagreement would show up as a clipped
+ * column — a defect nobody would trace back to a constant.
+ */
+export const CELL_CLIP_CHARS = 42
+
+/**
+ * How many characters of table this width can carry, roughly.
+ *
+ * Monospace at 14px runs about 8.4px per character, and each column costs a gap on top of its
+ * content. Deliberately an ESTIMATE with a stated basis: the alternative is measuring after the
+ * fact and reflowing, which flashes a wrong layout at the reader before correcting it.
+ */
+export function charBudgetFor(px: number): number {
+  return Math.floor(px / 8.4)
+}
+
+/**
+ * The width this table wants, in characters — header included.
+ *
+ * Counts the columns the table will ACTUALLY render, which means flattening first: a `review`
+ * object holding four keys is one top-level key and four columns. Counting the key instead of
+ * the columns is what put a 7-column table into a half-width slot and clipped `review.criti…`
+ * off its right edge — the same proxy-for-the-thing mistake as measuring a process by a
+ * remembered PID.
+ *
+ * The per-column width is the wider of its header and its longest displayed value, and the
+ * value is capped at the clip length because that is what the cell will show.
+ */
+export function tableCharWidth(rows: Record<string, unknown>[]): number {
+  const flat = flattenUniformObjects(rows)
+  const cols = columnsOf(flat).filter(c => !META_KEYS.has(c))
+  const GAP = 3
+  return cols.reduce((sum, c) => {
+    let widest = c.length
+    for (const r of flat) {
+      const v = r[c]
+      if (v === null || v === undefined || typeof v === 'object') continue
+      widest = Math.max(widest, Math.min(String(v).length, CELL_CLIP_CHARS))
+    }
+    return sum + widest + GAP
+  }, 0)
+}
+
 /** How many nested keys are still worth spreading into columns rather than stacking. */
 const FLATTEN_MAX_KEYS = 8
 
