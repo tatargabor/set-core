@@ -874,7 +874,16 @@ export function StatusTable(
                   // The complete record, untruncated — the other half of clipping a cell.
                   // Rendered from the row AS DELIVERED, so nothing this table did to it
                   // (flattening, clipping, column order) reaches the detail.
-                  <tr key={`d${i}`} className="bg-surface-page/60">
+                  <tr
+                    key={`d${i}`}
+                    // In flow mode the tbody is a grid and every `<tr>` is a grid ITEM, so this
+                    // detail — a sibling row, not a child — was auto-placed into the NEXT cell.
+                    // Expanding the second name in a row opened a panel beside the third one.
+                    // Spanning every column puts it back in reading order after its own row and
+                    // makes a wrong cell impossible rather than unlikely. The record it renders
+                    // names itself, so it stays identifiable even a line below its owner.
+                    className={`bg-surface-page/60 ${flowsAsList ? 'col-span-full' : ''}`}
+                  >
                     <td
                       colSpan={cols.length + (expandable ? 1 : 0) + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
                       className="px-3 py-2"
