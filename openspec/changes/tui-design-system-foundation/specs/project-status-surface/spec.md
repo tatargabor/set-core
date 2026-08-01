@@ -60,30 +60,38 @@ makes its neighbours unreadable.
 
 ### Requirement: A panel spends its width on content, not on nothing
 
-Top-level blocks of an answer SHALL be laid out so that a block narrower than the panel does not
-reserve the panel's full width. The layout SHALL be driven by available width rather than by a
-fixed column count, so the same code produces two columns on a wide display and one on a narrow
-one without a breakpoint anyone maintains.
+Every top-level block SHALL be given the full width of the panel, and SHALL be responsible for
+using it: a table flows its rows into side-by-side groups, a key grid flows its fields into
+tracks, and prose keeps its measure. Blocks SHALL NOT be placed beside one another.
 
-Reported twice by the user against two different tabs. Measured at 1920×1080: a seven-column
-table drew at roughly 700 px with about 950 px of panel empty beside it, while the next block
-waited a screenful below. Neither block was wrong; the page was spending its width on nothing.
+This requirement replaced a two-column arrangement that produced the defect it was meant to fix.
+Placing a short block beside a tall one leaves the space under the shorter one empty BY
+CONSTRUCTION — there is no third thing to pack into it — and the same hole was reported on three
+different tabs. Giving every block the whole width removes the arrangement that can produce it.
 
-#### Scenario: Two narrow blocks share a row
-- **WHEN** an answer carries two blocks that each fit within half the panel
-- **THEN** they are rendered side by side, and no band of the panel is left empty beside them
+#### Scenario: A narrow table with many rows uses the width instead of running down the page
+- **WHEN** a table's natural width is small enough that two or more copies fit the panel
+- **THEN** its rows flow into that many side-by-side groups, each carrying its own header
 
-#### Scenario: A block too wide for half the panel keeps the whole row
-- **WHEN** a block would not fit within half the panel
-- **THEN** it is given the full width rather than being placed in a half-width slot
+#### Scenario: Flowing is never a truncation
+- **WHEN** a table's rows are split into groups
+- **THEN** the rows on screen add up to the count the table states from its own data
 
-#### Scenario: The fit is judged by the columns actually drawn
-- **WHEN** a table's rows carry a nested object that the renderer spreads into several columns
-- **THEN** the fit decision counts those columns, not the single key they arrived under
+#### Scenario: A table that already fills the panel is left alone
+- **WHEN** a table is as wide as, or wider than, the panel
+- **THEN** it renders as one table, because splitting it would make every group scroll sideways
 
-The last scenario is stated because the first implementation failed it, in the direction that
-loses data: a four-key nested object counted as one column, a seven-column table was placed in a
-half-width slot, and its final column was clipped off the right edge where nothing announced it.
+#### Scenario: One long field does not dictate the layout of its neighbours
+- **WHEN** a record holds several short fields and one long one
+- **THEN** the short fields flow into tracks and the long one takes a full row on its own
+
+#### Scenario: The project's field order survives the flow
+- **WHEN** a short field is followed by a long one that cannot share its row
+- **THEN** the short field keeps its declared position and the remaining track is left empty,
+  rather than a later field being pulled forward to fill it
+
+The last scenario is the load-bearing one. A denser packing is available and is deliberately not
+used: backfilling a gap reorders someone else's record, and this surface promotes nothing.
 
 ### Requirement: A table wider than its panel states what it is not showing
 

@@ -92,3 +92,19 @@
 - [ ] Column priority for a table that still cannot fit — which columns a reader sees first,
       and which move into the row detail. Left open: it is a decision about someone's reading
       order, and the surface is now honest about the gap rather than silent, so it can wait.
+
+## The one width rule (2026-08-01, after three rounds of screenshots marking the same hole)
+
+- [x] Blocks no longer placed side by side — every block gets the panel
+- [x] Tables flow into side-by-side groups, headers repeated, panel width measured
+- [x] Key grids: per-field decision, long fields take a full row, declared order preserved
+- [x] `auto-fill` not `auto-fit`, so a two-field block does not stretch across half a panel
+- [x] Row click opens the record; caret kept as affordance, guarded against controls and selections
+- [x] Category tints from cardinality, in a palette carrying no verdict
+- [x] Probe measures the INNER scroll region — the document never scrolls, so every earlier
+      height comparison read +0% for work that halved a panel
+- [x] Half-width machinery removed (`needsFullWidth`, `HALF_WIDTH_PX`, `TABLE_CHROME_CHARS`)
+- [ ] `tests/unit/tableWidth.test.ts` still asserts against the retired half-width budget. Its
+      subject — `tableCharWidth` — is live and used by the flow decision, so the tests pass and
+      measure something real; the CHROME constant in them is now a local number rather than a
+      mirror of the code. Rewrite against the flow thresholds when that decision next changes.
