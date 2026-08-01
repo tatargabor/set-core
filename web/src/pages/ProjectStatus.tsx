@@ -172,7 +172,32 @@ export default function ProjectStatus({ project }: Props) {
   // The active tab is held by NAME, not by index: the project can change what it
   // declares between two loads, and an index would then quietly select a different
   // command than the one that was open.
-  const [active, setActive] = useState<string | null>(null)
+  /**
+   * The open tab, mirrored into `?tab=`.
+   *
+   * The same shape the Orchestration dashboard already uses, so a link to either half of the
+   * product behaves the same way. `replaceState`, not `push`: the back button should leave the
+   * page a reader arrived on, not walk them back through every tab they glanced at.
+   *
+   * A note on the rule this does NOT break. The status table refuses to put its own controls in
+   * the URL, and states why: a chosen facet value or a search string IS the producer's data, and
+   * the address bar reaches disk through history and sync. A tab name is a different thing — it
+   * is a key from the contract, the same class as the project slug already in the path, not a
+   * value out of any record. The line is between the shape of the answer and its contents, and
+   * it stays where it was.
+   */
+  const [active, setActive] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('tab'),
+  )
+
+  /**
+   * Selecting a tab only moves the state. The URL is written in ONE place — the effect below —
+   * and this is not tidiness, it is a measured removal: silencing a `replaceState` here left both
+   * tests green, because the effect had already done the whole job. A second writer that cannot
+   * fail is a second writer nobody maintains, and it is what a later reader trusts when the two
+   * disagree.
+   */
+  const selectTab = useCallback((name: string) => setActive(name), [])
   // Answers the project marked too expensive to ask automatically, once someone has
   // asked. Kept apart from `data` so a later page-load refresh cannot silently drop
   // them — an answer that vanishes because something else reloaded reads as a failure.
@@ -250,6 +275,22 @@ export default function ProjectStatus({ project }: Props) {
   const activeName = active && entries.some(([n]) => n === active) ? active : preferred
   const activeResult = entries.find(([n]) => n === activeName)?.[1]
 
+  /**
+   * The single writer of `?tab=` — both for a click and for a landing the reader never made.
+   *
+   * Landing on the page opens whatever the project declared primary, and without this the URL
+   * says nothing about it — so copying the link hands the recipient whichever tab THEIR contract
+   * prefers, which may not be the screen being talked about. Written only once the tab is
+   * actually known: doing it on mount would publish `null` while the answer is still in flight.
+   */
+  useEffect(() => {
+    if (!activeName) return
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('tab') === activeName) return
+    url.searchParams.set('tab', activeName)
+    window.history.replaceState(null, '', url.toString())
+  }, [activeName])
+
   return (
     // Same three-zone shell as the Orchestration dashboard so the two read as one product
     // (user, 2026-07-25): a StatusHeader-styled bar, a pill tab strip, then a scroll region.
@@ -301,7 +342,7 @@ export default function ProjectStatus({ project }: Props) {
                 role="tab"
                 aria-selected={isActive}
                 data-status-tab={name}
-                onClick={() => setActive(name)}
+                onClick={() => selectTab(name)}
                 className={`px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm whitespace-nowrap rounded transition-colors ${
                   isActive
                     ? 'bg-surface-raised text-fg-strong font-medium'

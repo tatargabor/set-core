@@ -20,7 +20,7 @@ if (!process.env.E2E_PROJECT) {
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: /(flow-detail|layout-probe|design-review)\.spec\.ts/,
+  testMatch: /(tab-url|flow-detail|layout-probe|design-review)\.spec\.ts/,
   timeout: 10 * 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
