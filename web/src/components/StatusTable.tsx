@@ -31,6 +31,7 @@ import {
   Emphasis,
   HiddenNote,
   CELL_CLIP_CHARS,
+  tableCharWidth,
   META_KEYS,
   RowActions,
   Unknown,
@@ -62,6 +63,18 @@ export const CONTROL_MIN_ROWS = 8
  * false-absence shape this surface refuses everywhere else.
  */
 export const ROW_CAP = 25
+
+/** Below this many rows a split reads as a broken table rather than as flowing columns. */
+const MIN_ROWS_TO_FLOW = 12
+/** Past three groups the eye stops knowing which column continues from which. */
+const MAX_FLOW_GROUPS = 3
+/** A group thinner than this stops looking like a table. */
+const MIN_ROWS_PER_GROUP = 6
+/** The gutter between groups, matching `gap-x-6`. */
+const FLOW_GAP_PX = 24
+/** Monospace at 14px, and what the table spends before any data — see `charBudgetFor`. */
+const PX_PER_CHAR = 8.4
+const TABLE_CHROME_PX = 92
 
 /** A column is categorical when it has few enough distinct values to be worth choosing between. */
 export const FACET_MAX_DISTINCT = 12
@@ -570,6 +583,26 @@ export function StatusTable(
    */
   const flowsAsList = cols.length === 1 && rows.length >= 12
   const tints = useMemo(() => categoryTints(rows, cols), [rows, cols])
+  /**
+   * The width this table has to work with, measured rather than assumed.
+   *
+   * Needed because the decision below is "how many copies of this table fit", and that depends on
+   * the panel it landed in — which differs between a full-width block and a half-width one, and
+   * changes when the window does. A constant here would be right on one screen and wrong on the
+   * next; the first render sees 0 and settles on one chunk, then re-renders once with the truth.
+   */
+  const outerBox = useRef<HTMLDivElement>(null)
+  const [availPx, setAvailPx] = useState(0)
+  useEffect(() => {
+    const el = outerBox.current
+    if (!el) return
+    const update = () => setAvailPx(el.clientWidth)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const scrollBox = useRef<HTMLDivElement>(null)
   const { hiddenCols, atEnd } = useSideScroll(scrollBox)
   const facets = useMemo(
@@ -642,6 +675,30 @@ export function StatusTable(
   const hidden = rows.length - indices.length
   // The rows actually rendered — the filtered/sorted set, then capped unless expanded.
   const visibleIndices = showAll ? indices : indices.slice(0, ROW_CAP)
+
+  /**
+   * Split the rows into side-by-side groups when the table is much narrower than its panel.
+   *
+   * Every bound has a failure it prevents. Below `MIN_ROWS_TO_FLOW` a split reads as arbitrary —
+   * two groups of four is not a newspaper column, it is a table someone broke. Past three groups
+   * the eye stops knowing which one continues from which. And a group must keep enough rows to
+   * look like a table, so a 13-row table splits into two and not into three of four-ish.
+   *
+   * `flowsAsList` is left alone: a single-column table already flows, by a mechanism that packs
+   * tighter than this one because it needs no repeated header.
+   */
+  const chunks = useMemo(() => {
+    const one = [visibleIndices]
+    if (flowsAsList || visibleIndices.length < MIN_ROWS_TO_FLOW || availPx <= 0) return one
+    const naturalPx = tableCharWidth(rows) * PX_PER_CHAR + TABLE_CHROME_PX
+    if (naturalPx <= 0) return one
+    const fits = Math.floor((availPx + FLOW_GAP_PX) / (naturalPx + FLOW_GAP_PX))
+    const n = Math.min(MAX_FLOW_GROUPS, fits, Math.floor(visibleIndices.length / MIN_ROWS_PER_GROUP))
+    if (n < 2) return one
+    const per = Math.ceil(visibleIndices.length / n)
+    return Array.from({ length: n }, (_, k) => visibleIndices.slice(k * per, (k + 1) * per))
+      .filter(g => g.length > 0)
+  }, [flowsAsList, visibleIndices, availPx, rows])
   const capped = indices.length - visibleIndices.length
 
   // ── Selection ───────────────────────────────────────────────────────────────────────────
@@ -715,8 +772,199 @@ export function StatusTable(
     })
   }
 
+  const renderBox = (slice: number[], chunk: number) => (
+        <div className="relative">
+        {/* The fade is the affordance; the count above is the fact. A gradient alone would say
+            "there is more" without saying how much, and this surface does not report a hidden
+            quantity it has not counted. */}
+        {!atEnd && (
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 rounded-r bg-gradient-to-l from-surface-page to-transparent" />
+        )}
+        <div ref={chunk === 0 ? scrollBox : null} className="overflow-x-auto rounded border border-surface-line">
+          <table
+            // `w-auto`, not `w-full`. A table stretched to its container spreads its columns to
+            // fill it, and the gaps land between the values a reader is comparing: measured on
+            // the config tab, a 3-column table of short identifiers spread `name` to 590px for
+            // values around 110px, putting 400px of nothing between a name and its state.
+            //
+            // Scanning a row is the whole job of a table, and horizontal distance is what makes
+            // it hard. So the table takes the width its content needs; when that exceeds the
+            // container it overflows as before, and when it is less the panel simply has room
+            // to spare — which is honest, and much easier to read than manufactured gaps.
+            // NOT `min-w-full`. The first attempt paired `w-auto` with it and the change did
+            // nothing: a minimum of 100% forces the container width back on, so `w-auto` never
+            // applied. A hedge added for safety cancelled the fix it was hedging.
+            className={`text-sm tabular-nums ${flowsAsList ? 'w-full block [&_thead]:block [&_thead_tr]:flex [&_tbody]:grid [&_tbody]:gap-x-6 [&_tbody]:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))] [&_tbody_tr]:flex [&_tbody_tr]:items-center' : 'w-auto'}`}
+          >
+            <thead>
+              <tr className="bg-surface-panel text-fg-faint border-b border-surface-line">
+                {selectable && (
+                  <th className="w-6 px-2 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      aria-label={`select the ${visibleIndices.length} rows showing`}
+                      title={`select the ${visibleIndices.length} rows showing — not the whole table`}
+                      className="accent-emerald-600 align-middle"
+                    />
+                  </th>
+                )}
+                {/* `expandable`, not `controls`. When the body grew an expander column driven by
+                    content while this header still keyed on row count, every header sat one column
+                    to the left of the values it named — on exactly the tables that displace, which
+                    are the ones whose columns most need naming. */}
+                {expandable && <th className="w-6 px-2 py-2" />}
+                {cols.map(c => (
+                  <th
+                    key={c}
+                    onClick={controls ? () => cycleSort(c) : undefined}
+                    aria-sort={sort?.col === c ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                    // The identifying column holds its position while the rest scrolls under it.
+                    // The tab this exists for carries twelve columns and hides 2886px past the
+                    // right edge; scrolling to reach them used to take the row's identity with it,
+                    // so the reader arrived at a value with nothing to say which row it belonged
+                    // to. Which column identifies a row is decided from the VALUES — the first one
+                    // whose entries are all present and all distinct — never from its name.
+                    className={`text-left font-medium px-3 py-2 whitespace-nowrap ${
+                      controls ? 'cursor-pointer select-none hover:text-fg-strong' : ''
+                    } ${c === idCol ? 'sticky left-0 z-[2] bg-surface-panel' : ''}`}
+                  >
+                    {view.names.has(c) ? <DeprecatedLabel name={c} /> : <ColumnLabel name={c} />}
+                    {sort?.col === c && (
+                      <span className="ml-1 text-sky-400">{sort.dir === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </th>
+                ))}
+                {hasActions && <th className="text-left font-medium px-3 py-2" />}
+              </tr>
+            </thead>
+            <tbody>
+              {slice.map(i => {
+                const row = rows[i]
+                const isOpen = open.has(i)
+                return [
+                  <tr
+                    key={`r${i}`}
+                    // The WHOLE row opens it. A 12-pixel caret is a target you have to aim at, and
+                    // the thing a reader is already pointing at is the row — so the caret stays as
+                    // the affordance that says "this opens" and stops being the only way in.
+                    //
+                    // Guarded three ways, because a row-wide handler is easy to get wrong. A click
+                    // that lands on a control (the checkbox, a row action, a link) belongs to that
+                    // control and must not also toggle. A click that ends a text SELECTION is
+                    // someone copying a value, not opening a record — toggling there would collapse
+                    // what they were reading. And the caret keeps its own handler, so keyboard
+                    // users still have one focusable target per row rather than a whole row that
+                    // traps tab order.
+                    onClick={expandable ? (e => {
+                      const t = e.target as HTMLElement
+                      if (t.closest('input,button,a,label,select,textarea,summary,details')) return
+                      if ((window.getSelection()?.toString() ?? '').length > 0) return
+                      toggleRow(i)
+                    }) : undefined}
+                    className={`border-b border-surface-line/50 align-top ${
+                      controls ? 'hover:bg-surface-panel/50' : ''
+                    }${expandable ? ' cursor-pointer' : ''}`}
+                  >
+                    {selectable && (
+                      <td className="px-2 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(keyOf(i))}
+                          onChange={() => toggleSelected(i)}
+                          aria-label="select this row"
+                          className="accent-emerald-600 align-middle"
+                        />
+                      </td>
+                    )}
+                    {expandable && (
+                      <td
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        aria-label={isOpen ? 'hide the whole record' : 'show the whole record'}
+                        // No onClick here: the row's handler already covers a click that lands on
+                        // the caret, and a second one would toggle twice and appear to do nothing.
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) }
+                        }}
+                        className="px-2 py-2 text-fg-ghost hover:text-fg-strong cursor-pointer select-none"
+                      >
+                        {isOpen ? '▾' : '▸'}
+                      </td>
+                    )}
+                    {cols.map(c => {
+                      // A structure moves to the row detail; everything else renders in place.
+                      // The emphasis wrapper stays OUTSIDE that choice on purpose: a project that
+                      // declared this field important said so about the field, not about the shape
+                      // its value happened to take, so a displaced value keeps its emphasis and a
+                      // reader can still see which row to open.
+                      const raw = row[c]
+                      // The tint is applied to the CELL, not inside the value renderer: it is a
+                      // property of this value's place in this column, not of the value itself, and
+                      // the same string in another column may belong to a different set.
+                      const tint = isMissing(raw) ? undefined : tints.get(c)?.get(cellText(raw))
+                      const inner = isComplexCellValue(raw) ? <Displaced value={raw} /> : renderValue(raw, 2)
+                      const content = !(c in row)
+                        ? <Unknown />
+                        : emphasisMatches(c, emphasised[i] ?? new Set())
+                          ? <Emphasis>{inner}</Emphasis>
+                          : inner
+                      return (
+                        <td
+                          key={c}
+                          // Named so a test can reach a cell by its COLUMN rather than by its
+                          // position. Three tests broke the day a checkbox column was added,
+                          // all of them `td:nth-child(2)` — a positional selector measures the
+                          // layout, not the data, and it fails on the next column either way.
+                          data-col={c}
+                          className={`${expandable ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'} ${
+                            c === idCol ? 'sticky left-0 z-[1] bg-surface-page' : ''
+                          } ${tint ?? ''}`}
+                        >
+                          {expandable ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
+                        </td>
+                      )
+                    })}
+                    {hasActions && (
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <RowActions value={row[ACTIONS_KEY]} />
+                      </td>
+                    )}
+                  </tr>,
+                  isOpen && (
+                    // The complete record, untruncated — the other half of clipping a cell.
+                    // Rendered from the row AS DELIVERED, so nothing this table did to it
+                    // (flattening, clipping, column order) reaches the detail.
+                    <tr
+                      key={`d${i}`}
+                      // In flow mode the tbody is a grid and every `<tr>` is a grid ITEM, so this
+                      // detail — a sibling row, not a child — was auto-placed into the NEXT cell.
+                      // Expanding the second name in a row opened a panel beside the third one.
+                      // Spanning every column puts it back in reading order after its own row and
+                      // makes a wrong cell impossible rather than unlikely. The record it renders
+                      // names itself, so it stays identifiable even a line below its owner.
+                      className={`bg-surface-page/60 ${flowsAsList ? 'col-span-full' : ''}`}
+                    >
+                      <td
+                        colSpan={cols.length + (expandable ? 1 : 0) + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
+                        className="px-3 py-2"
+                      >
+                        {renderValue(rawRows[i] ?? row, 1)}
+                      </td>
+                    </tr>
+                  ),
+                ]
+              })}
+            </tbody>
+          </table>
+        </div>
+        </div>
+  )
+
   return (
-    <div className="space-y-1">
+    <div className="space-y-1" ref={outerBox}>
       {/* The count line. Unfiltered it says exactly what it always said — a count of ROWS,
           never of "items", because the key above it names someone else's domain. Filtered,
           it is the one place that has to state what is NOT on screen. */}
@@ -867,194 +1115,24 @@ export function StatusTable(
       {/* overflow-x only: a wide table scrolls sideways within its own box, but the PAGE is
           the single vertical scroller — no inner max-height, so no second vertical scrollbar
           nested inside the page's. Matches how the orchestration change table renders. */}
-      <div className="relative">
-      {/* The fade is the affordance; the count above is the fact. A gradient alone would say
-          "there is more" without saying how much, and this surface does not report a hidden
-          quantity it has not counted. */}
-      {!atEnd && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 rounded-r bg-gradient-to-l from-surface-page to-transparent" />
-      )}
-      <div ref={scrollBox} className="overflow-x-auto rounded border border-surface-line">
-        <table
-          // `w-auto`, not `w-full`. A table stretched to its container spreads its columns to
-          // fill it, and the gaps land between the values a reader is comparing: measured on
-          // the config tab, a 3-column table of short identifiers spread `name` to 590px for
-          // values around 110px, putting 400px of nothing between a name and its state.
-          //
-          // Scanning a row is the whole job of a table, and horizontal distance is what makes
-          // it hard. So the table takes the width its content needs; when that exceeds the
-          // container it overflows as before, and when it is less the panel simply has room
-          // to spare — which is honest, and much easier to read than manufactured gaps.
-          // NOT `min-w-full`. The first attempt paired `w-auto` with it and the change did
-          // nothing: a minimum of 100% forces the container width back on, so `w-auto` never
-          // applied. A hedge added for safety cancelled the fix it was hedging.
-          className={`text-sm tabular-nums ${flowsAsList ? 'w-full block [&_thead]:block [&_thead_tr]:flex [&_tbody]:grid [&_tbody]:gap-x-6 [&_tbody]:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))] [&_tbody_tr]:flex [&_tbody_tr]:items-center' : 'w-auto'}`}
-        >
-          <thead>
-            <tr className="bg-surface-panel text-fg-faint border-b border-surface-line">
-              {selectable && (
-                <th className="w-6 px-2 py-2">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    aria-label={`select the ${visibleIndices.length} rows showing`}
-                    title={`select the ${visibleIndices.length} rows showing — not the whole table`}
-                    className="accent-emerald-600 align-middle"
-                  />
-                </th>
-              )}
-              {/* `expandable`, not `controls`. When the body grew an expander column driven by
-                  content while this header still keyed on row count, every header sat one column
-                  to the left of the values it named — on exactly the tables that displace, which
-                  are the ones whose columns most need naming. */}
-              {expandable && <th className="w-6 px-2 py-2" />}
-              {cols.map(c => (
-                <th
-                  key={c}
-                  onClick={controls ? () => cycleSort(c) : undefined}
-                  aria-sort={sort?.col === c ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                  // The identifying column holds its position while the rest scrolls under it.
-                  // The tab this exists for carries twelve columns and hides 2886px past the
-                  // right edge; scrolling to reach them used to take the row's identity with it,
-                  // so the reader arrived at a value with nothing to say which row it belonged
-                  // to. Which column identifies a row is decided from the VALUES — the first one
-                  // whose entries are all present and all distinct — never from its name.
-                  className={`text-left font-medium px-3 py-2 whitespace-nowrap ${
-                    controls ? 'cursor-pointer select-none hover:text-fg-strong' : ''
-                  } ${c === idCol ? 'sticky left-0 z-[2] bg-surface-panel' : ''}`}
-                >
-                  {view.names.has(c) ? <DeprecatedLabel name={c} /> : <ColumnLabel name={c} />}
-                  {sort?.col === c && (
-                    <span className="ml-1 text-sky-400">{sort.dir === 'asc' ? '↑' : '↓'}</span>
-                  )}
-                </th>
-              ))}
-              {hasActions && <th className="text-left font-medium px-3 py-2" />}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleIndices.map(i => {
-              const row = rows[i]
-              const isOpen = open.has(i)
-              return [
-                <tr
-                  key={`r${i}`}
-                  // The WHOLE row opens it. A 12-pixel caret is a target you have to aim at, and
-                  // the thing a reader is already pointing at is the row — so the caret stays as
-                  // the affordance that says "this opens" and stops being the only way in.
-                  //
-                  // Guarded three ways, because a row-wide handler is easy to get wrong. A click
-                  // that lands on a control (the checkbox, a row action, a link) belongs to that
-                  // control and must not also toggle. A click that ends a text SELECTION is
-                  // someone copying a value, not opening a record — toggling there would collapse
-                  // what they were reading. And the caret keeps its own handler, so keyboard
-                  // users still have one focusable target per row rather than a whole row that
-                  // traps tab order.
-                  onClick={expandable ? (e => {
-                    const t = e.target as HTMLElement
-                    if (t.closest('input,button,a,label,select,textarea,summary,details')) return
-                    if ((window.getSelection()?.toString() ?? '').length > 0) return
-                    toggleRow(i)
-                  }) : undefined}
-                  className={`border-b border-surface-line/50 align-top ${
-                    controls ? 'hover:bg-surface-panel/50' : ''
-                  }${expandable ? ' cursor-pointer' : ''}`}
-                >
-                  {selectable && (
-                    <td className="px-2 py-2">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(keyOf(i))}
-                        onChange={() => toggleSelected(i)}
-                        aria-label="select this row"
-                        className="accent-emerald-600 align-middle"
-                      />
-                    </td>
-                  )}
-                  {expandable && (
-                    <td
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={isOpen}
-                      aria-label={isOpen ? 'hide the whole record' : 'show the whole record'}
-                      // No onClick here: the row's handler already covers a click that lands on
-                      // the caret, and a second one would toggle twice and appear to do nothing.
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) }
-                      }}
-                      className="px-2 py-2 text-fg-ghost hover:text-fg-strong cursor-pointer select-none"
-                    >
-                      {isOpen ? '▾' : '▸'}
-                    </td>
-                  )}
-                  {cols.map(c => {
-                    // A structure moves to the row detail; everything else renders in place.
-                    // The emphasis wrapper stays OUTSIDE that choice on purpose: a project that
-                    // declared this field important said so about the field, not about the shape
-                    // its value happened to take, so a displaced value keeps its emphasis and a
-                    // reader can still see which row to open.
-                    const raw = row[c]
-                    // The tint is applied to the CELL, not inside the value renderer: it is a
-                    // property of this value's place in this column, not of the value itself, and
-                    // the same string in another column may belong to a different set.
-                    const tint = isMissing(raw) ? undefined : tints.get(c)?.get(cellText(raw))
-                    const inner = isComplexCellValue(raw) ? <Displaced value={raw} /> : renderValue(raw, 2)
-                    const content = !(c in row)
-                      ? <Unknown />
-                      : emphasisMatches(c, emphasised[i] ?? new Set())
-                        ? <Emphasis>{inner}</Emphasis>
-                        : inner
-                    return (
-                      <td
-                        key={c}
-                        // Named so a test can reach a cell by its COLUMN rather than by its
-                        // position. Three tests broke the day a checkbox column was added,
-                        // all of them `td:nth-child(2)` — a positional selector measures the
-                        // layout, not the data, and it fails on the next column either way.
-                        data-col={c}
-                        className={`${expandable ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'} ${
-                          c === idCol ? 'sticky left-0 z-[1] bg-surface-page' : ''
-                        } ${tint ?? ''}`}
-                      >
-                        {expandable ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
-                      </td>
-                    )
-                  })}
-                  {hasActions && (
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <RowActions value={row[ACTIONS_KEY]} />
-                    </td>
-                  )}
-                </tr>,
-                isOpen && (
-                  // The complete record, untruncated — the other half of clipping a cell.
-                  // Rendered from the row AS DELIVERED, so nothing this table did to it
-                  // (flattening, clipping, column order) reaches the detail.
-                  <tr
-                    key={`d${i}`}
-                    // In flow mode the tbody is a grid and every `<tr>` is a grid ITEM, so this
-                    // detail — a sibling row, not a child — was auto-placed into the NEXT cell.
-                    // Expanding the second name in a row opened a panel beside the third one.
-                    // Spanning every column puts it back in reading order after its own row and
-                    // makes a wrong cell impossible rather than unlikely. The record it renders
-                    // names itself, so it stays identifiable even a line below its owner.
-                    className={`bg-surface-page/60 ${flowsAsList ? 'col-span-full' : ''}`}
-                  >
-                    <td
-                      colSpan={cols.length + (expandable ? 1 : 0) + (hasActions ? 1 : 0) + (selectable ? 1 : 0)}
-                      className="px-3 py-2"
-                    >
-                      {renderValue(rawRows[i] ?? row, 1)}
-                    </td>
-                  </tr>
-                ),
-              ]
-            })}
-          </tbody>
-        </table>
-      </div>
-      </div>
+      {/*
+        One box per chunk. A table narrower than its panel used to leave the rest of the row
+        empty — measured on the debt tab, a 3-column table drew at ~700 px inside an ~1800 px
+        panel, so more than half the screen carried nothing. Stretching the columns to fill it
+        was tried and rejected: the gaps land between the values a reader is comparing.
+
+        So the ROWS flow into side-by-side groups instead, each a real table with its own
+        header. The width gets used and the page gets shorter — 16 rows at 700 px becomes 8 rows
+        at 1400 px — and every column stays as narrow as its content, which was the point of
+        `w-auto` in the first place.
+      */}
+      {chunks.length === 1
+        ? renderBox(chunks[0], 0)
+        : (
+          <div className="grid gap-x-6 items-start" style={{ gridTemplateColumns: `repeat(${chunks.length}, minmax(0, 1fr))` }}>
+            {chunks.map((slice, n) => <div key={n}>{renderBox(slice, n)}</div>)}
+          </div>
+        )}
 
       {/* The cap, stated and reversible — never a silent truncation. Once expanded, the same
           control folds it back so the delivered slice is recoverable without a reload. */}
