@@ -940,9 +940,26 @@ export function StatusTable(
               return [
                 <tr
                   key={`r${i}`}
+                  // The WHOLE row opens it. A 12-pixel caret is a target you have to aim at, and
+                  // the thing a reader is already pointing at is the row — so the caret stays as
+                  // the affordance that says "this opens" and stops being the only way in.
+                  //
+                  // Guarded three ways, because a row-wide handler is easy to get wrong. A click
+                  // that lands on a control (the checkbox, a row action, a link) belongs to that
+                  // control and must not also toggle. A click that ends a text SELECTION is
+                  // someone copying a value, not opening a record — toggling there would collapse
+                  // what they were reading. And the caret keeps its own handler, so keyboard
+                  // users still have one focusable target per row rather than a whole row that
+                  // traps tab order.
+                  onClick={expandable ? (e => {
+                    const t = e.target as HTMLElement
+                    if (t.closest('input,button,a,label,select,textarea,summary,details')) return
+                    if ((window.getSelection()?.toString() ?? '').length > 0) return
+                    toggleRow(i)
+                  }) : undefined}
                   className={`border-b border-surface-line/50 align-top ${
                     controls ? 'hover:bg-surface-panel/50' : ''
-                  }`}
+                  }${expandable ? ' cursor-pointer' : ''}`}
                 >
                   {selectable && (
                     <td className="px-2 py-2">
@@ -961,7 +978,8 @@ export function StatusTable(
                       tabIndex={0}
                       aria-expanded={isOpen}
                       aria-label={isOpen ? 'hide the whole record' : 'show the whole record'}
-                      onClick={() => toggleRow(i)}
+                      // No onClick here: the row's handler already covers a click that lands on
+                      // the caret, and a second one would toggle twice and appear to do nothing.
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(i) }
                       }}
