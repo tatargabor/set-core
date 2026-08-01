@@ -52,6 +52,25 @@
   /* ── Log syntax: which category a line belongs to ─────────────────────────────────
      Deliberately its own namespace. These are the hues the log panels already use; giving
      them names is what stops the next screen from reaching for `cyan` because it was free. */
+  /*
+    Category tints — for telling values APART, never for saying which is better.
+    
+    The surface's own reserved meanings are amber (something is withheld or unknown), emerald
+    (true, done), red (failed) and blue (an action you can take). None of them appears below, and
+    that omission is the whole design: these hues are assigned to a column's distinct values in a
+    stable order the renderer picks, so a hue here carries no verdict and must never be able to
+    imply one. `HIGH` being violet says it is not `LOW`; it does not say it is bad.
+
+    Six, because a seventh stops being a code and starts being noise — past that, a column is
+    left plain.
+  */
+  --color-cat-1: var(--color-sky-300);
+  --color-cat-2: var(--color-violet-300);
+  --color-cat-3: var(--color-fuchsia-300);
+  --color-cat-4: var(--color-cyan-300);
+  --color-cat-5: var(--color-indigo-300);
+  --color-cat-6: var(--color-purple-300);
+
   --color-log-source: var(--color-cyan-400);
   --color-log-category: var(--color-purple-400);
   --color-log-warn: var(--color-amber-400);

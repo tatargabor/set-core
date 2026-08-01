@@ -150,6 +150,87 @@ export function facetColumns(rows: Row[], cols: string[]): Map<string, Map<strin
 }
 
 /**
+ * How many distinct values a column may hold and still be worth tinting.
+ *
+ * Six is the token layer's palette size, and past it a colour code stops being readable — the
+ * reader would be matching seven near-hues instead of scanning. A column beyond the cap renders
+ * plain, which is the honest outcome: no tint at all is better than a tint that means nothing.
+ */
+const TINT_MAX_DISTINCT = 6
+
+/**
+ * The tint classes, written out one by one — never built as `text-cat-${i}`.
+ *
+ * Tailwind emits a utility only when it finds the class name as a LITERAL in the source, so the
+ * interpolated version compiled to nothing: the map was populated, the class landed on the cell,
+ * and the stylesheet contained zero `text-cat-*` rules. `grep -c text-cat- dist/assets/*.css`
+ * returned 0. Every part of the mechanism worked and the screen was unchanged — the failure mode
+ * this repo keeps meeting, where a check on the mechanism passes and says nothing about the result.
+ *
+ * The descendant variant is deliberate too: the value renderer sets its own `text-fg-strong`, and
+ * a colour on the cell alone loses to it. Tinting the cell's spans is what actually reaches the
+ * text a reader sees.
+ */
+const CAT_CLASS = [
+  '[&_span]:text-cat-1',
+  '[&_span]:text-cat-2',
+  '[&_span]:text-cat-3',
+  '[&_span]:text-cat-4',
+  '[&_span]:text-cat-5',
+  '[&_span]:text-cat-6',
+] as const
+
+/** Beyond this length a value is prose, not a category, and a hue on it reads as decoration. */
+const TINT_MAX_CHARS = 16
+
+/**
+ * A stable hue per distinct value, for columns that behave like a small set of categories.
+ *
+ * Measured against the sibling screen: the orchestration view carries 2.14 % hued pixels and this
+ * one 0.15 %, almost all of it a single button. The difference is not taste — that view knows what
+ * its own states mean and can colour them, and this one must not learn any project's vocabulary.
+ *
+ * So the colour comes from CARDINALITY, which needs no vocabulary at all: a column holding a few
+ * repeating values gets one hue per value, and rows sharing a value become scannable as a group.
+ * The renderer still cannot say which value is good.
+ *
+ * Two properties do the safety work. The assignment is by SORTED ORDER, so a value keeps its hue
+ * across sorting, filtering and refreshes — a colour that moved would be worse than none. And the
+ * palette deliberately excludes every hue this surface has given a meaning: amber (withheld),
+ * emerald (true), red (failed), blue (an action). A tint can therefore distinguish, and cannot
+ * imply a verdict it did not measure.
+ */
+export function categoryTints(rows: Row[], cols: string[]): Map<string, Map<string, string>> {
+  const tints = new Map<string, Map<string, string>>()
+  for (const col of cols) {
+    const distinct = new Set<string>()
+    let tintable = true
+    for (const r of rows) {
+      const v = r[col]
+      if (isMissing(v)) continue
+      // Numbers are excluded, and this was found by looking rather than reasoned about: a `count`
+      // column of 25 / 9 / 27 passed every cardinality test and came out in three hues, as if the
+      // quantities were three groups. A tint says "these rows share a value"; on a quantity that
+      // reads as a scale, and the palette carries no scale — so it would imply an ordering it
+      // cannot have measured. Booleans are excluded for the opposite reason: they already have a
+      // meaning-bearing colour, and a second one would fight it.
+      if (!isScalar(v) || typeof v === 'boolean' || typeof v === 'number') { tintable = false; break }
+      const text = cellText(v)
+      if (text.length > TINT_MAX_CHARS) { tintable = false; break }
+      distinct.add(text)
+      if (distinct.size > TINT_MAX_DISTINCT) { tintable = false; break }
+    }
+    // One value is not a distinction worth a colour, and a column of unique values is a list of
+    // identifiers — tinting every row differently would be noise wearing a code's clothes.
+    if (!tintable || distinct.size < 2 || distinct.size === rows.length) continue
+    const map = new Map<string, string>()
+    ;[...distinct].sort().forEach((v, i) => map.set(v, CAT_CLASS[i]))
+    tints.set(col, map)
+  }
+  return tints
+}
+
+/**
  * Order two cells of one column.
  *
  * Absent values sort last in BOTH directions, deliberately. Sorting them to the top in one
@@ -488,6 +569,7 @@ export function StatusTable(
    * the flow is applied to whatever survived them and nothing about what is withheld changes.
    */
   const flowsAsList = cols.length === 1 && rows.length >= 12
+  const tints = useMemo(() => categoryTints(rows, cols), [rows, cols])
   const scrollBox = useRef<HTMLDivElement>(null)
   const { hiddenCols, atEnd } = useSideScroll(scrollBox)
   const facets = useMemo(
@@ -895,6 +977,10 @@ export function StatusTable(
                     // its value happened to take, so a displaced value keeps its emphasis and a
                     // reader can still see which row to open.
                     const raw = row[c]
+                    // The tint is applied to the CELL, not inside the value renderer: it is a
+                    // property of this value's place in this column, not of the value itself, and
+                    // the same string in another column may belong to a different set.
+                    const tint = isMissing(raw) ? undefined : tints.get(c)?.get(cellText(raw))
                     const inner = isComplexCellValue(raw) ? <Displaced value={raw} /> : renderValue(raw, 2)
                     const content = !(c in row)
                       ? <Unknown />
@@ -911,7 +997,7 @@ export function StatusTable(
                         data-col={c}
                         className={`${expandable ? 'px-3 py-2' : 'px-3 py-2 max-w-[26rem]'} ${
                           c === idCol ? 'sticky left-0 z-[1] bg-surface-page' : ''
-                        }`}
+                        } ${tint ?? ''}`}
                       >
                         {expandable ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
                       </td>
