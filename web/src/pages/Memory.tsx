@@ -83,13 +83,22 @@ export default function Memory({ project }: Props) {
   const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 12)
 
   return (
-    <div className="p-6 max-w-3xl space-y-5">
+    <div className="p-6 space-y-5">
       <h1 className="text-base font-semibold text-fg-loud">Memory</h1>
 
-      {/* Health */}
-      <section>
+      {/*
+        Auto-fit, not a fixed column count and not a width cap.
+        `max-w-3xl` used to sit on the container, which left 952 px of a 1920 px screen empty
+        while stacking six panels — none of which is wide — into one tall column. The panels
+        are independent readings, so they belong side by side; the browser decides how many fit
+        and rewraps on a narrower screen without a breakpoint to maintain.
+      */}
+      <div className="grid gap-5 items-start [grid-template-columns:repeat(auto-fit,minmax(26rem,1fr))]">
+
+      {/* Health — full width: a one-line verdict reads as a banner, not as a card. */}
+      <section className="col-span-full">
         <TuiSection label="HEALTH" />
-        <div className="bg-surface-panel/50 border border-surface-line px-4 py-3 flex items-center gap-4">
+        <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3 flex items-center gap-4">
           <span className={healthOk ? 'text-green-400' : 'text-red-400'}>{healthOk ? '\u25CF' : '\u2715'} {healthText}</span>
           <span className="ml-auto text-sm text-fg-normal">{total.toLocaleString()} memories</span>
           {stats.noise_ratio != null && (
@@ -102,7 +111,7 @@ export default function Memory({ project }: Props) {
       {Object.keys(types).length === 0 && total > 0 && (
         <section>
           <TuiSection label="BREAKDOWN" />
-          <div className="bg-surface-panel/50 border border-surface-line px-4 py-3 space-y-1">
+          <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3 space-y-1">
             {stats.long_term_memory_count != null && (
               <TuiBar value={stats.long_term_memory_count} max={total} label="Long-term" color="text-purple-400" />
             )}
@@ -126,7 +135,7 @@ export default function Memory({ project }: Props) {
       {Object.keys(types).length > 0 && (
         <section>
           <TuiSection label="BY TYPE" />
-          <div className="bg-surface-panel/50 border border-surface-line px-4 py-3 space-y-1">
+          <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3 space-y-1">
             {Object.entries(types).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
               const pct = total > 0 ? Math.round((count / total) * 100) : 0
               const typeColor = type === 'Decision' ? 'text-purple-400' : type === 'Learning' ? 'text-blue-400' : 'text-cyan-400'
@@ -146,7 +155,7 @@ export default function Memory({ project }: Props) {
       {Object.keys(importance).length > 0 && (
         <section>
           <TuiSection label="IMPORTANCE" />
-          <div className="bg-surface-panel/50 border border-surface-line px-4 py-3 space-y-1">
+          <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3 space-y-1">
             {Object.entries(importance).map(([range, count]) => (
               <TuiBar key={range} value={count} max={maxImportance} label={range} color="text-amber-400" />
             ))}
@@ -158,7 +167,7 @@ export default function Memory({ project }: Props) {
       {sortedTags.length > 0 && (
         <section>
           <TuiSection label="TOP TAGS" />
-          <div className="bg-surface-panel/50 border border-surface-line px-4 py-3">
+          <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3">
             <div className="flex flex-wrap gap-1.5">
               {sortedTags.map(([tag, count]) => (
                 <span key={tag} className="px-2 py-0.5 bg-surface-raised text-sm text-fg-normal">
@@ -174,11 +183,12 @@ export default function Memory({ project }: Props) {
       {data.sync && typeof data.sync === 'string' && !data.sync.startsWith('{') && (
         <section>
           <TuiSection label="SYNC" />
-          <pre className="bg-surface-panel/50 border border-surface-line px-4 py-3 text-sm text-fg-muted whitespace-pre-wrap">
+          <pre className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-3 text-sm text-fg-muted whitespace-pre-wrap">
             {data.sync}
           </pre>
         </section>
       )}
+      </div>
     </div>
   )
 }

@@ -71,6 +71,18 @@ function Scalar({ value }: { value: unknown }) {
   }
   const text = String(value)
   if (text === '') return <Unknown label="(empty)" />
+  // Prose gets a measure. Measured on a 1920 px screen: a project's `note` and `description`
+  // ran the full 1650 px of the panel — roughly 200 characters per line, which the eye cannot
+  // track back to the next line's start. 80ch is the long end of the readable range and, in this
+  // monospace face, about 672 px; every table cell is already capped tighter than that, so the
+  // cap binds exactly where the text is running loose and nowhere else.
+  //
+  // Applied by LENGTH, not by field name — this renderer never learns what a field means. Below
+  // the threshold no line can reach an uncomfortable measure anyway, so the cap would only add
+  // an inline-block nobody asked for.
+  if (text.length > 90) {
+    return <span className="text-fg-strong break-words inline-block max-w-[80ch] align-top">{text}</span>
+  }
   return <span className="text-fg-strong break-words">{text}</span>
 }
 

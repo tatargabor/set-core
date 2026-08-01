@@ -45,7 +45,7 @@ interface Metrics {
   /** Total scrollable page height beyond the fold. */
   pageOverflowY: number
   /** Elements whose content is wider than their box, with whether the box was made scrollable. */
-  overflowing: { tag: string; cls: string; over: number; scrollable: boolean }[]
+  overflowing: { tag: string; cls: string; over: number; scrollable: boolean; hides: boolean }[]
   /** Per table: row count, median row height, tallest row, and how many exceed 3× the median. */
   tables: { rows: number; medianRowH: number; maxRowH: number; towers: number; cols: number }[]
   /** Unused horizontal band on the right, in px: viewport width minus the rightmost content edge. */
@@ -75,19 +75,33 @@ async function measure(page: import('@playwright/test').Page): Promise<Omit<Metr
     // ── Overflow: content wider than its box. `scrollable` separates a deliberate scroller
     //    (someone chose overflow-x-auto) from a box that is simply too small for its content.
     //    Both are findings; they have different fixes, so they are never merged into one count.
+    //
+    //    `overflow-x: visible` is EXCLUDED, and the reason is a false finding this probe produced.
+    //    Capping prose at a readable measure (`inline-block max-w-[80ch]`) made the truncated
+    //    total JUMP — releases 33 116 → 39 752 — on a screen whose text had just started wrapping
+    //    correctly. `scrollWidth` on such a box reports the MAX-CONTENT width, so a paragraph that
+    //    wraps neatly into six lines is scored as 4 392 px of hidden text. Nothing was hidden.
+    //
+    //    The discriminator is what the box does with the excess: `hidden` and `clip` cut it off,
+    //    `auto`/`scroll` park it behind a scrollbar, and `visible` — the default — simply lets it
+    //    wrap or paint outside. Only the first two hide anything, and a spill that leaves the page
+    //    is caught separately by `pageOverflowX`. Without this, the metric grows every time prose
+    //    is made more readable, which points the next reader at the fix instead of the defect.
     const overflowing = all
       .filter(visible)
       .map((el) => {
         const over = el.scrollWidth - el.clientWidth
         const s = getComputedStyle(el)
+        const scrollable = s.overflowX === 'auto' || s.overflowX === 'scroll'
         return {
           tag: el.tagName.toLowerCase(),
           cls: (el.className && typeof el.className === 'string' ? el.className : '').slice(0, 120),
           over,
-          scrollable: s.overflowX === 'auto' || s.overflowX === 'scroll',
+          scrollable,
+          hides: scrollable || s.overflowX === 'hidden' || s.overflowX === 'clip',
         }
       })
-      .filter((o) => o.over > 2)
+      .filter((o) => o.over > 2 && o.hides)
       .sort((a, b) => b.over - a.over)
       .slice(0, 12)
 
