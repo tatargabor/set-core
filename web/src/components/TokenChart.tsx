@@ -4,6 +4,7 @@ import type { ChangeInfo, LLMCall } from '../lib/api'
 import { getLLMCalls } from '../lib/api'
 import { useSelectedLineage } from '../lib/lineage'
 import { displayModel, modelFamily } from '../lib/formatModel'
+import { formatDurationMs as formatDuration } from '../lib/duration'
 
 interface Props {
   changes: ChangeInfo[]
@@ -59,15 +60,7 @@ function formatK(v: number): string {
   return String(v)
 }
 
-function formatDuration(ms: number): string {
-  if (ms <= 0) return '-'
-  if (ms < 1000) return `${ms}ms`
-  const s = ms / 1000
-  if (s < 60) return `${s.toFixed(1)}s`
-  const m = Math.floor(s / 60)
-  const rem = Math.round(s % 60)
-  return `${m}m${rem}s`
-}
+
 
 function formatTime(iso: string): string {
   try {

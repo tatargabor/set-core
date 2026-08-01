@@ -10,6 +10,7 @@ import ScreenshotGallery from './ScreenshotGallery'
 import ChangeTimeline from './ChangeTimeline'
 import useIsMobile from '../hooks/useIsMobile'
 import { displayModel } from '../lib/formatModel'
+import { formatDuration } from '../lib/duration'
 
 interface Props {
   changes: ChangeInfo[]
@@ -29,13 +30,7 @@ interface Props {
 }
 
 
-function formatDuration(s?: number): string {
-  if (!s) return '—'
-  if (s < 60) return `${s.toFixed(0)}s`
-  const m = Math.floor(s / 60)
-  const rem = Math.floor(s % 60)
-  return `${m}m${rem}s`
-}
+
 
 function formatTokens(n?: number): string {
   if (!n) return '—'

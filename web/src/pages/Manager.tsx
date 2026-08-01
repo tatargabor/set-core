@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { getProjectsWithArchiveInfo, type ProjectInfo } from '../lib/api'
 import { sortByLastUpdated } from '../lib/sort'
+import { formatDuration } from '../lib/duration'
 
 const statusStyle: Record<string, { char: string; color: string; label: string }> = {
   running: { char: '\u25C9', color: 'text-green-400', label: 'Running' },
@@ -35,14 +36,7 @@ function formatTokens(n?: number): string {
   return String(n)
 }
 
-function formatDuration(secs?: number): string {
-  if (!secs) return '—'
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m`
-  const hours = Math.floor(mins / 60)
-  const remMins = mins % 60
-  return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
-}
+
 
 export default function Manager() {
   const [projects, setProjects] = useState<ProjectInfo[]>([])

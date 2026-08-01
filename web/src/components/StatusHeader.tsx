@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { StateData } from '../lib/api'
 import { stopOrchestrator, approve, getManagerProjectStatus, startSentinel, stopSentinel, restartSentinel, getProjectDocs, getState, getLineages, type ManagerProjectStatus, type LineageMeta } from '../lib/api'
 import { useSelectedLineage } from '../lib/lineage'
+import { formatDuration } from '../lib/duration'
 
 interface Props {
   state: StateData | null
@@ -16,13 +17,7 @@ function formatTokens(n?: number): string {
   return String(n)
 }
 
-function formatDuration(secs?: number): string {
-  if (!secs) return ''
-  const m = Math.floor(secs / 60)
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  return `${h}h${m % 60}m`
-}
+
 
 export default function StatusHeader({ state, connected, project }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
@@ -198,7 +193,7 @@ export default function StatusHeader({ state, connected, project }: Props) {
           <div className="text-sm text-fg-faint hidden md:block">
             {state.plan_version && <span>v{state.plan_version}</span>}
             {state.active_seconds ? (
-              <span className="ml-2">{formatDuration(state.active_seconds)}</span>
+              <span className="ml-2">{formatDuration(state.active_seconds, '')}</span>
             ) : null}
           </div>
 
