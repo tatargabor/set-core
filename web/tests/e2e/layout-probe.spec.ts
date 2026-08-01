@@ -56,6 +56,20 @@ interface Metrics {
   fontSizes: Record<string, number>
   /** Elements rendered but effectively invisible in the fold (0-size boxes) — a render smell. */
   zeroSizeVisible: number
+  /**
+   * The tallest INNER scroll region's content height, and how much of it is past its own fold.
+   *
+   * Added because both instruments already here were blind to it. This dashboard uses a
+   * three-zone shell — fixed header, fixed tabs, one scrolling panel — so the document itself
+   * never scrolls: `pageOverflowY` reads 0 on every screen, and a `fullPage` screenshot comes
+   * back at exactly the viewport height for all eleven tabs. A layout change that halved a
+   * panel's content therefore measured as no change at all, on both.
+   *
+   * The failure direction is the expensive one: it reports "nothing moved" for work that moved
+   * a great deal, which invites either re-doing it or claiming a number the run never produced.
+   */
+  innerScrollPx: number
+  innerHiddenPx: number
 }
 
 async function measure(page: import('@playwright/test').Page): Promise<Omit<Metrics, 'id' | 'label' | 'path' | 'tab'>> {
@@ -140,7 +154,23 @@ async function measure(page: import('@playwright/test').Page): Promise<Omit<Metr
       fontSizes[fs] = (fontSizes[fs] || 0) + 1
     }
 
+    // The inner scrollers: any box that actually scrolls vertically. The tallest one is the
+    // panel a reader is looking at.
+    let innerScrollPx = 0
+    let innerHiddenPx = 0
+    for (const el of all) {
+      const st = getComputedStyle(el)
+      if (st.overflowY !== 'auto' && st.overflowY !== 'scroll') continue
+      const hidden = el.scrollHeight - el.clientHeight
+      if (el.scrollHeight > innerScrollPx) {
+        innerScrollPx = el.scrollHeight
+        innerHiddenPx = Math.max(0, hidden)
+      }
+    }
+
     return {
+      innerScrollPx,
+      innerHiddenPx,
       pageOverflowX: Math.max(0, de.scrollWidth - de.clientWidth),
       pageOverflowY: Math.max(0, de.scrollHeight - de.clientHeight),
       overflowing,

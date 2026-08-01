@@ -36,8 +36,6 @@ import {
   Emphasis,
   HiddenNote,
   META_KEYS,
-  charBudgetFor,
-  tableCharWidth,
   RowActions,
   Unknown,
   emphasisOf,
@@ -62,40 +60,13 @@ export {
 export type { ActionRunner, DeprecationView, RowAction } from './statusShape'
 
 /**
- * The narrowest a grid column ever gets, in px — the `minmax` floor below, as a number.
+ * How long a value may be and still share a row with its neighbours.
  *
- * On a 1920 px screen the panel is ~1650 px wide, so this floor yields two columns of about
- * 825 px. That is the width a block has to fit into to earn a place beside a neighbour.
+ * Not a style choice: past this, the label plus the value stops fitting a track, and the value
+ * wraps into a narrow column — the cell-tower shape this surface removed from tables and must not
+ * reintroduce in key grids.
  */
-const HALF_WIDTH_PX = 825
-
-/**
- * What the table spends before a single data character is drawn, in characters.
- *
- * A selection checkbox, a row-expander caret, and the panel's own padding — about 92 px, which
- * is 11 characters here. Left out of the first estimate, and it is exactly the margin that
- * decided the case that clipped: 96 characters of table against a 98-character budget looked
- * like a fit, and was not, because 11 characters of it were never available.
- */
-const TABLE_CHROME_CHARS = 11
-
-/**
- * Does this block need the whole row, or will it sit happily beside a neighbour?
- *
- * Answered from the SHAPE of the data, never from what a field is called — a renderer that
- * learns which key means "the big one" stops working for the next project's contract.
- *
- * The first version of this counted top-level keys, and got it wrong in the direction that
- * clips: a `review` object holding four keys is ONE key and FOUR columns, so a 7-column table
- * was placed in a half-width slot and lost `review.criti…` off its right edge. `tableCharWidth`
- * flattens first and measures what the table will actually draw, header included.
- */
-function needsFullWidth(v: unknown): boolean {
-  if (!Array.isArray(v)) return false
-  const rows = v.filter(isPlainObject)
-  if (rows.length === 0) return false
-  return tableCharWidth(rows) > charBudgetFor(HALF_WIDTH_PX) - TABLE_CHROME_CHARS
-}
+const SHORT_VALUE_CHARS = 24
 
 function Scalar({ value }: { value: unknown }) {
   if (value === null || value === undefined) return <Unknown />
@@ -301,33 +272,51 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
   // rendered value short, and enough of them that columns beat a stack. A block with one long
   // value stays stacked, because wrapping it into a narrow column is the cell-tower defect this
   // surface spent the day removing.
-  const compact =
-    visible.length >= 6 &&
-    visible.every(k => {
-      const v = obj[k]
-      const scalar = v === null || v === undefined || typeof v !== 'object'
-      // The CAVEAT counts toward the row's width too, and leaving it out cost a regression the
-      // first time this shipped: a block of six short numbers went compact, and the sentence
-      // the project attached to each of them wrapped into a 200px column seven lines deep. The
-      // block was more readable stacked. A field is short when everything rendered on its line
-      // is short — the value AND whatever travels beside it.
-      const caveat = caveats.perField.get(k)
-      const caveatShort = !caveat || String(caveat).length <= 24
-      return scalar && String(v ?? '').length <= 24 && caveatShort
-    })
+  //
+  // The earlier version required EVERY field to be short and stacked the whole block otherwise —
+  // so one long `description` among nine short fields forced all ten into a 200px column fourteen
+  // rows deep. A single field decided the layout of its neighbours.
+  //
+  // Now each field decides only for itself: short ones flow into tracks, a long one takes a full
+  // row. The project's ORDER is preserved exactly — no `dense` packing, because backfilling a gap
+  // with a later field would silently reorder someone else's record, and this renderer promotes
+  // nothing.
+  const isWide = (k: string) => {
+    const v = obj[k]
+    if (isBlockValue(v)) return true
+    // The CAVEAT counts toward the row's width too, and leaving it out cost a regression the
+    // first time this shipped: a block of six short numbers went compact, and the sentence
+    // the project attached to each of them wrapped into a 200px column seven lines deep. A
+    // field is short when everything rendered on its line is short — the value AND whatever
+    // travels beside it.
+    const caveat = caveats.perField.get(k)
+    if (caveat && String(caveat).length > SHORT_VALUE_CHARS) return true
+    return String(v ?? '').length > SHORT_VALUE_CHARS
+  }
 
   const inline = visible.filter(k => !isBlockValue(obj[k]))
-  const blocks = compact ? [] : visible.filter(k => isBlockValue(obj[k]))
+  const blocks = visible.filter(k => isBlockValue(obj[k]))
+  // Tracks are worth having only once several fields can share a row.
+  const compact = inline.filter(k => !isWide(k)).length >= 2
 
   return (
     <div className="space-y-1">
       <dl className={
         compact
-          ? 'grid gap-x-8 gap-y-1 text-sm [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]'
+          // `auto-fill`, not `auto-fit`: auto-fit collapses the empty tracks and stretches the
+          // survivors, so a two-field block spreads each pair across half a 1650px panel and puts
+          // 600px of nothing between a label and its value. auto-fill keeps the track width, so
+          // pairs stay the size they need and simply leave the rest of the row unused.
+          ? 'grid gap-x-8 gap-y-1 text-sm [grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]'
           : 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm'
       }>
-        {(compact ? visible : inline).map(k => (
-          <div key={k} className={compact ? 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4' : 'contents'}>
+        {inline.map(k => (
+          <div
+            key={k}
+            className={compact
+              ? `grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4${isWide(k) ? ' col-span-full' : ''}`
+              : 'contents'}
+          >
             <dt className="text-fg-faint truncate" title={k}>
               {view.names.has(k)
                 ? <DeprecatedLabel name={k} />
@@ -353,11 +342,9 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
         is squeezed below its floor. Only rendered when there is more than one block — a grid of
         one is a stack with extra machinery.
       */}
-      <div className={blocks.length > 1
-        ? 'grid gap-x-8 gap-y-1 items-start [grid-template-columns:repeat(auto-fit,minmax(38rem,1fr))]'
-        : undefined}>
+      <div>
         {blocks.map(k => (
-          <section key={k} className={`space-y-1 pt-1${needsFullWidth(obj[k]) ? ' col-span-full' : ''}`}>
+          <section key={k} className="space-y-1 pt-1">
             <div className="text-sm text-fg-faint">{k}</div>
             <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
             {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
