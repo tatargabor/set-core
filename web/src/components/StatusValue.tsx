@@ -189,9 +189,9 @@ function SectionedGrid(
           <StatusValue value={obj[decl.key]} depth={depth + 1} batch={batchActionFor(obj, decl.key)} />
         </section>
       ))}
-      {visible.length > 0 && (
+      {visible.filter(k => !isBlockValue(obj[k])).length > 0 && (
         <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm pt-1">
-          {visible.map(k => (
+          {visible.filter(k => !isBlockValue(obj[k])).map(k => (
             <div key={k} className="contents">
               <dt className="text-fg-faint truncate" title={k}>{k}</dt>
               <dd className="min-w-0">
@@ -202,10 +202,34 @@ function SectionedGrid(
           ))}
         </dl>
       )}
+      {/* A tall value takes the full width with its name above it — see `isBlockValue`. */}
+      {visible.filter(k => isBlockValue(obj[k])).map(k => (
+        <section key={k} className="space-y-1 pt-1">
+          <div className="text-sm text-fg-faint">{k}</div>
+          <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+          {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+        </section>
+      ))}
       <HiddenNote count={hiddenCount} />
       <RowActions value={obj[ACTIONS_KEY]} />
     </div>
   )
+}
+
+/**
+ * Is this value tall enough that a label beside it becomes a full-height gutter?
+ *
+ * The grid these labels live in shares one column across every row, so its width is set by the
+ * widest label and its HEIGHT is the sum of every value. Put a 174-row table in one of those
+ * rows and the word `bugs` reserves 150px for the whole length of the table — measured on a
+ * live screen, a strip of nothing running the entire page beside the only content on it.
+ *
+ * So a label sits BESIDE a value it is comparable in size to, and ABOVE one it is not. The test
+ * is the value's shape, not its key: anything that renders as a table or a block of its own.
+ */
+function isBlockValue(v: unknown): boolean {
+  if (Array.isArray(v)) return v.length > 0
+  return isPlainObject(v)
 }
 
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
@@ -242,6 +266,9 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
       return scalar && String(v ?? '').length <= 24 && caveatShort
     })
 
+  const inline = visible.filter(k => !isBlockValue(obj[k]))
+  const blocks = compact ? [] : visible.filter(k => isBlockValue(obj[k]))
+
   return (
     <div className="space-y-1">
       <dl className={
@@ -249,7 +276,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
           ? 'grid gap-x-8 gap-y-1 text-sm [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]'
           : 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1 text-sm'
       }>
-        {visible.map(k => (
+        {(compact ? visible : inline).map(k => (
           <div key={k} className={compact ? 'grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4' : 'contents'}>
             <dt className="text-fg-faint truncate" title={k}>
               {view.names.has(k)
@@ -263,6 +290,13 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
           </div>
         ))}
       </dl>
+      {blocks.map(k => (
+        <section key={k} className="space-y-1 pt-1">
+          <div className="text-sm text-fg-faint">{k}</div>
+          <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+          {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+        </section>
+      ))}
       <HiddenNote count={hiddenCount} />
       <RowActions value={obj[ACTIONS_KEY]} />
     </div>

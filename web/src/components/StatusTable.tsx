@@ -439,6 +439,19 @@ export function StatusTable(
     [rows, cols],
   )
   const expandable = controls || displaces
+
+  /**
+   * A table with one column is a LIST, and a list of short names should flow into columns.
+   *
+   * Left as a table it renders a ~390px strip with 1500px of nothing beside it — which the
+   * sizing fix made honest but did not make useful. Flowing the rows fills the width with
+   * content instead of with an explanation of why there is none.
+   *
+   * Only when there are enough rows to be worth it: three or four names in three columns is a
+   * layout puzzle, not a list. Sorting, filtering and the row cap all still happen first, so
+   * the flow is applied to whatever survived them and nothing about what is withheld changes.
+   */
+  const flowsAsList = cols.length === 1 && rows.length >= 12
   const facets = useMemo(
     () => (controls ? facetColumns(rows, cols) : new Map<string, Map<string, number>>()),
     [controls, rows, cols],
@@ -740,7 +753,7 @@ export function StatusTable(
           // NOT `min-w-full`. The first attempt paired `w-auto` with it and the change did
           // nothing: a minimum of 100% forces the container width back on, so `w-auto` never
           // applied. A hedge added for safety cancelled the fix it was hedging.
-          className="w-auto text-sm tabular-nums"
+          className={`text-sm tabular-nums ${flowsAsList ? 'w-full block [&_thead]:block [&_thead_tr]:flex [&_tbody]:grid [&_tbody]:gap-x-6 [&_tbody]:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))] [&_tbody_tr]:flex [&_tbody_tr]:items-center' : 'w-auto'}`}
         >
           <thead>
             <tr className="bg-surface-panel text-fg-faint border-b border-surface-line">
