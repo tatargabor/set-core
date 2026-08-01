@@ -57,3 +57,54 @@ makes its neighbours unreadable.
 #### Scenario: A displaced value carrying a failure is marked
 - **WHEN** the displaced value is in a failing state
 - **THEN** the collapsed row carries the failure marker, not merely a "more" affordance
+
+### Requirement: A panel spends its width on content, not on nothing
+
+Top-level blocks of an answer SHALL be laid out so that a block narrower than the panel does not
+reserve the panel's full width. The layout SHALL be driven by available width rather than by a
+fixed column count, so the same code produces two columns on a wide display and one on a narrow
+one without a breakpoint anyone maintains.
+
+Reported twice by the user against two different tabs. Measured at 1920×1080: a seven-column
+table drew at roughly 700 px with about 950 px of panel empty beside it, while the next block
+waited a screenful below. Neither block was wrong; the page was spending its width on nothing.
+
+#### Scenario: Two narrow blocks share a row
+- **WHEN** an answer carries two blocks that each fit within half the panel
+- **THEN** they are rendered side by side, and no band of the panel is left empty beside them
+
+#### Scenario: A block too wide for half the panel keeps the whole row
+- **WHEN** a block would not fit within half the panel
+- **THEN** it is given the full width rather than being placed in a half-width slot
+
+#### Scenario: The fit is judged by the columns actually drawn
+- **WHEN** a table's rows carry a nested object that the renderer spreads into several columns
+- **THEN** the fit decision counts those columns, not the single key they arrived under
+
+The last scenario is stated because the first implementation failed it, in the direction that
+loses data: a four-key nested object counted as one column, a seven-column table was placed in a
+half-width slot, and its final column was clipped off the right edge where nothing announced it.
+
+### Requirement: A table wider than its panel states what it is not showing
+
+Where a table still exceeds the width available to it, the surface SHALL state how many of its
+columns are off-screen, on the line where the row count is stated. The figure SHALL be counted
+from the rendered layout and SHALL be re-counted when the table is scrolled or resized.
+
+This is the governing compacting rule applied sideways: a scrollable box that says nothing looks
+identical to a table that fits, so a screen missing a column reads as complete. An edge gradient
+may mark the boundary, but the gradient is an affordance and not the statement — the surface does
+not report a hidden quantity it has not counted.
+
+#### Scenario: The count is stated where the reader is standing
+- **WHEN** a table is wider than the panel that holds it
+- **THEN** the row-count line also states how many columns are off to the right
+
+#### Scenario: The claim is retired once it is no longer true
+- **WHEN** the reader scrolls that table to its right-hand end
+- **THEN** the statement disappears rather than remaining as a stale count
+
+#### Scenario: A table that fits makes no such claim
+- **WHEN** a table fits within its panel
+- **THEN** no off-screen column count is shown, because announcing hidden content that is not
+  hidden is the same defect inverted

@@ -76,3 +76,19 @@
 - [ ] AC-19: WHEN a cell's value is a paragraph of prose THEN the row's height stays comparable to its neighbours and the full text is reachable from that row [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced, scenario: a-prose-value-does-not-build-a-tower]
 - [ ] AC-20: WHEN a row holds a displaced value THEN the collapsed row carries a marker saying so without being expanded [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced, scenario: the-displacement-is-visible-before-expanding]
 - [ ] AC-21: WHEN the displaced value is in a failing state THEN the collapsed row carries the failure marker, not merely a "more" affordance [REQ: a-value-too-large-for-its-cell-moves-and-the-move-is-announced, scenario: a-displaced-value-carrying-a-failure-is-marked]
+
+## Width allocation (added 2026-08-01, after a full-surface sweep)
+
+- [x] Auto-fit grid for top-level blocks, with a width-based full-row opt-out
+- [x] `tableCharWidth` measures the flattened columns, not the top-level keys
+- [x] Budget subtracts the table's own chrome (checkbox, expander, padding)
+- [x] Unit test holding the refuted approach (`a bare count of top-level keys would NOT have caught it`)
+- [x] Off-screen column count on the row-count line, recounted on scroll and resize
+- [x] Browser regression test, mutation-proven
+- [x] `ResizeObserver` stub in the unit setup rather than a guard in the component
+- [x] Prose capped at an 80ch measure, by length and never by field name
+- [x] Memory page: width cap removed, auto-fit grid (952 px unused → 24 px)
+- [x] Layout probe no longer scores wrapped prose as hidden content
+- [ ] Column priority for a table that still cannot fit — which columns a reader sees first,
+      and which move into the row detail. Left open: it is a decision about someone's reading
+      order, and the surface is now honest about the gap rather than silent, so it can wait.
