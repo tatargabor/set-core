@@ -36,6 +36,7 @@ import StatusValue, {
 import {
   CaveatProvider,
   FollowProvider,
+  RoleProvider,
   presentFollowTargets,
   CaveatNote,
   presentCaveats,
@@ -174,9 +175,11 @@ function Answer({
             names: followNames, present: followPresent, command: name, project,
             open: followOpen, setOpen: setFollowOpen,
           }}>
-            <ActionProvider value={onAction}>
-              <StatusValue value={result.data} />
-            </ActionProvider>
+            <RoleProvider value={result.display ?? {}}>
+              <ActionProvider value={onAction}>
+                <StatusValue value={result.data} />
+              </ActionProvider>
+            </RoleProvider>
             {followOpen && followPath && (
               <FollowPanel
                 project={project} command={name} path={followPath} field={followOpen}

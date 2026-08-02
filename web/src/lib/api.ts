@@ -1322,6 +1322,18 @@ export interface StatusCommandResult {
    * domain. Absent means nothing is followable, which is every project until it says otherwise.
    */
   follow?: string[]
+  /**
+   * Field name → what that field IS: `id`, `path`, `duration-seconds`, `count`, or a paired
+   * `{progressOf}` / `{limitOf}`. What it looks like stays entirely the framework's decision —
+   * an appearance crossing this contract would freeze one afternoon's rendering into every
+   * producer's output.
+   *
+   * Deliberately typed as `unknown` values rather than a role union. The vocabulary is closed on
+   * the surface's side, where an unknown role is dropped silently; making it closed in the
+   * TYPE would mean a producer shipping a new role produces a parse-shaped failure here instead
+   * of the value simply rendering the way it does today.
+   */
+  display?: Record<string, unknown>
 }
 
 export interface ProjectStatusResponse {

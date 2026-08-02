@@ -384,7 +384,7 @@ class StatusResult:
     """One answer, or one visible gap. Never a guess.
 
     **Every field, by name:** `command`, `ok`, `data`, `error`, `error_class`,
-    `contract_version`, `generated_at`, `deprecated`, `caveats`, `follow`.
+    `contract_version`, `generated_at`, `deprecated`, `caveats`, `follow`, `display`.
 
     The enumeration is here for the same reason as `StatusConfig`'s, and the reason is not
     tidiness: a caller who cannot read the name off the documentation guesses it, and
@@ -421,6 +421,16 @@ class StatusResult:
     #: learn that a field called `log` holds a log. The next project calls it `trace`, and a
     #: framework that recognises one project's word has taken on that project's domain.
     follow: tuple = ()
+
+    #: Field name → what that field IS: `id`, `path`, `duration-seconds`, `count`, or one of the
+    #: paired forms `{"progressOf": <field>}` / `{"limitOf": <field>}`. See `_display_roles`.
+    #:
+    #: The fourth key on this envelope built on the same principle, and the one where the
+    #: principle is under the most pressure. A role says what the data is; it never says how it
+    #: looks. `"pid": "id"` — not `"pid": "no-thousands-separator"`, not `"bold"`, not `"%.2f"`.
+    #: The moment appearance crosses this line, one afternoon's rendering is frozen into every
+    #: producer's output and improving the surface needs all of them to re-ship.
+    display: dict = field(default_factory=dict)
 
     @classmethod
     def failure(cls, command: str, error_class: str, error: str) -> "StatusResult":
@@ -553,6 +563,7 @@ def parse_envelope(command: str, raw: str) -> StatusResult:
         deprecated=_deprecated_fields(payload.get("deprecated")),
         caveats=_caveats(payload.get("caveats")),
         follow=_follow_fields(payload.get("follow")),
+        display=_display_roles(payload.get("display")),
     )
 
 
@@ -616,6 +627,104 @@ def follow_targets(data: Any, follow: tuple) -> Dict[str, str]:
 
     walk(data)
     return found
+
+
+#: The roles a field may be declared to have. CLOSED, and closed on purpose.
+#:
+#: `display` is the key style would leak through — `"bold"`, `"red"`, `"%.2f"` are all one
+#: reasonable-sounding request away — and a rule only holds if something enforces it. Each name here
+#: says what the data IS; none of them says how it looks. What that buys is the freedom to render an
+#: identifier differently next month without a single producer re-shipping.
+SIMPLE_ROLES = frozenset({"id", "path", "duration-seconds", "count"})
+
+#: Roles that describe ONE fact carried by TWO fields, declared as `{<form>: "<partner field>"}`.
+PAIRED_ROLES = frozenset({"progressOf", "limitOf"})
+
+
+def _display_roles(raw: Any) -> dict:
+    """Field name → role, as the project declared it. Read, never inferred.
+
+    The framework cannot know that `pid` is an identifier and `turns` is a quantity. It cannot even
+    know it from the value: both are integers, and the renderer's one available rule — every integer
+    is an amount — is what produced `3,218,705` for a process id on a live screen. `pid` is
+    `processId` at the next project, and somewhere a field called `pid` really is a count.
+
+    **An unrecognised role is dropped silently, and the fail direction is the whole reason.** A
+    refusal would mean a producer shipping a new role blanks a working surface — the framework
+    dictating someone else's release order. Dropping means the value renders exactly as it does
+    today, and starts rendering better whenever the framework learns the role. Extension must not be
+    able to break rendering.
+
+    **A malformed key costs the decoration, never the answer.** The command succeeded and its data
+    is right; a broken `display` must not turn a good measurement into a gap.
+    """
+    if not isinstance(raw, dict):
+        if raw is not None:
+            # Shape, never content — the rule the whole module follows, and it matters here
+            # because a role map is keyed by the producer's own vocabulary.
+            logger.warning("status contract: 'display' is %s, not an object — ignored",
+                           type(raw).__name__)
+        return {}
+
+    roles: dict = {}
+    for name, role in raw.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if isinstance(role, str) and role in SIMPLE_ROLES:
+            roles[name.strip()] = role
+            continue
+        if isinstance(role, dict) and len(role) == 1:
+            (form, partner), = role.items()
+            if form in PAIRED_ROLES and isinstance(partner, str) and partner.strip():
+                roles[name.strip()] = {form: partner.strip()}
+                continue
+        # Unknown, or a paired form without a usable partner name. Inert by design.
+    return roles
+
+
+def field_roles(data: Any, display: dict) -> Dict[str, Any]:
+    """Which declared roles this answer's DATA actually backs, keyed by field name.
+
+    Presence is counted from the data. A declared name the answer does not carry produces nothing
+    at all — not a role, not a placeholder, and not a note that something is missing. That last one
+    is the direction that has cost real time on this surface twice: a declaration is not data, and a
+    surface reporting on declared-but-absent fields announces an absence it never measured.
+
+    **A paired role resolves its partner ONLY among the siblings of the object carrying the field**,
+    and this is the one place the any-depth rule is deliberately suspended. Searching the whole
+    answer would find *a* `tasksTotal` belonging to a different run or section, and the bar drawn
+    from it is not merely wrong — it is plausible, which is worse. A missing or non-numeric partner
+    drops the role, because half a pair rendered as a whole is a confident invention.
+    """
+    if not display:
+        return {}
+
+    resolved: Dict[str, Any] = {}
+
+    def walk(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                walk(item)
+            return
+        if not isinstance(value, dict):
+            return
+        for key, child in value.items():
+            role = display.get(key)
+            if role is not None and key not in resolved:
+                if isinstance(role, str):
+                    resolved[key] = role
+                else:
+                    (form, partner), = role.items()
+                    # Sibling of THIS object. `value`, not `data`.
+                    mate = value.get(partner)
+                    if isinstance(mate, bool) or not isinstance(mate, (int, float)):
+                        pass  # no partner, no pair — the field renders as an ordinary value
+                    else:
+                        resolved[key] = {form: partner}
+            walk(child)
+
+    walk(data)
+    return resolved
 
 
 def _deprecated_fields(raw: Any) -> tuple:
@@ -959,6 +1068,7 @@ class StatusSnapshot:
                     "deprecated": list(r.deprecated),
                     "caveats": dict(r.caveats),
                     "follow": list(r.follow),
+                    "display": dict(r.display),
                 }
                 for name, r in self.results.items()
             },

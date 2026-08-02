@@ -1799,6 +1799,74 @@ nothing to trigger by accident.
 
 ---
 
+## `display` — the project declares what a field IS, the framework decides how it looks (2026-08-02)
+
+**Measured before any code, on the live producer's opening answer:** `pid: 3218705` rendered as
+`3,218,705`, `elapsedSec: 1151` rendered as raw seconds, and `tasksDone: 6` / `tasksTotal: 7` sat
+fourteen fields apart as two unrelated numbers. The renderer has exactly one rule for numbers —
+every integer is a quantity — and no way to know better. **The field NAME cannot supply it:** `pid`
+is `processId` at the next project, and somewhere a field called `pid` really is a count.
+
+The producer had already shipped the answer (their commit at 15:26). The framework did not carry
+the key at all — `display: NOT CARRIED` on all eleven declared commands, because the reader dropped
+it before the API saw it. So this round is the fourth envelope key, and the eleventh time an
+extension cost the framework a declaration rather than domain knowledge.
+
+**The envelope key.** `display: {<bare field name>: <role>}`, matched at any depth — the same
+selector `caveats` and `follow` use, for the same reason: one selector rule per envelope, and a
+dotted key matches nothing SILENTLY, which is the shape a producer reaches for first.
+
+**The vocabulary is CLOSED and both sides hold it in a test:** `id` · `path` · `duration-seconds` ·
+`count`, plus `{progressOf: <field>}` and `{limitOf: <field>}`. Closed because `display` is
+precisely the key style leaks through — `"bold"`, `"red"`, `"%.2f"` are each one reasonable-sounding
+request away, and once appearance crosses the contract, one afternoon's rendering is frozen into
+every producer's output. Verified on the probe: a declared `"bold"` is dropped and the value renders
+as an ordinary number.
+
+**An unknown role is ignored, never refused**, and the fail direction is the whole argument. A
+refusal would mean a producer shipping a new role blanks a working surface — the framework
+dictating someone else's release order.
+
+**A paired role resolves its partner ONLY among the sibling keys of the object carrying the field.**
+This is the one place the any-depth rule is deliberately suspended, and the reason is the dangerous
+direction: a search across the answer would find *a* `tasksTotal` belonging to a different run, and
+the bar drawn from it is not merely wrong but **plausible**. A missing or non-numeric partner drops
+the role and the value renders as a plain number.
+
+**What was measured, not assumed:**
+- `display` reaches the API for every command that declares it — the same check that reported
+  `NOT CARRIED` now prints the roles.
+- Four mutations of the resolver, all CAUGHT: the partner searched answer-wide, the bool guard
+  removed, the closed vocabulary opened, and presence counted from the DECLARATION instead of the
+  data. `PYTHONDONTWRITEBYTECODE=1` with `__pycache__` cleared between runs, and the restore
+  verified by re-reading the file rather than assumed.
+- Import-isolated baseline: **0 leaks**, and the failure sets differ by exactly one entry — the
+  contract-doc gate demanding this section, which is the gate working.
+- **Looked at.** A probe project with invented values renders: an identifier ungrouped, `19m 11s`
+  for 1151 seconds, a green bar for `6 / 7` with its caveat still beneath it, a red bar at 91% of a
+  declared ceiling, a plain `3` where the partner is absent, and bars inside table cells. Structural
+  counts would have said "rendered" for all of it.
+
+**The rule that outranks the bar:** it accompanies the numbers and never replaces them. A bar at 6/7
+looks like progress on a run that has not moved in an hour — the same rule that governs every other
+compaction on this surface.
+
+### The finding that came back with it — a declaration computed from the data stops being a contract
+
+Measured 16:06 by running the producer's command directly while idle: `follow` was **absent** from
+the envelope entirely, and `display` had shrunk from eleven entries to five — exactly the fields
+that survive between runs. Both are computed from the data present in that answer.
+
+**Stated precisely, because overstating it would be the same error in the other direction:** within
+one answer this is self-consistent, and today it renders nothing wrongly. The loss is that the
+declaration stops being a contract — the framework can only ever learn what is already visible, so
+"this project does not do this" and "it is not doing it right now" become the same answer, and that
+distinction is what a status screen exists to draw. It also means a surface gate that records the
+idle shape passes the running shape silently, which is the same blindness the producer found in
+their own command list the same afternoon. Asked on the channel (S#180, S#181); one line each side.
+
+---
+
 ## Keeping the two sides aimed at the same thing
 
 The user asked for this explicitly, and it is not redundant with talking a lot. Divergence

@@ -692,3 +692,149 @@ export function FollowControl({ field }: { field: string }) {
     </button>
   )
 }
+
+/* ------------------------------------------------------------------------------------------
+ * Declared field roles — what a value IS, so the framework can decide how it looks.
+ *
+ * The fourth declaration on this envelope, and the one where the domain line is under the most
+ * pressure. A role says what the data is; it never says how it looks. `"pid": "id"` — not
+ * `"no-thousands-separator"`, not `"bold"`. The moment appearance crosses the contract, one
+ * afternoon's rendering is frozen into every producer's output.
+ *
+ * Why it is needed at all: with nothing declared, this renderer has exactly one rule for numbers
+ * — every integer is a quantity — and it applied it to a process id, producing `3,218,705` on a
+ * live screen. The name cannot save it. `pid` is `processId` at the next project, and somewhere a
+ * field called `pid` really is a count.
+ * ------------------------------------------------------------------------------------------ */
+
+/** A role resolved against real data — what the renderer actually has to work with. */
+export type ResolvedRole =
+  | { kind: 'id' | 'path' | 'duration-seconds' | 'count' }
+  | { kind: 'progress' | 'limit'; partner: string; partnerValue: number }
+
+/** The declaration for one answer, exactly as the project sent it. Never interpreted here. */
+const RoleCtx = createContext<Record<string, unknown>>({})
+export const RoleProvider = RoleCtx.Provider
+export function useRoles(): Record<string, unknown> {
+  return useContext(RoleCtx)
+}
+
+/**
+ * The role for one field of one object, or null.
+ *
+ * `owner` is not a convenience — it is the rule. A paired role resolves its partner ONLY among
+ * the sibling keys of the object carrying the field, and this is the one place the any-depth
+ * selector is deliberately suspended. A search across the answer would find *a* `tasksTotal`
+ * belonging to a different run, and the bar drawn from it is not merely wrong but plausible.
+ *
+ * An unrecognised role returns null, silently. A producer shipping a new role must never blank a
+ * working surface — the value simply renders the way it does today.
+ */
+export function resolveRole(
+  display: Record<string, unknown>,
+  owner: Record<string, unknown> | null,
+  key: string,
+): ResolvedRole | null {
+  const declared = display?.[key]
+  if (typeof declared === 'string') {
+    if (declared === 'id' || declared === 'path' || declared === 'count') return { kind: declared }
+    if (declared === 'duration-seconds') return { kind: 'duration-seconds' }
+    return null
+  }
+  if (!isPlainObject(declared) || !owner) return null
+  const form = 'progressOf' in declared ? 'progress' : 'limitOf' in declared ? 'limit' : null
+  if (!form) return null
+  const partner = declared[form === 'progress' ? 'progressOf' : 'limitOf']
+  if (typeof partner !== 'string' || !partner) return null
+  const mate = owner[partner]
+  // `typeof true === 'boolean'`, so a bool cannot slip through as a number here the way it can in
+  // a language where booleans are integers. Zero IS a partner: a run with no tasks is a real
+  // state, and a truthiness check would silently drop its role.
+  if (typeof mate !== 'number' || !Number.isFinite(mate)) return null
+  return { kind: form, partner, partnerValue: mate }
+}
+
+/**
+ * Seconds in the form a person reads. The role fixes the unit; the shape is ours to choose.
+ *
+ * Deliberately not a library and not a locale format: this is one line of output on a dense
+ * screen, and `19m 11s` is both shorter and less ambiguous than "19 minutes ago"-style prose for
+ * a duration that is not an age.
+ */
+export function humanDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return String(seconds)
+  const s = Math.round(seconds)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${s % 60}s`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ${m % 60}m`
+  return `${Math.floor(h / 24)}d ${h % 24}h`
+}
+
+/**
+ * A progress bar drawn from a declared pair — WITH the numbers, never instead of them.
+ *
+ * The rule that governs every compaction on this surface governs this one: a tidier screen may
+ * not report calm it has not verified. A bar at 6/7 looks like steady progress on a run that has
+ * not moved in an hour, so it may summarise the numbers and may not replace them, and any caveat
+ * attached to either field stays exactly where it was.
+ *
+ * The denominator comes from the sibling the project named. It is never inferred, never 100, and
+ * never the largest value around — a bar with an invented denominator is a confident lie.
+ */
+export function ProgressValue(
+  { value, partnerValue, partner }: { value: number; partnerValue: number; partner: string },
+) {
+  const pct = partnerValue > 0
+    ? Math.max(0, Math.min(100, (value / partnerValue) * 100))
+    : 0
+  const complete = partnerValue > 0 && value >= partnerValue
+  return (
+    <span className="inline-flex items-center gap-2 align-middle">
+      <span className="tabular-nums text-fg-loud">
+        {value}<span className="text-fg-dim"> / </span>{partnerValue}
+      </span>
+      <span
+        className="inline-block w-24 h-1.5 rounded-full bg-surface-raised overflow-hidden align-middle"
+        role="img"
+        aria-label={`${value} of ${partnerValue} ${partner}`}
+        title={`${value} / ${partnerValue} (${partner})`}
+      >
+        <span
+          className={`block h-full rounded-full ${complete ? 'bg-status-done' : 'bg-status-active'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+    </span>
+  )
+}
+
+/**
+ * A value against a declared ceiling. Same rule as the bar: it accompanies the numbers.
+ *
+ * The colour is the framework's decision, not the project's — the contract said only that these
+ * two fields are a used/limit pair. Where the thresholds sit can therefore change here without a
+ * single producer re-shipping, which is exactly what keeping appearance out of the contract buys.
+ */
+export function LimitValue(
+  { value, partnerValue, partner }: { value: number; partnerValue: number; partner: string },
+) {
+  const pct = partnerValue > 0 ? (value / partnerValue) * 100 : 0
+  const tone = pct >= 90 ? 'bg-status-fail' : pct >= 75 ? 'bg-status-warn' : 'bg-status-active'
+  return (
+    <span className="inline-flex items-center gap-2 align-middle">
+      <span className="tabular-nums text-fg-loud">
+        {value.toLocaleString()}<span className="text-fg-dim"> / </span>{partnerValue.toLocaleString()}
+      </span>
+      <span
+        className="inline-block w-24 h-1.5 rounded-full bg-surface-raised overflow-hidden align-middle"
+        role="img"
+        aria-label={`${value} of a ${partnerValue} limit (${partner})`}
+        title={`${Math.round(pct)}% of ${partner}`}
+      >
+        <span className={`block h-full rounded-full ${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
+      </span>
+    </span>
+  )
+}

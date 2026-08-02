@@ -571,7 +571,15 @@ function BatchButton({ action, ids }: { action: BatchAction; ids: string[] }) {
 export function StatusTable(
   { rows: rawRows, renderValue, batch = null }: {
     rows: Row[]
-    renderValue: (value: unknown, depth: number) => ReactNode
+    /**
+     * `owner` and `key` are passed so a cell can resolve a DECLARED field role — a paired
+     * role looks its partner up among the row's own keys, and nowhere else. The renderer
+     * still learns no field name; it hands both to the resolver and uses what comes back.
+     */
+    renderValue: (
+      value: unknown, depth: number,
+      owner?: Record<string, unknown>, key?: string,
+    ) => ReactNode
     /** What the project declared may be done to a SELECTION of these rows, if anything. */
     batch?: BatchAction | null
   },
@@ -974,7 +982,7 @@ export function StatusTable(
                       // property of this value's place in this column, not of the value itself, and
                       // the same string in another column may belong to a different set.
                       const tint = isMissing(raw) ? undefined : tints.get(c)?.get(cellText(raw))
-                      const inner = isComplexCellValue(raw) ? <Displaced value={raw} /> : renderValue(raw, 2)
+                      const inner = isComplexCellValue(raw) ? <Displaced value={raw} /> : renderValue(raw, 2, row, c)
                       const content = !(c in row)
                         ? <Unknown />
                         : emphasisMatches(c, emphasised[i] ?? new Set())

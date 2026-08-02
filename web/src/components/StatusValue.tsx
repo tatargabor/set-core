@@ -46,6 +46,12 @@ import {
   FollowControl,
   useFollow,
   useDeprecation,
+  type ResolvedRole,
+  resolveRole,
+  useRoles,
+  humanDuration,
+  ProgressValue,
+  LimitValue,
 } from './statusShape'
 import { StatusTable } from './StatusTable'
 
@@ -55,6 +61,7 @@ export {
   DeprecationProvider,
   EMPHASIS_KEY,
   FollowProvider,
+  RoleProvider,
   presentFollowTargets,
   emphasisOf,
   isPlainObject,
@@ -72,7 +79,7 @@ export type { ActionRunner, DeprecationView, RowAction } from './statusShape'
  */
 const SHORT_VALUE_CHARS = 24
 
-function Scalar({ value }: { value: unknown }) {
+function Scalar({ value, role = null }: { value: unknown; role?: ResolvedRole | null }) {
   if (value === null || value === undefined) return <Unknown />
   if (typeof value === 'boolean') {
     return value
@@ -80,10 +87,38 @@ function Scalar({ value }: { value: unknown }) {
       : <span className="text-fg-faint">no</span>
   }
   if (typeof value === 'number') {
+    // The role decides WHAT this number is; everything below decides how it looks, and can be
+    // changed here without a single producer re-shipping. Undeclared keeps today's behaviour —
+    // every integer a quantity — which is right far more often than it is wrong.
+    if (role?.kind === 'progress') {
+      return <ProgressValue value={value} partnerValue={role.partnerValue} partner={role.partner} />
+    }
+    if (role?.kind === 'limit') {
+      return <LimitValue value={value} partnerValue={role.partnerValue} partner={role.partner} />
+    }
+    if (role?.kind === 'id') {
+      // An identifier is a NAME. Grouping its digits invites the eye to compare magnitudes that
+      // do not exist — the measured case was a process id rendered as `3,218,705`.
+      return <span className="text-fg-loud tabular-nums">{String(value)}</span>
+    }
+    if (role?.kind === 'duration-seconds') {
+      return (
+        <span className="text-fg-loud tabular-nums" title={`${value}s`}>
+          {humanDuration(value)}
+        </span>
+      )
+    }
     return <span className="text-fg-loud tabular-nums">{value.toLocaleString()}</span>
   }
   const text = String(value)
   if (text === '') return <Unknown label="(empty)" />
+  if (role?.kind === 'path') {
+    // A path is not prose, so it does not get the reading measure below — that wraps an
+    // inline-block around the value and misaligns it in a grid built for short scalars. It also
+    // has no spaces, so word wrapping cannot help it: `break-all` is what keeps a long path
+    // inside its container instead of pushing the column wider.
+    return <span className="text-fg-strong break-all">{text}</span>
+  }
   // Prose gets a measure. Measured on a 1920 px screen: a project's `note` and `description`
   // ran the full 1650 px of the panel — roughly 200 characters per line, which the eye cannot
   // track back to the next line's start. 80ch is the long end of the readable range and, in this
@@ -193,6 +228,7 @@ function SectionedGrid(
   { obj, depth, sections }: { obj: Record<string, unknown>; depth: number; sections: SectionDecl[] },
 ) {
   const view = useDeprecation()
+  const roles = useRoles()
   // The per-field signals moved into `FieldExtras`, which reads them itself.
   // A declared key that is absent draws NOTHING — not a placeholder, not a note. The
   // declaration says what to look for; the data decides what exists.
@@ -211,7 +247,7 @@ function SectionedGrid(
       {declared.map((decl, i) => (
         <section key={decl.key} className={`${sectionStyle(i).rule} pl-2 space-y-1`}>
           <SectionHeading decl={decl} index={i} actual={rowsIn(obj[decl.key])} />
-          <StatusValue value={obj[decl.key]} depth={depth + 1} batch={batchActionFor(obj, decl.key)} />
+          <StatusValue value={obj[decl.key]} depth={depth + 1} batch={batchActionFor(obj, decl.key)} role={resolveRole(roles, obj, decl.key)} />
         </section>
       ))}
       {visible.filter(k => !isBlockValue(obj[k])).length > 0 && (
@@ -220,7 +256,7 @@ function SectionedGrid(
             <div key={k} className="contents">
               <dt className="text-fg-faint truncate" title={k}>{k}</dt>
               <dd className="min-w-0">
-                <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+                <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} role={resolveRole(roles, obj, k)} />
                 <FieldExtras k={k} />
               </dd>
             </div>
@@ -231,7 +267,7 @@ function SectionedGrid(
       {visible.filter(k => isBlockValue(obj[k])).map(k => (
         <section key={k} className="space-y-1 pt-1">
           <div className="text-sm text-fg-faint">{k}</div>
-          <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+          <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} role={resolveRole(roles, obj, k)} />
           <FieldExtras k={k} />
         </section>
       ))}
@@ -282,6 +318,7 @@ function FieldExtras({ k }: { k: string }) {
 
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
   const view = useDeprecation()
+  const roles = useRoles()
   // Beside the value, inside the same <dd>, never a tooltip: the defect being fixed is that
   // the number travels and the caveat does not.
   const caveats = useCaveats()
@@ -350,7 +387,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
                 : emphasised.has(k) ? <Emphasis>{k}</Emphasis> : k}
             </dt>
             <dd className="min-w-0">
-              <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+              <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} role={resolveRole(roles, obj, k)} />
               <FieldExtras k={k} />
             </dd>
           </div>
@@ -373,7 +410,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
         {blocks.map(k => (
           <section key={k} className="space-y-1 pt-1">
             <div className="text-sm text-fg-faint">{k}</div>
-            <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
+            <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} role={resolveRole(roles, obj, k)} />
             <FieldExtras k={k} />
           </section>
         ))}
@@ -421,9 +458,15 @@ function ChipList({ values, depth }: { values: unknown[]; depth: number }) {
 }
 
 export function StatusValue(
-  { value, depth = 0, batch = null }: {
+  { value, depth = 0, batch = null, role = null }: {
     value: unknown
     depth?: number
+    /**
+     * What this value IS, as the project declared it — resolved by the caller, because only the
+     * caller knows the field's name AND the object it sits in. A paired role needs both: the
+     * partner is looked up among that object's own keys and nowhere else.
+     */
+    role?: ResolvedRole | null
     /**
      * A batch action the PARENT object declared for THIS list. Passed down rather than looked
      * up here, because by the time a list is being rendered its own key is gone — and the
@@ -433,6 +476,7 @@ export function StatusValue(
   },
 ) {
   const view = useDeprecation()
+  const tableRoles = useRoles()
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
@@ -446,7 +490,12 @@ export function StatusValue(
       return (
         <StatusTable
           rows={value as Record<string, unknown>[]}
-          renderValue={(v, d) => <StatusValue value={v} depth={d} />}
+          renderValue={(v, d, owner, key) => (
+            <StatusValue
+              value={v} depth={d}
+              role={owner && key ? resolveRole(tableRoles, owner, key) : null}
+            />
+          )}
           batch={batch}
         />
       )
@@ -489,7 +538,7 @@ export function StatusValue(
     )
   }
 
-  return <Scalar value={value} />
+  return <Scalar value={value} role={role} />
 }
 
 export default StatusValue
