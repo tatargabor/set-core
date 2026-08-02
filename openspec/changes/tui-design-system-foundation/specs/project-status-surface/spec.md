@@ -81,6 +81,19 @@ different tabs. Giving every block the whole width removes the arrangement that 
 - **WHEN** a table is as wide as, or wider than, the panel
 - **THEN** it renders as one table, because splitting it would make every group scroll sideways
 
+#### Scenario: A table that fits ONCE spends the leftover width on the column that wants it
+- **WHEN** a table renders as a single group and its natural width is narrower than the panel
+- **THEN** the width left over widens the cell clip, so the longest column shows more of its value
+  rather than the panel showing empty space beside a clipped sentence
+
+This is the case the requirement above did not reach: a table too wide to flow into two groups and
+too narrow to fill the panel used a FIXED clip and left the remainder empty. Measured on a two-row
+table in a 1150px panel — the table drew at ~940px, and the cell carrying an open human decision
+clipped at 42 characters with ~470px of panel unused beside it. The clip widens, not the table:
+`table-layout: auto` gives spare width to the column that asks for it, so the short columns stay
+short. Stretching the table itself would spread every column and rebuild the strip-of-nothing this
+requirement exists to remove.
+
 #### Scenario: One long field does not dictate the layout of its neighbours
 - **WHEN** a record holds several short fields and one long one
 - **THEN** the short fields flow into tracks and the long one takes a full row on its own

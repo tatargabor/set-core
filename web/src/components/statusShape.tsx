@@ -465,6 +465,12 @@ export function columnsOf(rows: Record<string, unknown>[]): string[] {
  */
 export const CELL_CLIP_CHARS = 42
 
+/** Monospace at 14px, measured once and shared — see `charBudgetFor` for what it is an estimate of. */
+export const PX_PER_CHAR = 8.4
+
+/** What a table spends before any data: header rule, row padding, the expander column. */
+export const TABLE_CHROME_PX = 92
+
 /**
  * How many characters of table this width can carry, roughly.
  *
@@ -473,7 +479,41 @@ export const CELL_CLIP_CHARS = 42
  * fact and reflowing, which flashes a wrong layout at the reader before correcting it.
  */
 export function charBudgetFor(px: number): number {
-  return Math.floor(px / 8.4)
+  return Math.floor(px / PX_PER_CHAR)
+}
+
+/** The width this table wants on screen, in pixels — the character estimate plus its chrome. */
+export function tablePxWidth(rows: Record<string, unknown>[]): number {
+  return tableCharWidth(rows) * PX_PER_CHAR + TABLE_CHROME_PX
+}
+
+/** The clip a cell falls back to when the table has no width to spare. */
+export const CELL_CLIP_PX = CELL_CLIP_CHARS * PX_PER_CHAR
+
+/**
+ * How wide a clipped cell may run: the fallback clip PLUS the width the table left unused.
+ *
+ * The surface's width requirement is that every block uses the width it was given. A table that
+ * flows into several groups already does. A table that fits ONCE did not, and the gap it left was
+ * paid for by its longest column: measured on a two-row table in a 1150px panel, the table drew at
+ * ~940px with ~470px of panel empty beside it while the cell carrying an open human decision
+ * clipped at 42 characters. The width was there and the only content anyone needed was the content
+ * being cut.
+ *
+ * Widening the CLIP rather than the table is deliberate. `table-layout: auto` hands spare width to
+ * the column that asks for it, so short columns stay short and only the long one grows; forcing
+ * the table to full width would stretch every column and rebuild the strip-of-nothing this file's
+ * own history warns about.
+ *
+ * `groups` is how many side-by-side copies the table renders. Anything but one means the width is
+ * already spoken for, and the fallback applies unchanged.
+ */
+export function cellClipPxFor(
+  rows: Record<string, unknown>[], availPx: number, groups: number,
+): number {
+  if (groups !== 1 || availPx <= 0) return CELL_CLIP_PX
+  const spare = availPx - tablePxWidth(rows)
+  return spare > 0 ? CELL_CLIP_PX + spare : CELL_CLIP_PX
 }
 
 /**

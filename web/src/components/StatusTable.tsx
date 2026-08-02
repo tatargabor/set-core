@@ -31,7 +31,8 @@ import {
   Emphasis,
   HiddenNote,
   CELL_CLIP_CHARS,
-  tableCharWidth,
+  cellClipPxFor,
+  tablePxWidth,
   META_KEYS,
   RowActions,
   Unknown,
@@ -72,9 +73,16 @@ const MAX_FLOW_GROUPS = 3
 const MIN_ROWS_PER_GROUP = 6
 /** The gutter between groups, matching `gap-x-6`. */
 const FLOW_GAP_PX = 24
-/** Monospace at 14px, and what the table spends before any data — see `charBudgetFor`. */
-const PX_PER_CHAR = 8.4
-const TABLE_CHROME_PX = 92
+/**
+ * The widths live in `statusShape` beside the estimator that uses them, and are imported rather
+ * than restated here.
+ *
+ * The cell's clip used to be a literal `max-w-[22rem]` in its class list — 352px, which agreed
+ * with `CELL_CLIP_CHARS × PX_PER_CHAR` on the day it was typed and was invisible to anybody
+ * reading the estimator. That is the second-copy drift this file already warns about where the
+ * flatten rules are explained; a Tailwind literal is the worst version of it, because no rename
+ * or type error can ever reach it.
+ */
 
 /** A column is categorical when it has few enough distinct values to be worth choosing between. */
 export const FACET_MAX_DISTINCT = 12
@@ -299,9 +307,9 @@ export function identityColumn(rows: Row[], cols: string[]): string | null {
 interface SortState { col: string; dir: 'asc' | 'desc' }
 
 /** The cell as it appears in a dense row: one line, clipped, with the whole value in reach. */
-function Cell({ children, text }: { children: ReactNode; text: string }) {
+function Cell({ children, text, clipPx }: { children: ReactNode; text: string; clipPx: number }) {
   return (
-    <div className="truncate max-w-[22rem]" title={text || undefined}>
+    <div className="truncate" style={{ maxWidth: clipPx }} title={text || undefined}>
       {children}
     </div>
   )
@@ -690,7 +698,7 @@ export function StatusTable(
   const chunks = useMemo(() => {
     const one = [visibleIndices]
     if (flowsAsList || visibleIndices.length < MIN_ROWS_TO_FLOW || availPx <= 0) return one
-    const naturalPx = tableCharWidth(rows) * PX_PER_CHAR + TABLE_CHROME_PX
+    const naturalPx = tablePxWidth(rows)
     if (naturalPx <= 0) return one
     const fits = Math.floor((availPx + FLOW_GAP_PX) / (naturalPx + FLOW_GAP_PX))
     const n = Math.min(MAX_FLOW_GROUPS, fits, Math.floor(visibleIndices.length / MIN_ROWS_PER_GROUP))
@@ -700,6 +708,18 @@ export function StatusTable(
       .filter(g => g.length > 0)
   }, [flowsAsList, visibleIndices, availPx, rows])
   const capped = indices.length - visibleIndices.length
+
+  /**
+   * How wide a clipped cell may run — see `cellClipPxFor`, which owns the rule and is tested.
+   *
+   * The expander is unaffected on purpose: `displaces` still asks at `CELL_CLIP_CHARS`, so a value
+   * that now happens to fit keeps its chevron. Erring toward offering the row costs a chevron;
+   * erring the other way strands text with no way to reach it.
+   */
+  const cellClipPx = useMemo(
+    () => cellClipPxFor(rows, availPx, chunks.length),
+    [rows, availPx, chunks.length],
+  )
 
   // ── Selection ───────────────────────────────────────────────────────────────────────────
   const idCol = useMemo(() => identityColumn(rows, cols), [rows, cols])
@@ -923,7 +943,9 @@ export function StatusTable(
                             c === idCol ? 'sticky left-0 z-[1] bg-surface-page' : ''
                           } ${tint ?? ''}`}
                         >
-                          {expandable ? <Cell text={cellText(row[c])}>{content}</Cell> : content}
+                          {expandable
+                            ? <Cell text={cellText(row[c])} clipPx={cellClipPx}>{content}</Cell>
+                            : content}
                         </td>
                       )
                     })}
