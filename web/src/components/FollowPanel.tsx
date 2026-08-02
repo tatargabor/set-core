@@ -30,6 +30,10 @@ interface Line {
   n: number
   text: string
   truncated?: boolean
+  /** Set when consecutive lines of this kind are interchangeable bookkeeping — see `repeat`. */
+  repeat?: string
+  /** How many identical bookkeeping records this row stands for. */
+  count?: number
 }
 
 /** Why the stream stopped, in the producer-independent words the endpoint uses. */
@@ -60,6 +64,9 @@ function ConsoleLine({ line }: { line: Line }) {
   return (
     <div className="whitespace-pre-wrap break-all text-fg-normal">
       {line.text}
+      {line.count && line.count > 1 && (
+        <span className="text-fg-ghost"> ×{line.count}</span>
+      )}
       {line.truncated && <span className="text-fg-ghost italic"> … line truncated</span>}
     </div>
   )
@@ -135,7 +142,7 @@ export function FollowPanel({
       })
 
       src.addEventListener('line', (e: MessageEvent) => {
-        let payload: { text?: string; truncated?: boolean }
+        let payload: { text?: string; truncated?: boolean; repeat?: string }
         try {
           payload = JSON.parse(e.data)
         } catch {
@@ -143,8 +150,27 @@ export function FollowPanel({
         }
         if (typeof payload.text !== 'string') return
         setLines(prev => {
+          /*
+            Consecutive bookkeeping records fold into ONE row with a count.
+        
+            Measured on a live transcript: 47 of 123 records were the same `system` bookkeeping
+            event, so a 500-line console spent most of itself on the least informative thing in
+            the file while the lines a reader came for scrolled past behind them.
+        
+            Folded, never dropped: the count is on screen, so nothing is silently removed. And
+            only the server marks a line foldable — anything the agent actually DID carries no
+            `repeat` key, however often it repeats, because two identical tool calls are two
+            events and a console that merges them has lost the second one.
+          */
+          const last = prev[prev.length - 1]
+          if (payload.repeat && last?.repeat === payload.repeat) {
+            return [...prev.slice(0, -1), {
+              ...last, text: payload.text as string, count: (last.count ?? 1) + 1,
+            }]
+          }
           const next = [...prev, {
-            n: counter.current++, text: payload.text as string, truncated: payload.truncated,
+            n: counter.current++, text: payload.text as string,
+            truncated: payload.truncated, repeat: payload.repeat,
           }]
           if (next.length > KEEP_LINES) {
             setDropped(d => d + (next.length - KEEP_LINES))

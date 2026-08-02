@@ -127,3 +127,63 @@ describe('a stream the server ended on purpose', () => {
     expect(FakeSource.made).toHaveLength(1)
   })
 })
+
+describe('bookkeeping records do not swamp the console', () => {
+  it('folds a RUN of identical bookkeeping lines into one row with a count', async () => {
+    // Measured on a live transcript: 47 of 123 records were the same `system` bookkeeping event,
+    // so a console kept 500 lines of which most said the same thing while the events a reader
+    // came for scrolled past behind them.
+    const { container } = panel()
+    const src = FakeSource.made[0]
+    src.listeners['open']?.[0]?.({})
+
+    for (const n of [50, 100, 150]) {
+      src.emit('line', { text: `system · thinking_tokens estimated_tokens=${n}`, repeat: 'system·thinking_tokens' })
+    }
+
+    await waitFor(() => expect(container.textContent).toContain('×3'))
+    // The LATEST numbers, not the first: a running total folded to its oldest value would be
+    // a wrong number wearing a count.
+    expect(container.textContent).toContain('estimated_tokens=150')
+    expect(container.textContent).not.toContain('estimated_tokens=50')
+  })
+
+  it('never folds a record the agent produced by DOING something', async () => {
+    // The load-bearing negative. Two identical tool calls are two events, and a console that
+    // merged them has lost the second one — a loss no count can undo.
+    const { container } = panel()
+    const src = FakeSource.made[0]
+    src.listeners['open']?.[0]?.({})
+
+    src.emit('line', { text: '15:25:50 assistant · Bash' })
+    src.emit('line', { text: '15:25:50 assistant · Bash' })
+
+    await waitFor(() => expect(container.querySelectorAll('.break-all')).toHaveLength(2))
+    expect(container.textContent).not.toContain('×2')
+  })
+
+  it('stops folding when a DIFFERENT kind arrives between two of the same', async () => {
+    // Folding across an intervening event would claim the run was uninterrupted when it was not.
+    const { container } = panel()
+    const src = FakeSource.made[0]
+    src.listeners['open']?.[0]?.({})
+
+    src.emit('line', { text: 'bookkeeping a', repeat: 'k' })
+    src.emit('line', { text: '15:25:50 assistant · Bash' })
+    src.emit('line', { text: 'bookkeeping b', repeat: 'k' })
+
+    await waitFor(() => expect(container.querySelectorAll('.break-all')).toHaveLength(3))
+    // `×2`, not a bare `×` — the panel's own close button is a `×`, so the broad pattern
+    // matched the thing doing the measuring. Three separate rows is the real assertion.
+    expect(container.textContent).not.toContain('×2')
+  })
+
+  it('counts every folded occurrence, so nothing is silently dropped', async () => {
+    const { container } = panel()
+    const src = FakeSource.made[0]
+    src.listeners['open']?.[0]?.({})
+    for (let i = 0; i < 47; i++) src.emit('line', { text: `tick ${i}`, repeat: 'k' })
+
+    await waitFor(() => expect(container.textContent).toContain('×47'))
+  })
+})

@@ -107,10 +107,64 @@ def _console_line(raw: str) -> Optional[str]:
         subtype = record.get("subtype")
         if isinstance(subtype, str) and subtype:
             label = f"{kind} · {subtype}"
+        # …and whatever NUMBERS it carries, which is the whole reason such a record exists.
+        #
+        # Measured on a live transcript: 47 of 123 records were `system · thinking_tokens`, and
+        # every one of them rendered as that label and nothing else — 38% of the console spent
+        # on a phrase carrying no information. The user's question was literally "mi az a
+        # thinking tokens", which is the only thing a line like that can prompt.
+        #
+        # The numbers are read by SHAPE, not by name: any small scalar the record carries beside
+        # its type is shown. A list of known field names here would be a second copy of Claude
+        # Code's schema, and it would drift the first time that schema grew a field.
+        numbers = " ".join(
+            f"{k}={v:,}" if isinstance(v, int) and not isinstance(v, bool) else f"{k}={v}"
+            for k, v in record.items()
+            if k not in _RECORD_META and isinstance(v, (int, float)) and not isinstance(v, bool)
+        )
+        if numbers:
+            text = numbers
     if len(text) > CONSOLE_TEXT_CHARS:
         text = text[:CONSOLE_TEXT_CHARS] + " …"
 
     return " ".join(part for part in (stamp, label, text) if part)
+
+
+#: Envelope fields of a transcript record — identity and routing, never a measurement.
+_RECORD_META = frozenset({"uuid", "session_id", "parentUuid", "type", "subtype", "at", "timestamp"})
+
+
+def _repeat_key(raw: str) -> Optional[str]:
+    """A key that consecutive, interchangeable bookkeeping lines share — or None.
+
+    Not a formatting nicety. A console showing forty-seven copies of one label has spent itself
+    on the least informative thing in the file, and the lines a reader came for scroll past
+    behind them. Folding runs of the same bookkeeping record into one line with a count keeps
+    every occurrence *counted* while costing one row.
+
+    Only records with no text and no tool call are foldable. Anything the agent actually DID is
+    never folded, however often it repeats — two identical `Bash` calls are two events, and a
+    console that merges them has lost the second one.
+    """
+    try:
+        record = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    # `list(...)`, not the bare call: `iter_tool_uses` returns a GENERATOR, and a generator
+    # object is always truthy — so the bare test passed for every record and this function
+    # returned None for everything, silently disabling the fold it exists to enable. Measured,
+    # not spotted: the first run printed `repeat key: None` for the very record it was written
+    # for. The fail direction is the quiet one — no fold, no error, no sign anything is wrong.
+    if list(jsonl_reader.iter_tool_uses(record)):
+        return None
+    if (jsonl_reader.extract_text_content(record) or "").strip():
+        return None
+    kind, subtype = record.get("type"), record.get("subtype")
+    if not isinstance(kind, str) or not isinstance(subtype, str) or not subtype:
+        return None
+    return f"{kind}\u00b7{subtype}"
 
 
 def _event(kind: str, payload: dict) -> str:
@@ -210,14 +264,19 @@ async def _follow(path: Path, project: str) -> AsyncIterator[str]:
                 if not line:
                     continue
                 console = _console_line(line)
+                repeat = _repeat_key(line)
                 if len(line) > MAX_LINE_CHARS:
                     truncated += 1
                     yield _event("line", {
                         "text": console or line[:MAX_LINE_CHARS],
                         "truncated": console is None,
+                        **({"repeat": repeat} if repeat else {}),
                     })
                 else:
-                    yield _event("line", {"text": console or line})
+                    yield _event("line", {
+                        "text": console or line,
+                        **({"repeat": repeat} if repeat else {}),
+                    })
                 delivered += 1
                 sent += 1
                 if sent >= MAX_LINES:
