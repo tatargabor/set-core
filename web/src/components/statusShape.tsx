@@ -585,3 +585,96 @@ export function flattenUniformObjects(
     return out
   })
 }
+
+/**
+ * Fields the project says carry a followable path — the declaration, not a guess.
+ *
+ * `names` is what the envelope declared; `present` is which of those the DATA actually holds,
+ * mapped to the path each one carries. Both are needed and they are not the same question: the
+ * declaration says what to look for, the data says what is there. Offering a control for a
+ * declared field the project stopped sending would offer to follow a path that is not in the
+ * answer — a false absence with a button attached.
+ */
+export interface FollowView {
+  names: ReadonlySet<string>
+  present: ReadonlyMap<string, string>
+  /** Which command this answer came from — the stream needs it to re-verify the path. */
+  command: string
+  /** Whose tree it is. Carried here so no renderer has to reach for routing state. */
+  project: string
+  /** The field being followed right now, or null. Held here, not in the control. */
+  open: string | null
+  setOpen: (field: string | null) => void
+}
+
+const FollowCtx = createContext<FollowView>({
+  names: new Set(), present: new Map(), command: '', project: '',
+  open: null, setOpen: () => {},
+})
+
+export const FollowProvider = FollowCtx.Provider
+
+export function useFollow(): FollowView {
+  return useContext(FollowCtx)
+}
+
+/**
+ * Which follow-declared fields actually appear in this answer, and what path each holds.
+ *
+ * Mirrors `presentCaveats` deliberately, including the walk: one selector rule for the whole
+ * envelope means a producer never has to remember which key shape applies where.
+ *
+ * A declared field holding null, an empty string, or a non-string is NOT a target. That is the
+ * ordinary state of a project between runs — nothing to follow, which is not a failure.
+ */
+export function presentFollowTargets(
+  value: unknown, names: readonly string[],
+): Map<string, string> {
+  const wanted = new Set(names.filter(Boolean))
+  const found = new Map<string, string>()
+  if (wanted.size === 0) return found
+
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) { v.forEach(walk); return }
+    if (!isPlainObject(v)) return
+    for (const [k, child] of Object.entries(v)) {
+      if (wanted.has(k) && typeof child === 'string' && child.trim() && !found.has(k)) {
+        found.set(k, child)
+      }
+      walk(child)
+    }
+  }
+  walk(value)
+  return found
+}
+
+/**
+ * The control offered beside a field the project declared followable.
+ *
+ * Rendered only where `presentFollowTargets` found the field IN THE DATA — never from the
+ * declaration alone, and never from a field's name. A control offered for a path the answer no
+ * longer carries would be refused by the endpoint anyway; showing it would be a button that
+ * exists to fail.
+ *
+ * It opens a panel it does not contain. The first version rendered the panel right here, inside
+ * the value's own grid cell, and it worked in every structural sense — the stream connected, the
+ * lines arrived, no console error. On screen the panel was about 180px wide and broke words
+ * across lines two characters at a time. A log is the widest thing this surface shows and it had
+ * been put in the narrowest box available; the counts said "rendered", and only looking said
+ * "unreadable". So the field holds the switch and the answer holds the panel.
+ */
+export function FollowControl({ field }: { field: string }) {
+  const { open, setOpen, command, project } = useFollow()
+  if (!command || !project) return null
+  const active = open === field
+  return (
+    <button
+      onClick={() => setOpen(active ? null : field)}
+      className="ml-2 text-xs px-1.5 py-0.5 rounded border border-surface-line
+                 text-fg-muted hover:text-fg-strong hover:border-surface-edge align-middle"
+      title={active ? 'stop following this file' : 'follow this file live'}
+    >
+      {active ? 'following ×' : 'follow'}
+    </button>
+  )
+}

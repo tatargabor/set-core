@@ -43,6 +43,8 @@ import {
   partitionKeys,
   useCaveats,
   CaveatNote,
+  FollowControl,
+  useFollow,
   useDeprecation,
 } from './statusShape'
 import { StatusTable } from './StatusTable'
@@ -52,6 +54,8 @@ export {
   ActionProvider,
   DeprecationProvider,
   EMPHASIS_KEY,
+  FollowProvider,
+  presentFollowTargets,
   emphasisOf,
   isPlainObject,
   presentDeprecations,
@@ -189,7 +193,7 @@ function SectionedGrid(
   { obj, depth, sections }: { obj: Record<string, unknown>; depth: number; sections: SectionDecl[] },
 ) {
   const view = useDeprecation()
-  const caveats = useCaveats()
+  // The per-field signals moved into `FieldExtras`, which reads them itself.
   // A declared key that is absent draws NOTHING — not a placeholder, not a note. The
   // declaration says what to look for; the data decides what exists.
   const declared = sections.filter(d => d.key in obj && !view.names.has(d.key))
@@ -217,7 +221,7 @@ function SectionedGrid(
               <dt className="text-fg-faint truncate" title={k}>{k}</dt>
               <dd className="min-w-0">
                 <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
-                {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+                <FieldExtras k={k} />
               </dd>
             </div>
           ))}
@@ -228,7 +232,7 @@ function SectionedGrid(
         <section key={k} className="space-y-1 pt-1">
           <div className="text-sm text-fg-faint">{k}</div>
           <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
-          {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+          <FieldExtras k={k} />
         </section>
       ))}
       <HiddenNote count={hiddenCount} />
@@ -251,6 +255,29 @@ function SectionedGrid(
 function isBlockValue(v: unknown): boolean {
   if (Array.isArray(v)) return v.length > 0
   return isPlainObject(v)
+}
+
+/**
+ * Everything that hangs off a field's value: its caveat, and the control to follow it.
+ *
+ * One place rather than four. The four sites — two in the sectioned grid, two in the plain one —
+ * had already drifted into being copies of each other, and a fifth signal would have had to be
+ * added to all of them, which is exactly how one of them ends up missing it.
+ *
+ * Order matters: the control sits ON the value's line, the caveat BELOW it. A caveat is a
+ * sentence about the value and belongs under it; a control is an affordance and belongs where
+ * the eye already is.
+ */
+function FieldExtras({ k }: { k: string }) {
+  const caveats = useCaveats()
+  const follow = useFollow()
+  const path = follow.present.get(k)
+  return (
+    <>
+      {path && <FollowControl field={k} />}
+      {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+    </>
+  )
 }
 
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
@@ -324,7 +351,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
             </dt>
             <dd className="min-w-0">
               <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
-              {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+              <FieldExtras k={k} />
             </dd>
           </div>
         ))}
@@ -347,7 +374,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
           <section key={k} className="space-y-1 pt-1">
             <div className="text-sm text-fg-faint">{k}</div>
             <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} />
-            {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+            <FieldExtras k={k} />
           </section>
         ))}
       </div>

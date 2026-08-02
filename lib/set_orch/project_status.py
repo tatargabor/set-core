@@ -958,6 +958,7 @@ class StatusSnapshot:
                     "contractVersion": r.contract_version,
                     "deprecated": list(r.deprecated),
                     "caveats": dict(r.caveats),
+                    "follow": list(r.follow),
                 }
                 for name, r in self.results.items()
             },

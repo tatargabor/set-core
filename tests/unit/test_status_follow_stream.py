@@ -211,3 +211,54 @@ def test_a_burst_beyond_the_tick_cap_is_deferred_and_not_duplicated(tmp_path):
     lines = [p["text"] for k, p in got if k == "line"]
     assert len(lines) == total, f"expected each line once, got {len(lines)} for {total} written"
     assert all(t == repeated for t in lines)
+
+
+def test_the_log_records_counts_and_never_a_line(tmp_path, caplog):
+    """A log is persistence that leaves the machine. This asserts the RECORDS, not the intent.
+
+    The content flowing through this stream is the densest domain material a project has, so the
+    rule is not "be careful when logging" — it is that no emitted record may contain a line. A
+    comment asking for care would have passed review; this fails if someone adds a helpful
+    `logger.debug("sent %s", line)`.
+    """
+    import logging
+
+    f = tmp_path / "run.jsonl"
+    f.write_text("", encoding="utf-8")
+    secret = "PARTNER-4471 invoice for Acme Holdings"
+
+    async def writer():
+        with open(f, "a", encoding="utf-8") as h:
+            h.write(json.dumps({"note": secret}) + "\n")
+            h.flush()
+
+    with caplog.at_level(logging.DEBUG, logger="set_orch.api.status_follow"):
+        got = asyncio.get_event_loop().run_until_complete(collect(f, writer))
+
+    assert any(k == "line" for k, _ in got), "the line must have been delivered to the CLIENT"
+    emitted = "\n".join(r.getMessage() for r in caplog.records)
+    assert secret not in emitted
+    assert "PARTNER" not in emitted and "Acme" not in emitted
+    # …and it did record something, or the assertion above would pass on an empty log.
+    assert "stream closed" in emitted
+
+
+def test_a_stream_touches_no_cache_and_leaves_no_file(tmp_path):
+    """Nothing read this way is kept: the answer cache is untouched and no new file appears."""
+    from set_orch.api import project_status as api
+
+    f = tmp_path / "run.jsonl"
+    f.write_text("", encoding="utf-8")
+    before_cache = dict(api._CACHE)
+    before_files = {p.name for p in tmp_path.iterdir()}
+
+    async def writer():
+        with open(f, "a", encoding="utf-8") as h:
+            h.write('{"x": 1}\n')
+            h.flush()
+
+    got = asyncio.get_event_loop().run_until_complete(collect(f, writer))
+
+    assert any(k == "line" for k, _ in got)
+    assert dict(api._CACHE) == before_cache, "a follow must not write into the answer cache"
+    assert {p.name for p in tmp_path.iterdir()} == before_files, "a follow must create no file"

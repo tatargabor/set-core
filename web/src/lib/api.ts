@@ -1313,6 +1313,15 @@ export interface StatusCommandResult {
    * field. Optional, and an answer without it behaves exactly as one did before it existed.
    */
   caveats?: Record<string, string>
+  /**
+   * Field names whose VALUE is a path to a file the project is writing and is willing to have
+   * followed live. Bare names, matched at any depth — the same selector `caveats` uses.
+   *
+   * The framework recognises no field by its name for this: a project calls it `log`, the next
+   * calls it `trace`, and a renderer that knows one of those words has taken on that project's
+   * domain. Absent means nothing is followable, which is every project until it says otherwise.
+   */
+  follow?: string[]
 }
 
 export interface ProjectStatusResponse {
@@ -1338,6 +1347,18 @@ export function getProjectStatus(
   return fetchJSON(`/${project}/project-status${qs ? `?${qs}` : ''}`)
 }
 
+
+/**
+ * The URL of the live stream for one declared path.
+ *
+ * Built here rather than in a component so the route shape lives in one place, and so the path
+ * is encoded exactly once — a path is the project's string, and double-encoding it is the kind
+ * of bug that only shows up on the one producer whose filenames contain a space.
+ */
+export function followStreamURL(project: string, command: string, path: string): string {
+  const params = new URLSearchParams({ command, path })
+  return `${BASE}/${project}/project-status/follow?${params.toString()}`
+}
 
 export interface ProjectWriteResponse {
   project: string

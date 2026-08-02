@@ -35,11 +35,14 @@ import StatusValue, {
 } from '../components/StatusValue'
 import {
   CaveatProvider,
+  FollowProvider,
+  presentFollowTargets,
   CaveatNote,
   presentCaveats,
   absentCaveatKeys,
   COMMAND_LEVEL_CAVEAT,
 } from '../components/statusShape'
+import { FollowPanel } from '../components/FollowPanel'
 
 interface Props {
   project?: string | null
@@ -80,10 +83,11 @@ function Gap({ name, result }: { name: string; result: StatusCommandResult }) {
 }
 
 function Answer({
-  name, result, onAction,
+  name, result, project, onAction,
 }: {
   name: string
   result: StatusCommandResult
+  project: string
   onAction: (command: string, args: Record<string, unknown>) => Promise<{ ok: boolean; error?: string | null }>
 }) {
   // Deprecated fields are hidden by default, per command. A field the project has
@@ -109,6 +113,16 @@ function Answer({
   const caveats = result.caveats ?? {}
   const starCaveat = caveats[COMMAND_LEVEL_CAVEAT]
   const perField = presentCaveats(result.data, caveats)
+
+  // Followable fields: the same rule a third time. Declared names, then the ones the DATA
+  // actually carries — a control offered for a path this answer no longer holds would be a
+  // button whose only possible outcome is a refusal.
+  const followNames = new Set(result.follow ?? [])
+  const followPresent = presentFollowTargets(result.data, result.follow ?? [])
+  // One stream at a time, and the panel lives HERE rather than inside the field's cell: a log is
+  // the widest thing this surface shows, and a grid cell is the narrowest box it has.
+  const [followOpen, setFollowOpen] = useState<string | null>(null)
+  const followPath = followOpen ? followPresent.get(followOpen) : undefined
   const absentCaveats = absentCaveatKeys(result.data, caveats)
   const [showAbsent, setShowAbsent] = useState(false)
 
@@ -156,9 +170,20 @@ function Answer({
       )}
       <DeprecationProvider value={{ names: deprecated, show: showDeprecated }}>
         <CaveatProvider value={{ perField }}>
-          <ActionProvider value={onAction}>
-            <StatusValue value={result.data} />
-          </ActionProvider>
+          <FollowProvider value={{
+            names: followNames, present: followPresent, command: name, project,
+            open: followOpen, setOpen: setFollowOpen,
+          }}>
+            <ActionProvider value={onAction}>
+              <StatusValue value={result.data} />
+            </ActionProvider>
+            {followOpen && followPath && (
+              <FollowPanel
+                project={project} command={name} path={followPath} field={followOpen}
+                onClose={() => setFollowOpen(null)}
+              />
+            )}
+          </FollowProvider>
         </CaveatProvider>
       </DeprecationProvider>
     </section>
@@ -420,7 +445,7 @@ export default function ProjectStatus({ project }: Props) {
 
         {activeName && activeResult && (
           activeResult.ok
-            ? <Answer name={activeName} result={activeResult} onAction={runAction} />
+            ? <Answer name={activeName} result={activeResult} project={project ?? ''} onAction={runAction} />
             : <Gap name={activeName} result={activeResult} />
         )}
 
