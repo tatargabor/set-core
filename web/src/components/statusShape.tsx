@@ -153,10 +153,24 @@ export function absentCaveatKeys(
  * Not a tooltip and not behind a disclosure, deliberately. The defect being fixed is that the
  * number travels and the caveat does not; a caveat one interaction away has been filed, not
  * carried.
+ *
+ * **But it is clamped to one line, and that is not the same concession.** A producer reported
+ * the same ~200-character sentence appearing three times on one screen — measured here, exactly
+ * three — because one field name occurs in three places of their answer, and the sentence is
+ * correct beside every one of them. Hiding two would put the qualification where the reader is
+ * not standing, which is the original defect wearing a tidier coat. So every occurrence keeps
+ * its caveat and each costs ONE line; the rest is a click away for whoever is reading that
+ * particular number. The signal stays everywhere, the noise divides by three.
  */
 export function CaveatNote({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false)
   return (
-    <div className="text-xs leading-snug text-fg-muted italic border-l border-surface-edge pl-2 mt-0.5">
+    <div
+      onClick={() => setOpen(v => !v)}
+      title={open ? undefined : 'show the whole caveat'}
+      className={`text-xs leading-snug text-fg-muted italic border-l border-surface-edge pl-2
+                  mt-0.5 cursor-pointer ${open ? '' : 'truncate'}`}
+    >
       {children}
     </div>
   )
