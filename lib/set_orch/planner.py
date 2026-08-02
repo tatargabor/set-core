@@ -2535,6 +2535,16 @@ def _phase1_planning_brief(
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 1 (planning brief) failed (exit {result.exit_code})")
 
+    if result.is_error:
+        # The RUN failed, not the answer. Named separately because the two need opposite
+        # responses: a stalled stream or an exhausted turn budget is retryable, while an
+        # unparseable answer questions the prompt. Reporting the second for the first sends
+        # someone to rewrite a prompt that was fine.
+        raise RuntimeError(
+            f"Phase 1 (planning brief) — the agent run failed (subtype={result.result_subtype}); "
+            f"this is a failed run, not an unparseable answer"
+        )
+
     brief = _parse_plan_response(result.stdout, require_key="domain_priorities")
     if not brief:
         raise RuntimeError("Phase 1: could not parse planning brief JSON")
@@ -2639,6 +2649,16 @@ def _decompose_single_domain(
     )
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 2 domain '{domain['name']}' failed (exit {result.exit_code})")
+
+    if result.is_error:
+        # The RUN failed, not the answer. Named separately because the two need opposite
+        # responses: a stalled stream or an exhausted turn budget is retryable, while an
+        # unparseable answer questions the prompt. Reporting the second for the first sends
+        # someone to rewrite a prompt that was fine.
+        raise RuntimeError(
+            f"Phase 2 (domain plan) — the agent run failed (subtype={result.result_subtype}); "
+            f"this is a failed run, not an unparseable answer"
+        )
 
     domain_plan = _parse_plan_response(result.stdout)
     if not domain_plan:
@@ -2780,6 +2800,16 @@ def _phase3_merge_plans(
     )
     if result.exit_code != 0:
         raise RuntimeError(f"Phase 3 (merge) failed (exit {result.exit_code})")
+
+    if result.is_error:
+        # The RUN failed, not the answer. Named separately because the two need opposite
+        # responses: a stalled stream or an exhausted turn budget is retryable, while an
+        # unparseable answer questions the prompt. Reporting the second for the first sends
+        # someone to rewrite a prompt that was fine.
+        raise RuntimeError(
+            f"Phase 3 (merge) — the agent run failed (subtype={result.result_subtype}); "
+            f"this is a failed run, not an unparseable answer"
+        )
 
     merged_plan = _parse_plan_response(result.stdout)
     if not merged_plan:
@@ -3064,6 +3094,16 @@ def _run_serial_decompose(
     )
     if result.exit_code != 0:
         raise RuntimeError(f"Serial decompose failed (exit {result.exit_code})")
+
+    if result.is_error:
+        # The RUN failed, not the answer. Named separately because the two need opposite
+        # responses: a stalled stream or an exhausted turn budget is retryable, while an
+        # unparseable answer questions the prompt. Reporting the second for the first sends
+        # someone to rewrite a prompt that was fine.
+        raise RuntimeError(
+            f"Serial decompose — the agent run failed (subtype={result.result_subtype}); "
+            f"this is a failed run, not an unparseable answer"
+        )
 
     plan_data = _parse_plan_response(result.stdout)
     if not plan_data:

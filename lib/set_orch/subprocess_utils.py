@@ -7,6 +7,7 @@ Returns dataclass results instead of raising exceptions — callers decide
 how to handle non-zero exit codes.
 """
 
+import json
 import logging
 import shutil
 import subprocess
@@ -37,6 +38,23 @@ class ClaudeResult(CommandResult):
     cache_read_tokens: int = 0
     cache_create_tokens: int = 0
     cost_usd: float = 0.0
+
+    #: The CLI's own verdict on the run, from the final `result` envelope — NOT the exit code.
+    #:
+    #: A run can fail while the process exits 0: the stream stalls, the turn limit is reached,
+    #: execution errors out. The envelope says so and set-core read neither field, so a caller
+    #: whose parse then failed reported "the model produced no valid JSON" — blaming the prompt
+    #: for a transport failure. The two need opposite responses: a stalled stream is RETRYABLE,
+    #: a bad answer questions the prompt. Adopted from an integration peer who measured the same
+    #: misattribution on their own engine the same day.
+    is_error: bool = False
+
+    #: The envelope's own word for what happened (`success`, `error_max_turns`, …).
+    #:
+    #: Kept BESIDE `is_error` rather than derived from it, because the two disagree. Measured on
+    #: real transcripts: a `result` envelope arrived with `subtype: "success"` AND
+    #: `is_error: true`. Trusting the label would have called that run a success.
+    result_subtype: str | None = None
 
 
 @dataclass
@@ -211,6 +229,43 @@ def _extract_text_from_json_output(raw: str) -> str:
     return result_text if result_text else "\n".join(texts)
 
 
+def _result_status_from_json_output(raw: str) -> tuple[bool, str | None]:
+    """`(is_error, subtype)` from the CLI's final `result` envelope.
+
+    Read from the envelope rather than inferred from the exit code, because the two are
+    independent: the process can exit 0 on a run the envelope calls an error.
+
+    **`is_error` wins over `subtype`, and that is not a style choice.** Measured across real
+    transcripts: an envelope carried `subtype: "success"` together with `is_error: true`. A
+    reader that trusted the label would have called that run a success — the reassuring
+    direction, on the one field that says whether to retry or to rewrite a prompt.
+    """
+    is_error = False
+    subtype: str | None = None
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(obj, list):
+            items = obj
+        elif isinstance(obj, dict):
+            items = [obj]
+        else:
+            continue
+        for item in items:
+            if isinstance(item, dict) and item.get("type") == "result":
+                if item.get("is_error"):
+                    is_error = True
+                st = item.get("subtype")
+                if isinstance(st, str):
+                    subtype = st
+    return is_error, subtype
+
+
 def _extract_usage_from_json_output(raw: str) -> dict:
     """Extract token usage from Claude CLI JSON output's result object."""
     import json as _json
@@ -298,11 +353,20 @@ def run_claude(
     raw_stdout = result.stdout
     stdout = raw_stdout
     usage = {}
+    is_error, result_subtype = False, None
     if result.exit_code == 0 and raw_stdout.strip():
         extracted = _extract_text_from_json_output(raw_stdout)
         if extracted:
             stdout = extracted
         usage = _extract_usage_from_json_output(raw_stdout)
+        is_error, result_subtype = _result_status_from_json_output(raw_stdout)
+        if is_error:
+            # Logged as SHAPE — the subtype and nothing from the answer itself.
+            logger.warning(
+                "run_claude: the CLI exited 0 but its result envelope reports an error "
+                "(subtype=%s) — this is a failed RUN, not a bad answer",
+                result_subtype,
+            )
 
     return ClaudeResult(
         exit_code=result.exit_code,
@@ -310,6 +374,8 @@ def run_claude(
         stderr=result.stderr,
         duration_ms=result.duration_ms,
         timed_out=result.timed_out,
+        is_error=is_error,
+        result_subtype=result_subtype,
         input_tokens=usage.get("input_tokens", 0),
         output_tokens=usage.get("output_tokens", 0),
         cache_read_tokens=usage.get("cache_read_tokens", 0),
