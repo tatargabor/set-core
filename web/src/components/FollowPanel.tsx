@@ -62,6 +62,33 @@ function JsonLine({ text }: { text: string }) {
   )
 }
 
+/**
+ * One line, bounded — because a single line can otherwise own the whole panel.
+ *
+ * Measured on a real producer within seconds of the panel going live: one event carried a
+ * complete assistant message as a nested JSON string, roughly 250 rendered lines, and it filled
+ * the panel end to end. Every later line was pushed out of view by one earlier one. The panel
+ * scrolls, so nothing was lost — it was unreachable, which reads the same to whoever is watching
+ * a run and sees it stop.
+ *
+ * Three lines is enough to tell what an event is; the rest is one click away. Same bargain as
+ * the caveat: the thing stays where the reader is standing, and costs a bounded amount of room.
+ */
+function LogLine({ line }: { line: Line }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div
+      onClick={() => setOpen(v => !v)}
+      style={open ? undefined : { maxHeight: '4.2em', overflow: 'hidden' }}
+      className="py-0.5 border-b border-surface-edge/40 last:border-0 cursor-pointer"
+      title={open ? undefined : 'show the whole line'}
+    >
+      <JsonLine text={line.text} />
+      {line.truncated && <span className="text-fg-ghost italic"> … line truncated</span>}
+    </div>
+  )
+}
+
 export function FollowPanel({
   project, command, path, field, onClose,
 }: {
@@ -158,12 +185,7 @@ export function FollowPanel({
             {dropped} earlier line{dropped === 1 ? '' : 's'} scrolled out of this panel
           </div>
         )}
-        {lines.map(l => (
-          <div key={l.n} className="py-0.5 border-b border-surface-edge/40 last:border-0">
-            <JsonLine text={l.text} />
-            {l.truncated && <span className="text-fg-ghost italic"> … line truncated</span>}
-          </div>
-        ))}
+        {lines.map(l => <LogLine key={l.n} line={l} />)}
         {ended && (
           <div className="text-amber-500/90 py-1">
             stream ended — {END_REASONS[ended] ?? ended}
