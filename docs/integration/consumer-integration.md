@@ -721,12 +721,61 @@ return `Error: No .set-control worktree found`) and that the git commit cycle wa
 The sentence described what the resolution *ought* to scope to rather than what the function
 does — the proxy-instead-of-the-thing class applied to a code path. Fixed in `CLAUDE.md:197`.
 
+### 2026-08-02 — a second producer CLI was offered, and it found the first real gap in the reader
+
+The producer published a **section-by-section apply CLI** for their OpenSpec changes — a read
+surface (`changes` / `status --change X` / `next --change X`, all `--json`) plus writes they did
+not ask us to call. Announced on the channel as a `TÉNY`; answered as `S#168`. Everything below
+was measured against their live tree, read-only, before the answer was written.
+
+**1. The framework refuses the answer today, and for the right reason.** Their CLI emits a bare
+object (`{root, changes[]}`) with no contract envelope. Probed through this side's own reader
+with an ad-hoc `StatusConfig` pointed at that script:
+
+    ok=False  error_class=missing-version
+    "the answer carries no contractVersion — refusing to guess its shape"
+
+Not a defect on their side — that script never claimed to speak the contract.
+
+**2. One manifest declares ONE executable, so a second script is unreachable by design.** The
+argv is `argv_prefix + [command] + args` (`lib/set_orch/project_status.py:641`), and
+`argv_prefix` is the manifest's `command` list. Every name in `commands` therefore goes to the
+same binary. The route is a **delegating command inside their existing entry point**, which is
+a few lines there and **zero framework change** — the eighth time the declaration-driven design
+has held.
+
+**3. The real finding: the READ path passes no arguments.** The HTTP read endpoint calls
+`_cached_query(project_path, name, cfg, refresh)` → `query(...)` with `args` left empty
+(`lib/set_orch/api/project_status.py:184`). Only the **write** route maps `{flag: value}` →
+`--flag value` (`project_status.py:779`), deliberately a separate route. So a parameterless
+command is adoptable today and a per-item drill-down (`--change X`) **is not askable from the
+surface at all**. This is the first capability the producer's shape needs that this side does
+not have — every earlier extension was an entry in a declaration.
+
+**Decided (delegated mandate), and the evidence it rests on:** take the **aggregate** first, do
+not grow the framework. Their delegating command publishes all changes *with* the group
+breakdown in one parameterless answer. Measured: **10 changes / 95 groups**, and a single
+change's full status is **2237 bytes** — so the whole aggregate is ~22 KB against an 8 MB cap,
+three orders of magnitude of headroom. The drill-down then costs no second call.
+
+**Recorded as this side's gap, not built:** read-time arguments. It becomes work when the
+aggregate demonstrably cannot carry the case (payload growth, or per-item freshness that a
+whole-set answer cannot give) — not before.
+
+**One correction sent back, because their entry stated a property of us that is not true.** They
+wrote "do not cache it as a verdict; every call recomputes". The principle is right, the fact is
+not: this side caches read answers for **30 s** (`CACHE_TTL_SECONDS = 30`,
+`api/project_status.py:49`), **including failures** on purpose, with `?refresh=true` as the
+bypass. A producer reasoning about staleness needs the real number, and a polite silence here
+would have left them designing against an invented one.
+
 ### Still open
 
 | Decision | Owner | State |
 |---|---|---|
 | Whether a derivable list stays in the contract | consumer | measured: nothing here depends on it, so it is theirs to decide — and the row's height is this side's problem to fix, not a reason to drop their field |
 | `caveats` — an OpenSpec change on this side | **UNBLOCKED 2026-07-30, change created** | The user approved the consumer-side T16 row and said so *to this session directly*. `status-contract-caveats`: 4/4 artifacts, strict-valid, 6 requirements / 8 scenarios / 30 tasks, no code yet. The agreed shape is implemented as agreed — `"*"` default, per-field keys **additive**, no replacement path, count from the data, absent key is diagnostics not a gate, caveat renders beside the number. |
+| Read-time arguments on the contract's read path | **set-core** | Measured 2026-08-02 (`api/project_status.py:184`): reads take no args, writes do. Deliberately NOT built — the aggregate route above covers the case at ~22 KB. Revisit only with evidence that an aggregate cannot carry it. |
 | The consumer's T16 READER (their tenth command) | **shape measured live; the human approval behind it is relayed, not measured** — kept as two separate facts on purpose | Their session refused a channel-relayed approval — correctly, and with this side's own distinction: *the source is the user, not the channel*. No human instruction about T16 reached that session, so its "awaiting approval" remains true there. **If it should start, the user has to tell that session directly.** It does not block the framework work: an envelope without `caveats` behaves exactly as today, which is the first requirement. |
 
 **TWO ENTRIES, ONE NUMBER, OPPOSITE CONTENT — 2026-07-30 17:43:27 and 17:44:02, both labelled
