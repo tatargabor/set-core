@@ -285,6 +285,74 @@ describe('an action the project attached to a row', () => {
     expect(document.querySelector('select')).not.toBeNull()
   })
 
+  it('offers a TEXT input for an argument the project cannot enumerate', () => {
+    // `choose` is for values the project knows; `ask` is for the ones it cannot. A decision
+    // written against an open question has no option list — nobody knows the sentence yet.
+    withAction([{
+      thing: 'x',
+      actions: [{ command: 'answer', args: { task: '7.D1' }, ask: { answer: 'your decision' } }],
+    }])
+
+    const input = document.querySelector<HTMLInputElement>('input[type="text"]')
+    expect(input).not.toBeNull()
+    expect(input!.placeholder).toBe('your decision')
+    expect(document.querySelector<HTMLButtonElement>('[data-action="answer"]')!.disabled).toBe(true)
+  })
+
+  it('stays disabled while the typed value is only whitespace', () => {
+    // An empty answer recorded against an open question is worse than no answer: it closes
+    // the question while saying nothing, and nothing on the other side can tell them apart.
+    withAction([{
+      thing: 'x',
+      actions: [{ command: 'answer', ask: { answer: 'your decision' } }],
+    }])
+    const btn = () => document.querySelector<HTMLButtonElement>('[data-action="answer"]')!
+
+    fireEvent.change(document.querySelector('input[type="text"]')!, { target: { value: '   ' } })
+    expect(btn().disabled).toBe(true)
+
+    fireEvent.change(document.querySelector('input[type="text"]')!, { target: { value: 'amber' } })
+    expect(btn().disabled).toBe(false)
+  })
+
+  it('merges the typed value into the project’s arguments, trimmed', async () => {
+    const calls: unknown[] = []
+    withAction(
+      [{ thing: 'x', actions: [{ command: 'answer', args: { task: '7.D1' }, ask: { answer: 'x' } }] }],
+      async (c, a) => { calls.push(a); return { ok: true } },
+    )
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    fireEvent.change(document.querySelector('input[type="text"]')!, { target: { value: '  amber  ' } })
+    fireEvent.click(document.querySelector('[data-action="answer"]')!)
+    await waitFor(() => expect(calls).toHaveLength(1))
+
+    expect(calls[0]).toEqual({ task: '7.D1', answer: 'amber' })
+  })
+
+  it('shows a refusal IN FULL rather than behind a hover', async () => {
+    // The producer's own contract makes the error branch informative: it lists what could
+    // have been asked instead. A tooltip on the word "failed" throws that away, and is not
+    // reachable at all from a keyboard.
+    const long = 'answer failed: no such open task: 9.ZZ\nCurrently open: 7.D1 — [confirm] …'
+    withAction(
+      [{ thing: 'x', actions: [{ command: 'answer', ask: { answer: 'x' } }] }],
+      async () => ({ ok: false, error: long }),
+    )
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    fireEvent.change(document.querySelector('input[type="text"]')!, { target: { value: 'a' } })
+    fireEvent.click(document.querySelector('[data-action="answer"]')!)
+
+    await waitFor(() => expect(document.body.textContent).toContain('Currently open: 7.D1'))
+    expect(document.body.textContent).not.toBe('failed')
+  })
+
+  it('a project declaring no ask gets no input, as every project does today', () => {
+    withAction([ROW])
+    expect(document.querySelector('input[type="text"]')).toBeNull()
+  })
+
   it('merges the choice into the project’s arguments', async () => {
     const calls: unknown[] = []
     withAction(
@@ -301,13 +369,17 @@ describe('an action the project attached to a row', () => {
   })
 
   it('reports a refused write instead of looking like it worked', async () => {
+    // Asserts the REASON, not the word "failed". It used to assert the label, which a
+    // producer's own error text — theirs lists what could have been asked instead — was
+    // hidden behind: the writing side had made its refusal informative and the reading
+    // side threw it away into a tooltip.
     withAction([ROW], async () => ({ ok: false, error: 'nope' }))
     vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     fireEvent.click(document.querySelector('[data-action="ack"]')!)
 
     await waitFor(() =>
-      expect(document.body.textContent).toContain('failed'))
+      expect(document.body.textContent).toContain('nope'))
     expect(document.body.textContent).not.toContain('recorded')
   })
 

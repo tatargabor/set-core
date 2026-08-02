@@ -193,6 +193,18 @@ export interface RowAction {
   args?: Record<string, unknown>
   /** Argument → the options the reader must pick from. Absent means nothing to choose. */
   choose?: Record<string, string[]>
+  /**
+   * Argument → a placeholder, for a value only the reader can supply. Absent means nothing to type.
+   *
+   * The sibling of `choose`, and the distinction is the project's to make: `choose` is for an
+   * argument whose values the PROJECT can enumerate, `ask` for one it cannot. A decision recorded
+   * against an open question is the second kind — nobody knows the sentence in advance.
+   *
+   * Deliberately a placeholder rather than a type, a length, or a pattern. Every one of those is a
+   * validation rule that would then exist in two places, and the project's own command is the only
+   * one that can enforce it — so the surface collects text, sends it, and shows what came back.
+   */
+  ask?: Record<string, string>
 }
 
 export const ACTIONS_KEY = 'actions'
@@ -220,21 +232,29 @@ function parseActions(value: unknown): RowAction[] {
 function ActionButton({ action }: { action: RowAction }) {
   const run = useContext(ActionCtx)
   const chooseKeys = Object.keys(action.choose ?? {})
+  const askKeys = Object.keys(action.ask ?? {})
   const [picked, setPicked] = useState<Record<string, string>>({})
+  const [typed, setTyped] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (!run) return null
 
-  const missing = chooseKeys.filter(k => !picked[k])
+  const missing = [
+    ...chooseKeys.filter(k => !picked[k]),
+    ...askKeys.filter(k => !typed[k]?.trim()),
+  ]
   const options = (k: string) => action.choose?.[k] ?? []
+  const supplied = { ...picked, ...Object.fromEntries(
+    askKeys.map(k => [k, (typed[k] ?? '').trim()]),
+  ) }
 
   const go = async () => {
     // The project's own warning, passed straight to the person clicking: this records
     // a HUMAN ASSERTION, not a measurement. Their side already produced a stray record
     // for a check nobody had performed, so the confirmation is not ceremony.
-    const what = Object.entries({ ...(action.args ?? {}), ...picked })
+    const what = Object.entries({ ...(action.args ?? {}), ...supplied })
       .map(([k, v]) => `${k}=${v}`).join(', ')
     if (!window.confirm(
       `${action.label ?? action.command} — ${what}\n\n` +
@@ -244,7 +264,7 @@ function ActionButton({ action }: { action: RowAction }) {
 
     setBusy(true); setError(null)
     try {
-      const res = await run(action.command, { ...(action.args ?? {}), ...picked })
+      const res = await run(action.command, { ...(action.args ?? {}), ...supplied })
       if (res.ok) setDone(true)
       else setError(res.error || 'the project refused the write')
     } catch (e) {
@@ -270,16 +290,43 @@ function ActionButton({ action }: { action: RowAction }) {
           {options(k).map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ))}
+      {askKeys.map(k => (
+        // A value only the reader can supply. `choose` is for arguments the project can
+        // enumerate; this is for the ones it cannot — a decision written against an open
+        // question has no option list, because nobody knows the sentence in advance.
+        <input
+          key={k}
+          type="text"
+          value={typed[k] ?? ''}
+          onChange={e => setTyped(t => ({ ...t, [k]: e.target.value }))}
+          onKeyDown={e => { if (e.key === 'Enter' && missing.length === 0 && !busy) go() }}
+          placeholder={action.ask?.[k] || k}
+          aria-label={k}
+          className="bg-surface-raised border border-surface-edge rounded text-xs px-1.5 py-0.5
+                     text-fg-strong placeholder:text-fg-ghost min-w-[16rem] flex-1"
+        />
+      ))}
       <button
         onClick={go}
         disabled={busy || missing.length > 0}
         data-action={action.command}
-        title={missing.length ? `choose ${missing.join(', ')} first` : undefined}
+        title={missing.length ? `fill in ${missing.join(', ')} first` : undefined}
         className="px-2 py-0.5 text-xs rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
       >
         {busy ? '…' : (action.label ?? action.command)}
       </button>
-      {error && <span className="text-xs text-red-400" title={error}>failed</span>}
+      {/*
+        The project's refusal is shown IN FULL, not as a tooltip on the word "failed".
+        Its own contract says the error branch lists what could have been asked instead —
+        which is only useful if the reader can see it without hovering, and a hover is not
+        available at all to someone reading with a keyboard. `whitespace-pre-wrap` because
+        that list arrives as lines.
+      */}
+      {error && (
+        <span className="block w-full text-xs text-red-400 whitespace-pre-wrap break-words">
+          {error}
+        </span>
+      )}
     </div>
   )
 }
