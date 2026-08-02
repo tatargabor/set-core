@@ -20,6 +20,14 @@ describe('presentFollowTargets', () => {
     expect(presentFollowTargets(data, ['trace'])).toEqual(new Map([['trace', 'deep/x.log']]))
   })
 
+  it('finds a field a producer moved under a debug object', () => {
+    // Asked on the channel before they moved it, because the failure would be SILENT: a selector
+    // that only looked at the top level would make their control vanish, and a vanished control
+    // reads exactly like "nothing is running". Held here so the answer cannot quietly change.
+    const data = { running: { state: 'running', debug: { pid: 42, log: 'logs/run.jsonl' } } }
+    expect(presentFollowTargets(data, ['log'])).toEqual(new Map([['log', 'logs/run.jsonl']]))
+  })
+
   it('walks into arrays, because a producer may carry several runs', () => {
     const data = { runs: [{ other: 1 }, { log: 'second.jsonl' }] }
     expect(presentFollowTargets(data, ['log'])).toEqual(new Map([['log', 'second.jsonl']]))

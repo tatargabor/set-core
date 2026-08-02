@@ -209,3 +209,26 @@ def test_every_refusal_names_a_documented_error_class(tmp_path):
         seen.add(status_follow.decide(project, bad, "a", config=cfg).error_class)
 
     assert seen <= set(status_follow.ERROR_CLASSES), seen - set(status_follow.ERROR_CLASSES)
+
+
+def test_a_field_nested_one_level_deeper_is_still_accepted(tmp_path):
+    """A producer asked whether they may move the field under a `debug` object. They may.
+
+    Recorded as a test rather than as an answer on a channel, because they are moving their own
+    output on the strength of it: if this selector ever narrowed to the top level, their follow
+    control would vanish SILENTLY, and a vanished control is indistinguishable from "nothing is
+    running". The answer has to be something that breaks a build, not something someone remembers.
+    """
+    project = tmp_path / "nested"
+    (project / "logs").mkdir(parents=True)
+    (project / "logs" / "run.jsonl").write_text("x\n", encoding="utf-8")
+    cfg = make_project(
+        project,
+        {"running": {"state": "running", "debug": {"pid": 42, "log": "logs/run.jsonl"}}},
+        follow=["log"],
+    )
+
+    d = status_follow.decide(project, "current", "logs/run.jsonl", config=cfg)
+
+    assert d.ok, d.error
+    assert d.field == "log"
