@@ -896,6 +896,52 @@ releases) is untouched by this, and the write-side button that would start a cyc
 still gated on one unmeasured question — whether the producer's `run` returns immediately or
 blocks for the length of the run (asked as `S#170`, no answer yet). Reading is done; driving is not.
 
+### 2026-08-02 — live log following, and the first thing the framework had to LEARN rather than declare
+
+The user asked to watch a running section live, not just read its state, and pointed out that the
+framework runs on the same machine as the project — so the file can be read directly rather than
+pushed through a tool channel. Correct, and measured: an answer already carried a relative path,
+the file was alive and growing, and it was line-oriented JSON.
+
+Shipped as `declared-log-follow` (7 requirements, 39 tasks, through OpenSpec). **The producer's
+half is one envelope key** — `follow: ["log"]`, bare field names, the selector `caveats` already
+uses.
+
+**The design point that keeps this a framework:** set-core must not recognise a field *called*
+`log`. The next project calls it `trace`. So the project declares which of ITS fields carry a
+followable path, and the framework knows only "this is a path inside your tree". Mutation-proven:
+teaching the framework the word fails three tests.
+
+**The gate is the live answer, not a path allowlist.** Before opening anything, the endpoint
+re-asks the command and accepts only a path the CURRENT answer still carries in a declared field;
+then the resolved path must remain inside the project root. Accepting any in-tree path would have
+turned a status endpoint into a general file reader — a readable `.env` is the test that says so.
+
+**Three findings worth more than the feature:**
+
+1. **An inode is not an identity.** Rotation detection was first written as `stat(path)` before
+   and after. Measured here: deleting a file and immediately recreating it under the same name
+   returned the IDENTICAL `(st_dev, st_ino)` — a different file with the same fingerprint. Same
+   class as a remembered PID. The check now asks the OPEN HANDLE (`fstat`, `st_nlink == 0`),
+   which no later file can fake by reusing a number.
+2. **A bounded buffer that only drains on new input strands its tail.** A burst larger than the
+   per-tick cap left a remainder that was read only when more bytes arrived, so a file going
+   quiet right after a burst kept its last lines forever. Found by a test written to fail. The
+   same rewrite removed a `lines.index(line)` position search — first-match on a repeated log
+   line, which is ordinary in a log.
+3. **The panel worked and was unreadable.** Placed in the field's own grid cell it connected,
+   delivered its lines, and raised no error — at ~180px wide, breaking words two characters at a
+   time. A log is the widest thing this surface shows and a grid cell is the narrowest box it
+   has. Lifted to the answer: 1148px. The structural checks were green throughout.
+
+**And one about markers, caught on this side while marking tasks done:** two tasks were ticked
+whose tests had not been written — the behaviour existed, the proof did not. The marker is the
+part that gets counted, so it was un-ticked and the tests written (a log record must not contain
+a line; a stream must touch no cache and create no file).
+
+Verified: 222 web tests, and Python unit failures identical to an import-isolated baseline
+worktree (108 = 108, zero module leaks).
+
 ### Still open
 
 | Decision | Owner | State |
