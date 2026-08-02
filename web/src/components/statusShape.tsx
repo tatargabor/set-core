@@ -162,17 +162,59 @@ export function absentCaveatKeys(
  * its caveat and each costs ONE line; the rest is a click away for whoever is reading that
  * particular number. The signal stays everywhere, the noise divides by three.
  */
+/**
+ * The ONE sentence that qualifies a whole answer, shown as a sentence.
+ *
+ * Split from the per-field marker deliberately. A marker works because it sits beside a value
+ * and inherits that value's meaning; a marker with nothing beside it is a bare exclamation mark
+ * qualifying the entire screen, which says only that something is qualified. Measured on the
+ * live screen the moment the marker shipped: two orphan `!` glyphs, one under the answer's title
+ * and one under a table, neither attached to anything a reader could name.
+ *
+ * There is exactly one of these per answer, so it costs one line and buys the whole sentence.
+ */
+export function CommandCaveat({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-xs leading-snug text-fg-muted italic border-l border-surface-edge pl-2">
+      {children}
+    </div>
+  )
+}
+
 export function CaveatNote({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (
-    <div
-      onClick={() => setOpen(v => !v)}
-      title={open ? undefined : 'show the whole caveat'}
-      className={`text-xs leading-snug text-fg-muted italic border-l border-surface-edge pl-2
-                  mt-0.5 cursor-pointer ${open ? '' : 'truncate'}`}
-    >
-      {children}
-    </div>
+    <>
+      {/*
+        A MARKER beside the value, not a sentence under it.
+
+        The rule it still obeys: the qualification travels with the number. That rule was written
+        because a caveat rendered anywhere else is read by nobody — and it produced a full-width
+        italic line per qualified field, which on a live screen meant five grey sentences inside
+        one block, breaking the column grid and burying the three facts a reader came for. The
+        user's words: "felesleges szürke magyarázó mezők".
+        
+        So the marker is always visible and always attached — the value can never travel without
+        it — and the sentence is one click away, in place, not in a tooltip. A tooltip would fail
+        the same rule from the other side: unreachable on touch, uncopyable, invisible to anyone
+        reading with a keyboard.
+      */}
+      <button
+        onClick={() => setOpen(v => !v)}
+        data-caveat="true"
+        aria-expanded={open}
+        title={open ? 'hide the caveat' : 'this value means something narrower than its name — read it'}
+        className="ml-1.5 align-middle text-[0.65rem] leading-none px-1 py-0.5 rounded
+                   border border-amber-500/40 text-amber-500/90 hover:bg-amber-500/10"
+      >
+        !
+      </button>
+      {open && (
+        <div className="text-xs leading-snug text-fg-muted italic border-l border-amber-500/40 pl-2 mt-0.5">
+          {children}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -777,6 +819,33 @@ export function useRoles(): Record<string, unknown> {
  * An unrecognised role returns null, silently. A producer shipping a new role must never blank a
  * working surface — the value simply renders the way it does today.
  */
+/**
+ * Field names that are already fully shown INSIDE another field's rendering.
+ *
+ * A project declaring `tasksDone: {progressOf: "tasksTotal"}` has stated that those two fields
+ * are one fact. The pair renders as `8 / 43` — the partner's value verbatim, not summarised —
+ * so a separate `tasksTotal 43` row two lines below states the same number a second time, and a
+ * number stored twice is how two numbers start.
+ *
+ * This is not the framework deciding a field is unimportant. It is the framework honouring a
+ * relationship the PROJECT declared, and it disappears the moment the declaration does.
+ *
+ * Only when the pair actually resolved: a `progressOf` whose partner is missing renders as a
+ * plain number, and in that case the partner must obviously keep its own row.
+ */
+export function foldedPartners(
+  display: Record<string, unknown>,
+  owner: Record<string, unknown> | null,
+): Set<string> {
+  const folded = new Set<string>()
+  if (!owner) return folded
+  for (const key of Object.keys(owner)) {
+    const role = resolveRole(display, owner, key)
+    if (role && (role.kind === 'progress' || role.kind === 'limit')) folded.add(role.partner)
+  }
+  return folded
+}
+
 export function resolveRole(
   display: Record<string, unknown>,
   owner: Record<string, unknown> | null,

@@ -38,7 +38,7 @@ import {
   FollowProvider,
   RoleProvider,
   presentFollowTargets,
-  CaveatNote,
+  CommandCaveat,
   presentCaveats,
   absentCaveatKeys,
   COMMAND_LEVEL_CAVEAT,
@@ -157,7 +157,7 @@ function Answer({
         </div>
       </div>
       {/* Once, in the header — not repeated beside every value. It qualifies the command. */}
-      {starCaveat && <CaveatNote>{starCaveat}</CaveatNote>}
+      {starCaveat && <CommandCaveat>{starCaveat}</CommandCaveat>}
       {showAbsent && absentCaveats.length > 0 && (
         <div className="text-xs text-fg-faint space-y-0.5">
           <div className="text-fg-ghost">

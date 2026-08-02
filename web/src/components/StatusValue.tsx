@@ -43,11 +43,13 @@ import {
   partitionKeys,
   useCaveats,
   CaveatNote,
+  CommandCaveat,
   FollowControl,
   useFollow,
   useDeprecation,
   type ResolvedRole,
   resolveRole,
+  foldedPartners,
   useRoles,
   humanDuration,
   ProgressValue,
@@ -268,7 +270,7 @@ function SectionedGrid(
         <section key={k} className="space-y-1 pt-1">
           <div className="text-sm text-fg-faint">{k}</div>
           <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} role={resolveRole(roles, obj, k)} />
-          <FieldExtras k={k} />
+          <FieldExtras k={k} block />
         </section>
       ))}
       <HiddenNote count={hiddenCount} />
@@ -304,14 +306,28 @@ function isBlockValue(v: unknown): boolean {
  * sentence about the value and belongs under it; a control is an affordance and belongs where
  * the eye already is.
  */
-function FieldExtras({ k }: { k: string }) {
+function FieldExtras({ k, block = false }: { k: string; block?: boolean }) {
   const caveats = useCaveats()
   const follow = useFollow()
   const path = follow.present.get(k)
+  const caveat = caveats.perField.get(k)
   return (
     <>
       {path && <FollowControl field={k} />}
-      {caveats.perField.has(k) && <CaveatNote>{caveats.perField.get(k)}</CaveatNote>}
+      {/*
+        A marker beside a VALUE; a sentence under a BLOCK.
+
+        The marker works by adjacency — it inherits the meaning of the thing it sits next to. A
+        block is a table or a nested object with a heading, and there is no value beside it, so
+        the same marker renders as a lone exclamation mark qualifying a whole section. Measured
+        twice on the live screen after the marker shipped: two orphan glyphs, neither attached to
+        anything a reader could name. A block also has the room a single field does not.
+      */}
+      {caveat !== undefined && (
+        block
+          ? <CommandCaveat>{caveat}</CommandCaveat>
+          : <CaveatNote>{caveat}</CaveatNote>
+      )}
     </>
   )
 }
@@ -319,12 +335,15 @@ function FieldExtras({ k }: { k: string }) {
 function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
   const view = useDeprecation()
   const roles = useRoles()
-  // Beside the value, inside the same <dd>, never a tooltip: the defect being fixed is that
-  // the number travels and the caveat does not.
-  const caveats = useCaveats()
+  const folded = foldedPartners(roles, obj)
+  // The caveat is read by `FieldExtras`, which renders it beside the value — the number and
+  // its qualification travel together, which is the whole reason the signal exists. It is no
+  // longer read HERE, because it no longer affects how wide a row is.
   const sections = sectionsOf(obj)
   if (sections.length > 0) return <SectionedGrid obj={obj} depth={depth} sections={sections} />
-  const all = Object.keys(obj).filter(k => !META_KEYS.has(k))
+  // A partner already shown verbatim inside its pair does not get a second row. Driven by the
+  // project's OWN declaration that the two fields are one fact — never by a judgement here.
+  const all = Object.keys(obj).filter(k => !META_KEYS.has(k) && !folded.has(k))
   const emphasised = emphasisOf(obj)
   if (all.length === 0 && !(ACTIONS_KEY in obj)) return <Unknown label="(no fields)" />
   const { visible, hiddenCount } = partitionKeys(all, view)
@@ -348,16 +367,28 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
   const isWide = (k: string) => {
     const v = obj[k]
     if (isBlockValue(v)) return true
-    // The CAVEAT counts toward the row's width too, and leaving it out cost a regression the
-    // first time this shipped: a block of six short numbers went compact, and the sentence
-    // the project attached to each of them wrapped into a 200px column seven lines deep. A
-    // field is short when everything rendered on its line is short — the value AND whatever
-    // travels beside it.
-    const caveat = caveats.perField.get(k)
-    if (caveat && String(caveat).length > SHORT_VALUE_CHARS) return true
+    // The caveat used to count toward this width, because it rendered as a sentence on the
+    // value's own line and a long one wrapped a 200px column seven lines deep. It is a
+    // fixed-width marker now, so including it would widen rows for a thing that no longer
+    // takes width — and the cost of that was measured, not guessed: it pushed `change`,
+    // `tasksDone` and `state` out of the compact grid and down the page, which is the exact
+    // complaint this whole round is answering.
     return String(v ?? '').length > SHORT_VALUE_CHARS
   }
 
+  /**
+   * DECLARED order, unchanged — and the alignment is fixed by having fewer wide fields instead.
+   *
+   * Sorting the short fields first did line the columns up, and it was wrong. Measured on the
+   * live screen: the producer sends `change` and `title` first because that is what the block is
+   * ABOUT, and reordering by width buried them under `pid`, `turns` and `lastToolAt`. The field
+   * order is the one statement of importance a project makes without any extra declaration, and
+   * a renderer that overrides it has decided something about someone else's domain.
+   *
+   * The raggedness had a different cause anyway: six fields counted as wide because their CAVEAT
+   * was long, and the caveat is a marker now. Two remain wide in the measured block, and a grid
+   * that breaks twice reads as a grid.
+   */
   const inline = visible.filter(k => !isBlockValue(obj[k]))
   const blocks = visible.filter(k => isBlockValue(obj[k]))
   // Tracks are worth having only once several fields can share a row.
@@ -411,7 +442,7 @@ function KeyGrid({ obj, depth }: { obj: Record<string, unknown>; depth: number }
           <section key={k} className="space-y-1 pt-1">
             <div className="text-sm text-fg-faint">{k}</div>
             <StatusValue value={obj[k]} depth={depth + 1} batch={batchActionFor(obj, k)} role={resolveRole(roles, obj, k)} />
-            <FieldExtras k={k} />
+            <FieldExtras k={k} block />
           </section>
         ))}
       </div>
