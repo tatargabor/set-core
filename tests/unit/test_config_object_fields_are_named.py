@@ -90,3 +90,38 @@ def test_the_gate_config_docstring_names_no_attr_that_does_not_exist():
     named = set(re.findall(r"`([A-Za-z_]+)`", para))
 
     assert named == real, f"docstring/reality mismatch: {named ^ real}"
+
+
+# ── the same class, fourth instance: StatusResult ─────────────────────────────────
+#
+# `StatusResult` is what a caller actually holds after asking a project a question, so it is the
+# object a wrong guess reaches for most often. `getattr(result, "caveat", {})` — singular, a
+# plausible slip — returns the empty mapping, which is exactly what a project that declared no
+# caveats produces. The read then reports "this project qualifies nothing" about an answer full
+# of qualifications, and reports it confidently.
+
+
+def test_status_result_docstring_names_every_field():
+    from set_orch.project_status import StatusResult
+
+    doc = StatusResult.__doc__ or ""
+    missing = [f.name for f in dataclasses.fields(StatusResult)
+               if f"`{f.name}`" not in doc]
+
+    assert missing == [], (
+        f"fields absent from the docstring: {missing}. This is the object callers reach into "
+        f"by name, and a wrong name returns the empty shape rather than an error.")
+
+
+def test_the_status_result_docstring_names_no_field_that_does_not_exist():
+    import re
+
+    from set_orch.project_status import StatusResult
+
+    doc = StatusResult.__doc__ or ""
+    real = {f.name for f in dataclasses.fields(StatusResult)}
+    para = doc.split("**Every field, by name:**")[1].split("The enumeration is here")[0]
+    named = set(re.findall(r"`([a-z_]+)`", para))
+
+    assert named - real == set(), f"docstring names non-existent field(s): {named - real}"
+    assert real - named == set(), f"enumeration is missing: {real - named}"

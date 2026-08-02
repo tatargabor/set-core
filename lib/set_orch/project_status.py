@@ -381,7 +381,16 @@ def load_manifest(project_path: str | Path) -> Optional[StatusConfig]:
 
 @dataclass(frozen=True)
 class StatusResult:
-    """One answer, or one visible gap. Never a guess."""
+    """One answer, or one visible gap. Never a guess.
+
+    **Every field, by name:** `command`, `ok`, `data`, `error`, `error_class`,
+    `contract_version`, `generated_at`, `deprecated`, `caveats`, `follow`.
+
+    The enumeration is here for the same reason as `StatusConfig`'s, and the reason is not
+    tidiness: a caller who cannot read the name off the documentation guesses it, and
+    `getattr(result, "…", ())` does not fail on a wrong guess — it returns the empty shape, which
+    is indistinguishable from a project that declared nothing. Kept in step by a test.
+    """
 
     command: str
     ok: bool
@@ -404,6 +413,14 @@ class StatusResult:
     #: it that way" signals covers that: `gaps` is per command, `errorClass` is per failure,
     #: `deprecated` is per field name, and all three describe something absent or wrong.
     caveats: dict = field(default_factory=dict)
+
+    #: Field names whose VALUE is a path to a file the project is writing, and which it is
+    #: therefore willing to have followed live. See `_follow_fields`.
+    #:
+    #: Declared for the same reason as everything else on this envelope: the framework must not
+    #: learn that a field called `log` holds a log. The next project calls it `trace`, and a
+    #: framework that recognises one project's word has taken on that project's domain.
+    follow: tuple = ()
 
     @classmethod
     def failure(cls, command: str, error_class: str, error: str) -> "StatusResult":
@@ -535,7 +552,70 @@ def parse_envelope(command: str, raw: str) -> StatusResult:
         generated_at=_str_or_none(payload.get("generatedAt")),
         deprecated=_deprecated_fields(payload.get("deprecated")),
         caveats=_caveats(payload.get("caveats")),
+        follow=_follow_fields(payload.get("follow")),
     )
+
+
+def _follow_fields(raw: Any) -> tuple:
+    """Field names the project says carry a followable file path. Read, never decided here.
+
+    The whole point is that the framework does NOT know which field holds a path. It cannot
+    know: the name is the project's vocabulary, and recognising `log` — or `logFile`, or
+    `trace` — would put one project's word inside a framework meant to serve the next one too.
+    So the project names its own fields, exactly as it does for `deprecated` and `caveats`.
+
+    **Bare field names, matched at any depth**, because that is the selector `caveats` already
+    uses. A dotted path would be a second key-shape in one envelope, and the failure is silent
+    in both directions: a dotted key matches nothing here, and a bare key would match nothing in
+    a path-based reader. One selector rule for the whole envelope is worth more than the extra
+    precision.
+
+    **Malformed input degrades to nothing followable, not to no answer.** The command succeeded
+    and its data is right; a broken decoration must not cost the measurement.
+    """
+    if not isinstance(raw, (list, tuple)):
+        if raw is not None:
+            # Shape, never content — the same rule the rest of this module follows.
+            logger.warning("status contract: 'follow' is %s, not a list — ignored",
+                           type(raw).__name__)
+        return ()
+    return tuple(dict.fromkeys(
+        str(item).strip() for item in raw
+        if isinstance(item, str) and str(item).strip()
+    ))
+
+
+def follow_targets(data: Any, follow: tuple) -> Dict[str, str]:
+    """Which follow-declared fields are actually PRESENT in this answer, and what they hold.
+
+    The declaration says what to look for; the DATA says what is there. Printing a control for
+    a field the project stopped sending would be a false absence — the mirror of the false value
+    this family of signals exists to prevent — and here it would be worse than cosmetic, because
+    the control would offer to follow a path that is not in the answer.
+
+    A field present with a null, empty or non-string value is NOT a target. That is the ordinary
+    state of a project between runs, and it means "nothing to follow", never an error.
+    """
+    wanted = {name for name in follow if name}
+    if not wanted:
+        return {}
+
+    found: Dict[str, str] = {}
+
+    def walk(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                walk(item)
+            return
+        if not isinstance(value, dict):
+            return
+        for key, child in value.items():
+            if key in wanted and isinstance(child, str) and child.strip():
+                found.setdefault(key, child)
+            walk(child)
+
+    walk(data)
+    return found
 
 
 def _deprecated_fields(raw: Any) -> tuple:

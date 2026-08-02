@@ -13,6 +13,7 @@ Modules:
     media           — /api/{p}/screenshots, worktree logs, soniox
     learnings       — /api/{p}/review-findings, gate-stats, reflections, timeline, scoreboard
     project_status  — /api/{p}/project-status (the project's own contract: releases, bugs, …)
+    status_follow   — /api/{p}/project-status/follow (SSE over a file the project declared)
     lifecycle       — startup/shutdown, background supervisor + issue ticks
     plugins         — entry_points route discovery
 """
@@ -30,6 +31,7 @@ from .activity import router as activity_router
 from .activity_detail import router as activity_detail_router
 from .lineages import router as lineages_router
 from .project_status import router as project_status_router
+from .status_follow import router as status_follow_router
 
 # Unified router that combines all domain routers
 router = APIRouter()
@@ -44,6 +46,7 @@ router.include_router(activity_router)
 router.include_router(activity_detail_router)
 router.include_router(lineages_router)
 router.include_router(project_status_router)
+router.include_router(status_follow_router)
 
 # Optional routers (sentinel control, issues) — added when lifecycle starts
 # These are registered dynamically in lifecycle.py since they need service instances
