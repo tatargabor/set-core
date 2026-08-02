@@ -848,6 +848,31 @@ reach — is gone.
 numbers because the framework must not infer a unit from a field name, and a running section is
 not emphasised over `totals` unless they declare `_emphasis`. Both are theirs to decide.
 
+**Closed the same day — the producer wired it in ~50 minutes, and the prediction held exactly.**
+The command is declared, the framework reads it (`ok`, contract v1, ~0.1s), and the tab appeared
+with **no restart, no build and no framework change** — the tenth time the declaration-driven
+design has held. Looked at on the live screen, not just through the API:
+
+- The **command-level `*` caveat is the first line of the panel** — "this is the LOCAL development
+  tree, not the live system". The most important qualification of the whole answer sits where the
+  reader is standing rather than in a document.
+- `available yes` / `running —` on one line: the zero state is PRINTED, not hidden.
+- A field arrived that was NOT in the original announcement (`orphanRuns`, a run that started and
+  never reported an end). It rendered as one more block with its own caveat — the surface keeps no
+  field list, so an extra key is a block, not a defect.
+- Today's width fix is doing real work here: the longest producer field renders at **646px** where
+  the old fixed clip gave it 352.
+
+**One divergence found, measured AT THE SOURCE rather than through the framework** (so as not to
+measure our own filtering): the producer's entry named five caveats; `set-api current` emits four.
+The missing one is the one guarding against reading a **stale lock as a running process**. No
+consequence today — that key is absent from the data while nothing runs, so it could not render
+anyway — but the two readings need different fixes, and the second is the interesting one: **a
+caveat is a DECLARATION, not data.** If the set narrows to whatever the data currently contains,
+that is the data-driven-surface class the producer themselves closed for their `stats` keys by
+filling zeros. Nothing breaks here either way, because `presentCaveats` counts from the data and
+uses the declaration only to know what to look for — which is exactly why that rule exists.
+
 ### Still open
 
 | Decision | Owner | State |
