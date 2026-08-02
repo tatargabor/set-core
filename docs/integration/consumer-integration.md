@@ -873,6 +873,29 @@ that is the data-driven-surface class the producer themselves closed for their `
 filling zeros. Nothing breaks here either way, because `presentCaveats` counts from the data and
 uses the declaration only to know what to look for — which is exactly why that rule exists.
 
+### 2026-08-02 — GOAL 4 IS MET: entering the project opens on where development stands
+
+The acceptance test for this whole track is one sentence — *open set-core and see the project's
+development status* — and it is now true. The producer moved their manifest's `primary` to the
+live-development answer, and the landing screen is that answer.
+
+**Measured the way a reader arrives — no `?tab=`, nothing forced.** The page lands on it (and
+writes the choice back into the URL, so a copied link carries the screen being talked about, not
+whatever the recipient's contract prefers). With **nothing running**, the screen still carries
+**seven blocks and ~2100 characters**: the last finished section, what waits on a human decision,
+a run that started and never reported an end, the totals — each with its caveat. The zero state
+speaks, which is the obligation the producer wrote into their own contract when they made this the
+opening screen.
+
+**What this cost the framework: nothing.** No restart, no build, no code. A `primary` is a
+declaration, and the surface reads it — the same property that has now held ten times.
+
+**Do not let the marker outrun its subject.** What is met is goal 4 — *seeing* the status. Goal 5
+(bringing the OpenSpec operation itself back into set-core: prepare a release, plan fixes, manage
+releases) is untouched by this, and the write-side button that would start a cycle from here is
+still gated on one unmeasured question — whether the producer's `run` returns immediately or
+blocks for the length of the run (asked as `S#170`, no answer yet). Reading is done; driving is not.
+
 ### Still open
 
 | Decision | Owner | State |
