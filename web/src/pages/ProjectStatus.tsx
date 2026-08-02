@@ -21,7 +21,7 @@
  * visible from wherever you are standing, not only from the tab it belongs to.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getProjectStatus,
   postProjectWrite,
@@ -257,9 +257,79 @@ export default function ProjectStatus({ project }: Props) {
       .finally(() => setAsking(null))
   }, [project])
 
-  // No polling. A contract call spawns the project's own toolchain — one measured
-  // command took minutes. This page refreshes when asked, and says how old it is.
   useEffect(() => { load(false) }, [load])
+
+  // Read from the CONTRACT, not from a list here: the project decides what is too
+  // expensive to ask automatically, and a poll is the most automatic thing there is.
+  const onDemandNames = useMemo(
+    () => new Set(data?.contract?.onDemand ?? []),
+    [data?.contract?.onDemand],
+  )
+
+  /**
+   * The VISIBLE answer refreshes itself; nothing else does.
+   *
+   * The page used to poll nothing at all, and the reason was measured and real: a contract call
+   * spawns the project's own toolchain, and one probe on a live environment took minutes. But
+   * that reason was true of ONE command and got applied to all of them. Measured on a live
+   * producer: the answer people actually watch during a run costs **0.13s**, and a screen that
+   * only updates when you press a button is a screen that quietly shows you a finished run as if
+   * it were still going. The user reported exactly that.
+   *
+   * Four constraints, each removing a way this becomes the thing it replaced:
+   *
+   * - **Only the open tab.** Refreshing eleven commands to update the one on screen spends ten
+   *   subprocesses saying nothing to anybody.
+   * - **Never an `onDemand` command.** The project marked it too expensive to ask automatically;
+   *   a poll is the most automatic thing there is.
+   * - **Nothing while the page is hidden.** A background tab that keeps spawning a toolchain is
+   *   a battery bug and, on a shared machine, a load someone else pays for.
+   * - **The period comes from what the answer COST**, not from a number chosen here. Twenty times
+   *   its own round trip, floored and capped: a 0.13s answer settles at the 5s floor, a 4s answer
+   *   backs off to 80s on its own. A fixed interval would be right for one command and wrong for
+   *   the next, and the wrong direction is the expensive one.
+   *
+   * And it is switchable, because the one thing worse than a stale screen is a stale screen that
+   * looks live. The header states which it is and when the answer was taken.
+   */
+  const [live, setLive] = useState(true)
+  const lastCostMs = useRef(0)
+
+  useEffect(() => {
+    if (!live || !project || !active) return
+    if (onDemandNames.has(active)) return
+
+    let stop = false
+    let timer: ReturnType<typeof setTimeout>
+
+    const period = () => Math.min(120_000, Math.max(5_000, lastCostMs.current * 20))
+
+    const tick = () => {
+      if (stop) return
+      if (document.visibilityState !== 'visible') { timer = setTimeout(tick, period()); return }
+      const t0 = performance.now()
+      getProjectStatus(project, { commands: [active], refresh: true })
+        .then(res => {
+          if (stop) return
+          const fresh = res.commands?.[active]
+          // Merged, never replaced: a one-command response would otherwise blank the ten other
+          // tabs, and a tab that empties because a SIBLING refreshed reads as a failure.
+          if (fresh) {
+            setData(prev => (prev
+              ? { ...prev, commands: { ...prev.commands, [active]: fresh } }
+              : prev))
+          }
+        })
+        .catch(() => { /* a refresh that fails leaves the last good answer and its timestamp */ })
+        .finally(() => {
+          lastCostMs.current = performance.now() - t0
+          if (!stop) timer = setTimeout(tick, period())
+        })
+    }
+
+    timer = setTimeout(tick, 2_000)
+    return () => { stop = true; clearTimeout(timer) }
+  }, [live, project, active, onDemandNames])
 
   // A write goes out, and then the page re-reads. Not because the answer is stale by a
   // clock, but because it is stale by an action WE took — leaving the old answer on
@@ -347,10 +417,33 @@ export default function ProjectStatus({ project }: Props) {
           </div>
         )}
 
+        {/*
+          Which of the two this screen is, stated where the reader is standing. A stale screen
+          is a nuisance; a stale screen that LOOKS live is the failure this control exists to
+          prevent, so the label says what is happening rather than what the button will do.
+
+          The expensive answers say so too, instead of appearing to have gone quiet: a project
+          that marked a command `onDemand` gets "on demand", not a dead "live" dot.
+        */}
+        <button
+          onClick={() => setLive(v => !v)}
+          className="ml-auto flex items-center gap-1.5 text-xs text-fg-muted hover:text-fg-strong shrink-0"
+          title={live
+            ? 'the open tab re-asks the project on its own — click to stop'
+            : 'nothing refreshes until you ask — click to follow the open tab'}
+        >
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+            active && onDemandNames.has(active)
+              ? 'bg-fg-ghost'
+              : live ? 'bg-emerald-500' : 'bg-fg-ghost'
+          }`} />
+          {active && onDemandNames.has(active) ? 'on demand' : live ? 'live' : 'paused'}
+        </button>
+
         <button
           onClick={() => load(true)}
           disabled={loading}
-          className="ml-auto px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm rounded font-medium bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          className="px-3 min-h-[44px] md:min-h-0 md:py-1 text-sm rounded font-medium bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
         >
           {loading ? 'Asking…' : 'Ask again'}
         </button>
