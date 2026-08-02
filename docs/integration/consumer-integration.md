@@ -811,6 +811,43 @@ through OpenSpec and is queued **after** the caveats change closes. Not deferral
 the archetypal caveat case, and building the panel first invites hard-coding the disclaimer into
 the panel — domain inside the framework, which both sides forbid.
 
+### 2026-08-02 — the "current" panel was ordered, and the screen was already rendering it
+
+The user ordered the panel. Before designing one, the answer was put on a real screen — because a
+panel that recognises `running`, `waitingForHuman` and `costUsd` by name would be domain inside
+the framework, which is the one thing this side may not build.
+
+**How it was measured, and the method is reusable.** A **domain-free probe project**: a manifest
+plus a script that emits the contract envelope with the MEASURED shape and entirely invented
+values, registered in the project registry, read through the running dashboard. Nothing from a
+real producer was persisted, screenshotted, or cached — the shape is the framework's business,
+the values are the project's.
+
+**The finding: the generic surface already renders it, at zero framework cost.** Both states were
+looked at, not just the interesting one:
+
+- **Running** — `running` / `lastFinished` / `waitingForHuman` / `totals` each render as their own
+  block, `alive: yes` in green, the two-row waiting list as a table with expandable rows.
+- **Idle** (`running: null`, empty list) — renders `running —` and `waitingForHuman none (0)`. The
+  null is SHOWN, not hidden, which is the false-absence rule holding on a case nobody wrote it for.
+- **The `costUsd` caveat appears beside BOTH occurrences**, in italics, not red — the producer's
+  third constraint satisfied by the existing channel with nothing added.
+
+**So the panel is not a new capability; it is a declaration away.** What set-core owes is the
+delegating command's envelope, which is the producer's side.
+
+**One real defect the screen exposed, fixed the same session (`c97f62a3`).** The waiting-list
+table drew at ~940px in a 1150px panel and clipped the open human decision at 42 characters —
+~470px of panel empty beside the sentence being cut. A table too wide to flow into two groups and
+too narrow to fill the panel was the case the width requirement did not reach. The clip now takes
+the leftover width (measured 352px → 674px, same screen, same user path), mutation-proven, and the
+`max-w-[22rem]` literal — a second copy of `CELL_CLIP_CHARS × PX_PER_CHAR` that no rename could
+reach — is gone.
+
+**Still worth asking the producer, neither blocking:** `elapsedSec` and `seconds` render as raw
+numbers because the framework must not infer a unit from a field name, and a running section is
+not emphasised over `totals` unless they declare `_emphasis`. Both are theirs to decide.
+
 ### Still open
 
 | Decision | Owner | State |
