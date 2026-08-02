@@ -33,6 +33,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from .helpers import _resolve_project
+from ..forensics import jsonl_reader
 from ..status_follow import decide
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,59 @@ MAX_LINE_CHARS = 8000
 
 #: How long a stream may stay open with no client interest before it closes itself.
 MAX_STREAM_SECONDS = 60 * 60
+
+
+#: How much of one event's text a console line carries before it is cut. A console scrolls; it
+#: does not fold. Long enough to read a command or a result, short enough that one event cannot
+#: push the next twenty off the screen.
+CONSOLE_TEXT_CHARS = 400
+
+
+def _console_line(raw: str) -> Optional[str]:
+    """One console line for a Claude Code stream-json record, or None if it is not one.
+
+    **Where the domain line runs, because this is the one place it bends.** The framework may not
+    know what a PROJECT's field means — that rule is why `follow` is declared rather than guessed.
+    A Claude Code transcript is a different thing: set-core runs `claude -p` itself, ships a reader
+    for exactly this shape (`forensics.jsonl_reader`), and renders it on three other screens. It is
+    the framework's own tool's format, not a project's vocabulary.
+
+    So: a line that parses as one of those records is summarised with the reader we already have;
+    anything else is passed through untouched. The fallback is not a courtesy — the producer never
+    promised what is in that file, and the moment it is not a transcript this must still be a log
+    viewer rather than an empty panel.
+
+    Reusing the reader rather than re-deriving it in the browser is the point. A second copy of
+    "what a tool_use block looks like" would agree on the day it was written and drift after.
+    """
+    try:
+        record = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+
+    kind = record.get("type")
+    if kind not in {"user", "assistant", "system", "result"}:
+        return None
+
+    stamp = (jsonl_reader.get_timestamp(record) or "")[11:19]
+    tools = [t.get("name") or "?" for t in jsonl_reader.iter_tool_uses(record)]
+    text = " ".join((jsonl_reader.extract_text_content(record) or "").split())
+
+    label = kind
+    if tools:
+        label = f"{kind} · {' '.join(tools)}"
+    elif not text:
+        # A record with neither tools nor text still happened. Printing the bare kind reads as a
+        # blank line in a console, so it carries whatever the producer's own subtype says.
+        subtype = record.get("subtype")
+        if isinstance(subtype, str) and subtype:
+            label = f"{kind} · {subtype}"
+    if len(text) > CONSOLE_TEXT_CHARS:
+        text = text[:CONSOLE_TEXT_CHARS] + " …"
+
+    return " ".join(part for part in (stamp, label, text) if part)
 
 
 def _event(kind: str, payload: dict) -> str:
@@ -155,11 +209,15 @@ async def _follow(path: Path, project: str) -> AsyncIterator[str]:
                 line, pending = pending.split("\n", 1)
                 if not line:
                     continue
+                console = _console_line(line)
                 if len(line) > MAX_LINE_CHARS:
                     truncated += 1
-                    yield _event("line", {"text": line[:MAX_LINE_CHARS], "truncated": True})
+                    yield _event("line", {
+                        "text": console or line[:MAX_LINE_CHARS],
+                        "truncated": console is None,
+                    })
                 else:
-                    yield _event("line", {"text": line})
+                    yield _event("line", {"text": console or line})
                 delivered += 1
                 sent += 1
                 if sent >= MAX_LINES:

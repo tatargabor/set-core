@@ -35,55 +35,23 @@ const END_REASONS: Record<string, string> = {
   unreadable: 'the file could not be read',
 }
 
-function JsonLine({ text }: { text: string }) {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return <span className="text-fg-default break-all">{text}</span>
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return <span className="text-fg-default break-all">{text}</span>
-  }
-  // The producer's key order, untouched. No key is promoted and none is required.
-  return (
-    <span className="break-all">
-      {Object.entries(parsed as Record<string, unknown>).map(([k, v], i) => (
-        <span key={k}>
-          {i > 0 && <span className="text-fg-ghost"> · </span>}
-          <span className="text-fg-faint">{k}</span>
-          <span className="text-fg-ghost">:</span>{' '}
-          <span className="text-fg-default">
-            {typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}
-          </span>
-        </span>
-      ))}
-    </span>
-  )
-}
-
 /**
- * One line, bounded — because a single line can otherwise own the whole panel.
+ * One console line. No structure, no disclosure, no click.
  *
- * Measured on a real producer within seconds of the panel going live: one event carried a
- * complete assistant message as a nested JSON string, roughly 250 rendered lines, and it filled
- * the panel end to end. Every later line was pushed out of view by one earlier one. The panel
- * scrolls, so nothing was lost — it was unreachable, which reads the same to whoever is watching
- * a run and sees it stop.
+ * The first version rendered a JSON line as its own key/value pairs and let each line expand.
+ * The user's correction was direct: *a console, not per-line expandable things* — and it is the
+ * right call. A reader watching a run wants to scan what happened; every affordance per line is
+ * one more thing between them and the next event, and 500 of them is a page of controls.
  *
- * Three lines is enough to tell what an event is; the rest is one click away. Same bargain as
- * the caveat: the thing stays where the reader is standing, and costs a bounded amount of room.
+ * The formatting that makes a transcript readable happens on the SERVER (`_console_line`), using
+ * the reader set-core already ships for this shape. This component deliberately holds none of it:
+ * a second copy of "what a tool_use block looks like", written in TypeScript, would agree on the
+ * day it was written and drift afterwards.
  */
-function LogLine({ line }: { line: Line }) {
-  const [open, setOpen] = useState(false)
+function ConsoleLine({ line }: { line: Line }) {
   return (
-    <div
-      onClick={() => setOpen(v => !v)}
-      style={open ? undefined : { maxHeight: '4.2em', overflow: 'hidden' }}
-      className="py-0.5 border-b border-surface-edge/40 last:border-0 cursor-pointer"
-      title={open ? undefined : 'show the whole line'}
-    >
-      <JsonLine text={line.text} />
+    <div className="whitespace-pre-wrap break-all text-fg-normal">
+      {line.text}
       {line.truncated && <span className="text-fg-ghost italic"> … line truncated</span>}
     </div>
   )
@@ -157,9 +125,26 @@ export function FollowPanel({
     if (atBottom) el.scrollTop = el.scrollHeight
   }, [lines])
 
+  // Escape closes it, because a layer that covers the page and can only be dismissed with the
+  // mouse is a trap for anyone reading with the keyboard.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <div className="mt-2 rounded border border-surface-line bg-surface-sunken">
-      <div className="flex items-center gap-2 px-2 py-1 border-b border-surface-line text-xs">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+    <div
+      className="w-[80vw] h-[80vh] flex flex-col rounded border border-surface-line bg-surface-page shadow-2xl"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 px-2 py-1 border-b border-surface-line text-xs shrink-0">
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${
           ended ? 'bg-fg-ghost' : opened ? 'bg-emerald-500' : 'bg-amber-500'
         }`} />
@@ -173,7 +158,7 @@ export function FollowPanel({
         >×</button>
       </div>
 
-      <div ref={box} className="max-h-72 overflow-y-auto px-2 py-1 text-xs leading-relaxed">
+      <div ref={box} className="flex-1 min-h-0 overflow-y-auto px-2 py-1 text-xs leading-relaxed">
         {lines.length === 0 && !ended && (
           // Not "nothing is happening" — this stream starts at the end of the file on purpose.
           <div className="text-fg-ghost py-1">
@@ -185,13 +170,14 @@ export function FollowPanel({
             {dropped} earlier line{dropped === 1 ? '' : 's'} scrolled out of this panel
           </div>
         )}
-        {lines.map(l => <LogLine key={l.n} line={l} />)}
+        {lines.map(l => <ConsoleLine key={l.n} line={l} />)}
         {ended && (
           <div className="text-amber-500/90 py-1">
             stream ended — {END_REASONS[ended] ?? ended}
           </div>
         )}
       </div>
+    </div>
     </div>
   )
 }

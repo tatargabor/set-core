@@ -86,6 +86,29 @@ describe('design-system drift', () => {
     expect(hits(/\b(?:text|bg|border)-neutral-\d{2,3}\b/)).toEqual([])
   })
 
+  it('every surface/fg utility names a token that exists', () => {
+    // An unknown Tailwind utility does not fail — it renders NOTHING. Measured: a modal written
+    // with `bg-surface-sunken`, a token this system does not define, came out fully transparent
+    // and the page showed through the log inside it. Nothing in the build, the types, or the
+    // tests said a word; only looking at the screen did.
+    //
+    // So the check is that the NAME resolves, which is the part a typo breaks.
+    const css = readFileSync(path.join(SRC, 'index.css'), 'utf8')
+    const declared = new Set([...css.matchAll(/--color-((?:surface|fg)-[a-z-]+)\s*:/g)].map(m => m[1]))
+    expect(declared.size).toBeGreaterThan(5)
+
+    const used = new Set<string>()
+    for (const file of sourceFiles(SRC)) {
+      const text = readFileSync(file, 'utf8')
+      for (const m of text.matchAll(/\b(?:bg|text|border|ring|fill|stroke)-((?:surface|fg)-[a-z-]+)\b/g)) {
+        used.add(m[1])
+      }
+    }
+    // Opacity suffixes (`surface-edge/40`) are stripped by the pattern already.
+    const unknown = [...used].filter(name => !declared.has(name)).sort()
+    expect(unknown).toEqual([])
+  })
+
   it('the exemption list states a reason for every entry', () => {
     // An exemption without a reason becomes permanent by default: nobody can tell whether it
     // was a decision or an oversight, so nobody removes it.
