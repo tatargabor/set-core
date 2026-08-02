@@ -103,6 +103,58 @@ function isScalar(v: unknown): boolean {
  * flattened object would produce one chip per row. Structured columns are excluded from facets
  * by `isScalar` anyway; this keeps the two agreeing rather than relying on the caller.
  */
+/**
+ * A column whose every row carries the SAME value states a fact about the ANSWER, not about the
+ * rows — and it charges full column width to say nothing per row.
+ *
+ * Measured on a live table: eighteen columns, nine rows, and three of them (`change` repeated
+ * nine times, one model name repeated nine times, one column empty in every row) took roughly a
+ * third of the width while eleven columns — every measurement in the answer — sat off-screen to
+ * the right. Nothing was wrong with the data; the table was spending its width on repetition.
+ *
+ * **Lifted, never hidden.** The value moves ABOVE the table, where it is stated once and is more
+ * prominent than it was, not less. That is the rule this surface applies to every compaction: a
+ * tidier screen may not report calm it has not verified. A constant `gate: FAILED` therefore ends
+ * up more visible after this than before it.
+ *
+ * **A column empty in every row is lifted too, and stated as absent** — "not reported by any
+ * row". A gap is not a zero, and repeating the same dash nine times is a slow way to say it once.
+ *
+ * Three guards, each for a way this would otherwise be wrong:
+ * - **Under three rows nothing is lifted.** With two rows "both the same" is thin evidence about
+ *   the column and the note costs more than the column does.
+ * - **Structures are never compared.** Deep equality is expensive and its answer is arguable; a
+ *   structured column stays where it is.
+ * - **The table is never emptied.** If every column were constant, lifting them all would leave a
+ *   header and no data.
+ */
+export interface LiftedColumn {
+  key: string
+  value: unknown
+  /** Every row is missing it — so the note says it is absent rather than showing a value. */
+  missing: boolean
+}
+
+export function constantColumns(
+  rows: readonly Record<string, unknown>[], cols: readonly string[],
+): LiftedColumn[] {
+  if (rows.length < 3) return []
+  const out: LiftedColumn[] = []
+  for (const c of cols) {
+    const first = rows[0][c]
+    if (first !== null && typeof first === 'object') continue
+    let same = true
+    for (const r of rows) {
+      const v = r[c]
+      if (v !== null && typeof v === 'object') { same = false; break }
+      if (!Object.is(v ?? null, first ?? null)) { same = false; break }
+    }
+    if (same) out.push({ key: c, value: first, missing: first === null || first === undefined })
+  }
+  // Never leave the table with no columns to show.
+  return out.length >= cols.length ? [] : out
+}
+
 function cellText(v: unknown): string {
   if (v === null || v === undefined) return ''
   if (typeof v === 'object') return ''
@@ -589,7 +641,14 @@ export function StatusTable(
   const emphasised = useMemo(() => rawRows.map(emphasisOf), [rawRows])
 
   const dataCols = columnsOf(rows).filter(c => !META_KEYS.has(c))
-  const { visible: cols, hiddenCount } = partitionKeys(dataCols, view)
+  const { visible: shownCols, hiddenCount } = partitionKeys(dataCols, view)
+  const lifted = useMemo(() => constantColumns(rows, shownCols), [rows, shownCols])
+  const cols = useMemo(
+    () => (lifted.length === 0
+      ? shownCols
+      : shownCols.filter(c => !lifted.some(l => l.key === c))),
+    [shownCols, lifted],
+  )
   const hasActions = rows.some(
     r => Array.isArray(r[ACTIONS_KEY]) && (r[ACTIONS_KEY] as unknown[]).length > 0,
   )
@@ -682,7 +741,10 @@ export function StatusTable(
     if (controls) {
       const term = search.trim().toLowerCase()
       if (term) {
-        idx = idx.filter(i => cols.some(c => searchText(rows[i][c]).toLowerCase().includes(term)))
+        // `shownCols`, not `cols`: a lifted column is off the table but still IN the rows.
+        // Dropping it from the index would turn a term that matches every row into one that
+        // matches none — and "no rows" is what a reader takes for "not there".
+        idx = idx.filter(i => shownCols.some(c => searchText(rows[i][c]).toLowerCase().includes(term)))
       }
       for (const [col, values] of activeFacets) {
         idx = idx.filter(i => values.includes(cellText(rows[i][col])))
@@ -1066,6 +1128,20 @@ export function StatusTable(
             {hiddenCols} column{hiddenCols === 1 ? '' : 's'} off to the right &rarr;
           </span>
         )}
+        {/*
+          Columns whose value never varies, stated once instead of once per row. Rendered on the
+          count line — the place that already carries what this view is NOT showing — so the fact
+          and the reason for the missing column sit together rather than a screen apart.
+        */}
+        {lifted.map(l => (
+          <span key={l.key} className="text-fg-faint">
+            <span className="text-fg-ghost">{l.key}</span>{' '}
+            {l.missing
+              ? <span className="text-amber-500/80">not reported by any row</span>
+              : <span className="text-fg-normal">{String(l.value)}</span>}
+            <span className="text-fg-dim"> · all {rows.length} rows</span>
+          </span>
+        ))}
         {filtering && (
           <button
             onClick={clearAll}

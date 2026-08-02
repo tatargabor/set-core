@@ -8,8 +8,10 @@
  * uses to decide something is not there.
  */
 import { describe, expect, it } from 'vitest'
+import { fireEvent, render } from '@testing-library/react'
 
-import { searchText } from '../../src/components/StatusTable'
+import { constantColumns, searchText } from '../../src/components/StatusTable'
+import StatusValue from '../../src/components/StatusValue'
 
 describe('searchText — every scalar leaf, and nothing else', () => {
   it('reaches a leaf inside an object', () => {
@@ -58,5 +60,79 @@ describe('the refuted approach, held in a test', () => {
     // The exclusion is of key names, not of the word. A row whose value is literally "date" is
     // still findable — otherwise the fix would have created a second blind spot.
     expect(searchText({ kind: 'date' })).toContain('date')
+  })
+})
+
+describe('a column whose value never varies', () => {
+  const nine = (extra: Record<string, unknown> = {}) =>
+    Array.from({ length: 9 }, (_, i) => ({
+      change: 'one-and-the-same', model: 'x', effort: null,
+      group: String(i), seconds: i * 10, ...extra,
+    }))
+
+  it('is lifted out of the table and stated once', () => {
+    const lifted = constantColumns(nine(), ['change', 'model', 'effort', 'group', 'seconds'])
+
+    expect(lifted.map(l => l.key)).toEqual(['change', 'model', 'effort'])
+    expect(lifted.find(l => l.key === 'change')!.value).toBe('one-and-the-same')
+  })
+
+  it('marks a column empty in EVERY row as absent, not as a value', () => {
+    // A gap is not a zero. Repeating the same dash nine times is a slow way to say it once,
+    // but saying nothing at all would be a different claim.
+    const lifted = constantColumns(nine(), ['effort', 'group', 'seconds'])
+    expect(lifted).toEqual([{ key: 'effort', value: null, missing: true }])
+  })
+
+  it('leaves a column alone the moment one row differs', () => {
+    const rows = nine()
+    rows[4].model = 'y'
+    expect(constantColumns(rows, ['model'])).toEqual([])
+  })
+
+  it('lifts nothing from a table too small for the note to pay for itself', () => {
+    // With two rows "both the same" is thin evidence about the column, and the note costs
+    // more than the column it removes.
+    //
+    // TWO columns on purpose, one of them varying. With a single column the never-empty guard
+    // returns [] regardless of the row count, so the first version of this test passed while
+    // measuring the wrong rule — a mutation that lowered the threshold to two did not trip it.
+    const two = [{ a: 'same', b: 1 }, { a: 'same', b: 2 }]
+    expect(constantColumns(two, ['a', 'b'])).toEqual([])
+  })
+
+  it('never compares structures', () => {
+    const rows = Array.from({ length: 9 }, () => ({ obj: { deep: 1 } }))
+    expect(constantColumns(rows, ['obj'])).toEqual([])
+  })
+
+  it('never empties the table, however uniform it is', () => {
+    // Lifting every column would leave a header and no data — a tidier screen showing nothing.
+    const rows = Array.from({ length: 9 }, () => ({ a: 1, b: 2 }))
+    expect(constantColumns(rows, ['a', 'b'])).toEqual([])
+  })
+
+  it('renders the lifted value ABOVE the table rather than dropping it', () => {
+    // The rule that outranks the compaction: nothing withheld may become invisible. A constant
+    // that happens to be a failure ends up MORE prominent after this, not less.
+    const { container } = render(<StatusValue value={nine({ gate: 'FAILED' })} />)
+
+    expect(container.textContent).toContain('one-and-the-same')
+    expect(container.textContent).toContain('FAILED')
+    expect(container.textContent).toContain('all 9 rows')
+    expect([...container.querySelectorAll('th')].map(h => h.textContent))
+      .not.toContain('change')
+  })
+
+  it('still finds a lifted column by SEARCH, because the value is still in every row', () => {
+    // Removing it from the index would turn a term matching every row into one matching none,
+    // and "no rows" is what a reader takes for "not there".
+    const { container } = render(<StatusValue value={nine()} />)
+    fireEvent.change(
+      container.querySelector('input[aria-label="search rows"]')!,
+      { target: { value: 'one-and-the' } },
+    )
+
+    expect(container.textContent).toContain('9 of 9 rows shown')
   })
 })
