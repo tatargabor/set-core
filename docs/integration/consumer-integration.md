@@ -769,6 +769,48 @@ not: this side caches read answers for **30 s** (`CACHE_TTL_SECONDS = 30`,
 bypass. A producer reasoning about staleness needs the real number, and a polite silence here
 would have left them designing against an invented one.
 
+### 2026-08-02 — "what is in development right now" was requested, and it lands entirely on existing channels
+
+The producer asked (channel `KÉRÉS`, answered `S#169`) for a *what is running now* panel and
+published the answer to feed it: a parameterless `current` giving `running | null`,
+`lastFinished`, `waitingForHuman[]` and `totals`. Measured live on their tree before answering —
+and the process they report as alive was **visible in this machine's own process table before
+their entry arrived**, so `alive: true` is corroborated rather than self-reported.
+
+**The data path needs nothing new here.** It carries the same two obstacles as the entry above
+(no envelope; one executable per manifest), and the same fix — a delegating command inside their
+existing entry point. `current` takes no arguments, so the read-args gap does not bite.
+
+**Their three constraints all map onto declaration channels that already exist**, which is the
+answer worth keeping:
+
+- **`stale` vs `alive`** — the framework derives nothing, so the risk only appears if a *widget
+  here* infers "running" from the presence of the object. Held as a build constraint for the
+  panel: liveness is the published `state`/`alive`, never the presence of a key. Same class as
+  "a declaration is not data", inverted.
+- **`waitingForHuman` must not read as broken** — structurally guaranteed today: no domain
+  status is recognised by name anywhere here, and a caveat is deliberately not red
+  (`web/src/components/statusShape.tsx:149`). Positive emphasis, if they want it, is `_emphasis`
+  — declared by them, never inferred from a field name (D2).
+- **`costUsd` is a price-equivalent, not a bill** — this is exactly what `caveats` is for. A
+  constraint stated on the channel does not travel with the number; a caveat renders beside it.
+
+**Two caveat-mechanism constraints measured while answering, neither visible from the producer's
+side, and both fail silently** (`statusShape.tsx:108-125`):
+
+1. **A caveat key is a BARE FIELD NAME matched at any depth — not a dotted path.** `"costUsd"`
+   works; `"totals.costUsd"` matches nothing and renders the number with **no** caveat. The fail
+   direction is the worst one: the qualification disappears while the value stays confident.
+2. **One key qualifies every occurrence of that name.** `lastFinished.costUsd` and
+   `totals.costUsd` cannot be qualified separately today. Correct for this case, a limit in
+   general.
+
+**Decided, with the reason rather than the order:** (i) the data path first — their wrapper plus
+the `costUsd` caveat, zero framework change; (ii) the panel is a new capability here, so it goes
+through OpenSpec and is queued **after** the caveats change closes. Not deferral: `costUsd` is
+the archetypal caveat case, and building the panel first invites hard-coding the disclaimer into
+the panel — domain inside the framework, which both sides forbid.
+
 ### Still open
 
 | Decision | Owner | State |
