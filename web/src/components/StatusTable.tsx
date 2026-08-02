@@ -307,12 +307,60 @@ export function identityColumn(rows: Row[], cols: string[]): string | null {
 interface SortState { col: string; dir: 'asc' | 'desc' }
 
 /** The cell as it appears in a dense row: one line, clipped, with the whole value in reach. */
-function Cell({ children, text, clipPx }: { children: ReactNode; text: string; clipPx: number }) {
+function Cell(
+  { children, text, clipPx, lines }:
+  { children: ReactNode; text: string; clipPx: number; lines: 1 | 2 },
+) {
+  // Two lines are only ever offered to a SHORT table — see `cellLines`. The clamp still ends in
+  // an ellipsis, so nothing becomes silent by gaining a second line.
+  //
+  // The clamp is set INLINE rather than with the utility class, and that is a measurement, not a
+  // preference: with `line-clamp-2` alone the computed style came back `-webkit-line-clamp: 2`
+  // and `display: flow-root`, and the clamp does nothing without `-webkit-box`. A 327-character
+  // cell rendered 100px tall — five lines — while every class-level check said the clamp was
+  // applied. The property was present and the effect was absent.
+  // A HEIGHT bound, not a line-clamp, and that is a measurement rather than a style preference.
+  // With the clamp set inline the element carried `display: -webkit-box` in its style attribute
+  // and reported `display: flow-root` as its computed value, so the clamp did nothing: a
+  // 327-character cell rendered 100px tall — five lines — while every check short of measuring
+  // the rendered box agreed the clamp was applied. A max-height cannot be quietly ignored.
+  //
+  // The reader still reaches the rest: the row expands, and the cell keeps its `title`.
+  const clamp = lines === 2
+    ? { maxHeight: `${TWO_LINES_EM}em`, overflow: 'hidden' as const }
+    : {}
   return (
-    <div className="truncate" style={{ maxWidth: clipPx }} title={text || undefined}>
+    <div
+      className={lines === 2 ? 'whitespace-normal' : 'truncate'}
+      style={{ maxWidth: clipPx, ...clamp }}
+      title={text || undefined}
+    >
       {children}
     </div>
   )
+}
+
+/**
+ * How many lines a clipped cell may use.
+ *
+ * One, except in a table short enough that a second line costs nothing. The case that prompted
+ * it: a two-row table whose one long column carried an open human decision, cut mid-sentence at
+ * `…prisma migrate deploy` + `prisma` — a reader could see that a decision was waiting and not
+ * what it was about. Sixty percent of the sentence was on screen and the rest needed a click.
+ *
+ * The bound is rows, not characters, because the cost of a second line is paid per row: at
+ * twenty-five rows it doubles the table's height and the density that makes a table worth
+ * reading is gone. At two rows it is free. `FEW_ROWS` is deliberately well under `ROW_CAP`.
+ *
+ * The expander stays either way. Two lines is more of the sentence, not all of it.
+ */
+const FEW_ROWS = 6
+
+/** Two lines of the table's own leading, plus the sliver that keeps a descender from being cut. */
+const TWO_LINES_EM = 2.9
+
+function cellLines(rowCount: number, groups: number): 1 | 2 {
+  return groups === 1 && rowCount <= FEW_ROWS ? 2 : 1
 }
 
 /**
@@ -720,6 +768,7 @@ export function StatusTable(
     () => cellClipPxFor(rows, availPx, chunks.length),
     [rows, availPx, chunks.length],
   )
+  const cellLineCount = cellLines(visibleIndices.length, chunks.length)
 
   // ── Selection ───────────────────────────────────────────────────────────────────────────
   const idCol = useMemo(() => identityColumn(rows, cols), [rows, cols])
@@ -944,7 +993,7 @@ export function StatusTable(
                           } ${tint ?? ''}`}
                         >
                           {expandable
-                            ? <Cell text={cellText(row[c])} clipPx={cellClipPx}>{content}</Cell>
+                            ? <Cell text={cellText(row[c])} clipPx={cellClipPx} lines={cellLineCount}>{content}</Cell>
                             : content}
                         </td>
                       )
