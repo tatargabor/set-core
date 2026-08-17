@@ -11,6 +11,17 @@ shape rather than inventing a parallel one, because that shape is proven and thi
 is to extend a working foundation, not replace it. What the framework contributes is the abstraction:
 the consumer's engine knows about one lane; the framework has to carry at least three.
 
+⚠ **The strategic frame, stated by the user and easy to lose at a context boundary.** The framework's
+orchestration engine **is not currently being developed and is out of date** — the intent is to
+rewrite it, not to preserve it. The consumer project carries **the current foundation of how
+development is actually done**, but has not raised it to orchestration. So this engine is not a
+feature bolted onto a healthy orchestrator: it is **the foundation the future orchestration will be
+rebuilt on**. Two consequences follow, and neither is optional. The additive path in D8 is a
+*transition*, not a permanent shape — the existing loop is kept alive while there is nothing better,
+not because it is the destination. And the order of work is fixed: the modern foundation is brought
+over first, and orchestration is rebuilt **on top of it** afterwards — never the reverse, which would
+mean fitting a proven foundation into a shape that is itself being replaced.
+
 Three measurements bound the design, and each one closed a question that would otherwise be argued:
 
 - **The lanes differ in their work unit, not in their plumbing.** Prompt builders: **1** in the apply
