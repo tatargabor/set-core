@@ -6,7 +6,7 @@
 - Adopting a project without changing how that project already works
 
 ## OUT OF SCOPE
-- Deploying framework files into a project (the existing install path already does this)
+- How a module physically reaches a project (covered by `module-install` in this same change)
 - Any particular project's conventions, tooling or directory layout
 - Migrating an existing project's task files into a different format
 

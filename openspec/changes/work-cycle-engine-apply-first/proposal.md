@@ -25,7 +25,8 @@ one engine, in the framework, with their copy retired against evidence — not a
 
 ## What Changes
 
-- **A work-unit engine in Layer 1.** A *work unit* is a piece of work run in a fresh agent context
+- **A work-unit engine in its own domain-free package**, beside the orchestration core rather
+  than inside it. A *work unit* is a piece of work run in a fresh agent context
   and closed by a **verdict**, a **gate**, a **commit**, and — when it cannot finish — a named
   **stop condition**. The unit is deliberately not "a task group": measured with the consumer,
   their two engines differ in *what the unit is*, and their prompt builders count **1 vs 4** (one
@@ -70,7 +71,8 @@ one engine, in the framework, with their copy retired against evidence — not a
   by the agent working there, with no framework service required. Every other caller, including the
   framework's surface, goes through that same command; run state is written where the framework can
   read it without executing anything.
-- `module-install`: how a capability reaches a project at all — a module declaring its files, its
+- `module-install`: how a capability reaches a project at all — a module split into an executable
+  part installed once per machine and a project-owned part; a module declaring its files, its
   requirements and its version; installing only what a project asked for; deciding every file from
   recorded provenance so the project's edits survive; reporting each skip; keeping deletions deleted;
   and refusing to replace a generated artifact with an older generator's output.
@@ -93,8 +95,10 @@ that reads that way soon becomes one. The package split fixes the **direction** 
 `set_workcycle` imports from `set_orch`, never the reverse, so orchestration keeps working with the
 engine deleted. Packaging cost is one entry in `pyproject.toml`'s package list; `lib/` already
 carries several top-level packages. Reused rather than rewritten:
-`GatePipeline` + the profile-driven `gate_registry` for gates, `chat.py` for stream-json consumption,
-`loop_tasks.py` for checkbox parsing, plus `events.py`, `paths.py`, `process.py`. Project-specific
+the profile-driven gate configuration chain, `loop_tasks.py` for checkbox parsing, plus `events.py`,
+`paths.py`, `process.py`. Whether the merge-gate *runner* and the websocket-bound stream consumer in
+`chat.py` are reusable at this granularity is measured before it is assumed — see the design's D4 and
+the measurement tasks. Project-specific
 steps — type-check and test commands, source-tree sweeps — reach the engine **through the profile**,
 never through Layer 1.
 

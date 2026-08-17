@@ -6,8 +6,8 @@
 - Making consumption of an answer visible rather than inferring it from directory state
 
 ## OUT OF SCOPE
-- Any particular uploader — a chat bridge, an API caller or a person filling the directory by hand
-  is the caller's business
+- Any particular uploader — a chat bridge, the framework's surface, or a person filling the
+  directory by hand is the caller's business
 - Notifying a human that a question exists (delivery is the caller's concern)
 - Resuming automatically once a condition clears — the caller decides when to run again
 

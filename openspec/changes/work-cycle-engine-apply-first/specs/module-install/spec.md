@@ -5,6 +5,7 @@
 - Deciding per file from recorded provenance, so a project's edits survive
 - Saying out loud what was skipped and why — silence is not an outcome
 - Deletion staying deleted
+- Announcing an installed module in the project's agent instructions without owning that file
 - Refusing to replace a generated artifact with an older generator's output
 
 ## OUT OF SCOPE
@@ -35,6 +36,33 @@ reads from the project itself.
 - **WHEN** a module writes run state, locks or pending answers while working
 - **THEN** those are not treated as installed files
 - **AND** an install neither creates nor removes them
+
+### Requirement: A module is announced in the project's agent instructions through a marked section
+Where a module needs an agent working in the project to know it exists, the installer SHALL write
+that announcement into a **delimited section it owns** inside the project's agent instruction file,
+and SHALL NOT modify anything outside that section. Where the file does not exist, the installer
+SHALL NOT create a replacement for it silently — it SHALL report that the announcement had nowhere
+to go.
+
+#### Scenario: Announcement is written into its own section
+- **WHEN** a module that must be announced is installed
+- **THEN** the announcement is written between the installer's own delimiters
+- **AND** every line outside those delimiters is byte-identical to what was there before
+
+#### Scenario: The project edited inside the section
+- **WHEN** the content between the delimiters differs from what the installer last wrote
+- **THEN** the installer leaves it alone and reports the divergence
+- **AND** it does NOT silently restore its own version
+
+#### Scenario: No instruction file present
+- **WHEN** the project has no agent instruction file
+- **THEN** the installer reports that the module could not be announced
+- **AND** it does NOT create the file as a side effect of installing
+
+#### Scenario: Uninstalling removes only the section
+- **WHEN** a module's announcement is withdrawn
+- **THEN** only the delimited section is removed
+- **AND** the rest of the file is unchanged
 
 ### Requirement: A project states the version it expects, and a mismatch is reported
 A project's declaration SHALL state the version of each module it expects. Where the version
