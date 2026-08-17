@@ -205,6 +205,39 @@ You have Agent Teams available to parallelize independent tasks within this iter
 TEAM_EOF
 }
 
+# Emit the input.md pre-read instruction, or nothing when there is no input.md.
+#
+# The dispatcher writes openspec/changes/<change>/input.md before spawning this
+# loop: scope, project context, sibling changes, design tokens, matched domain
+# knowledge, retry context. Nothing in the OpenSpec CLI knows that file exists,
+# so the instruction to read it has to come from the framework's own prompt.
+#
+# It used to live in .claude/skills/openspec-ff-change/SKILL.md — a file the
+# `openspec` CLI GENERATES. An `openspec update` (1.1.1 → 1.9.0, 2026-08-17)
+# rewrote every skill and the instruction went with it, silently. Never put a
+# framework instruction back into a generated skill or command file.
+#
+# Conditional on the file actually being there: a prompt ordering the agent to
+# read a missing file spends a turn on an error and teaches nothing.
+build_input_preread() {
+    local wt_path="$1"
+    local change_name="$2"
+    local kind="${3:-artifact}"   # artifact | implementation
+    local rel="openspec/changes/${change_name}/input.md"
+
+    [[ -f "$wt_path/$rel" ]] || return 0
+
+    local closing
+    if [[ "$kind" == "implementation" ]]; then
+        closing="Ground the implementation in the files it points at — read them before you edit them."
+    else
+        closing="Read the codebase files its scope points at BEFORE writing any artifact, so the artifacts reflect the actual code rather than assumptions."
+    fi
+
+    printf '\n\nFIRST read `%s` — the orchestrator'"'"'s brief for this change:\nscope, project context, sibling changes, design tokens, domain knowledge and retry context.\n%s\n' \
+        "$rel" "$closing"
+}
+
 # Build the prompt for Claude
 build_prompt() {
     local task="$1"
@@ -243,7 +276,7 @@ build_prompt() {
                 local change_name="${change_action#ff:}"
                 specific_task="Create artifacts for the '$change_name' change"
                 openspec_instructions="
-# YOUR TASK (MANDATORY — do this and ONLY this)
+# YOUR TASK (MANDATORY — do this and ONLY this)$(build_input_preread "$wt_path" "$change_name" "artifact")
 Run: /opsx:ff $change_name
 This will create design.md, specs, and tasks.md for the '$change_name' change.
 Do NOT implement any code. Do NOT work on any other changes.
@@ -254,7 +287,7 @@ After /opsx:ff completes, commit the artifacts and stop.
                 local change_name="${change_action#apply:}"
                 specific_task="Implement the '$change_name' change"
                 openspec_instructions="
-# YOUR TASK (MANDATORY — do this and ONLY this)
+# YOUR TASK (MANDATORY — do this and ONLY this)$(build_input_preread "$wt_path" "$change_name" "implementation")
 Run: /opsx:apply $change_name
 This will implement the tasks defined in tasks.md for the '$change_name' change.
 Do NOT work on any other changes. Focus ONLY on '$change_name'.

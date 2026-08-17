@@ -393,6 +393,18 @@ adding changes without archiving them is a real failure mode here, not a hypothe
 The delta parser also **ends a section at any `##` heading**, so scope blocks written inside
 `## ADDED Requirements` parse as zero requirements and validate as an empty change.
 
+**The `/opsx:*` skills and commands are GENERATED — never customize them (2026-08-17).**
+`.claude/skills/openspec-*/SKILL.md` and `.claude/commands/opsx/*.md` carry
+`generatedBy: "<cli-version>"` and are rewritten wholesale by every `openspec update` — no
+preserve marker, no merge. An update from 1.1.1 to 1.9.0 took with it the spec-verify
+sentinels the gate parses, the `input.md` pre-read and the domain-knowledge loading; two
+unit tests noticed and nothing else did. The direction matters: the new upstream versions
+were **better**, so reverting was never the answer — only the carrier was wrong. Put an
+OpenSpec-native rule in `openspec/schemas/spec-driven/schema.yaml` or `openspec/config.yaml`
+(`context:`, `rules:`, `operations.*.guidance` — all three measured to reach the agent), and
+a framework rule in a framework-owned file. Full table and the measurements:
+[`.claude/rules/openspec-artifacts.md`](.claude/rules/openspec-artifacts.md).
+
 **Discipline.** Between 2026-07-14 and Phase 0′ this repo produced five research documents and zero lines of code while a six-line guard stood between an orchestration run and a production-data mirror. Research is not the default next step — shipping the listed items is. Before proposing a new investigation, check whether it is already answered in `docs/research/`.
 
 **Partly superseded — see the goals section at the top of this file.** The 2026-07-19
@@ -531,6 +543,12 @@ This project uses persistent memory (shodh-memory) across sessions. Memory conte
 
 ### Memory Safety During Verification
 Memory is a hypothesis, not a verdict. During `/opsx:verify`, always check the filesystem (Glob, Grep, Read) — never skip checks because memory suggests "known false positive" or "same pattern." Memory is not branch/worktree-aware.
+
+Also read [`templates/core/rules/spec-verify-gate.md`](templates/core/rules/spec-verify-gate.md)
+when you run `/opsx:verify` by hand. The generated skill performs neither the framework's
+extra checks (traceability matrix, acceptance criteria, scope boundary, overshoot, the
+per-change `verify-hook.sh`) nor the two sentinels the gate parses. The orchestrator's gate
+resolves and names that file automatically; an interactive run does not.
 
 ## Help & Documentation
 

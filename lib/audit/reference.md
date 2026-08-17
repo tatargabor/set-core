@@ -46,8 +46,14 @@ Located in `docs/design/`. Each file documents ACTUAL patterns found in the code
 ## OpenSpec Config
 
 `openspec/config.yaml` should have:
-- `context:` field with: tech stack, runtime, language conventions, domain description, key patterns, design doc references, testing setup, deploy target
+- `context:` field with: tech stack, runtime, language conventions, domain description, key patterns, design doc references, testing setup, deploy target — plus where the project's **domain knowledge** lives (e.g. `docs/knowledge/domain/`, `docs/knowledge/decisions/`), so an interactive `/opsx:ff` or `/opsx:apply` reads the business rules the orchestrated path receives through `input.md`
 - `rules:` section with artifact-specific guidelines (proposal length, design decisions format, spec scenario format, task granularity)
+- `operations.apply.guidance` / `operations.archive.guidance` for advisory per-operation notes
+
+These three fields, plus a project-local schema fork under `openspec/schemas/`, are the ONLY
+customization points that survive `openspec update`. The `/opsx:*` commands and
+`openspec-*` skills under `.claude/` are generated and rewritten wholesale on every update —
+never customize them.
 
 ## CLAUDE.md Structure
 
