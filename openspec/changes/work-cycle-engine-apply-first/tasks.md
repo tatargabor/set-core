@@ -57,15 +57,16 @@
 - [ ] 4.7 Stamp consumption on the answer or in the log, and make consumed and unconsumed distinguishable without counting files [REQ: consumption-is-recorded-not-inferred]
 - [ ] 4.8 Tests for 4.1–4.7, including one that fails if intake is reachable from only some entry points, and one that writes a truncated document mid-intake [REQ: answer-intake-runs-at-the-entry-point-on-every-path]
 
-## 5. Control surface
+## 5. Entry point — one way in
 
 <!-- depends: 3, 4 -->
 
-- [ ] 5.1 Add the start operation under the engine's own route prefix (NOT appended to the orchestration change-control routes): start the next runnable unit or a named group, returning before the run completes and identifying what was started [REQ: a-work-unit-can-be-started-over-the-api]
-- [ ] 5.2 Refuse an unstartable request with the failing condition named — nothing runnable, dependencies unsatisfied, awaiting an answer, or a unit already holding the lock [REQ: an-unstartable-request-is-refused-with-a-reason]
-- [ ] 5.3 Add the answer operation, delivering through the ordinary connector so no answer path is privileged; refuse an answer for a non-awaiting task [REQ: an-open-decision-can-be-answered-over-the-api]
-- [ ] 5.4 Report the state a surface needs: runnable groups, groups awaiting an answer with their questions, blocked groups with their blockers, and any running unit with its progress; distinguish a stale lock from a live run [REQ: the-state-a-surface-needs-is-queryable]
-- [ ] 5.5 API tests for 5.1–5.4, asserting that the API answer path and the directory answer path produce the same engine state [REQ: an-open-decision-can-be-answered-over-the-api]
+- [ ] 5.1 Ship a command entry point invocable from a project's own tree, requiring no running framework service and no network access to the framework [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree]
+- [ ] 5.2 Report per-group reasons when nothing is runnable, and refuse with the holder named when a unit already holds the tree's lock [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree]
+- [ ] 5.3 Make the framework's surface start a unit by invoking that same command; add a test that fails if a second start path is introduced [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it]
+- [ ] 5.4 Write run state where a reader can read it directly — live run, finished run, and a stale claim distinguishable from a live one — without executing anything [REQ: run-state-is-readable-without-a-running-engine-or-service]
+- [ ] 5.5 Run answer intake on every command invocation, including invocations that only report state [REQ: the-command-path-takes-in-answers-like-every-other-path]
+- [ ] 5.6 Entry-point tests for 5.1–5.5, including one asserting that an agent-started run and a surface-started run produce the same state shape [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it]
 
 ## 6. Adoption — any project, several at once
 
@@ -146,31 +147,27 @@
 - [ ] AC-51: WHEN an answer is applied to a task THEN the time of consumption is recorded [REQ: consumption-is-recorded-not-inferred, scenario: a-consumed-answer-is-stamped]
 - [ ] AC-52: WHEN answers are present in the directory THEN those already consumed are distinguishable from those not yet consumed / neither state is concluded from the number of files present [REQ: consumption-is-recorded-not-inferred, scenario: an-unconsumed-answer-is-distinguishable]
 
-<!-- work-cycle-control-api -->
-- [ ] AC-53: WHEN a start request is made for a change with a runnable group THEN the engine starts that group as a work unit / the response identifies the change and the group started [REQ: a-work-unit-can-be-started-over-the-api, scenario: starting-the-next-runnable-unit]
-- [ ] AC-54: WHEN a start request names a group THEN that group is started if it is runnable [REQ: a-work-unit-can-be-started-over-the-api, scenario: targeting-a-specific-group]
-- [ ] AC-55: WHEN a work unit is started over the API THEN the response is returned before the unit completes [REQ: a-work-unit-can-be-started-over-the-api, scenario: the-call-does-not-block-on-the-run]
-- [ ] AC-56: WHEN a start request is made and no group is runnable THEN the request is refused with a reason naming the blocking condition per group [REQ: an-unstartable-request-is-refused-with-a-reason, scenario: nothing-runnable]
-- [ ] AC-57: WHEN a start request is made while a unit holds the lock for that tree THEN the request is refused and the response identifies the running unit [REQ: an-unstartable-request-is-refused-with-a-reason, scenario: already-running]
-- [ ] AC-58: WHEN a start request names a group whose dependencies are unsatisfied THEN the request is refused and the unsatisfied dependencies are named [REQ: an-unstartable-request-is-refused-with-a-reason, scenario: targeted-group-is-not-runnable]
-- [ ] AC-59: WHEN an answer is submitted for a task awaiting a human THEN the task is no longer reported as awaiting / its group becomes runnable if nothing else blocks it [REQ: an-open-decision-can-be-answered-over-the-api, scenario: answering-releases-the-task]
-- [ ] AC-60: WHEN an answer is submitted for a task that is not awaiting an answer THEN the request is refused with a reason [REQ: an-open-decision-can-be-answered-over-the-api, scenario: answering-an-unknown-task]
-- [ ] AC-61: WHEN an answer is submitted over the API THEN it is delivered through the same answer connector other uploaders use [REQ: an-open-decision-can-be-answered-over-the-api, scenario: the-api-answer-uses-the-ordinary-connector]
-- [ ] AC-62: WHEN the state of a change is queried THEN each task awaiting a human is listed with the question recorded for it [REQ: the-state-a-surface-needs-is-queryable, scenario: awaiting-decisions-are-listed-with-their-questions]
-- [ ] AC-63: WHEN a unit is running for the change THEN the response identifies it and reports progress derived from completed task markers [REQ: the-state-a-surface-needs-is-queryable, scenario: a-running-unit-is-reported-with-its-progress]
-- [ ] AC-64: WHEN a lock exists whose holding process is no longer alive THEN the response distinguishes that state from a live run [REQ: the-state-a-surface-needs-is-queryable, scenario: a-stale-run-is-not-reported-as-running]
+<!-- work-cycle-control -->
+- [ ] AC-53: WHEN an agent working in a project's tree invokes the command to run the next unit THEN the unit runs against that tree / no framework service needs to be running [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree, scenario: an-agent-starts-a-unit-from-its-own-session]
+- [ ] AC-54: WHEN the command is invoked and no unit is runnable THEN it reports why per group and exits without starting anything [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree, scenario: no-runnable-unit]
+- [ ] AC-55: WHEN the command is invoked while a unit holds the lock for that tree THEN it refuses and identifies the holder [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree, scenario: a-unit-is-already-running]
+- [ ] AC-56: WHEN the framework's surface starts a unit for a project THEN it invokes the same command an agent would invoke / the resulting run is indistinguishable from an agent-started one except in what recorded who started it [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it, scenario: the-surface-starts-a-unit]
+- [ ] AC-57: WHEN the engine's interfaces are enumerated THEN exactly one of them starts a work unit [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it, scenario: no-parallel-start-path]
+- [ ] AC-58: WHEN a unit is running and the framework is asked where it has got to THEN it reads the recorded state / it does not start a process to find out [REQ: run-state-is-readable-without-a-running-engine-or-service, scenario: the-framework-reads-a-live-run]
+- [ ] AC-59: WHEN a run has finished and its process is gone THEN the recorded state still reports the outcome of that run [REQ: run-state-is-readable-without-a-running-engine-or-service, scenario: the-framework-reads-a-finished-run]
+- [ ] AC-60: WHEN recorded state claims a run in progress whose process is no longer alive THEN the reader can tell that state apart from a live run [REQ: run-state-is-readable-without-a-running-engine-or-service, scenario: a-stale-run-is-reported-as-stale]
+- [ ] AC-61: WHEN an answer for an awaiting task is placed in the connector and the command is then invoked THEN the answer is taken in before unit selection / the released task's group is eligible to run [REQ: the-command-path-takes-in-answers-like-every-other-path, scenario: answer-arrives-before-a-command-run]
+- [ ] AC-62: WHEN the command is invoked only to report state THEN answer intake still runs / the reported state reflects answers that had arrived [REQ: the-command-path-takes-in-answers-like-every-other-path, scenario: answer-intake-on-a-reporting-invocation]
 
 <!-- work-cycle-adoption -->
-- [ ] AC-65: WHEN the engine is run against a project it has never been run against before THEN it operates using only that project's resolved profile and declaration / no framework code names that project [REQ: the-engine-carries-no-project-specific-knowledge, scenario: a-second-project-needs-no-framework-change]
-- [ ] AC-66: WHEN two projects need different gate steps THEN the difference is expressed in their profiles / the engine's behaviour is identical in both cases [REQ: the-engine-carries-no-project-specific-knowledge, scenario: project-specific-behaviour-arrives-through-the-profile]
-- [ ] AC-67: WHEN an adopted project declares no gate steps THEN the engine runs no gate and says so / it does NOT fall back to a command it guessed from the project's contents [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed, scenario: an-undeclared-gate-is-not-invented]
-- [ ] AC-68: WHEN the engine is asked to run against a project that has not declared where its changes live THEN it refuses and names the missing declaration [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed, scenario: a-missing-declaration-is-named]
-- [ ] AC-69: WHEN the state of a project that has not been adopted is queried THEN the response states that the project is not adopted / it does NOT report zero runnable groups as though the project were up to date [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one, scenario: un-adopted-project-queried]
-- [ ] AC-70: WHEN the state of an adopted project with no open tasks is queried THEN the response distinguishes this from the un-adopted case [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one, scenario: adopted-project-with-no-open-work]
-- [ ] AC-71: WHEN work units are running for two different projects at once THEN each holds its own lock / neither project's state, answers or verdicts appear in the other's [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: concurrent-projects]
-- [ ] AC-72: WHEN an answer is submitted naming a change in one project THEN a task of the same name in another project is unaffected [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: an-answer-reaches-only-its-own-project]
-- [ ] AC-73: WHEN a work unit fails or is blocked in one project THEN operations against other projects continue to be accepted [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: a-failure-in-one-project-does-not-stop-another]
-- [ ] AC-74: WHEN a project's task file carries groups but no dependency annotations THEN the engine drives it under the serial default / it requires no edit to that file before the first run [REQ: adoption-does-not-require-the-project-to-change-how-it-works, scenario: task-file-without-dependency-annotations]
-- [ ] AC-75: WHEN an adopted project already marks tasks in its own established way THEN the engine reads those markings rather than requiring a different notation [REQ: adoption-does-not-require-the-project-to-change-how-it-works, scenario: existing-conventions-are-honoured-not-replaced]
-
-<!-- összesen: 75 -->
+- [ ] AC-63: WHEN the engine is run against a project it has never been run against before THEN it operates using only that project's resolved profile and declaration / no framework code names that project [REQ: the-engine-carries-no-project-specific-knowledge, scenario: a-second-project-needs-no-framework-change]
+- [ ] AC-64: WHEN two projects need different gate steps THEN the difference is expressed in their profiles / the engine's behaviour is identical in both cases [REQ: the-engine-carries-no-project-specific-knowledge, scenario: project-specific-behaviour-arrives-through-the-profile]
+- [ ] AC-65: WHEN an adopted project declares no gate steps THEN the engine runs no gate and says so / it does NOT fall back to a command it guessed from the project's contents [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed, scenario: an-undeclared-gate-is-not-invented]
+- [ ] AC-66: WHEN the engine is asked to run against a project that has not declared where its changes live THEN it refuses and names the missing declaration [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed, scenario: a-missing-declaration-is-named]
+- [ ] AC-67: WHEN the state of a project that has not been adopted is queried THEN the response states that the project is not adopted / it does NOT report zero runnable groups as though the project were up to date [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one, scenario: un-adopted-project-queried]
+- [ ] AC-68: WHEN the state of an adopted project with no open tasks is queried THEN the response distinguishes this from the un-adopted case [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one, scenario: adopted-project-with-no-open-work]
+- [ ] AC-69: WHEN work units are running for two different projects at once THEN each holds its own lock / neither project's state, answers or verdicts appear in the other's [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: concurrent-projects]
+- [ ] AC-70: WHEN an answer is submitted naming a change in one project THEN a task of the same name in another project is unaffected [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: an-answer-reaches-only-its-own-project]
+- [ ] AC-71: WHEN a work unit fails or is blocked in one project THEN operations against other projects continue to be accepted [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: a-failure-in-one-project-does-not-stop-another]
+- [ ] AC-72: WHEN a project's task file carries groups but no dependency annotations THEN the engine drives it under the serial default / it requires no edit to that file before the first run [REQ: adoption-does-not-require-the-project-to-change-how-it-works, scenario: task-file-without-dependency-annotations]
+- [ ] AC-73: WHEN an adopted project already marks tasks in its own established way THEN the engine reads those markings rather than requiring a different notation [REQ: adoption-does-not-require-the-project-to-change-how-it-works, scenario: existing-conventions-are-honoured-not-replaced]

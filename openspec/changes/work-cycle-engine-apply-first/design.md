@@ -33,7 +33,8 @@ Three measurements bound the design, and each one closed a question that would o
   of them mean in a domain.
 - The slice lane shipped whole: group resolution, fail-closed ordering, slice handover, carry-over,
   schema-constrained verdict, verdict-vs-tree diff, and the answer connector.
-- Two API operations, so a change can be driven from the surface rather than a terminal.
+- One entry point — a command run in the project's tree — used by the agent working there and by
+  the framework's surface alike, so run state has exactly one producer.
 - A migration path that ends with **one** implementation, evidenced by a real run.
 
 **Non-Goals:**
@@ -102,7 +103,7 @@ been excluded by a word.
 ### D6 — The answer path is a connector, and its failure modes are designed in
 
 Answers arrive as documents in a directory, keyed *inside* the document on change and task. The
-engine never knows who wrote them: a chat bridge, the dashboard's API operation, or a person with an
+engine never knows who wrote them: a chat bridge, the framework's surface, or a person with an
 editor. Three properties are not optional, because all three were measured breaking in production:
 
 - **Deferral before quarantine.** A document that will not parse is treated as an in-flight write and
@@ -139,11 +140,11 @@ at the point it is recorded, rather than being accepted and misinterpreted later
 inheritance of a defect measured in the proven engine, where a project-scoped seat matched seven live
 sessions and the answer woke the wrong one.
 
-### D10 — Separate package, separate route prefix, and the dependency points one way
+### D10 — Separate package, own entry point, and the dependency points one way
 
-The engine lives in its own top-level package (`lib/set_workcycle/`), exposes its operations under
-its own route prefix, and ships its own entry point. It is not a module inside the orchestration
-package and its routes are not appended to the orchestration change-control routes.
+The engine lives in its own top-level package (`lib/set_workcycle/`) and ships its own command entry
+point. It is not a module inside the orchestration package, and it adds no operation to the
+orchestration change-control routes.
 
 *Why, stated as a requirement rather than a preference:* **`set_workcycle` may import from
 `set_orch`; `set_orch` may not import from `set_workcycle`.** That direction is the whole point — it
@@ -201,6 +202,6 @@ it restores the previous behaviour exactly; there is no migration of existing st
 - **Can `GatePipeline` be pointed at one tree and a gate subset without inheriting merge semantics?**
   First task, by measurement.
 - **Where does a session-scoped seat come from in a headless run?** An interactive session has a
-  native record; a run started by the API has to be given one. The API operation must therefore
-  supply a seat rather than let the engine invent it — noted here because the specs require the
-  refusal, not the origin.
+  native record; a run started by the framework's surface has to be given one. Whatever invokes the
+  command must therefore supply a seat rather than let the engine invent it — noted here because the
+  specs require the refusal, not the origin.

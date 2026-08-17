@@ -13,11 +13,11 @@ of a change. These are two levels, not refinements of each other.
 
 Two things make this urgent rather than tidy.
 
-**The surface cannot drive what the framework does not own.** The manager API already exposes
-`POST changes/{name}/pause|resume|stop|skip`, `/approve`, and `GET journal|timeline|session`.
-Exactly two operations are missing before a change can be driven from the dashboard rather than a
-terminal: **start a section**, and **answer an open question**. Both are properties of an engine the
-framework does not have.
+**The framework cannot see, install or version what it does not own.** Today the mechanism lives in
+one project's tree: the framework can neither ship it to a second project, nor say which version a
+project is running, nor report where a run has got to. The agent working in that project drives it
+perfectly well — what is missing is everything *around* that: distribution, versioning, and a state
+the framework can read.
 
 **And a second implementation is a schedule, not a risk.** The consumer's engine took 18 commits in
 30 days. A parallel port would fall behind on the day it is born, so the decision taken with them is
@@ -49,8 +49,10 @@ one engine, in the framework, with their copy retired against evidence — not a
   answer JSON. Who fills it — a chat bridge, the dashboard, a person — is the caller's business and
   never the engine's. **Intake runs at the engine's entry point on every path**, not as a side effect
   of a loop.
-- **Two API operations** on the existing change-control surface: start a section, and answer an open
-  question — the two that stand between the dashboard and driving a change.
+- **One entry point, not two.** The engine is entered by a command run in the project's tree — that
+  is how an agent working there starts a slice today, and it needs no running service. The
+  framework's surface starts a unit by invoking *the same command*, so there is exactly one way into
+  the engine and one place where run state comes from. The surface's own job is to read that state.
 - **NOT in this change:** loop chaining, reconcile, run history, the phase lane, the lens lane. The
   abstraction must not *exclude* them; it does not ship them.
 
@@ -64,8 +66,10 @@ one engine, in the framework, with their copy retired against evidence — not a
 - `deferred-work-connector`: setting a unit aside with a nameable resume condition, and the
   filesystem connector through which answers arrive — including partial writes, several answers for
   one key, and making consumption visible.
-- `work-cycle-control-api`: starting a section and answering an open question over the manager API,
-  so the surface can drive a change.
+- `work-cycle-control`: one entry point into the engine — a command run from the project's own tree,
+  by the agent working there, with no framework service required. Every other caller, including the
+  framework's surface, goes through that same command; run state is written where the framework can
+  read it without executing anything.
 - `work-cycle-adoption`: what it takes for *any* registered project to be driven this way — a
   declaration rather than framework code, an un-adopted project distinguishable from a finished one,
   several projects driven from one place with their state kept apart, and adoption that does not
@@ -90,10 +94,10 @@ carries several top-level packages. Reused rather than rewritten:
 steps — type-check and test commands, source-tree sweeps — reach the engine **through the profile**,
 never through Layer 1.
 
-**API.** Two additive endpoints under their **own route prefix**, not appended to the orchestration
-change-control routes. The surface calls both from the same screen, which is a rendering decision and
-carries no obligation for the routes to share a namespace. No existing endpoint changes shape, and no
-existing route acquires a new meaning.
+**Entry point.** A command shipped with the framework and invoked from a project's tree. No new HTTP
+mechanism for starting work: the surface invokes the same command, so a second start path — which
+would mean a second source of run state — cannot come into existence. No existing endpoint changes
+shape.
 
 **A consumer's migration, and what it obliges here.** Their engine keeps running until the framework
 version has run *the same change on their tree*, proven by a real run — a non-trivial change with
