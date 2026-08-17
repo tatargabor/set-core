@@ -1,4 +1,5 @@
 ## IN SCOPE
+- Splitting a module into what stays global and what a project must own
 - A module declaring what it installs, what it needs, and which version it is
 - Installing modules a project asked for, and not installing the ones it did not
 - Deciding per file from recorded provenance, so a project's edits survive
@@ -13,6 +14,42 @@
 - Deploying anything to a production environment
 
 ## ADDED Requirements
+
+### Requirement: Only what a project must own is placed in the project
+A module SHALL be split into an executable part, which the framework installs once per machine and
+runs from there, and a project-owned part, which is placed in the project. The executable part SHALL
+NOT be copied into a project. The project-owned part SHALL be limited to what the project decides or
+edits: its declaration of which modules and versions it wants, its configuration, and files an agent
+reads from the project itself.
+
+#### Scenario: The executable part is not copied
+- **WHEN** a module is installed into a project
+- **THEN** the module's executable part is not placed in that project
+- **AND** the project invokes it from the machine-wide installation
+
+#### Scenario: The project-owned part is placed
+- **WHEN** a module is installed into a project
+- **THEN** its declaration and configuration are placed in the project
+
+#### Scenario: Runtime state is not an install artifact
+- **WHEN** a module writes run state, locks or pending answers while working
+- **THEN** those are not treated as installed files
+- **AND** an install neither creates nor removes them
+
+### Requirement: A project states the version it expects, and a mismatch is reported
+A project's declaration SHALL state the version of each module it expects. Where the version
+installed machine-wide differs from what a project expects, the framework SHALL report the
+difference. Where either version cannot be determined, the framework SHALL report it as unknown
+rather than assuming they match.
+
+#### Scenario: Machine-wide version differs from the project's expectation
+- **WHEN** a project expects one version and another is installed machine-wide
+- **THEN** the difference is reported, naming both
+
+#### Scenario: Version cannot be determined
+- **WHEN** either version cannot be read
+- **THEN** the framework reports it as unknown
+- **AND** it does NOT report the versions as matching
 
 ### Requirement: A module declares itself, and an incomplete declaration is refused
 A module SHALL declare the files it installs, the modules it requires, and its own version. Each
