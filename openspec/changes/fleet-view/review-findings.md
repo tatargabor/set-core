@@ -4,11 +4,13 @@ Run 2026-08-17, after the planning artifacts were complete and before any task w
 Two independent branches, as `adversarial-spec-review` requires: neither reviewer wrote the plan,
 and neither saw the other's findings.
 
-**Result: 26 findings — 0 CRITICAL, 15 MAJOR, 11 MINOR.** No finding blocks by severity. Fifteen
+**Result: 26 findings — 0 CRITICAL, 15 MAJOR, 11 MINOR.** *(Updated 2026-08-17 after the user
+answered D-1: CB-1 answered, RB-3 resolved. 24 open.)* No finding blocks by severity. Fifteen
 are MAJOR and several change the shape of the work, so the honest reading is that the plan is not
 ready to apply, not that it is cleared.
 
-**Two decisions belong to the user and are not settled here** — see *Decisions for the user*.
+**Two decisions belong to the user. One (D-1) was answered the same day and is written into the
+plan; one (D-2) is still open with the user's direction recorded** — see *Decisions for the user*.
 
 ⚠ Every process path in this file is generalised. The measurements ran on a machine holding
 consumer projects, and this repository is public.
@@ -17,15 +19,43 @@ consumer projects, and this repository is public.
 
 ## Decisions for the user
 
-**D-1 — a surface-started agent and the service restart.** The service unit runs with
-`KillMode=control-group`, so a child the service spawns dies with it; `start_new_session=True`
-changes the process group but not the cgroup. Either the unit changes (`KillMode=mixed`, or a
-transient scope per agent), or surface-started agents die with the service and task 5.5 must say
-so. The plan currently promises the opposite. *(Raised by the code branch, CB-1.)*
+**D-1 — a surface-started agent and the service restart. ANSWERED 2026-08-17.** The service unit
+runs with `KillMode=control-group`, so a child the service spawns dies with it;
+`start_new_session=True` changes the process group but not the cgroup. *(Raised by the code branch,
+CB-1.)*
 
-**D-2 — where a waiting agent below the fold is marked.** The landing screen is a scrollable
-column and the registry holds 39 projects. A fleet-level indicator above the column, or ordering
-the column by state, both satisfy `ui-quality.md`; the plan specifies neither. *(RB-6.)*
+**Answer: separate the agent-owning process from the web service** — one service for UI and API,
+another owning agent lifecycle, the two communicating. The user noted the pattern already exists
+here, and it does: a per-project supervisor daemon with its own entry point already owns and
+monitors the orchestrator subprocess.
+
+Recorded with the qualification the answer needs, because the split alone does not deliver the
+property: it moves the boundary rather than removing it, since the *agent-owning* service kills its
+own agents' cgroup on its own restart by the same mechanism. So each agent is additionally started
+in its own transient scope — measured to land as a **sibling** of the service under `app.slice`, not
+a child — which makes it survive a restart of either service and turns "stopping is deliberate" from
+a convention into a named unit. Written up as design §6.2, tasks 5.8 and 5.9.
+
+This also resolves **RB-3**: the two scenarios that reported a surviving agent as unreachable are
+now correct in the other direction, and task 5.5's claim — false when written — is true under this
+decision.
+
+**D-2 — where a waiting agent below the fold is marked. STILL OPEN; the user's direction is
+recorded so it is not re-derived.** The landing screen is a scrollable column and the registry holds
+39 projects. *(RB-6.)*
+
+The direction: projects should be **manually orderable** (dragged up and down); a project stays in
+the list when its agents are closed; hiding or parking a project low is wanted; and above all a
+**workspace** concept — a selector or a set of checkboxes at the top choosing which group of
+projects is in view. The user asked to think further about which of these is best, so nothing is
+settled.
+
+**One constraint binds whichever option wins, and it is the constraint that produced this decision
+in the first place:** manual ordering, hiding and workspaces are all *user-controlled arrangement*,
+so each is a place a waiting agent can sit while the screen looks calm — the exact case
+`ui-quality.md` puts above the rest. Whatever is chosen, the hiding control itself must carry the
+marker: a count on the workspace tab, a marker on the parked section. That is an additional
+requirement on the option, not an argument against any of them.
 
 ---
 
@@ -43,7 +73,8 @@ Derived from the source, not from the change's artifacts.
   dies mid-turn while the screen reports "running, no terminal" for a process that no longer exists.
 - **Plan location:** tasks 5.4–5.6, AC-76, AC-78; `proposal.md` Impact.
 - **Note:** the repository's own memory already records this class for the sentinel subprocess.
-- **Status:** open → **D-1**
+- **Status:** **ANSWERED** — see D-1. The plan now separates the agent-owning service and starts
+  each agent in its own transient scope (design §6.2, tasks 5.8/5.9); task 5.5's claim becomes true.
 
 ### CB-2 [MAJOR] Discovery by process identity lists a non-agent process that runs the same binary
 - **Source:** measured live — a process whose `exe` is the same CLI binary that backs all 15 real
@@ -298,8 +329,8 @@ branch's territory.
   ticking AC-76/77 signs off a screen that labels a live agent unreachable after every restart — the
   exact false absence the proposal's opening measurement describes, reintroduced by this change, and
   archived as the durable contract.
-- **Status:** open — ⚠ this text was written during the 2026-08-17 update round. See CB-1, which makes
-  the same area worse: the agent may not survive at all.
+- **Status:** **RESOLVED** by D-1. The scenarios were corrected in the opposite direction: after a
+  restart the agent is still running and instructable, and the terminal alone is gone.
 
 ### RB-4 [MAJOR] Ten one-machine measurements sit undated in requirement text that archives permanently, and one is already false
 - **Rule:** `.claude/rules/openspec-artifacts.md` — artifacts must not contain metrics tied to a single
@@ -340,7 +371,7 @@ branch's territory.
 - **Why it matters:** this is the landing screen and the registry holds 39 entries. A waiting agent in
   project 24 sits below the fold with no marker at the top — the reader arrives, sees calm, and the
   screen reproduces the false absence one level up from the one it fixes.
-- **Status:** open → **D-2**
+- **Status:** open — D-2, direction recorded, choice not settled.
 
 ### RB-7 [MINOR] The header claims every task carries a layer marker; 18 of 72 carry none
 - **Rule:** `code-quality.md`, `openspec-artifacts.md` (mark core vs module); `evidence-discipline.md`

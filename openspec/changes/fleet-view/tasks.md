@@ -64,6 +64,8 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 - [ ] 5.5 Implement the measured answer for a service restart: the terminal does **not** survive it, because its handle dies with the owning process — a pty master cannot be reacquired from outside (design §6.1). The agent keeps running and stays reachable over the bus; only the terminal column becomes no, and it is never listed as attachable. [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting]
 - [ ] 5.6 Log the process lifecycle with pid and exit signal, per code-quality rules, so an orphan is findable from the logs rather than only from the screen. [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting]
 - [ ] 5.7 CORE — Refuse to resume any session with a live process bound to it, and expose no control that would; treat an undeterminable liveness as live. A resume that succeeds here forks the running agent's conversation silently. [REQ: resuming-a-session-that-is-running-is-refused-not-offered]
+- [ ] 5.8 CORE — Split the agent-owning process from the web service: a second unit owns agent lifecycle, the dashboard serves UI and API, and the two communicate. Extends the existing per-project supervisor daemon's shape rather than inventing one. Design §6.2. [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting]
+- [ ] 5.9 CORE — Start every surface-started agent in its own transient scope, so it survives a restart of **either** service — the split alone does not deliver this, it only moves which service kills it. Measured: a transient scope lands as a sibling of the service, not a child. Assert the cgroup placement, not just that the process started. [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting]
 
 ## 6. API (API)
 
@@ -284,67 +286,68 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 
 - [ ] AC-74: WHEN the browser showing an agent's terminal closes THEN the agent keeps running, and is still listed with its terminal reattachable [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: the-browser-disconnects]
 - [ ] AC-75: WHEN a browser reconnects to an agent the framework started THEN it attaches to the same terminal and the agent continues [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: reattaching-after-disconnect]
-- [ ] AC-76: WHEN the service that started an agent restarts THEN the agent is reported as no longer reachable and never as attachable, because the terminal's only handle died with the process that held it [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: the-service-restarts]
-- [ ] AC-77: WHEN any path would try to take over a terminal by reopening another process's descriptor THEN it is not attempted, and the agent is reported unreachable instead [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: a-terminal-handle-is-never-reacquired-from-outside]
-- [ ] AC-78: WHEN an agent started here is to be stopped THEN it stops on an explicit action, and never as a consequence of a view being closed [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: stopping-is-deliberate]
+- [ ] AC-76: WHEN the service that started an agent restarts THEN the agent is still running and still instructable, and its terminal alone is reported as gone — never as attachable [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: the-service-restarts]
+- [ ] AC-77: WHEN any service in the framework restarts, including the one that owns agent lifetime THEN an agent started from the surface keeps running, because it was placed outside that service's lifetime rather than inside it [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: an-agent-outlives-the-service-that-started-it]
+- [ ] AC-78: WHEN any path would try to take over a terminal by reopening another process's descriptor THEN it is not attempted, and the terminal is reported gone while the agent stays listed and instructable [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: a-terminal-handle-is-never-reacquired-from-outside]
+- [ ] AC-79: WHEN an agent started here is to be stopped THEN it stops on an explicit action, and never as a consequence of a view being closed [REQ: a-started-agent-s-lifetime-is-defined-for-the-browser-leaving-and-the-service-restarting, scenario: stopping-is-deliberate]
 
 **The terminal is proven by driving it as a person drives it**
 
-- [ ] AC-79: WHEN a key is entered into the terminal component in a browser THEN the agent process receives it, and its response appears in that same component [REQ: the-terminal-is-proven-by-driving-it-as-a-person-drives-it, scenario: a-keystroke-makes-the-round-trip]
-- [ ] AC-80: WHEN the tests run against an agent the framework did not start THEN no terminal is offered for it, and this is asserted rather than assumed [REQ: the-terminal-is-proven-by-driving-it-as-a-person-drives-it, scenario: the-negative-case-is-asserted-too]
+- [ ] AC-80: WHEN a key is entered into the terminal component in a browser THEN the agent process receives it, and its response appears in that same component [REQ: the-terminal-is-proven-by-driving-it-as-a-person-drives-it, scenario: a-keystroke-makes-the-round-trip]
+- [ ] AC-81: WHEN the tests run against an agent the framework did not start THEN no terminal is offered for it, and this is asserted rather than assumed [REQ: the-terminal-is-proven-by-driving-it-as-a-person-drives-it, scenario: the-negative-case-is-asserted-too]
 
 
 ### agent-fleet-surface
 
 **Projects on the left, the selected project's agents on the right**
 
-- [ ] AC-81: WHEN a project tile is selected THEN that project's agents appear as tiles, one per agent [REQ: projects-on-the-left-the-selected-project-s-agents-on-the-right, scenario: selecting-a-project-shows-its-agents]
-- [ ] AC-82: WHEN a selected project holds no live agent THEN the panel says so, and the project remains in the list [REQ: projects-on-the-left-the-selected-project-s-agents-on-the-right, scenario: a-project-with-no-running-agent]
+- [ ] AC-82: WHEN a project tile is selected THEN that project's agents appear as tiles, one per agent [REQ: projects-on-the-left-the-selected-project-s-agents-on-the-right, scenario: selecting-a-project-shows-its-agents]
+- [ ] AC-83: WHEN a selected project holds no live agent THEN the panel says so, and the project remains in the list [REQ: projects-on-the-left-the-selected-project-s-agents-on-the-right, scenario: a-project-with-no-running-agent]
 
 **A project tile carries the state of the agents inside it**
 
-- [ ] AC-83: WHEN any agent in an unselected project is waiting THEN its project's tile shows that, without the project being selected [REQ: a-project-tile-carries-the-state-of-the-agents-inside-it, scenario: a-waiting-agent-is-visible-from-the-project-list]
-- [ ] AC-84: WHEN the agent area is compacted for density THEN the count of waiting agents remains readable [REQ: a-project-tile-carries-the-state-of-the-agents-inside-it, scenario: the-counts-stay-visible-when-the-grid-is-compacted]
+- [ ] AC-84: WHEN any agent in an unselected project is waiting THEN its project's tile shows that, without the project being selected [REQ: a-project-tile-carries-the-state-of-the-agents-inside-it, scenario: a-waiting-agent-is-visible-from-the-project-list]
+- [ ] AC-85: WHEN the agent area is compacted for density THEN the count of waiting agents remains readable [REQ: a-project-tile-carries-the-state-of-the-agents-inside-it, scenario: the-counts-stay-visible-when-the-grid-is-compacted]
 
 **An agent tile carries state, log excerpt and its own input**
 
-- [ ] AC-85: WHEN an agent is inside a tool THEN the tile names the tool and how long it has been running [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: a-tile-shows-what-the-agent-is-doing]
-- [ ] AC-86: WHEN an agent has ended its turn THEN the tile shows the last lines of its log, so the reason for waiting is readable [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: a-tile-shows-why-an-agent-is-waiting]
-- [ ] AC-87: WHEN the number of agents forces a denser layout THEN each tile still shows its state and its input, with other content shortened instead [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: density-does-not-remove-state-or-input]
-- [ ] AC-88: WHEN an agent's session log was bound heuristically THEN the tile marks the log as unconfirmed [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: a-tile-whose-binding-is-a-guess-says-so]
+- [ ] AC-86: WHEN an agent is inside a tool THEN the tile names the tool and how long it has been running [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: a-tile-shows-what-the-agent-is-doing]
+- [ ] AC-87: WHEN an agent has ended its turn THEN the tile shows the last lines of its log, so the reason for waiting is readable [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: a-tile-shows-why-an-agent-is-waiting]
+- [ ] AC-88: WHEN the number of agents forces a denser layout THEN each tile still shows its state and its input, with other content shortened instead [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: density-does-not-remove-state-or-input]
+- [ ] AC-89: WHEN an agent's session log was bound heuristically THEN the tile marks the log as unconfirmed [REQ: an-agent-tile-carries-state-log-excerpt-and-its-own-input, scenario: a-tile-whose-binding-is-a-guess-says-so]
 
 **A tile can be enlarged, and the other agents stay visible as rows**
 
-- [ ] AC-89: WHEN an agent tile is enlarged THEN it shows a larger log area and the other agents appear as rows [REQ: a-tile-can-be-enlarged-and-the-other-agents-stay-visible-as-rows, scenario: enlarging-one-tile]
-- [ ] AC-90: WHEN a tile is enlarged while another agent is waiting THEN that agent's row shows its waiting state [REQ: a-tile-can-be-enlarged-and-the-other-agents-stay-visible-as-rows, scenario: the-other-agents-are-still-readable]
-- [ ] AC-91: WHEN a row is selected THEN that agent becomes the enlarged tile [REQ: a-tile-can-be-enlarged-and-the-other-agents-stay-visible-as-rows, scenario: a-row-is-the-way-back]
+- [ ] AC-90: WHEN an agent tile is enlarged THEN it shows a larger log area and the other agents appear as rows [REQ: a-tile-can-be-enlarged-and-the-other-agents-stay-visible-as-rows, scenario: enlarging-one-tile]
+- [ ] AC-91: WHEN a tile is enlarged while another agent is waiting THEN that agent's row shows its waiting state [REQ: a-tile-can-be-enlarged-and-the-other-agents-stay-visible-as-rows, scenario: the-other-agents-are-still-readable]
+- [ ] AC-92: WHEN a row is selected THEN that agent becomes the enlarged tile [REQ: a-tile-can-be-enlarged-and-the-other-agents-stay-visible-as-rows, scenario: a-row-is-the-way-back]
 
 **View state is remembered per project**
 
-- [ ] AC-92: WHEN a project is selected, a tile enlarged, another project visited, and the first selected again THEN the same tile is enlarged [REQ: view-state-is-remembered-per-project, scenario: returning-to-a-project-restores-its-view]
-- [ ] AC-93: WHEN the remembered enlarged agent is no longer running THEN the grid is shown, and no empty enlarged tile [REQ: view-state-is-remembered-per-project, scenario: a-remembered-agent-that-is-gone]
-- [ ] AC-94: WHEN text is typed into an agent's input and another project is visited THEN returning to that project restores the text, unsent [REQ: view-state-is-remembered-per-project, scenario: an-unsent-draft-survives-a-project-switch]
-- [ ] AC-95: WHEN a project with exactly one agent is opened for the first time THEN that agent's tile is enlarged, because a grid of one leaves the rest of the area empty [REQ: view-state-is-remembered-per-project, scenario: a-project-holding-one-agent-opens-enlarged]
-- [ ] AC-96: WHEN the single tile is collapsed and the project is visited again THEN it stays collapsed — a default may choose the first view, never override a chosen one [REQ: view-state-is-remembered-per-project, scenario: a-remembered-choice-outranks-the-default]
+- [ ] AC-93: WHEN a project is selected, a tile enlarged, another project visited, and the first selected again THEN the same tile is enlarged [REQ: view-state-is-remembered-per-project, scenario: returning-to-a-project-restores-its-view]
+- [ ] AC-94: WHEN the remembered enlarged agent is no longer running THEN the grid is shown, and no empty enlarged tile [REQ: view-state-is-remembered-per-project, scenario: a-remembered-agent-that-is-gone]
+- [ ] AC-95: WHEN text is typed into an agent's input and another project is visited THEN returning to that project restores the text, unsent [REQ: view-state-is-remembered-per-project, scenario: an-unsent-draft-survives-a-project-switch]
+- [ ] AC-96: WHEN a project with exactly one agent is opened for the first time THEN that agent's tile is enlarged, because a grid of one leaves the rest of the area empty [REQ: view-state-is-remembered-per-project, scenario: a-project-holding-one-agent-opens-enlarged]
+- [ ] AC-97: WHEN the single tile is collapsed and the project is visited again THEN it stays collapsed — a default may choose the first view, never override a chosen one [REQ: view-state-is-remembered-per-project, scenario: a-remembered-choice-outranks-the-default]
 
 **Dictation writes into the same input as typing**
 
-- [ ] AC-97: WHEN dictation is used on an agent tile THEN the transcript appears in that agent's input, editable before sending [REQ: dictation-writes-into-the-same-input-as-typing, scenario: dictated-text-lands-in-the-input]
-- [ ] AC-98: WHEN voice input is not configured THEN typing is unaffected and the dictation control is absent rather than failing on use [REQ: dictation-writes-into-the-same-input-as-typing, scenario: dictation-unavailable]
+- [ ] AC-98: WHEN dictation is used on an agent tile THEN the transcript appears in that agent's input, editable before sending [REQ: dictation-writes-into-the-same-input-as-typing, scenario: dictated-text-lands-in-the-input]
+- [ ] AC-99: WHEN voice input is not configured THEN typing is unaffected and the dictation control is absent rather than failing on use [REQ: dictation-writes-into-the-same-input-as-typing, scenario: dictation-unavailable]
 
 **The delivery outcome is shown where the message was sent**
 
-- [ ] AC-99: WHEN an instruction is sent to an agent THEN the tile distinguishes arriving now, arriving at the end of the turn, and sitting unread [REQ: the-delivery-outcome-is-shown-where-the-message-was-sent, scenario: each-outcome-reads-differently]
-- [ ] AC-100: WHEN the outcome is that the message sits unread because no waiter is running THEN the tile says so, and offers the action that would make that agent wakeable [REQ: the-delivery-outcome-is-shown-where-the-message-was-sent, scenario: an-agent-that-will-not-wake-offers-the-remedy]
+- [ ] AC-100: WHEN an instruction is sent to an agent THEN the tile distinguishes arriving now, arriving at the end of the turn, and sitting unread [REQ: the-delivery-outcome-is-shown-where-the-message-was-sent, scenario: each-outcome-reads-differently]
+- [ ] AC-101: WHEN the outcome is that the message sits unread because no waiter is running THEN the tile says so, and offers the action that would make that agent wakeable [REQ: the-delivery-outcome-is-shown-where-the-message-was-sent, scenario: an-agent-that-will-not-wake-offers-the-remedy]
 
 **The fleet is the landing screen, and an unfinished answer is not an empty one**
 
-- [ ] AC-101: WHEN the application is opened at its root route THEN the fleet screen is shown [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: the-root-route-renders-the-fleet]
-- [ ] AC-102: WHEN the screen paints before discovery has returned THEN it states that it is still looking, and shows neither an empty fleet nor a count of zero [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: discovery-has-not-answered-yet]
-- [ ] AC-103: WHEN discovery has completed and found no live agent THEN the screen says that no agent is running, distinctly from the state above [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: discovery-answered-and-there-genuinely-is-nothing]
-- [ ] AC-104: WHEN a reader wants the projects overview THEN it is reachable from the navigation, with every behaviour it had before [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: the-projects-overview-is-not-lost]
+- [ ] AC-102: WHEN the application is opened at its root route THEN the fleet screen is shown [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: the-root-route-renders-the-fleet]
+- [ ] AC-103: WHEN the screen paints before discovery has returned THEN it states that it is still looking, and shows neither an empty fleet nor a count of zero [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: discovery-has-not-answered-yet]
+- [ ] AC-104: WHEN discovery has completed and found no live agent THEN the screen says that no agent is running, distinctly from the state above [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: discovery-answered-and-there-genuinely-is-nothing]
+- [ ] AC-105: WHEN a reader wants the projects overview THEN it is reachable from the navigation, with every behaviour it had before [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: the-projects-overview-is-not-lost]
 
 **A tile offers a terminal only where one can exist, and says why when it cannot**
 
-- [ ] AC-105: WHEN an agent was started from this screen THEN its tile offers a terminal that types into that agent [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-surface-started-agent-offers-its-terminal]
-- [ ] AC-106: WHEN an agent was started outside the framework and cannot be adopted THEN its tile offers no terminal, states the reason, and keeps its bus input [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-foreign-session-offers-no-terminal]
+- [ ] AC-106: WHEN an agent was started from this screen THEN its tile offers a terminal that types into that agent [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-surface-started-agent-offers-its-terminal]
+- [ ] AC-107: WHEN an agent was started outside the framework and cannot be adopted THEN its tile offers no terminal, states the reason, and keeps its bus input [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-foreign-session-offers-no-terminal]

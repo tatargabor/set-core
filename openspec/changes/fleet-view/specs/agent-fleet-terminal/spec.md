@@ -141,12 +141,15 @@ reveal them would be the same defect one layer up. Closing a tab is not an instr
 working, so it must not be read as one, and the reverse — a process nobody can reach or stop — must
 not be the price of that.
 
-**A service restart is the case where those two pull against each other, and the measurement decides
-it.** The terminal cannot survive the restart — its handle belongs to the process that died (design
-§6.1) — so the agent keeps running with no terminal. It is not thereby unreachable: it keeps its bus
-identity, so it stays observable and instructable by every other means this change provides, and it
-remains stoppable by process. "Reachable" is therefore a property of the agent, not of the terminal,
-and only the terminal column changes to no.
+**A service restart is the case where those two pull against each other, and it took a measurement
+and a decision to settle.** The terminal cannot survive it — its handle belongs to the process that
+died (design §6.1). The agent's survival is not automatic either: measured, a child of the service
+sits in the service's own cgroup and is killed with it, so the framework SHALL place a started agent
+outside the lifetime of any service that could restart under it. With that done the agent keeps
+running with no terminal, and it is not thereby unreachable: it keeps its bus identity, so it stays
+observable and instructable by every other means this change provides, and it remains stoppable
+deliberately. "Reachable" is a property of the agent, not of the terminal, and only the terminal
+column changes to no.
 
 #### Scenario: The browser disconnects
 - **WHEN** the browser showing an agent's terminal closes
@@ -158,12 +161,18 @@ and only the terminal column changes to no.
 
 #### Scenario: The service restarts
 - **WHEN** the service that started an agent restarts
-- **THEN** the agent is reported as no longer reachable and never as attachable, because the
-  terminal's only handle died with the process that held it
+- **THEN** the agent is still running and still instructable, and its terminal alone is reported as
+  gone — never as attachable
+
+#### Scenario: An agent outlives the service that started it
+- **WHEN** any service in the framework restarts, including the one that owns agent lifetime
+- **THEN** an agent started from the surface keeps running, because it was placed outside that
+  service's lifetime rather than inside it
 
 #### Scenario: A terminal handle is never reacquired from outside
 - **WHEN** any path would try to take over a terminal by reopening another process's descriptor
-- **THEN** it is not attempted, and the agent is reported unreachable instead
+- **THEN** it is not attempted, and the terminal is reported gone while the agent stays listed and
+  instructable
 
 #### Scenario: Stopping is deliberate
 - **WHEN** an agent started here is to be stopped

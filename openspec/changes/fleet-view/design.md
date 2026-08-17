@@ -365,6 +365,36 @@ recently modified session logs (25%) already carry branches**, one of them with 
 surface's obligation is not merely to skip an adoption feature: it must **refuse to offer resume on
 a session it can see is running**, because the control looks harmless and its damage is invisible.
 
+### 6.2 Where a started agent lives — decided by the user 2026-08-17, after the review
+
+The adversarial review found that task 5.5's promise was false as the system stands: the dashboard
+unit runs with `KillMode=control-group`, and every existing spawn uses `start_new_session=True`,
+which changes the process group and **not** the cgroup. So an agent started from the surface joins
+the service's cgroup and dies with it — including on the automatic restart after any crash.
+
+**Decided: the agent-owning process is separated from the web service.** One service serves the UI
+and the API; another owns agent lifecycle; the two talk to each other. This is not a new pattern
+here — a per-project supervisor daemon already exists with its own entry point, owning the
+orchestrator subprocess, monitoring it, restarting it and carrying its own inbox and status. The
+split extends that shape rather than inventing one, and it also closes a defect already on record:
+restarting the dashboard kills the sentinel subprocess.
+
+**The split alone does not deliver the property, and the design must not pretend it does.** It moves
+the boundary rather than removing it: when the *agent-owning* service restarts — crash, upgrade,
+`Restart=always` — it kills its own agents' cgroup by exactly the same mechanism. Two services means
+two places an agent can die from.
+
+So the agent is additionally started in **its own transient scope**. Measured: a scope started this
+way lands at `app.slice/<name>.scope`, a **sibling** of the service rather than a child, so it
+survives a restart of whichever service started it. It also gives task 5.4's "stopping is deliberate"
+a mechanism instead of a convention — the agent becomes a named unit that can be stopped by name and
+enumerated after a restart, which is what reattachment needs to even be attempted.
+
+**What this does *not* fix, and the boundary is worth stating precisely.** The terminal still does not
+survive. A pty master must be held by a living process, and that handle cannot be reacquired from
+outside (§6.1 below). The split rescues the *agent*; the terminal column still turns to no. That is
+exactly what task 5.5 now claims — and the claim was false before this decision and is true after it.
+
 **A second finding, from trying to drive the terminal from outside.** The pty master file descriptor
 cannot be reacquired from another process: `/proc/<pid>/fd/<n>` for a pty master points at
 `/dev/ptmx`, and opening that **allocates a new pty pair** rather than returning the existing one.
