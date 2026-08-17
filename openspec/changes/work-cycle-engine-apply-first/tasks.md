@@ -66,13 +66,24 @@
 - [ ] 5.4 Report the state a surface needs: runnable groups, groups awaiting an answer with their questions, blocked groups with their blockers, and any running unit with its progress; distinguish a stale lock from a live run [REQ: the-state-a-surface-needs-is-queryable]
 - [ ] 5.5 API tests for 5.1–5.4, asserting that the API answer path and the directory answer path produce the same engine state [REQ: an-open-decision-can-be-answered-over-the-api]
 
-## 6. Evidence
+## 6. Adoption — any project, several at once
+
+<!-- depends: 3, 4, 5 -->
+
+- [ ] 6.1 Take the project as an input on every operation and keep lock, run state and pending answers separate per project; assert that an operation naming one project cannot touch another [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart]
+- [ ] 6.2 Read what varies between projects from the resolved profile and the project's declaration only; add a test that fails if any project name or project path appears in the engine package [REQ: the-engine-carries-no-project-specific-knowledge]
+- [ ] 6.3 Refuse to run against a project whose declaration is missing, naming what is missing; never substitute a guessed default for an undeclared gate [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed]
+- [ ] 6.4 Report an un-adopted project as un-adopted — distinct from an adopted project with no open work — so that zero runnable groups is never read as "up to date" [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one]
+- [ ] 6.5 Drive a task file that carries no dependency annotations under the serial default, requiring no edit to that file before the first run [REQ: adoption-does-not-require-the-project-to-change-how-it-works]
+- [ ] 6.6 Adoption tests: two projects driven concurrently with no state bleed, and an un-adopted project queried [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart]
+
+## 7. Evidence
 
 <!-- depends: 5 -->
 
-- [ ] 6.1 Run the engine on a change of this repository with real group dependencies and at least one human stop; record what the run produced, not that it exited zero [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 6.2 Confirm the answer written from the surface reaches a stopped unit and releases it, observed end to end rather than asserted per layer [REQ: an-open-decision-can-be-answered-over-the-api]
-- [?] 6.3 Coordinate the crossing run on the consuming project's tree and compare it against that project's own engine — requires the other side's participation and their choice of change [REQ: a-commit-happens-only-behind-a-green-gate]
+- [ ] 7.1 Run the engine on a change of this repository with real group dependencies and at least one human stop; record what the run produced, not that it exited zero [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [ ] 7.2 Confirm the answer written from the surface reaches a stopped unit and releases it, observed end to end rather than asserted per layer [REQ: an-open-decision-can-be-answered-over-the-api]
+- [?] 7.3 Coordinate the crossing run on the consuming project's tree and compare it against that project's own engine — requires the other side's participation and their choice of change [REQ: a-commit-happens-only-behind-a-green-gate]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -145,4 +156,17 @@
 - [ ] AC-60: WHEN a unit is running for the change THEN the response identifies it and reports progress derived from completed task markers [REQ: the-state-a-surface-needs-is-queryable, scenario: a-running-unit-is-reported-with-its-progress]
 - [ ] AC-61: WHEN a lock exists whose holding process is no longer alive THEN the response distinguishes that state from a live run [REQ: the-state-a-surface-needs-is-queryable, scenario: a-stale-run-is-not-reported-as-running]
 
-<!-- összesen: 61 -->
+<!-- work-cycle-adoption -->
+- [ ] AC-62: WHEN the engine is run against a project it has never been run against before THEN it operates using only that project's resolved profile and declaration / no framework code names that project [REQ: the-engine-carries-no-project-specific-knowledge, scenario: a-second-project-needs-no-framework-change]
+- [ ] AC-63: WHEN two projects need different gate steps THEN the difference is expressed in their profiles / the engine's behaviour is identical in both cases [REQ: the-engine-carries-no-project-specific-knowledge, scenario: project-specific-behaviour-arrives-through-the-profile]
+- [ ] AC-64: WHEN an adopted project declares no gate steps THEN the engine runs no gate and says so / it does NOT fall back to a command it guessed from the project's contents [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed, scenario: an-undeclared-gate-is-not-invented]
+- [ ] AC-65: WHEN the engine is asked to run against a project that has not declared where its changes live THEN it refuses and names the missing declaration [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed, scenario: a-missing-declaration-is-named]
+- [ ] AC-66: WHEN the state of a project that has not been adopted is queried THEN the response states that the project is not adopted / it does NOT report zero runnable groups as though the project were up to date [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one, scenario: un-adopted-project-queried]
+- [ ] AC-67: WHEN the state of an adopted project with no open tasks is queried THEN the response distinguishes this from the un-adopted case [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one, scenario: adopted-project-with-no-open-work]
+- [ ] AC-68: WHEN work units are running for two different projects at once THEN each holds its own lock / neither project's state, answers or verdicts appear in the other's [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: concurrent-projects]
+- [ ] AC-69: WHEN an answer is submitted naming a change in one project THEN a task of the same name in another project is unaffected [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: an-answer-reaches-only-its-own-project]
+- [ ] AC-70: WHEN a work unit fails or is blocked in one project THEN operations against other projects continue to be accepted [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart, scenario: a-failure-in-one-project-does-not-stop-another]
+- [ ] AC-71: WHEN a project's task file carries groups but no dependency annotations THEN the engine drives it under the serial default / it requires no edit to that file before the first run [REQ: adoption-does-not-require-the-project-to-change-how-it-works, scenario: task-file-without-dependency-annotations]
+- [ ] AC-72: WHEN an adopted project already marks tasks in its own established way THEN the engine reads those markings rather than requiring a different notation [REQ: adoption-does-not-require-the-project-to-change-how-it-works, scenario: existing-conventions-are-honoured-not-replaced]
+
+<!-- összesen: 72 -->

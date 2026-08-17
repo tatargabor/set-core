@@ -66,6 +66,10 @@ one engine, in the framework, with their copy retired against evidence — not a
   one key, and making consumption visible.
 - `work-cycle-control-api`: starting a section and answering an open question over the manager API,
   so the surface can drive a change.
+- `work-cycle-adoption`: what it takes for *any* registered project to be driven this way — a
+  declaration rather than framework code, an un-adopted project distinguishable from a finished one,
+  several projects driven from one place with their state kept apart, and adoption that does not
+  require a project to change how it already works.
 
 ### Modified Capabilities
 <!-- None. The existing change-granular loop keeps its behaviour for the whole parallel period; the
