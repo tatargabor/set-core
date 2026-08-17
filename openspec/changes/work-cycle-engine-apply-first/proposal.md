@@ -70,6 +70,10 @@ one engine, in the framework, with their copy retired against evidence — not a
   by the agent working there, with no framework service required. Every other caller, including the
   framework's surface, goes through that same command; run state is written where the framework can
   read it without executing anything.
+- `module-install`: how a capability reaches a project at all — a module declaring its files, its
+  requirements and its version; installing only what a project asked for; deciding every file from
+  recorded provenance so the project's edits survive; reporting each skip; keeping deletions deleted;
+  and refusing to replace a generated artifact with an older generator's output.
 - `work-cycle-adoption`: what it takes for *any* registered project to be driven this way — a
   declaration rather than framework code, an un-adopted project distinguishable from a finished one,
   several projects driven from one place with their state kept apart, and adoption that does not
