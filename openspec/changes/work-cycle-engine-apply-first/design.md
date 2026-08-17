@@ -51,8 +51,10 @@ Three measurements bound the design, and each one closed a question that would o
 **Non-Goals:**
 - Chaining units automatically. The caller decides when the next unit runs.
 - Reconciling an interrupted run into a commit, and run history — both later.
-- Shipping the phase or lens lane. The abstraction must not *exclude* them; this change does not
-  build them.
+- Building the fix lane. It is **scheduled for the next round, not dropped** — and the abstraction is
+  deliberately shaped to receive it: the unit kind is an attribute, so the fix lane adds unit kinds
+  rather than a second engine. Anything in this design that would have to change to admit it is a
+  design error, not a future task.
 - Replacing the existing change-granular loop. It keeps working, unchanged, for the whole parallel
   period.
 

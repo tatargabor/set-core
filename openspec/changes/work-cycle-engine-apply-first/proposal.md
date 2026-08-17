@@ -54,8 +54,26 @@ one engine, in the framework, with their copy retired against evidence — not a
   is how an agent working there starts a slice today, and it needs no running service. The
   framework's surface starts a unit by invoking *the same command*, so there is exactly one way into
   the engine and one place where run state comes from. The surface's own job is to read that state.
-- **NOT in this change:** loop chaining, reconcile, run history, the phase lane, the lens lane. The
-  abstraction must not *exclude* them; it does not ship them.
+- **Scheduled for the next round, not dropped:** the **fix lane** — the second unit shape, with its
+  own four prompt builders and the lens axis. It is not in this change's scope, and the name says so
+  (`-apply-first`). It is named here because a reader a month from now must be able to tell
+  *scheduled* from *forgotten*, and because the abstraction in this change is shaped to carry it: the
+  unit kind is an attribute, so adding the fix lane adds unit kinds, not a second engine.
+- **Deferred without a date:** loop chaining, reconcile, run history. These are conveniences on top
+  of a working engine; the fix lane is not.
+
+## What Comes After This Change
+
+Stated here so the boundary reads as a plan rather than an omission:
+
+1. **The fix lane** — the same engine, a second unit kind. Four prompt builders instead of one, and
+   the lens axis (the same phase from several viewpoints, compared by a further unit). Its main cost
+   is not the builders but bringing its verdicts under the same schema: measured on the proven
+   implementation, its free-text extraction runs to 332 lines against 13 on the slice side, and most
+   of that is eliminable rather than portable — but only once its phases return schema-constrained
+   verdicts.
+2. **Loop chaining, reconcile, run history** — conveniences once the engine is proven in real use.
+3. **Rebuilding orchestration on this foundation** — the long arc stated in the design's Context.
 
 ## Capabilities
 
