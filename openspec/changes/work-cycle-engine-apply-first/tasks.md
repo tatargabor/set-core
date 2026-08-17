@@ -1,3 +1,11 @@
+## 0. Separate package, one-way dependency
+
+<!-- depends: none -->
+
+- [ ] 0.1 Create the `set_workcycle` top-level package under `lib/` and register it in the project's package list [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [ ] 0.2 Add a test asserting the dependency direction — `set_workcycle` may import `set_orch`, `set_orch` may NOT import `set_workcycle` — that fails if the reverse import is introduced anywhere [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [ ] 0.3 Verify orchestration still imports and its unit tests still pass with the new package present but unused, so the baseline is established before any engine code exists [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+
 ## 1. Measure before committing to reuse
 
 <!-- depends: none -->
@@ -52,7 +60,7 @@
 
 <!-- depends: 3, 4 -->
 
-- [ ] 5.1 Add the start operation on the existing change-control API: start the next runnable unit or a named group, returning before the run completes and identifying what was started [REQ: a-work-unit-can-be-started-over-the-api]
+- [ ] 5.1 Add the start operation under the engine's own route prefix (NOT appended to the orchestration change-control routes): start the next runnable unit or a named group, returning before the run completes and identifying what was started [REQ: a-work-unit-can-be-started-over-the-api]
 - [ ] 5.2 Refuse an unstartable request with the failing condition named — nothing runnable, dependencies unsatisfied, awaiting an answer, or a unit already holding the lock [REQ: an-unstartable-request-is-refused-with-a-reason]
 - [ ] 5.3 Add the answer operation, delivering through the ordinary connector so no answer path is privileged; refuse an answer for a non-awaiting task [REQ: an-open-decision-can-be-answered-over-the-api]
 - [ ] 5.4 Report the state a surface needs: runnable groups, groups awaiting an answer with their questions, blocked groups with their blockers, and any running unit with its progress; distinguish a stale lock from a live run [REQ: the-state-a-surface-needs-is-queryable]

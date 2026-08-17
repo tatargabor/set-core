@@ -139,6 +139,27 @@ at the point it is recorded, rather than being accepted and misinterpreted later
 inheritance of a defect measured in the proven engine, where a project-scoped seat matched seven live
 sessions and the answer woke the wrong one.
 
+### D10 — Separate package, separate route prefix, and the dependency points one way
+
+The engine lives in its own top-level package (`lib/set_workcycle/`), exposes its operations under
+its own route prefix, and ships its own entry point. It is not a module inside the orchestration
+package and its routes are not appended to the orchestration change-control routes.
+
+*Why, stated as a requirement rather than a preference:* **`set_workcycle` may import from
+`set_orch`; `set_orch` may not import from `set_workcycle`.** That direction is the whole point — it
+means orchestration continues to work with the engine deleted, and it can be asserted by a test
+rather than promised in a comment. Co-locating the code would make the reverse import trivially
+available, and a dependency that is easy to add gets added.
+
+*What this does not claim:* the two are unrelated. The engine reuses gate configuration, event
+plumbing, path resolution and task-file parsing from orchestration, and the surface will show both on
+one screen. Sharing machinery and sharing a namespace are different decisions, and only the second
+one is being refused.
+
+*Alternative considered:* `lib/set_orch/work_cycle/` as a sub-package. Rejected because a sub-package
+inherits the parent's name in every import, log line and traceback, so the separation would hold in
+the directory listing and nowhere a reader actually looks.
+
 ## Risks / Trade-offs
 
 - **The common abstraction has to be right first time, across two lanes with no shared code.** →

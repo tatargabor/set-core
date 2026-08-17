@@ -74,14 +74,22 @@ one engine, in the framework, with their copy retired against evidence — not a
 
 ## Impact
 
-**Code.** New modules under `lib/set_orch/` (Layer 1, domain-free). Reused rather than rewritten:
+**Code.** A **separate top-level package**, `lib/set_workcycle/` — not a module inside the
+orchestration package. The engine is a distinct capability that happens to reuse orchestration
+machinery; putting it inside `set_orch` would make it read as part of orchestration, and a dependency
+that reads that way soon becomes one. The package split fixes the **direction** of the dependency:
+`set_workcycle` imports from `set_orch`, never the reverse, so orchestration keeps working with the
+engine deleted. Packaging cost is one entry in `pyproject.toml`'s package list; `lib/` already
+carries several top-level packages. Reused rather than rewritten:
 `GatePipeline` + the profile-driven `gate_registry` for gates, `chat.py` for stream-json consumption,
 `loop_tasks.py` for checkbox parsing, plus `events.py`, `paths.py`, `process.py`. Project-specific
 steps — type-check and test commands, source-tree sweeps — reach the engine **through the profile**,
 never through Layer 1.
 
-**API.** Two additive endpoints on the existing `changes/{name}` surface. No existing endpoint
-changes shape.
+**API.** Two additive endpoints under their **own route prefix**, not appended to the orchestration
+change-control routes. The surface calls both from the same screen, which is a rendering decision and
+carries no obligation for the routes to share a namespace. No existing endpoint changes shape, and no
+existing route acquires a new meaning.
 
 **A consumer's migration, and what it obliges here.** Their engine keeps running until the framework
 version has run *the same change on their tree*, proven by a real run — a non-trivial change with
