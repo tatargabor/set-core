@@ -118,3 +118,20 @@ between the verdict and the commit is still attributable to the unit that produc
 - **THEN** the recorded verdict survives
 - **AND** the engine's later output shows a started unit with no completion, rather than showing the
   unit as never attempted
+
+### Requirement: A unit may take other units' verdicts as input, and setting it aside preserves them
+A work unit's input MAY be the verdicts of other work units. When such a unit is set aside rather
+than completed, the engine SHALL preserve each input verdict in full. A summary, a merged view or a
+selected branch SHALL NOT replace the inputs, because what a reader needs at that point is where the
+inputs diverged.
+
+#### Scenario: Comparing unit is set aside
+- **WHEN** a unit whose input is several other units' verdicts is set aside instead of producing an
+  outcome
+- **THEN** every input verdict remains retrievable in full
+- **AND** no input verdict is replaced by a summary of it
+
+#### Scenario: A mechanical projection of the comparison does not decide
+- **WHEN** the comparison's result is projected into a single outcome for a caller
+- **THEN** the projection carries the comparison's own verdict rather than deciding on its behalf
+- **AND** where the comparison reached no decision, the projection is a stop rather than a choice
