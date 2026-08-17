@@ -119,6 +119,25 @@ between the verdict and the commit is still attributable to the unit that produc
 - **AND** the engine's later output shows a started unit with no completion, rather than showing the
   unit as never attempted
 
+### Requirement: A gate failure states whether it came from this unit's own work
+When a gate fails, the engine SHALL report whether the failure implicates files this unit changed, or
+files changed elsewhere in the tree. It SHALL NOT attribute a failure to the unit without that
+distinction, because a tree may hold work the engine did not do and does not control.
+
+#### Scenario: Failure outside the unit's own files
+- **WHEN** a gate fails and the failure implicates only files this unit did not change
+- **THEN** the engine reports the failure as originating outside the unit's own work
+- **AND** the unit is not described as having broken it
+
+#### Scenario: Failure in the unit's own files
+- **WHEN** a gate fails and the failure implicates files this unit changed
+- **THEN** the engine attributes it to the unit
+
+#### Scenario: Attribution cannot be determined
+- **WHEN** the engine cannot establish which files a failure implicates
+- **THEN** it says so
+- **AND** it does NOT default to attributing the failure to the unit
+
 ### Requirement: A unit may take other units' verdicts as input, and setting it aside preserves them
 A work unit's input MAY be the verdicts of other work units. When such a unit is set aside rather
 than completed, the engine SHALL preserve each input verdict in full. A summary, a merged view or a
