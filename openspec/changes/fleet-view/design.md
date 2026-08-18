@@ -403,6 +403,35 @@ move. This settles §5.5 rather than leaving it open: an agent whose owning proc
 **unreachable**, not reattachable, because the only handle to its terminal died with the owner. A
 service restart therefore cannot promise reattachment; it can only report the truth.
 
+**Two properties the user named on 2026-08-18, and both sharpen the decision rather than change it.**
+
+*"A fixed service that exists only for this and never needs updating."* Correct, and the reason is
+worth stating because it decides how the service is written, not just that it exists. The transient
+scope already saves the **agent** from a restart; what it cannot save is the **terminal**, because
+the pty master dies with whoever holds it and cannot be reacquired (measured above). So the owner's
+uptime is exactly the terminal's uptime — and an owner that never needs updating is an owner that
+never needs restarting. That property is not free: it is bought by keeping the service **thin**.
+It holds ptys, relays bytes, and starts and stops named scopes. Everything that changes — discovery,
+state, the API, the screen — stays in the web service, which may then be restarted as often as
+development requires. **A line of business logic added to the owner is a future terminal outage**,
+and that is the standard any change to it must be held to.
+
+*"Then we start and resume."* This closes the case §6.2 above calls unreachable, and the order is
+the whole of it. After the owner dies, the agent is alive in its own scope and its terminal is gone
+for good. The transcript, however, survives — so the recovery is not reattachment but **replacement**:
+resume the session into a fresh pty under a new owner. Two things make it work and one makes it fail:
+
+1. **Stop the orphaned scope first, by name.** It is a named unit precisely so this is possible —
+   `systemctl --user stop <name>.scope`, verified 2026-08-18 on a probe scope.
+2. **Then resume.** A resumed *dead* session is the ordinary, supported use of resume.
+3. **Resuming before stopping reproduces §6.1's fork** — two live sessions appending to one
+   transcript, neither aware of the other, nothing reporting it. The measured hazard is not resume
+   itself; it is resume against something still running. So the surface must refuse to offer resume
+   while the old scope is up, rather than trusting the operator to do it in order.
+
+This is what makes CB-1's remedy honest: the framework does not promise to reattach, it offers to
+**stop and resume**, and says which of the two it is doing.
+
 ---
 
 ### 6.3 The bus — MEASURED 2026-08-18, and it settles which channel is the contract

@@ -75,6 +75,14 @@ Derived from the source, not from the change's artifacts.
 - **Note:** the repository's own memory already records this class for the sentinel subprocess.
 - **Status:** **ANSWERED** — see D-1. The plan now separates the agent-owning service and starts
   each agent in its own transient scope (design §6.2, tasks 5.8/5.9); task 5.5's claim becomes true.
+  **Completed 2026-08-18** with the recovery the split still left open. The scope saves the agent;
+  the terminal dies with its owner regardless, because a pty master cannot be reacquired. So the
+  remedy is not reattachment but **stop the orphaned scope by name, then resume the session into a
+  fresh pty** — and the order is load-bearing: resuming while the old scope is still up reproduces
+  the §6.1 fork, two live sessions on one transcript with nothing reporting it. The surface must
+  therefore refuse to offer resume until the scope is down, rather than trusting the order to an
+  operator. Verified 2026-08-18 that a transient scope lands at `app.slice/<name>.scope`, a sibling
+  of `set-web.service` rather than a child, and stops by name.
 
 ### CB-2 [MAJOR] Discovery by process identity lists a non-agent process that runs the same binary
 - **Source:** measured live — a process whose `exe` is the same CLI binary that backs all 15 real
