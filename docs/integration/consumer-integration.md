@@ -1995,3 +1995,78 @@ holds for the shape that was enumerated, and a second manifest FORM was never en
 advice: run `set-project init --dry-run` first, and if a general improvement was made inside
 `framework-rules/`, send it here instead of keeping it there — otherwise the next init takes it
 away rather than carrying it forward.
+
+## 2026-08-18 — the sectioned apply engine is IN the framework, and the manifest gap above is closed by measurement
+
+The consumer's proven apply engine has been brought over as `work-cycle-engine-apply-first`:
+42 requirements across six capabilities, **61 of 62 tasks implemented**, the sixty-second being
+the crossing run on their tree, which is a human stop rather than an omission.
+
+**What ran, rather than what was written.** A detached worktree of this repository, a change with
+three groups carrying **declared** dependencies and one task deliberately not the agent's to
+decide. Seven commands: three units, one human stop, an answer written the way the surface would
+write it, and a resume. Three commits, one per unit, and the file the change asked for. The full
+record with the per-step table is in `openspec/changes/work-cycle-engine-apply-first/evidence.md`.
+
+**The part worth carrying forward is the two defects that live run found, both of which every one
+of the 172 unit tests had passed:**
+
+- **An answer was released but never delivered.** A *reporting-only* invocation took the answer in
+  and released the task; by the time a unit ran, the answer's text was gone, and the agent asked
+  the same question again. The unit test covering this ran `answer` then `run` back to back, so
+  the run's own intake still held it — **a path the user does not take.** Real use interleaves a
+  look at the state, and intake runs on every path by design, so the reporting call is *expected*
+  to consume it. Fixed by recording applied answers per change and carrying them into any later
+  unit whose slice contains that task.
+- **A divergence report stated something checkably false** — "claimed complete but not marked in
+  the file" about a task that *was* marked, by an earlier run. A report that says something untrue
+  gets checked once, found wrong, and then ignored, including the times it is right. `TreeDiff`
+  grew a third category for an overclaim about *authorship*.
+
+### The 2026-07-31 manifest gap — measured, and half of it was already false
+
+The section above says `modules/mobile` and `modules/example` have `rules/*.md` entries "in
+neither `once` nor `protected`". **Measured today: all four are in the top-level `protected:`
+list, which the installer does read.** So the alarming half of that finding was wrong in the same
+direction the correction above it warns about — a flag was looked for in one spelling and its
+absence taken for a behaviour.
+
+What was *actually* wrong, and is now fixed:
+
+- **Six file entries across the three shipped manifests stated no treatment at all** (bare strings
+  outside the protected list): `project-knowledge.yaml` in example and mobile, `reflection.md` in
+  web, and example's three sample-content files. Each is now `protected: true, once: true`,
+  matching web's classification — `project-knowledge.yaml`'s own header tells the project to
+  customise it, so it is the project's the moment it is seeded.
+- **None of the three declared a version.** All three do now.
+- **The validation is IN FORCE, not merely available.** A declaration with an untreated entry, an
+  unknown guard, or no version fails the install **before a byte is written**. A `replace: true`
+  guard was added as the explicit way to say "no guard" — without it, "overwrite freely" and
+  "nobody decided" would be the same text and the installer would take the destructive reading.
+- The audit's durable form is a **test over every shipped manifest**, not a report. A report is
+  true on the day it is written.
+
+⚠ **One consequence that reaches past this repository:** a manifest with no `version:` no longer
+installs. The three shipped modules are conformant; an external plugin's own template manifest
+needs one line. That is the requirement's intent, not a side effect — but it is a breaking change
+for anyone who has one.
+
+### The crossing run — asked for on 2026-08-18, waiting on the consumer
+
+Requested on the channel (`S#189`, `S#190`) with three measurements taken **read-only** from their
+tree, because they change what should be asked:
+
+- **The resolver already parses all 15 of their open changes with zero framework changes.** That
+  is the adoption requirement met against real data rather than a fixture.
+- **They have essentially no declared dependency annotations** — one file out of fifteen. Everything
+  runs under the serial default, which for them is not an accidental gap: "0. fázis → 1. fázis" is
+  a real sequence that was never written down. So a crossing run proves the *serial default* — the
+  adoption-critical half — and would not exercise declared edges. Stated to them plainly rather
+  than quietly counted as covered.
+- ⚠ **Their earlier candidate's group 8 is "Deploy, dokumentáció, knowledge" and names both Railway
+  environments.** The standing constraint covers a production deploy reached *as a consequence*, so
+  this was flagged before the run rather than discovered during it. The engine's own default is the
+  protection: it runs exactly one unit per invocation and never chains, so reaching group 8 requires
+  somebody to issue the command for it.
+
+What was asked of them: which change, which tree or branch, when — **and how far it may run**.
