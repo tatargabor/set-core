@@ -90,12 +90,12 @@
 
 <!-- depends: 4, 5, 6 -->
 
-- [ ] 7.1 Take the project as an input on every operation and keep lock, run state and pending answers separate per project; assert that an operation naming one project cannot touch another [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart]
-- [ ] 7.2 Read what varies between projects from the resolved profile and the project's declaration only; add a test that fails if any project name or project path appears in the engine package [REQ: the-engine-carries-no-project-specific-knowledge]
-- [ ] 7.3 Refuse to run against a project whose declaration is missing, naming what is missing; never substitute a guessed default for an undeclared gate [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed]
-- [ ] 7.4 Report an un-adopted project as un-adopted — distinct from an adopted project with no open work — so that zero runnable groups is never read as "up to date" [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one]
-- [ ] 7.5 Drive a task file that carries no dependency annotations under the serial default, requiring no edit to that file before the first run [REQ: adoption-does-not-require-the-project-to-change-how-it-works]
-- [ ] 7.6 Adoption tests: two projects driven concurrently with no state bleed, and an un-adopted project queried [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart]
+- [x] 7.1 Take the project as an input on every operation and keep lock, run state and pending answers separate per project; assert that an operation naming one project cannot touch another [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart]
+- [x] 7.2 Read what varies between projects from the resolved profile and the project's declaration only; add a test that fails if any project name or project path appears in the engine package [REQ: the-engine-carries-no-project-specific-knowledge]
+- [x] 7.3 Refuse to run against a project whose declaration is missing, naming what is missing; never substitute a guessed default for an undeclared gate [REQ: adoption-is-a-declaration-and-its-absence-is-not-guessed]
+- [x] 7.4 Report an un-adopted project as un-adopted — distinct from an adopted project with no open work — so that zero runnable groups is never read as "up to date" [REQ: an-un-adopted-project-is-distinguishable-from-a-finished-one]
+- [x] 7.5 Drive a task file that carries no dependency annotations under the serial default, requiring no edit to that file before the first run [REQ: adoption-does-not-require-the-project-to-change-how-it-works]
+- [x] 7.6 Adoption tests: two projects driven concurrently with no state bleed, and an un-adopted project queried [REQ: several-projects-are-driven-from-one-place-with-state-kept-apart]
 
 ## 8. Evidence
 

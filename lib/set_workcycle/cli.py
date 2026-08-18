@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
 
+from .adoption import ADOPTION_REL, read_adoption
 from .connector import awaiting_tasks, intake, write_answer
 from .engine import RUN_STATE_DIR, UnitKind, WorkUnit
 from .groups import DependencyCycle, parse_task_groups, select_next_group
@@ -35,11 +36,6 @@ from .lock import LockHeld, SeatRefused, acquire, read_lock, validate_seat
 logger = logging.getLogger(__name__)
 
 __all__ = ["main", "build_parser", "EngineView", "open_engine", "read_run_state"]
-
-#: Where a project says which changes it has and what its gate steps are. Absence is reported,
-#: never guessed — see `work-cycle-adoption`.
-ADOPTION_REL = "set/work-cycle.yaml"
-
 
 @dataclass
 class EngineView:
@@ -56,6 +52,7 @@ class EngineView:
     tasks_path: Optional[Path] = None
     adopted: bool = True
     missing: str = ""
+    adoption: Optional[object] = None
 
 
 def _awaiting_keys(tree: Path, change: str, tasks_path: Optional[Path]) -> set[str]:
@@ -72,9 +69,21 @@ def open_engine(tree: str | Path, change: str = "", changes_dir: str = "") -> En
     adopted = True
     missing = ""
 
-    base = Path(changes_dir) if changes_dir else root / "openspec" / "changes"
+    # Where a project keeps its changes comes from the project's own declaration. Defaulting
+    # to a convention here would be the guessed default `work-cycle-adoption` refuses: a
+    # guess that happens to be right for this repository is indistinguishable, from the
+    # outside, from a project that actually said so.
+    adoption = read_adoption(root, changes_dir_override=changes_dir)
+    if not adoption.adopted:
+        return EngineView(tree=root, change=change, intake_lines=intake(root).as_lines(),
+                          adopted=False, missing=adoption.missing)
+
+    base = root / adoption.changes_dir
     if not base.is_dir():
-        adopted, missing = False, f"no changes directory (looked in {base})"
+        adopted, missing = False, (
+            f"{adoption.changes_dir} — declared in {ADOPTION_REL}, but there is no such "
+            f"directory in this tree"
+        )
     elif change:
         candidate = base / change / "tasks.md"
         if candidate.is_file():
@@ -89,6 +98,7 @@ def open_engine(tree: str | Path, change: str = "", changes_dir: str = "") -> En
     return EngineView(
         tree=root, change=change, intake_lines=result.as_lines(),
         plan=plan, tasks_path=tasks_path, adopted=adopted, missing=missing,
+        adoption=adoption,
     )
 
 

@@ -40,9 +40,16 @@ SEAT = "session:11111111-2222-3333-4444-555555555555"
 CLI = REPO / "lib" / "set_workcycle" / "cli.py"
 
 
-def _project(tmp_path: Path, tasks: str = None) -> Path:
+def _project(tmp_path: Path, tasks: str = None, *, declare: bool = True) -> Path:
+    """A project that has declared itself. `declare=False` yields an un-adopted tree — the
+    engine refuses to guess where changes live, so the declaration is what makes it a
+    project at all."""
     d = tmp_path / "openspec" / "changes" / "c"
     d.mkdir(parents=True)
+    if declare:
+        (tmp_path / "set").mkdir(exist_ok=True)
+        (tmp_path / "set" / "work-cycle.yaml").write_text(
+            "changes_dir: openspec/changes\n", encoding="utf-8")
     (d / "tasks.md").write_text(tasks or (
         "## 1. First\n- [ ] 1.1 alpha\n\n## 2. Second\n<!-- depends: none -->\n- [ ] 2.1 bravo\n"
     ), encoding="utf-8")
