@@ -49,18 +49,18 @@
 
 <!-- depends: 2, 3 -->
 
-- [ ] 4.1 Define the work unit and its lifecycle — run, verdict, gate, commit, or set aside — with the unit kind as an attribute so slice, phase and lens are expressible [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 4.2 Acquire a tree-scoped lock recording a session-scoped seat; refuse a seat that identifies only a project; report a lock whose holder is dead as stale, distinguishably from running [REQ: a-work-unit-is-locked-to-one-seat-and-the-seat-is-session-scoped]
-- [ ] 4.3 Run the unit as a full agent session (not a subagent) with the project's hooks and rules active, consuming its event stream as it runs [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 4.4 Constrain the verdict to a declared schema with outcome, summary and a separate open-decisions field; record a non-conforming return as a reporting failure rather than inferring an outcome [REQ: the-verdict-is-schema-constrained]
-- [ ] 4.5 Persist the verdict durably **before** the gate runs, so a run interrupted between verdict and commit stays attributable [REQ: the-verdict-is-durable-before-the-gate-runs]
-- [ ] 4.6 Diff the verdict against the task markers in the tree and report divergence in both directions [REQ: the-verdict-is-checked-against-the-tree]
-- [ ] 4.7 Resolve gate steps through `resolve_gate_config` and run them per the 1.1 finding; record "no gate ran" as a state distinct from "gate passed" when the profile declares none [REQ: the-gate-runs-through-the-project-profile]
-- [ ] 4.8 Commit only behind a green gate, referencing the change and unit; on failure leave the work in the tree, make no commit, and do not advance [REQ: a-commit-happens-only-behind-a-green-gate]
-- [ ] 4.8b On gate failure, report whether the failure implicates files this unit changed or files changed elsewhere in the tree; where attribution cannot be established, say so rather than defaulting to the unit [REQ: a-gate-failure-states-whether-it-came-from-this-unit-s-own-work]
-- [ ] 4.9 Derive reported progress from completed task markers, never from turn or event counts [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 4.10 Unit tests for 3.1–3.9, including a test that fails if progress is ever derived from an activity counter [REQ: the-verdict-is-checked-against-the-tree]
-- [ ] 4.11 Allow a unit's input to be other units' verdicts, and preserve every input verdict in full when such a unit is set aside; a projection of the comparison must carry its verdict, not decide for it [REQ: a-unit-may-take-other-units-verdicts-as-input-and-setting-it-aside-preserves-them]
+- [x] 4.1 Define the work unit and its lifecycle — run, verdict, gate, commit, or set aside — with the unit kind as an attribute so slice, phase and lens are expressible [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 4.2 Acquire a tree-scoped lock recording a session-scoped seat; refuse a seat that identifies only a project; report a lock whose holder is dead as stale, distinguishably from running [REQ: a-work-unit-is-locked-to-one-seat-and-the-seat-is-session-scoped]
+- [x] 4.3 Run the unit as a full agent session (not a subagent) with the project's hooks and rules active, consuming its event stream as it runs [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 4.4 Constrain the verdict to a declared schema with outcome, summary and a separate open-decisions field; record a non-conforming return as a reporting failure rather than inferring an outcome [REQ: the-verdict-is-schema-constrained]
+- [x] 4.5 Persist the verdict durably **before** the gate runs, so a run interrupted between verdict and commit stays attributable [REQ: the-verdict-is-durable-before-the-gate-runs]
+- [x] 4.6 Diff the verdict against the task markers in the tree and report divergence in both directions [REQ: the-verdict-is-checked-against-the-tree]
+- [x] 4.7 Resolve gate steps through `resolve_gate_config` and run them per the 1.1 finding; record "no gate ran" as a state distinct from "gate passed" when the profile declares none [REQ: the-gate-runs-through-the-project-profile]
+- [x] 4.8 Commit only behind a green gate, referencing the change and unit; on failure leave the work in the tree, make no commit, and do not advance [REQ: a-commit-happens-only-behind-a-green-gate]
+- [x] 4.8b On gate failure, report whether the failure implicates files this unit changed or files changed elsewhere in the tree; where attribution cannot be established, say so rather than defaulting to the unit [REQ: a-gate-failure-states-whether-it-came-from-this-unit-s-own-work]
+- [x] 4.9 Derive reported progress from completed task markers, never from turn or event counts [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 4.10 Unit tests for 3.1–3.9, including a test that fails if progress is ever derived from an activity counter [REQ: the-verdict-is-checked-against-the-tree]
+- [x] 4.11 Allow a unit's input to be other units' verdicts, and preserve every input verdict in full when such a unit is set aside; a projection of the comparison must carry its verdict, not decide for it [REQ: a-unit-may-take-other-units-verdicts-as-input-and-setting-it-aside-preserves-them]
 
 ## 5. Deferred-work connector
 
