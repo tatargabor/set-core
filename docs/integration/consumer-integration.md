@@ -2142,3 +2142,34 @@ throughout**. Not because the tests are bad, but because each defect lived in th
 mechanism and its result: a gate that resolves steps but not the declared ones, a completeness
 derived from the wrong source, a claim about a tree nobody looked at, an attribution computed from
 a set that was never a list of causes. A live run is where a mechanism meets a result.
+
+### The two defects the FIX introduced — and why only a live run could show them
+
+Same day, `00c682ca`. Both came out of the consumer clearing their side and the engine trying to
+proceed, which is a state no unit test had ever put it in.
+
+**The hold was a deadlock.** Holding the chain on a red gate is correct — but a held group has no
+open tasks left, so the start path cannot reach it, and there was no way to run the gate on its
+own. The consumer fixed the cause and the engine had no way to find out. **A guard that cannot be
+discharged is not a guard, it is a wall.** The unit test for the hold was green throughout: it
+asserted that the chain *stops*, never that it can start again. `recheck` now runs a held group's
+gate with no agent session and no new unit, commits what the failed gate left behind, and runs
+nothing at all when nothing is held — the consumer's declared gate costs 80 seconds.
+
+**The commit staged the engine's own bookkeeping.** `git add -A` put
+`set/runtime/work-cycle/<change>/<unit>.json` on the index in the consumer's tree. Nothing landed —
+the commit failed on an unrelated `index.lock`, and the index was restored — but the next green
+gate would have written the engine's run records into the project's history as project work. The
+exclusion belongs in the engine, not in the project's `.gitignore`: the directory is the engine's
+invention, and a fix requiring every adopting project to add a line is one the next adopter misses.
+
+*Two of the tests written for `recheck` passed on their mutants first time, both for the same
+reason and both worth keeping:* one asserted the discharge on the RECORD but not on the REPORT, so
+a mutant that silently stopped reporting it passed — a discharge nobody is told about does not read
+as a discharge. The other asserted "nothing changed" by comparing the record, and with the early
+return removed **the gate still ran** while the record stayed byte-identical. The gate now leaves a
+trace on disk and the absence of that trace is the assertion.
+
+**Running total for one live unit of work: six defects.** Four found by the run, two by the fix for
+it. Every unit test passed at every point. The pattern holds — each one lived in the gap between a
+mechanism and its result, and the last two lived in the gap between *a guard* and *a way out of it*.
