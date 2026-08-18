@@ -91,6 +91,24 @@ function clock(ts: string | null): string {
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })
 }
 
+/** The calendar day of a turn, or '' when it has no usable timestamp. */
+function dayKey(ts: string | null): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('hu-HU')
+}
+
+function dayLabel(ts: string | null): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ''
+  const today = new Date()
+  const y = new Date(today); y.setDate(y.getDate() - 1)
+  if (d.toDateString() === today.toDateString()) return 'ma'
+  if (d.toDateString() === y.toDateString()) return 'tegnap'
+  return d.toLocaleDateString('hu-HU', { month: '2-digit', day: '2-digit' })
+}
+
 function StateLine({ agent }: { agent: FleetAgent }) {
   if (agent.state === 'working') {
     return (
@@ -200,8 +218,24 @@ function LogPanel({ pid, onClose }: { pid: number; onClose: () => void }) {
         <div className="text-xs text-fg-muted">a napló olvasható, de nem tartalmaz beszélgetést</div>
       )}
       <div className="max-h-80 overflow-y-auto space-y-1.5 pr-1">
-        {log?.turns.map((t, i) => (
+        {log?.turns.map((t, i, all) => {
+        // A day divider, because HH:MM alone made a 60-hour gap look like a
+        // minute. Measured 2026-08-18: forty turns of one session spanned three
+        // calendar days, and the clock column rendered 00:04 next to 10:46 with
+        // nothing between them — the reader's honest conclusion from that is a
+        // session that has been busy all morning. Same false-value class as the
+        // rest of this screen, arriving through a field that looked like data.
+        const prevDay = i > 0 ? dayKey(all[i - 1].timestamp) : ''
+        const thisDay = dayKey(t.timestamp)
+        const newDay = thisDay !== '' && thisDay !== prevDay
+        return (
           <div key={i} className="text-xs">
+            {newDay && (
+              <div className="flex items-center gap-2 mt-2 mb-1 first:mt-0">
+                <span className="text-fg-ghost tabular-nums shrink-0">{dayLabel(t.timestamp)}</span>
+                <span className="flex-1 border-t border-surface-line" />
+              </div>
+            )}
             <div className="flex items-baseline gap-2">
               <span className={`shrink-0 tabular-nums ${t.role === 'user' ? 'text-sky-400' : 'text-fg-muted'}`}>
                 {t.role === 'user' ? 'te' : t.role === 'assistant' ? 'agent' : t.role}
@@ -220,7 +254,7 @@ function LogPanel({ pid, onClose }: { pid: number; onClose: () => void }) {
               </div>
             )}
           </div>
-        ))}
+        )})}
       </div>
     </div>
   )
