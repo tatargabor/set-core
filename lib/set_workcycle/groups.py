@@ -342,7 +342,9 @@ def _detect_cycle(plan: GroupPlan) -> Optional[list[str]]:
     return None
 
 
-def select_next_group(plan: GroupPlan) -> tuple[Optional[TaskGroup], dict[str, str]]:
+def select_next_group(
+    plan: GroupPlan, *, gate_failed: Optional[Iterable[str]] = None,
+) -> tuple[Optional[TaskGroup], dict[str, str]]:
     """The next runnable group, and a reason for every group that is not it.
 
     Deterministic: the lowest-ordered group with open tasks whose dependencies are complete
@@ -360,11 +362,29 @@ def select_next_group(plan: GroupPlan) -> tuple[Optional[TaskGroup], dict[str, s
         logger.error("select_next_group: dependency cycle %s — no group is runnable", cycle)
         raise DependencyCycle(cycle)
 
+    # A group whose gate went red is NOT complete, however its task file reads. The markers
+    # are what the unit *claimed*; the gate is what was *checked*, and only the file reaches
+    # `is_complete` — the plan is parsed from markdown and cannot see a run record. Measured
+    # on a live cross-run: a group with a failed gate and a refused commit reported
+    # `0: complete`, and the chain handed the next group a tree that was already red, where
+    # its own failures could no longer be told apart from the inherited one.
+    #
+    # The caller supplies the set because the layering runs one way: this module knows task
+    # files, not run state.
+    failed = {str(k) for k in (gate_failed or ())}
+
+    def _done(g: TaskGroup) -> bool:
+        return g.is_complete and g.key not in failed
+
     reasons: dict[str, str] = {}
     chosen: Optional[TaskGroup] = None
 
     for g in sorted(plan.groups, key=lambda x: x.order):
         if not g.open_tasks:
+            if g.is_complete and g.key in failed:
+                reasons[g.key] = ("NOT complete — every task is marked, but its gate FAILED "
+                                  "and nothing has cleared it since")
+                continue
             reasons[g.key] = "complete" if g.is_complete else "awaiting an answer"
             if g.is_awaiting:
                 reasons[g.key] = (
@@ -379,7 +399,7 @@ def select_next_group(plan: GroupPlan) -> tuple[Optional[TaskGroup], dict[str, s
             continue
         unmet = [
             dep for dep in plan.effective_depends_on(g)
-            if (d := plan.by_key(dep)) is not None and not d.is_complete
+            if (d := plan.by_key(dep)) is not None and not _done(d)
         ]
         if unmet:
             how = "declared" if g.annotated else "serial default (no annotation)"

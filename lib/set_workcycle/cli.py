@@ -138,6 +138,28 @@ def open_engine(tree: str | Path, change: str = "", changes_dir: str = "") -> En
     )
 
 
+def gate_failed_groups(tree: str | Path, change: str = "") -> set[str]:
+    """Groups whose LAST recorded run ended on a red gate.
+
+    Read off the run records, because the group plan is parsed from a task file and a task
+    file cannot know what a gate did. One record per unit means the record IS the latest run
+    for that group; a later green run overwrites it and the group clears itself.
+    """
+    failed: set[str] = set()
+    for rec in read_run_state(tree, change):
+        state = (rec.get("gate") or {}).get("state")
+        key = str(rec.get("group") or "")
+        if not key:
+            continue
+        if state == "failed":
+            failed.add(key)
+        else:
+            failed.discard(key)
+    if failed:
+        logger.info("groups held by a failed gate in %s: %s", tree, sorted(failed))
+    return failed
+
+
 def read_run_state(tree: str | Path, change: str = "") -> list[dict]:
     """Every recorded run, read straight off disk — no process started, none required.
 
@@ -212,7 +234,8 @@ def cmd_status(args) -> int:
     selected = None
     if view.plan is not None:
         try:
-            group, reasons = select_next_group(view.plan)
+            group, reasons = select_next_group(
+                view.plan, gate_failed=gate_failed_groups(view.tree, args.change))
             selected = group.key if group else None
         except DependencyCycle as exc:
             lines.append(f"dependency cycle: {' -> '.join(exc.cycle)} — no group is runnable")
@@ -251,7 +274,10 @@ def cmd_run(args) -> int:
         return 4
 
     try:
-        group, reasons = select_next_group(view.plan) if view.plan else (None, {})
+        group, reasons = (
+            select_next_group(view.plan,
+                              gate_failed=gate_failed_groups(view.tree, args.change))
+            if view.plan else (None, {}))
     except DependencyCycle as exc:
         lines.append(f"dependency cycle: {' -> '.join(exc.cycle)} — no group is runnable")
         _emit({"started": False, "cycle": exc.cycle, "lines": lines}, args.json)
@@ -383,7 +409,7 @@ def _drive(unit, view, group, args, lines: list) -> UnitRecord:
     if gate.attribution:
         lines.append(f"  attribution: {gate.attribution}")
 
-    record.commit = commit_unit(unit, gate)
+    record.commit = commit_unit(unit, gate, baseline=baseline)
     record.save()
     lines.append(
         f"commit: {record.commit.sha[:12]}" if record.commit.committed

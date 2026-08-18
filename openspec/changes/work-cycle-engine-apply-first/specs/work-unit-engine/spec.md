@@ -109,6 +109,58 @@ indistinguishable from the project's own gate having passed.
 - **THEN** the engine runs no gate and records that no gate was run
 - **AND** it does NOT substitute a default command
 
+### Requirement: A red gate holds the chain, whatever the task markers say
+A group whose last recorded run ended on a failed gate SHALL NOT be treated as complete, and
+groups depending on it SHALL stay blocked, even when every one of its tasks is marked done.
+The engine SHALL name that reason rather than reporting the group as complete. A later run of
+the same group that ends on a passing gate SHALL clear the hold.
+
+#### Scenario: Every task marked, gate red
+- **WHEN** a group's tasks are all marked done but its last run's gate failed
+- **THEN** the group is reported as NOT complete, naming the failed gate as the reason
+- **AND** no group depending on it becomes runnable
+
+#### Scenario: A green re-run releases the group
+- **WHEN** the same group is run again and its gate passes
+- **THEN** the hold is gone and dependent groups become runnable
+
+### Requirement: The engine never reports a tree state it did not measure
+When a gate fails, the engine SHALL check whether the tree has moved since the unit started
+before stating that the work stays in the tree. Where the unit's agent has committed the work
+itself, the engine SHALL report that fact in a dedicated field of the run record — not only in
+prose — and SHALL NOT claim the work is being held for review.
+
+The engine SHALL NOT be assumed to prevent such a commit: a unit's agent holds the same tools
+the engine does, so "commit only behind a green gate" binds the engine, not the agent.
+
+#### Scenario: The agent committed before the gate ran
+- **WHEN** a gate fails and the tree's HEAD has moved since the unit started
+- **THEN** the record names the commit the agent made, in a field of its own
+- **AND** the record does NOT state that the work stays in the tree
+
+### Requirement: A failure is attributed elsewhere only on positive evidence
+The engine SHALL attribute a gate failure to the unit only where the files a failure names
+intersect the files the unit changed. Where they do not intersect, the engine SHALL report
+the attribution as undetermined — NOT as elsewhere — unless the unit changed no file at all,
+which is positive evidence of innocence.
+
+A set of files scraped from gate output SHALL NOT be treated as a list of causes: it may
+carry names taken from prose and from passing steps, and a cause may be indirect and
+therefore unnameable by any filename intersection. Paths resolving to the tree root SHALL be
+excluded.
+
+#### Scenario: No intersection is not innocence
+- **WHEN** a gate failure names only files this unit did not change
+- **THEN** the attribution is undetermined and says why a clean intersection proves nothing
+
+#### Scenario: A unit that changed nothing
+- **WHEN** a gate fails and the unit changed no file in the tree
+- **THEN** the attribution is elsewhere, and names that as the evidence
+
+#### Scenario: The tree root is not a named file
+- **WHEN** the gate output contains a bare `.` or `./`
+- **THEN** no empty path enters the implicated set
+
 ### Requirement: A commit happens only behind a green gate
 The engine SHALL commit a work unit's changes only after its gate has passed. When the gate fails,
 the engine SHALL leave the work in the tree, SHALL NOT commit, and SHALL NOT advance to the next

@@ -238,10 +238,28 @@ def test_a_failing_gate_stops_before_the_remaining_steps(tmp_path):
 # ── attribution ───────────────────────────────────────────────────────────────────────────
 
 
-def test_a_failure_outside_this_unit_s_files_is_not_blamed_on_the_unit():
+def test_a_failure_naming_only_other_files_is_UNDETERMINED_not_exonerating():
+    """⚠ This asserted `elsewhere` until a live cross-run showed what that word licenses.
+
+    A file set scraped from gate output is not a list of causes: it picks names out of PROSE
+    (a remediation hint naming the file to EDIT), out of PASSING lines, and it can never
+    reach an INDIRECT cause — the measured case was a task file this unit did change, feeding
+    a generated artefact whose name was the only thing the failure mentioned. So "none of my
+    files are named" is not evidence of innocence, and `elsewhere` reads as exactly that.
+    """
     kind, detail = attribute_failure(implicated=["other/mod.py"], unit_files=["mine/a.py"])
+    assert kind == "undetermined"
+    assert "not evidence of innocence" in detail
+    assert "NOT attributed to this unit" in detail
+
+
+def test_elsewhere_survives_only_where_there_IS_positive_evidence():
+    """A unit that changed nothing cannot have broken anything — that one is provable, so it
+    keeps the exonerating verdict. The distinction is the point: `elsewhere` is now a claim
+    that has to be earned, not the default for 'no intersection'."""
+    kind, detail = attribute_failure(implicated=["other/mod.py"], unit_files=[])
     assert kind == "elsewhere"
-    assert "did not change" in detail
+    assert "changed no file" in detail
 
 
 def test_a_failure_in_this_unit_s_own_files_is_attributed_to_it():
@@ -563,3 +581,54 @@ def test_the_cli_passes_the_adoption_into_gate_resolution(tmp_path):
     for call in calls:
         assert any(kw.arg == "adoption" for kw in call.keywords), (
             f"cli.py:{call.lineno} resolves gate steps without the project's declaration")
+
+
+# ── the three gates the first live cross-run found ────────────────────────────────────────
+
+
+def test_the_empty_path_is_not_a_named_file(tmp_path):
+    """`(root / "").exists()` is True, so a bare `.` or `./` anywhere in the output used to
+    enter the implicated set as a file. Measured live: the list began with `''`. A phantom
+    entry inflates the set, which pushes the intersection toward empty — i.e. toward the
+    exonerating answer."""
+    from set_workcycle.engine import _implicated_files
+
+    (tmp_path / "real.py").write_text("x", encoding="utf-8")
+    found = _implicated_files("failed at . and ./ and real.py", tmp_path)
+    assert found == {"real.py"}, f"a phantom path entered the set: {found}"
+
+
+def test_a_failed_gate_reports_that_the_agent_ALREADY_COMMITTED(tmp_path):
+    """The engine used to state "the work stays in the tree" without looking at the tree.
+    Measured live: the agent had committed before the gate ran, so the record said
+    `committed: false` and "stays in the tree" while the commit sat in the history.
+
+    The engine cannot stop this — the agent holds git — but it must not report a tree state
+    it never measured.
+    """
+    from set_workcycle.engine import GateOutcome, WorkUnit, commit_unit
+
+    unit = WorkUnit(change="c", tree=tmp_path, seat="session:t", group_key="0")
+    gate = GateOutcome(state="failed", failures=("check",))
+
+    def fake_git(argv):
+        return (0, "cafebabe0000\n") if "rev-parse" in argv else (0, "")
+
+    out = commit_unit(unit, gate, runner=fake_git, baseline="deadbeef0000")
+    assert out.committed is False
+    assert out.committed_by_agent == "cafebabe0000", "the moved tree was not detected"
+    assert "ALREADY" in out.reason and "NOT holding it" in out.reason
+
+    same = commit_unit(unit, gate, runner=fake_git, baseline="cafebabe0000")
+    assert same.committed_by_agent == "", "an unmoved tree must not be reported as committed"
+    assert "stays in the tree" not in same.reason or same.committed_by_agent == ""
+
+
+def test_the_agent_commit_reaches_the_RECORD_not_only_the_return_value(tmp_path):
+    """A field the record does not serialise is a field nobody downstream can act on — the
+    same defect this change shipped once already with the project's declared gates."""
+    from set_workcycle.engine import CommitOutcome, UnitRecord, WorkUnit
+
+    rec = UnitRecord(unit=WorkUnit(change="c", tree=tmp_path, seat="session:t", group_key="0"))
+    rec.commit = CommitOutcome(False, reason="gate failed", committed_by_agent="abc123")
+    assert rec.to_dict()["commit"]["committed_by_agent"] == "abc123"

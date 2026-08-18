@@ -8,6 +8,7 @@ than believed.
 """
 from __future__ import annotations
 
+import json
 import sys
 import textwrap
 from pathlib import Path
@@ -380,3 +381,68 @@ def test_an_artifact_written_by_an_earlier_run_is_included(tmp_path):
     after = [p.name for p in reading_list(tmp_path)]
     assert "measurements.md" not in before
     assert "measurements.md" in after
+
+
+# ── a red gate holds the chain, whatever the markers say ───────────────────────────────────
+
+
+def _two_group_plan(tmp_path):
+    """Group 0 fully marked done, group 1 open and serially behind it."""
+    p = tmp_path / "tasks.md"
+    p.write_text(
+        "## 0. First\n\n- [x] 0.1 done\n- [x] 0.2 done\n\n"
+        "## 1. Second\n\n- [ ] 1.1 open\n",
+        encoding="utf-8",
+    )
+    return parse_task_groups(p)
+
+
+def test_a_group_whose_gate_FAILED_is_not_complete_and_holds_the_chain(tmp_path):
+    """Measured on the first live cross-run: group 0's gate went red and its commit was
+    refused, yet `status` reported `0: complete` and handed group 1 the next slot.
+
+    The markers are what the unit CLAIMED; the gate is what was CHECKED — and only the file
+    reaches `is_complete`, because a plan parsed from markdown cannot see a run record.
+
+    Fail direction: the chain runs on over a red tree, so the next unit's own failures can no
+    longer be told apart from the one it inherited.
+    """
+    plan = _two_group_plan(tmp_path)
+
+    chosen, reasons = select_next_group(plan)
+    assert chosen is not None and chosen.key == "1", "without the gate, 1 is next — as before"
+    assert reasons["0"] == "complete"
+
+    chosen, reasons = select_next_group(plan, gate_failed={"0"})
+    assert chosen is None, f"a red gate must hold the chain; chose {chosen and chosen.key}"
+    assert "NOT complete" in reasons["0"] and "gate FAILED" in reasons["0"]
+    assert "blocked by 0" in reasons["1"], reasons["1"]
+
+
+def test_a_later_green_run_clears_the_hold(tmp_path):
+    """The hold is state, not a verdict on the group forever — the caller derives the set from
+    the latest record per group, so a green re-run releases it."""
+    plan = _two_group_plan(tmp_path)
+    chosen, _ = select_next_group(plan, gate_failed=set())
+    assert chosen is not None and chosen.key == "1"
+
+
+def test_the_hold_is_derived_from_the_LAST_run_of_each_group(tmp_path):
+    """The set comes from run records, so this asserts the derivation, not the display: a
+    group whose record shows a red gate is held, and one whose record shows green is not."""
+    from set_workcycle.cli import gate_failed_groups
+
+    root = tmp_path / "tree"
+    d = root / "set" / "runtime" / "work-cycle" / "c"
+    d.mkdir(parents=True)
+    (d / "c--0.json").write_text(json.dumps(
+        {"unit_id": "c--0", "change": "c", "group": "0", "gate": {"state": "failed"}}),
+        encoding="utf-8")
+    (d / "c--1.json").write_text(json.dumps(
+        {"unit_id": "c--1", "change": "c", "group": "1", "gate": {"state": "passed"}}),
+        encoding="utf-8")
+    (d / "c--2.json").write_text(json.dumps(
+        {"unit_id": "c--2", "change": "c", "group": "2", "gate": None}),
+        encoding="utf-8")
+
+    assert gate_failed_groups(root, "c") == {"0"}

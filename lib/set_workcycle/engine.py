@@ -268,6 +268,11 @@ def _implicated_files(output: str, tree: str | Path) -> Optional[set[str]]:
         if "/" not in cleaned and "." not in cleaned:
             continue
         candidate = cleaned.lstrip("./")
+        # ⚠ An empty candidate is the TREE ROOT, and `(root / "").exists()` is True — so a
+        # bare `.` or `./` anywhere in the output used to enter the set as a "named file".
+        # Measured on a live run: the implicated list began with `''`.
+        if not candidate:
+            continue
         if (root / candidate).exists():
             found.add(candidate)
     return found or None
@@ -295,8 +300,27 @@ def attribute_failure(
     overlap = implicated_set & mine
     if overlap:
         return "this-unit", f"the failure implicates files this unit changed: {sorted(overlap)}"
-    return "elsewhere", (
-        f"the failure implicates only files this unit did not change: "
+    if not mine:
+        return "elsewhere", (
+            "this unit changed no file in the tree, so the failure cannot be its work"
+        )
+    # Everything else is UNDETERMINED, not `elsewhere`. Not knowing which files a failure
+    # implicates and knowing they are someone else's are different states, and only the
+    # second one exonerates. Measured on a live cross-run, three reasons why the file set is
+    # not a list of causes:
+    #   · it is scraped from PROSE — a remediation hint naming the file to EDIT arrived as
+    #     evidence about the file that BROKE;
+    #   · it is scraped from the whole output, PASSING lines included — a test that ran green
+    #     was listed as implicated;
+    #   · the effect can be INDIRECT — the real cause was a task file this unit did change,
+    #     feeding a generated artefact whose name is the only thing the failure mentions. No
+    #     filename intersection can ever reach that, so a clean intersection proves nothing.
+    # The direction is what makes the old answer expensive: `elsewhere` reads as "not your
+    # work", which is precisely what waves a real break through.
+    return "undetermined", (
+        f"the gate output names files, none of which this unit changed — but that is not "
+        f"evidence of innocence: the output carries prose and passing steps too, and an "
+        f"effect can be indirect. NOT attributed to this unit, and not attributed elsewhere: "
         f"{sorted(implicated_set)[:5]}"
     )
 
@@ -331,10 +355,20 @@ class CommitOutcome:
     committed: bool
     sha: str = ""
     reason: str = ""
+    #: Set when the tree moved on although the ENGINE did not commit — the unit's agent
+    #: committed the work itself. A field rather than a sentence in `reason`, because the
+    #: thing a later reader acts on must not have to be parsed out of prose.
+    committed_by_agent: str = ""
+
+
+def _head_sha(tree: str | Path, runner=None) -> str:
+    run = runner or _git
+    code, out = run(["git", "-C", str(tree), "rev-parse", "HEAD"])
+    return out.strip() if code == 0 else ""
 
 
 def commit_unit(unit: WorkUnit, gate: GateOutcome, *, message: Optional[str] = None,
-                runner=None) -> CommitOutcome:
+                runner=None, baseline: str = "") -> CommitOutcome:
     """Commit this unit's work, but only when the gate did not fail.
 
     On a failed gate: no commit, the work stays in the tree, and the caller does not advance.
@@ -342,6 +376,28 @@ def commit_unit(unit: WorkUnit, gate: GateOutcome, *, message: Optional[str] = N
     the failure, and discarding it to keep the tree tidy destroys the evidence.
     """
     if gate.blocks_commit:
+        # ⚠ "The work stays in the tree" is a CLAIM about the tree, and the engine used to
+        # make it without looking. Measured on a live cross-run: the agent had committed the
+        # work itself before the gate ran, so the record said `committed: false` and "stays in
+        # the tree" while the commit sat in the history and `git status` was clean.
+        #
+        # The engine cannot prevent this and must not pretend otherwise — the agent holds git,
+        # so "commit only behind a green gate" is a sentence, not a constraint; what a unit
+        # can do is decided by its tools. What the engine CAN do is stop reporting a tree
+        # state it never measured.
+        moved = _head_sha(unit.tree, runner) if baseline else ""
+        if moved and moved != baseline:
+            logger.error(
+                "commit refused for %s (gate failed: %s) — but the tree ALREADY MOVED to %s: "
+                "the unit's agent committed its own work before the gate ran",
+                unit.unit_id, ", ".join(gate.failures), moved[:12],
+            )
+            return CommitOutcome(
+                False, committed_by_agent=moved,
+                reason=(f"gate failed: {', '.join(gate.failures)}; ⚠ the work is ALREADY "
+                        f"COMMITTED as {moved[:12]} — its agent committed before the gate ran, "
+                        f"so the tree is NOT holding it for review"),
+            )
         logger.error(
             "commit refused for %s: the gate failed (%s); the work stays in the tree",
             unit.unit_id, ", ".join(gate.failures),
@@ -424,6 +480,7 @@ class UnitRecord:
                 "committed": self.commit.committed,
                 "sha": self.commit.sha,
                 "reason": self.commit.reason,
+                "committed_by_agent": self.commit.committed_by_agent,
             },
             "diff": None if self.diff is None else {
                 "claimed_but_unmarked": list(self.diff.claimed_but_unmarked),
