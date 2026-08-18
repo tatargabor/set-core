@@ -36,14 +36,14 @@
 
 <!-- depends: none -->
 
-- [ ] 3.1 Parse numbered group headings out of a change's `tasks.md` and bind every task line to exactly one group, including lines preceding the first heading [REQ: task-groups-are-read-from-the-change-s-task-file]
-- [ ] 3.2 Parse dependency annotations attached to a group, defaulting an unannotated group to depend on its predecessor, and honouring an explicit declaration of independence [REQ: dependency-edges-are-declared-and-their-absence-is-fail-closed]
-- [ ] 3.3 Detect dependency cycles and refuse to declare any group runnable, naming the cycle [REQ: dependency-edges-are-declared-and-their-absence-is-fail-closed]
-- [ ] 3.4 Select the next runnable group deterministically, skipping groups awaiting an answer rather than blocking behind them, and reporting per-group reasons when nothing is runnable [REQ: the-next-runnable-group-is-selected-deterministically]
-- [ ] 3.5 Cut the slice handed to a run — the group's block only — and honour a caller-supplied task limit within the group [REQ: a-run-receives-its-slice-not-the-whole-file]
-- [ ] 3.6 Assemble carry-over: the notes of the most recent completed run for the same group and for the preceding group, dropping older runs [REQ: carry-over-travels-from-the-previous-run]
-- [ ] 3.7 Assemble the reading list from every markdown artifact in the change directory except the task file, including artifacts written by earlier runs [REQ: the-reading-list-includes-the-change-s-own-artifacts]
-- [ ] 3.8 Unit tests for 2.1–2.7, each verified against the un-fixed code (stash the implementation, confirm the test fails) before being accepted as proof [REQ: the-next-runnable-group-is-selected-deterministically]
+- [x] 3.1 Parse numbered group headings out of a change's `tasks.md` and bind every task line to exactly one group, including lines preceding the first heading [REQ: task-groups-are-read-from-the-change-s-task-file]
+- [x] 3.2 Parse dependency annotations attached to a group, defaulting an unannotated group to depend on its predecessor, and honouring an explicit declaration of independence [REQ: dependency-edges-are-declared-and-their-absence-is-fail-closed]
+- [x] 3.3 Detect dependency cycles and refuse to declare any group runnable, naming the cycle [REQ: dependency-edges-are-declared-and-their-absence-is-fail-closed]
+- [x] 3.4 Select the next runnable group deterministically, skipping groups awaiting an answer rather than blocking behind them, and reporting per-group reasons when nothing is runnable [REQ: the-next-runnable-group-is-selected-deterministically]
+- [x] 3.5 Cut the slice handed to a run — the group's block only — and honour a caller-supplied task limit within the group [REQ: a-run-receives-its-slice-not-the-whole-file]
+- [x] 3.6 Assemble carry-over: the notes of the most recent completed run for the same group and for the preceding group, dropping older runs [REQ: carry-over-travels-from-the-previous-run]
+- [x] 3.7 Assemble the reading list from every markdown artifact in the change directory except the task file, including artifacts written by earlier runs [REQ: the-reading-list-includes-the-change-s-own-artifacts]
+- [x] 3.8 Unit tests for 2.1–2.7, each verified against the un-fixed code (stash the implementation, confirm the test fails) before being accepted as proof [REQ: the-next-runnable-group-is-selected-deterministically]
 
 ## 4. Work-unit engine core
 
