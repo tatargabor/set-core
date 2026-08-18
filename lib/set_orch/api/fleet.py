@@ -1,6 +1,7 @@
 """Fleet API — the agent sessions running on this machine.
 
-    GET /api/fleet/agents — every live agent, its project, and its measured state
+    GET /api/fleet/agents            — every live agent, its project, and its measured state
+    GET /api/fleet/agents/{pid}/log  — the raw conversation of one agent (design §5.8)
 
 ⚠ Route ordering matters and is not cosmetic (finding CB-16). The dashboard
 already serves a large `/api/{project}/...` family, and FastAPI resolves routes
@@ -20,9 +21,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from ..fleet import discover_agents, discover_projects, read_state
+from ..fleet.conversation import read_conversation
 from .helpers import _load_projects
 
 logger = logging.getLogger(__name__)
@@ -105,3 +107,26 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         # The surface must not present `quiet` as "nothing is happening".
         "quiet_means": "no outstanding tool call as of the session log's last flush",
     }
+
+
+@router.get("/api/fleet/agents/{pid}/log")
+def fleet_agent_log(pid: int, limit: int = Query(60, ge=1, le=500)) -> Dict[str, Any]:
+    """The raw conversation of one agent — design §5.8.
+
+    The full parse lives here rather than in the listing path, and runs only
+    because someone opened a tile (task 6.2). The agent is re-discovered by pid
+    rather than trusted from the caller: a pid is reused, and answering with
+    whatever log a stale pid maps to would serve one session's conversation
+    under another's name.
+    """
+    agents = {a.pid: a for a in discover_agents(include_oneshot=True)}
+    agent = agents.get(pid)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"no live agent with pid {pid}")
+
+    payload = read_conversation(agent.session_log, limit=limit)
+    payload["pid"] = agent.pid
+    payload["name"] = agent.name
+    payload["project"] = agent.project_name
+    payload["binding_confirmed"] = agent.binding_confirmed
+    return payload

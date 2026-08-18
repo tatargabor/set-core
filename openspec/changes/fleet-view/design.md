@@ -559,6 +559,60 @@ about a tenth of what is on disk. **Un-ledgered is not a synonym for stale, and 
 not render it as one:** for those files the framework simply cannot tell a project's own edit from
 its own drift, and *cannot tell* is the honest report.
 
+### 6.5 A THIRD source of state — an agent that reads the others, requested by the user 2026-08-18
+
+**Deferred on purpose, and the user said so: this matters once the base functions work.** Recorded
+here rather than in a notebook because the shape has to be settled before anyone builds it, and
+because it is easy to build in a way that destroys what the rest of this screen is for.
+
+**What was asked.** To know from the terminals *what is running, what is waiting and what is
+finished* — by having an **external agent read their output**. Because that reader knows which
+agent was given which task, it can say what state each one is in.
+
+**Why it does not duplicate anything here.** This screen already has two sources, and this is a
+third with different properties:
+
+| source | how it answers | can it be wrong? |
+|---|---|---|
+| **measured** — an outstanding tool call, the log's mtime | structurally, from the log | no; it can only be *undetermined* |
+| **declared** — the agent states a phase (3.4) or a blockage (3.5) | the agent says so | only if the agent lies about itself |
+| **interpreted** ← this | a reader infers from output plus the assigned task | **yes, silently, and plausibly** |
+
+**The four constraints it must obey, each of which is a defect class this repository has already
+paid for:**
+
+1. **An interpretation is a guess, and must be labelled one wherever it is shown** — the same
+   discipline §1 imposes on a heuristic log binding. It may add a state, never replace a measured
+   one, and never silence an `unknown`. A reader that turns "I could not determine this" into
+   "finished" has produced exactly the false value this screen exists to prevent, in the one place
+   that looks most like insight.
+2. **Its fail direction must be chosen deliberately, and it is not symmetric.** Reporting *waiting*
+   for an agent that is working costs a glance; reporting *finished* for an agent that is stuck
+   costs the work. So an uncertain interpretation resolves toward *needs a look*, never toward
+   done.
+3. **A reading agent's verdict is not evidence.** Measured in `.claude/rules/evidence-discipline.md`:
+   an unflagged subprocess asked to create a file replied `Done.` with exit 0 and the file did not
+   exist. So a "finished" interpretation is a *claim* that must be checkable against a trace —
+   a commit, a completed task in the engine's run state, a green gate — and the surface shows the
+   trace next to the claim, or shows that there is none.
+4. **It reads conversation content, so the confidentiality boundary binds it hardest.** The
+   boundary is persistence, not reading: this reader may consume a consumer project's session and
+   must write nothing derived from it — not to a cache, not to a log, not into memory, and not into
+   a prompt that is itself recorded somewhere. Its output belongs on screen and nowhere else.
+
+**One measured caution about the input it would read.** The terminal is not available for a foreign
+session (task 5.2, and adoption was measured to fail twice — §6.1 and §6.3), so "reading the
+terminals" in practice means reading the **session logs**, which every agent has through a recorded
+binding. That is a better input anyway: it is structured, it survives the browser, and it carries
+the tool calls the reader would otherwise have to parse out of rendered output. What it does *not*
+carry is anything a session did outside its own transcript — and a session started as another
+session's child writes no transcript at all (§6.3), so the reader will have blind spots that are
+invisible to it. It must report coverage, not just conclusions.
+
+**Where it belongs.** Not in `agent-fleet-state`, which is defined as measurement. Its own
+capability, so that a reader can tell at a glance which claims on this screen were measured and
+which were inferred.
+
 ## 7. How this will be proven, when it is built
 
 Two checks decided in advance, because both classes of failure here are the reassuring kind:

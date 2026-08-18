@@ -136,6 +136,8 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 
 - [ ] 10.1 Record that `openspec/specs/unified-navigation/spec.md` is stale against the shipped app — it describes `/manager/*` and `/set/*` sidebar routes that are now legacy redirects in `App.tsx`. Not fixed here; a retroactive correction of its own, so the landing change does not quietly inherit a rewrite of an unrelated spec. [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one]
 
+- [ ] 10.2 Record the user's request of 2026-08-18 for a **third source of state — an interpreting agent** that reads the other sessions' output and, knowing which task each was given, reports what is running, waiting or finished. **Deferred by the user until the base functions work**, and deliberately NOT built here. Design §6.5 settles the shape it must take before anyone starts: an interpretation is a guess and is labelled one, it may add a state but never replace a measured one nor silence an `unknown`, its uncertainty resolves toward *needs a look* rather than *done*, its "finished" is a claim shown next to a checkable trace or next to the absence of one, and it persists nothing derived from what it reads. It belongs in its own capability rather than in `agent-fleet-state`, which is defined as measurement. [REQ: a-state-that-cannot-be-determined-is-unknown-never-idle]
+
 ## Acceptance Criteria (from spec scenarios)
 
 ### agent-fleet-inventory
