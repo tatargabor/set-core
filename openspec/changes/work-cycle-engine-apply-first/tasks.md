@@ -66,25 +66,25 @@
 
 <!-- depends: 4 -->
 
-- [ ] 5.1 Set a unit aside with a machine-readable resume condition that expresses both a human decision and an external dependency; refuse to set one aside with no condition [REQ: a-set-aside-unit-names-its-resume-condition]
-- [ ] 5.2 Write an open decision into the change's task file as a durable stop marker carrying the question, surviving engine restart [REQ: an-open-decision-becomes-a-durable-stop-marker]
-- [ ] 5.3 Read answers from a directory keyed inside the document on change and task; report an answer for a non-awaiting task as unmatched and leave it in place [REQ: answers-arrive-through-a-keyed-directory]
-- [ ] 5.4 Defer an unparseable answer document and retry it on later intake; quarantine with a recorded reason only after a bounded number of failed attempts [REQ: the-connector-tolerates-a-partially-written-answer]
-- [ ] 5.5 Accept several documents for one key — newest applied, others retained — and name written documents by source and timestamp so two uploaders cannot collide [REQ: several-answers-may-exist-for-one-key]
-- [ ] 5.6 Run answer intake at the engine's entry point on every path, including the status path, so a released task is reported runnable [REQ: answer-intake-runs-at-the-entry-point-on-every-path]
-- [ ] 5.7 Stamp consumption on the answer or in the log, and make consumed and unconsumed distinguishable without counting files [REQ: consumption-is-recorded-not-inferred]
-- [ ] 5.8 Tests for 4.1–4.7, including one that fails if intake is reachable from only some entry points, and one that writes a truncated document mid-intake [REQ: answer-intake-runs-at-the-entry-point-on-every-path]
+- [x] 5.1 Set a unit aside with a machine-readable resume condition that expresses both a human decision and an external dependency; refuse to set one aside with no condition [REQ: a-set-aside-unit-names-its-resume-condition]
+- [x] 5.2 Write an open decision into the change's task file as a durable stop marker carrying the question, surviving engine restart [REQ: an-open-decision-becomes-a-durable-stop-marker]
+- [x] 5.3 Read answers from a directory keyed inside the document on change and task; report an answer for a non-awaiting task as unmatched and leave it in place [REQ: answers-arrive-through-a-keyed-directory]
+- [x] 5.4 Defer an unparseable answer document and retry it on later intake; quarantine with a recorded reason only after a bounded number of failed attempts [REQ: the-connector-tolerates-a-partially-written-answer]
+- [x] 5.5 Accept several documents for one key — newest applied, others retained — and name written documents by source and timestamp so two uploaders cannot collide [REQ: several-answers-may-exist-for-one-key]
+- [x] 5.6 Run answer intake at the engine's entry point on every path, including the status path, so a released task is reported runnable [REQ: answer-intake-runs-at-the-entry-point-on-every-path]
+- [x] 5.7 Stamp consumption on the answer or in the log, and make consumed and unconsumed distinguishable without counting files [REQ: consumption-is-recorded-not-inferred]
+- [x] 5.8 Tests for 4.1–4.7, including one that fails if intake is reachable from only some entry points, and one that writes a truncated document mid-intake [REQ: answer-intake-runs-at-the-entry-point-on-every-path]
 
 ## 6. Entry point — one way in
 
 <!-- depends: 4, 5 -->
 
-- [ ] 6.1 Ship a command entry point invocable from a project's own tree, requiring no running framework service and no network access to the framework [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree]
-- [ ] 6.2 Report per-group reasons when nothing is runnable, and refuse with the holder named when a unit already holds the tree's lock [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree]
-- [ ] 6.3 Make the framework's surface start a unit by invoking that same command; add a test that fails if a second start path is introduced [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it]
-- [ ] 6.4 Write run state where a reader can read it directly — live run, finished run, and a stale claim distinguishable from a live one — without executing anything [REQ: run-state-is-readable-without-a-running-engine-or-service]
-- [ ] 6.5 Run answer intake on every command invocation, including invocations that only report state [REQ: the-command-path-takes-in-answers-like-every-other-path]
-- [ ] 6.6 Entry-point tests for 5.1–5.5, including one asserting that an agent-started run and a surface-started run produce the same state shape [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it]
+- [x] 6.1 Ship a command entry point invocable from a project's own tree, requiring no running framework service and no network access to the framework [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree]
+- [x] 6.2 Report per-group reasons when nothing is runnable, and refuse with the holder named when a unit already holds the tree's lock [REQ: the-engine-is-entered-by-a-command-run-from-the-project-s-tree]
+- [x] 6.3 Make the framework's surface start a unit by invoking that same command; add a test that fails if a second start path is introduced [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it]
+- [x] 6.4 Write run state where a reader can read it directly — live run, finished run, and a stale claim distinguishable from a live one — without executing anything [REQ: run-state-is-readable-without-a-running-engine-or-service]
+- [x] 6.5 Run answer intake on every command invocation, including invocations that only report state [REQ: the-command-path-takes-in-answers-like-every-other-path]
+- [x] 6.6 Entry-point tests for 5.1–5.5, including one asserting that an agent-started run and a surface-started run produce the same state shape [REQ: there-is-one-way-into-the-engine-and-every-caller-uses-it]
 
 ## 7. Adoption — any project, several at once
 

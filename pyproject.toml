@@ -61,6 +61,9 @@ set-control = "gui.main:main"
 set-orch-core = "set_orch.cli:main"
 set-manager = "set_orch.manager.cli:main"
 set-run-logs = "set_orch.forensics.cli:main"
+# The engine's ONE entry point. The framework's surface invokes this same command;
+# there is no second way to start a work unit.
+set-work-cycle = "set_workcycle.cli:main"
 
 [project.entry-points."set_tools.plugins"]
 # Plugins register themselves here
