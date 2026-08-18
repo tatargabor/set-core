@@ -128,7 +128,13 @@ Derived from the source, not from the change's artifacts.
   directly, which is an unguarded write into a consumer tree, and with the obvious merge replaces the
   project's hook arrays wholesale. That incident is documented at `set-deploy-hooks:236-244`.
 - **Plan location:** tasks 6.5, 6.6; `design.md` §5.4.
-- **Status:** open
+- **Status:** **RESOLVED by mechanism, 2026-08-18** — and the finding was righter than it read. The
+  install now goes through the module installer, whose contract *is* the provenance discipline this
+  finding said was missing; no ownership check is invented on this side. Two things the finding did
+  not reach came out with it: the task had **no requirement above it** at all, and the screen has to
+  render the installer's skip report or it re-creates the silence one layer up. Both are now
+  requirements (`agent-fleet-surface`, design §8.0). ⚠ Conditional on the installer existing — it is
+  a plan today, being implemented in parallel.
 
 ### CB-7 [MAJOR] Every property the plan attributes to "the messaging bus" is contradicted by the only bus in this repository, and the plan never says the bus is external
 - **Source:** `mcp-server/set_mcp_server.py:498-539` — `send_message` addresses

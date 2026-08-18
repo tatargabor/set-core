@@ -451,6 +451,7 @@ screen was otherwise going to invent.** Five places moved:
 | starting work from the surface | spawning an agent process directly | the engine's one command entry point |
 | what a project has wired in | sniffing for files | the module install record, with versions |
 | answering a question an agent asked | a message to a session | the deferred-work connector, keyed |
+| wiring a missing capability into a project | a bespoke install, on a check that does not exist | the module installer |
 
 **The first row is the one that was actually missing**, and it came from the user rather than from
 the engine: an agent needs a stated purpose — why it is running — its name may even *be* that
@@ -482,6 +483,39 @@ agent tile. An agent-centric screen renders that project as holding zero agents 
 from a project with nothing to do, and it is the single project on the screen a person could unblock
 in a minute. This is the change's own founding defect, arriving through the state that most needs a
 reader, and it required a new requirement rather than an adjustment.
+
+### 8.0 The install surface has no owner, and this screen is where it lands
+
+The module-install capability puts **"rendering the install surface" explicitly out of its own
+scope**, while the user's stated intent is that modules are installed into projects *from the web*.
+So the mechanism has an owner and the surface does not. This screen is the plausible home and was
+already halfway there without noticing:
+
+- Its capability report distinguishes *not connected* from *unknown* on the stated ground that "not
+  connected invites wiring it in". An invitation the screen cannot accept is decoration.
+- It already carried an install action — one task, for one capability — and measured against the
+  source, that task rested on an ownership check **that does not exist**: the deploy ledger refuses
+  any existing file of unknown provenance, and the only writer into a project's settings performs no
+  check at all.
+- That task had **no requirement above it**. It was tagged to a requirement about *reporting* that an
+  agent cannot be instructed, which says nothing about installing anything. An orphan task is how a
+  capability gets built to nobody's stated standard.
+
+All three resolve the same way and none of them is new scope: the install belongs to the installer,
+the screen asks for it, and the screen shows what came back.
+
+**What the installer's contract obliges the screen to show** is the part worth writing down, because
+it is where a surface silently undoes a guarantee. The installer must report every skipped file and
+its reason, and must say so when a run changed nothing — a silent skip being, in its own words, the
+same class of defect as a silent overwrite. Those are constraints on the *installer's output*. A
+screen that runs it and renders "done" has moved the silence one layer up, to where the reader is
+actually standing, and it does so in the reassuring direction: the skip is usually the *correct*
+behaviour (the project edited that file), so the outcome is good and the screen is lying about it.
+
+**The scope line drawn here, so the next reader does not have to guess.** This change owns the
+affordance where a project is *missing* something the screen already reports — install what is not
+connected, show what the installer did. It does not own a module catalogue, upgrades, removal, or
+per-version management. Those want a surface of their own, and this change is already large.
 
 ### 8.1 What happens where the engine is absent
 

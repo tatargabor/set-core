@@ -208,6 +208,56 @@ decision moves what greets a reader, and removes nothing.
 - **WHEN** a reader wants the projects overview
 - **THEN** it is reachable from the navigation, with every behaviour it had before
 
+### Requirement: An install offered from the screen goes through the module installer, and shows what it did not do
+
+Where the screen offers to wire a capability into a project, it SHALL do so by asking the module
+installer to install the module that provides it, and SHALL NOT carry an install path of its own for
+any individual capability. The screen SHALL show the installer's own report: every file it skipped
+and why, a run that changed nothing said as such, and a refusal naming the requirement that was
+missing. It SHALL NOT offer to place a module's executable part into a project, and asking for a
+module SHALL be treated as what it is — an edit to a file the project owns.
+
+This requirement exists because the affordance was already implied and had nothing behind it. The
+capability report distinguishes *not connected* from *unknown* on the stated ground that "not
+connected invites wiring it in" — and an invitation with no way to accept it is decoration. Until
+now the acceptance was a single task with no requirement above it, describing a bespoke install for
+one capability and resting on an ownership check that was measured not to exist.
+
+**The reporting half is not politeness, it is the same rule this screen is built on.** The
+installer's contract states that a silent skip is a defect of the same class as a silent overwrite,
+and that a run which changed nothing must say so. Those are requirements on the installer's output —
+and a surface that runs the installer and renders "done" has re-created the silence one layer up,
+where the reader is actually standing. An install that left six files alone because the project had
+edited them is a *good* outcome and a *misleading* screen, unless the screen says it.
+
+**And it is the most dangerous action this screen can take.** Everything else here reads; this
+writes into a repository the framework does not own. The refusal cases therefore surface as refusals
+rather than as options: a module whose requirement is missing is not offered with a warning, it is
+refused with the missing name — because a warning is a thing a reader can click past, and the state
+it leads to is a half-installed project nobody chose.
+
+#### Scenario: The install is the installer's, not the screen's
+- **WHEN** the screen offers to wire a capability into a project
+- **THEN** it invokes the module installer for the module that provides it, and no capability-specific
+  install path exists on the surface
+
+#### Scenario: Skips are shown, not swallowed
+- **WHEN** an install leaves files alone because the project modified them
+- **THEN** each skipped file and its reason appear on the screen, not only in the installer's output
+
+#### Scenario: A run that changed nothing says so
+- **WHEN** an install writes no files
+- **THEN** the screen states that outcome, rather than reporting a plain success
+
+#### Scenario: A missing requirement is a refusal, not a warning
+- **WHEN** a module requires another that the project does not have
+- **THEN** the install is refused and the missing requirement is named, and no control offers to
+  proceed regardless
+
+#### Scenario: The executable part is never offered into a project
+- **WHEN** the screen presents what can be installed into a project
+- **THEN** a module's machine-wide executable part is not among it
+
 ### Requirement: A tile offers a terminal only where one can exist, and says why when it cannot
 
 An agent tile SHALL offer a terminal only for an agent the framework started under a terminal it

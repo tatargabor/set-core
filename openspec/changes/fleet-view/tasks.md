@@ -83,8 +83,8 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 - [ ] 6.2 Per-agent state and log-tail endpoints, and a full-parse endpoint used only when a log is opened. [REQ: listing-every-agent-does-not-read-every-log-in-full]
 - [ ] 6.3 Send endpoint returning the three-way delivery outcome verbatim from the bus. [REQ: the-delivery-report-distinguishes-every-outcome-and-an-outcome-can-expire]
 - [ ] 6.4 Bidirectional terminal stream endpoint, plus start and stop for a surface-started agent. [REQ: terminal-traffic-travels-in-both-directions-and-is-never-persisted]
-- [ ] 6.5 Endpoint offering the waiter install for a project, going through the same ownership check as every other write into a project tree — it is not exempt for being small. [REQ: an-agent-that-cannot-be-instructed-says-so-where-the-input-would-be]
-- [ ] 6.6 Endpoints listing orphaned waiters and removing one **by named process**; the removal takes the same ownership check as the install, and refuses anything it cannot confirm dead. No bulk-remove endpoint — a cleanup that takes a list is one mistaken list away from killing live waiters. [REQ: an-orphaned-waiter-is-shown-and-removing-it-is-an-offer-rather-than-a-tidy-up]
+- [ ] 6.5 Endpoint installing a module into a project **through the module installer**, returning its report verbatim — skipped files with reasons, a changed-nothing outcome, a refusal naming a missing required module. No capability-specific install path, and no ownership check invented here: provenance is the installer's job. [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do]
+- [ ] 6.6 Endpoints listing orphaned waiters and removing one **by named process**; the removal takes the same discipline as the install — it writes into a tree the framework does not own — and refuses anything it cannot confirm dead. No bulk-remove endpoint — a cleanup that takes a list is one mistaken list away from killing live waiters. [REQ: an-orphaned-waiter-is-shown-and-removing-it-is-an-offer-rather-than-a-tidy-up]
 
 ## 7. The screen (WEB)
 
@@ -102,6 +102,7 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 - [ ] 7.12 Open-the-log view shows the raw conversation (design §5.8); leave room for the existing timeline as a later tab without building it. [REQ: listing-every-agent-does-not-read-every-log-in-full]
 - [ ] 7.13 Show orphaned waiters where the missing-waiter remedy is offered, each removable individually and never in one sweep; state that removal kills a process. The debris belongs next to the offer that would otherwise add to it. [REQ: an-orphaned-waiter-is-shown-and-removing-it-is-an-offer-rather-than-a-tidy-up]
 - [ ] 7.14 WEB — Surface a project that holds work awaiting a human answer even when it has no running agent, counting what is awaiting rather than who is present. This is the ordinary shape of stopped work, and an agent-centric tile renders it as nothing to do. [REQ: a-project-awaiting-a-human-is-surfaced-even-when-no-agent-is-running]
+- [ ] 7.15 WEB — Render the install affordance where the capability report says *not connected*, and render the installer's report where the reader is standing: skipped files with reasons, changed-nothing said out loud, a missing requirement as a refusal rather than a warning. A screen that renders only success re-creates the silence the installer's contract forbids. [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do]
 
 ## 8. Terminal in the browser (WEB)
 
@@ -129,6 +130,7 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 - [ ] 9.14 Assert the orphan-waiter rule in its dangerous direction: a fixture holding one dead-session waiter, one live one, and one whose session cannot be determined — only the first may be offered or removed. Include a candidate whose match arises from the checking command itself, and assert it is not offered. A test that only proves the orphan gets removed passes on a build that removes all three. [REQ: an-orphaned-waiter-is-shown-and-removing-it-is-an-offer-rather-than-a-tidy-up]
 - [ ] 9.15 Assert the no-agent case directly: a fixture with an open decision recorded against a task and **no process running**, asserting the project is surfaced as awaiting an answer. A test that only covers a waiting agent passes on a build blind to the common case. [REQ: a-project-awaiting-a-human-is-surfaced-even-when-no-agent-is-running]
 - [ ] 9.16 Enumerate the surface's start paths and assert exactly one starts a work unit. A test that only checks the engine's command works passes on a build that also kept a direct spawn. [REQ: starting-work-goes-through-the-engine-s-one-entry-point-not-a-second-spawn-path]
+- [ ] 9.17 Assert the install surface on its unhappy paths, which are the ones a demo never reaches: an install that skips every file, one that writes nothing, and one refused for a missing required module. Assert what the SCREEN shows in each, not what the installer returned — the two differ exactly when the surface is wrong. [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do]
 
 ## 10. Debt this change names rather than absorbs
 
@@ -389,7 +391,15 @@ API (lib/set_orch/api/) or WEB (web/). No task puts project-type knowledge into 
 - [ ] AC-121: WHEN discovery has completed and found no live agent THEN the screen says that no agent is running, distinctly from the state above [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: discovery-answered-and-there-genuinely-is-nothing]
 - [ ] AC-122: WHEN a reader wants the projects overview THEN it is reachable from the navigation, with every behaviour it had before [REQ: the-fleet-is-the-landing-screen-and-an-unfinished-answer-is-not-an-empty-one, scenario: the-projects-overview-is-not-lost]
 
+**An install offered from the screen goes through the module installer, and shows what it did not do**
+
+- [ ] AC-123: WHEN the screen offers to wire a capability into a project THEN it invokes the module installer for the module that provides it, and no capability-specific install path exists on the surface [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do, scenario: the-install-is-the-installer-s-not-the-screen-s]
+- [ ] AC-124: WHEN an install leaves files alone because the project modified them THEN each skipped file and its reason appear on the screen, not only in the installer's output [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do, scenario: skips-are-shown-not-swallowed]
+- [ ] AC-125: WHEN an install writes no files THEN the screen states that outcome, rather than reporting a plain success [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do, scenario: a-run-that-changed-nothing-says-so]
+- [ ] AC-126: WHEN a module requires another that the project does not have THEN the install is refused and the missing requirement is named, and no control offers to proceed regardless [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do, scenario: a-missing-requirement-is-a-refusal-not-a-warning]
+- [ ] AC-127: WHEN the screen presents what can be installed into a project THEN a module's machine-wide executable part is not among it [REQ: an-install-offered-from-the-screen-goes-through-the-module-installer-and-shows-what-it-did-not-do, scenario: the-executable-part-is-never-offered-into-a-project]
+
 **A tile offers a terminal only where one can exist, and says why when it cannot**
 
-- [ ] AC-123: WHEN an agent was started from this screen THEN its tile offers a terminal that types into that agent [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-surface-started-agent-offers-its-terminal]
-- [ ] AC-124: WHEN an agent was started outside the framework and cannot be adopted THEN its tile offers no terminal, states the reason, and keeps its bus input [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-foreign-session-offers-no-terminal]
+- [ ] AC-128: WHEN an agent was started from this screen THEN its tile offers a terminal that types into that agent [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-surface-started-agent-offers-its-terminal]
+- [ ] AC-129: WHEN an agent was started outside the framework and cannot be adopted THEN its tile offers no terminal, states the reason, and keeps its bus input [REQ: a-tile-offers-a-terminal-only-where-one-can-exist-and-says-why-when-it-cannot, scenario: a-foreign-session-offers-no-terminal]
