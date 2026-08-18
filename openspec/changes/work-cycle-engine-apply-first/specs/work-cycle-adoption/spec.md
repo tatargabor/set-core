@@ -32,10 +32,27 @@ A project SHALL be adopted by declaring what the engine needs — at minimum whe
 and what its gate steps are. Where a project declares nothing, the engine SHALL report the absence
 rather than substituting a default.
 
-#### Scenario: An undeclared gate is not invented
-- **WHEN** an adopted project declares no gate steps
+The engine SHALL NOT name a gate command of its own under any of these paths. Where the project
+declares steps they are run; where it declares the gate key empty no gate runs; where it declares
+no gate key at all the resolution falls to the project's **profile**, which is the framework's own
+declared project-type knowledge and not an invention of the engine.
+
+⚠ This paragraph is a decision, not a restatement, and it resolves a conflict this spec used to
+carry against "The gate is the project's own, declared first and detected only as a fallback" in
+`work-unit-engine`. A scenario stood here saying an adopted project declaring no gate steps gets no
+command guessed from the project's contents — true of the explicitly-empty declaration, false of the
+absent key, which reaches the profile's detectors. The test guarding it passed because it asserted
+the *adoption reader* and never ran the resolution chain: the mechanism was checked and the result
+was not. The distinction that survives is **whose declaration**, not whether detection happened.
+
+#### Scenario: An explicitly empty gate declaration is not answered from the project's contents
+- **WHEN** an adopted project declares the gate key with no steps
 - **THEN** the engine runs no gate and says so
-- **AND** it does NOT fall back to a command it guessed from the project's contents
+- **AND** it does NOT fall back to a command detected from the project's contents
+
+#### Scenario: The engine names no gate command of its own
+- **WHEN** neither the project nor its profile yields a gate step
+- **THEN** the engine runs no gate and says so
 
 #### Scenario: A missing declaration is named
 - **WHEN** the engine is asked to run against a project that has not declared where its changes live

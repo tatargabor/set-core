@@ -214,14 +214,17 @@ between the verdict and the commit is still attributable to the unit that produc
   unit as never attempted
 
 ### Requirement: A gate failure states whether it came from this unit's own work
-When a gate fails, the engine SHALL report whether the failure implicates files this unit changed, or
-files changed elsewhere in the tree. It SHALL NOT attribute a failure to the unit without that
-distinction, because a tree may hold work the engine did not do and does not control.
+When a gate fails, the engine SHALL report which of the three attributions applies, because a tree
+may hold work the engine did not do and does not control. It SHALL NOT attribute a failure to the
+unit without that distinction.
 
-#### Scenario: Failure outside the unit's own files
-- **WHEN** a gate fails and the failure implicates only files this unit did not change
-- **THEN** the engine reports the failure as originating outside the unit's own work
-- **AND** the unit is not described as having broken it
+⚠ This requirement states the *obligation to attribute*; **when `elsewhere` is permitted is decided
+by "A failure is attributed elsewhere only on positive evidence" above, and that requirement wins.**
+A scenario stood here saying that a failure naming only other files is reported as originating
+outside the unit — it was the shipped behaviour until it was measured to exonerate on the absence of
+evidence, and it survived here beside its own replacement, contradicting it. Two requirements each
+internally consistent is exactly the shape a traceability check cannot see: the matrix was complete
+while the spec disagreed with itself. Do not restore it.
 
 #### Scenario: Failure in the unit's own files
 - **WHEN** a gate fails and the failure implicates files this unit changed

@@ -70,14 +70,27 @@ def test_a_declaration_without_a_changes_location_is_refused(tmp_path):
     assert adoption.adopted is False and "changes_dir" in adoption.missing
 
 
-def test_an_undeclared_gate_is_not_invented(tmp_path):
-    """An adopted project that declares no gates runs with none — and the engine says so
-    rather than inferring a command from the project's contents."""
+def test_a_project_that_declared_no_gate_KEY_is_told_the_profile_decides(tmp_path):
+    """What an absent `gates:` key means, said the way the engine actually behaves.
+
+    ⚠ This test used to be called `test_an_undeclared_gate_is_not_invented` and asserted
+    that the surface says "none is inferred from the project's contents". It passed while
+    being wrong about the shipped system: it exercised the *adoption reader* and never the
+    resolution chain, which — since a declared gate started winning over a detected one —
+    falls through to the profile's detectors when no key is declared. The mechanism was
+    checked and the result was not. The chain itself is held by
+    `test_a_project_that_declared_no_gate_key_still_gets_the_profile_chain`.
+    """
     _project(tmp_path)
     adoption = read_adoption(tmp_path)
     assert adoption.adopted is True
     assert adoption.gates_declared is False
-    assert "none is inferred" in adoption.describe()
+    said = adoption.describe()
+    assert "resolved from the project's profile" in said
+    assert "names no command of its own" in said
+    # The refuted sentence, held so a later "simplification" cannot restore it silently.
+    assert "no gate runs" not in said
+    assert "none is inferred" not in said
     assert run_gate([], tmp_path).state == "no-gate"
 
 

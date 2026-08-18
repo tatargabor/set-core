@@ -100,6 +100,27 @@ def test_the_executable_part_is_not_copied_into_a_project():
     assert plan_files(decl) == ["set/modules.yaml"]
 
 
+def test_the_engine_is_invoked_from_the_machine_wide_installation(tmp_path):
+    """The scenario's second half, which the plan-level test above does not reach.
+
+    `plan_files` proves the executable is not COPIED. That a project can still run it is a
+    separate claim, and it rests on the entry point being installed machine-wide rather than
+    per project. Read from `pyproject.toml` so a rename or a removal fails here instead of
+    at a consumer's shell prompt.
+    """
+    import tomllib
+    root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts = data["project"]["scripts"]
+    assert scripts["set-work-cycle"] == "set_workcycle.cli:main"
+    # And nothing ships it as an installed file into a project tree.
+    for manifest in SHIPPED_MANIFESTS:
+        raw = yaml.safe_load(Path(manifest).read_text(encoding="utf-8")) or {}
+        entries = [e if isinstance(e, str) else (e or {}).get("path", "")
+                   for section in raw.values() if isinstance(section, list) for e in section]
+        assert not any(str(e).startswith("bin/") for e in entries), manifest
+
+
 def test_declaring_a_path_as_both_executable_and_installed_is_an_error():
     """The exclusion in `plan_files` is a safety net; the declaration is where it is caught."""
     decl = ModuleDeclaration(

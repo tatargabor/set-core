@@ -49,8 +49,16 @@ class Adoption:
         if not self.adopted:
             return f"not adopted: {self.missing}"
         if not self.gates_declared:
-            return (f"adopted (changes in {self.changes_dir}); no gate steps declared, so no "
-                    f"gate runs — none is inferred from the project's contents")
+            # ⚠ This sentence used to say "so no gate runs — none is inferred from the
+            # project's contents". That became false the moment a declared gate started
+            # winning over a detected one: with no `gates:` key at all, resolution falls
+            # through to the project's PROFILE, whose detectors read the project's
+            # contents. The engine still names no command of its own, which is the claim
+            # worth making — but the old one told a reader no gate would run, and one
+            # does. A false value on a surface is worse than a missing one.
+            return (f"adopted (changes in {self.changes_dir}); no gate steps declared, so the "
+                    f"gate is resolved from the project's profile — the engine names no "
+                    f"command of its own")
         return f"adopted (changes in {self.changes_dir}); gates: {', '.join(self.gates) or 'none'}"
 
 
