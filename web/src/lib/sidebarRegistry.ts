@@ -10,7 +10,7 @@
 
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { LayoutDashboard, TriangleAlert, BrainCircuit, Settings, SquareStack, Activity } from 'lucide-react'
+import { LayoutDashboard, TriangleAlert, BrainCircuit, Settings, SquareStack, Activity, Radar } from 'lucide-react'
 
 export interface SidebarSubItem {
   id: string
@@ -123,11 +123,25 @@ export function unregisterApp(id: string): void {
 
 // --- Built-in global items ---
 
+// Task 7.10 / finding CB-4 — the root route now renders the FLEET, so the
+// entry that says "Overview" must stop pointing at it: an entry whose label
+// and destination disagree is the same false-value class the fleet exists to
+// fix, one layer up in the navigation.
+registerGlobalItem({
+  id: 'global-fleet',
+  label: 'Fleet',
+  icon: Radar,
+  route: '/',
+  order: 5,
+})
+
+// The projects overview keeps a navigation entry and its own route — the
+// landing screen moved, nothing was removed.
 registerGlobalItem({
   id: 'global-overview',
-  label: 'Overview',
+  label: 'Projects',
   icon: SquareStack,
-  route: '/',
+  route: '/projects',
   order: 10,
 })
 

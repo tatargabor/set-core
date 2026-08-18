@@ -214,12 +214,25 @@ export default function App() {
       <Routes>
         {/* Global routes */}
         <Route element={<GlobalLayout />}>
-          <Route index element={<Manager />} />
+          {/* Task 7.10 — the fleet IS the landing screen. The reason is the
+              measurement that produced the whole change: the projects overview
+              reported a project as "Stopped, 24 days ago" while six agents were
+              working inside it, so leaving that screen in front would fix the
+              false absence everywhere except where a reader arrives first.
+
+              The overview is moved, not removed (spec: "removes nothing"): it
+              keeps its own route below and its navigation entry in
+              `sidebarRegistry.ts`. Finding CB-5 — the three E2E specs that
+              navigated to `/` to assert the projects table now navigate to
+              `/projects`; that migration is part of this task, not a follow-up,
+              because a `beforeEach` that dies is not a loud failure. */}
+          <Route index element={<Fleet />} />
+          <Route path="projects" element={<Manager />} />
+          {/* The fleet's development route, kept as a redirect rather than
+              deleted — a bookmark from before this move should land on the
+              fleet, not on the catch-all. */}
+          <Route path="fleet" element={<Navigate to="/" replace />} />
           <Route path="issues" element={<ManagerIssues />} />
-          {/* Fleet — a walking skeleton at its own route, deliberately NOT the
-              landing screen: making it the index would break three existing E2E
-              specs (finding CB-5) and that decision is not part of this slice. */}
-          <Route path="fleet" element={<Fleet />} />
         </Route>
 
         {/* Project routes — /p/:name/* */}
@@ -248,10 +261,14 @@ export default function App() {
           <Route index element={<Navigate to="status" replace />} />
         </Route>
 
-        {/* Legacy redirects */}
-        <Route path="/set" element={<Navigate to="/" replace />} />
+        {/* Legacy redirects — finding CB-4. These two named the PROJECTS
+            OVERVIEW when they were written, so after task 7.10 they follow it
+            to `/projects` rather than silently changing what an old bookmark
+            resolves to. The catch-all keeps pointing at the root, because it
+            means "somewhere that exists", not "the project list". */}
+        <Route path="/set" element={<Navigate to="/projects" replace />} />
         <Route path="/set/:project/*" element={<LegacySetRedirect />} />
-        <Route path="/manager" element={<Navigate to="/" replace />} />
+        <Route path="/manager" element={<Navigate to="/projects" replace />} />
         <Route path="/manager/issues" element={<Navigate to="/issues" replace />} />
         <Route path="/manager/:project/*" element={<LegacyManagerRedirect />} />
 

@@ -41,7 +41,11 @@ async function wheelToBottom(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  // `/projects`, not `/` — task 7.10 moved the projects overview off the root,
+  // which the fleet now renders. Do not "fix" this back to `/`: this guard's
+  // subject is the overview's own layout, and against the fleet the beforeEach
+  // would die on a missing `tbody` rather than fail loudly (finding CB-5).
+  await page.goto('/projects')
   await expect(page.locator('tbody tr').first()).toBeVisible()
 })
 

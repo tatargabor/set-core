@@ -45,7 +45,7 @@ test.describe('Documentation screenshots', () => {
   // ── Manager / global pages ──
 
   test('manager — project list', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/projects')
     await page.waitForSelector(`text="${PROJECT}"`, { timeout: 10_000 })
     await page.waitForTimeout(500)
     await page.screenshot({ path: path.join(OUT_DIR, 'manager-project-list.png'), fullPage: true })

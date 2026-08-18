@@ -22,13 +22,13 @@ test('sidebar contains project name', async ({ page }) => {
 })
 
 test('manager page lists projects', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/projects')
   // Should show at least one project (the one we're testing)
   await expect(page.locator(`text="${PROJECT}"`).first()).toBeVisible()
 })
 
 test('clicking project navigates to orch', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/projects')
   // Click the project name/link
   await page.locator(`text="${PROJECT}"`).first().click()
   await expect(page).toHaveURL(new RegExp(`/p/${PROJECT}`))
