@@ -276,3 +276,83 @@ def test_the_missing_list_is_the_complement_of_a_STATED_set():
     invented = Agent(pid=3, cwd="/x", sources=["process", "a-source-nobody-consults"])
     assert "a-source-nobody-consults" not in invented.sources_missing
     assert set(invented.sources_missing) <= set(CONSULTED_SOURCES)
+
+
+# --------------------------------------------------------------------------- #
+# proof — group 9
+# --------------------------------------------------------------------------- #
+
+def test_an_agent_with_neither_a_record_nor_a_log_is_listed_anyway(tmp_path):
+    """Task 9.12, and it names the weaker shape it refuses: driving this from an
+    `Agent` with its fields blanked tests the dataclass, not the discovery. The
+    difference matters because the bug this guards is *upstream* — a lookup that
+    raises, a dict access that assumes a key, a filter that drops what it cannot
+    resolve — and none of that runs when the object is built by hand.
+
+    So this drives a `/proc` that genuinely holds an agent, with a record
+    directory that genuinely holds nothing about it.
+    """
+    from set_orch.fleet.discovery import discover_agents
+
+    proc = tmp_path / "proc"
+    (proc / "4242").mkdir(parents=True)
+    (proc / "4242" / "comm").write_text("claude\n")
+    (proc / "4242" / "cmdline").write_bytes(b"claude\x00")
+    (proc / "4242" / "cwd").symlink_to(tmp_path)
+    empty_records = tmp_path / "no-records"
+    empty_records.mkdir()
+
+    agents = discover_agents(proc_root=str(proc), record_dir=empty_records,
+                             log_root=tmp_path / "no-logs")
+    assert [a.pid for a in agents] == [4242]
+    only = agents[0]
+    assert only.session_id is None and only.session_log is None
+    assert only.binding_confirmed is False
+    assert only.sources == ["process"]
+    assert only.sources_missing == ["session-record", "registry"]
+
+
+def test_a_binding_is_never_guessed_and_an_unlabelled_guess_would_fail_here(tmp_path):
+    """Task 9.1's rule, driven rather than described: a labelled guess is not a
+    failure, an unlabelled one is. There is currently no guessing path at all, so
+    the assertion is that every binding present is CONFIRMED — which is a
+    stronger statement than "guesses are labelled", and it fails the moment a
+    heuristic is added without a label.
+    """
+    from set_orch.fleet.discovery import discover_agents
+
+    proc = tmp_path / "proc"
+    for pid in (11, 22):
+        d = proc / str(pid)
+        d.mkdir(parents=True)
+        (d / "comm").write_text("claude\n")
+        (d / "cmdline").write_bytes(b"claude\x00")
+        (d / "cwd").symlink_to(tmp_path)
+
+    records = tmp_path / "records"
+    records.mkdir()
+    logs = tmp_path / "logs"
+    (logs / "proj").mkdir(parents=True)
+    (logs / "proj" / "sess-11.jsonl").write_text("{}\n")
+    (records / "11.json").write_text(json.dumps({"pid": 11, "sessionId": "sess-11"}))
+
+    agents = {a.pid: a for a in discover_agents(proc_root=str(proc), record_dir=records, log_root=logs)}
+    assert agents[11].binding_confirmed is True and agents[11].session_id == "sess-11"
+    # 22 has a log lying next to 11's in the same tree and a plausible cwd. Preferring
+    # no binding to an arbitrary one is the whole rule.
+    assert agents[22].session_id is None and agents[22].binding_confirmed is False
+
+
+def test_two_worktrees_of_one_repository_are_one_project(tmp_path, monkeypatch):
+    """Task 9.3's first half — the case that produced the phantom project. Two
+    checkouts of one repository are one thing the user thinks about, and
+    reporting them as two puts the same work on the screen twice under different
+    names.
+    """
+    from set_orch.fleet import discovery as disc
+
+    common = str(tmp_path / "repo" / ".git")
+    monkeypatch.setattr(disc, "_git_common_dir", lambda cwd: common)
+    a_root, a_name = disc.resolve_project(str(tmp_path / "repo"))
+    b_root, b_name = disc.resolve_project(str(tmp_path / "worktrees" / "feature-x"))
+    assert (a_root, a_name) == (b_root, b_name)

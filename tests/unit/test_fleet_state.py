@@ -74,22 +74,42 @@ def test_a_sub_agent_s_call_does_not_make_the_parent_working(tmp_path):
     ("absent", "no session log"),
     ("missing", "does not exist"),
     ("empty", "no parsable entry"),
+    # Added 2026-08-19 for task 9.4: a log that EXISTS and cannot be read is a
+    # fourth way of knowing nothing, and it is the one an agent hits in practice
+    # — a permission or a filesystem error, not an absent file. Without it the
+    # parametrisation named three causes and covered three of four.
+    ("unreadable", "could not be read"),
 ])
 def test_a_state_that_cannot_be_determined_is_unknown_never_idle(tmp_path, case, reason_fragment):
-    """Three different ways of knowing nothing, and none of them may collapse to
+    """Four different ways of knowing nothing, and none of them may collapse to
     a calm answer. `quiet` claims the log was read and no call was outstanding;
     saying that about a log that does not exist is a false value, and its fail
     direction is the reassuring one — someone leaves the agent alone.
+
+    The fourth case, `unreadable`, was added for task 9.4 and is the one an agent
+    actually hits: the file exists and a permission or filesystem error stops the
+    read. A file that is absent and a file that cannot be read take different
+    code paths, and only one of them was covered.
     """
     if case == "absent":
         log = None
     elif case == "missing":
         log = str(tmp_path / "nope.jsonl")
+    elif case == "unreadable":
+        log = _log(tmp_path, [])
+        Path(log).write_text('{"type": "assistant"}\n')
+        os.chmod(log, 0o000)
+        if os.geteuid() == 0:
+            pytest.skip("running as root, the permission cannot be made to fail")
     else:
         log = _log(tmp_path, [])
         Path(log).write_text("not json at all\n")
 
-    st = state.read_state(log)
+    try:
+        st = state.read_state(log)
+    finally:
+        if case == "unreadable":
+            os.chmod(log, 0o644)
     assert st.state == "unknown"
     assert st.state != "idle"
     assert st.reason and reason_fragment in st.reason
