@@ -443,8 +443,32 @@ delivered and answered in ~20 s; the second was **held**, and the hold appeared 
 actually woke"; measured, it does not. The send call reports **resolution**, not delivery. So a
 tile that renders the send call's answer as an outcome would assert a delivery it has not observed
 — the same false-value class this screen exists to avoid, arriving through the one path that
-looked like a success. The outcome must be read from the *recipient's* side or from a later
-notification, never from the send return.
+looked like a success.
+
+**The true outcome does reach the sender — asynchronously, and this is what the capability must
+listen for.** Measured in the same run: the send returned `success: true` at ≈10:47:40, and at
+≈10:52:20 — **roughly four to five minutes later, unprompted** — the runtime delivered a notice to
+this session: *"Your message to another session was held for the recipient user's approval
+(recipient: `uds:/run/user/1000/cc-socks/2632885.sock`). Not delivered to that session's Claude
+yet; its user must approve first."* The pid in that socket is exactly the recipient's. So the
+outcome is **available and identity-bearing**, just not synchronous: it arrives on a separate
+channel, minutes late, keyed by the recipient's verified socket rather than by the `msg_id` the
+send call returned. `agent-fleet-instruct` therefore has two distinct facts to model — *accepted
+for delivery* (synchronous, from the send call) and *what actually happened* (asynchronous, later)
+— and a tile must show the first as **pending**, never as delivered.
+
+⚠ **Expiry itself is still NOT measured.** §3 says an unanswered hold expires and the message is
+dropped. What was observed here is a **hold notice while the hold was still open** — the
+Deny/Deliver prompt was still on the recipient's screen after the notice arrived. Whether a
+*second*, distinct expiry notice follows, and after how long, is unknown. Do not build the expiry
+clock on the four-minute figure; that is the hold notice's latency, not the hold's lifetime.
+
+⚠ **And a note on how the expiry was nearly mis-measured.** A watcher was pointed at the last 3 KB
+of the recipient's pty log, waiting for the Deny/Deliver prompt to disappear. It fired instantly
+and reported a change that had not happened: a TUI redraws continuously, so the tail window is a
+*redraw buffer*, not the screen's state, and the prompt drifts in and out of any fixed-size window.
+This is the proxy-instead-of-the-thing class again — the scrollback tail is a proxy for what is on
+screen. The reliable signal was the sender-side notice, which is a fact rather than a rendering.
 
 **Adoption — §5.2's remaining route, and the answer is again no.** The channel **reaches** a
 session that is already running: input is delivered, an idle peer wakes, and a reply comes back as

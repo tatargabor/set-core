@@ -167,8 +167,13 @@ Derived from the source, not from the change's artifacts.
   **⚠ One property the finding assumed, and the measurement removed:** the send call does **not**
   report which sessions it woke. A delivered send and a **held** send return the identical
   `success: true` with a `msg_id`; the hold appears only on the recipient's screen. Tasks 4.2/4.3
-  and their acceptance criteria must therefore take the outcome from the recipient's side or a
-  later notification — never from the send return, which reports *resolution* only.
+  and their acceptance criteria must therefore take the outcome from the **later asynchronous
+  notice**, never from the send return, which reports *acceptance for delivery* only. Measured: the
+  notice arrived ~4–5 minutes after the send, unprompted, naming the recipient by verified socket
+  (`uds:/run/user/1000/cc-socks/<pid>.sock`) rather than by the `msg_id` the send returned — so the
+  two facts must be correlated on the recipient, not on the message id. **Expiry remains
+  unmeasured:** the notice observed was a *hold* notice arriving while the hold was still open on
+  the recipient's screen, not an expiry.
   **Remaining work, tracked below as CB-7a:** the artifacts must name the external channel
   explicitly and stop attributing these properties to "the messaging bus".
 
