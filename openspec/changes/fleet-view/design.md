@@ -405,6 +405,81 @@ service restart therefore cannot promise reattachment; it can only report the tr
 
 ---
 
+### 6.3 The bus — MEASURED 2026-08-18, and it settles which channel is the contract
+
+Tasks 1.4, 1.5 and 1.6. Every figure below was taken on this machine on **2026-08-18 between
+10:36 and 11:05 CEST**; each is re-runnable from the commands in the change's `measurements`
+appendix. Two sessions were started for the purpose, in scratch directories; **no session
+belonging to anyone else was sent anything.**
+
+**Coverage — the decisive number.** Live agent processes were enumerated from `/proc` by
+`comm == "claude"`, resolved to identity rather than counted by a pattern:
+
+| source | sees | of 21 live sessions |
+|---|---|---|
+| runtime cross-session channel (`/run/user/1000/cc-socks/<pid>.sock`) | **21** | **100 %** |
+| framework bus (`set-agent-comm` registry seat with a live owner) | **11** | **52 %** |
+
+A naive substring match over command lines returned **31 additional false positives** — all of them
+shell snapshots whose path contains the word, none of them agents. The identity rule in §1 holds.
+
+**The runtime's address carries a verified identity, and the name does not.** A held message names
+its sender as `uds:/run/user/1000/cc-socks/505440.sock **[verified pid 505440]** (peer claims
+name: set-core-68)`. The runtime verifies the **pid** from the socket and marks the **name** as a
+claim. This is the §1 pairing problem — *guessing the link is worse than admitting ignorance*,
+measured at 4 correct of 9 — solved at the source: the process and the session are joined by the
+socket's own name, with no heuristic. The framework bus offers nothing comparable; it addresses
+`member@hostname`.
+
+**The delivery report is real, not a constant.** An unresolvable recipient returns
+`{"success": false, "message": "No agent named '…' is reachable."}`. The framework bus returns a
+fixed `{"status": "queued"}` for every send, including into projects where nothing is listening.
+
+**⚠ But the sender cannot tell delivered from held, and this corrects §3.** Two sends were made
+from this session (permission class `bypass`): one to a peer in the same class, one to a peer in
+`auto`. Both returned **the identical shape** — `success: true` with a `msg_id`. The first was
+delivered and answered in ~20 s; the second was **held**, and the hold appeared only on the
+*recipient's* screen as a Deny/Deliver prompt. §3 said "the bus's send call returns which seats it
+actually woke"; measured, it does not. The send call reports **resolution**, not delivery. So a
+tile that renders the send call's answer as an outcome would assert a delivery it has not observed
+— the same false-value class this screen exists to avoid, arriving through the one path that
+looked like a success. The outcome must be read from the *recipient's* side or from a later
+notification, never from the send return.
+
+**Adoption — §5.2's remaining route, and the answer is again no.** The channel **reaches** a
+session that is already running: input is delivered, an idle peer wakes, and a reply comes back as
+a message. It does **not attach a terminal**: there is no output stream, no pty, and no way to
+observe the peer's screen — the only return path is a message the peer chooses to send. Remote
+Control is *not measured*: the account has used it (`hasUsedRemoteControl: true`) but nothing is
+connected here, so `ListAgents` showed no remote row. Not measured is not negative — do not build
+on either answer.
+
+**Two live causes for the invisible-agent case (task 2.8), both caught by accident.** The first
+session started for this measurement did not appear in the channel's listing while it sat at its
+**start-up trust prompt** — alive, and invisible. Once past it, it was still invisible, for a
+second reason: it had inherited `CLAUDE_CODE_CHILD_SESSION` from this session's environment and
+announced *"Transcript saving is off"*. Only after stripping every `CLAUDE_*` variable from the
+child's environment did it register. Both are alive, both are invisible to the runtime source, and
+neither is exotic — the second is what any framework-spawned session inherits by default.
+
+**Orphans are a property of every source, not of the framework's bus.** Measured the same minute:
+**58 of 79** sockets in `cc-socks/` belong to dead pids; **59 of 77** framework registry seats have
+a dead owner; **17 of 26** `sac wait` waiter processes have no live agent ancestor. The waiter
+requirement §5.4 settled for the framework bus therefore generalises — whatever channel is chosen,
+its roster needs the live-process join, and a directory listing is not a roster.
+
+**Updated counts for §1 and §3, which were taken on one day on one machine:**
+
+| figure | as written | measured 2026-08-18 |
+|---|---|---|
+| live sessions | 12 | **21** |
+| with a registry seat | 9 | **11** (52 %) |
+| with a live waiter of their own | 4 of 12 | **6 of 21** |
+| orphaned waiters | ~30 | **17** |
+
+One session owns **four** waiters at once, which no requirement anticipated: a per-session waiter
+count is not one, and a "missing waiter" check must count, not test presence.
+
 ## 7. How this will be proven, when it is built
 
 Two checks decided in advance, because both classes of failure here are the reassuring kind:

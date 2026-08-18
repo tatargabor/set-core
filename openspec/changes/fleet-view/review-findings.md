@@ -150,8 +150,39 @@ Derived from the source, not from the change's artifacts.
   unsatisfiable. Because the artifacts never name the external bus, an implementer reading only the
   change will build against the in-repo one.
 - **Plan location:** `proposal.md` Why; tasks 4.1–4.5, 6.3; `design.md` §3.
-- **Status:** open — **this is the largest gap the review found.** The whole `agent-fleet-instruct`
-  capability rests on a component the change never identifies.
+- **Status:** **RESOLVED 2026-08-18 by measurement (task 1.6) — the contract is the runtime's own
+  cross-session channel, not the framework bus.** The finding was correct in every particular and
+  the repair is to name the external channel, not to weaken the requirements. Evidence, all taken
+  2026-08-18 and written up as design §6.3:
+  · **coverage** — the runtime channel resolves **21 of 21** live agent sessions, the framework bus
+    **11 of 21** (52 %);
+  · **identity** — the runtime verifies the sender's **pid** from its socket
+    (`/run/user/1000/cc-socks/<pid>.sock`, shown to the recipient as `[verified pid N]`) and marks
+    the *name* a claim; the framework bus addresses `member@hostname` and verifies nothing. This
+    also removes the 4-of-9 heuristic pairing §1 had to allow;
+  · **report** — an unresolvable recipient returns `success: false` with a reason, against the
+    framework bus's constant `{"status": "queued"}`;
+  · **addressing** — a session is addressed by its own name, so "never broadcast to its room"
+    (AC-43) becomes satisfiable rather than unimplementable.
+  **⚠ One property the finding assumed, and the measurement removed:** the send call does **not**
+  report which sessions it woke. A delivered send and a **held** send return the identical
+  `success: true` with a `msg_id`; the hold appears only on the recipient's screen. Tasks 4.2/4.3
+  and their acceptance criteria must therefore take the outcome from the recipient's side or a
+  later notification — never from the send return, which reports *resolution* only.
+  **Remaining work, tracked below as CB-7a:** the artifacts must name the external channel
+  explicitly and stop attributing these properties to "the messaging bus".
+
+### CB-7a [MAJOR] The artifacts must name the runtime channel, and three of them still describe the send call as reporting delivery
+- **Source:** the CB-7 resolution above. `proposal.md` Why, `design.md` §3, tasks 4.1–4.5 and 6.3
+  all say "the messaging bus" without saying whose, and §3 states "the bus's send call returns
+  which seats it actually woke" — measured false 2026-08-18.
+- **Failure scenario:** an implementer reading only the change still builds against the in-repo bus
+  (CB-7's original scenario, unchanged), and a tile renders the send call's `success: true` as
+  *delivered* for a message that is sitting on someone else's screen awaiting Deny/Deliver — a
+  false value arriving through the one path that looked like a success.
+- **Plan location:** `proposal.md` Why; `design.md` §3; tasks 4.1–4.5, 6.3; AC for
+  `the-delivery-report-distinguishes-every-outcome-and-an-outcome-can-expire`.
+- **Status:** open
 
 ### CB-8 [MAJOR] The framework's own short-lived `claude -p` subprocesses become tiles, reported as waiting
 - **Source:** `lib/set_orch/subprocess_utils.py:302-327` and 27 `run_claude_logged(` call sites
