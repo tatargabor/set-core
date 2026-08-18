@@ -40,8 +40,31 @@ This also resolves **RB-3**: the two scenarios that reported a surviving agent a
 now correct in the other direction, and task 5.5's claim — false when written — is true under this
 decision.
 
-**D-2 — where a waiting agent below the fold is marked. STILL OPEN; the user's direction is
-recorded so it is not re-derived.** The landing screen is a scrollable column and the registry holds
+**D-2 — where a waiting agent below the fold is marked. ANSWERED 2026-08-19: manual ordering plus
+a parked section.** The user chose it over automatic attention-ordering and over workspaces, with the
+trade-off stated in the question: full control, in exchange for maintaining the order by hand, and an
+order that cannot react to attention on its own.
+
+Decided against this measurement of the live screen, which is what the options were scored on:
+**45 projects listed, 12 holding agents, 33 empty; 22 agents, the largest project holding 6.**
+
+**Three requirements follow, and the third is not optional — it is the constraint that produced this
+decision in the first place.**
+
+1. **Projects are draggable and the order persists per user.** A project stays in the list when its
+   agents close (its position is a statement about the project, not about who happens to be running).
+2. **A parked section**, collapsed, carrying its own count. Parking is an explicit act, and a parked
+   project is reachable in one click — it is out of the way, never out of reach.
+3. **A sticky global marker for waiting work, and manual ordering makes it MORE necessary rather than
+   less.** The other two options bounded where a waiting agent could hide: automatic ordering puts it
+   on top by construction, and a workspace filter has a fixed tab strip to hang a count on. A
+   hand-maintained order has neither — a project the user dragged to position 30 six weeks ago is
+   below the fold today, and nothing will move it. So the count of agents awaiting an answer belongs
+   in a header that does not scroll away, with a jump to the first one, **and it counts across the
+   parked section too**. Without that, this option is the one arrangement that can hide a waiting
+   agent behind a screen the user themselves arranged to look calm.
+
+*Superseded — the direction recorded before the decision, kept because it names what was weighed:* The landing screen is a scrollable column and the registry holds
 39 projects. *(RB-6.)*
 
 The direction: projects should be **manually orderable** (dragged up and down); a project stays in
