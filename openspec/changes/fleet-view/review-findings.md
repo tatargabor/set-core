@@ -64,6 +64,27 @@ decision in the first place.**
    parked section too**. Without that, this option is the one arrangement that can hide a waiting
    agent behind a screen the user themselves arranged to look calm.
 
+**Refined by the user the same day, and it makes the ordering TWO-LEVEL.** The reason they gave for
+choosing manual ordering is that they place related projects next to each other — so the natural unit
+is not the project but the **group**. Groups render as blocks and are themselves ordered; a project
+moves **only within its own group** (their example: a `set-` group).
+
+- **Groups are ordered; projects are ordered within a group.** Two drag scopes, never one. Dragging a
+  project out of its group is not a move — reassignment is a separate, explicit act, because
+  "reorder" and "regroup" produce very different results from the same gesture and the user asked for
+  the first.
+- **Membership is a STORED FACT, not a name rule** — decided here rather than left implicit, because
+  the obvious implementation is the wrong one. `set-` looks like a prefix rule, and a rule
+  re-evaluates: rename a project and it silently changes group; add a project whose name happens to
+  start with `set-` and it lands in a group nobody put it in. A prefix may **seed** a group ("add all
+  `set-*`"), which is a one-time bulk act the user can see the result of, but what is persisted is
+  the membership. This is the declaration-is-not-data rule applied to grouping.
+- **Ungrouped projects behave as one group at the end**, so there is no second layout mode to build,
+  and a new project has an unsurprising home rather than disappearing.
+- **The waiting marker now applies per group as well.** A collapsed group is another place a waiting
+  agent can sit while the screen looks calm, so a collapsed group carries its own count — in addition
+  to, not instead of, the sticky global one.
+
 *Superseded — the direction recorded before the decision, kept because it names what was weighed:* The landing screen is a scrollable column and the registry holds
 39 projects. *(RB-6.)*
 
