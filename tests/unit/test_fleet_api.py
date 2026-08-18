@@ -43,14 +43,44 @@ def test_every_fleet_route_is_registered_before_the_project_wildcards():
 
 
 def test_the_start_and_stop_routes_are_reachable_and_distinct():
-    """A POST and a GET on the same path are one route in prose and two here."""
+    """A POST and a GET on the same path are one route in prose and two here.
+
+    `methods` is read defensively because a WebSocket route has none — an earlier
+    version of this test read it unconditionally and broke the moment the
+    terminal stream was added, which is the whole-surface enumeration finding a
+    shape it did not expect rather than a defect in the route.
+    """
     from set_orch.api.fleet import router
 
-    surface = {(tuple(sorted(r.methods)), r.path) for r in router.routes}
+    surface = {
+        (tuple(sorted(getattr(r, "methods", None) or ["WEBSOCKET"])), r.path)
+        for r in router.routes
+    }
     assert (("POST",), "/api/fleet/agents") in surface
     assert (("GET",), "/api/fleet/agents") in surface
     assert (("POST",), "/api/fleet/agents/{label}/stop") in surface
     assert (("GET",), "/api/fleet/owner") in surface
+    assert (("GET",), "/api/fleet/layout") in surface
+    assert (("PUT",), "/api/fleet/layout") in surface
+    assert (("WEBSOCKET",), "/ws/fleet/agents/{label}/terminal") in surface
+
+
+def test_the_terminal_route_is_registered_before_the_project_ws_wildcard():
+    """The same hazard as CB-16, one path family over: `server.py` includes the
+    api router before the ws router, and `/ws/{project}/stream` would otherwise
+    be a candidate for anything under `/ws/`. The shapes differ in depth today,
+    so this is a guard against a future wildcard rather than a live bug — and it
+    says so, because a test whose reason is not written down gets deleted as
+    redundant.
+    """
+    from set_orch.server import create_app
+
+    paths = [getattr(r, "path", "") for r in create_app().routes]
+    terminal = [i for i, p in enumerate(paths) if p == "/ws/fleet/agents/{label}/terminal"]
+    wildcards = [i for i, p in enumerate(paths) if p.startswith("/ws/") and "{project" in p]
+    assert terminal, "the terminal route is not mounted on the app at all"
+    assert wildcards, "no /ws wildcard found — this test would pass vacuously"
+    assert max(terminal) < min(wildcards)
 
 
 # --------------------------------------------------------------------------- #
@@ -184,3 +214,121 @@ def test_stopping_an_orphan_succeeds_and_the_answer_says_it_was_one(monkeypatch)
     answer = fleet_api.fleet_stop_agent("stray")
     assert answer["gone"] is True
     assert answer["population"] == "foreign", "the surface must be able to say which act it performed"
+
+
+# --------------------------------------------------------------------------- #
+# reading one agent must not read the fleet — task 6.2
+# --------------------------------------------------------------------------- #
+
+def test_opening_one_log_does_not_enumerate_the_whole_fleet(monkeypatch):
+    """Holds the pattern that was WRONG. This route used to call
+    `discover_agents()` to find one pid, and `discover_agents` asks git for the
+    project root and the branch of EVERY agent — two subprocesses each, ~44 on
+    the machine this was measured on — while the surface polls an open log every
+    5 seconds. Measured 2026-08-19: **202 ms for the fleet against 3.5 ms for one
+    agent**.
+
+    The cost is invisible from the outside: the endpoint answers correctly either
+    way, so nothing fails and nothing looks slow until there are enough agents.
+    A comment would not survive a refactor; this does.
+    """
+    class _Agent:
+        pid, name, project_name, binding_confirmed = 4242, "a", "p", True
+        session_log = None
+
+    monkeypatch.setattr(
+        fleet_api, "discover_agents",
+        lambda *a, **k: pytest.fail("the per-agent route must not enumerate the fleet"),
+    )
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: _Agent())
+    monkeypatch.setattr(fleet_api, "read_conversation", lambda log, **k: {"turns": []})
+
+    answer = fleet_api.fleet_agent_log(4242, limit=10)
+    assert answer["pid"] == 4242
+
+
+def test_the_state_route_also_stays_off_the_fleet_path(monkeypatch):
+    class _Agent:
+        pid, name, session_id, binding_confirmed, sources = 7, "a", "s", True, ["process"]
+        session_log = None
+
+    monkeypatch.setattr(
+        fleet_api, "discover_agents",
+        lambda *a, **k: pytest.fail("the per-agent route must not enumerate the fleet"),
+    )
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: _Agent())
+    answer = fleet_api.fleet_agent_state(7)
+    assert answer["pid"] == 7
+    # `unknown` here is honest: no session log is bound, and the reason says so.
+    assert answer["state"] == "unknown"
+    assert answer["unknown_reason"]
+
+
+def test_a_pid_that_is_not_an_agent_is_404_rather_than_someone_elses_log(monkeypatch):
+    """A pid is reused. Answering with whatever log a stale pid maps to would
+    serve one session's conversation under another's name.
+    """
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: None)
+    for route in (fleet_api.fleet_agent_state, lambda p: fleet_api.fleet_agent_log(p, limit=5)):
+        with pytest.raises(HTTPException) as excinfo:
+            route(999999)
+        assert excinfo.value.status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# population is a carried fact — task 5.1
+# --------------------------------------------------------------------------- #
+
+class _Agent:
+    def __init__(self, pid):
+        self.pid = pid
+        self.name = self.project_name = self.project_root = self.cwd = "x"
+        self.branch = self.session_id = None
+        self.binding_confirmed = True
+        self.sources = ["process"]
+        self.kind = "interactive"
+
+
+class _State:
+    state, tool, tool_elapsed, other_tools, last_movement_age, reason = "quiet", None, None, [], 1.0, None
+
+
+def test_an_agent_the_owner_holds_is_started_here_and_names_its_terminal():
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {7: {"label": "mine"}})
+    assert payload["population"] == "started-here"
+    assert payload["terminal_label"] == "mine"
+
+
+def test_an_agent_the_owner_does_not_hold_has_no_terminal():
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {})
+    assert payload["population"] == "foreign"
+    assert payload["terminal_label"] is None
+
+
+def test_an_unreachable_owner_is_UNKNOWN_and_never_foreign():
+    """The third value, and the reason this is not a boolean.
+
+    `foreign` is a claim — "the framework did not start this, so there is no
+    terminal and cannot be". When the owner is merely restarting that claim is
+    false for every agent it was holding, and the screen would say "no terminal"
+    about agents that have one. An empty answer and no answer are different
+    facts; collapsing them is the false-absence class.
+    """
+    payload = fleet_api._agent_payload(_Agent(7), _State(), None)
+    assert payload["population"] == "unknown"
+    assert payload["terminal_label"] is None
+
+
+def test_the_reason_a_terminal_is_unavailable_is_said_once_not_per_row(monkeypatch):
+    """A screen that cannot offer a terminal anywhere has ONE cause. Naming it
+    once is the difference between "there are no terminals" and "we could not
+    ask" — and the second is not a fact about any agent.
+    """
+    monkeypatch.setattr(fleet_api, "_load_projects", lambda: [])
+    monkeypatch.setattr(fleet_api, "discover_agents", lambda **k: [])
+    monkeypatch.setattr(fleet_api, "discover_projects", lambda a, registered=None: [])
+    monkeypatch.setattr(fleet_api, "_owned_by_pid", lambda: None)
+    assert fleet_api.fleet_agents()["owner_reachable"] is False
+
+    monkeypatch.setattr(fleet_api, "_owned_by_pid", lambda: {})
+    assert fleet_api.fleet_agents()["owner_reachable"] is True

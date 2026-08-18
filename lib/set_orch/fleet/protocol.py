@@ -43,7 +43,25 @@ SUPPORTED_METHODS = frozenset({
     "health", "list", "orphans",
     # the relay
     "write", "resize", "tail",
+    # the relay, as a stream: `attach` turns the connection full-duplex and the
+    # owner pushes frames until `detach` or the client goes away.
+    "attach", "detach",
 })
+
+#: A pushed terminal frame, distinguishable from a response by carrying no `id`.
+#: The reader must branch on this rather than on presence-of-`result`, because a
+#: response whose result happens to be null would otherwise read as a frame.
+FRAME_KEY = "stream"
+
+
+def make_frame(label: str, data_b64: str, *, replay: bool = False) -> str:
+    """One terminal frame, ready to write to the wire.
+
+    `replay` marks the buffered tail sent at attach time — the screen as it was
+    before this viewer arrived. A viewer that cannot tell replay from live output
+    has no way to know whether what it is looking at is happening now.
+    """
+    return json.dumps({FRAME_KEY: label, "data_b64": data_b64, "replay": replay})
 
 
 @dataclass

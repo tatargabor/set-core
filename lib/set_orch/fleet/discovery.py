@@ -309,6 +309,71 @@ def discover_agents(
     return agents
 
 
+def is_agent_process(pid: int, proc_root: str = "/proc") -> bool:
+    """Whether THIS pid is a live agent, asked of the pid rather than of a list.
+
+    Identity, not a substring: `comm` is what the kernel records as the program's
+    name, and matching command lines finds every shell whose path happens to
+    contain the word — 31 of them on the machine this was measured on.
+    """
+    comm = _read(os.path.join(proc_root, str(pid), "comm"))
+    return comm is not None and comm.strip() == AGENT_COMM
+
+
+def discover_agent(
+    pid: int,
+    *,
+    proc_root: str = "/proc",
+    record_dir: Path = SESSION_RECORD_DIR,
+    log_root: Path = SESSION_LOG_ROOT,
+    resolve_git: bool = False,
+) -> Optional[Agent]:
+    """One agent by pid, without enumerating or resolving the whole fleet.
+
+    Exists because the per-agent routes were paying for the whole inventory to
+    answer about one session: opening a log ran `discover_agents()`, which asks
+    git for the project root and the branch of **every** agent — two subprocesses
+    each, ~44 on the machine this was measured on — and the surface polls an open
+    log every 5 seconds. Task 6.2's rule, stated the other way round: listing
+    every agent must not read every log, and reading one log must not list every
+    agent.
+
+    `resolve_git` is off by default and that is the whole saving. A caller that
+    wants the log or the state needs the session binding, not the branch; a
+    caller that wants to display the agent asks for it explicitly.
+
+    **The pid is still re-verified rather than trusted**, which is why this
+    returns `Optional` instead of taking the caller's word: pids are reused, and
+    answering with whatever log a stale pid maps to would serve one session's
+    conversation under another's name.
+    """
+    if not is_agent_process(pid, proc_root):
+        return None
+    cwd = _proc_cwd(pid, proc_root)
+    if cwd is None:
+        logger.debug("fleet discovery: pid %s has no readable cwd", pid)
+        return None
+
+    record = _load_session_records(record_dir).get(pid)
+    session_id = record.get("sessionId") if record else None
+    sources = ["process"] + (["session-record"] if record else [])
+    root, project_name = resolve_project(cwd) if resolve_git else (None, None)
+
+    return Agent(
+        pid=pid,
+        cwd=cwd,
+        project_root=root,
+        project_name=project_name,
+        branch=_git_branch(cwd) if resolve_git else None,
+        session_id=session_id,
+        session_log=_session_log_for(session_id, log_root) if session_id else None,
+        name=record.get("name") if record else None,
+        kind=_classify_kind(pid, proc_root),
+        sources=sources,
+        binding_confirmed=record is not None,
+    )
+
+
 def discover_projects(
     agents: Sequence[Agent],
     *,

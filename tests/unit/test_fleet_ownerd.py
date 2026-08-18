@@ -38,7 +38,9 @@ from set_orch.fleet.owner_client import (
     owner_available,
 )
 from set_orch.fleet.ownerd import OwnerDaemon
-from set_orch.fleet.protocol import SUPPORTED_METHODS, Request, Response
+from set_orch.fleet.protocol import (
+    SUPPORTED_METHODS, Request, Response, make_frame,
+)
 
 
 def _run(coro):
@@ -384,3 +386,151 @@ def test_an_unparseable_line_is_answered_rather_than_dropped(tmp_path):
 
     answer = Response.from_json(_run(scenario()).decode())
     assert not answer.ok and "unparseable" in answer.error
+
+
+# --------------------------------------------------------------------------- #
+# the stream — two bugs an end-to-end probe found that unit tests had not
+# --------------------------------------------------------------------------- #
+
+class _Streamable(_FakeOwner):
+    """An owner with one held agent whose terminal we can feed by hand."""
+
+    def __init__(self):
+        super().__init__()
+        self.written = []
+
+    def write(self, label, data):
+        self.written.append((label, data))
+        return len(data)
+
+    def resize(self, label, rows, cols):
+        self.resized = (label, rows, cols)
+
+
+def _daemon_with_terminal(path, tail=b"SCREEN-AS-IT-WAS"):
+    daemon = OwnerDaemon(path, owner=_Streamable())
+    daemon._tails["term"] = bytearray(tail)
+    daemon._dropped["term"] = False
+    daemon._drained["term"] = len(tail)
+    return daemon
+
+
+def test_the_replayed_screen_is_not_eaten_by_the_attach_response(tmp_path):
+    """The first of two bugs the end-to-end probe found, and the reason the
+    client may not read its own answers.
+
+    The owner writes the buffered screen BEFORE the attach response. A client
+    that reads lines until one carries an `id`, skipping what it passes, throws
+    that screen away — measured live: **1752 bytes sent, 44 arrived**, and the
+    terminal's first screen was wrong rather than absent, which is the direction
+    nobody investigates.
+    """
+    path = str(tmp_path / "owner.sock")
+    daemon = _daemon_with_terminal(path)
+
+    async def scenario():
+        from set_orch.fleet.owner_client import OwnerStream
+        daemon._claim_socket()
+        server = await asyncio.start_unix_server(daemon._serve_client, path=path)
+        async with server:
+            stream = OwnerStream("term", path)
+            ack = await asyncio.wait_for(stream.open(), timeout=5)
+            # Bounded on purpose. A regression here makes this WAIT rather than
+            # fail — measured: the mutation that drops frames turned this test
+            # into a hang, and a hanging test burns a CI budget and reads as an
+            # infrastructure flake, which is how a real guard gets disabled.
+            frame, replay = await asyncio.wait_for(stream.frames().__anext__(), timeout=5)
+            await stream.close()
+            return ack, frame, replay
+
+    ack, frame, replay = _run(scenario())
+    assert ack["replayed_bytes"] == len(b"SCREEN-AS-IT-WAS")
+    assert frame == b"SCREEN-AS-IT-WAS", "the replayed screen was consumed by the response reader"
+    assert replay is True, "a viewer that cannot tell replay from live output cannot know what is now"
+
+
+def test_a_keystroke_while_streaming_does_not_kill_the_connection(tmp_path):
+    """The second bug, and it produced a terminal that showed output until you
+    touched it: with the output pump and a keystroke's request both reading the
+    same stream, the connection died on the first keystroke.
+
+    Exactly one loop may read. This drives the failing shape — write WHILE
+    consuming frames — because a test that writes with nothing pumping would
+    pass on the broken version too.
+    """
+    path = str(tmp_path / "owner.sock")
+    daemon = _daemon_with_terminal(path)
+
+    async def scenario():
+        from set_orch.fleet.owner_client import OwnerStream
+        daemon._claim_socket()
+        server = await asyncio.start_unix_server(daemon._serve_client, path=path)
+        async with server:
+            stream = OwnerStream("term", path)
+            await asyncio.wait_for(stream.open(), timeout=5)
+
+            seen = []
+
+            async def pump():
+                async for data, _replay in stream.frames():
+                    seen.append(data)
+
+            pumping = asyncio.create_task(pump())
+            await asyncio.sleep(0.05)
+            # Bounded: the two-readers bug makes this hang rather than raise.
+            written = await asyncio.wait_for(
+                stream.write(b"keystroke"), timeout=5                 # while the pump reads
+            )
+            daemon._drain_from(b"echo")                          # live output after it
+            await asyncio.sleep(0.05)
+            await asyncio.wait_for(stream.resize(30, 100), timeout=5)   # still live
+            await asyncio.sleep(0.05)
+            pumping.cancel()
+            await stream.close()
+            return written, seen
+
+    written, seen = _run(scenario())
+    assert written == len(b"keystroke")
+    assert daemon.owner.written == [("term", b"keystroke")]
+    assert daemon.owner.resized == ("term", 30, 100)
+    assert b"echo" in b"".join(seen), "live output after a keystroke never arrived"
+
+
+def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(tmp_path):
+    """Drives the discriminator instead of asserting about shapes.
+
+    A first version of this test compared a frame dict with a response dict and
+    passed on the broken client too — mutating `if request_id is not None` to
+    `if payload.get("result") is not None` changed nothing it could see, because
+    no method in this protocol currently returns a null result. That made it a
+    test of today's method list rather than of the rule.
+
+    So the server here answers with `result: null` on purpose. If the client
+    branches on the result instead of on the id, that answer is taken for a
+    terminal frame, the request never resolves, and the `wait_for` below fails
+    instead of the whole suite hanging.
+    """
+    import json as _json
+    path = str(tmp_path / "owner.sock")
+
+    async def scenario():
+        from set_orch.fleet.owner_client import OwnerStream
+
+        async def handle(reader, writer):
+            line = await reader.readline()                 # the attach
+            request_id = _json.loads(line)["id"]
+            writer.write((make_frame("term", base64.b64encode(b"SCREEN").decode()) + "\n").encode())
+            # A response whose result IS null — the shape the mutation confuses.
+            writer.write((_json.dumps({"id": request_id, "result": None}) + "\n").encode())
+            await writer.drain()
+
+        server = await asyncio.start_unix_server(handle, path=path)
+        async with server:
+            stream = OwnerStream("term", path)
+            ack = await asyncio.wait_for(stream.open(), timeout=5)
+            frame, _replay = await asyncio.wait_for(stream.frames().__anext__(), timeout=5)
+            return ack, frame
+
+    ack, frame = _run(scenario())
+    assert ack is None, "a null result is a real answer, not an absent one"
+    assert frame == b"SCREEN", "the frame was consumed as though it were the response"

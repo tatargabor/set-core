@@ -214,3 +214,51 @@ def test_listing_does_not_read_a_whole_log(tmp_path):
     lines = state._tail(str(p))
     assert len(lines) < 60000
     assert state.read_state(str(p)).state == "working"
+
+
+# --------------------------------------------------------------------------- #
+# one agent by pid — task 6.2
+# --------------------------------------------------------------------------- #
+
+def test_a_pid_is_verified_by_identity_not_taken_on_trust(tmp_path):
+    """`comm` is what the kernel records as the program's name. Matching command
+    lines instead finds every shell whose path happens to contain the word — 31
+    of them on the machine this was measured on — and a caller-supplied pid is
+    exactly where that would be believed.
+    """
+    from set_orch.fleet.discovery import discover_agent, is_agent_process
+
+    proc = tmp_path / "proc"
+    (proc / "100").mkdir(parents=True)
+    (proc / "100" / "comm").write_text("bash\n")
+    (proc / "200").mkdir(parents=True)
+    (proc / "200" / "comm").write_text("claude\n")
+    (proc / "200" / "cwd").symlink_to(tmp_path)
+
+    assert is_agent_process(100, str(proc)) is False
+    assert is_agent_process(200, str(proc)) is True
+    assert discover_agent(100, proc_root=str(proc)) is None
+    assert discover_agent(999, proc_root=str(proc)) is None
+
+
+def test_one_agent_skips_git_unless_asked(tmp_path, monkeypatch):
+    """The whole saving. A caller that wants the log or the state needs the
+    session binding, not the branch; asking git per call is what made the
+    per-agent routes cost the whole inventory.
+    """
+    from set_orch.fleet import discovery as disc
+
+    proc = tmp_path / "proc"
+    (proc / "200").mkdir(parents=True)
+    (proc / "200" / "comm").write_text("claude\n")
+    (proc / "200" / "cwd").symlink_to(tmp_path)
+    (proc / "200" / "cmdline").write_bytes(b"claude\x00")
+
+    monkeypatch.setattr(disc, "_git_branch", lambda cwd: pytest.fail("git must not be asked"))
+    monkeypatch.setattr(disc, "resolve_project", lambda cwd: pytest.fail("git must not be asked"))
+
+    agent = disc.discover_agent(200, proc_root=str(proc), record_dir=tmp_path / "none")
+    assert agent is not None
+    assert agent.branch is None and agent.project_name is None
+    assert agent.sources == ["process"]
+    assert agent.binding_confirmed is False

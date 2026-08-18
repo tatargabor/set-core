@@ -176,3 +176,180 @@ def owner_available(socket_path: Optional[str] = None) -> bool:
     except OwnerClientError:
         return False
     return True
+
+
+# --------------------------------------------------------------------------- #
+# the streaming half — one attached terminal (tasks 5.3, 6.4)
+# --------------------------------------------------------------------------- #
+
+class OwnerStream:
+    """An attached terminal: one asyncio connection to the owner, full-duplex.
+
+    Separate from `OwnerClient` because it is a different shape, not a different
+    transport: the sync client is request/response, this one carries a
+    conversation. Sharing a class would mean a connection that is sometimes
+    stateful and callers could not tell which by looking.
+
+    **One socket carries both directions.** Splitting them across two connections
+    would let a keystroke arrive before the output that prompted it, and a
+    terminal in which cause and effect can reorder is not a terminal.
+
+    **One reader owns the socket, and this is not a style choice — it is the two
+    bugs an end-to-end probe found on 2026-08-19, both invisible to unit tests:**
+
+    - *A request that reads its own answer eats the frames it passes over.* The
+      obvious client sends `attach` and reads lines until one carries an `id`,
+      skipping frames on the way. The owner sends the replayed screen BEFORE the
+      response, so that skip silently discarded it: 1752 bytes sent, 44 arrived,
+      and the first screen was wrong rather than absent.
+    - *Two coroutines cannot read one stream.* With output pumping and a
+      keystroke's request both reading, the connection died on the first
+      keystroke — a terminal that shows output until you touch it.
+
+    So exactly one loop reads: responses resolve futures by id, frames go to a
+    queue. Nothing else may call `readline`.
+
+    Nothing is persisted: frames pass through to the caller and are not written
+    down, not cached, not logged. Diagnostics name the stream and the failure
+    kind only.
+    """
+
+    #: Frames buffered for a consumer that is behind. The owner drops a viewer
+    #: whose socket backs up; this bounds the same risk one hop later, and drops
+    #: the OLDEST rather than the newest — on a terminal the recent screen is
+    #: what the reader needs, and a gap that is admitted beats a stale tail.
+    MAX_QUEUED_FRAMES = 2048
+
+    def __init__(self, label: str, socket_path: Optional[str] = None) -> None:
+        from .ownerd import default_socket_path
+        self.label = label
+        self.socket_path = socket_path or default_socket_path()
+        self._reader = None
+        self._writer = None
+        self._pending: Dict[str, "asyncio.Future"] = {}
+        self._frames: Optional["asyncio.Queue"] = None
+        self._pump = None
+        self._dropped_frames = 0
+
+    async def open(self) -> Dict[str, Any]:
+        """Attach, and return the owner's acknowledgement.
+
+        Raises rather than degrading: a terminal that silently attaches to
+        nothing is a black rectangle the reader has no way to interpret.
+        """
+        import asyncio
+        try:
+            self._reader, self._writer = await asyncio.open_unix_connection(self.socket_path)
+        except OSError as exc:
+            raise OwnerUnavailable(
+                f"the agent owner is not running ({self.socket_path}: {exc}). "
+                f"Start it with `{START_COMMAND}`."
+            ) from exc
+        self._frames = asyncio.Queue()
+        # Started BEFORE the attach request, so the replayed screen — which the
+        # owner writes before the response — is queued rather than skipped.
+        self._pump = asyncio.create_task(self._read_loop())
+        return await self._request("attach", {"label": self.label})
+
+    async def _read_loop(self) -> None:
+        import asyncio, json as _json
+        assert self._reader is not None and self._frames is not None
+        try:
+            while True:
+                line = await self._reader.readline()
+                if not line:
+                    break
+                try:
+                    payload = _json.loads(line)
+                except ValueError:
+                    logger.warning("fleet stream: unparseable line on %s", self.label)
+                    continue
+                request_id = payload.get("id")
+                if request_id is not None:
+                    future = self._pending.pop(str(request_id), None)
+                    if future is not None and not future.done():
+                        if payload.get("error") is not None:
+                            future.set_exception(OwnerClientError(payload["error"]))
+                        else:
+                            future.set_result(payload.get("result"))
+                    continue
+                data = payload.get("data_b64")
+                if data is None:
+                    continue
+                frame = (base64.b64decode(data), bool(payload.get("replay")))
+                if self._frames.qsize() >= self.MAX_QUEUED_FRAMES:
+                    self._frames.get_nowait()
+                    self._dropped_frames += 1
+                    if self._dropped_frames == 1:
+                        logger.warning(
+                            "fleet stream: %s is behind; dropping the oldest frames", self.label
+                        )
+                self._frames.put_nowait(frame)
+        except (ConnectionResetError, asyncio.IncompleteReadError, OSError) as exc:
+            logger.debug("fleet stream: %s read loop ended: %s", self.label, type(exc).__name__)
+        finally:
+            # Everyone waiting is told, rather than left on a future that will
+            # never resolve — a hung terminal looks exactly like a busy one.
+            for future in self._pending.values():
+                if not future.done():
+                    future.set_exception(
+                        OwnerUnavailable("the agent owner closed the terminal connection")
+                    )
+            self._pending.clear()
+            if self._frames is not None:
+                self._frames.put_nowait(None)
+
+    async def _request(self, method: str, params: Dict[str, Any]) -> Any:
+        import asyncio
+        assert self._writer is not None
+        request = Request(method=method, params=params)
+        future = asyncio.get_running_loop().create_future()
+        self._pending[request.id] = future
+        try:
+            self._writer.write((request.to_json() + "\n").encode("utf-8"))
+            await self._writer.drain()
+        except OSError as exc:
+            self._pending.pop(request.id, None)
+            raise OwnerUnavailable(f"the agent owner stopped answering: {exc}") from exc
+        return await future
+
+    async def frames(self):
+        """Yield terminal frames as `(data: bytes, replay: bool)` until the stream ends.
+
+        Ends when the owner closes the connection — which is also what a stopped
+        agent looks like from here. The two are deliberately the same signal: for
+        a viewer, "the terminal ended" and "the connection ended" call for the
+        same response, and inventing a difference would suggest one it cannot act
+        on.
+        """
+        assert self._frames is not None
+        while True:
+            item = await self._frames.get()
+            if item is None:
+                return
+            yield item
+
+    async def write(self, data: bytes) -> int:
+        result = await self._request(
+            "write", {"label": self.label, "data_b64": base64.b64encode(data).decode("ascii")}
+        )
+        return int(result["written"])
+
+    async def resize(self, rows: int, cols: int) -> None:
+        await self._request("resize", {"label": self.label, "rows": rows, "cols": cols})
+
+    async def close(self) -> None:
+        """Detach. Never stops the agent — that is a different act (task 5.4)."""
+        if self._writer is None:
+            return
+        try:
+            await self._request("detach", {"label": self.label})
+        except (OwnerClientError, OwnerUnavailable, OSError) as exc:
+            logger.debug("fleet stream: detach on %s: %s", self.label, exc)
+        if self._pump is not None:
+            self._pump.cancel()
+        try:
+            self._writer.close()
+        except OSError:
+            pass
+        self._reader = self._writer = self._pump = None

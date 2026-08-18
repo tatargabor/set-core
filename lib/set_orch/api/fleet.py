@@ -1,12 +1,14 @@
 """Fleet API — the agent sessions running on this machine.
 
     GET  /api/fleet/agents             — every live agent, its project, and its measured state
+    GET  /api/fleet/agents/{pid}/state — one agent's measured state, without the fleet
     GET  /api/fleet/agents/{pid}/log   — the raw conversation of one agent (design §5.8)
     GET  /api/fleet/owner              — whether an agent can be started at all
     POST /api/fleet/agents             — start one, through the agent owner (task 5.8)
     POST /api/fleet/agents/{label}/stop — stop one this framework started
     GET  /api/fleet/layout             — the hand-made arrangement, joined to what exists
     PUT  /api/fleet/layout             — replace it, refusing a stale write
+    WS   /ws/fleet/agents/{label}/terminal — the terminal, both directions (5.3, 6.4)
 
 ⚠ Route ordering matters and is not cosmetic (finding CB-16). The dashboard
 already serves a large `/api/{project}/...` family, and FastAPI resolves routes
@@ -23,18 +25,23 @@ CLAUDE.md is a persistence boundary, and this endpoint persists nothing at all.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
+from ..fleet.discovery import discover_agent
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet.layout import LayoutConflict
-from ..fleet.owner_client import OwnerClient, OwnerClientError, OwnerUnavailable
+from ..fleet.owner_client import (
+    OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
+)
 from .helpers import _load_projects
 
 logger = logging.getLogger(__name__)
@@ -42,7 +49,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _agent_payload(agent, state) -> Dict[str, Any]:
+def _owned_by_pid() -> Optional[Dict[int, Dict[str, Any]]]:
+    """What the owner is holding, keyed by pid — or None when it cannot be asked.
+
+    `None` is the important value and it is not the same as `{}`. An empty
+    mapping means the owner answered and holds nothing; `None` means nobody
+    answered, and the difference decides what the surface may say. Reporting
+    every agent as `foreign` because the owner is down would be true by accident
+    and false as a claim — the framework may well have started one.
+    """
+    try:
+        return {a["pid"]: a for a in OwnerClient().list_agents() if a.get("pid")}
+    except OwnerClientError as exc:
+        logger.debug("fleet api: the owner could not be asked what it holds: %s", exc)
+        return None
+
+
+def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    # Three values, not two, and the third is why this is not a boolean. A
+    # terminal exists only for a process the framework started and still holds
+    # (task 5.2), so:
+    #   started-here  the owner holds this pty; it can be typed into
+    #   foreign       nobody here holds it; there is no terminal and cannot be
+    #   unknown       the owner could not be asked, so we do not know which
+    # Collapsing `unknown` into `foreign` would let the screen say "no terminal"
+    # about an agent that has one, whenever the owner is merely restarting.
+    if owned is None:
+        population, terminal_label = "unknown", None
+    elif agent.pid in owned:
+        population, terminal_label = "started-here", owned[agent.pid].get("label")
+    else:
+        population, terminal_label = "foreign", None
     return {
         "pid": agent.pid,
         "name": agent.name,
@@ -64,6 +101,11 @@ def _agent_payload(agent, state) -> Dict[str, Any]:
         # Present only when the state could not be determined. Its absence is
         # meaningful: it means the state IS determined.
         "unknown_reason": state.reason,
+        # Which population this agent belongs to, as a CARRIED fact rather than
+        # something the surface infers (task 5.1). A terminal is attachable only
+        # for `started-here`, and only under the label named here.
+        "population": population,
+        "terminal_label": terminal_label,
     }
 
 
@@ -87,6 +129,9 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
 
     states = {agent.pid: read_state(agent.session_log) for agent in agents}
     by_pid = {agent.pid: agent for agent in agents}
+    # Asked once for the whole listing, not once per agent: it is one socket
+    # round trip and the answer is the same for every row.
+    owned = _owned_by_pid()
 
     grouped: List[Dict[str, Any]] = []
     for project in projects:
@@ -98,7 +143,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "root": project.root,
             "sources": project.sources,
             "archived": project.archived,
-            "agents": [_agent_payload(a, states[a.pid]) for a in members],
+            "agents": [_agent_payload(a, states[a.pid], owned) for a in members],
         })
 
     # Counted from the data, never from a declaration — a "hidden" tally taken
@@ -116,6 +161,10 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         # log was observed ~25s stale while its session was actively working.
         # The surface must not present `quiet` as "nothing is happening".
         "quiet_means": "no outstanding tool call as of the session log's last flush",
+        # Said once at the top rather than repeated as a reason on every row: a
+        # screen that cannot offer a terminal ANYWHERE has one cause, and naming
+        # it once is the difference between "no terminals" and "we could not ask".
+        "owner_reachable": owned is not None,
     }
 
 
@@ -128,9 +177,15 @@ def fleet_agent_log(pid: int, limit: int = Query(60, ge=1, le=500)) -> Dict[str,
     rather than trusted from the caller: a pid is reused, and answering with
     whatever log a stale pid maps to would serve one session's conversation
     under another's name.
+
+    ⚠ It used to re-discover the WHOLE FLEET to find one pid, and the surface
+    polls an open log every 5 seconds. `discover_agents()` asks git for the
+    project root and the branch of every agent — two subprocesses each — so one
+    log view cost ~44 of them. Measured 2026-08-19: **202 ms for the fleet
+    against 3.5 ms for one agent, 58x**. Task 6.2's rule read the other way
+    round: reading one log must not list every agent.
     """
-    agents = {a.pid: a for a in discover_agents(include_oneshot=True)}
-    agent = agents.get(pid)
+    agent = discover_agent(pid)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"no live agent with pid {pid}")
 
@@ -342,3 +397,134 @@ def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
     names = [p.name for p in discover_projects(discover_agents(include_oneshot=False),
                                                registered=_safe_registry())]
     return fleet_layout.apply_to(saved, names)
+
+
+@router.get("/api/fleet/agents/{pid}/state")
+def fleet_agent_state(pid: int) -> Dict[str, Any]:
+    """One agent's measured state, without touching the rest of the fleet (task 6.2).
+
+    The listing endpoint already carries state for every agent, and that is the
+    right shape for a list. This exists for the other motion: a tile that is open
+    and refreshing, which would otherwise re-measure 22 agents to redraw one.
+
+    `unknown_reason` is present only when the state could NOT be determined, and
+    its absence is meaningful — it means the state IS determined. A state field
+    that always carries a reason string teaches the reader to ignore it.
+    """
+    agent = discover_agent(pid)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"no live agent with pid {pid}")
+
+    state = read_state(agent.session_log)
+    return {
+        "pid": agent.pid,
+        "name": agent.name,
+        "session_id": agent.session_id,
+        "binding_confirmed": agent.binding_confirmed,
+        "sources": agent.sources,
+        "state": state.state,
+        "tool": state.tool,
+        "tool_elapsed_seconds": state.tool_elapsed,
+        "other_tools": state.other_tools,
+        "last_movement_seconds": state.last_movement_age,
+        "unknown_reason": state.reason,
+        # Repeated from the listing on purpose: a caller polling this endpoint
+        # alone would otherwise have no way to learn that a quiet agent may be
+        # mid-turn, and would present `quiet` as "nothing is happening".
+        "quiet_means": "no outstanding tool call as of the session log's last flush",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# The terminal, both directions (tasks 5.3 and 6.4)
+# --------------------------------------------------------------------------- #
+
+@router.websocket("/ws/fleet/agents/{label}/terminal")
+async def fleet_terminal(websocket: WebSocket, label: str) -> None:
+    """Relay one framework-owned terminal to a browser, in both directions.
+
+    **Wire shape, and the split is deliberate.** Terminal bytes travel as BINARY
+    frames in both directions; control travels as JSON text. Terminal output is
+    not text — a read can end mid-UTF-8, which is ordinary on a pty — so carrying
+    it as a string would force a lossy decode at the boundary, silently, in the
+    direction that looks like data. Control messages are structured and rare, so
+    they pay for JSON without anyone noticing.
+
+        server → browser   binary  raw terminal output
+                           text    {"event": "attached"|"ended", ...}
+        browser → server   binary  keystrokes, verbatim
+                           text    {"resize": {"rows": n, "cols": n}}
+
+    **Nothing is persisted** (task 5.3): bytes pass through and are not written
+    down, cached, or logged. The diagnostics below name the stream and the
+    failure kind only — never a byte of what crossed it.
+
+    **This is not the agent's lifetime.** Closing the view detaches; it never
+    stops the agent (task 5.4). The owner keeps holding the pty, and another
+    viewer — or the same one, later — attaches to the same terminal and is sent
+    the buffered tail so its first screen is the screen as it already is.
+    """
+    await websocket.accept()
+    stream = OwnerStream(label)
+    try:
+        ack = await stream.open()
+    except OwnerUnavailable as exc:
+        # Said out loud rather than closed silently: a terminal that opens onto
+        # nothing is a black rectangle the reader has no way to interpret.
+        await websocket.send_json({"event": "unavailable", "reason": str(exc)})
+        await websocket.close(code=1011)
+        return
+    except OwnerClientError as exc:
+        await websocket.send_json({"event": "refused", "reason": str(exc)})
+        await websocket.close(code=1008)
+        return
+
+    await websocket.send_json({"event": "attached", **ack})
+    logger.info(
+        "fleet terminal: a browser attached to %s (%s replayed bytes, truncated=%s)",
+        label, ack.get("replayed_bytes"), ack.get("replay_truncated"),
+    )
+
+    async def to_browser() -> None:
+        async for data, replay in stream.frames():
+            del replay          # the replay marker was already reported in `attached`
+            await websocket.send_bytes(data)
+
+    async def to_agent() -> None:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            if (payload := message.get("bytes")) is not None:
+                await stream.write(payload)
+                continue
+            text = message.get("text")
+            if not text:
+                continue
+            try:
+                control = json.loads(text)
+            except ValueError:
+                logger.warning("fleet terminal: unparseable control message on %s", label)
+                continue
+            if size := control.get("resize"):
+                await stream.resize(int(size["rows"]), int(size["cols"]))
+
+    pump_out = asyncio.create_task(to_browser())
+    pump_in = asyncio.create_task(to_agent())
+    try:
+        # Either direction ending ends the session: a terminal that can still
+        # type but shows nothing, or shows output but cannot type, is worse than
+        # one that closed — it looks like it is working.
+        done, pending = await asyncio.wait(
+            {pump_out, pump_in}, return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+        for task in done:
+            if (exc := task.exception()) is not None and not isinstance(exc, WebSocketDisconnect):
+                logger.warning("fleet terminal: %s relay ended: %s", label, type(exc).__name__)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await stream.close()
+        logger.info("fleet terminal: a browser detached from %s", label)

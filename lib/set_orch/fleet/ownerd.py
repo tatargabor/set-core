@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import errno
 import json
 import logging
@@ -46,7 +47,9 @@ from typing import Any, Dict, List, Optional
 
 from . import scopes
 from .owner import FOREIGN, STARTED_HERE, AgentOwner, OwnedAgent, OwnerError, recover
-from .protocol import SUPPORTED_METHODS, Request, Response, make_error, make_result
+from .protocol import (
+    SUPPORTED_METHODS, Request, Response, make_error, make_frame, make_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +111,9 @@ class OwnerDaemon:
         self._drained: Dict[str, int] = {}
         self._server: Optional[asyncio.AbstractServer] = None
         self._stopping = asyncio.Event()
+        #: label -> the connections currently watching that terminal. A terminal
+        #: may have several viewers; none of them owns it.
+        self._subscribers: Dict[str, List[asyncio.StreamWriter]] = {}
 
     # -- the drain -------------------------------------------------------- #
 
@@ -143,6 +149,18 @@ class OwnerDaemon:
         if len(tail) > self.tail_bytes:
             del tail[: len(tail) - self.tail_bytes]
             self._dropped[label] = True
+        self._publish(label, data)
+
+    def _drain_from(self, data: bytes, label: str = "term") -> None:
+        """Feed one chunk as though the pty had produced it. Test seam only.
+
+        Named so it cannot be mistaken for a production path: the real drain is
+        driven by `loop.add_reader` on a pty master, and a test that reached for
+        that would need a pty, a child and a race.
+        """
+        self._drained[label] = self._drained.get(label, 0) + len(data)
+        self._tails.setdefault(label, bytearray()).extend(data)
+        self._publish(label, data)
 
     def _detach_drain(self, fd: int) -> None:
         try:
@@ -150,23 +168,101 @@ class OwnerDaemon:
         except (OSError, ValueError, RuntimeError) as exc:
             logger.debug("fleet owner: removing reader for fd %s: %s", fd, exc)
 
+    # -- the stream (task 5.3 / 6.4) ------------------------------------- #
+
+    #: How much unwritten output a viewer may accumulate before it is dropped.
+    #: A viewer that cannot keep up must not be able to stall the drain, because
+    #: the drain is what keeps the AGENT running (see the module header).
+    SLOW_VIEWER_BYTES = 4 * 1024 * 1024
+
+    def _publish(self, label: str, data: bytes) -> None:
+        """Push one chunk to every viewer of this terminal.
+
+        Written without awaiting, because this runs inside the drain callback and
+        the drain must never block: an owner that waits on a slow browser is an
+        owner that is not reading the pty, and an agent whose pty is not read
+        freezes after about a screenful.
+
+        So backpressure is handled by DROPPING the viewer rather than by slowing
+        the source. A dropped viewer sees its stream end and can reattach — a
+        frozen agent looks like one that is thinking.
+        """
+        watchers = self._subscribers.get(label)
+        if not watchers:
+            return
+        frame = (make_frame(label, base64.b64encode(data).decode("ascii")) + "\n").encode("utf-8")
+        for writer in list(watchers):
+            try:
+                pending = writer.transport.get_write_buffer_size()  # type: ignore[union-attr]
+            except (AttributeError, TypeError):
+                pending = 0
+            if writer.is_closing() or pending > self.SLOW_VIEWER_BYTES:
+                logger.warning(
+                    "fleet owner: dropping a viewer of %s (%s)",
+                    label, "closing" if writer.is_closing() else f"{pending} bytes behind",
+                )
+                self._unsubscribe(label, writer)
+                continue
+            try:
+                writer.write(frame)
+            except (ConnectionResetError, BrokenPipeError, RuntimeError) as exc:
+                logger.debug("fleet owner: viewer of %s went away: %s", label, exc)
+                self._unsubscribe(label, writer)
+
+    def _subscribe(self, label: str, writer: asyncio.StreamWriter) -> None:
+        self._subscribers.setdefault(label, []).append(writer)
+        logger.info(
+            "fleet owner: a viewer attached to %s (%d watching)",
+            label, len(self._subscribers[label]),
+        )
+
+    def _unsubscribe(self, label: str, writer: asyncio.StreamWriter) -> None:
+        watchers = self._subscribers.get(label)
+        if not watchers or writer not in watchers:
+            return
+        watchers.remove(writer)
+        if not watchers:
+            self._subscribers.pop(label, None)
+        logger.info("fleet owner: a viewer detached from %s (%d left)", label, len(watchers))
+
     def _forget(self, label: str) -> None:
         self._tails.pop(label, None)
         self._dropped.pop(label, None)
         self._drained.pop(label, None)
+        # The viewers are told by their stream ending, not by a message: a
+        # terminal that stopped and a connection that dropped look the same from
+        # the browser, and both mean "reattach or give up".
+        for writer in self._subscribers.pop(label, []):
+            if not writer.is_closing():
+                writer.close()
 
     # -- dispatch --------------------------------------------------------- #
 
-    async def dispatch(self, request: Request) -> Response:
+    #: Methods whose meaning depends on WHICH connection asked. Everything else
+    #: is a fact about the owner and answers the same on any connection.
+    CONNECTION_SCOPED = frozenset({"attach", "detach"})
+
+    async def dispatch(
+        self, request: Request, writer: Optional[asyncio.StreamWriter] = None
+    ) -> Response:
         if request.method not in SUPPORTED_METHODS:
             return make_error(
                 request.id,
                 f"unknown method {request.method!r}; this owner answers "
                 + ", ".join(sorted(SUPPORTED_METHODS)),
             )
+        if request.method in self.CONNECTION_SCOPED and writer is None:
+            return make_error(
+                request.id,
+                f"{request.method} is meaningless without a connection to attach; "
+                "it cannot be issued out of band",
+            )
         handler = getattr(self, f"_do_{request.method}")
         try:
-            result = await handler(request.params)
+            if request.method in self.CONNECTION_SCOPED:
+                result = await handler(request.params, writer)
+            else:
+                result = await handler(request.params)
         except OwnerError as exc:
             # An expected refusal — a label already owned, a scope that will not
             # die, a terminal this owner does not hold. Not a daemon fault.
@@ -258,6 +354,49 @@ class OwnerDaemon:
         self.owner.resize(params["label"], int(params["rows"]), int(params["cols"]))
         return {"ok": True}
 
+    async def _do_attach(
+        self, params: Dict[str, Any], writer: asyncio.StreamWriter
+    ) -> Dict[str, Any]:
+        """Turn this connection full-duplex for one terminal.
+
+        After this the owner pushes frames as output arrives, and the same
+        connection keeps accepting `write`/`resize`/`detach` — one socket for
+        both directions, because a terminal split across two connections can
+        deliver a keystroke before the output that prompted it.
+
+        The buffered tail is sent first and **marked as replay**, so the viewer
+        sees the screen as it already is rather than starting blank halfway
+        through a session. A viewer that cannot tell replay from live output has
+        no way to know whether what it is looking at is happening now.
+        """
+        label = params["label"]
+        if label not in self._tails:
+            raise OwnerError(f"no terminal owned here for {label}")
+        self._subscribe(label, writer)
+        tail = bytes(self._tails[label])
+        if tail:
+            writer.write(
+                (make_frame(label, base64.b64encode(tail).decode("ascii"), replay=True) + "\n").encode("utf-8")
+            )
+        return {
+            "attached": label,
+            "replayed_bytes": len(tail),
+            # A replay that begins mid-stream says so; the viewer's first screen
+            # is then honestly incomplete rather than silently so.
+            "replay_truncated": self._dropped.get(label, False),
+            "viewers": len(self._subscribers.get(label, [])),
+        }
+
+    async def _do_detach(
+        self, params: Dict[str, Any], writer: asyncio.StreamWriter
+    ) -> Dict[str, Any]:
+        """Stop watching. Never stops the AGENT — that is `stop`, and it is a
+        different act with a different consequence (task 5.4: stopping is
+        deliberate, never a side effect of closing a view)."""
+        label = params["label"]
+        self._unsubscribe(label, writer)
+        return {"detached": label, "viewers": len(self._subscribers.get(label, []))}
+
     async def _do_tail(self, params: Dict[str, Any]) -> Dict[str, Any]:
         import base64
         label = params["label"]
@@ -291,12 +430,17 @@ class OwnerDaemon:
                 except (ValueError, UnicodeDecodeError) as exc:
                     response: Response = make_error("", f"unparseable request: {exc}")
                 else:
-                    response = await self.dispatch(request)
+                    response = await self.dispatch(request, writer)
                 writer.write((response.to_json() + "\n").encode("utf-8"))
                 await writer.drain()
         except (ConnectionResetError, BrokenPipeError):
             logger.debug("fleet owner: client went away mid-request")
         finally:
+            # A connection that goes away is a viewer that went away. Nothing
+            # else reports it, and a subscriber list that only grows would push
+            # into dead transports for the life of the service.
+            for label in list(self._subscribers):
+                self._unsubscribe(label, writer)
             writer.close()
 
     def _claim_socket(self) -> None:
