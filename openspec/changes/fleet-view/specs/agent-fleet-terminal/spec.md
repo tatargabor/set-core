@@ -102,6 +102,43 @@ agent, on a different tile, belonging to someone who is not looking.
 - **THEN** it is treated as running and the resume is refused, rather than attempted on the
   optimistic reading
 
+### Requirement: Starting work goes through the engine's one entry point, not a second spawn path
+
+Where the framework has a work-cycle engine, the surface SHALL start a work unit by invoking that
+engine's command entry point — run under the terminal the framework owns — and SHALL NOT spawn an
+agent process directly for that purpose. Starting a bare interactive session, with no unit and no
+change, is a different act and SHALL be presented as a different act.
+
+The engine's contract states that any caller starting a unit, **including the framework's own
+surface**, uses the same entry point and that no second start mechanism exists. A surface that
+spawned its own agent would be that second mechanism — and worse for this screen than for the
+engine, because a run started outside the engine is absent from the engine's recorded state, which
+is the source this screen reads to say what an agent is doing. The screen would have started
+something it then cannot describe.
+
+The two acts must also stay visibly different to the reader. A unit has a change, a group and a
+verdict; a bare session has none of those. Showing a bare session with those fields empty invites
+the reader to think the work has no progress, when it has no such concept.
+
+#### Scenario: The surface starts a unit
+- **WHEN** a work unit is started from the surface
+- **THEN** the engine's command is invoked, and the run is indistinguishable from an agent-started
+  one except in what recorded who started it
+
+#### Scenario: The terminal still belongs to the surface
+- **WHEN** the engine's command is invoked from the surface
+- **THEN** it runs under the pseudo-terminal the framework owns, so every terminal rule above applies
+  to it unchanged
+
+#### Scenario: A bare session is labelled as one
+- **WHEN** an interactive session is started with no work unit
+- **THEN** it is presented as a bare session, and no change, group or verdict field is shown for it —
+  rather than shown empty
+
+#### Scenario: No second start path exists
+- **WHEN** the ways the surface can start an agent are enumerated
+- **THEN** exactly one of them starts a work unit
+
 ### Requirement: Terminal traffic travels in both directions and is never persisted
 
 The framework SHALL stream the agent's terminal output to the connected browser and SHALL deliver

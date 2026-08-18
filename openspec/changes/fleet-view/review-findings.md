@@ -474,6 +474,28 @@ readme updates.
 
 ---
 
+## Addendum 2026-08-18 — what the work-cycle engine changed about these findings
+
+A sibling change (the work-cycle engine) landed its plan and lands its implementation before this
+screen. It owns data this change was going to derive, and two findings move as a result. Recorded
+here rather than silently edited, because a finding that quietly disappears is indistinguishable
+from one that was never real.
+
+- **CB-11** (task 2.6 duplicates the existing capability detector) — **narrowed, not closed.** The
+  capability report now reads the module install record, which is a declaration rather than a second
+  detector, so the two-answers-that-will-disagree problem goes away for projects that have a record.
+  The bash audit and the fleet still both answer for projects that do not, and there the finding
+  stands unchanged.
+- **CB-8** (the framework's own short-lived agent subprocesses become tiles reported as waiting) —
+  **still open, and now has a route to a fix rather than only a complaint.** Units the engine starts
+  hold a session-scoped seat and appear in its recorded run state, so the engine's own record is the
+  discriminator the finding said was missing. That does not fix it: the engine has to exist, be
+  adopted by the project, and the fleet has to consult it, none of which is written yet.
+
+No other finding's status changed. In particular CB-7 — the whole instruct capability resting on a
+bus whose properties this repository's bus does not have — is untouched by this: the engine is not a
+messaging bus and does not supply seats, wake reports or delivery outcomes.
+
 ## Closing
 
 Both branches ran and both produced findings, so neither excused the other. Neither manufactured a

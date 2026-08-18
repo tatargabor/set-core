@@ -112,6 +112,46 @@ a reader can act immediately, and it is invisible in every other state model her
 - **WHEN** an agent's log has not moved for a long time and the record reports it waiting
 - **THEN** it is reported as waiting for a person, not as merely still
 
+### Requirement: What an agent is working towards is read from the engine's record, never guessed
+
+Where a project is driven by the work-cycle engine, the framework SHALL take an agent's declared
+purpose and its progress from the engine's recorded run state — which change it is running, which
+group, and the verdict of the last unit — and SHALL measure progress in completed tasks rather than
+in turns or events. A recorded state claiming a run in progress whose process is gone SHALL be
+reported as stale, never as running. Where no such record exists, the framework SHALL report no
+purpose rather than inferring one.
+
+An agent without a stated purpose cannot be told apart from the agent beside it, which is the
+complaint this screen exists to answer: several agents in one project, all of them "busy", none of
+them saying what for. The engine already records the answer, and records it where a reader can read
+it without running anything — so guessing here would be inventing a field next to a source.
+
+Progress is counted in completed tasks because the alternatives measure the wrong thing. A turn
+count and an event count both rise while an agent goes round in circles; a completed task is
+movement. The two are not interchangeable, and a screen that shows the first as the second reports
+progress that is not happening.
+
+The stale rule is the same one this capability applies to every other borrowed source: a record is
+believed only while its subject is alive, and an unbelievable record yields unknown rather than the
+comfortable answer it happens to contain.
+
+#### Scenario: An adopted project reports purpose and progress
+- **WHEN** an agent runs in a project the engine drives, and the engine has recorded a run
+- **THEN** the agent reports what it is working on and how far it has got, from that record
+
+#### Scenario: A stale run is not reported as running
+- **WHEN** recorded state claims a run in progress whose process is no longer alive
+- **THEN** it is reported as stale, distinguishably from a live run
+
+#### Scenario: No engine, no invented purpose
+- **WHEN** a project has no engine record
+- **THEN** the agent reports no purpose, and the absence is stated rather than shown as an empty
+  label
+
+#### Scenario: Progress is completed work, not activity
+- **WHEN** progress is reported
+- **THEN** it is derived from completed tasks, and not from a count of turns or events
+
 ### Requirement: A phase is reported only where the agent declared one
 
 The framework SHALL report an agent's phase of work only from a declaration made by that agent, and

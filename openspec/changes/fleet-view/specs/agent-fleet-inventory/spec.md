@@ -167,12 +167,24 @@ A seat is stable for the life of the session; a process id is recycled by the op
 
 ### Requirement: A project reports what it has wired in, and dim is not absent
 
-The framework SHALL report, per project, which framework capabilities are connected, derived from
-files present in the project. A capability that is supported but not connected SHALL be reported as
-not connected, distinctly from one that is unknown.
+The framework SHALL report, per project, which framework capabilities are connected. Where a project
+carries an install record naming the modules it has and their versions, that record SHALL be the
+source, and a version the project expects but does not have SHALL be reported as a mismatch. Only
+where no such record exists MAY presence be inferred from files, and an inference SHALL be marked as
+one. A capability that is supported but not connected SHALL be reported as not connected, distinctly
+from one that is unknown.
 
 The distinction is the point. "Not wired in" invites wiring it in; "unknown" does not. Collapsing
 the two produces a screen that quietly stops offering a capability the project could have.
+
+**The source order matters and it was nearly the wrong way round.** An earlier draft of this
+requirement derived everything from files present, which is sniffing for a fact the project is about
+to state outright: module installation records which modules a project asked for and at which
+version, and it is refused at validation time if that declaration is incomplete. Reading the files
+instead would re-derive, less reliably, something already written down — and it cannot express a
+version mismatch at all, because a file is either there or not. A declaration and a guess are not
+two implementations of one check; they answer different questions, and only one of them can be
+wrong about a project that is half-upgraded.
 
 #### Scenario: A connected capability
 - **WHEN** the files that constitute a capability are present in a project
@@ -181,6 +193,18 @@ the two produces a screen that quietly stops offering a capability the project c
 #### Scenario: A capability that could be connected
 - **WHEN** those files are absent but the capability applies to any project
 - **THEN** the project reports it as not connected, not as absent
+
+#### Scenario: A declared install record is the source
+- **WHEN** a project carries a record of the modules it installed
+- **THEN** the capability report is taken from that record rather than from the presence of files
+
+#### Scenario: A version mismatch is reported as such
+- **WHEN** a project expects a module version it does not have
+- **THEN** the mismatch is reported, distinctly from the module being absent
+
+#### Scenario: An inference says it is one
+- **WHEN** no install record exists and presence is inferred from files
+- **THEN** the report marks that entry as inferred rather than declared
 
 #### Scenario: The capability set is data, not a fixed list
 - **WHEN** a new capability is added to the framework

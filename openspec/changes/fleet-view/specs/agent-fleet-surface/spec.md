@@ -45,6 +45,35 @@ the one agent that is waiting — which is the window-switching the screen repla
 - **WHEN** the agent area is compacted for density
 - **THEN** the count of waiting agents remains readable
 
+### Requirement: A project awaiting a human is surfaced even when no agent is running
+
+A project holding work that is waiting for a human answer SHALL be surfaced as waiting even when no
+agent process is running in it, and its tile SHALL count what is awaiting an answer rather than
+counting agents.
+
+This is the case an agent-centric screen gets wrong by construction, and it is the common case
+rather than an edge. An open decision is written into the task file and outlives the run that
+produced it, so the ordinary shape of a project blocked on a question is: no process alive, nothing
+to show on any agent tile, a project holding zero agents. Rendered by agent count, it is
+indistinguishable from a project with nothing to do — and it is the one project on the screen that
+a person could unblock in a minute.
+
+It is the same false absence this change exists to remove, arriving through the state that most
+needs a reader. A screen that lists running agents answers "who is working"; this screen has to
+answer "where has work stopped", and the stopped work usually has no one standing on it.
+
+#### Scenario: A stopped project with no agents is not empty
+- **WHEN** a project has work awaiting a human answer and no agent process running
+- **THEN** its tile reports it as awaiting an answer, not as holding nothing
+
+#### Scenario: The count is of what is waiting, not of who is present
+- **WHEN** a project tile shows a waiting count
+- **THEN** that count includes work awaiting an answer with no agent attached to it
+
+#### Scenario: The marker outlives every process
+- **WHEN** everything that produced the question has exited and restarted
+- **THEN** the project is still surfaced as awaiting an answer
+
 ### Requirement: An agent tile carries state, log excerpt and its own input
 
 Each agent tile SHALL show the agent's identity, its derived state, a recent excerpt of its log, and

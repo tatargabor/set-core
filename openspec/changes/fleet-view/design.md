@@ -83,14 +83,14 @@ not reusable at this scale.
 
 ---
 
-## 3. Instruction: three outcomes, because there are three
+## 3. Instruction: four outcomes, and one of them has a clock
 
 A session running in someone else's terminal cannot be typed into. Injecting keystrokes into a
 foreign terminal is refused by the kernel on current systems (`dev.tty.legacy_tiocsti = 0`), and
 that is a boundary, not an obstacle to route around.
 
-So the instruction goes on the messaging bus, and the bus's own documented behaviour splits into
-three cases:
+So the instruction goes on the messaging bus. Its own documented behaviour splits into three cases —
+and a fourth was measured later, which is why the heading counts four:
 
 ```
   agent WORKING  →  a stop-hook prevents ending the turn with unread addressed mail
@@ -429,3 +429,75 @@ what is typed into it.
 Both are written against the *result*, not the *mechanism*: that a route returned a payload and
 that a tile rendered are compatible with the answer being wrong. The last check is to open the
 screen and look at it.
+
+---
+
+## 8. The work-cycle engine, which lands first and owns half of this screen's data
+
+*(Added 2026-08-18, after the engine's plan was written.)* A sibling change brings the consumer's
+proven sectioned work cycle into the framework as a module: an engine that runs a work unit in a
+fresh agent context, resolves task groups and their dependencies, hands a run its slice, takes a
+schema-constrained verdict, gates it, and records open decisions as durable markers in the task
+file. It lands **before** this screen, by an explicit ordering decision — the modern foundation is
+lifted first and orchestration is rebuilt on it, never the reverse.
+
+That matters here more than a neighbouring change usually does, because **it owns the answers this
+screen was otherwise going to invent.** Five places moved:
+
+| what this screen needs | where it was going to come from | where it comes from now |
+|---|---|---|
+| what an agent is working towards | nowhere — a field with no source | the engine's recorded run state |
+| how far it has got | undefined | completed tasks in the change's task file |
+| starting work from the surface | spawning an agent process directly | the engine's one command entry point |
+| what a project has wired in | sniffing for files | the module install record, with versions |
+| answering a question an agent asked | a message to a session | the deferred-work connector, keyed |
+
+**The first row is the one that was actually missing**, and it came from the user rather than from
+the engine: an agent needs a stated purpose — why it is running — its name may even *be* that
+purpose, and how far it has got must be visible. Measured before writing it down: the phrase
+"declared focus" appeared exactly once in this change, in the proposal, as a field to render; the
+specs mentioned it only in a prohibition against persisting it, and the task list did not mention it
+at all. The screen was going to draw a field with no source, no vocabulary and no notion of
+progress. The engine supplies all three.
+
+**Progress is counted in completed tasks, and that is a borrowed answer rather than a fresh one.**
+The consumer's own cycle already settled it: a ticked task is real movement, a turn count is only
+activity. Conflating them produces a screen that shows a run going round in circles as progress,
+which is a false value of the most expensive kind — it is confidence about the one thing the reader
+opened the screen to check.
+
+**The third row is a constraint, not a gift.** The engine's contract says any caller starting a unit
+— naming the framework's own surface explicitly — uses the same entry point, and that no second
+mechanism exists. This change had three tasks describing the surface spawning an agent itself. Left
+as written they would have been that second mechanism, and the damage would land here rather than
+there: a run started outside the engine is absent from the engine's recorded state, so the screen
+would have started something it then could not describe. The resolution costs nothing — the surface
+runs *the engine's command* under the pty it owns, which leaves every terminal rule in §5.2 and §6.2
+untouched.
+
+**The fifth row exposed a gap neither the adversarial review nor the design had found.** An open
+decision is written into the task file and outlives the run that produced it. So the ordinary shape
+of a project blocked on a question is: question recorded, no process alive, nothing to show on any
+agent tile. An agent-centric screen renders that project as holding zero agents — indistinguishable
+from a project with nothing to do, and it is the single project on the screen a person could unblock
+in a minute. This is the change's own founding defect, arriving through the state that most needs a
+reader, and it required a new requirement rather than an adjustment.
+
+### 8.1 What happens where the engine is absent
+
+Every one of the five degrades to the posture this change already takes toward a missing bus (§4):
+the capability is absent, the absence is *stated*, and nothing is inferred to fill it. No purpose is
+shown rather than a guessed one; capability presence falls back to inference and says that it is an
+inference; the surface offers no unit-start where there is no engine; an answer has nowhere keyed to
+go, so the control is not offered. This screen must render a machine with no engine installed
+anywhere, because for a while that is every machine.
+
+### 8.2 The direction of the dependency, and what would make it wrong
+
+This change reads what the engine records; the engine knows nothing about this change. That
+direction is a requirement rather than an accident — the same rule the engine sets for itself
+against the orchestration core. If a task here ever needs the engine to write something *for the
+screen*, that is the signal the boundary has been drawn in the wrong place, and it should be raised
+rather than accommodated.
+
+---

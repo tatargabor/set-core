@@ -175,6 +175,36 @@ session before it is offered, and never taken from the number of lines a pattern
 - **THEN** each is resolved to a process and checked against its session, and no candidate comes from
   the number of matches a pattern returned
 
+### Requirement: An answer to an open decision goes to the connector, not to a session
+
+When what is being answered is an open decision recorded against a task, the framework SHALL deliver
+the answer to the deferred-work connector, keyed by the change and the task it answers, and SHALL
+NOT deliver it as a message to a session. The reported outcome SHALL be that the answer was
+recorded — never that an agent received it.
+
+The question outlives the run that asked it: that is the entire point of writing it into the task
+file. So by the time a person answers, the session that asked is usually gone, and a message
+addressed to it is delivered to nobody or held until it lapses. The durable question needs a durable
+answer, and the connector is the place that survives.
+
+Reporting it as *recorded* rather than *received* is the same discipline the delivery outcomes
+follow. An answer sitting in the connector has not been read by anything yet; it is read when the
+next unit starts. Saying "received" would claim an event that has not happened, and this time the
+event may be hours away.
+
+#### Scenario: An answer is keyed to what it answers
+- **WHEN** an open decision is answered from the surface
+- **THEN** the answer is written to the connector under the change and task it answers
+
+#### Scenario: The asking session no longer exists
+- **WHEN** the session that raised the decision has exited
+- **THEN** the answer is still accepted and recorded
+
+#### Scenario: Recorded is not received
+- **WHEN** an answer is recorded
+- **THEN** the outcome states that it is recorded and awaiting the next run, not that an agent has
+  seen it
+
 ### Requirement: An agent that cannot be instructed says so where the input would be
 
 When an agent has no bus identity — including when the bus is not installed in its project — the
