@@ -1,0 +1,28 @@
+#!/bin/bash
+# set-agent-owner — holds the terminals of agents started from the fleet screen.
+#
+# The systemd unit `templates/systemd/set-agent-owner.service` invokes exactly
+# this path (`%h/.local/bin/set-agent-owner serve --socket %t/...`), so the unit
+# and this wrapper must not drift apart.
+#
+# Why a wrapper rather than the `[project.scripts]` console script: on a machine
+# installed by `install.sh`, the pip console scripts are not deployed at all —
+# `~/.local/bin` holds SYMLINKS into `bin/` (measured 2026-08-18: `set-orch-core`
+# is a symlink here while `set-manager`, which exists only as a project script,
+# is absent). The pyproject entry stays for pip-installed contexts; both resolve
+# to the same module, so whichever lands at this path behaves identically.
+#
+# Same Python-resolution shape as `set-orch-core`: #!/usr/bin/env python3 would
+# pick up macOS system Python 3.9, which lacks what this needs.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+# `-m`, not a file path: the module uses package-relative imports, so running
+# `ownerd.py` directly fails on the first `from . import scopes`.
+exec env PYTHONPATH="$SET_TOOLS_ROOT/lib:$SET_TOOLS_ROOT/modules/web${PYTHONPATH:+:$PYTHONPATH}" \
+     "$PYTHON" -m set_orch.fleet.ownerd "$@"

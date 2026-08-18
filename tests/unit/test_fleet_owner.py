@@ -143,9 +143,9 @@ def test_population_is_about_the_handle_not_about_history():
 
 def test_orphans_are_live_framework_scopes_this_owner_does_not_hold(monkeypatch):
     live = [
-        Scope(unit="set-agent-mine.scope", pid=1, cgroup="/x", active=True),
-        Scope(unit="set-agent-stray.scope", pid=2, cgroup="/x", active=True),
-        Scope(unit="set-agent-dead.scope", pid=None, cgroup="/x", active=False),
+        Scope(unit="set-agent-mine.scope", pid=1, pids=[1], cgroup="/x", active=True, state="active"),
+        Scope(unit="set-agent-stray.scope", pid=2, pids=[2], cgroup="/x", active=True, state="active"),
+        Scope(unit="set-agent-dead.scope", pid=None, cgroup="/x", active=False, state="inactive"),
     ]
     monkeypatch.setattr(scopes_mod, "list_scopes", lambda: live)
     o = _owner_with("mine")
@@ -158,8 +158,8 @@ def test_orphans_are_live_framework_scopes_this_owner_does_not_hold(monkeypatch)
 
 def test_recover_stops_the_old_scope_before_it_resumes(monkeypatch):
     order = []
-    monkeypatch.setattr(scopes_mod, "get", lambda u: Scope(unit=u, pid=1, cgroup="/x", active=False)
-                        if order else Scope(unit=u, pid=1, cgroup="/x", active=True))
+    monkeypatch.setattr(scopes_mod, "get", lambda u: Scope(unit=u, pid=None, cgroup="/x", active=False, state="inactive")
+                        if order else Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
 
     def fake_stop(unit, **kw):
         order.append("stop")
@@ -180,7 +180,8 @@ def test_recover_refuses_to_resume_when_the_scope_will_not_die(monkeypatch):
     other, and nothing reports it (design §6.1). So a stop that did not take
     aborts the recovery — it does not proceed hopefully.
     """
-    monkeypatch.setattr(scopes_mod, "get", lambda u: Scope(unit=u, pid=1, cgroup="/x", active=True))
+    monkeypatch.setattr(scopes_mod, "get",
+                        lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
     monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: False)
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
@@ -195,14 +196,15 @@ def test_recover_rechecks_the_state_rather_than_trusting_the_stop_call(monkeypat
     wearing a success. The state now is the fact; the call's opinion of it a
     moment ago is not.
     """
-    monkeypatch.setattr(scopes_mod, "get", lambda u: Scope(unit=u, pid=1, cgroup="/x", active=True))
+    monkeypatch.setattr(scopes_mod, "get",
+                        lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
     monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: True)   # lies
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
 
     with pytest.raises(OwnerError) as excinfo:
         recover(o, unit="set-agent-x.scope", session_id="s1", cwd="/tmp")
-    assert "came back active" in str(excinfo.value)
+    assert "is not gone" in str(excinfo.value)
 
 
 def test_a_resumed_agent_says_it_was_resumed(monkeypatch):
@@ -216,3 +218,78 @@ def test_a_resumed_agent_says_it_was_resumed(monkeypatch):
     monkeypatch.setattr(o, "start", lambda *a, **k: captured.update(k) or "ok")
     recover(o, unit="set-agent-x.scope", session_id="sess-42", cwd="/tmp")
     assert captured["resumed_session"] == "sess-42"
+
+
+# --------------------------------------------------------------------------- #
+# "gone" is about the PROCESSES — measured 2026-08-18 on a live agent
+# --------------------------------------------------------------------------- #
+
+def test_a_deactivating_scope_holding_a_live_pid_is_not_gone():
+    """The defect this file did not catch, and it failed in the reassuring
+    direction. Measured on a real interactive agent: `stop()` returned
+    `gone=True` in **0.0 seconds** and logged "stopped on SIGTERM" while
+    `systemctl show` said `deactivating` and the agent's pid was still alive.
+
+    The cause was a lossy conversion, not a missing wait: `Scope.active` is the
+    string comparison `ActiveState == "active"`, so every intermediate state read
+    as "not active" — which the stop path had been treating as "gone".
+    """
+    shutting_down = Scope(unit="set-agent-x.scope", pid=99, pids=[99],
+                          cgroup="/x", active=False, state="deactivating")
+    assert shutting_down.active is False          # it really is not active …
+    assert scopes_mod.scope_is_gone(shutting_down) is False   # … and it is NOT gone
+
+
+def test_a_bare_not_active_check_would_not_have_caught_it():
+    """Holds the pattern that was WRONG, so a later simplification back to
+    `not scope.active` fails here instead of looking identical and reporting a
+    running agent as stopped.
+    """
+    for state in ("activating", "deactivating", "reloading"):
+        scope = Scope(unit="set-agent-x.scope", pid=7, pids=[7],
+                      cgroup="/x", active=False, state=state)
+        assert not scope.active, "the old check would have called this gone"
+        assert not scopes_mod.scope_is_gone(scope), f"{state} with a live pid is not gone"
+
+
+def test_an_inactive_scope_with_no_processes_is_gone():
+    """The other direction matters as much: if nothing ever counts as gone, a
+    stop can never finish and recovery can never start.
+    """
+    finished = Scope(unit="set-agent-x.scope", pid=None, pids=[],
+                     cgroup="", active=False, state="inactive")
+    assert scopes_mod.scope_is_gone(finished) is True
+    assert scopes_mod.scope_is_gone(None) is True
+
+
+def test_recover_refuses_while_the_old_scope_is_still_shutting_down(monkeypatch):
+    """The §6.1 fork guard, in the exact shape that was open.
+
+    `recover()` re-reads the state rather than trusting `stop()`'s return — but a
+    re-read is only a guard if it asks a DIFFERENT question than the one that can
+    be wrong. It asked `still.active`, which is precisely what the stop path had
+    already mis-answered, so a scope that was `deactivating` with a live agent in
+    it passed both checks and the resume went ahead against a running session.
+    """
+    monkeypatch.setattr(
+        scopes_mod, "get",
+        lambda u: Scope(unit=u, pid=5, pids=[5], cgroup="/x", active=False, state="deactivating"),
+    )
+    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: True)   # claims success
+    o = AgentOwner()
+    monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
+
+    with pytest.raises(OwnerError) as excinfo:
+        recover(o, unit="set-agent-x.scope", session_id="s1", cwd="/tmp")
+    assert "is not gone" in str(excinfo.value)
+    assert "[5]" in str(excinfo.value), "the refusal must name the pids that are still there"
+
+
+def test_a_scope_that_is_shutting_down_is_still_listed_as_an_orphan(monkeypatch):
+    """And it is the orphan most worth showing — the one that will not die on
+    its own. Excluding it would hide exactly the case a human has to act on.
+    """
+    live = [Scope(unit="set-agent-stray.scope", pid=2, pids=[2],
+                  cgroup="/x", active=False, state="deactivating")]
+    monkeypatch.setattr(scopes_mod, "list_scopes", lambda: live)
+    assert [s.unit for s in AgentOwner().orphans()] == ["set-agent-stray.scope"]

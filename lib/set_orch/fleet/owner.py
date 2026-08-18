@@ -39,6 +39,7 @@ import pty
 import signal
 import struct
 import termios
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
@@ -69,6 +70,10 @@ class OwnedAgent:
     #: `/proc/<pid>/fd/<n>` for a master points at `/dev/ptmx`, and opening that
     #: allocates a NEW pair rather than returning this one (measured 2026-08-17).
     master_fd: int
+    #: The pid `pty.fork()` returned — this owner's own child, and the only pid
+    #: it may `waitpid()` on. NOT the same question as `pid`, which is whatever
+    #: `cgroup.procs` listed first and may name a grandchild.
+    child_pid: Optional[int] = None
     population: str = STARTED_HERE
     #: Set when the framework resumed an existing session rather than starting a
     #: new one, so the surface can say which of the two acts it performed.
@@ -104,7 +109,9 @@ class AgentOwner:
             raise OwnerError(f"{label} is already owned here")
         unit = scopes.unit_name(label)
         existing = scopes.get(unit)
-        if existing is not None and existing.active:
+        # `not is_gone`, never `active`: a scope in `deactivating` is not active
+        # and still holds live processes (measured 2026-08-18).
+        if existing is not None and not scopes.is_gone(unit):
             raise OwnerError(
                 f"{unit} is already running (pid {existing.pid}); "
                 "stop it before starting, or recover it instead"
@@ -149,7 +156,7 @@ class AgentOwner:
         cgroup = scopes.assert_sibling(unit)
         agent = OwnedAgent(
             label=label, unit=unit, pid=scope.pid, cwd=cwd,
-            master_fd=master_fd, resumed_session=resumed_session,
+            master_fd=master_fd, child_pid=pid, resumed_session=resumed_session,
         )
         self._agents[label] = agent
         logger.info(
@@ -175,6 +182,46 @@ class AgentOwner:
             os.close(agent.master_fd)
         except OSError as exc:
             logger.debug("fleet owner: closing master for %s: %s", agent.label, exc)
+        self._reap(agent)
+
+    def _reap(self, agent: OwnedAgent, *, timeout: float = 2.0) -> bool:
+        """Collect the forked child, so a long-lived owner does not fill with zombies.
+
+        MEASURED 2026-08-18: one start/stop cycle left the owner holding a
+        `Zs  [claude] <defunct>` child. This service is long-lived by design —
+        its uptime is every agent's uptime — so one unreaped child per agent
+        lasts as long as the service does.
+
+        The second cost is worse than the first, because it corrupts
+        measurement: `ps -p <pid>` reports a **zombie as an existing process**,
+        so a check written as "is the agent still running" answers yes for one
+        that is dead. That check misfired here while verifying the stop path,
+        which is the proxy-instead-of-the-thing class caught in the act.
+        """
+        if agent.child_pid is None:
+            return True
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                collected, status = os.waitpid(agent.child_pid, os.WNOHANG)
+            except ChildProcessError:
+                return True          # already reaped, or never ours to reap
+            except OSError as exc:
+                logger.debug("fleet owner: waitpid for %s: %s", agent.label, exc)
+                return False
+            if collected:
+                logger.info(
+                    "fleet owner: reaped %s (pid %s, exit status %s)",
+                    agent.label, collected, status,
+                )
+                return True
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "fleet owner: %s (pid %s) has not exited; not reaped",
+                    agent.label, agent.child_pid,
+                )
+                return False
+            time.sleep(0.05)
 
     # -- the relay -------------------------------------------------------- #
 
@@ -209,7 +256,10 @@ class AgentOwner:
             return os.read(agent.master_fd, size)
         except OSError as exc:
             if exc.errno in (errno.EIO, errno.EBADF):
+                # EOF on the master means the agent's tty closed, so the process
+                # is on its way out — reap it here or nothing ever will.
                 self._agents.pop(label, None)
+                self._reap(agent)
                 return b""
             raise
 
@@ -253,7 +303,10 @@ class AgentOwner:
         """
         return [
             scope for scope in scopes.list_scopes()
-            if scope.active and self.population_of(scope.unit) == FOREIGN
+            # A scope that is shutting down but still holds a pid is an orphan
+            # too — and the one most worth showing, because it is the one that
+            # will not die on its own.
+            if not scopes.scope_is_gone(scope) and self.population_of(scope.unit) == FOREIGN
         ]
 
 
@@ -287,7 +340,7 @@ def recover(
     """
     unit = scopes._as_scope(unit)
     scope = scopes.get(unit)
-    if scope is not None and scope.active:
+    if scope is not None and not scopes.is_gone(unit):
         logger.info("fleet owner: recovery stopping %s before resume", unit)
         if not scopes.stop(unit):
             raise OwnerError(
@@ -297,8 +350,14 @@ def recover(
     # Re-read rather than trust the stop's return: the check that matters is the
     # state now, not the call's opinion of it a moment ago.
     still = scopes.get(unit)
-    if still is not None and still.active:
-        raise OwnerError(f"{unit} came back active; refusing to resume")
+    if still is not None and not scopes.is_gone(unit):
+        # ⚠ The re-read is only a guard if it asks a DIFFERENT question than the
+        # one that can be wrong. It used to ask `still.active`, which is exactly
+        # what `stop()` had already mis-answered — so the check that exists to
+        # prevent the §6.1 silent fork passed on a scope whose agent was alive.
+        raise OwnerError(
+            f"{unit} is not gone (state {still.state or '?'}, pids {still.pids}); refusing to resume"
+        )
 
     argv = list(resume_argv or ["claude", "--dangerously-skip-permissions", "--resume", session_id])
     return owner.start(

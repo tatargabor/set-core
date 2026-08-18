@@ -58,11 +58,20 @@ class Scope:
     #: The first live pid inside the scope, or None when it holds none.
     pid: Optional[int]
     cgroup: str
+    #: `ActiveState == "active"`. Deliberately NOT the same question as "is it
+    #: gone" — see `state` below and `_await_gone`.
     active: bool
     #: Every live pid in the scope. A scope normally holds one, but an agent that
     #: spawns children holds more, and stopping is a property of the unit rather
     #: than of any one of them.
     pids: List[int] = field(default_factory=list)
+    #: systemd's raw `ActiveState`. Kept because collapsing it into `active`
+    #: throws away the one distinction that matters when stopping: `deactivating`
+    #: is not `active`, and its processes are still running. MEASURED 2026-08-18
+    #: on a live interactive agent — `stop()` returned "gone" in 0.0s and logged
+    #: "stopped on SIGTERM" while the scope was `deactivating` and its pid was
+    #: still alive.
+    state: str = ""
 
     @property
     def label(self) -> str:
@@ -155,8 +164,10 @@ def start(
     """
     unit = unit_name(label)
     existing = get(unit)
-    if existing is not None and existing.active:
-        raise ScopeError(f"{unit} is already running (pid {existing.pid})")
+    # `not is_gone`, not `active`: a scope still shutting down holds its name and
+    # its processes, and starting into it collides with both.
+    if existing is not None and not is_gone(unit):
+        raise ScopeError(f"{unit} is already running (pid {existing.pid}, state {existing.state or '?'})")
 
     cmd = [
         "systemd-run", "--user", "--scope", "--collect", "--quiet",
@@ -235,6 +246,7 @@ def get(unit: str) -> Optional[Scope]:
         pids=members,
         cgroup=cgroup,
         active=state == "active",
+        state=state,
     )
 
 
@@ -310,16 +322,62 @@ def stop(unit: str, *, grace: float = 5.0, kill_grace: float = 5.0) -> bool:
     return False
 
 
+#: States in which systemd still has work to do on a unit. None of them is
+#: `active`, and every one of them can hold live processes — which is exactly
+#: why "not active" is the wrong question to ask when stopping.
+LIVE_STATES = frozenset({"active", "activating", "deactivating", "reloading"})
+
+
+def is_gone(unit: str) -> bool:
+    """Whether a scope is REALLY gone — no processes left, not merely not-`active`.
+
+    MEASURED 2026-08-18 on a live interactive agent, and the defect this replaces
+    failed in the reassuring direction: `stop()` returned `gone=True` in **0.0
+    seconds** and logged "stopped on SIGTERM" while `systemctl show` reported
+    `deactivating` and the agent's pid was **still alive**. The old check was
+    `not scope.active`, and `active` is the string comparison `ActiveState ==
+    "active"` — so every intermediate state read as gone the instant the stop was
+    requested, before anything had died.
+
+    Two things make it worth this much comment. It is **load-bearing for task
+    5.11**: `recover()` stops an orphaned scope and re-reads before resuming,
+    precisely so a resume never lands on a live session — but a re-read that asks
+    the same wrong question returns the same wrong answer, so the guard against
+    the §6.1 silent fork was open. And the surface would have reported an agent
+    as stopped while it was running, which is the false-value class.
+
+    So the question asked is about the PROCESSES, with the state as a secondary
+    check rather than the primary one: a cgroup that still holds a pid is not
+    gone, whatever systemd calls the unit at that moment.
+    """
+    return scope_is_gone(get(unit))
+
+
+def scope_is_gone(scope: Optional[Scope]) -> bool:
+    """The same question asked of a Scope already in hand.
+
+    Separate from `is_gone` so a caller that already holds the object — every
+    caller iterating `list_scopes()` — does not pay a second `systemctl show`
+    per unit just to re-derive what it is looking at. One definition, two
+    entry points, so the two cannot drift.
+    """
+    if scope is None:
+        return True
+    # The processes are the fact. A cgroup that still holds a pid is not gone,
+    # whatever systemd calls the unit at this moment.
+    if scope.pids:
+        return False
+    return scope.state not in LIVE_STATES
+
+
 def _await_gone(unit: str, seconds: float, interval: float = 0.2) -> bool:
     import time
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        remaining = get(unit)
-        if remaining is None or not remaining.active:
+        if is_gone(unit):
             return True
         time.sleep(interval)
-    remaining = get(unit)
-    return remaining is None or not remaining.active
+    return is_gone(unit)
 
 
 def scope_of(pid: int) -> Optional[str]:
