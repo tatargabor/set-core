@@ -124,3 +124,67 @@ def test_the_marker_would_have_been_found_if_it_had_leaked(tmp_path, caplog):
     found_on_disk = [p for p in _files_under(scratch) if MARKER in p.read_text()]
     found_in_log = [r for r in caplog.records if MARKER in r.getMessage()]
     assert found_on_disk and found_in_log, "the detector cannot see a leak it was shown"
+
+
+# --------------------------------------------------------------------------- #
+# watching the fleet costs a bounded number of file watchers — task 3.7
+# --------------------------------------------------------------------------- #
+
+def _inotify_fds() -> int:
+    """How many inotify instances THIS process holds."""
+    count = 0
+    for name in os.listdir("/proc/self/fd"):
+        try:
+            if os.readlink(f"/proc/self/fd/{name}") == "anon_inode:inotify":
+                count += 1
+        except OSError:
+            continue
+    return count
+
+
+def test_the_instrument_can_allocate_a_watcher_at_all():
+    """⚠ Run FIRST, because the measurement below is worthless without it.
+
+    Measured 2026-08-17 on this machine (recorded in `evidence-discipline.md`): a
+    test written to count watcher allocations returned **0 for every variant**,
+    before and after, and the number read as efficiency. It was not a
+    measurement at all — the kernel's per-user table was full, every allocation
+    failed, and the library silently fell back to polling. A resource meter
+    cannot be trusted while the resource is exhausted, and the failure looks like
+    good news.
+
+    So one unit is allocated by hand and checked to succeed before any zero
+    below is believed.
+    """
+    import ctypes
+
+    libc = ctypes.CDLL("libc.so.6", use_errno=True)
+    fd = libc.inotify_init()
+    if fd < 0:
+        errno = ctypes.get_errno()
+        pytest.skip(
+            f"the inotify table is exhausted (errno {errno}); every count here "
+            "would be a false zero rather than a measurement"
+        )
+    os.close(fd)
+
+
+def test_reading_the_whole_fleet_allocates_no_watchers(tmp_path):
+    """Task 3.7's requirement is that the cost does not GROW with the agent
+    count. It is met by construction rather than by a cap: the fleet polls, and
+    allocates none at all.
+
+    This holds that by construction, so adding a watcher to the read path fails
+    here — where the reason is written down — rather than on a machine whose
+    table happens to be nearly full, months later, as an unrelated feature going
+    quiet.
+    """
+    from set_orch.fleet.discovery import discover_agents, discover_projects
+
+    before = _inotify_fds()
+    agents = discover_agents(include_oneshot=True)
+    discover_projects(agents, registered=[])
+    for agent in agents[:5]:
+        read_state(agent.session_log)
+    after = _inotify_fds()
+    assert after == before, f"the fleet read path allocated {after - before} watcher(s)"
