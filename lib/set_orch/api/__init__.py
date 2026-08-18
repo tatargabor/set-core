@@ -20,6 +20,7 @@ Modules:
 
 from fastapi import APIRouter
 
+from .fleet import router as fleet_router
 from .projects import router as projects_router
 from .orchestration import router as orchestration_router
 from .sessions import router as sessions_router
@@ -35,6 +36,10 @@ from .status_follow import router as status_follow_router
 
 # Unified router that combines all domain routers
 router = APIRouter()
+# FIRST, and the order is load-bearing (finding CB-16): FastAPI resolves routes in
+# registration order, so the `/api/{project}/...` families below would otherwise
+# swallow `/api/fleet/...` and answer it as a project named "fleet".
+router.include_router(fleet_router)
 router.include_router(projects_router)
 router.include_router(orchestration_router)
 router.include_router(sessions_router)

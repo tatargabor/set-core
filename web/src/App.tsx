@@ -8,6 +8,7 @@ import Memory from './pages/Memory'
 import Manager from './pages/Manager'
 import ProjectStatus from './pages/ProjectStatus'
 import ManagerIssues from './pages/ManagerIssues'
+import Fleet from './pages/Fleet'
 import ManagerMutes from './pages/ManagerMutes'
 // SentinelPage removed — controls now in StatusHeader, /sentinel redirects to /orch
 import UnifiedSidebar from './components/UnifiedSidebar'
@@ -215,6 +216,10 @@ export default function App() {
         <Route element={<GlobalLayout />}>
           <Route index element={<Manager />} />
           <Route path="issues" element={<ManagerIssues />} />
+          {/* Fleet — a walking skeleton at its own route, deliberately NOT the
+              landing screen: making it the index would break three existing E2E
+              specs (finding CB-5) and that decision is not part of this slice. */}
+          <Route path="fleet" element={<Fleet />} />
         </Route>
 
         {/* Project routes — /p/:name/* */}
