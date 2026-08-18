@@ -39,7 +39,9 @@ def trees(tmp_path):
 
 
 def _manifest(template: Path, entries: str) -> None:
-    _write(template / "manifest.yaml", "core:\n" + entries)
+    # A declaration states its own version and a treatment per file; the installer now
+    # refuses one that does not, so a fixture must be a valid declaration too.
+    _write(template / "manifest.yaml", 'version: "test"\ncore:\n' + entries)
 
 
 def _deploy(template, target, *, dry_run=False):
@@ -151,7 +153,7 @@ def test_differing_file_still_reports_overwrite(trees):
     """The honest case must keep saying 'overwrite' — this one is a real rewrite."""
     template, target = trees
     _write(template / "notes.md", "new\n")
-    _manifest(template, "  - notes.md\n")
+    _manifest(template, "  - path: notes.md\n    replace: true\n")
     _write(target / "notes.md", "old\n")
 
     msgs = _deploy(template, target, dry_run=True)

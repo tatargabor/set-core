@@ -15,6 +15,14 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 from .deploy_ledger import DeployLedger
+from .module_install import perform_announcement, read_install_record
+from .module_declaration import (
+    DeclarationError,
+    compare_generator_stamps,
+    load_declaration,
+    read_generator_stamp,
+    validate_declaration,
+)
 from .profile_types import ProjectType
 
 
@@ -53,6 +61,23 @@ _PATH_MAPPINGS: Dict[str, str] = {
 
 # Paths under these prefixes get a "set-" filename prefix when deployed
 _SET_PREFIX_PATHS = ("framework-rules/",)
+
+
+class ManifestValidationError(ValueError):
+    """A module's declaration is incomplete or names a guard the installer cannot apply.
+
+    Raised **before** anything is written. Every error is carried, not just the first: a
+    manifest with three untreated entries should be fixable in one pass, not three.
+    """
+
+    def __init__(self, manifest_path: Path, errors: "List[DeclarationError]") -> None:
+        self.manifest_path = manifest_path
+        self.errors = list(errors)
+        detail = "\n  ".join(str(e) for e in self.errors)
+        super().__init__(
+            f"{manifest_path} cannot be installed — {len(self.errors)} declaration "
+            f"error(s):\n  {detail}"
+        )
 
 
 def _target_path(template_rel: str, target_dir: Path) -> Path:
@@ -367,6 +392,24 @@ def _deploy_single_template(
     manifest = _load_manifest(template_dir)
     messages: List[str] = []
 
+    # A declared guard that does not take effect is an error, not silence. This repository
+    # has already shipped the opposite: two templates named their protected paths in a
+    # top-level list that nothing read, so the manifest promised a protection the installer
+    # never applied and a forced re-init overwrote the file anyway. Validating here — before
+    # a single byte is written — is what turns the declaration into something in force rather
+    # than something stated.
+    #
+    # A template with NO manifest is a different case and is left alone: the legacy path
+    # deploys everything, and refusing it would break projects that never declared anything.
+    if manifest is not None:
+        decl = load_declaration(
+            manifest, name=template_dir.name, source=template_dir / "manifest.yaml",
+            modules=modules,
+        )
+        errors = validate_declaration(decl, template_dir=template_dir)
+        if errors:
+            raise ManifestValidationError(template_dir / "manifest.yaml", errors)
+
     owns_ledger = ledger is None
     if ledger is None:
         ledger = DeployLedger.load(target_dir)
@@ -455,6 +498,27 @@ def _deploy_single_template(
             # Content matches template — safe to overwrite
             identical = True
 
+        # A generated artifact carries the version of the generator that produced it.
+        # Replacing a newer one with an older generator's output is a downgrade, and it is
+        # silent: the file still looks generated. Measured on this repository's own
+        # `openspec update` path, where a 1.1.1 artifact would overwrite a 1.9.0 one.
+        # A missing stamp on either side is unknown, and unknown leaves the destination
+        # alone — the conservative direction, because an unstamped destination may be the
+        # newer of the two.
+        if dst.exists():
+            stamp = compare_generator_stamps(
+                entry.path,
+                destination_stamp=read_generator_stamp(dst),
+                incoming_stamp=read_generator_stamp(src_path),
+            )
+            if stamp.verdict == "refuse":
+                verb = "Would skip" if dry_run else "Skipped"
+                messages.append(
+                    f"  {verb} (newer generator at destination): "
+                    f"{dst.relative_to(target_dir)} — {stamp.reason}"
+                )
+                continue
+
         verb = "Would deploy" if dry_run else "Deployed"
         if dst.exists() and force:
             # Say what actually happens. Reporting a byte-identical rewrite as an
@@ -473,6 +537,19 @@ def _deploy_single_template(
             ledger.record(key, src_path)
 
         messages.append(f"  {verb}: {dst.relative_to(target_dir)}")
+
+    # The announcement runs after the files, and only for a module that asked for one. It
+    # is the same call on every path that announces, rather than a behaviour one entry point
+    # happens to have — a behaviour only some entry points have is, statistically, a
+    # behaviour the system does not have.
+    if manifest is not None and decl.announce is not None:
+        ann_msgs, written_body = perform_announcement(decl, target_dir, dry_run=dry_run)
+        messages.extend(ann_msgs)
+        if written_body is not None and not dry_run:
+            record = read_install_record(target_dir)
+            record.announcements[decl.name] = written_body
+            record.modules.setdefault(decl.name, decl.version)
+            record.save(target_dir)
 
     if owns_ledger and not dry_run:
         ledger.save()

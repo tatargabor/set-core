@@ -140,7 +140,8 @@ def template(tmp_path):
     """A minimal template dir with one plain file, plus an empty target project."""
     tdir = tmp_path / "tpl"
     tdir.mkdir()
-    (tdir / "manifest.yaml").write_text("core:\n  - rules/stale.md\n")
+    (tdir / "manifest.yaml").write_text(
+        'version: "test"\ncore:\n  - path: rules/stale.md\n    replace: true\n')
     (tdir / "rules").mkdir()
     (tdir / "rules" / "stale.md").write_text("framework rule v1")
 

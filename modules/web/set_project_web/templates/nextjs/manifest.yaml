@@ -1,3 +1,7 @@
+# The module's own version. A project declares the version it expects; a version
+# that cannot be read is reported as unknown, never as matching.
+version: "0.2.0"
+
 core:
   # `protected: true` — under --force, skip when the file exists AND differs from
   # the template. A consumer that edited the file owns it; the framework must not
@@ -97,7 +101,11 @@ core:
   - path: next.config.js
     protected: true
     once: true
-  - reflection.md
+  # Accumulated project knowledge. Seeded once, then the project's own: a consumer
+  # appends what its own runs taught it, and a template refresh must not take that back.
+  - path: reflection.md
+    protected: true
+    once: true
   - path: src/app/globals.css
     protected: true
     once: true

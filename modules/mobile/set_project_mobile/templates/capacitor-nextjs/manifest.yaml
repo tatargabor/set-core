@@ -1,10 +1,18 @@
+# The module's own version. A project declares the version it expects; a version
+# that cannot be read is reported as unknown, never as matching.
+version: "0.1.0"
+
 inherits: nextjs
 
 core:
   - capacitor.config.ts
   - rules/capacitor-conventions.md
   - rules/native-bridge.md
-  - project-knowledge.yaml
+  # Matches web's classification. The file's own header tells the project to
+  # customise it, so it is the project's the moment it is seeded.
+  - path: project-knowledge.yaml
+    protected: true
+    once: true
 
 # A forced re-init (any registered project) overwrites by default, so anything the
 # PROJECT owns after the first seed has to say so here. Rules are knowledge, not scaffold:

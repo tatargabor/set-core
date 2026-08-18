@@ -1,5 +1,13 @@
+# The module's own version. A project declares the version it expects; a version
+# that cannot be read is reported as unknown, never as matching.
+version: "0.1.0"
+
 core:
-  - project-knowledge.yaml
+  # Matches web's classification. The file's own header tells the project to
+  # customise it, so it is the project's the moment it is seeded.
+  - path: project-knowledge.yaml
+    protected: true
+    once: true
   - rules/dungeon-integrity.md
   - rules/contribution-guide.md
 
@@ -13,6 +21,13 @@ modules:
   sample-dungeons:
     description: "Example .dungeon files and bestiary for a quick-start project"
     files:
-      - dungeons/castle.dungeon
-      - dungeons/cave.dungeon
-      - bestiary.yaml
+      # Sample content a project edits and extends; seeded once, never taken back.
+      - path: dungeons/castle.dungeon
+        protected: true
+        once: true
+      - path: dungeons/cave.dungeon
+        protected: true
+        once: true
+      - path: bestiary.yaml
+        protected: true
+        once: true

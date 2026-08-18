@@ -177,7 +177,7 @@ def test_history_is_scanned_once_per_ledger_not_once_per_file(repo, monkeypatch)
 def _template(tmp_path: Path, entries: str, files: dict) -> Path:
     template = tmp_path / "template"
     template.mkdir()
-    _write(template / "manifest.yaml", "core:\n" + entries)
+    _write(template / "manifest.yaml", 'version: "test"\ncore:\n' + entries)
     for rel, text in files.items():
         _write(template / rel, text)
     return template
@@ -186,7 +186,7 @@ def _template(tmp_path: Path, entries: str, files: dict) -> Path:
 def test_deploy_does_not_resurrect_a_file_the_project_deleted(repo, tmp_path):
     template = _template(
         tmp_path,
-        "  - doomed.md\n",
+        "  - path: doomed.md\n    replace: true\n",
         {"doomed.md": "the framework's version\n"},
     )
 
@@ -199,7 +199,7 @@ def test_deploy_does_not_resurrect_a_file_the_project_deleted(repo, tmp_path):
 def test_deploy_still_creates_a_file_absent_from_history(repo, tmp_path):
     template = _template(
         tmp_path,
-        "  - fresh.md\n",
+        "  - path: fresh.md\n    replace: true\n",
         {"fresh.md": "new content\n"},
     )
 
@@ -213,7 +213,7 @@ def test_restored_file_is_not_treated_as_deleted(repo, tmp_path):
     _write(repo / "doomed.md", "the project changed its mind\n")
     template = _template(
         tmp_path,
-        "  - doomed.md\n",
+        "  - path: doomed.md\n    replace: true\n",
         {"doomed.md": "framework version\n"},
     )
 
@@ -225,7 +225,7 @@ def test_restored_file_is_not_treated_as_deleted(repo, tmp_path):
 def test_dry_run_records_no_tombstone(repo, tmp_path):
     template = _template(
         tmp_path,
-        "  - doomed.md\n",
+        "  - path: doomed.md\n    replace: true\n",
         {"doomed.md": "framework version\n"},
     )
 

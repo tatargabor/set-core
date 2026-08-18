@@ -10,19 +10,19 @@
 
 <!-- depends: 0 -->
 
-- [ ] 1.0a Split each module into an executable part installed once per machine and a project-owned part; assert the executable part is never copied into a project [REQ: only-what-a-project-must-own-is-placed-in-the-project]
-- [ ] 1.0b Record the expected module version in the project's declaration and report any mismatch against what is installed machine-wide; report unknown as unknown, never as matching [REQ: a-project-states-the-version-it-expects-and-a-mismatch-is-reported]
-- [ ] 1.1 Define the module declaration: files with their treatment, required modules, own version; reject at validation a file entry that states no treatment [REQ: a-module-declares-itself-and-an-incomplete-declaration-is-refused]
-- [ ] 1.2 Fail the install when a declaration names a guard the installer does not implement or cannot apply — a declared guard that does not take effect is an error, not silence [REQ: a-declared-guard-that-does-not-take-effect-is-an-error]
-- [ ] 1.3 Decide every file from the recorded hash: matching may update, differing is the project's, unknown is left alone; a seed-time equality must not stand in for a current hash [REQ: every-file-decision-comes-from-recorded-provenance]
-- [ ] 1.3b Announce a module in the project's agent instruction file through a delimited section the installer owns; never touch a byte outside it, leave an edited section alone and report it, and report when there is no instruction file rather than creating one [REQ: a-module-is-announced-in-the-project-s-agent-instructions-through-a-marked-section]
-- [ ] 1.4 Report every skip with its reason, and report explicitly when an install wrote nothing [REQ: a-skip-is-reported-never-silent]
-- [ ] 1.5 Record removals durably and never recreate a removed file; make the recorded removals listable [REQ: deletion-is-durable]
-- [ ] 1.6 Compare generator stamps on generated artifacts and refuse to replace a newer stamp with an older one, reporting both versions; treat a missing stamp on either side as unknown [REQ: a-generated-artifact-is-never-replaced-by-an-older-generator-s-output]
-- [ ] 1.7 Enforce module requirements as mandatory: refuse to install a module whose required module is absent, naming what is missing [REQ: a-module-s-requirements-are-mandatory-not-advisory]
-- [ ] 1.8 Install only the modules a project asked for, and make the installed set with versions readable [REQ: a-project-installs-the-modules-it-asked-for]
-- [ ] 1.9 Audit the existing manifests against 1.1: every file entry must state a treatment; report the ones that do not, per module [REQ: a-module-declares-itself-and-an-incomplete-declaration-is-refused]
-- [ ] 1.10 Install tests for 1.1–1.8, including one that edits an installed file and asserts a later install leaves it alone and says so [REQ: every-file-decision-comes-from-recorded-provenance]
+- [x] 1.0a Split each module into an executable part installed once per machine and a project-owned part; assert the executable part is never copied into a project [REQ: only-what-a-project-must-own-is-placed-in-the-project]
+- [x] 1.0b Record the expected module version in the project's declaration and report any mismatch against what is installed machine-wide; report unknown as unknown, never as matching [REQ: a-project-states-the-version-it-expects-and-a-mismatch-is-reported]
+- [x] 1.1 Define the module declaration: files with their treatment, required modules, own version; reject at validation a file entry that states no treatment [REQ: a-module-declares-itself-and-an-incomplete-declaration-is-refused]
+- [x] 1.2 Fail the install when a declaration names a guard the installer does not implement or cannot apply — a declared guard that does not take effect is an error, not silence [REQ: a-declared-guard-that-does-not-take-effect-is-an-error]
+- [x] 1.3 Decide every file from the recorded hash: matching may update, differing is the project's, unknown is left alone; a seed-time equality must not stand in for a current hash [REQ: every-file-decision-comes-from-recorded-provenance]
+- [x] 1.3b Announce a module in the project's agent instruction file through a delimited section the installer owns; never touch a byte outside it, leave an edited section alone and report it, and report when there is no instruction file rather than creating one [REQ: a-module-is-announced-in-the-project-s-agent-instructions-through-a-marked-section]
+- [x] 1.4 Report every skip with its reason, and report explicitly when an install wrote nothing [REQ: a-skip-is-reported-never-silent]
+- [x] 1.5 Record removals durably and never recreate a removed file; make the recorded removals listable [REQ: deletion-is-durable]
+- [x] 1.6 Compare generator stamps on generated artifacts and refuse to replace a newer stamp with an older one, reporting both versions; treat a missing stamp on either side as unknown [REQ: a-generated-artifact-is-never-replaced-by-an-older-generator-s-output]
+- [x] 1.7 Enforce module requirements as mandatory: refuse to install a module whose required module is absent, naming what is missing [REQ: a-module-s-requirements-are-mandatory-not-advisory]
+- [x] 1.8 Install only the modules a project asked for, and make the installed set with versions readable [REQ: a-project-installs-the-modules-it-asked-for]
+- [x] 1.9 Audit the existing manifests against 1.1: every file entry must state a treatment; report the ones that do not, per module [REQ: a-module-declares-itself-and-an-incomplete-declaration-is-refused]
+- [x] 1.10 Install tests for 1.1–1.8, including one that edits an installed file and asserts a later install leaves it alone and says so [REQ: every-file-decision-comes-from-recorded-provenance]
 
 ## 2. Measure before committing to reuse
 
