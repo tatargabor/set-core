@@ -80,17 +80,32 @@ marked but unclaimed.
 - **WHEN** the file marks work complete that the verdict does not mention
 - **THEN** the engine reports that discrepancy too
 
-### Requirement: The gate runs through the project profile
-The engine SHALL obtain its gate steps from the resolved project profile, and SHALL NOT contain
-project-specific commands, file paths or tooling names. A project that declares no gate steps SHALL
-run with no gate rather than with a guessed one.
+### Requirement: The gate is the project's own, declared first and detected only as a fallback
+The engine SHALL take its gate steps from the project's adoption declaration when the project
+declares the key, and SHALL fall back to the resolved project profile only when the project has not
+declared it. The engine SHALL NOT contain project-specific commands, file paths or tooling names.
+A project that ends up with no gate steps SHALL run with no gate rather than with a guessed one.
 
-#### Scenario: Gate steps come from the profile
-- **WHEN** a work unit finishes and a gate is due
+Declaring the key empty is an answer and SHALL be honoured as one: the engine SHALL NOT consult the
+profile in that case. A deliberately narrowed gate that is silently widened produces a green
+indistinguishable from the project's own gate having passed.
+
+#### Scenario: The declared commands are the ones that run
+- **WHEN** an adopted project declares gate steps and a work unit finishes
+- **THEN** the commands executed are exactly the ones the project declared
+- **AND** no command detected from the profile is executed
+
+#### Scenario: An explicitly empty declaration is not answered a second time
+- **WHEN** an adopted project declares the gate key with no steps
+- **THEN** the engine runs no gate and records that no gate was run
+- **AND** it does NOT consult the profile for a detected command
+
+#### Scenario: Gate steps come from the profile when the project declared none
+- **WHEN** an adopted project does not declare the gate key at all
 - **THEN** the steps executed are those the project's profile declares
 
 #### Scenario: No declared gate means no gate
-- **WHEN** the profile declares no gate steps
+- **WHEN** neither the project nor the profile yields a gate step
 - **THEN** the engine runs no gate and records that no gate was run
 - **AND** it does NOT substitute a default command
 

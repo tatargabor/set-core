@@ -374,7 +374,8 @@ def _drive(unit, view, group, args, lines: list) -> UnitRecord:
         lines.append("set aside: a person must answer before this group continues")
         return record
 
-    steps = resolve_gate_steps(_change_stub(args.change), _profile_for(view), view.tree)
+    steps = resolve_gate_steps(_change_stub(args.change), _profile_for(view), view.tree,
+                               adoption=view.adoption)
     gate = run_gate(steps, view.tree, unit_files=changed_files(view.tree, baseline))
     record.gate = gate
     record.save()

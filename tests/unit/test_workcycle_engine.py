@@ -450,3 +450,116 @@ def test_the_engine_package_names_no_gate_command_of_its_own():
         "a bare substring check would no longer produce a false positive here, so this test "
         "no longer demonstrates why the word boundary is needed — check before relaxing it"
     )
+
+
+# ── the project's DECLARED gate is the one that runs ──────────────────────────────────────
+
+
+def _adoption(gates, *, declared=True):
+    from set_workcycle.adoption import Adoption
+
+    return Adoption(adopted=True, changes_dir="changes", gates=tuple(gates),
+                    gates_declared=declared)
+
+
+class _LoudProfile:
+    """Detects a command that is NOT the declared one, so a fallback is visible in the result
+    rather than merely suspected. A profile that detected nothing would let the weaker
+    assertion pass on the broken code too."""
+
+    def detect_build_command(self, p): return None
+    def detect_test_command(self, p): return "profile-detected-check"
+    def detect_e2e_command(self, p): return None
+
+
+def test_the_declared_commands_are_the_ones_that_actually_run(tmp_path):
+    """The strong form, asked for by the consumer: assert the declared COMMAND executed, not
+    that *a* gate ran. A profile-detected gate goes green exactly like a declared one, so
+    "the gate passed" is compatible with the declaration having been ignored — which is the
+    state this repo shipped in until it was measured.
+
+    Fail direction: the weaker assertion leaves the bug in place and paints it green.
+    """
+    from set_orch.state import Change
+    from set_workcycle.engine import resolve_gate_steps, run_gate
+
+    declared = ["a-declared-check --one", "a-declared-check --two"]
+    steps = resolve_gate_steps(Change(name="c"), _LoudProfile(), tmp_path,
+                               adoption=_adoption(declared))
+
+    executed: list[str] = []
+    outcome = run_gate(steps, tmp_path, runner=lambda s, t, to: (executed.append(s.command), (0, ""))[1])
+
+    assert executed == declared, f"the declared commands did not run; ran: {executed}"
+    assert "profile-detected-check" not in executed
+    assert outcome.state == "passed"
+    assert set(outcome.outputs) == set(s.name for s in steps)
+
+
+def test_declaring_the_gate_key_empty_means_no_gate_and_never_a_detected_one(tmp_path):
+    """`gates: []` is an answer, not a gap. Falling back to detection here would hand a
+    project that deliberately narrowed its gate a wider one it never asked for — and the
+    green would be indistinguishable from its own gate having run.
+
+    ⚠ The first version of this test used a profile that RAISED if consulted, and the
+    mutant that falls back to detection passed it — `resolve_gate_steps` wraps the detector
+    in `except Exception`, so the explosion became a logged warning and an empty command,
+    and "no steps" arrived for the wrong reason. The raise measured the CALL; what decides
+    is the RESULT. The profile below therefore detects a real command, so a fallback
+    produces a step and the assertion has something to fail on.
+    """
+    from set_orch.state import Change
+    from set_workcycle.engine import resolve_gate_steps, run_gate
+
+    consulted: list[str] = []
+
+    class _RecordingProfile(_LoudProfile):
+        def detect_test_command(self, p):
+            consulted.append("test")
+            return "profile-detected-check"
+
+    steps = resolve_gate_steps(Change(name="c"), _RecordingProfile(), tmp_path,
+                               adoption=_adoption([]))
+    assert steps == [], f"an empty declaration was answered a second time: {steps}"
+    assert consulted == [], "the profile was consulted despite an explicit empty declaration"
+    assert run_gate(steps, tmp_path).state == "no-gate"
+
+
+def test_a_project_that_declared_no_gate_key_still_gets_the_profile_chain(tmp_path):
+    """The other half of the distinction the `Adoption` dataclass already carried: *not
+    declared* is not *declared empty*, and only the second one silences the profile."""
+    from set_orch.state import Change
+    from set_workcycle.engine import resolve_gate_steps
+
+    steps = resolve_gate_steps(Change(name="c"), _LoudProfile(), tmp_path,
+                               adoption=_adoption([], declared=False))
+    assert [(s.name, s.command) for s in steps] == [("test", "profile-detected-check")]
+
+
+def test_two_identical_declared_commands_are_both_recorded(tmp_path):
+    """`GateOutcome.outputs` is keyed on the step name. Collapsing duplicates would drop one
+    run's output while the count still read as two — a gap that looks like data."""
+    from set_orch.state import Change
+    from set_workcycle.engine import resolve_gate_steps, run_gate
+
+    steps = resolve_gate_steps(Change(name="c"), _LoudProfile(), tmp_path,
+                               adoption=_adoption(["same-check", "same-check"]))
+    assert len(steps) == 2
+    outcome = run_gate(steps, tmp_path, runner=lambda s, t, to: (0, f"out:{s.name}"))
+    assert len(outcome.outputs) == 2
+
+
+def test_the_cli_passes_the_adoption_into_gate_resolution(tmp_path):
+    """The bug was not in the resolver, it was that nobody handed it the declaration. This
+    reads the call site: a resolver that can honour the declaration and a caller that never
+    passes it look identical from inside `engine.py`.
+    """
+    import ast
+
+    src = (REPO / "lib" / "set_workcycle" / "cli.py").read_text(encoding="utf-8")
+    calls = [n for n in ast.walk(ast.parse(src))
+             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "resolve_gate_steps"]
+    assert calls, "resolve_gate_steps is not called from the CLI at all"
+    for call in calls:
+        assert any(kw.arg == "adoption" for kw in call.keywords), (
+            f"cli.py:{call.lineno} resolves gate steps without the project's declaration")

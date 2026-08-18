@@ -140,9 +140,36 @@ class GateOutcome:
         return self.state == "failed"
 
 
+def _declared_gate_steps(adoption: Any, tree: str | Path) -> list[GateStep]:
+    """The project declared the key, so the project decides — including deciding *none*.
+
+    Declaring the key empty is an answer, not a gap, and the engine must not answer it a
+    second time. Falling back to profile detection here would give a project that
+    deliberately narrowed its gate a wider one it never asked for, and the green result
+    would be indistinguishable from its own gate having run. The declaration therefore wins
+    outright: nothing below reads the profile.
+
+    Names are made unique because `GateOutcome.outputs` is keyed on them — two identical
+    declared commands must not silently collapse into one recorded output.
+    """
+    steps: list[GateStep] = []
+    seen: dict[str, int] = {}
+    for command in adoption.gates:
+        command = str(command).strip()
+        if not command:
+            continue
+        n = seen.get(command, 0) + 1
+        seen[command] = n
+        steps.append(GateStep(name=command if n == 1 else f"{command} ({n})", command=command))
+    logger.info("gate steps declared by the project at %s: %d step(s)", tree, len(steps))
+    return steps
+
+
 def resolve_gate_steps(change: Any, profile: Any, tree: str | Path,
-                       directives: Optional[dict] = None) -> list[GateStep]:
-    """Gate names from the existing resolution chain; commands from the project's profile.
+                       directives: Optional[dict] = None,
+                       adoption: Any = None) -> list[GateStep]:
+    """The project's own declaration first; failing that, gate names from the existing
+    resolution chain and commands from the project's profile.
 
     The engine contributes no gate definitions and no commands. `resolve_gate_config` is the
     same six-layer chain the merge path uses, so there is exactly one source of gate
@@ -153,6 +180,9 @@ def resolve_gate_steps(change: Any, profile: Any, tree: str | Path,
     for one section's red is an untrue statement about the change. So the configuration is
     reused and the running is not.
     """
+    if adoption is not None and getattr(adoption, "gates_declared", False):
+        return _declared_gate_steps(adoption, tree)
+
     from set_orch.gate_profiles import resolve_gate_config
 
     gc = resolve_gate_config(change, profile, directives, tree)
