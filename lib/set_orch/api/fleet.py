@@ -98,6 +98,11 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # unconfirmed binding as a guess; there is currently no guessing path.
         "binding_confirmed": agent.binding_confirmed,
         "sources": agent.sources,
+        # Which sources were asked and did not know. A shorter `sources` list is
+        # only meaningful against the set that was consulted: without this,
+        # "known to one source" and "known to one of three" render identically,
+        # and the second is the one worth looking at.
+        "sources_missing": agent.sources_missing,
         "kind": agent.kind,
         "state": state.state,
         "tool": state.tool,
@@ -459,6 +464,11 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "session_id": agent.session_id,
         "binding_confirmed": agent.binding_confirmed,
         "sources": agent.sources,
+        # Which sources were asked and did not know. A shorter `sources` list is
+        # only meaningful against the set that was consulted: without this,
+        # "known to one source" and "known to one of three" render identically,
+        # and the second is the one worth looking at.
+        "sources_missing": agent.sources_missing,
         "state": state.state,
         "tool": state.tool,
         "tool_elapsed_seconds": state.tool_elapsed,

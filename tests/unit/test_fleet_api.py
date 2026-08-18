@@ -251,6 +251,7 @@ def test_opening_one_log_does_not_enumerate_the_whole_fleet(monkeypatch):
 def test_the_state_route_also_stays_off_the_fleet_path(monkeypatch):
     class _Agent:
         pid, name, session_id, binding_confirmed, sources = 7, "a", "s", True, ["process"]
+        sources_missing = ["session-record", "registry"]
         session_log = record = None
 
     monkeypatch.setattr(
@@ -287,6 +288,7 @@ class _Agent:
         self.branch = self.session_id = None
         self.binding_confirmed = True
         self.sources = ["process"]
+        self.sources_missing = ["session-record", "registry"]
         self.kind = "interactive"
         self.record = None
 
@@ -353,6 +355,7 @@ def test_the_session_record_never_reaches_the_payload(monkeypatch):
         branch = session_id = None
         binding_confirmed = True
         sources = ["process"]
+        sources_missing = ["session-record", "registry"]
         kind = "interactive"
         record = {
             "sessionId": "s", "cwd": "/home/someone/private-consumer",

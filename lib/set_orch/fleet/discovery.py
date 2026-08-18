@@ -47,6 +47,12 @@ AGENT_COMM = "claude"
 NON_INTERACTIVE_FLAGS = ("-p", "--print")
 
 
+#: Every source the fleet asks about an agent. Named here so `sources_missing`
+#: is the complement of a stated set rather than of whatever a caller passed —
+#: an absence measured against an unstated whole is not a measurement.
+CONSULTED_SOURCES = ("process", "session-record", "registry")
+
+
 @dataclass
 class Agent:
     """One live agent session.
@@ -73,6 +79,21 @@ class Agent:
     kind: str = "interactive"
     #: Which sources knew about this agent: "process", "session-record", "registry".
     sources: List[str] = field(default_factory=list)
+
+    @property
+    def sources_missing(self) -> List[str]:
+        """Which sources were CONSULTED and did not know about this agent.
+
+        Task 2.8 asks for the sources that lacked it, and a surface cannot derive
+        that from `sources` alone: a shorter list is only meaningful against the
+        set that was asked. Without this, "known to one source" and "known to one
+        of three" render identically — and the second is the one worth looking at.
+
+        Derived from a named constant rather than from whatever happens to be in
+        `sources`, so a source that stops being consulted disappears from BOTH
+        lists instead of silently becoming a permanent absence.
+        """
+        return [name for name in CONSULTED_SOURCES if name not in self.sources]
     #: True when the binding to `session_log` came from a record rather than a guess.
     binding_confirmed: bool = False
     #: The runtime's session record, verbatim and uninterpreted. Carried because

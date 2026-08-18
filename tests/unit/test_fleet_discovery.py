@@ -232,6 +232,7 @@ def test_a_recorded_origin_outranks_ancestry_and_says_which_it_is(monkeypatch):
         branch = session_id = record = None
         binding_confirmed = True
         sources = ["process"]
+        sources_missing = ["session-record", "registry"]
         kind = "interactive"
 
     class _S:
@@ -241,3 +242,37 @@ def test_a_recorded_origin_outranks_ancestry_and_says_which_it_is(monkeypatch):
     monkeypatch.setattr(fleet_api, "parent_seat", lambda pid: {"seat": "x", "source": "ancestry"})
     payload = fleet_api._agent_payload(_A(), _S(), {7: {"label": "l", "requested_by": "set-core-12"}})
     assert payload["parent"] == {"seat": "set-core-12", "source": "recorded"}
+
+
+def test_the_sources_that_LACKED_an_agent_are_named(tmp_path):
+    """Task 2.8's second half, and it is not derivable from `sources` alone: a
+    shorter list is only meaningful against the set that was consulted. Without
+    this, "known to one source" and "known to one of three" render identically —
+    and the second is the one worth looking at.
+
+    ⚠ Measured 2026-08-19: **0 of 23** live agents were known from the process
+    alone; all had a session record. The path is real (two causes were measured
+    on 2026-08-18 — a session at its trust prompt, and a child session that
+    writes no transcript) but no live instance exists to point at, so this drives
+    it from a fixture rather than claiming the live case was seen.
+    """
+    from set_orch.fleet.discovery import CONSULTED_SOURCES, Agent
+
+    lonely = Agent(pid=1, cwd="/x", sources=["process"])
+    assert lonely.sources_missing == ["session-record", "registry"]
+
+    known = Agent(pid=2, cwd="/x", sources=list(CONSULTED_SOURCES))
+    assert known.sources_missing == []
+
+
+def test_the_missing_list_is_the_complement_of_a_STATED_set():
+    """Derived from a named constant rather than from whatever a caller passed.
+    An absence measured against an unstated whole is not a measurement — and a
+    source that stops being consulted should disappear from BOTH lists rather
+    than silently become a permanent absence.
+    """
+    from set_orch.fleet.discovery import CONSULTED_SOURCES, Agent
+
+    invented = Agent(pid=3, cwd="/x", sources=["process", "a-source-nobody-consults"])
+    assert "a-source-nobody-consults" not in invented.sources_missing
+    assert set(invented.sources_missing) <= set(CONSULTED_SOURCES)
