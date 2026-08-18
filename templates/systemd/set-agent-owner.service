@@ -1,0 +1,38 @@
+[Unit]
+# The agent owner — the one process whose lifetime is the agents' lifetime.
+#
+# Split out of the dashboard because that unit restarts on every crash and every
+# deploy, and an agent started from it joined its control group and died with it.
+# Each agent now runs in its own transient scope, a SIBLING of this service, so a
+# restart of the DASHBOARD no longer touches it.
+#
+# ⚠ A restart of THIS unit does still kill every agent it is holding, and that is
+# not a configuration mistake — it is the mechanism. Measured 2026-08-18: when a
+# pty master closes, the slave returns EOF, and any process reading its own tty
+# exits; the scope then goes inactive because its last process left. The transient
+# scope protects against a cgroup kill, not against losing a terminal.
+#
+# Two consequences, and they are why this file is short:
+#   - `Restart=on-failure`, not `always`. A clean exit is a deliberate shutdown;
+#     restarting into it would take the agents with it for no reason.
+#   - Nothing that changes belongs in this service. Discovery, state, the API and
+#     the screen live in the dashboard, which may restart as often as development
+#     needs. A line of business logic added here is a future outage of every
+#     running agent.
+Description=SET Agent Owner (holds agent terminals)
+Documentation=https://github.com/tatargabor/set-core
+After=default.target
+
+[Service]
+ExecStart=%h/.local/bin/set-agent-owner serve --socket %t/set-agent-owner.sock
+Restart=on-failure
+RestartSec=5
+# Deliberate, and the opposite of the dashboard's default: this unit must NOT
+# take its children's control groups with it on stop. The agents live in their
+# own scopes; killing the control group would defeat the split.
+KillMode=process
+Environment=PYTHONPATH=__SET_TOOLS_ROOT__/lib:__SET_TOOLS_ROOT__/modules/web
+Environment=PATH=%h/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

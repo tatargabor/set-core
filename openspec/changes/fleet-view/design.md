@@ -390,10 +390,34 @@ survives a restart of whichever service started it. It also gives task 5.4's "st
 a mechanism instead of a convention — the agent becomes a named unit that can be stopped by name and
 enumerated after a restart, which is what reattachment needs to even be attempted.
 
-**What this does *not* fix, and the boundary is worth stating precisely.** The terminal still does not
-survive. A pty master must be held by a living process, and that handle cannot be reacquired from
-outside (§6.1 below). The split rescues the *agent*; the terminal column still turns to no. That is
-exactly what task 5.5 now claims — and the claim was false before this decision and is true after it.
+**What this does *not* fix — and the first version of this paragraph was wrong, measured 2026-08-18.**
+It said: "the split rescues the *agent*; the terminal column still turns to no." Half of that is
+false, and it fails in the reassuring direction. Two probes, isolating the two killers:
+
+| what the agent is attached to | who dies | scope afterwards | agent |
+|---|---|---|---|
+| the owner's pty | the pty holder | **inactive** | **dead** |
+| nothing (no pty) | the process that started it | active | **alive** |
+
+A transient scope protects against a **cgroup kill** — a service restart taking its whole control
+group with it. It does not and cannot protect against the agent's **terminal disappearing**: when
+the pty master closes, the slave returns EOF and errors on write, and any process reading its own
+tty exits. The scope then goes inactive because its last process left. So for a pty-attached agent
+the split rescues nothing when the *owner* dies; the agent dies with its terminal.
+
+**The correct statement, and it makes the owner's stability load-bearing rather than convenient:**
+
+- The agent **survives a restart of the web service** — a different unit, a different cgroup, and
+  it holds no pty. That is what the scope buys, and it is exactly the property CB-1 asked for.
+- The agent **does not survive its own owner's death**, because the owner holds the pty its tty is.
+  **The pty holder's lifetime is the agent's lifetime**, not merely the terminal's.
+
+This is why the owner is thin, and the reason is stronger than the one the user's phrasing implied:
+an owner that never needs updating is not protecting terminal *uptime*, it is protecting the agents
+themselves. There is no arrangement of this mechanism that gives both a terminal and survival of the
+terminal-holder — an agent with no pty survives and cannot be typed into; an agent on a pty can be
+typed into and dies with it. Any future "detachable" answer just moves the pty into a different
+long-lived holder and inherits the same rule.
 
 **A second finding, from trying to drive the terminal from outside.** The pty master file descriptor
 cannot be reacquired from another process: `/proc/<pid>/fd/<n>` for a pty master points at
