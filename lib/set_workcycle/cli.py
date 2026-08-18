@@ -23,15 +23,36 @@ import argparse
 import json
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
 from .adoption import ADOPTION_REL, read_adoption
-from .connector import awaiting_tasks, intake, write_answer
-from .engine import RUN_STATE_DIR, UnitKind, WorkUnit
-from .groups import DependencyCycle, parse_task_groups, select_next_group
-from .lock import LockHeld, SeatRefused, acquire, read_lock, validate_seat
+from .connector import (
+    ResumeCondition,
+    answers_for,
+    awaiting_tasks,
+    clear_awaiting,
+    intake,
+    mark_awaiting,
+    record_answer,
+    write_answer,
+)
+from .engine import (
+    RUN_STATE_DIR,
+    UnitKind,
+    UnitRecord,
+    WorkUnit,
+    changed_files,
+    commit_unit,
+    resolve_gate_steps,
+    run_gate,
+)
+from .groups import DependencyCycle, RunNote, carry_over_for, cut_slice, parse_task_groups, \
+    reading_list, select_next_group
+from .lock import LockHeld, SeatRefused, acquire, read_lock, release, validate_seat
+from .prompt import build_unit_prompt
+from .runner import run_agent_session
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +74,9 @@ class EngineView:
     adopted: bool = True
     missing: str = ""
     adoption: Optional[object] = None
+    #: `(task, answer)` for every question released by this intake. Carried into the unit's
+    #: prompt: an answer nobody tells the next run about is an answer nobody acted on.
+    answers: list = field(default_factory=list)
 
 
 def _awaiting_keys(tree: Path, change: str, tasks_path: Optional[Path]) -> set[str]:
@@ -92,13 +116,25 @@ def open_engine(tree: str | Path, change: str = "", changes_dir: str = "") -> En
             adopted, missing = False, f"no task file for change {change!r} at {candidate}"
 
     result = intake(root, awaiting=_awaiting_keys(root, change, tasks_path))
+
+    # An answer that is merely *recorded* leaves its task marked as awaiting forever, so the
+    # group it belongs to never becomes runnable again and the answer has changed nothing.
+    # Releasing is what makes intake mean something — and it happens here, on every path,
+    # for the same reason intake does.
+    answers: list[tuple[str, str]] = []
     if tasks_path is not None:
+        for applied in result.applied:
+            if clear_awaiting(tasks_path, applied.task):
+                answers.append((applied.task, applied.answer))
+                record_answer(root, change, applied.task, applied.answer, applied.source)
+                logger.info("released %s — an answer arrived from %s",
+                            applied.key, applied.source or "an unnamed source")
         plan = parse_task_groups(tasks_path)
 
     return EngineView(
         tree=root, change=change, intake_lines=result.as_lines(),
         plan=plan, tasks_path=tasks_path, adopted=adopted, missing=missing,
-        adoption=adoption,
+        adoption=adoption, answers=answers,
     )
 
 
@@ -241,9 +277,152 @@ def cmd_run(args) -> int:
     unit = WorkUnit(change=args.change, tree=Path(args.tree), seat=state.seat,
                     kind=UnitKind.SLICE, group_key=group.key)
     lines.append(f"started {unit.unit_id} on group {group.key} (seat {state.seat})")
-    _emit({"started": True, "unit_id": unit.unit_id, "group": group.key,
-           "started_by": args.started_by, "lines": lines}, args.json)
-    return 0
+
+    try:
+        record = _drive(unit, view, group, args, lines)
+    finally:
+        release(args.tree, state.seat)
+
+    _emit({
+        "started": True, "unit_id": unit.unit_id, "group": group.key,
+        "started_by": args.started_by,
+        "outcome": record.verdict.outcome.value if record.verdict else "FAILED_TO_REPORT",
+        "gate": None if record.gate is None else record.gate.state,
+        "committed": bool(record.commit and record.commit.committed),
+        "set_aside": record.set_aside_condition,
+        "record": str(record.path()),
+        "lines": lines,
+    }, args.json)
+    return 0 if record.verdict else 6
+
+
+def _run_notes(tree, change: str) -> list:
+    """Carry-over material, read from the run records earlier units left behind."""
+    notes = []
+    for r in read_run_state(tree, change):
+        verdict = r.get("verdict") or {}
+        text = (verdict.get("notes") or "").strip() or (verdict.get("summary") or "").strip()
+        if r.get("group") and text:
+            notes.append(RunNote(group_key=str(r["group"]), notes=text,
+                                 finished_at=str(r.get("verdict_at") or ""),
+                                 run_id=str(r.get("unit_id") or "")))
+    return notes
+
+
+def _drive(unit, view, group, args, lines: list) -> UnitRecord:
+    """One unit, all the way through — and in the order the specs fix.
+
+    The verdict is recorded BEFORE the gate runs, so a process that dies between them leaves
+    a started unit with no completion rather than a unit that looks never attempted while its
+    work sits in the tree.
+    """
+    import os
+    import time
+
+    change_dir = Path(view.tasks_path).parent
+    slice_ = cut_slice(group, limit=args.limit)
+    artifacts = [str(p.relative_to(view.tree)) for p in reading_list(change_dir)]
+    carried = carry_over_for(view.plan, group, _run_notes(view.tree, args.change))
+
+    record = UnitRecord(unit=unit, started_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                        pid=os.getpid())
+    record.save()
+
+    marked_before = [t.key for t in group.tasks if t.marker == "done"]
+    baseline = _head(view.tree)
+
+    prompt = build_unit_prompt(
+        args.change, slice_, reading_list=artifacts, carry_over=carried,
+        tasks_path=str(Path(view.tasks_path).relative_to(view.tree)),
+        answers=answers_for(view.tree, args.change, [t.key for t in group.tasks]),
+    )
+    if args.dry_run:
+        lines.append(f"dry run: prompt built ({len(prompt)} chars); no session started")
+        return record
+
+    agent = _AGENT_RUNNER or run_agent_session
+    run = agent(prompt, view.tree, model=args.model or None)
+    lines.append(f"agent session {run.session_id or '(none)'} ended (exit {run.exit_code})")
+
+    from .verdict import VerdictSchemaError, extract_verdict
+
+    try:
+        verdict = extract_verdict(run.final_text)
+    except VerdictSchemaError as exc:
+        # A reporting failure, never an inferred outcome: guessing PARTIAL here would produce
+        # a state the engine could act on, which is exactly the problem.
+        lines.append(f"the unit failed to report a verdict: {exc}")
+        record.save()
+        return record
+
+    record.record_verdict(verdict)            # BEFORE the gate — the ordering is a requirement
+    lines.append(f"verdict: {verdict.outcome.value} — {verdict.summary}")
+
+    plan_now = parse_task_groups(view.tasks_path)
+    group_now = plan_now.by_key(group.key)
+    marked_now = [t.key for t in (group_now.tasks if group_now else []) if t.marker == "done"]
+    diff = record.check_against_tree(marked_now, before=marked_before)
+    lines.extend(f"  {l}" for l in diff.as_lines())
+
+    if verdict.stops:
+        for decision in verdict.open_decisions:
+            if decision.task:
+                mark_awaiting(view.tasks_path, decision.task, decision.question)
+                lines.append(f"  marked {decision.task} as awaiting a person")
+        first = verdict.open_decisions[0]
+        record.set_aside(ResumeCondition.human_decision(first.question, first.task).to_dict())
+        lines.append("set aside: a person must answer before this group continues")
+        return record
+
+    steps = resolve_gate_steps(_change_stub(args.change), _profile_for(view), view.tree)
+    gate = run_gate(steps, view.tree, unit_files=changed_files(view.tree, baseline))
+    record.gate = gate
+    record.save()
+    lines.append(f"gate: {gate.state} — {gate.detail}")
+    if gate.attribution:
+        lines.append(f"  attribution: {gate.attribution}")
+
+    record.commit = commit_unit(unit, gate)
+    record.save()
+    lines.append(
+        f"commit: {record.commit.sha[:12]}" if record.commit.committed
+        else f"no commit — {record.commit.reason}"
+    )
+    return record
+
+
+def _head(tree) -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except OSError:
+        return ""
+
+
+def _change_stub(name: str):
+    """A minimal change object for the gate-configuration chain, which expects one."""
+    from set_orch.state import Change
+
+    return Change(name=name)
+
+
+def _profile_for(view):
+    """The project's resolved profile — where everything project-specific comes from."""
+    try:
+        from set_orch.profile_loader import load_profile
+
+        return load_profile(str(view.tree))
+    except Exception:
+        logger.info("no profile resolved for %s — the engine supplies none", view.tree)
+        return None
+
+
+#: Injected by tests so the lifecycle can be driven without spawning an agent. Production
+#: leaves it None, so there is no second start path hiding here.
+_AGENT_RUNNER = None
 
 
 def cmd_answer(args) -> int:
@@ -271,6 +450,11 @@ def build_parser() -> argparse.ArgumentParser:
                      help="the agent session this unit belongs to; a project name is refused")
     run.add_argument("--started-by", default="agent",
                      help="who invoked the command — recorded, never a second start path")
+    run.add_argument("--limit", type=int, default=None,
+                     help="cut the slice to at most N open tasks within the group")
+    run.add_argument("--model", default="", help="model for the unit's agent session")
+    run.add_argument("--dry-run", action="store_true",
+                     help="build the slice and the prompt, start no session")
     run.set_defaults(func=cmd_run, starts_a_unit=True)
 
     status = sub.add_parser("status", help="report what is runnable and where runs got to")

@@ -37,6 +37,7 @@ from set_workcycle.engine import RUN_STATE_DIR, UnitRecord, WorkUnit  # noqa: E4
 from set_workcycle.lock import acquire  # noqa: E402
 
 SEAT = "session:11111111-2222-3333-4444-555555555555"
+VERDICT = '```json\n{"outcome": "GROUP_DONE", "summary": "the slice is done", "completed": ["1.1"]}\n```'
 CLI = REPO / "lib" / "set_workcycle" / "cli.py"
 
 
@@ -145,12 +146,13 @@ def test_no_module_in_the_engine_package_spawns_a_unit_outside_the_command():
     assert not offenders, f"a second start path: {offenders}"
 
 
-def test_an_agent_started_run_and_a_surface_started_run_produce_the_same_state_shape(tmp_path):
+def test_an_agent_started_run_and_a_surface_started_run_produce_the_same_state_shape(
+        tmp_path, agent_runner):
     """The surface invokes the same command an agent would. What differs is a recorded field
     saying who started it — never the shape of what gets written."""
+    agent_runner(VERDICT)
     _project(tmp_path)
     _, agent = _run(tmp_path, "--change", "c", "run", "--seat", SEAT, "--started-by", "agent")
-    os.remove(tmp_path / "set/runtime/work-cycle.lock")
     _, surface = _run(tmp_path, "--change", "c", "run", "--seat", "session:surface-3333",
                       "--started-by", "surface")
 
@@ -239,7 +241,9 @@ def test_a_reporting_only_invocation_still_takes_in_answers(tmp_path):
     assert any("applied c#1.1" in line for line in payload["lines"]), payload["lines"]
 
 
-def test_an_answer_placed_before_a_run_is_taken_in_before_the_group_is_selected(tmp_path):
+def test_an_answer_placed_before_a_run_is_taken_in_before_the_group_is_selected(
+        tmp_path, agent_runner):
+    agent_runner('```json\n{"outcome": "PARTIAL", "summary": "started"}\n```')
     _project(tmp_path, "## 1. First\n- [ ] 1.1 alpha\n- [ ] 1.2 bravo\n")
     tasks = tmp_path / "openspec/changes/c/tasks.md"
     mark_awaiting(tasks, "1.1", "Which provider?")
@@ -258,3 +262,215 @@ def test_an_un_adopted_project_is_never_reported_as_having_nothing_to_do(tmp_pat
     assert payload["adopted"] is False
     assert payload["missing"]
     assert "selected" not in payload, "no runnable-group answer is offered for a non-project"
+
+
+# ── the lifecycle the command actually drives ─────────────────────────────────────────────
+#
+# Added after a self-caught defect: the command existed, acquired the lock and reported
+# "started", and drove nothing. Every test above passed. The name claimed more than the code
+# delivered, which is the marker-true-of-a-narrower-subject failure — and the tests below are
+# what makes "starts a unit" mean the whole cycle.
+
+
+def _lifecycle_project(tmp_path: Path) -> Path:
+    _project(tmp_path, "## 1. First\n- [ ] 1.1 alpha\n- [ ] 1.2 bravo\n")
+    (tmp_path / "openspec" / "changes" / "c" / "proposal.md").write_text("why\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "t"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "init"], check=True)
+    return tmp_path
+
+
+def test_a_run_goes_all_the_way_through_verdict_gate_and_commit(tmp_path, agent_runner):
+    def did_the_work(tree: Path) -> None:
+        """What a real unit does: mark its own checkboxes in the change's task file."""
+        tasks = tree / "openspec/changes/c/tasks.md"
+        tasks.write_text(tasks.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+                         encoding="utf-8")
+
+    calls = agent_runner(
+        '```json\n{"outcome": "GROUP_DONE", "summary": "both tasks done",'
+        ' "completed": ["1.1", "1.2"], "notes": "the config lives in set/"}\n```',
+        side_effect=did_the_work,
+    )
+    _lifecycle_project(tmp_path)
+
+    code, payload = _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+    assert code == 0
+    assert payload["outcome"] == "GROUP_DONE"
+    assert payload["gate"] == "no-gate", "this project declares none, and that is not a pass"
+    assert payload["committed"] is True
+
+    record = json.loads(Path(payload["record"]).read_text(encoding="utf-8"))
+    assert record["verdict"]["completed"] == ["1.1", "1.2"]
+    assert record["diff"]["claimed_but_unmarked"] == []
+    assert calls, "the agent session was actually invoked"
+
+
+def test_the_unit_receives_its_slice_and_the_change_s_artifacts(tmp_path, agent_runner):
+    calls = agent_runner('```json\n{"outcome": "PARTIAL", "summary": "some"}\n```')
+    _lifecycle_project(tmp_path)
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    prompt = calls[0]["prompt"]
+    assert "1.1 alpha" in prompt
+    assert "2.1 bravo" not in prompt, "another group's tasks do not travel with the slice"
+    assert "proposal.md" in prompt, "the change's own artifacts are on the reading list"
+    assert "tasks.md" not in prompt.split("## Read these first")[1].split("##")[0]
+
+
+def test_an_open_decision_marks_the_task_and_sets_the_unit_aside(tmp_path, agent_runner):
+    agent_runner(
+        '```json\n{"outcome": "NEEDS_INPUT", "summary": "need a choice",'
+        ' "open_decisions": [{"task": "1.1", "question": "Which auth provider?"}]}\n```'
+    )
+    _lifecycle_project(tmp_path)
+
+    code, payload = _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+    assert code == 0
+    assert payload["set_aside"]["kind"] == "human-decision"
+    assert payload["set_aside"]["detail"] == "Which auth provider?"
+    assert payload["committed"] is False, "a stopped unit does not commit"
+
+    line = [l for l in (tmp_path / "openspec/changes/c/tasks.md").read_text(
+        encoding="utf-8").splitlines() if "1.1" in l][0]
+    assert line.strip().startswith("- [?]") and "Which auth provider?" in line
+
+
+def test_an_answer_that_cannot_be_parsed_is_a_reporting_failure_not_an_outcome(
+        tmp_path, agent_runner):
+    agent_runner("I finished everything, honestly.")
+    _lifecycle_project(tmp_path)
+
+    code, payload = _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+    assert code == 6
+    assert payload["outcome"] == "FAILED_TO_REPORT"
+    assert payload["committed"] is False
+    assert any("failed to report" in l for l in payload["lines"]), payload["lines"]
+
+
+def test_the_lock_is_released_even_when_the_unit_fails_to_report(tmp_path, agent_runner):
+    """A tree that stays locked after a failure is a tree nobody can use, and the failure
+    that locked it is exactly the case where someone needs to run again."""
+    agent_runner("no verdict here")
+    _lifecycle_project(tmp_path)
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+    from set_workcycle.lock import read_lock
+
+    assert read_lock(tmp_path) is None
+
+
+def test_a_dry_run_builds_the_slice_and_starts_no_session(tmp_path):
+    """No fake runner installed: the suite-wide guard fails this test if a session starts."""
+    _lifecycle_project(tmp_path)
+    code, payload = _run(tmp_path, "--change", "c", "run", "--seat", SEAT, "--dry-run")
+    assert code == 6, "no verdict, because no session ran"
+    assert any("no session started" in l for l in payload["lines"])
+
+
+def test_the_previous_run_s_notes_travel_to_the_next_unit(tmp_path, agent_runner):
+    calls = agent_runner(
+        '```json\n{"outcome": "GROUP_DONE", "summary": "done",'
+        ' "completed": ["1.1", "1.2"], "notes": "the config lives in set/, not in .claude/"}\n```'
+    )
+    _project(tmp_path, "## 1. First\n- [ ] 1.1 a\n\n## 2. Second\n- [ ] 2.1 b\n")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "t"], check=True)
+
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+    tasks = tmp_path / "openspec/changes/c/tasks.md"
+    tasks.write_text(tasks.read_text(encoding="utf-8").replace("- [ ] 1.1", "- [x] 1.1"),
+                     encoding="utf-8")
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    assert len(calls) == 2
+    assert "the config lives in set/" in calls[1]["prompt"], (
+        "a fresh context forgets a discovery as readily as it forgets noise"
+    )
+
+
+def test_an_answer_releases_its_task_and_reaches_the_next_unit(tmp_path, agent_runner):
+    """The end-to-end path task 8.2 names, driven through the command rather than asserted
+    per layer: an answer that is merely *recorded* leaves its task marked awaiting forever,
+    so the group never becomes runnable and the answer changed nothing."""
+    agent_runner(
+        '```json\n{"outcome": "NEEDS_INPUT", "summary": "need a choice",'
+        ' "open_decisions": [{"task": "1.1", "question": "Which auth provider?"}]}\n```'
+    )
+    _lifecycle_project(tmp_path)
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    tasks = tmp_path / "openspec/changes/c/tasks.md"
+    assert "- [?] 1.1" in tasks.read_text(encoding="utf-8")
+    code, blocked = _run(tmp_path, "--change", "c", "status")
+    assert "awaiting" in blocked["reasons"]["1"]
+
+    _run(tmp_path, "--change", "c", "answer", "--task", "1.1",
+         "--answer", "Use OIDC", "--source", "the surface")
+
+    calls = agent_runner('```json\n{"outcome": "PARTIAL", "summary": "resumed"}\n```')
+    code, payload = _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    assert code == 0
+    assert "- [ ] 1.1" in tasks.read_text(encoding="utf-8"), "the task is no longer awaiting"
+    assert "Use OIDC" in calls[-1]["prompt"], (
+        "an answer nobody tells the next run about is an answer nobody acted on"
+    )
+
+
+# ── two defects a LIVE run found that every test above had passed ─────────────────────────
+
+
+def test_an_answer_survives_a_status_call_between_being_written_and_being_used(
+        tmp_path, agent_runner):
+    """Found live, not here. The test above answered and ran in consecutive commands, so the
+    run's own intake carried the answer — a path the user does not take. Interleave one
+    `status`, which takes answers in on every path by design, and the answer's TEXT was gone
+    by the time a unit ran: the task was released and the unit asked the same question again.
+
+    The user-reachable sequence is answer → look → run. That is what this drives."""
+    agent_runner(
+        '```json\n{"outcome": "NEEDS_INPUT", "summary": "need a choice",'
+        ' "open_decisions": [{"task": "1.1", "question": "Which wording?"}]}\n```'
+    )
+    _lifecycle_project(tmp_path)
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    _run(tmp_path, "--change", "c", "answer", "--task", "1.1",
+         "--answer", "Use OIDC", "--source", "the surface")
+    _run(tmp_path, "--change", "c", "status")          # <- the step that used to lose it
+
+    calls = agent_runner('```json\n{"outcome": "PARTIAL", "summary": "resumed"}\n```')
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+    assert "Use OIDC" in calls[-1]["prompt"], (
+        "releasing a task is not the same as delivering the answer"
+    )
+
+
+def test_a_task_an_earlier_run_completed_is_not_reported_as_unmarked(tmp_path, agent_runner):
+    """Also found live. The report said 'claimed complete but not marked in the file' about a
+    task that WAS marked — by the previous run. A divergence report that states something
+    untrue is worse than one that stays quiet: the reader checks it, finds the marker, and
+    stops trusting the whole report."""
+    def mark_one(tree: Path) -> None:
+        tasks = tree / "openspec/changes/c/tasks.md"
+        tasks.write_text(tasks.read_text(encoding="utf-8").replace("- [ ] 1.1", "- [x] 1.1"),
+                         encoding="utf-8")
+
+    agent_runner('```json\n{"outcome": "PARTIAL", "summary": "did the first",'
+                 ' "completed": ["1.1"]}\n```', side_effect=mark_one)
+    _lifecycle_project(tmp_path)
+    _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    agent_runner('```json\n{"outcome": "PARTIAL", "summary": "and again",'
+                 ' "completed": ["1.1"]}\n```')
+    _, payload = _run(tmp_path, "--change", "c", "run", "--seat", SEAT)
+
+    record = json.loads(Path(payload["record"]).read_text(encoding="utf-8"))
+    assert record["diff"]["claimed_but_unmarked"] == [], (
+        "1.1 is marked in the file; saying otherwise is false"
+    )
+    assert any("earlier run had already completed it" in l for l in payload["lines"]), payload["lines"]

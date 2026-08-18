@@ -398,6 +398,7 @@ class UnitRecord:
             "diff": None if self.diff is None else {
                 "claimed_but_unmarked": list(self.diff.claimed_but_unmarked),
                 "marked_but_unclaimed": list(self.diff.marked_but_unclaimed),
+                "claimed_but_done_earlier": list(self.diff.claimed_but_done_earlier),
             },
             "set_aside": self.set_aside_condition,
             # Every input verdict, in full. A unit whose input is other units' verdicts is

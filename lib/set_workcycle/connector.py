@@ -52,6 +52,8 @@ __all__ = [
     "mark_awaiting",
     "clear_awaiting",
     "awaiting_tasks",
+    "record_answer",
+    "answers_for",
 ]
 
 ANSWERS_REL = "set/runtime/work-cycle/answers"
@@ -407,3 +409,49 @@ def _write(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + ".set-tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
+
+
+# ── answers, kept where the NEXT run can still find them ──────────────────────────────────
+#
+# Releasing a task is not the same as delivering the answer. A live run showed the gap: a
+# reporting-only invocation took the answer in and released the task, and by the time a unit
+# ran, the answer's TEXT was gone — so the unit asked the same question again. The release
+# survived in the task file; the content had nowhere to live. It does now.
+
+ANSWER_LOG_REL = "set/runtime/work-cycle/{change}/answers.jsonl"
+
+
+def record_answer(tree: str | Path, change: str, task: str, answer: str,
+                  source: str = "", when: Optional[str] = None) -> Path:
+    """Keep an applied answer with its change, so any later run can carry it forward."""
+    path = Path(tree) / ANSWER_LOG_REL.format(change=change)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "task": task, "answer": answer, "source": source,
+            "recorded_at": when or time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        }) + "\n")
+    logger.info("answer for %s#%s recorded for later runs", change, task)
+    return path
+
+
+def answers_for(tree: str | Path, change: str,
+                tasks: Optional[Iterable[str]] = None) -> list[tuple[str, str]]:
+    """Every answer recorded for `change`, newest per task, optionally limited to `tasks`."""
+    path = Path(tree) / ANSWER_LOG_REL.format(change=change)
+    if not path.is_file():
+        return []
+    wanted = {str(t) for t in tasks} if tasks is not None else None
+    latest: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        task = str(row.get("task", ""))
+        if not task or (wanted is not None and task not in wanted):
+            continue
+        latest[task] = str(row.get("answer", ""))
+    return sorted(latest.items())

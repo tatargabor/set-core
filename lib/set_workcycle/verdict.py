@@ -220,10 +220,20 @@ def extract_verdict(text: str) -> Verdict:
 
 @dataclass
 class TreeDiff:
-    """Where a unit's claim and the tree disagree — in both directions."""
+    """Where a unit's claim and the tree disagree — in both directions.
+
+    Three categories, not two. The third exists because a live run produced it: a unit
+    claimed a task an *earlier* run had already marked, and the report said "claimed
+    complete but not marked in the file" — which was false, the task was marked. A
+    divergence report that states something untrue is worse than one that stays quiet,
+    because the reader checks it, finds the marker, and stops trusting the whole report.
+    """
 
     claimed_but_unmarked: tuple[str, ...] = ()
     marked_but_unclaimed: tuple[str, ...] = ()
+    #: Claimed by this unit, but already complete when it started. Not an overclaim about the
+    #: file — an overclaim about authorship, which is a different and milder thing.
+    claimed_but_done_earlier: tuple[str, ...] = ()
 
     @property
     def agrees(self) -> bool:
@@ -235,6 +245,8 @@ class TreeDiff:
             lines.append(f"claimed complete but not marked in the file: {k}")
         for k in self.marked_but_unclaimed:
             lines.append(f"marked complete in the file but not claimed: {k}")
+        for k in self.claimed_but_done_earlier:
+            lines.append(f"claimed, but an earlier run had already completed it: {k}")
         if not lines:
             lines.append("the verdict and the file agree")
         return lines
@@ -258,8 +270,9 @@ def diff_against_tree(
     claimed = {c for c in verdict.completed}
 
     diff = TreeDiff(
-        claimed_but_unmarked=tuple(sorted(claimed - marked)),
+        claimed_but_unmarked=tuple(sorted(claimed - marked - already)),
         marked_but_unclaimed=tuple(sorted(marked - claimed)),
+        claimed_but_done_earlier=tuple(sorted(claimed & already)),
     )
     if not diff.agrees:
         logger.warning("verdict/tree divergence: %s", "; ".join(diff.as_lines()))

@@ -101,8 +101,8 @@
 
 <!-- depends: 6 -->
 
-- [ ] 8.1 Run the engine on a change of this repository with real group dependencies and at least one human stop; record what the run produced, not that it exited zero [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 8.2 Confirm the answer written from the surface reaches a stopped unit and releases it, observed end to end rather than asserted per layer [REQ: an-open-decision-can-be-answered-over-the-api]
+- [x] 8.1 Run the engine on a change of this repository with real group dependencies and at least one human stop; record what the run produced, not that it exited zero [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 8.2 Confirm the answer written from the surface reaches a stopped unit and releases it, observed end to end rather than asserted per layer [REQ: an-open-decision-can-be-answered-over-the-api]
 - [?] 8.3 Coordinate the crossing run on the consuming project's tree and compare it against that project's own engine — requires the other side's participation and their choice of change [REQ: a-commit-happens-only-behind-a-green-gate]
 
 ## Acceptance Criteria (from spec scenarios)

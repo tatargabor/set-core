@@ -137,7 +137,8 @@ def test_an_answer_reaches_only_its_own_project(tmp_path):
     assert intake(b, awaiting={"c#1.1"}).applied == []
 
 
-def test_a_blocked_unit_in_one_project_does_not_stop_another(tmp_path):
+def test_a_blocked_unit_in_one_project_does_not_stop_another(tmp_path, agent_runner):
+    agent_runner('```json\n{"outcome": "GROUP_DONE", "summary": "done", "completed": ["1.1"]}\n```')
     a = _project(tmp_path / "a", tasks="## 1. First\n- [?] 1.1 waiting on a person\n")
     b = _project(tmp_path / "b")
 
