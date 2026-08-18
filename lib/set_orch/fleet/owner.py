@@ -43,7 +43,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
-from . import scopes
+from . import discovery, scopes
 from .scopes import Scope, ScopeError
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,40 @@ logger = logging.getLogger(__name__)
 #: the surface's rules differ per population and a guess here becomes a promise.
 STARTED_HERE = "started-here"
 FOREIGN = "foreign"
+
+
+def _describe_exit(status: int) -> str:
+    """A wait status as a sentence, because the raw number is not one.
+
+    Task 5.6 asks for the exit SIGNAL in the log, and `waitpid` returns a packed
+    status where 36608 means "killed by SIGKILL" and nothing about it says so.
+    A log line an operator has to decode by hand is a log line they will skip,
+    and the whole point of logging the lifecycle is that an orphan is findable
+    from the logs rather than only from the screen.
+    """
+    if os.WIFSIGNALED(status):
+        signum = os.WTERMSIG(status)
+        try:
+            name = signal.Signals(signum).name
+        except ValueError:
+            name = f"signal {signum}"
+        return f"killed by {name}"
+    if os.WIFEXITED(status):
+        code = os.WEXITSTATUS(status)
+        if code == 0:
+            return "exited cleanly"
+        # 128+N is the shell's convention for "died on signal N", and it is the
+        # COMMON case here rather than an exotic one: an agent under a pty runs
+        # below a shell, so a SIGTERM arrives as exit code 143 — measured on the
+        # first real stop. Reporting only the number leaves the reader to do the
+        # arithmetic, and a reader who has to do arithmetic stops reading.
+        if 128 < code < 128 + signal.NSIG:
+            try:
+                return f"exited with code {code} (128+{signal.Signals(code - 128).name})"
+            except ValueError:
+                pass
+        return f"exited with code {code}"
+    return f"ended with raw wait status {status}"
 
 
 class OwnerError(RuntimeError):
@@ -241,8 +275,8 @@ class AgentOwner:
                 return False
             if collected:
                 logger.info(
-                    "fleet owner: reaped %s (pid %s, exit status %s)",
-                    agent.label, collected, status,
+                    "fleet owner: reaped %s (pid %s, %s)",
+                    agent.label, collected, _describe_exit(status),
                 )
                 return True
             if time.monotonic() >= deadline:
@@ -344,6 +378,36 @@ class AgentOwner:
 # recovery — task 5.11
 # --------------------------------------------------------------------------- #
 
+def _refuse_if_the_session_is_running(session_id: str) -> None:
+    """Task 5.7: never resume a session a live process is bound to.
+
+    Stopping the scope (below) covers the agents THIS framework started. It says
+    nothing about the rest, and the rest is most of them: a session started by
+    hand in a terminal has no scope, so every check based on units would clear it
+    for resume — and a resume against a live session forks its conversation into
+    a branch the running original never sees, with nothing reporting it
+    (design §6.1). That is the one failure in this module that is silent, so the
+    check is on the session rather than on the unit.
+
+    **Undeterminable liveness is treated as live**, which is why this asks
+    `live_session_ids()` — the one reader in `discovery` that returns `None`
+    rather than an empty set when it cannot look. Every other reader flattens
+    that into "no agents", which is right for a listing and exactly backwards
+    here: it would read as "nothing is running" and clear the way.
+    """
+    live = discovery.live_session_ids()
+    if live is None:
+        raise OwnerError(
+            f"cannot determine whether {session_id} is running; refusing to resume — "
+            "a resume against a live session forks its conversation silently"
+        )
+    if session_id in live:
+        raise OwnerError(
+            f"session {session_id} is bound to a live process; refusing to resume — "
+            "a resume against a live session forks its conversation silently"
+        )
+
+
 def recover(
     owner: AgentOwner,
     *,
@@ -369,6 +433,7 @@ def recover(
     rather than proceeding into a fork.
     """
     unit = scopes._as_scope(unit)
+    _refuse_if_the_session_is_running(session_id)
     scope = scopes.get(unit)
     if scope is not None and not scopes.is_gone(unit):
         logger.info("fleet owner: recovery stopping %s before resume", unit)

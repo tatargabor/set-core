@@ -309,6 +309,51 @@ def discover_agents(
     return agents
 
 
+def live_session_ids(
+    proc_root: str = "/proc",
+    record_dir: Path = SESSION_RECORD_DIR,
+) -> Optional[set]:
+    """Session ids that a live process is currently bound to, or **None**.
+
+    `None` means the question could not be answered, and it is a different value
+    from the empty set on purpose. Every other reader in this module treats an
+    unreadable `/proc` as "no agents" and logs a warning, which is right for a
+    listing — an empty screen is honest when nothing can be seen.
+
+    It is exactly wrong for the caller this exists for. Task 5.7 refuses to
+    resume a session that something is already running, and there the empty set
+    means *go ahead*: an unreadable `/proc` would clear the way for a resume onto
+    a live session, which forks its conversation silently (design §6.1). So the
+    failure is surfaced rather than flattened, and the caller treats
+    undeterminable liveness as live.
+    """
+    try:
+        entries = os.listdir(proc_root)
+    except OSError as exc:
+        logger.warning("fleet discovery: cannot read %s: %s", proc_root, exc)
+        return None
+
+    live_pids = set()
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        comm = _read(os.path.join(proc_root, entry, "comm"))
+        if comm is not None and comm.strip() == AGENT_COMM:
+            live_pids.add(int(entry))
+
+    try:
+        records = _load_session_records(record_dir)
+    except OSError as exc:
+        logger.warning("fleet discovery: cannot read the session records: %s", exc)
+        return None
+
+    return {
+        str(record.get("sessionId"))
+        for pid, record in records.items()
+        if pid in live_pids and record.get("sessionId")
+    }
+
+
 def is_agent_process(pid: int, proc_root: str = "/proc") -> bool:
     """Whether THIS pid is a live agent, asked of the pid rather than of a list.
 

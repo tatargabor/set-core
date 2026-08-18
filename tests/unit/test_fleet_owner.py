@@ -158,6 +158,7 @@ def test_orphans_are_live_framework_scopes_this_owner_does_not_hold(monkeypatch)
 
 def test_recover_stops_the_old_scope_before_it_resumes(monkeypatch):
     order = []
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
     monkeypatch.setattr(scopes_mod, "get", lambda u: Scope(unit=u, pid=None, cgroup="/x", active=False, state="inactive")
                         if order else Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
 
@@ -180,6 +181,7 @@ def test_recover_refuses_to_resume_when_the_scope_will_not_die(monkeypatch):
     other, and nothing reports it (design §6.1). So a stop that did not take
     aborts the recovery — it does not proceed hopefully.
     """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
     monkeypatch.setattr(scopes_mod, "get",
                         lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
     monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: False)
@@ -196,6 +198,7 @@ def test_recover_rechecks_the_state_rather_than_trusting_the_stop_call(monkeypat
     wearing a success. The state now is the fact; the call's opinion of it a
     moment ago is not.
     """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
     monkeypatch.setattr(scopes_mod, "get",
                         lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
     monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: True)   # lies
@@ -212,6 +215,7 @@ def test_a_resumed_agent_says_it_was_resumed(monkeypatch):
     replacement is not reattachment, and reporting it as one would promise a
     continuity the mechanism does not have.
     """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
     monkeypatch.setattr(scopes_mod, "get", lambda u: None)
     captured = {}
     o = AgentOwner()
@@ -271,6 +275,7 @@ def test_recover_refuses_while_the_old_scope_is_still_shutting_down(monkeypatch)
     already mis-answered, so a scope that was `deactivating` with a live agent in
     it passed both checks and the resume went ahead against a running session.
     """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
     monkeypatch.setattr(
         scopes_mod, "get",
         lambda u: Scope(unit=u, pid=5, pids=[5], cgroup="/x", active=False, state="deactivating"),
@@ -339,3 +344,102 @@ def test_stopping_an_agent_this_owner_holds_says_so(monkeypatch):
     assert result["found"] is True
     assert result["population"] == STARTED_HERE
     assert o.owned() == []
+
+
+# --------------------------------------------------------------------------- #
+# never resume a session something is already running — task 5.7
+# --------------------------------------------------------------------------- #
+
+def test_a_session_a_live_process_is_bound_to_is_never_resumed(monkeypatch):
+    """The check is on the SESSION, not on the unit, and that is the whole point.
+
+    Stopping the scope covers the agents this framework started. It says nothing
+    about the rest, and the rest is most of them: a session started by hand has
+    no scope, so every unit-based check clears it for resume — and a resume
+    against a live session forks its conversation into a branch the running
+    original never sees, with nothing reporting it (design §6.1).
+    """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: {"live-one"})
+    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    o = AgentOwner()
+    monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
+
+    with pytest.raises(OwnerError) as excinfo:
+        recover(o, unit="set-agent-x.scope", session_id="live-one", cwd="/tmp")
+    assert "forks" in str(excinfo.value)
+
+
+def test_undeterminable_liveness_is_treated_as_live(monkeypatch):
+    """`None` is not the empty set, and flattening the two is what would make
+    this guard fail open. Every other reader in `discovery` turns an unreadable
+    `/proc` into "no agents" — right for a listing, exactly backwards here, where
+    "nothing is running" clears the way for the fork.
+    """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: None)
+    o = AgentOwner()
+    monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed without knowing"))
+
+    with pytest.raises(OwnerError) as excinfo:
+        recover(o, unit="set-agent-x.scope", session_id="unknowable", cwd="/tmp")
+    assert "cannot determine" in str(excinfo.value)
+
+
+def test_an_empty_set_of_live_sessions_still_allows_a_resume(monkeypatch):
+    """The other direction. A guard that never lets anything through is not a
+    guard, and recovery would be impossible.
+    """
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
+    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    started = {}
+    o = AgentOwner()
+    monkeypatch.setattr(o, "start", lambda *a, **k: started.update(k) or "ok")
+
+    assert recover(o, unit="set-agent-x.scope", session_id="dead-one", cwd="/tmp") == "ok"
+    assert started["resumed_session"] == "dead-one"
+
+
+def test_the_liveness_check_runs_BEFORE_the_scope_is_stopped(monkeypatch):
+    """Order matters and it is not obvious. Stopping first would kill a running
+    agent on the way to refusing the resume — a refusal that damages what it was
+    protecting.
+    """
+    events = []
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids",
+                        lambda *a, **k: events.append("checked") or {"live-one"})
+    monkeypatch.setattr(scopes_mod, "get",
+                        lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
+    monkeypatch.setattr(scopes_mod, "stop", lambda *a, **kw: events.append("stopped") or True)
+
+    with pytest.raises(OwnerError):
+        recover(AgentOwner(), unit="set-agent-x.scope", session_id="live-one", cwd="/tmp")
+    assert events == ["checked"], "the scope must not be stopped on the way to a refusal"
+
+
+# --------------------------------------------------------------------------- #
+# lifecycle logging — task 5.6
+# --------------------------------------------------------------------------- #
+
+def test_an_exit_status_is_logged_as_a_sentence_not_as_a_packed_number():
+    """`waitpid` returns a packed status where 36608 means "the shell below the
+    pty saw a SIGTERM", and nothing about the number says so. A log line an
+    operator has to decode by hand is a log line they skip — and the point of
+    logging the lifecycle is that an orphan is findable from the logs rather than
+    only from the screen.
+    """
+    import signal as _signal
+    from set_orch.fleet.owner import _describe_exit
+
+    assert _describe_exit(0) == "exited cleanly"
+    assert _describe_exit(_signal.SIGKILL) == "killed by SIGKILL"
+    # The measured case: an agent under a pty runs below a shell, so a SIGTERM
+    # arrives as exit code 143 rather than as a signalled death.
+    assert _describe_exit(36608) == "exited with code 143 (128+SIGTERM)"
+    assert _describe_exit(256) == "exited with code 1"
+
+
+def test_an_unrecognised_status_says_so_rather_than_guessing():
+    """A status shape nobody anticipated must report itself as raw, not be
+    forced into the nearest familiar sentence.
+    """
+    from set_orch.fleet.owner import _describe_exit
+    assert "raw wait status" in _describe_exit(0x7F)      # stopped, neither exited nor signalled

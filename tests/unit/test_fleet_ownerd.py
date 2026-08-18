@@ -534,3 +534,68 @@ def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(tmp_p
     ack, frame = _run(scenario())
     assert ack is None, "a null result is a real answer, not an absent one"
     assert frame == b"SCREEN", "the frame was consumed as though it were the response"
+
+
+def test_a_viewer_detaching_leaves_the_agent_held_and_running(tmp_path):
+    """Task 5.4: stopping is a deliberate act, never a consequence of closing a
+    view. Driven through the real attach/detach path rather than asserted about
+    it, because the hazard is a future "tidy up on disconnect" — which would look
+    reasonable and would live exactly where this test drives.
+
+    Verified end to end on 2026-08-19 too: after the WebSocket closed, the agent
+    was still in the fleet listing. This holds the code path so the live check
+    does not have to be the only guard.
+    """
+    path = str(tmp_path / "owner.sock")
+    daemon = _daemon_with_terminal(path)
+    daemon.owner.agents = [
+        OwnedAgent(label="term", unit="set-agent-term.scope", pid=7, cwd="/tmp", master_fd=-1)
+    ]
+
+    async def scenario():
+        from set_orch.fleet.owner_client import OwnerStream
+        daemon._claim_socket()
+        server = await asyncio.start_unix_server(daemon._serve_client, path=path)
+        async with server:
+            stream = OwnerStream("term", path)
+            await asyncio.wait_for(stream.open(), timeout=5)
+            await stream.close()
+            await asyncio.sleep(0.05)
+            return len(daemon._subscribers.get("term", [])), [a.label for a in daemon.owner.owned()]
+
+    viewers, still_held = _run(scenario())
+    assert viewers == 0, "the viewer was not forgotten"
+    assert still_held == ["term"], "closing a view stopped the agent"
+    assert daemon.owner.stopped == [], "detach must never reach the stop path"
+
+
+def test_a_second_viewer_attaches_to_the_same_terminal(tmp_path):
+    """Reattachable, and by more than one reader: the terminal belongs to the
+    owner, not to whoever is looking at it. Each arrival is sent the buffered
+    screen, so a viewer that joins late does not start blank halfway through.
+    """
+    path = str(tmp_path / "owner.sock")
+    daemon = _daemon_with_terminal(path, tail=b"ALREADY-ON-SCREEN")
+
+    async def scenario():
+        from set_orch.fleet.owner_client import OwnerStream
+        daemon._claim_socket()
+        server = await asyncio.start_unix_server(daemon._serve_client, path=path)
+        async with server:
+            first = OwnerStream("term", path)
+            second = OwnerStream("term", path)
+            ack1 = await asyncio.wait_for(first.open(), timeout=5)
+            ack2 = await asyncio.wait_for(second.open(), timeout=5)
+            f1, _ = await asyncio.wait_for(first.frames().__anext__(), timeout=5)
+            f2, _ = await asyncio.wait_for(second.frames().__anext__(), timeout=5)
+            daemon._drain_from(b"-LIVE")
+            l1, _ = await asyncio.wait_for(first.frames().__anext__(), timeout=5)
+            l2, _ = await asyncio.wait_for(second.frames().__anext__(), timeout=5)
+            await first.close()
+            await second.close()
+            return ack1["viewers"], ack2["viewers"], (f1, f2), (l1, l2)
+
+    v1, v2, replays, lives = _run(scenario())
+    assert (v1, v2) == (1, 2)
+    assert replays == (b"ALREADY-ON-SCREEN", b"ALREADY-ON-SCREEN")
+    assert lives == (b"-LIVE", b"-LIVE"), "live output must reach every viewer, not just the first"
