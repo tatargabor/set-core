@@ -2070,3 +2070,75 @@ tree, because they change what should be asked:
   somebody to issue the command for it.
 
 What was asked of them: which change, which tree or branch, when — **and how far it may run**.
+
+### The crossing run HAPPENED — 2026-08-18, and it paid for itself four times over
+
+The first live run of the sectioned apply engine against a consumer tree, on a change of theirs
+(95 tasks, 10 groups) in a branch they cut from `origin/main` and measured green on arrival
+(`tsc --noEmit` exit 0; their suite 4140 passed / 0 failures). One unit ran — group 0.
+
+**It found four defects, none of which any unit test had caught, and all four failed in the
+reassuring direction.** That is the finding, not the count: every one of them said "fine" about
+something that was not.
+
+**The gate the consumer's own question exposed, before the run started.** They asked whether
+`gates:` in their adoption file takes command strings or names. Measuring the answer produced a
+third one: neither, because nothing read the field. `grep -rn "\.gates\b"` returned a single hit,
+inside `describe()`. The engine printed the project's declared gate and ran the profile's instead —
+*a declared guard that never takes effect*, one layer above the change that forbids exactly that.
+Worse, the spec **contradicted itself**: the adoption requirement said the project declares its
+gates, `work-unit-engine` said the steps come from the resolved profile, and nobody had decided
+which wins. Fixed in `e7858ec2`, precedence now stated, and `gates: []` is an answer — the profile
+is not consulted at all. Verified live afterwards: the steps resolved to their two declared
+commands.
+
+*And the test written for the empty-declaration case passed on the broken code.* It used a profile
+that RAISED if consulted — but `resolve_gate_steps` wraps detector calls in `except Exception`, so
+the explosion became a logged warning and an empty command, and "no steps" arrived for the wrong
+reason. **The instrument measured the call; only the result decides.** Rewritten to a profile that
+detects a real command, so a fallback produces a step there is something to fail on.
+
+**Then the run itself, in `f9da1df8`:**
+
+1. **A red gate did not hold the chain.** `status` reported `0: complete` and offered group 1,
+   while group 0's gate was red and its commit refused. Completeness came only from `[x]` markers —
+   the group plan is parsed from markdown and *structurally cannot see a run record*. The markers
+   are what the unit CLAIMED; the gate is what was CHECKED. The chain would have handed the next
+   unit a tree that was already red, where its own failures could not be told from the inherited
+   one. `select_next_group(plan, gate_failed=…)`, derived from the records by the caller so the
+   layering still runs one way.
+
+2. **The engine stated a tree state it never measured.** "The work stays in the tree" — while the
+   agent had already committed it (`git status` clean, the commit in the history). The engine
+   cannot prevent this and no longer pretends to: the agent holds the same git, so "commit only
+   behind a green gate" binds the engine, not the agent. What it can do is look. The fact now
+   travels in a field (`committed_by_agent`), not in prose — and **serialising that field was a
+   separate step**, without which this would have repeated the `gates` defect within the same day.
+
+3. **`elsewhere` exonerated without evidence.** Three mechanical faults — names scraped from the
+   failure's *prose* (a remediation hint naming the file to EDIT), names scraped from *passing*
+   lines, and `(root / "").exists()` being True so every bare `.` entered as a file. But the
+   fourth is the one no filter fixes: **the real cause was indirect.** Ticking five tasks moved
+   `tasksDone` past a threshold in their generated API output, which their surface guard caught —
+   and the task file is not mentioned anywhere in the failure. No filename intersection can reach
+   that, so a clean intersection proves nothing. Now: `this-unit` on intersection, `elsewhere` only
+   when the unit changed no file at all, `undetermined` otherwise.
+
+4. **The consumer's warning was right, and the shape of being right matters.** They said group 0
+   held two-sided negotiations that no agent in a tree could close. The engine returned `GROUP_DONE`
+   with `open_decisions: []` and all five ticked. The agent was not blind — its notes say the answer
+   had not arrived and it moved the dependency to group 7 as a warning block, reasoning that a task
+   left open is indistinguishable from work not done. Defensible, and still wrong in the way this
+   pair keeps measuring: **it put prose where a gate belonged.** The mechanism only knows `[?]`, and
+   those tasks carried none. Asked of them for group 1, where `1.3` says in words "not to be left to
+   a machine" and is likewise unmarked.
+
+**What the run cost them: nothing.** Their gate went red for a real reason — their own surface guard
+noticing a new field — and the fix is one line on their side. The chain now holds until it is green,
+which is the engine's decision, not a person's.
+
+*The transferable half:* four defects, one runtime, one unit of work — and **every unit test passed
+throughout**. Not because the tests are bad, but because each defect lived in the gap between a
+mechanism and its result: a gate that resolves steps but not the declared ones, a completeness
+derived from the wrong source, a claim about a tree nobody looked at, an attribution computed from
+a set that was never a list of causes. A live run is where a mechanism meets a result.
