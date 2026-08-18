@@ -112,6 +112,13 @@ class OwnedAgent:
     #: Set when the framework resumed an existing session rather than starting a
     #: new one, so the surface can say which of the two acts it performed.
     resumed_session: Optional[str] = None
+    #: Who asked for this agent, as a seat identity. RECORDED rather than
+    #: derived, because process ancestry cannot answer it: measured 2026-08-19,
+    #: an agent started here has the owner — a plain python process — as its
+    #: parent, and systemd above that, so no walk up the tree will ever find the
+    #: requester. A relation that only exists at the moment of the act has to be
+    #: written down during it.
+    requested_by: Optional[str] = None
 
 
 class AgentOwner:
@@ -132,6 +139,7 @@ class AgentOwner:
         rows: int = 40,
         cols: int = 120,
         resumed_session: Optional[str] = None,
+        requested_by: Optional[str] = None,
     ) -> OwnedAgent:
         """Start an agent under a framework-owned pty, inside its own scope.
 
@@ -191,6 +199,7 @@ class AgentOwner:
         agent = OwnedAgent(
             label=label, unit=unit, pid=scope.pid, cwd=cwd,
             master_fd=master_fd, child_pid=pid, resumed_session=resumed_session,
+            requested_by=requested_by,
         )
         self._agents[label] = agent
         logger.info(

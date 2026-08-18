@@ -27,7 +27,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +314,73 @@ def discover_agents(
         len(agents), sum(1 for a in agents if not a.binding_confirmed),
     )
     return agents
+
+
+def _ppid(pid: int, proc_root: str = "/proc") -> Optional[int]:
+    """The parent pid, parsed the only way that is safe.
+
+    `/proc/<pid>/stat` puts `comm` in parentheses in field 2, and a comm may
+    contain spaces and parentheses — so splitting the line on whitespace gets the
+    wrong field for any process whose name is unusual. The parse starts after the
+    LAST `)`, which is where the fixed-width fields begin.
+    """
+    try:
+        with open(os.path.join(proc_root, str(pid), "stat"), encoding="utf-8") as handle:
+            raw = handle.read()
+    except OSError:
+        return None
+    tail = raw[raw.rfind(")") + 2:].split()
+    if len(tail) < 2 or not tail[1].isdigit():
+        return None
+    return int(tail[1])
+
+
+def parent_seat(
+    pid: int,
+    *,
+    proc_root: str = "/proc",
+    record_dir: Path = SESSION_RECORD_DIR,
+    max_depth: int = 40,
+) -> Optional[Dict[str, Any]]:
+    """The first agent ANCESTOR of a process, reported by seat rather than by pid.
+
+    Task 2.5. The walk climbs through non-agent processes — an agent that runs
+    `claude` from its own shell is two links away, not one — and stops at the
+    first ancestor whose `comm` is the agent binary.
+
+    **By seat, never by pid, and the returned dict says so:** a pid is reused, so
+    a remembered one may name something else entirely by the time anyone reads
+    it. The seat is the runtime's own session identity.
+
+    ⚠ **MEASURED 2026-08-19, and it bounds what this can ever answer: 0 of 23
+    live agents had an agent ancestor.** More decisively, an agent started from
+    the fleet screen has the OWNER — a plain python process — as its parent, and
+    systemd above that. So process ancestry cannot express "which agent asked for
+    this one", and never will for anything the framework starts. That relation
+    has to be RECORDED at the moment of starting; see `OwnedAgent.requested_by`.
+    This function answers the other half honestly, and returns `None` rather than
+    guessing when there is no agent above.
+    """
+    records = _load_session_records(record_dir)
+    current = _ppid(pid, proc_root)
+    depth = 0
+    while current and current > 1 and depth < max_depth:
+        comm = _read(os.path.join(proc_root, str(current), "comm"))
+        if comm is not None and comm.strip() == AGENT_COMM:
+            record = records.get(current) or {}
+            return {
+                "seat": record.get("name"),
+                "session_id": record.get("sessionId"),
+                # Named so a reader can tell a measured relation from a recorded
+                # one; they answer different questions and can disagree.
+                "source": "ancestry",
+                # Present only because a pid with no record has no seat at all,
+                # and reporting nothing would lose the relation entirely.
+                "pid_without_seat": None if record else current,
+            }
+        current = _ppid(current, proc_root)
+        depth += 1
+    return None
 
 
 def live_session_ids(

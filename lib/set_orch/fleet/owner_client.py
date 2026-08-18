@@ -119,8 +119,11 @@ class OwnerClient:
         env: Optional[Dict[str, str]] = None,
         rows: int = 40,
         cols: int = 120,
+        requested_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         params: Dict[str, Any] = {"label": label, "cwd": cwd, "rows": rows, "cols": cols}
+        if requested_by:
+            params["requested_by"] = requested_by
         if argv:
             params["argv"] = list(argv)
         if env:

@@ -35,7 +35,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
-from ..fleet.discovery import discover_agent
+from ..fleet.discovery import discover_agent, parent_seat
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet.layout import LayoutConflict
@@ -80,6 +80,12 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         population, terminal_label = "started-here", owned[agent.pid].get("label")
     else:
         population, terminal_label = "foreign", None
+
+    requested_by = (owned or {}).get(agent.pid, {}).get("requested_by")
+    parent = (
+        {"seat": requested_by, "source": "recorded"} if requested_by
+        else parent_seat(agent.pid)
+    )
     return {
         "pid": agent.pid,
         "name": agent.name,
@@ -113,6 +119,13 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # for `started-here`, and only under the label named here.
         "population": population,
         "terminal_label": terminal_label,
+        # Who started this agent, and WHICH KIND of answer it is. The recorded
+        # one wins when present because it is the only one that can answer for a
+        # framework-started agent at all — measured: those have the owner, a
+        # plain python process, as their parent. `source` is carried so the
+        # surface can mark the recorded one as a claim and the ancestry one as
+        # measured; they answer different questions and can disagree.
+        "parent": parent,
     }
 
 
@@ -229,6 +242,10 @@ class StartAgentBody(BaseModel):
     cwd: str
     rows: int = 40
     cols: int = 120
+    #: Who asked, as a seat identity. Optional and recorded verbatim — the
+    #: framework does not verify it, and the surface must present it as a claim
+    #: rather than as a measured relation.
+    requested_by: Optional[str] = None
 
 
 def _safe_registry() -> List[Dict[str, Any]]:
@@ -300,7 +317,10 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
             detail=f"{cwd} is not a project this screen knows; register it first",
         )
     try:
-        agent = OwnerClient().start(label=body.label, cwd=cwd, rows=body.rows, cols=body.cols)
+        agent = OwnerClient().start(
+            label=body.label, cwd=cwd, rows=body.rows, cols=body.cols,
+            requested_by=body.requested_by,
+        )
     except OwnerUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except OwnerClientError as exc:

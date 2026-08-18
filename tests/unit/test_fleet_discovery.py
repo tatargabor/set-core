@@ -154,3 +154,90 @@ def test_one_agent_skips_git_unless_asked(tmp_path, monkeypatch):
     assert agent.branch is None and agent.project_name is None
     assert agent.sources == ["process"]
     assert agent.binding_confirmed is False
+
+
+# --------------------------------------------------------------------------- #
+# lineage — task 2.5
+# --------------------------------------------------------------------------- #
+
+def _proc_entry(proc, pid, comm, ppid):
+    d = proc / str(pid)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "comm").write_text(comm + "\n")
+    # The real format, parentheses and all — a comm may contain spaces and
+    # brackets, which is exactly what breaks a naive whitespace split.
+    (d / "stat").write_text(f"{pid} ({comm}) S {ppid} 0 0 0 -1 0 0 0 0 0 0 0\n")
+    return d
+
+
+def test_the_walk_climbs_through_non_agent_processes(tmp_path):
+    """An agent that runs `claude` from its own shell is two links away, not one.
+    Stopping at the immediate parent would report no lineage for the commonest
+    way one agent starts another by hand.
+    """
+    from set_orch.fleet.discovery import parent_seat
+
+    proc = tmp_path / "proc"
+    _proc_entry(proc, 100, "claude", 1)       # the ancestor
+    _proc_entry(proc, 200, "bash", 100)       # a shell in between
+    _proc_entry(proc, 300, "claude", 200)     # the descendant
+
+    found = parent_seat(300, proc_root=str(proc), record_dir=tmp_path / "none")
+    assert found is not None
+    assert found["source"] == "ancestry"
+    assert found["pid_without_seat"] == 100, "a pid with no record must not lose the relation"
+
+
+def test_the_stat_parse_survives_a_comm_with_spaces_and_brackets(tmp_path):
+    """`/proc/<pid>/stat` puts `comm` in parentheses in field 2, and a comm may
+    contain both spaces and parentheses. Splitting the line on whitespace reads
+    the wrong field for exactly those processes — and they are the ones a walk
+    passes through.
+    """
+    from set_orch.fleet.discovery import _ppid
+
+    proc = tmp_path / "proc"
+    d = proc / "500"
+    d.mkdir(parents=True)
+    (d / "stat").write_text("500 (weird (name) here) S 42 0 0 0 -1 0 0 0 0 0 0 0\n")
+    assert _ppid(500, str(proc)) == 42
+
+
+def test_no_agent_above_reports_nothing_rather_than_guessing(tmp_path):
+    """MEASURED 2026-08-19 and this is the ORDINARY case, not the edge: 0 of 23
+    live agents had an agent ancestor, and an agent started from the fleet screen
+    has the owner — a plain python process — as its parent, with systemd above
+    that. Reporting the nearest process instead would put a lineage edge on the
+    screen between an agent and a service.
+    """
+    from set_orch.fleet.discovery import parent_seat
+
+    proc = tmp_path / "proc"
+    _proc_entry(proc, 10, "systemd", 1)
+    _proc_entry(proc, 20, "python3", 10)
+    _proc_entry(proc, 30, "claude", 20)
+    assert parent_seat(30, proc_root=str(proc), record_dir=tmp_path / "none") is None
+
+
+def test_a_recorded_origin_outranks_ancestry_and_says_which_it_is(monkeypatch):
+    """The two answer different questions and can disagree, so the surface is
+    told which kind it got. The recorded one wins because it is the only one that
+    can answer for a framework-started agent at all — but it is a CLAIM the
+    framework did not verify, and marking it as measured would be a false value.
+    """
+    from set_orch.api import fleet as fleet_api
+
+    class _A:
+        pid, name, project_name, project_root, cwd = 7, "n", "p", "/r", "/r"
+        branch = session_id = record = None
+        binding_confirmed = True
+        sources = ["process"]
+        kind = "interactive"
+
+    class _S:
+        state, tool, tool_elapsed, other_tools = "quiet", None, None, []
+        last_movement_age, reason, waiting_for, declaration_ignored = 1.0, None, None, None
+
+    monkeypatch.setattr(fleet_api, "parent_seat", lambda pid: {"seat": "x", "source": "ancestry"})
+    payload = fleet_api._agent_payload(_A(), _S(), {7: {"label": "l", "requested_by": "set-core-12"}})
+    assert payload["parent"] == {"seat": "set-core-12", "source": "recorded"}

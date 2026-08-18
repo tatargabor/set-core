@@ -85,6 +85,7 @@ def _agent_payload(agent: OwnedAgent, *, tail_len: int = 0, dropped: bool = Fals
         "cwd": agent.cwd,
         "population": agent.population,
         "resumed_session": agent.resumed_session,
+        "requested_by": agent.requested_by,
         "tail_bytes": tail_len,
         # A tail that has already lost its head says so. Silence here would let a
         # partial stream read as the whole one.
@@ -318,6 +319,7 @@ class OwnerDaemon:
             env=params.get("env"),
             rows=int(params.get("rows", 40)),
             cols=int(params.get("cols", 120)),
+            requested_by=params.get("requested_by"),
         )
         self._attach_drain(agent)
         return _agent_payload(agent)
