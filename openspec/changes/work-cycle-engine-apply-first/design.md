@@ -99,12 +99,44 @@ other. The lock, not the tree layout, is what prevents two units from colliding.
 Gate steps come from `resolve_gate_config(change, profile, …)` — the same six-layer chain the merge
 path uses, ending at the profile. The engine contributes no gate definitions and no commands.
 
-Whether the existing `GatePipeline` also *runs* them is deliberately left to the first task, because
-that pipeline is built for merge verification: it carries retry policy, baseline-diff scope checks
-and new-API-surface detection, none of which a section gate needs. Two outcomes are acceptable —
-reuse it with a restricted gate set, or run the resolved steps directly — and the deciding question
-is whether the pipeline can be pointed at one tree and a subset of gates without inheriting merge
-semantics. What is **not** acceptable is a second source of gate configuration.
+**Measured (task 2.1), and the answer is outcome two: run the resolved steps directly.** The
+question was whether `GatePipeline` (`gate_runner.py:216`) can be pointed at one tree and a subset
+of gates without inheriting merge semantics. Both halves of the pointing work and needed no change:
+the tree reaches it through `change.worktree_path` alone (11 accesses, no other source), and a
+subset is just `GateConfig(gates={...})` plus registering what you want. The three behaviours this
+paragraph originally suspected — retry caching, baseline-diff scope, new-API-surface detection — are
+**inert on a first run**: the first two return early while `verify_retry_index == 0` (`:449`, `:505`)
+and the third is reachable only from inside the first. They were the wrong suspects.
+
+What cannot be shed is **state**. `GatePipeline` writes orchestration state from 9 call sites, and
+its failure path is unconditional: measured end to end on a scratch repository, one failing gate left
+the change at `status: "failed"`, `test_result: "fail"`, `last_gate_commit: <sha>`. So a *section*
+gate going red would record the whole *change* as having failed verification. Pointing `state_file`
+at a scratch file is refused rather than unavailable — it would be a second store of run state, which
+`work-cycle-control` forbids.
+
+So the engine reuses the gate **configuration** chain, `resolve_gate_config(change, profile, …)`,
+and the state-free types around the pipeline — `GateResult`, `GateDefinition`, `_resolve_gate_order`,
+`_truncate_gate_output`, all verified to write no state — and runs the resolved steps itself. What is
+**not** acceptable, and remains so, is a second source of gate configuration.
+
+**Measured (task 2.2) — the event stream.** `chat.py` is the framework's **only** live stream
+consumer. `grep -rln "stream-json"` returns 7 files and six of them do not consume a stream: five
+redirect stdout to a file (`supervisor.py`, `fixer.py`, `investigator.py` — the last reading only the
+first line, for `session_id`) and two parse already-complete content. There was no synchronous
+consumer to adopt.
+
+Extractable from it: `_map_event` (`:250`, 41 lines, pure `dict`→`dict`; its only `WebSocket` mention
+is in the docstring), the invocation shape `claude -p --output-format stream-json --verbose --model`
+with `resolve_model_id`, and — answering this design's third Open Question — the `system`/`init`
+event carrying `session_id` (`:181`), which is where a headless run's session-scoped seat comes from:
+read off the agent process the engine itself started, never invented. Re-expressed rather than
+extracted: the async framing. `_run_claude` is 126 lines of which roughly a hundred are chat's own
+(broadcast to a `set[WebSocket]`, generation guard, history, stale-session retry); the reusable
+mechanic is a blocking `Popen` line loop with a per-line `json.loads` that logs and continues on a
+non-JSON line rather than dying.
+
+The full evidence, with commands, is in this change's `measurements.md`.
 
 ### D5 — Stop points are conditions, not a "waiting for human" flag
 
@@ -212,9 +244,11 @@ it restores the previous behaviour exactly; there is no migration of existing st
 
 - **Is a lens an attribute or a fan-out?** D2 decides "attribute" and states why; it is with the
   consumer whose engine runs lenses today. If the join needs engine support, the change is additive.
-- **Can `GatePipeline` be pointed at one tree and a gate subset without inheriting merge semantics?**
-  First task, by measurement.
-- **Where does a session-scoped seat come from in a headless run?** An interactive session has a
-  native record; a run started by the framework's surface has to be given one. Whatever invokes the
-  command must therefore supply a seat rather than let the engine invent it — noted here because the
-  specs require the refusal, not the origin.
+- ~~**Can `GatePipeline` be pointed at one tree and a gate subset without inheriting merge
+  semantics?**~~ **Answered by measurement (task 2.1) — see D4.** It can be pointed at both; it
+  cannot shed its orchestration-state writes, so the engine runs the resolved steps itself.
+- ~~**Where does a session-scoped seat come from in a headless run?**~~ **Answered by measurement
+  (task 2.2) — see D4.** From the `system`/`init` event on the agent process's own stream
+  (`chat.py:181`). The engine reads the seat off the session it started; it neither invents one nor
+  needs the caller to supply it. The refusal the specs require is unaffected: a seat that names only
+  a project is still rejected.

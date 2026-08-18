@@ -2,9 +2,9 @@
 
 <!-- depends: none -->
 
-- [ ] 0.1 Create the `set_workcycle` top-level package under `lib/` and register it in the project's package list [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 0.2 Add a test asserting the dependency direction — `set_workcycle` may import `set_orch`, `set_orch` may NOT import `set_workcycle` — that fails if the reverse import is introduced anywhere [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 0.3 Verify orchestration still imports and its unit tests still pass with the new package present but unused, so the baseline is established before any engine code exists [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 0.1 Create the `set_workcycle` top-level package under `lib/` and register it in the project's package list [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 0.2 Add a test asserting the dependency direction — `set_workcycle` may import `set_orch`, `set_orch` may NOT import `set_workcycle` — that fails if the reverse import is introduced anywhere [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 0.3 Verify orchestration still imports and its unit tests still pass with the new package present but unused, so the baseline is established before any engine code exists [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
 
 ## 1. Module install — how a capability reaches a project
 
@@ -28,9 +28,9 @@
 
 <!-- depends: none -->
 
-- [ ] 2.1 Determine whether `GatePipeline` can be pointed at one tree and a subset of gates without inheriting merge semantics (retry policy, baseline-diff scope, new-API-surface detection); record the finding and which of the two acceptable outcomes applies [REQ: the-gate-runs-through-the-project-profile]
-- [ ] 2.2 Identify which part of the stream-json consumption in `chat.py` is reusable outside a websocket-bound session, and record what has to be extracted versus re-expressed [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [ ] 2.3 Record both findings in `design.md` under D4, replacing the open question with the measurement [REQ: the-gate-runs-through-the-project-profile]
+- [x] 2.1 Determine whether `GatePipeline` can be pointed at one tree and a subset of gates without inheriting merge semantics (retry policy, baseline-diff scope, new-API-surface detection); record the finding and which of the two acceptable outcomes applies [REQ: the-gate-runs-through-the-project-profile]
+- [x] 2.2 Identify which part of the stream-json consumption in `chat.py` is reusable outside a websocket-bound session, and record what has to be extracted versus re-expressed [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
+- [x] 2.3 Record both findings in `design.md` under D4, replacing the open question with the measurement [REQ: the-gate-runs-through-the-project-profile]
 
 ## 3. Task-group resolution (Layer 1, domain-free)
 
