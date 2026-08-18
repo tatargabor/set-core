@@ -13,6 +13,7 @@ wildcard registered first answers `/api/fleet/agents` as a project named
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -234,7 +235,7 @@ def test_opening_one_log_does_not_enumerate_the_whole_fleet(monkeypatch):
     """
     class _Agent:
         pid, name, project_name, binding_confirmed = 4242, "a", "p", True
-        session_log = None
+        session_log = record = None
 
     monkeypatch.setattr(
         fleet_api, "discover_agents",
@@ -250,7 +251,7 @@ def test_opening_one_log_does_not_enumerate_the_whole_fleet(monkeypatch):
 def test_the_state_route_also_stays_off_the_fleet_path(monkeypatch):
     class _Agent:
         pid, name, session_id, binding_confirmed, sources = 7, "a", "s", True, ["process"]
-        session_log = None
+        session_log = record = None
 
     monkeypatch.setattr(
         fleet_api, "discover_agents",
@@ -287,10 +288,13 @@ class _Agent:
         self.binding_confirmed = True
         self.sources = ["process"]
         self.kind = "interactive"
+        self.record = None
 
 
 class _State:
     state, tool, tool_elapsed, other_tools, last_movement_age, reason = "quiet", None, None, [], 1.0, None
+    waiting_for = None
+    declaration_ignored = None
 
 
 def test_an_agent_the_owner_holds_is_started_here_and_names_its_terminal():
@@ -332,3 +336,36 @@ def test_the_reason_a_terminal_is_unavailable_is_said_once_not_per_row(monkeypat
 
     monkeypatch.setattr(fleet_api, "_owned_by_pid", lambda: {})
     assert fleet_api.fleet_agents()["owner_reachable"] is True
+
+
+def test_the_session_record_never_reaches_the_payload(monkeypatch):
+    """The confidentiality boundary is a PERSISTENCE boundary, and an API
+    response is a place data leaves the machine from.
+
+    `Agent.record` carries the runtime's session record verbatim — cwd, session
+    name, and a messaging socket path — because `read_state` needs the declared
+    status. None of that was asked for by the surface, and a payload that
+    included it would be a leak nobody decided on: it would arrive through a
+    field added for an unrelated reason.
+    """
+    class _WithRecord:
+        pid, name, project_name, project_root, cwd = 7, "n", "p", "/r", "/r"
+        branch = session_id = None
+        binding_confirmed = True
+        sources = ["process"]
+        kind = "interactive"
+        record = {
+            "sessionId": "s", "cwd": "/home/someone/private-consumer",
+            "messagingSocketPath": "/run/user/1000/cc-socks/7.sock",
+            "name": "private-consumer-12", "status": "idle",
+        }
+
+    class _State:
+        state, tool, tool_elapsed, other_tools = "quiet", None, None, []
+        last_movement_age, reason, waiting_for, declaration_ignored = 1.0, None, None, None
+
+    payload = fleet_api._agent_payload(_WithRecord(), _State(), {})
+    assert "record" not in payload
+    flattened = json.dumps(payload)
+    for secret in ("private-consumer", "cc-socks", "messagingSocketPath"):
+        assert secret not in flattened, f"{secret} reached the payload"

@@ -85,7 +85,7 @@ def test_a_missing_file_is_an_unarranged_screen_not_an_error(tmp_path):
     """A missing arrangement and an empty one mean the same thing, and both must
     produce a screen.
     """
-    assert load(_path(tmp_path)) == {"version": 0, "groups": [], "parked": []}
+    assert load(_path(tmp_path)) == {"version": 0, "groups": [], "parked": [], "ungrouped_order": []}
 
 
 def test_an_unreadable_file_fails_toward_unarranged(tmp_path):
@@ -137,3 +137,55 @@ def test_the_write_is_atomic_and_leaves_no_partial_file(tmp_path):
 def test_the_store_lives_in_the_frameworks_durable_per_user_root(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     assert layout_mod.default_layout_path() == str(tmp_path / "set-core" / "fleet-layout.json")
+
+
+# --------------------------------------------------------------------------- #
+# what the client must not have to INFER — added 2026-08-19 from UI feedback
+# --------------------------------------------------------------------------- #
+
+def test_a_group_carries_its_stored_order_so_a_save_cannot_lose_a_missing_member():
+    """`GET` splits a group into present and missing; `PUT` replaces the whole
+    document. A client rebuilding the list by concatenating the two loses each
+    missing member's POSITION — it can only re-append — so an absent project
+    drifts to the end of its group every time anything is saved. `order` is the
+    stored list verbatim, so there is nothing to rebuild.
+    """
+    arranged = normalise({"groups": [{"name": "g", "projects": ["a", "GONE", "b"]}]})
+    joined = apply_to(arranged, ["a", "b"])
+    group = joined["groups"][0]
+    assert group["projects"] == ["a", "b"]
+    assert group["missing"] == ["GONE"]
+    assert group["order"] == ["a", "GONE", "b"], "the position of the missing member is lost"
+
+
+def test_parked_missing_is_stated_rather_than_left_to_subtraction():
+    """The client used to derive this by removing every group's missing from the
+    total. An inference standing in for data is where a wrong answer looks like
+    a computed one.
+    """
+    arranged = normalise({"groups": [{"name": "g", "projects": ["a", "G1"]}],
+                          "parked": ["b", "G2"]})
+    joined = apply_to(arranged, ["a", "b"])
+    assert joined["parked_missing"] == ["G2"]
+    assert joined["parked_order"] == ["b", "G2"]
+    assert sorted(joined["missing"]) == ["G1", "G2"]
+
+
+def test_the_unassigned_block_keeps_the_order_the_user_gave_it():
+    """Without this the unassigned block is the one part of a hand-arranged
+    screen that cannot be arranged — a hole in the decision rather than a
+    detail, since manual ordering is the whole of D-2.
+    """
+    arranged = normalise({"ungrouped_order": ["zeta", "alpha"]})
+    joined = apply_to(arranged, ["alpha", "mid", "zeta"])
+    assert joined["ungrouped"] == ["zeta", "alpha", "mid"], "ordered first, then the rest"
+
+
+def test_an_ordered_name_that_joins_a_group_stops_being_unassigned():
+    """One project, one place — the preference must not resurrect it."""
+    arranged = normalise({"groups": [{"name": "g", "projects": ["zeta"]}],
+                          "ungrouped_order": ["zeta", "alpha"]})
+    assert arranged["ungrouped_order"] == ["alpha"]
+    joined = apply_to(arranged, ["alpha", "zeta"])
+    assert joined["ungrouped"] == ["alpha"]
+    assert joined["groups"][0]["projects"] == ["zeta"]

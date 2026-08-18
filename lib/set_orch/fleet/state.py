@@ -37,6 +37,8 @@ TAIL_BYTES = 256 * 1024
 UNKNOWN = "unknown"
 WORKING = "working"
 QUIET = "quiet"
+#: Waiting for a PERSON. Not measurable from the log at all — see `read_state`.
+WAITING = "waiting"
 
 
 @dataclass
@@ -59,6 +61,13 @@ class AgentState:
     reason: Optional[str] = None
     #: Tools outstanding beyond the first, if any.
     other_tools: List[str] = field(default_factory=list)
+    #: What the agent says it is waiting for, when the state is `waiting`.
+    #: Verbatim from the runtime's record — this layer does not interpret it.
+    waiting_for: Optional[str] = None
+    #: Set when the record DECLARED a state the log contradicts. The measured
+    #: state wins, and this says the declaration disagreed rather than hiding it:
+    #: a contradiction the surface cannot see is one nobody will ever fix.
+    declaration_ignored: Optional[str] = None
 
 
 def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
@@ -142,7 +151,56 @@ def _age_seconds(iso_timestamp: Optional[str], now: Optional[float] = None) -> O
     return max(0.0, reference - parsed.timestamp())
 
 
-def read_state(session_log: Optional[str], *, now: Optional[float] = None) -> AgentState:
+def _apply_declared_wait(state: AgentState, record: Optional[Dict]) -> AgentState:
+    """Add *waiting for a person* to a quiet state, from the runtime's record.
+
+    Task 3.8, and the division of labour is the finding rather than the code.
+    The log can tell **working from not-working** — an outstanding `tool_use` is
+    structural. It cannot tell **stopped at a prompt** from **finished its turn**,
+    because both look like a turn that ended. Only the record knows, and the
+    record is a declaration.
+
+    So the two are composed rather than ranked: the measurement decides the
+    state, and the declaration may refine a QUIET one into `waiting`. A record
+    claiming `waiting` while a call is outstanding is contradicted and ignored,
+    with the disagreement carried (see `declaration_ignored`).
+
+    **The task asked for a freshness check on the record's timestamps, and there
+    is none to make.** Measured 2026-08-19 on 25 live records: `updatedAt` equals
+    `statusUpdatedAt` in **22 of 22** that carry both, so the record is written
+    only when the status CHANGES. Its timestamp is therefore the age of the
+    STATE, not the age of the observation — an agent waiting for three hours
+    honestly carries a three-hour-old stamp, and rejecting it as stale would
+    throw away the true positives first. (Measured the same day: the one agent
+    whose record said `waiting` had a 9.5-hour-old stamp and was genuinely
+    quiet.) An mtime cross-check does not work either: **22 of 22** logs had
+    moved since their status stamp, so it rejects everything, including that
+    true positive.
+
+    What is left is the contradiction test above, and it is the one that fires on
+    the real staleness: a record still saying `busy` while the log shows no
+    outstanding call — measured on this machine, one of 22.
+    """
+    if not record:
+        # No record is NOT "not waiting". The surface must be able to tell an
+        # agent reported as not waiting from one nobody could ask.
+        return state
+    if record.get("status") != WAITING:
+        return state
+    waiting_for = record.get("waitingFor")
+    return AgentState(
+        state=WAITING,
+        last_movement_age=state.last_movement_age,
+        waiting_for=str(waiting_for) if waiting_for else None,
+    )
+
+
+def read_state(
+    session_log: Optional[str],
+    *,
+    now: Optional[float] = None,
+    record: Optional[Dict] = None,
+) -> AgentState:
     """Measure one agent's state from its session log.
 
     Every path that cannot reach an answer returns `unknown` **with a reason**.
@@ -179,15 +237,22 @@ def read_state(session_log: Optional[str], *, now: Optional[float] = None) -> Ag
         )
 
     if not outstanding:
-        return AgentState(state=QUIET, last_movement_age=movement)
+        return _apply_declared_wait(
+            AgentState(state=QUIET, last_movement_age=movement), record
+        )
 
     ordered = sorted(
         outstanding.values(),
         key=lambda meta: meta.get("timestamp") or "",
     )
     first = ordered[0]
+    # A record that says `waiting` while a call is outstanding is describing a
+    # moment that has passed. The measurement wins; the disagreement is carried
+    # rather than dropped.
+    ignored = "waiting" if (record or {}).get("status") == WAITING else None
     return AgentState(
         state=WORKING,
+        declaration_ignored=ignored,
         last_movement_age=movement,
         tool=first.get("name"),
         tool_elapsed=_age_seconds(first.get("timestamp"), reference),

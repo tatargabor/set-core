@@ -101,6 +101,13 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # Present only when the state could not be determined. Its absence is
         # meaningful: it means the state IS determined.
         "unknown_reason": state.reason,
+        # What the agent says it is waiting for, verbatim from the runtime's
+        # record. Present only for `waiting`; the log cannot produce this.
+        "waiting_for": state.waiting_for,
+        # Set when the record declared a state the log contradicts. Carried
+        # rather than dropped: a contradiction the surface cannot see is one
+        # nobody will ever fix.
+        "declaration_ignored": state.declaration_ignored,
         # Which population this agent belongs to, as a CARRIED fact rather than
         # something the surface infers (task 5.1). A terminal is attachable only
         # for `started-here`, and only under the label named here.
@@ -127,7 +134,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     agents = discover_agents(include_oneshot=include_oneshot)
     projects = discover_projects(agents, registered=registered)
 
-    states = {agent.pid: read_state(agent.session_log) for agent in agents}
+    states = {agent.pid: read_state(agent.session_log, record=agent.record) for agent in agents}
     by_pid = {agent.pid: agent for agent in agents}
     # Asked once for the whole listing, not once per agent: it is one socket
     # round trip and the answer is the same for every row.
@@ -150,11 +157,17 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     # from what we *meant* to filter is the false-absence class.
     working = sum(1 for s in states.values() if s.state == "working")
     unknown = sum(1 for s in states.values() if s.state == "unknown")
+    # Counted from the data. Present even when zero, and that is the point:
+    # the KEY is what tells the surface the state is reported at all. Without
+    # it a screen cannot distinguish "nobody is waiting" from "waiting is not
+    # measured here", and it would have to render one as the other.
+    waiting = sum(1 for s in states.values() if s.state == "waiting")
 
     return {
         "agents": len(agents),
         "working": working,
         "unknown": unknown,
+        "waiting": waiting,
         "projects": grouped,
         # Why a quiet agent may in fact be mid-turn. Measured 2026-08-18: the
         # runtime flushes a turn's entries to the session log in batches, and a
@@ -353,6 +366,9 @@ class LayoutBody(BaseModel):
 
     groups: List[Dict[str, Any]] = []
     parked: List[str] = []
+    #: The unassigned block's order. A preference, not a membership: a name here
+    #: that later joins a group is dropped rather than tracked in two places.
+    ungrouped_order: List[str] = []
     base_version: Optional[int] = None
 
 
@@ -385,7 +401,8 @@ def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
     """
     try:
         saved = fleet_layout.save(
-            {"groups": body.groups, "parked": body.parked},
+            {"groups": body.groups, "parked": body.parked,
+             "ungrouped_order": body.ungrouped_order},
             base_version=body.base_version,
         )
     except LayoutConflict as exc:
@@ -415,7 +432,7 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
     if agent is None:
         raise HTTPException(status_code=404, detail=f"no live agent with pid {pid}")
 
-    state = read_state(agent.session_log)
+    state = read_state(agent.session_log, record=agent.record)
     return {
         "pid": agent.pid,
         "name": agent.name,
@@ -428,6 +445,8 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "other_tools": state.other_tools,
         "last_movement_seconds": state.last_movement_age,
         "unknown_reason": state.reason,
+        "waiting_for": state.waiting_for,
+        "declaration_ignored": state.declaration_ignored,
         # Repeated from the listing on purpose: a caller polling this endpoint
         # alone would otherwise have no way to learn that a quiet agent may be
         # mid-turn, and would present `quiet` as "nothing is happening".

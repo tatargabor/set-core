@@ -52,7 +52,7 @@ class LayoutConflict(RuntimeError):
     """A write was based on a version that is no longer current."""
 
 
-EMPTY: Dict[str, Any] = {"version": 0, "groups": [], "parked": []}
+EMPTY: Dict[str, Any] = {"version": 0, "groups": [], "parked": [], "ungrouped_order": []}
 
 
 def _normalise_group(raw: Any, seen: set) -> Optional[Dict[str, Any]]:
@@ -95,11 +95,24 @@ def normalise(raw: Any) -> Dict[str, Any]:
         if project and project not in seen:
             seen.add(project)
             parked.append(project)
+    # The unassigned block's own order. It is a preference rather than a
+    # membership: a name here that later joins a group is dropped, so the
+    # one-project-one-place rule holds without a second bookkeeping path.
+    ungrouped_order: List[str] = []
+    for entry in raw.get("ungrouped_order") or []:
+        project = str(entry).strip()
+        if project and project not in seen and project not in ungrouped_order:
+            ungrouped_order.append(project)
     try:
         version = int(raw.get("version") or 0)
     except (TypeError, ValueError):
         version = 0
-    return {"version": max(version, 0), "groups": groups, "parked": parked}
+    return {
+        "version": max(version, 0),
+        "groups": groups,
+        "parked": parked,
+        "ungrouped_order": ungrouped_order,
+    }
 
 
 def load(path: Optional[str] = None) -> Dict[str, Any]:
@@ -184,21 +197,39 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
     groups: List[Dict[str, Any]] = []
     missing: List[str] = []
     for group in layout.get("groups", []):
-        present = [p for p in group["projects"] if p in known_set]
-        gone = [p for p in group["projects"] if p not in known_set]
+        stored = list(group["projects"])
+        present = [p for p in stored if p in known_set]
+        gone = [p for p in stored if p not in known_set]
         placed.update(present)
         missing.extend(gone)
-        groups.append({**group, "projects": present, "missing": gone})
+        # `order` is the stored list VERBATIM, and it exists so a client saving
+        # the arrangement back does not have to reconstruct it. Merging `present`
+        # and `missing` by hand loses each missing member's POSITION — it can
+        # only be re-appended — so an absent project silently drifts to the end
+        # of its group every time anything is saved.
+        groups.append({**group, "projects": present, "missing": gone, "order": stored})
 
-    parked = [p for p in layout.get("parked", []) if p in known_set]
-    missing.extend([p for p in layout.get("parked", []) if p not in known_set])
+    stored_parked = list(layout.get("parked", []))
+    parked = [p for p in stored_parked if p in known_set]
+    parked_missing = [p for p in stored_parked if p not in known_set]
+    missing.extend(parked_missing)
     placed.update(parked)
 
-    ungrouped = [p for p in known if p not in placed]
+    # The unassigned block, in the user's order where they gave one. Names they
+    # ordered that have since joined a group or vanished are simply not here;
+    # projects they never ordered follow, in discovery's order.
+    preferred = [p for p in layout.get("ungrouped_order", []) if p in known_set and p not in placed]
+    ungrouped = preferred + [p for p in known if p not in placed and p not in preferred]
     return {
         "version": layout.get("version", 0),
         "groups": groups,
         "parked": parked,
+        # Stated rather than left to subtraction. The client used to derive this
+        # by removing every group's missing from the total, which is an inference
+        # standing in for data — and inferences are where a wrong answer looks
+        # like a computed one.
+        "parked_missing": parked_missing,
+        "parked_order": stored_parked,
         "ungrouped": ungrouped,
         # Named rather than counted from the declaration: this list IS the data,
         # derived by comparing the arrangement against what discovery found.

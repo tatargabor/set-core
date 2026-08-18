@@ -75,6 +75,12 @@ class Agent:
     sources: List[str] = field(default_factory=list)
     #: True when the binding to `session_log` came from a record rather than a guess.
     binding_confirmed: bool = False
+    #: The runtime's session record, verbatim and uninterpreted. Carried because
+    #: `state.read_state` needs the declared status to tell "stopped at a prompt"
+    #: from "finished its turn" — the one thing the log cannot distinguish. It is
+    #: deliberately NOT part of any API payload: it holds a cwd, a socket path
+    #: and a session name, none of which the surface asked for.
+    record: Optional[dict] = None
 
     @property
     def is_interactive(self) -> bool:
@@ -299,6 +305,7 @@ def discover_agents(
                 kind=kind,
                 sources=sources,
                 binding_confirmed=record is not None,
+                record=record,
             )
         )
 
@@ -416,6 +423,7 @@ def discover_agent(
         kind=_classify_kind(pid, proc_root),
         sources=sources,
         binding_confirmed=record is not None,
+        record=record,
     )
 
 
