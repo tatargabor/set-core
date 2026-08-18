@@ -1,7 +1,10 @@
 """Fleet API — the agent sessions running on this machine.
 
-    GET /api/fleet/agents            — every live agent, its project, and its measured state
-    GET /api/fleet/agents/{pid}/log  — the raw conversation of one agent (design §5.8)
+    GET  /api/fleet/agents             — every live agent, its project, and its measured state
+    GET  /api/fleet/agents/{pid}/log   — the raw conversation of one agent (design §5.8)
+    GET  /api/fleet/owner              — whether an agent can be started at all
+    POST /api/fleet/agents             — start one, through the agent owner (task 5.8)
+    POST /api/fleet/agents/{label}/stop — stop one this framework started
 
 ⚠ Route ordering matters and is not cosmetic (finding CB-16). The dashboard
 already serves a large `/api/{project}/...` family, and FastAPI resolves routes
@@ -19,12 +22,15 @@ CLAUDE.md is a persistence boundary, and this endpoint persists nothing at all.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.conversation import read_conversation
+from ..fleet.owner_client import OwnerClient, OwnerClientError, OwnerUnavailable
 from .helpers import _load_projects
 
 logger = logging.getLogger(__name__)
@@ -130,3 +136,114 @@ def fleet_agent_log(pid: int, limit: int = Query(60, ge=1, le=500)) -> Dict[str,
     payload["project"] = agent.project_name
     payload["binding_confirmed"] = agent.binding_confirmed
     return payload
+
+
+# --------------------------------------------------------------------------- #
+# Starting and stopping — through the owner, never from this process (task 5.8)
+# --------------------------------------------------------------------------- #
+
+class StartAgentBody(BaseModel):
+    """What the screen may ask for.
+
+    Narrower than what the owner's socket accepts, on purpose. The socket takes
+    an `argv`; this endpoint does not, because an HTTP route that runs an
+    arbitrary command list is a different thing from a button that starts an
+    agent, and only the second one was asked for. Task 5.10 will add the engine's
+    entry point as its own, separately-labelled act — that is where a second kind
+    of start belongs, not in a free-form parameter here.
+    """
+
+    label: str
+    cwd: str
+    rows: int = 40
+    cols: int = 120
+
+
+def _known_roots() -> set:
+    """Directories the screen can actually see an agent in.
+
+    A start is refused outside this set. Not because a local dashboard is
+    exposed, but because *not* choosing here chooses the permissive option
+    silently: an endpoint that accepts any existing directory runs an agent
+    anywhere on the machine, and nothing on the screen ever offers that.
+    """
+    roots = set()
+    try:
+        for entry in _load_projects():
+            root = entry.get("path") or entry.get("root")
+            if root:
+                roots.add(os.path.realpath(root))
+    except Exception as exc:
+        logger.warning("fleet api: project registry unreadable while validating cwd: %s", exc)
+    for agent in discover_agents(include_oneshot=True):
+        if agent.project_root:
+            roots.add(os.path.realpath(agent.project_root))
+    return roots
+
+
+@router.get("/api/fleet/owner")
+def fleet_owner() -> Dict[str, Any]:
+    """Whether an agent can be started at all, and if not, what to run.
+
+    The screen asks this before it offers a start. A button that is present and
+    fails is worse than one that is absent with a reason next to it — and the
+    reason here is always the same repair, so withholding it would be a choice
+    to make the reader guess.
+    """
+    try:
+        health = OwnerClient().health()
+    except OwnerUnavailable as exc:
+        return {"available": False, "reason": str(exc)}
+    except OwnerClientError as exc:
+        return {"available": False, "reason": str(exc)}
+    return {"available": True, **health}
+
+
+@router.post("/api/fleet/agents")
+def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
+    """Start an agent through the owner service.
+
+    This process never forks the agent itself. The dashboard runs with
+    `KillMode=control-group` and restarts on every deploy, so an agent started
+    here would join its control group and die with it (finding CB-1) — the
+    defect the owner service exists to remove. A `503` when the owner is down is
+    therefore the correct answer and not a degraded one: there is no local
+    fallback that would not reintroduce the bug.
+    """
+    cwd = os.path.realpath(os.path.expanduser(body.cwd))
+    if not os.path.isdir(cwd):
+        raise HTTPException(status_code=400, detail=f"no such directory: {body.cwd}")
+    if cwd not in _known_roots():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{cwd} is not a project this screen knows; register it first",
+        )
+    try:
+        agent = OwnerClient().start(label=body.label, cwd=cwd, rows=body.rows, cols=body.cols)
+    except OwnerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OwnerClientError as exc:
+        # The owner refused — a label already held, a scope already running. A
+        # refusal is the caller's answer, not a server fault.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    logger.info("fleet api: started agent %s in %s (pid %s)", agent["label"], cwd, agent.get("pid"))
+    return agent
+
+
+@router.post("/api/fleet/agents/{label}/stop")
+def fleet_stop_agent(label: str) -> Dict[str, Any]:
+    """Stop an agent the framework started. Never a consequence of closing a view.
+
+    Addressed by label rather than by pid: the pid is what the *scope* currently
+    holds and a pid is reused, while the label is what the framework named. The
+    owner refuses anything it does not hold, so a foreign session cannot be
+    stopped through this route at all.
+    """
+    try:
+        result = OwnerClient().stop(label)
+    except OwnerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OwnerClientError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    logger.info("fleet api: stopped agent %s (gone=%s)", label, result.get("gone"))
+    return result

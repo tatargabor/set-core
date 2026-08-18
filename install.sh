@@ -1119,6 +1119,35 @@ install_systemd_service() {
     else
         warn "  set-web service installed but not running (start manually: systemctl --user start set-web)"
     fi
+
+    # The agent owner — a SECOND unit, and the split is the point of it. The
+    # dashboard runs with KillMode=control-group and restarts on every deploy;
+    # an agent started from it joined that control group and died with it. The
+    # owner holds agent terminals instead, and nothing else, so it can stay up
+    # across every dashboard restart.
+    #
+    # Installed here rather than left to the operator because the alternative is
+    # a screen whose start button is dead on every machine: the dashboard
+    # deliberately refuses to start this service itself (that would put it back
+    # inside the control group it was split out of), so if the installer does not
+    # place the unit, nothing ever will.
+    local owner_src="$SCRIPT_DIR/templates/systemd/set-agent-owner.service"
+    local owner_dst="$service_dir/set-agent-owner.service"
+    if [[ -f "$owner_src" ]]; then
+        sed "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" "$owner_src" > "$owner_dst"
+        success "  Installed: $owner_dst"
+        systemctl --user daemon-reload
+        systemctl --user enable set-agent-owner.service 2>/dev/null || true
+        systemctl --user start set-agent-owner.service 2>/dev/null || true
+        if systemctl --user is-active --quiet set-agent-owner.service 2>/dev/null; then
+            success "  set-agent-owner service running (agents started from the fleet screen live here)"
+        else
+            warn "  set-agent-owner installed but not running; the fleet screen cannot start agents"
+            warn "  (start manually: systemctl --user start set-agent-owner)"
+        fi
+    else
+        warn "  Agent owner template not found: $owner_src"
+    fi
 }
 
 # Install set-web launchd user agent (macOS)

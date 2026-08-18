@@ -64,6 +64,10 @@ set-run-logs = "set_orch.forensics.cli:main"
 # The engine's ONE entry point. The framework's surface invokes this same command;
 # there is no second way to start a work unit.
 set-work-cycle = "set_workcycle.cli:main"
+# The agent owner. A separate unit because the dashboard restarts on every deploy
+# and would take every agent it started with it (finding CB-1); its systemd unit
+# invokes exactly this command.
+set-agent-owner = "set_orch.fleet.ownerd:main"
 
 [project.entry-points."set_tools.plugins"]
 # Plugins register themselves here

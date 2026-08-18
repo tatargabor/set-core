@@ -115,6 +115,17 @@ def read_conversation(
                 if value:
                     text_parts.append(str(value))
             elif btype == "thinking":
+                # ⚠ This branch is correct and will produce nothing today, and the
+                # note exists so the next reader does not "fix" a parser that is
+                # already right. MEASURED 2026-08-18 over the six most recent
+                # session logs: 400 thinking blocks, ALL with `thinking` set to
+                # the empty string, every one carrying exactly
+                # ('signature', 'thinking', 'type') — the runtime persists the
+                # signature and not the text. So a surface that counts thinking
+                # from the DATA correctly shows none; one that counts from the
+                # block's presence would announce content that is not there,
+                # which is the false-value class. If this is ever to mean
+                # something, it changes at the producer, not here.
                 value = block.get("thinking") or block.get("text")
                 if value:
                     thinking_parts.append(str(value))

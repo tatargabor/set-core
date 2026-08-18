@@ -456,6 +456,37 @@ resume the session into a fresh pty under a new owner. Two things make it work a
 This is what makes CB-1's remedy honest: the framework does not promise to reattach, it offers to
 **stop and resume**, and says which of the two it is doing.
 
+#### Holding a terminal is not neutral — MEASURED 2026-08-18, and it added the only behaviour the owner has
+
+The split above says the owner *holds* ptys, as though holding were a passive act. It is not, and
+the measurement is what turned a design word into a required mechanism.
+
+A pty's buffer is small, and a writer blocks when it fills. Probed directly: a child writing to its
+own tty while nobody read the master stopped after **17 408 bytes** of the 4 MB it was asked to
+write, and a **single** drain of the master let it advance exactly **4 096 bytes** further before
+stopping again.
+
+So an owner that holds a master without reading it does not fail — it **freezes the agent**, after
+roughly one screenful, and the frozen agent is indistinguishable from a thinking one on every
+surface this change builds. The failure direction is the reassuring one twice over: the start
+succeeds, the scope is active, the pid is real, and the screen has nothing to report.
+
+Verified end to end against the mechanism rather than the API, by disabling the drain and rerunning
+the same probe through the socket:
+
+    with the drain     the child wrote 400 000 bytes and exited cleanly
+    drain disabled     the child wrote 0 and blocked; it had to be killed
+
+Two consequences bind the owner, and neither loosens its thinness requirement:
+
+- **The drain is a precondition, not a feature.** It is the one piece of real behaviour permitted
+  in the owner, because without it every other guarantee in §6.2 describes a frozen process.
+- **What is drained goes into a bounded in-memory tail and nowhere else.** Not to disk, not to a
+  log. The conversation already has a durable home in the session log, and a second one here would
+  be both a persistence boundary violation and the kind of state that makes a service unrestartable.
+  A tail that has lost its head **says so** — a partial stream silently read as the whole one is the
+  false-absence class.
+
 ---
 
 ### 6.3 The bus — MEASURED 2026-08-18, and it settles which channel is the contract
