@@ -28,9 +28,9 @@
 
 <!-- depends: none -->
 
-- [x] 2.1 Determine whether `GatePipeline` can be pointed at one tree and a subset of gates without inheriting merge semantics (retry policy, baseline-diff scope, new-API-surface detection); record the finding and which of the two acceptable outcomes applies [REQ: the-gate-runs-through-the-project-profile]
+- [x] 2.1 Determine whether `GatePipeline` can be pointed at one tree and a subset of gates without inheriting merge semantics (retry policy, baseline-diff scope, new-API-surface detection); record the finding and which of the two acceptable outcomes applies [REQ: the-gate-is-the-project-s-own-declared-first-and-detected-only-as-a-fallback]
 - [x] 2.2 Identify which part of the stream-json consumption in `chat.py` is reusable outside a websocket-bound session, and record what has to be extracted versus re-expressed [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [x] 2.3 Record both findings in `design.md` under D4, replacing the open question with the measurement [REQ: the-gate-runs-through-the-project-profile]
+- [x] 2.3 Record both findings in `design.md` under D4, replacing the open question with the measurement [REQ: the-gate-is-the-project-s-own-declared-first-and-detected-only-as-a-fallback]
 
 ## 3. Task-group resolution (Layer 1, domain-free)
 
@@ -55,7 +55,7 @@
 - [x] 4.4 Constrain the verdict to a declared schema with outcome, summary and a separate open-decisions field; record a non-conforming return as a reporting failure rather than inferring an outcome [REQ: the-verdict-is-schema-constrained]
 - [x] 4.5 Persist the verdict durably **before** the gate runs, so a run interrupted between verdict and commit stays attributable [REQ: the-verdict-is-durable-before-the-gate-runs]
 - [x] 4.6 Diff the verdict against the task markers in the tree and report divergence in both directions [REQ: the-verdict-is-checked-against-the-tree]
-- [x] 4.7 Resolve gate steps through `resolve_gate_config` and run them per the 1.1 finding; record "no gate ran" as a state distinct from "gate passed" when the profile declares none [REQ: the-gate-runs-through-the-project-profile]
+- [x] 4.7 Resolve gate steps through `resolve_gate_config` and run them per the 1.1 finding; record "no gate ran" as a state distinct from "gate passed" when the profile declares none [REQ: the-gate-is-the-project-s-own-declared-first-and-detected-only-as-a-fallback]
 - [x] 4.8 Commit only behind a green gate, referencing the change and unit; on failure leave the work in the tree, make no commit, and do not advance [REQ: a-commit-happens-only-behind-a-green-gate]
 - [x] 4.8b On gate failure, report whether the failure implicates files this unit changed or files changed elsewhere in the tree; where attribution cannot be established, say so rather than defaulting to the unit [REQ: a-gate-failure-states-whether-it-came-from-this-unit-s-own-work]
 - [x] 4.9 Derive reported progress from completed task markers, never from turn or event counts [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
@@ -102,8 +102,23 @@
 <!-- depends: 6 -->
 
 - [x] 8.1 Run the engine on a change of this repository with real group dependencies and at least one human stop; record what the run produced, not that it exited zero [REQ: a-work-unit-runs-in-a-fresh-full-agent-context]
-- [x] 8.2 Confirm the answer written from the surface reaches a stopped unit and releases it, observed end to end rather than asserted per layer [REQ: an-open-decision-can-be-answered-over-the-api]
-- [?] 8.3 Coordinate the crossing run on the consuming project's tree and compare it against that project's own engine — requires the other side's participation and their choice of change [REQ: a-commit-happens-only-behind-a-green-gate]
+- [x] 8.2 Confirm the answer written from the surface reaches a stopped unit and releases it, observed end to end rather than asserted per layer [REQ: answer-intake-runs-at-the-entry-point-on-every-path, the-command-path-takes-in-answers-like-every-other-path]
+- [?] 8.3 Coordinate the crossing run on the consuming project's tree and compare it against that project's own engine — requires the other side's participation and their choice of change [REQ: a-commit-happens-only-behind-a-green-gate] **PARTLY DELIVERED 2026-08-18/19, and the marker stays `[?]` because the rest needs a person.** The run happened on the consuming project's own tree (branch reserved by them, gate measured green on arrival: 4140 passing tests, tsc exit 0). Group 0 ran, its gate went red on a real regression the unit caused, the hold held, the cause was fixed on their side and `recheck` discharged it — `gate: passed — 2 step(s) passed`, `0: complete`. **Six engine defects came out of that one unit of work, every unit test green throughout**; five of them are tasks 9.1–9.5 below. What remains is group 1, held by the engine itself on an unanswered `[?]` in the consumer's own task file — their answer to give, not ours to record. The comparison against their own engine is therefore not yet written up.
+
+## 9. What the first live crossing run forced — the requirements it added
+
+<!-- depends: 4 -->
+
+⚠ These five requirements were written into `specs/work-unit-engine/spec.md` while fixing what a
+live run on a consuming project's tree exposed, and the task list was never given the matching
+entries. The work is shipped and tested; the omission was in the record, which is the half that
+travels. Written down retroactively rather than left to a traceability check to keep reporting.
+
+- [x] 9.1 A red gate holds the chain: a group whose tasks are all marked but whose last run's gate failed is NOT complete, and nothing depending on it becomes runnable; a later green run clears the hold. `f9da1df8` [REQ: a-red-gate-holds-the-chain-whatever-the-task-markers-say]
+- [x] 9.2 The engine never reports a tree state it did not measure: on a failed gate, compare HEAD against the baseline taken when the unit started, and name the agent's own commit in a field of its own rather than claiming the work stays in the tree. `f9da1df8` + `306178ca` [REQ: the-engine-never-reports-a-tree-state-it-did-not-measure]
+- [x] 9.3 Attribution to `elsewhere` requires positive evidence — a failure naming only other files is `undetermined`, and only a unit that changed nothing is exonerated; the tree root is not a named file. `f9da1df8` [REQ: a-failure-is-attributed-elsewhere-only-on-positive-evidence]
+- [x] 9.4 A hold can be discharged without starting a work unit: a `recheck` path re-runs a held group's gate with no agent session, commits what the failed gate left, and names what it cleared. Written after the hold in 9.1 turned out to be a deadlock in the live tree. `00c682ca` [REQ: a-hold-can-be-discharged-without-starting-a-work-unit]
+- [x] 9.5 The engine does not commit its own run records: staging excludes the run-state directory, found when a live `recheck` staged `set/runtime/` into a consuming project's tree. `00c682ca` [REQ: the-engine-does-not-commit-its-own-run-records]
 
 ## Acceptance Criteria (from spec scenarios)
 

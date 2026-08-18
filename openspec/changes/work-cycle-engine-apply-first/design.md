@@ -120,6 +120,22 @@ and the state-free types around the pipeline — `GateResult`, `GateDefinition`,
 `_truncate_gate_output`, all verified to write no state — and runs the resolved steps itself. What is
 **not** acceptable, and remains so, is a second source of gate configuration.
 
+**⚠ Amended 2026-08-19, by the first live crossing run, and the amendment is the interesting part.**
+The paragraph above says the engine's gate steps come from the resolution chain and that a second
+source is unacceptable. Shipped behaviour no longer matches it: an adopted project's own
+`set/work-cycle.yaml` `gates:` list is read **first**, and the chain is consulted only where that key
+is absent. The design was written before adoption had a gate key at all, and it was not revisited
+when adoption gained one — so the consuming project declared two gate commands, the engine printed
+them in `describe()` and ran something else. A declared guard that does not take effect is the very
+defect this change exists to forbid, one layer up, on itself.
+
+The prohibition survives in the form that carries its reason. What D4 was protecting against is two
+*framework* sources that must be merged, because a merge is where drift hides. A project's own
+declaration is not that: it is **whose** declaration, and it wins outright with no merge —
+declared → run exactly those; declared empty → no gate; not declared → the chain. Precedence, not
+combination. The engine still contributes no gate command of its own, which was always the real
+claim (`test_the_engine_package_names_no_gate_command_of_its_own`).
+
 **Measured (task 2.2) — the event stream.** `chat.py` is the framework's **only** live stream
 consumer. `grep -rln "stream-json"` returns 7 files and six of them do not consume a stream: five
 redirect stdout to a file (`supervisor.py`, `fixer.py`, `investigator.py` — the last reading only the
