@@ -457,11 +457,28 @@ send call returned. `agent-fleet-instruct` therefore has two distinct facts to m
 for delivery* (synchronous, from the send call) and *what actually happened* (asynchronous, later)
 — and a tile must show the first as **pending**, never as delivered.
 
-⚠ **Expiry itself is still NOT measured.** §3 says an unanswered hold expires and the message is
-dropped. What was observed here is a **hold notice while the hold was still open** — the
-Deny/Deliver prompt was still on the recipient's screen after the notice arrived. Whether a
-*second*, distinct expiry notice follows, and after how long, is unknown. Do not build the expiry
-clock on the four-minute figure; that is the hold notice's latency, not the hold's lifetime.
+**Expiry is a SECOND, distinct notice — measured 2026-08-18, and the two must not be collapsed.**
+The hold was left deliberately unanswered. The sender received two separate notices on the same
+channel:
+
+| # | wall clock (observed) | text |
+|---|---|---|
+| send | ≈10:47:40 | `{"success": true, "msg_id": …}` |
+| 1 | observed by 10:52:32 | *"…was **held** for the recipient user's approval… its user must approve first"* |
+| 2 | observed by 10:53:55 | *"…was **not approved before expiry**… Not delivered to that session's Claude"* |
+
+So the outcome sequence for one instruction is **three states, not two** — accepted → held →
+expired — and the middle one is not terminal. A surface that renders the first notice it receives
+and stops will show *held* for a message that is already dead. **Expiry landed roughly six minutes
+after the send** (bounded by observation: not before ~5.5 min, not after 6.75 min); treat that as
+an order of magnitude on one machine, not a constant, and read the terminal state from notice 2.
+
+⚠ **What was NOT established, deliberately.** Whether the Deny/Deliver prompt disappears from the
+recipient's screen when the message expires is **unknown**. The recipient's pty scrollback still
+contained the prompt text afterwards — but that is exactly the redraw-buffer proxy described
+below, so it is not evidence either way, and the tempting conclusion (*"the recipient is still
+being offered a message the sender was told is dead"*) is unproven. The only facts here are the
+two sender-side notices.
 
 ⚠ **And a note on how the expiry was nearly mis-measured.** A watcher was pointed at the last 3 KB
 of the recipient's pty log, waiting for the Deny/Deliver prompt to disappear. It fired instantly

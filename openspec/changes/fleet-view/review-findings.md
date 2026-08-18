@@ -171,9 +171,11 @@ Derived from the source, not from the change's artifacts.
   notice**, never from the send return, which reports *acceptance for delivery* only. Measured: the
   notice arrived ~4–5 minutes after the send, unprompted, naming the recipient by verified socket
   (`uds:/run/user/1000/cc-socks/<pid>.sock`) rather than by the `msg_id` the send returned — so the
-  two facts must be correlated on the recipient, not on the message id. **Expiry remains
-  unmeasured:** the notice observed was a *hold* notice arriving while the hold was still open on
-  the recipient's screen, not an expiry.
+  two facts must be correlated on the recipient, not on the message id. **Expiry arrives as a SECOND notice** ~6 minutes after the
+  send (measured; left unanswered on purpose), so the capability models **three** states —
+  accepted → held → expired — and only the third is terminal. A surface that renders the first
+  notice it receives and stops will display *held* for a message that is already dead: the same
+  false-value class, one layer up.
   **Remaining work, tracked below as CB-7a:** the artifacts must name the external channel
   explicitly and stop attributing these properties to "the messaging bus".
 
