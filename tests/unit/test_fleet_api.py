@@ -157,3 +157,30 @@ def test_an_available_owner_reports_how_many_agents_a_restart_would_end(monkeypa
     answer = fleet_api.fleet_owner()
     assert answer["available"] is True
     assert answer["held"] == 3
+
+
+def test_stopping_something_that_is_not_running_is_404_not_a_reported_stop(monkeypatch):
+    """Measured 2026-08-18 through the live route: it answered `{"gone": true}`
+    with a 200 for a label that had never existed. A success for a no-op is the
+    false-value class — the screen would confirm an agent was stopped when there
+    had never been one.
+    """
+    class _Nothing:
+        def stop(self, label):
+            return {"label": label, "unit": "x", "found": False, "gone": True, "population": None}
+
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: _Nothing())
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_stop_agent("never-existed")
+    assert excinfo.value.status_code == 404
+
+
+def test_stopping_an_orphan_succeeds_and_the_answer_says_it_was_one(monkeypatch):
+    class _Orphan:
+        def stop(self, label):
+            return {"label": label, "unit": "u", "found": True, "gone": True, "population": "foreign"}
+
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: _Orphan())
+    answer = fleet_api.fleet_stop_agent("stray")
+    assert answer["gone"] is True
+    assert answer["population"] == "foreign", "the surface must be able to say which act it performed"

@@ -121,6 +121,65 @@ specifically so that choosing which agent to open is a decision rather than a gu
 - **WHEN** a row is selected
 - **THEN** that agent becomes the enlarged tile
 
+### Requirement: The arrangement is the user's, and it never becomes the inventory
+
+The surface SHALL let the user arrange projects by hand in two levels — ordered groups, and projects
+ordered within their own group — SHALL let a project be assigned to a group and parked out of the way
+by explicit acts, and SHALL persist that arrangement per user so it survives a reload and is the same
+in every browser on the machine. Group membership SHALL be stored as a fact rather than derived from a
+name pattern.
+
+The arrangement SHALL be joined to what discovery found rather than substituted for it: a project that
+exists but was never arranged SHALL still appear, and a project named in the arrangement that no longer
+exists SHALL be reported as missing rather than silently dropped.
+
+This is the D-2 decision (2026-08-19) and its reason: the user places related projects next to each
+other, so the unit that must move is the group. It is stored on the server because arranging 45
+projects is work done once and relied on, unlike a collapse toggle. Membership is stored rather than
+derived because a name rule re-evaluates — renaming a project would silently move it, and a new project
+whose name matched would land somewhere nobody put it.
+
+The join is what keeps arrangement and inventory apart. Dropping a vanished name would make the
+arrangement appear to have edited itself; omitting an unarranged project would make a registered
+project simply not exist on screen, and an empty place looks exactly like nothing to show.
+
+#### Scenario: A project nobody arranged still appears
+- **WHEN** a project is discovered that appears in no group and is not parked
+- **THEN** it is shown in the ungrouped section rather than omitted
+
+#### Scenario: A project that vanished is reported
+- **WHEN** the stored arrangement names a project discovery no longer finds
+- **THEN** the surface reports it as missing rather than removing it silently
+
+#### Scenario: A project belongs to exactly one place
+- **WHEN** an arrangement would place a project in two groups, or in a group and parked
+- **THEN** it occupies only the first, so its position cannot depend on iteration order
+
+#### Scenario: A second tab does not silently overwrite the first
+- **WHEN** an arrangement is saved against a version that is no longer current
+- **THEN** the save is refused with the reason, and the stored arrangement is unchanged
+
+### Requirement: What is hidden by arrangement still reports what it holds
+
+Every control that hides projects — a collapsed group, the parked section — SHALL carry the count of
+agents awaiting a human answer inside it, and the surface SHALL carry a marker that does not scroll
+away, counting across every group and the parked section, with a way to reach the first.
+
+Manual ordering makes this stricter rather than looser, and that is why it is a requirement of its own.
+The rejected options bounded where a waiting agent could hide: automatic attention-ordering puts it on
+top by construction, and a workspace filter has a fixed tab strip to hang a count on. A hand-maintained
+order has neither — a project dragged to position 30 six weeks ago is below the fold today and nothing
+will move it. Without this, hand-made arrangement is the one option that can hide waiting work behind a
+screen the user themselves arranged to look calm.
+
+#### Scenario: A waiting agent inside a collapsed group
+- **WHEN** a group is collapsed and an agent inside it is awaiting an answer
+- **THEN** the collapsed group shows that count, and the non-scrolling marker includes it
+
+#### Scenario: A waiting agent in a parked project
+- **WHEN** a parked project holds an agent awaiting an answer
+- **THEN** the parked section shows that count, and the non-scrolling marker includes it
+
 ### Requirement: View state is remembered per project
 
 The surface SHALL remember, per project, which tile is enlarged, the grid density, and any composed

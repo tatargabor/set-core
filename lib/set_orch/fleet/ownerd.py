@@ -231,9 +231,9 @@ class OwnerDaemon:
         agent = next((a for a in self.owner.owned() if a.label == label), None)
         if agent is not None:
             self._detach_drain(agent.master_fd)
-        gone = await asyncio.to_thread(self.owner.stop, label)
+        result = await asyncio.to_thread(self.owner.stop, label)
         self._forget(label)
-        return {"label": label, "gone": gone}
+        return result
 
     async def _do_recover(self, params: Dict[str, Any]) -> Dict[str, Any]:
         agent = await asyncio.to_thread(

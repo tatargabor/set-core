@@ -166,16 +166,46 @@ class AgentOwner:
         )
         return agent
 
-    def stop(self, label: str) -> bool:
-        """Stop an owned agent deliberately — never as a side effect of a view."""
+    def stop(self, label: str) -> Dict[str, object]:
+        """Stop an agent deliberately — never as a side effect of a view.
+
+        Returns what was actually found, not just whether the unit is down.
+
+        **MEASURED 2026-08-18: this used to report success for a label that never
+        existed.** `POST /api/fleet/agents/nincs-ilyen/stop` answered
+        `{"gone": true}` with a 200, because `scopes.stop` on an unknown unit
+        finds nothing running and "nothing is running" is technically true. It is
+        also a false value: the surface would confirm that an agent had been
+        stopped when there had never been one, and this module's own docstring
+        claimed the owner "refuses anything it does not hold" — which it did not.
+
+        Three outcomes, and they are genuinely different acts:
+
+        - `started-here` — this owner holds the terminal; stopping it is the
+          ordinary case.
+        - `orphan` — a framework scope of this name is running but its terminal
+          died with a previous owner. Stopping it is legitimate (it is the first
+          half of `recover()`), and the caller is told which act it performed.
+        - not found — nothing of that name is running anywhere. `found` is False,
+          and the caller decides what a request to stop nothing means; the HTTP
+          route answers 404 rather than reporting a stop that stopped nothing.
+        """
         agent = self._agents.get(label)
         unit = agent.unit if agent else scopes.unit_name(label)
+
+        if agent is None and scopes.is_gone(unit):
+            logger.info("fleet owner: nothing named %s is running; not reporting a stop", label)
+            return {"label": label, "unit": unit, "found": False, "gone": True, "population": None}
+
+        population = STARTED_HERE if agent is not None else FOREIGN
         gone = scopes.stop(unit)
         if agent is not None:
             self._close(agent)
             self._agents.pop(label, None)
-        logger.info("fleet owner: stopped %s (unit %s, gone=%s)", label, unit, gone)
-        return gone
+        logger.info(
+            "fleet owner: stopped %s (unit %s, %s, gone=%s)", label, unit, population, gone
+        )
+        return {"label": label, "unit": unit, "found": True, "gone": gone, "population": population}
 
     def _close(self, agent: OwnedAgent) -> None:
         try:

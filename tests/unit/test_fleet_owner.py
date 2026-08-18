@@ -293,3 +293,49 @@ def test_a_scope_that_is_shutting_down_is_still_listed_as_an_orphan(monkeypatch)
                   cgroup="/x", active=False, state="deactivating")]
     monkeypatch.setattr(scopes_mod, "list_scopes", lambda: live)
     assert [s.unit for s in AgentOwner().orphans()] == ["set-agent-stray.scope"]
+
+
+# --------------------------------------------------------------------------- #
+# stopping says what it FOUND — measured 2026-08-18 through the HTTP route
+# --------------------------------------------------------------------------- #
+
+def test_stopping_a_name_that_is_not_running_anywhere_reports_no_find(monkeypatch):
+    """It used to report success. `POST /api/fleet/agents/<never-existed>/stop`
+    answered `{"gone": true}` with a 200, because `scopes.stop` on an unknown
+    unit finds nothing running and "nothing is running" is technically true.
+
+    It is also a false value: the screen would confirm that an agent had been
+    stopped when there had never been one. The three outcomes are different acts
+    and the caller is told which one happened.
+    """
+    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    monkeypatch.setattr(scopes_mod, "stop",
+                        lambda *a, **kw: pytest.fail("must not try to stop what is not there"))
+    result = AgentOwner().stop("never-existed")
+    assert result["found"] is False
+    assert result["population"] is None
+
+
+def test_stopping_an_orphan_is_allowed_and_named_as_one(monkeypatch):
+    """A framework scope whose terminal died with a previous owner is still
+    stoppable — it is the first half of `recover()`. What must not happen is
+    reporting it as though this owner had been holding it.
+    """
+    monkeypatch.setattr(
+        scopes_mod, "get",
+        lambda u: Scope(unit=u, pid=4, pids=[4], cgroup="/x", active=True, state="active"),
+    )
+    monkeypatch.setattr(scopes_mod, "stop", lambda *a, **kw: True)
+    result = AgentOwner().stop("someone-elses")
+    assert result["found"] is True
+    assert result["population"] == FOREIGN
+    assert result["gone"] is True
+
+
+def test_stopping_an_agent_this_owner_holds_says_so(monkeypatch):
+    monkeypatch.setattr(scopes_mod, "stop", lambda *a, **kw: True)
+    o = _owner_with("mine")
+    result = o.stop("mine")
+    assert result["found"] is True
+    assert result["population"] == STARTED_HERE
+    assert o.owned() == []

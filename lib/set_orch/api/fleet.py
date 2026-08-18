@@ -5,6 +5,8 @@
     GET  /api/fleet/owner              — whether an agent can be started at all
     POST /api/fleet/agents             — start one, through the agent owner (task 5.8)
     POST /api/fleet/agents/{label}/stop — stop one this framework started
+    GET  /api/fleet/layout             — the hand-made arrangement, joined to what exists
+    PUT  /api/fleet/layout             — replace it, refusing a stale write
 
 ⚠ Route ordering matters and is not cosmetic (finding CB-16). The dashboard
 already serves a large `/api/{project}/...` family, and FastAPI resolves routes
@@ -23,13 +25,15 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.conversation import read_conversation
+from ..fleet import layout as fleet_layout
+from ..fleet.layout import LayoutConflict
 from ..fleet.owner_client import OwnerClient, OwnerClientError, OwnerUnavailable
 from .helpers import _load_projects
 
@@ -159,6 +163,15 @@ class StartAgentBody(BaseModel):
     cols: int = 120
 
 
+def _safe_registry() -> List[Dict[str, Any]]:
+    """The registered projects, or none. A missing registry must not empty the fleet."""
+    try:
+        return _load_projects()
+    except Exception as exc:
+        logger.warning("fleet api: project registry unreadable: %s", exc)
+        return []
+
+
 def _known_roots() -> set:
     """Directories the screen can actually see an agent in.
 
@@ -235,9 +248,20 @@ def fleet_stop_agent(label: str) -> Dict[str, Any]:
     """Stop an agent the framework started. Never a consequence of closing a view.
 
     Addressed by label rather than by pid: the pid is what the *scope* currently
-    holds and a pid is reused, while the label is what the framework named. The
-    owner refuses anything it does not hold, so a foreign session cannot be
-    stopped through this route at all.
+    holds and a pid is reused, while the label is what the framework named.
+
+    The owner answers with what it actually FOUND, and the three cases are
+    different acts rather than shades of one: an agent it holds, an **orphan**
+    (a framework scope whose terminal died with a previous owner — stopping that
+    is the first half of recovery), and nothing at all, which is a 404. A session
+    the framework never started has no scope of this name, so it cannot be
+    reached through this route in any of the three.
+
+    ⚠ An earlier version of this docstring said the owner "refuses anything it
+    does not hold". It did not — measured 2026-08-18, stopping a label that had
+    never existed answered `{"gone": true}` with a 200. The prose was the only
+    place the guarantee existed, which is the same defect this module's route
+    ordering had.
     """
     try:
         result = OwnerClient().stop(label)
@@ -245,5 +269,76 @@ def fleet_stop_agent(label: str) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except OwnerClientError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    logger.info("fleet api: stopped agent %s (gone=%s)", label, result.get("gone"))
+
+    # A stop that stopped nothing is a 404, never a success: the screen would
+    # otherwise confirm that an agent had been stopped when there had never
+    # been one.
+    if not result.get("found"):
+        raise HTTPException(status_code=404, detail=f"no agent named {label} is running")
+
+    logger.info(
+        "fleet api: stopped agent %s (%s, gone=%s)",
+        label, result.get("population"), result.get("gone"),
+    )
     return result
+
+
+# --------------------------------------------------------------------------- #
+# The arrangement — groups, order, parked (D-2, decided 2026-08-19)
+# --------------------------------------------------------------------------- #
+
+class LayoutBody(BaseModel):
+    """A whole arrangement, replaced at once.
+
+    Whole-document rather than per-move, because a drag is not one edit: moving a
+    project changes the position of everything after it, and a per-move API would
+    have to describe that as a sequence the client could interleave wrongly.
+    `base_version` is what makes replacing safe — see the route.
+    """
+
+    groups: List[Dict[str, Any]] = []
+    parked: List[str] = []
+    base_version: Optional[int] = None
+
+
+@router.get("/api/fleet/layout")
+def fleet_get_layout() -> Dict[str, Any]:
+    """The stored arrangement, JOINED to what discovery actually found.
+
+    The join is the point, and it is what keeps a hand-made arrangement from
+    quietly becoming the inventory. A project the user arranged that no longer
+    runs anywhere comes back under `missing` rather than simply not rendering; a
+    project that exists but was never arranged comes back under `ungrouped`
+    rather than falling out of the screen. Neither silence would look like an
+    error to anyone.
+    """
+    stored = fleet_layout.load()
+    names = [p.name for p in discover_projects(discover_agents(include_oneshot=False),
+                                               registered=_safe_registry())]
+    return fleet_layout.apply_to(stored, names)
+
+
+@router.put("/api/fleet/layout")
+def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
+    """Replace the arrangement, refusing a write based on a version you no longer hold.
+
+    Optimistic concurrency rather than last-write-wins, because what is being
+    overwritten is hand-made and two dashboard tabs are ordinary. The loser of a
+    silent race would find an arrangement they never made, with no event to
+    explain it and no way back — so a stale write is a 409 the client can
+    resolve, not a success nobody notices.
+    """
+    try:
+        saved = fleet_layout.save(
+            {"groups": body.groups, "parked": body.parked},
+            base_version=body.base_version,
+        )
+    except LayoutConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.error("fleet api: cannot write the arrangement: %s", exc)
+        raise HTTPException(status_code=500, detail=f"cannot write the arrangement: {exc}") from exc
+
+    names = [p.name for p in discover_projects(discover_agents(include_oneshot=False),
+                                               registered=_safe_registry())]
+    return fleet_layout.apply_to(saved, names)
