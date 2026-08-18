@@ -643,6 +643,44 @@ about a tenth of what is on disk. **Un-ledgered is not a synonym for stale, and 
 not render it as one:** for those files the framework simply cannot tell a project's own edit from
 its own drift, and *cannot tell* is the honest report.
 
+### 6.6 Three things the surface CANNOT claim — MEASURED 2026-08-19 while building the slice
+
+Each of these was found by implementing a task whose wording assumed a mechanism that is not
+there. They are recorded together because they share a shape: **the task named a source, the
+source exists, and it does not answer the question.**
+
+**A record's timestamp is the age of the STATE, not of the observation.** Task 3.8 asks for a
+freshness check before believing the runtime's declared status, since those stamps have been
+measured days stale. Measured on 25 live records: `updatedAt` equals `statusUpdatedAt` in **22 of
+22** that carry both, so the record is written only when the status *changes*. An agent waiting
+three hours honestly carries a three-hour stamp, and an age threshold would discard the true
+positives first — it would have discarded the only real `waiting` on this machine, whose stamp was
+9.5 hours old. Cross-checking against the log's mtime fails in the other direction: **22 of 22**
+logs had moved since their status stamp, so it rejects everything.
+
+What works is composing the sources rather than ranking them. The log decides *working* from
+*not-working*, structurally. The record may refine a *quiet* state into *waiting*, because only it
+knows. A record claiming *waiting* while a call is outstanding is contradicted, the measurement
+wins, and the disagreement is carried rather than dropped — that is the staleness that actually
+fires here (one record still said `busy` while its log showed no outstanding call).
+
+**Lineage is not in the process tree.** Task 2.5 asks for the parent by walking ancestry to the
+first agent ancestor. The walk is correct and answers almost nothing: **0 of 23** live agents had
+an agent ancestor. More decisively, an agent started from this screen has the OWNER — a plain
+python process — as its parent, with systemd above it, so no walk will ever find *which agent asked
+for it*. That relation exists only during the act of starting, so it is recorded during it. The two
+answers are kept apart on the wire (`source: recorded | ancestry`) because they answer different
+questions and can disagree, and the recorded one is a **claim the framework did not verify**.
+
+**A stop's return value is not a state.** Task 5.9 already had `stop()` escalate to SIGKILL, and it
+never ran: `_await_gone` accepted "not active", and a unit enters `deactivating` the instant a stop
+is requested. So `stop()` returned `gone=True` in **0.0 seconds** while the agent ran on for four
+minutes. The consequence for this design is not the fix but what it invalidates — **a re-read is
+only a guard if it asks a different question than the one that can be wrong.** Task 5.11's
+verification re-read `still.active`, which is precisely what the stop path had mis-answered, so the
+guard against the §6.1 silent fork was open for exactly the case it exists for. "Gone" now asks
+about the processes: a cgroup holding a pid is not gone, whatever systemd calls the unit.
+
 ### 6.5 A THIRD source of state — an agent that reads the others, requested by the user 2026-08-18
 
 **Deferred on purpose, and the user said so: this matters once the base functions work.** Recorded
