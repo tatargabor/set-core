@@ -218,12 +218,17 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
                 item={item}
                 active={location.pathname === item.route || location.pathname === item.route + '/'}
                 badge={item.id === 'global-all-issues' && totalOpen > 0 ? totalOpen : undefined}
+                collapsed={collapsed}
                 onClick={onClose}
               />
             ))}
-            <div className="px-4 py-3 text-sm text-fg-ghost">
-              Select a project
-            </div>
+            {/* A prompt is only a prompt if it is readable. On the collapsed rail
+                it had nowhere to go and simply overflowed onto the page. */}
+            {!collapsed && (
+              <div className="px-4 py-3 text-sm text-fg-ghost">
+                Select a project
+              </div>
+            )}
           </div>
         )}
 
@@ -294,28 +299,39 @@ function SubItemLink({ item, active, project, onClick }: {
   )
 }
 
-function GlobalLink({ item, active, badge, onClick }: {
+function GlobalLink({ item, active, badge, collapsed, onClick }: {
   item: GlobalItem
   active: boolean
   badge?: number
+  collapsed: boolean
   onClick: () => void
 }) {
   return (
     <Link
       to={item.route}
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
+      // Same three moves the app links above already make when the rail collapses,
+      // and for the same reasons: the `title` carries the name the hidden label
+      // was carrying (an icon rail without tooltips is a memory test), and the
+      // badge survives as a dot, because a count the reader cannot see is a
+      // failure hidden by compacting.
+      title={collapsed ? item.label + (badge ? ` (${badge})` : '') : undefined}
+      className={`relative flex items-center gap-2 py-2 rounded text-sm transition-colors ${
+        collapsed ? 'justify-center px-0' : 'px-3'
+      } ${
         active
           ? 'bg-surface-raised text-fg-loud'
           : 'text-fg-muted hover:bg-surface-raised/50 hover:text-fg-normal'
       }`}
     >
       <SidebarIcon icon={item.icon} className="w-5 text-center shrink-0" />
-      <span className="flex-1">{item.label}</span>
+      {!collapsed && <span className="flex-1">{item.label}</span>}
       {badge != null && badge > 0 && (
-        <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
-          {badge}
-        </span>
+        collapsed
+          ? <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400" />
+          : <span className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
+              {badge}
+            </span>
       )}
     </Link>
   )
