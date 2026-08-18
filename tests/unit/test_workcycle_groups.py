@@ -446,3 +446,77 @@ def test_the_hold_is_derived_from_the_LAST_run_of_each_group(tmp_path):
         encoding="utf-8")
 
     assert gate_failed_groups(root, "c") == {"0"}
+
+
+# ── the hold must be dischargeable, or it is a wall ────────────────────────────────────────
+
+
+def _held_tree(tmp_path, gate_state="failed"):
+    """A tree whose group 0 is fully marked, its record carrying a gate in `gate_state`."""
+    root = tmp_path / "tree"
+    (root / "set").mkdir(parents=True)
+    (root / "set" / "work-cycle.yaml").write_text(
+        "changes_dir: changes\ngates: []\n", encoding="utf-8")
+    ch = root / "changes" / "c"
+    ch.mkdir(parents=True)
+    (ch / "tasks.md").write_text("## 0. First\n\n- [x] 0.1 done\n", encoding="utf-8")
+    d = root / "set" / "runtime" / "work-cycle" / "c"
+    d.mkdir(parents=True)
+    (d / "c--0.json").write_text(json.dumps({
+        "unit_id": "c--0", "change": "c", "group": "0", "seat": "session:t",
+        "gate": {"state": gate_state}, "commit": {"committed": True, "sha": "abc"},
+    }), encoding="utf-8")
+    return root
+
+
+def test_a_held_group_can_be_discharged_without_starting_an_agent(tmp_path, capsys):
+    """⚠ The hold was a DEADLOCK when it shipped, and nothing caught it until a live run did.
+
+    A held group has no open tasks left, so `run` cannot reach it — and the gate is the only
+    thing that can clear the hold. With no way to run the gate on its own, the consumer could
+    fix the cause on their side and the engine had no way to find out. A guard that cannot be
+    discharged is not a guard, it is a wall.
+
+    The declaration here is an empty gate (`gates: []`), which is a real 'no gate' — so this
+    asserts the discharge path itself, not a gate implementation.
+    """
+    from set_workcycle.cli import build_parser, cmd_recheck, gate_failed_groups
+
+    root = _held_tree(tmp_path)
+    assert gate_failed_groups(root, "c") == {"0"}, "precondition: the group is held"
+
+    args = build_parser().parse_args(
+        ["--tree", str(root), "--change", "c", "--json", "recheck"])
+    assert args.starts_a_unit is False, "recheck must not be a second start path"
+    assert cmd_recheck(args) == 0
+
+    assert gate_failed_groups(root, "c") == set(), "the hold was not discharged"
+
+    # ⚠ The record and the REPORT are two places, and a mutation that stopped filling
+    # `cleared` passed the record-only assertion. A discharge nobody is told about reads as a
+    # discharge that did not happen — the same second-place defect this repo keeps measuring.
+    out = json.loads(capsys.readouterr().out)
+    assert out["cleared"] == ["c--0"], f"the record cleared but the report did not say so: {out}"
+
+
+def test_recheck_on_an_unheld_tree_RUNS_NOTHING(tmp_path):
+    """A command that always 'fixes' something is indistinguishable from one that lies — and
+    the cost is not theoretical: the consumer's declared gate takes ~80 seconds.
+
+    ⚠ Asserting only that the record is unchanged was too weak — with the early return
+    removed the gate still RAN, and the record stayed identical because no group matched.
+    So the gate here leaves a trace on disk, and its absence is the assertion.
+    """
+    from set_workcycle.cli import build_parser, cmd_recheck
+
+    root = _held_tree(tmp_path, gate_state="passed")
+    trace = root / "the-gate-ran"
+    (root / "set" / "work-cycle.yaml").write_text(
+        f"changes_dir: changes\ngates:\n  - touch {trace.name}\n", encoding="utf-8")
+
+    before = (root / "set" / "runtime" / "work-cycle" / "c" / "c--0.json").read_text()
+    args = build_parser().parse_args(["--tree", str(root), "--change", "c", "recheck"])
+    assert cmd_recheck(args) == 0
+    after = (root / "set" / "runtime" / "work-cycle" / "c" / "c--0.json").read_text()
+    assert before == after, "recheck rewrote a record it had no business touching"
+    assert not trace.exists(), "the gate ran although no group was held"

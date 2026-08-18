@@ -632,3 +632,28 @@ def test_the_agent_commit_reaches_the_RECORD_not_only_the_return_value(tmp_path)
     rec = UnitRecord(unit=WorkUnit(change="c", tree=tmp_path, seat="session:t", group_key="0"))
     rec.commit = CommitOutcome(False, reason="gate failed", committed_by_agent="abc123")
     assert rec.to_dict()["commit"]["committed_by_agent"] == "abc123"
+
+
+def test_the_commit_never_stages_the_engines_own_run_records(tmp_path):
+    """Measured live in a consumer tree: `git add -A` staged the engine's run record. The
+    commit failed on an unrelated lock, so nothing landed — but the next green gate would
+    have written this engine's bookkeeping into the project's history as project work.
+
+    Asserted on the argv rather than on a real repository, because what went wrong is the
+    command that was issued.
+    """
+    from set_workcycle.engine import RUN_STATE_DIR, GateOutcome, WorkUnit, commit_unit
+
+    calls: list[list[str]] = []
+
+    def fake_git(argv):
+        calls.append(list(argv))
+        if "commit" in argv:
+            return (1, "nothing to commit, working tree clean")
+        return (0, "")
+
+    commit_unit(WorkUnit(change="c", tree=tmp_path, seat="s", group_key="0"),
+                GateOutcome(state="passed"), runner=fake_git)
+
+    add = next(c for c in calls if "add" in c)
+    assert f":(exclude){RUN_STATE_DIR}" in add, f"run records are not excluded: {add}"

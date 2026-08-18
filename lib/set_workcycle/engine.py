@@ -413,7 +413,17 @@ def commit_unit(unit: WorkUnit, gate: GateOutcome, *, message: Optional[str] = N
         + (f" ({', '.join(s.name for s in gate.steps)})" if gate.steps else "")
         + ".\n"
     )
-    code, _ = run(["git", "-C", root, "add", "-A"])
+    # ⚠ `git add -A` alone stages the ENGINE'S OWN run records into the project's history.
+    # Measured live: `set/runtime/work-cycle/<change>/<unit>.json` arrived staged in a
+    # consumer tree. Nothing was lost — the commit failed on an unrelated lock — but the next
+    # green gate would have committed the engine's bookkeeping as if it were the project's
+    # work, in the project's own repository.
+    #
+    # The exclusion belongs HERE rather than in the project's `.gitignore`: the directory is
+    # this engine's invention, so keeping it out of someone else's history is this engine's
+    # job, and a fix that requires every adopting project to add a line is a fix that will be
+    # missed by the project that adopts next.
+    code, _ = run(["git", "-C", root, "add", "-A", "--", ".", f":(exclude){RUN_STATE_DIR}"])
     if code != 0:
         return CommitOutcome(False, reason="git add failed")
     code, out = run(["git", "-C", root, "commit", "-m", text])

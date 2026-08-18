@@ -459,6 +459,75 @@ def cmd_answer(args) -> int:
     return 0
 
 
+def cmd_recheck(args) -> int:
+    """Re-run the gate of a group held by a red one. No agent session, no new work unit.
+
+    ⚠ This exists because the hold introduced with `select_next_group(gate_failed=…)` was a
+    DEADLOCK without it, and the deadlock was invisible until a live run hit it: a held group
+    has no open tasks left, so `run` cannot reach it, and the gate is the only thing that can
+    clear the hold. The consumer fixed the cause on their side and the engine had no way to
+    find out. A guard that cannot be discharged is not a guard, it is a wall.
+
+    The gate runs; a green one clears the hold and commits whatever the failed gate had left
+    in the tree. Attribution on a second failure is deliberately NOT computed: this command
+    does not know which files belonged to the unit, and inventing an attribution from a
+    record that never carried one is the guess this engine refuses to make.
+    """
+    view = open_engine(args.tree, args.change, args.changes_dir)
+    if not view.adopted:
+        _emit({"lines": [f"not adopted: {view.missing}"]}, args.json)
+        return 2
+
+    held = gate_failed_groups(view.tree, args.change)
+    if not held:
+        _emit({"held": [], "lines": ["no group is held by a failed gate — nothing to re-check"]},
+              args.json)
+        return 0
+
+    steps = resolve_gate_steps(_change_stub(args.change), _profile_for(view), view.tree,
+                               adoption=view.adoption)
+    lines = [f"re-checking {len(held)} held group(s): {', '.join(sorted(held))}",
+             f"gate steps: {', '.join(s.name for s in steps) or '(none)'}"]
+    gate = run_gate(steps, view.tree)
+    lines.append(f"gate: {gate.state} — {gate.detail}")
+
+    cleared: list[str] = []
+    for rec in read_run_state(view.tree, args.change):
+        if str(rec.get("group") or "") not in held:
+            continue
+        path = Path(rec["_path"])
+        unit = WorkUnit(change=str(rec.get("change") or args.change), tree=Path(view.tree),
+                        seat=str(rec.get("seat") or ""), group_key=str(rec.get("group") or ""))
+        commit = rec.get("commit") or {}
+        if gate.state != "failed" and not commit.get("committed"):
+            outcome = commit_unit(unit, gate)
+            commit = {"committed": outcome.committed, "sha": outcome.sha,
+                      "reason": outcome.reason,
+                      "committed_by_agent": outcome.committed_by_agent}
+            lines.append(f"  {rec.get('unit_id')} commit: "
+                         + (outcome.sha[:12] if outcome.committed
+                            else f"none — {outcome.reason}"))
+
+        # Read and write in separate statements — never `open(p,"w").write(open(p).read()…)`,
+        # which truncates before the read and leaves a valid-looking empty file behind.
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        data["gate"] = {"state": gate.state, "steps": [st.name for st in gate.steps],
+                        "failures": list(gate.failures), "attribution": gate.attribution,
+                        "detail": gate.detail}
+        data["commit"] = commit
+        tmp = path.with_suffix(".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+        tmp.replace(path)
+        if gate.state != "failed":
+            cleared.append(str(rec.get("unit_id") or ""))
+
+    lines.append(f"cleared: {', '.join(cleared) or 'nothing — the gate is still red'}")
+    _emit({"gate": gate.state, "cleared": cleared, "lines": lines}, args.json)
+    return 0 if gate.state != "failed" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="set-work-cycle",
@@ -486,6 +555,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="report what is runnable and where runs got to")
     status.set_defaults(func=cmd_status, starts_a_unit=False)
+
+    recheck = sub.add_parser(
+        "recheck", help="re-run the gate of a group held by a red one (no agent session)")
+    recheck.set_defaults(func=cmd_recheck, starts_a_unit=False)
 
     answer = sub.add_parser("answer", help="place an answer for an awaiting task")
     answer.add_argument("--task", required=True)

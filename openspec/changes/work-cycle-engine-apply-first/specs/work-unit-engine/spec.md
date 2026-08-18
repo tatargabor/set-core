@@ -124,6 +124,33 @@ the same group that ends on a passing gate SHALL clear the hold.
 - **WHEN** the same group is run again and its gate passes
 - **THEN** the hold is gone and dependent groups become runnable
 
+### Requirement: A hold can be discharged without starting a work unit
+The engine SHALL provide a way to re-run the gate of a group held by a failed one, without
+starting an agent session and without creating a new work unit. A held group has no open
+tasks left, so the start path cannot reach it, and the gate is the only thing that can clear
+the hold; without this the hold is a deadlock rather than a guard.
+
+A green re-check SHALL clear the hold and SHALL commit work the failed gate left in the tree.
+Where no group is held, the re-check SHALL run no gate at all.
+
+#### Scenario: The cause was fixed elsewhere
+- **WHEN** a group is held by a failed gate and the cause has since been fixed
+- **THEN** re-running the gate alone clears the hold, with no agent session started
+- **AND** the report names what was cleared, not only the record
+
+#### Scenario: Nothing is held
+- **WHEN** no group is held by a failed gate
+- **THEN** the re-check runs no gate command and changes no record
+
+### Requirement: The engine does not commit its own run records
+When committing a unit's work, the engine SHALL exclude its own run-state directory from what
+it stages. The directory is the engine's own bookkeeping, and a project adopting the engine
+SHALL NOT have to exclude it on its side.
+
+#### Scenario: A unit's work is committed
+- **WHEN** the engine stages a unit's changes
+- **THEN** its run-state directory is excluded from the staged set
+
 ### Requirement: The engine never reports a tree state it did not measure
 When a gate fails, the engine SHALL check whether the tree has moved since the unit started
 before stating that the work stays in the tree. Where the unit's agent has committed the work
