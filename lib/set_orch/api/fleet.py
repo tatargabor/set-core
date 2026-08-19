@@ -44,6 +44,7 @@ from ..fleet.discovery import discover_agent, live_session_ids, parent_seat
 from ..fleet import scopes as fleet_scopes
 from ..fleet import instruct as fleet_instruct
 from ..fleet import purpose as fleet_purpose
+from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet.layout import LayoutConflict
@@ -216,6 +217,19 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
     }
 
 
+#: What the framework installs, read once per process. It is derived from THIS
+#: checkout's own template sources, so it changes only when the deployed code
+#: changes — re-deriving it per project per poll would walk the manifests 41
+#: times for an answer that cannot differ between them.
+_FRAMEWORK_CAPS: List[Any] = []
+
+
+def _framework_caps() -> List[Any]:
+    if not _FRAMEWORK_CAPS:
+        _FRAMEWORK_CAPS.extend(fleet_caps.framework_capabilities())
+    return _FRAMEWORK_CAPS
+
+
 def _declared_payload(session_id, seats) -> Dict[str, Any]:
     """What the agent declared about itself, or a stated absence.
 
@@ -295,6 +309,12 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             # once per agent — the records are per project, and a stale one
             # belongs on the screen even when nothing is running under it.
             "runs": [p.as_dict() for p in purposes],
+            # Task 2.6 — what this project has wired in. Four states, and
+            # `unknown` is one of them: a tree we cannot read must not read as
+            # "not connected", which invites installing into it.
+            "capabilities": (fleet_caps.report_for_project(
+                project.root, capabilities=_framework_caps()).as_dict()
+                if project.root else None),
         })
 
     # Counted from the data, never from a declaration — a "hidden" tally taken
