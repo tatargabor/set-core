@@ -198,6 +198,39 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
     expect(within(rows[0] as HTMLElement).getByText('demo-a2')).toBeTruthy()
   })
 
+  it('a ROW keeps its input — enlarging a different tile must not disarm this agent', async () => {
+    // The requirement is explicit: *"Under any density, the tile SHALL retain its
+    // state and its input"*. The row used to carry identity, state, branch and
+    // age and no input at all, so an agent you could instruct became
+    // uninstructable purely because you enlarged somebody else's tile — an
+    // affordance removed by a layout choice, with nothing on screen to say so.
+    installFetch([ok(two)])
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo-a1')
+    expect(container.querySelectorAll('[data-fleet-instruct]').length).toBe(2)
+
+    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
+    expect(container.querySelector('[data-fleet-row="2"]')).toBeTruthy()
+    // Still two, and the second one is INSIDE the row.
+    expect(container.querySelectorAll('[data-fleet-instruct]').length).toBe(2)
+    expect(container.querySelector('[data-fleet-row="2"] [data-fleet-instruct]')).toBeTruthy()
+  })
+
+  it('typing in a row\'s input does not enlarge that row', async () => {
+    // The row is a div with a guarded click now, and the guard is the load-bearing
+    // half: without it every click inside the input would also select the row, so
+    // giving the row an input would have taken away the ability to use it.
+    installFetch([ok(two)])
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo-a1')
+    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
+
+    const surface = container.querySelector('[data-fleet-row="2"] [data-fleet-instruct]')!
+    fireEvent.click(surface)
+    expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-enlarged="2"]')).toBeNull()
+  })
+
   it('selects back: clicking a row enlarges that agent instead', async () => {
     installFetch([ok(two)])
     const { container } = render(<Fleet />)

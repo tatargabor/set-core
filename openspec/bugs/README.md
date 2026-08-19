@@ -122,8 +122,12 @@ consumer's name, path, or content.
   obvious candidate and should be checked against what that module actually needs.
 
 ### B-5 — an agent becomes un-instructable because a *different* tile was enlarged
-- **state:** open — the remainder of task 7.3, kept here because it outlived the
-  session that owned it
+- **state:** closed (`0b211f2f`) — it was the remainder of task 7.3
+- **fixed:** the row is a `div` with the same guarded click the card uses, and it
+  carries `FleetInstruct` in a `compact` frame. Two regression tests, both
+  mutation-proven: dropping the input fails one, dropping the guard fails the
+  other — and the guard is the load-bearing half, because without it every click
+  inside the input would also enlarge the row.
 - **reported:** 2026-08-19 by a peer session at handover, verified here
 - **measured:** with one tile enlarged the others render through `AgentRow`, and
   `AgentRow` carries neither the input nor the excerpt —

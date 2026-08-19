@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
 import type { FleetProject, FleetResponse } from '../lib/fleetTypes'
 import {
   type FleetArrangement,
@@ -335,6 +336,72 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
   )
 }
 
+/**
+ * What the project has wired in, and who knew about it — tasks 7.9 and AC-8.
+ *
+ * Both live on the row rather than behind the selection, because both are
+ * reasons to select a project in the first place: a capability that is *not
+ * connected* invites connecting it, and a project only the messaging bus knows
+ * about is a project nothing is running in.
+ *
+ * The marks are drawn from the report's own list, never from a fixed set of
+ * capability names — a framework that gained a module would otherwise keep
+ * drawing the old four, and the row would be confidently out of date.
+ */
+function ProjectFacts({ project }: { project: FleetProject | undefined }) {
+  if (!project) return null
+  const standing = capabilityStanding(project.capabilities)
+  const sources = extraSources(project.sources)
+  if (standing.kind === 'none' && sources.length === 0) return null
+  return (
+    <span className="flex items-center gap-1.5 mt-0.5 min-w-0" data-fleet-project-facts={project.name}>
+      {standing.kind === 'unmeasured' && (
+        /* Said, not drawn as an empty strip. A row of nothing would claim the
+           modules were measured and none found — a gap rendered as a zero, and
+           it is the reading that stops anyone from looking. */
+        <span className="text-xs text-amber-400 shrink-0" data-fleet-project-modules="unmeasured" title={standing.note}>
+          ⚠ not measured
+        </span>
+      )}
+      {standing.kind === 'marks' && (
+        <span className="flex items-center gap-0.5 shrink-0" data-fleet-project-modules="measured">
+          {standing.marks.map(m => (
+            <span
+              key={m.name}
+              data-fleet-capability-mark={m.name}
+              data-fleet-capability-tone={m.tone}
+              title={m.title}
+              /* DIM IS NOT ABSENT — the not-connected mark is drawn, hollow and
+                 low-contrast, in the same place as the others. Leaving it out is
+                 the collapse the requirement names: a capability the project
+                 could have, quietly stopped being offered. `unknown` is dashed
+                 rather than dim, because it invites a different act. */
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                m.tone === 'connected' ? 'bg-emerald-400'
+                  : m.tone === 'partial' ? 'bg-amber-400'
+                    : m.tone === 'not-connected' ? 'border border-fg-ghost'
+                      : 'border border-dashed border-amber-400'
+              }`}
+            />
+          ))}
+        </span>
+      )}
+      {sources.length > 0 && (
+        /* AC-8. Named rather than merged: known to the registry AND to a live
+           process is a different fact from either alone, and the union exists
+           precisely so that difference survives. */
+        <span
+          className="text-xs text-fg-ghost truncate"
+          data-fleet-project-sources={sources.length}
+          title={`known to: ${sources.join(', ')}`}
+        >
+          {sources.map(shortSource).join('\u00b7')}
+        </span>
+      )}
+    </span>
+  )
+}
+
 // --------------------------------------------------------------------------- //
 // One project
 // --------------------------------------------------------------------------- //
@@ -414,6 +481,7 @@ function ProjectRow(p: RowProps) {
           {p.project && p.project.archived && (
             <span className="text-xs text-fg-ghost">archived</span>
           )}
+          <ProjectFacts project={p.project} />
         </button>
         <Counts t={t} waitingKnown={p.waitingKnown} showAgents={t.agents > 0} />
         <button

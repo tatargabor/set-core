@@ -64,7 +64,20 @@ const TONE: Record<string, string> = {
   unknown: 'text-amber-400',
 }
 
-export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
+export default function FleetInstruct({ agent, compact }: {
+  agent: FleetAgent
+  /**
+   * Rendered on a ROW rather than inside a card — task 7.3.
+   *
+   * The difference is only the frame: a card separates the input from what is
+   * above it with a rule and a margin, a row has nothing above it to separate
+   * from. Everything else — what can be sent, to whom, the outcome, dictation —
+   * is identical, deliberately: a compact input that could do less would be a
+   * second answer to "can this agent be instructed", and the density would
+   * decide it.
+   */
+  compact?: boolean
+}) {
   const [text, setText] = useState('')
   /** In-progress dictation. Never merged into `text` — see the header. */
   const [heard, setHeard] = useState('')
@@ -152,7 +165,7 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
 
   if (can.kind === 'no') {
     return (
-      <div className="mt-2 border-t border-surface-line pt-2" data-fleet-instruct="refused">
+      <div className={compact ? 'min-w-0' : 'mt-2 border-t border-surface-line pt-2'} data-fleet-instruct="refused">
         {/*
           Task 4.4: the reason stands WHERE THE INPUT WOULD BE — and quietly.
           Seen on the live screen in amber: most agents on this machine have no
@@ -170,7 +183,7 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
   const meaning = report ? meaningOf(report.outcome) : null
 
   return (
-    <div className="mt-2 border-t border-surface-line pt-2" data-fleet-instruct={can.kind} data-fleet-own-surface="instruct">
+    <div className={compact ? 'min-w-0' : 'mt-2 border-t border-surface-line pt-2'} data-fleet-instruct={can.kind} data-fleet-own-surface="instruct">
       <div className="flex items-end gap-2">
         <textarea
           ref={box}

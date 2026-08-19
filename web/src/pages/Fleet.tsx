@@ -795,13 +795,43 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
   )
 }
 
+/**
+ * One agent while another tile is enlarged — task 7.3's remaining half.
+ *
+ * **It carries its input.** The requirement is explicit — *"Under any density,
+ * the tile SHALL retain its state and its input"* — and the row used to drop it:
+ * an agent you could instruct became uninstructable purely because you enlarged
+ * a DIFFERENT tile. That is the compaction-hides-something shape applied to an
+ * affordance rather than to a failure, and it is worse than hiding a fact,
+ * because the reader cannot even tell that something was taken away.
+ *
+ * The row is a `div` and not a `button` for that reason. An input inside a
+ * button is invalid, and every keystroke would also be a click on the enlarge
+ * control — so the selecting button is the identity half only, and the input
+ * sits beside it with its own surface marker.
+ */
 function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void }) {
   return (
+    <div
+      data-fleet-row={agent.pid}
+      /* The whole row still selects, through the same guard the card uses: a
+         click on a control, on an own surface (the input), or one that ends a
+         text selection is not a selection of the row. Without it the input
+         would enlarge the tile on every keystroke's click, and with it the row
+         keeps behaving the way it did before it grew an input. */
+      onClick={e => {
+        if (tileClickOpens({
+          target: e.target as Element,
+          card: e.currentTarget,
+          selection: currentSelection(),
+        })) onSelect()
+      }}
+      className="w-full flex items-baseline gap-2 px-3 py-1 rounded border border-transparent hover:border-surface-line hover:bg-surface-raised/40 transition-colors"
+    >
     <button
       onClick={onSelect}
-      data-fleet-row={agent.pid}
       title="Click: this tile is enlarged"
-      className="w-full text-left flex items-baseline gap-2 px-3 py-1 rounded border border-transparent hover:border-surface-line hover:bg-surface-raised/40 transition-colors"
+      className="text-left flex items-baseline gap-2 min-w-0 flex-1"
     >
       <span className="text-xs text-fg-strong truncate max-w-[14rem] shrink-0">
         {/* Same identity rule as the card — a row and a card must not name the
@@ -822,6 +852,14 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
         {age(agent.last_movement_seconds)} · {agent.pid}
       </span>
     </button>
+      {/* Beside the row, not under it — the row stays one line. Where the agent
+          cannot be instructed the producer's own sentence stands here instead,
+          which is the same answer the card gives: the density changes the frame
+          and never what can be said to whom. */}
+      <span className="shrink-0 w-[26rem] max-w-[45%] min-w-0">
+        <FleetInstruct agent={agent} compact />
+      </span>
+    </div>
   )
 }
 
