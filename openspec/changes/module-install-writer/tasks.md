@@ -1,0 +1,62 @@
+## 1. The retroactive half — spec the reading code that already ships
+
+These tasks are **already implemented**; they exist so the capability spec covers what shipped
+without one, and so a later change cannot alter it silently. Each is verified by reading the code
+and running the check named, not by assuming.
+
+- [ ] 1.1 Verify `read_project_declaration` distinguishes absent from empty and does not raise on a malformed file; add a test for the malformed case if none holds it. [REQ: a-projects-declaration-is-read-as-what-it-says-and-absence-is-not-emptiness]
+- [ ] 1.2 Verify `plan_files` excludes declared executable paths and reports a path declared as both; hold both directions with a test. [REQ: the-files-a-module-places-are-declared-and-its-executable-part-is-never-among-them]
+- [ ] 1.3 Verify the three version outcomes, including that a project with no declaration yields **no comparisons** rather than an empty set of mismatches. (Held since 2026-08-19 by `tests/unit/test_fleet_capabilities.py`; confirm the tests live where this capability can find them.) [REQ: a-version-comparison-never-reports-cannot-tell-as-agreement]
+
+## 2. The writer
+
+- [ ] 2.1 `install_module(decl, project_root, *, dry_run=False) -> InstallReport` in `lib/set_orch/module_install.py`. Plans with `plan_files(decl)` (D1) and writes each path through the deploy engine's existing per-file path — **no copier of its own**. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+- [ ] 2.2 The requirement check runs FIRST and raises, naming the missing requirement. Not a skip, not a field — a refusal is control flow (D2). [REQ: a-missing-requirement-is-a-refusal-before-anything-is-written]
+- [ ] 2.3 Every skipped file reaches `InstallReport.skip()` with the reason the deploy path gave — protected-and-modified, seeded-once, tombstoned, deleted-on-purpose. A reason invented by the caller is a second copy of the engine's own vocabulary; take the engine's. [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing]
+- [ ] 2.4 `InstallRecord.save()` runs LAST and never on refusal (D3). Decide and record open question 1 — whether a run that skipped everything updates the record — in the spec, not only in the code. [REQ: what-is-installed-is-recorded-and-the-record-is-written-only-after-the-write]
+- [ ] 2.5 Resolve open question 3 before writing: where `perform_announcement` sits in the sequence, and how it appears in the report. It edits a project-owned file and must not become the one write the report does not mention. [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing]
+- [ ] 2.6 `dry_run` threads through to the engine and produces a report that names what WOULD be written, with nothing on disk changed (D4). Assert the "nothing changed" half by hashing the tree before and after, not by trusting the flag. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+- [ ] 2.7 A name-taking resolver over the declaration-taking form (open question 2), so a route can ask for a module by name without the writer knowing how templates are located. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+
+## 3. The divergence this change found, and must not inherit quietly
+
+- [ ] 3.1 Make `profile_deploy` honour `executable:` the same way `plan_files` does, so the two manifest readers agree for a reason rather than because **no manifest declares one** (measured: 0). Until this lands, `set-project init` would copy a module's executable part into a project while `install_module` excludes it. [REQ: the-files-a-module-places-are-declared-and-its-executable-part-is-never-among-them]
+- [ ] 3.2 Hold the agreement with a test that feeds ONE manifest to both readers and asserts identical paths — including a manifest that declares an executable path, which is the only input that can tell them apart. A test over the three real manifests would pass on both the fixed and the broken build. [REQ: the-files-a-module-places-are-declared-and-its-executable-part-is-never-among-them]
+- [ ] 3.3 Stop `read_project_declaration` logging the absolute project path (design D5). The boundary is persistence, not naming: a count is safe to log, a path is not. Hold it with a caplog test, and prove the detector fires. [REQ: a-projects-declaration-is-read-as-what-it-says-and-absence-is-not-emptiness]
+
+## 4. Proof — the unhappy paths, which are the ones a demo never reaches
+
+- [ ] 4.1 An install into a project that has none of the module's files: every planned path present afterwards, every one named in the report. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+- [ ] 4.2 An install where the project edited a protected file: the file is untouched **byte for byte** (compare the hash, not the mtime) and the skip carries its reason. [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing]
+- [ ] 4.3 An install that skips EVERY file: `changed_nothing` is true, the report states it in its own words, and the caller cannot mistake it for success. [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing]
+- [ ] 4.4 A refused install: the missing requirement is named, and the project contains **none** of the module's files — assert the first path in the plan specifically, because a refusal after one write is the failure this ordering exists to prevent. [REQ: a-missing-requirement-is-a-refusal-before-anything-is-written]
+- [ ] 4.5 A refused install leaves the install record byte-identical, including when a record already existed for another module. [REQ: what-is-installed-is-recorded-and-the-record-is-written-only-after-the-write]
+- [ ] 4.6 Installing one module in a project that has two: no file belonging only to the other is written. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+- [ ] 4.7 Mutation-test every test above: for each, break the specific line it guards and confirm it fails. A test that passes without its fix proves nothing and looks like proof forever. Use a unique-pattern assertion (`assert count == 1`), clear `__pycache__`, set `PYTHONDONTWRITEBYTECODE=1`, and **verify the restore** by re-grepping the file. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+- [ ] 4.8 Regression check against a real baseline: `git worktree add --detach`, `PYTHONPATH` at the baseline's own source roots, the session-end leak assertion, and a set-diff of failure names. An empty diff, not a matching count. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+
+## 5. Hand-off to the surface
+
+- [ ] 5.1 Unblock `fleet-view` 6.5: the route calls `install_module` and returns its report unchanged. The route SHALL NOT interpret, summarise or reorder the report — the surface's obligations are asserted in `fleet-view` 7.15/9.17 and they assert what the SCREEN shows. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+- [ ] 5.2 Update `fleet-view`'s tasks 6.5, 7.15 and 9.17 to record that the blocker is gone, naming this change. A blocker that is lifted and not recorded reads as still blocked, and the next session re-derives it. [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline]
+
+## Acceptance Criteria (from spec scenarios)
+
+- [ ] AC-1: WHEN the project has no declaration file THEN the result reports that no declaration is present, and no module is reported as wanted [REQ: a-projects-declaration-is-read-as-what-it-says-and-absence-is-not-emptiness, scenario: a-project-that-declared-nothing]
+- [ ] AC-2: WHEN the project has a declaration file that names no modules THEN the result reports that a declaration IS present, with no modules wanted [REQ: a-projects-declaration-is-read-as-what-it-says-and-absence-is-not-emptiness, scenario: a-project-that-declared-an-empty-set]
+- [ ] AC-3: WHEN the declaration file is not readable as its documented format THEN the result reports no declaration present, and the reader does not raise [REQ: a-projects-declaration-is-read-as-what-it-says-and-absence-is-not-emptiness, scenario: a-declaration-that-cannot-be-parsed]
+- [ ] AC-4: WHEN an install writes at least one file THEN the install record names that module at the version installed [REQ: what-is-installed-is-recorded-and-the-record-is-written-only-after-the-write, scenario: a-successful-install-updates-the-record]
+- [ ] AC-5: WHEN an install is refused for a missing requirement THEN the install record is unchanged, and does not name the refused module [REQ: what-is-installed-is-recorded-and-the-record-is-written-only-after-the-write, scenario: a-refused-install-leaves-the-record-alone]
+- [ ] AC-6: WHEN a module declares a path as its executable part THEN that path is absent from the planned file list [REQ: the-files-a-module-places-are-declared-and-its-executable-part-is-never-among-them, scenario: an-executable-path-is-not-planned]
+- [ ] AC-7: WHEN a module declares one path both as an installed file and as executable THEN the path is excluded from the plan and the contradiction is reported [REQ: the-files-a-module-places-are-declared-and-its-executable-part-is-never-among-them, scenario: a-path-declared-as-both-is-excluded-and-named]
+- [ ] AC-8: WHEN a project expects one version and another is installed THEN the comparison reports disagreement, naming both versions [REQ: a-version-comparison-never-reports-cannot-tell-as-agreement, scenario: expected-and-installed-differ]
+- [ ] AC-9: WHEN a project expects a module that is not installed THEN the comparison reports undeterminable, and does not report agreement [REQ: a-version-comparison-never-reports-cannot-tell-as-agreement, scenario: a-module-wanted-but-not-installed]
+- [ ] AC-10: WHEN the project has no declaration THEN no comparisons are produced [REQ: a-version-comparison-never-reports-cannot-tell-as-agreement, scenario: no-declaration-yields-no-comparisons]
+- [ ] AC-11: WHEN an install runs for a module in a project that has none of its files THEN each planned file is present in the project afterwards, and each is named in the report [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline, scenario: declared-files-are-written]
+- [ ] AC-12: WHEN an install would write a protected file the project has edited THEN the file is left as the project has it, and the skip appears in the report with its reason [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline, scenario: a-file-the-project-modified-is-not-overwritten]
+- [ ] AC-13: WHEN an install runs for one module in a project that has two installed THEN no file belonging only to the other module is written [REQ: an-install-writes-the-modules-declared-files-through-the-existing-per-file-deploy-discipline, scenario: installing-one-module-leaves-another-alone]
+- [ ] AC-14: WHEN an install is asked for a module that requires another the project does not have THEN the install is refused, the missing requirement is named, and no file is written [REQ: a-missing-requirement-is-a-refusal-before-anything-is-written, scenario: a-module-whose-requirement-is-absent]
+- [ ] AC-15: WHEN an install is refused for a missing requirement THEN the project contains none of that module's files, including the first one in the plan [REQ: a-missing-requirement-is-a-refusal-before-anything-is-written, scenario: the-refusal-precedes-the-first-write]
+- [ ] AC-16: WHEN an install leaves files alone THEN each such file appears in the report with the reason it was skipped [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing, scenario: skips-are-named-with-reasons]
+- [ ] AC-17: WHEN an install writes no files THEN the report states that outcome explicitly, rather than reporting a plain success [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing, scenario: a-run-that-wrote-nothing-says-so]
+- [ ] AC-18: WHEN an install writes some files and skips others THEN the report names both sets, and neither is inferable only from the other's absence [REQ: the-install-reports-what-it-did-not-do-and-says-so-when-it-changed-nothing, scenario: both-halves-appear-together]

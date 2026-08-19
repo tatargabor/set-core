@@ -52,3 +52,31 @@ Verified by measurement, not by reading the docs: `context`, `rules[<artifact>]`
 `operations.*.guidance` all appear in `openspec instructions <artifact|apply|archive>
 --json`, and the CLI's `OPERATION_IDS` are exactly `['apply', 'archive']` — **there is no
 verify operation**, which is why the verify gate needs a framework-owned carrier.
+
+## The scope block: the generated instruction tells you to write it the way the parser rejects
+
+Measured 2026-08-19 on CLI **1.9.0**, creating a new capability spec. `openspec instructions specs`
+says, in bold, *"Scope boundary (REQUIRED for new capability specs): after the `## ADDED
+Requirements` header and before the first `### Requirement:`, add `## IN SCOPE` / `## OUT OF
+SCOPE`"* — and following it exactly produces:
+
+```
+✗ [ERROR] <cap>/spec.md: Delta sections ## ADDED Requirements were found, but no requirement
+          entries parsed.
+✗ [ERROR] file: Change must have at least one delta. No deltas found.
+```
+
+because the delta parser **ends a section at any `##` heading**, so `## IN SCOPE` closes
+`## ADDED Requirements` and every requirement below it lands outside any delta section.
+
+**Write the scope block ABOVE `## ADDED Requirements`.** That validates, and it is what the
+existing worked example in this repo already does (`openspec/changes/fleet-view/specs/
+agent-fleet-inventory/spec.md`).
+
+Two things make this worth a rule rather than a note:
+
+- **The instruction is generated**, so it cannot be corrected in place — `openspec update` rewrites
+  it. The correction has to live in a framework-owned file, which is this one.
+- **The failure is loud but the diagnosis is not.** The error says "no requirement entries parsed"
+  about a file containing seven `### Requirement:` blocks, which reads as a formatting problem in
+  the requirements. It is a placement problem in something else entirely, three lines further up.
