@@ -91,6 +91,9 @@ __all__ = [
     "BellResult",
     "AnswerRecorded",
     "read_seats",
+    "seats_cached",
+    "forget_seats",
+    "SEATS_MAX_AGE",
     "seat_for",
     "instructability",
     "send_instruction",
@@ -250,6 +253,43 @@ def read_seats(
                 seats[seat.session] = seat
     logger.debug("fleet instruct: %d seats with a session id", len(seats))
     return seats
+
+
+#: Roster cache: (taken_at, seats). The roster is asked with a subprocess — a
+#: node start of its own — and the fleet listing is polled every few seconds, so
+#: asking per poll spawns a process per poll for an answer that changes when
+#: somebody opens a window. Measured 2026-08-19: `sac agents --json` costs
+#: **0.07 s**, against 0.098 s for the whole fleet listing, so it is not free.
+_SEATS_CACHE: List = []
+
+#: How stale the roster may be. The cost of the window is stated rather than
+#: hidden: a session that enrols during it reads as *not instructable* for up to
+#: this long — a false absence, bounded, and in the direction that offers no
+#: control rather than one that fails. Liveness is NOT taken from here: an
+#: outcome is computed from a fresh roster at send time, because that is the
+#: number a hold or a wake depends on.
+SEATS_MAX_AGE = 10.0
+
+
+def seats_cached(max_age: float = SEATS_MAX_AGE, **kwargs) -> Optional[Dict[str, Seat]]:
+    """`read_seats`, reused for a few seconds. For LISTING only, never for a send.
+
+    A `None` answer is cached too. Not caching it would turn a bus that is down
+    into a subprocess attempt on every poll, which is the shape that turns one
+    outage into a load problem.
+    """
+    import time as _time
+    now = _time.monotonic()
+    if _SEATS_CACHE and now - _SEATS_CACHE[0] < max_age:
+        return _SEATS_CACHE[1]
+    seats = read_seats(**kwargs)
+    _SEATS_CACHE[:] = [now, seats]
+    return seats
+
+
+def forget_seats() -> None:
+    """Drop the cached roster — after an enrolment, and in tests."""
+    _SEATS_CACHE.clear()
 
 
 def seat_for(session_id: Optional[str], seats: Optional[Dict[str, Seat]]) -> Optional[Seat]:

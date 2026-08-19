@@ -6,6 +6,9 @@
     GET  /api/fleet/owner              — whether an agent can be started at all
     POST /api/fleet/agents             — start one, through the agent owner (task 5.8)
     POST /api/fleet/agents/{label}/stop — stop one this framework started
+    POST /api/fleet/agents/{pid}/instruct — address one instruction, and say what became of it
+    GET  /api/fleet/waiters            — waiter processes, and which of them are orphaned
+    POST /api/fleet/waiters/{pid}/remove — stop ONE named orphan; no bulk form exists
     GET  /api/fleet/layout             — the hand-made arrangement, joined to what exists
     PUT  /api/fleet/layout             — replace it, refusing a stale write
     WS   /ws/fleet/agents/{label}/terminal — the terminal, both directions (5.3, 6.4)
@@ -36,7 +39,8 @@ from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.awaiting import awaiting_for
-from ..fleet.discovery import discover_agent, parent_seat
+from ..fleet.discovery import discover_agent, live_session_ids, parent_seat
+from ..fleet import instruct as fleet_instruct
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet.layout import LayoutConflict
@@ -66,7 +70,8 @@ def _owned_by_pid() -> Optional[Dict[int, Dict[str, Any]]]:
         return None
 
 
-def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None) -> Dict[str, Any]:
+def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
+                   seats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     # Three values, not two, and the third is why this is not a boolean. A
     # terminal exists only for a process the framework started and still holds
     # (task 5.2), so:
@@ -141,6 +146,14 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # surface can mark the recorded one as a claim and the ancestry one as
         # measured; they answer different questions and can disagree.
         "parent": parent,
+        # Task 4.4 — whether this agent can be addressed at all, and WHY NOT
+        # when it cannot. The reason travels with the row so the surface can put
+        # it where the input would be, rather than dropping the agent (which
+        # hides running work) or showing an input that silently goes nowhere
+        # (which is worse). Three distinct reasons, and only one is about the
+        # agent: no bus on the machine, a bus that could not be asked, or a bus
+        # that was asked and does not know this session.
+        **fleet_instruct.instructability(agent.session_id, seats).as_dict(),
     }
 
 
@@ -167,6 +180,14 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     # Asked once for the whole listing, not once per agent: it is one socket
     # round trip and the answer is the same for every row.
     owned = _owned_by_pid()
+    # Asked once for the whole listing, like `owned`, and reused for a few
+    # seconds beyond that — `sac agents --json` starts a node process, measured
+    # at 0.07 s against 0.098 s for this whole listing, and this endpoint is
+    # polled. The window is stated in `instruct.SEATS_MAX_AGE`: a session that
+    # enrols during it reads as not-instructable for up to ten seconds, which is
+    # a bounded false absence in the direction that offers no control rather
+    # than one that fails. A SEND never uses this cache.
+    seats = fleet_instruct.seats_cached()
 
     grouped: List[Dict[str, Any]] = []
     for project in projects:
@@ -178,7 +199,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "root": project.root,
             "sources": project.sources,
             "archived": project.archived,
-            "agents": [_agent_payload(a, states[a.pid], owned) for a in members],
+            "agents": [_agent_payload(a, states[a.pid], owned, seats) for a in members],
             # Task 7.14. What is waiting for a HUMAN here, independent of who is
             # running — the case an agent-centric screen gets wrong by
             # construction. Carried even when its total is zero, because the KEY
@@ -224,6 +245,14 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         # screen that cannot offer a terminal ANYWHERE has one cause, and naming
         # it once is the difference between "no terminals" and "we could not ask".
         "owner_reachable": owned is not None,
+        # The same sentence for the bus: a screen where NO tile can be
+        # instructed has one cause, and naming it once is the difference
+        # between "these agents are not enrolled" and "we could not ask".
+        # Per CLAUDE.md the answer to the first is enrolment, never a second
+        # transport, so the surface must be able to tell them apart.
+        "bus_reachable": seats is not None,
+        "instructable": sum(
+            1 for g in grouped for a in g["agents"] if a.get("instructable")),
     }
 
 
@@ -510,6 +539,151 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         # mid-turn, and would present `quiet` as "nothing is happening".
         "quiet_means": "no outstanding tool call as of the session log's last flush",
     }
+
+
+# --------------------------------------------------------------------------- #
+# Instruction (tasks 6.3, 6.6) — the write half
+# --------------------------------------------------------------------------- #
+
+
+class InstructBody(BaseModel):
+    """One instruction, to one session.
+
+    No recipient field: the address is the pid in the path, resolved here to a
+    seat. Letting the caller name a seat would make the route a general-purpose
+    bus client, and a mistyped seat would then be a message to the wrong agent
+    rather than a 404 about a pid that is not running.
+    """
+
+    text: str
+    #: `REQUEST` by default — see `instruct.send_instruction`. A caller may send
+    #: a `QUESTION`; a `FACT` is allowed and will correctly report that it woke
+    #: nobody, which is the honest outcome rather than a refusal.
+    kind: str = "REQUEST"
+
+
+@router.post("/api/fleet/agents/{pid}/instruct")
+def fleet_instruct_agent(pid: int, body: InstructBody) -> Dict[str, Any]:
+    """Send one instruction, and report what the CHANNEL says became of it.
+
+    The outcome is carried verbatim from the bus and is never inferred from the
+    fact that this route returned 200. That distinction is the whole point of
+    task 6.3: an HTTP 200 here means *the send was made and answered*, which is
+    compatible with the message reaching nobody — so the body carries `accepted`
+    and `outcome` as two separate fields and `delivered_to_agent` as a third.
+
+    The agent is re-discovered by pid rather than trusted from the caller, for
+    the same reason the log route does it: a pid is reused, and instructing
+    whatever session a stale pid now maps to would deliver one person's message
+    to another's agent.
+
+    A **fresh** roster is read here rather than the cached one the listing uses.
+    The cache exists so a poll does not spawn a process per tile; an outcome
+    depends on who is live at this instant, and a ten-second-old answer to that
+    question is exactly the kind of stale measurement this screen exists to
+    avoid.
+    """
+    agent = discover_agent(pid)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"no live agent with pid {pid}")
+    if not (body.text or "").strip():
+        raise HTTPException(status_code=400, detail="an empty instruction is not sent")
+
+    seats = fleet_instruct.read_seats()
+    can = fleet_instruct.instructability(agent.session_id, seats)
+    if not can.instructable:
+        # 409 rather than 400 or 503: the request is well formed and the service
+        # is up — this agent simply has no address. The reason travels in the
+        # body so the surface can put it where the input would be (task 4.4),
+        # rather than rendering a generic failure.
+        raise HTTPException(status_code=409, detail={
+            "error": "not-instructable", "reason": can.reason, "pid": pid,
+            "session_id": agent.session_id,
+        })
+
+    state = read_state(agent.session_log, record=agent.record)
+    waiters = fleet_instruct.live_waiters()
+    report = fleet_instruct.send_instruction(
+        can.seat, body.text, kind=body.kind, state=state.state, waiters=waiters)
+
+    payload = report.as_dict()
+    payload["pid"] = pid
+    payload["session_id"] = agent.session_id
+    # How many waiters this session has, next to the outcome. Measured: one
+    # session owned four at once, so this is a count and not a flag — and a zero
+    # here is the remedy the surface offers (task 7.7), not a failure.
+    payload["waiters_here"] = report.waiters
+    if report.outcome == fleet_instruct.REFUSED:
+        # The bus refused. Reported as a 409 with the channel's own words rather
+        # than retried without the address: an unresolvable addressee is exactly
+        # when a broadcast is most tempting and most wrong.
+        raise HTTPException(status_code=409, detail=payload)
+    return payload
+
+
+@router.get("/api/fleet/waiters")
+def fleet_waiters() -> Dict[str, Any]:
+    """Every waiter process, and which of them have no session left.
+
+    Shown next to the agents reported as having no waiter, because the offer to
+    *install* one is exactly the moment somebody is adding to the pile.
+
+    Three values where a boolean would do, and the third is why: `orphaned` is
+    what may be removed, `live` is what must not be, and `undeterminable` is a
+    waiter whose session cannot be read — treated as live, listed, and never
+    offered. Collapsing the third into either of the others is the only way to
+    get this wrong, and one direction of that mistake kills a live waiter.
+    """
+    waiters = fleet_instruct.live_waiters()
+    if waiters is None:
+        # `/proc` could not be read. Not an empty list: "no waiters" is an
+        # invitation to install one, and "we could not look" is not.
+        return {"measured": False, "reason": "the process table could not be read",
+                "waiters": [], "orphaned": [], "orphaned_count": 0}
+
+    live = live_session_ids()
+    orphans = {w.pid for w in fleet_instruct.orphaned_waiters(waiters, live)}
+    rows = []
+    for w in waiters:
+        if not w.session_known:
+            status = "undeterminable"
+        elif w.pid in orphans:
+            status = "orphaned"
+        else:
+            status = "live"
+        rows.append({"pid": w.pid, "session_id": w.session, "cwd": w.cwd,
+                     "rooms": list(w.rooms), "status": status,
+                     "removable": status == "orphaned"})
+    return {
+        # False when session liveness could not be determined at all — in which
+        # case nothing is orphaned, by rule, and the surface must say why rather
+        # than showing a clean list.
+        "measured": live is not None,
+        "reason": None if live is not None else "session liveness could not be determined",
+        "waiters": rows,
+        "orphaned": sorted(orphans),
+        "orphaned_count": len(orphans),
+    }
+
+
+@router.post("/api/fleet/waiters/{pid}/remove")
+def fleet_remove_waiter(pid: int) -> Dict[str, Any]:
+    """Stop ONE named waiter. There is deliberately no bulk form of this route.
+
+    A cleanup endpoint that takes a list is one mistaken list away from killing
+    live waiters, and a killed live waiter is invisible: the agent it belonged to
+    merely looks quiet, and the next instruction sent to it sits unread.
+
+    The pid is re-resolved to a waiter identity inside `remove_waiter` rather
+    than trusted from a candidate list the caller read seconds ago — pids are
+    recycled, and a stale candidate list is how a cleanup aims at something else.
+    Every refusal is a 409 carrying its reason, because "its session is alive" is
+    information for the reader, not an error to swallow.
+    """
+    result = fleet_instruct.remove_waiter(pid, live_sessions=live_session_ids())
+    if not result.get("removed"):
+        raise HTTPException(status_code=409, detail=result)
+    return result
 
 
 # --------------------------------------------------------------------------- #

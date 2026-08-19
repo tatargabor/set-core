@@ -286,6 +286,10 @@ class _Agent:
         self.pid = pid
         self.name = self.project_name = self.project_root = self.cwd = "x"
         self.branch = self.session_id = None
+        # Added when the instruct route needed it. `_Agent` is a hand-written
+        # stand-in for a dataclass — the drift the comment on `_State` warns
+        # about, one class up — and this field was simply missing.
+        self.session_log = None
         self.binding_confirmed = True
         self.sources = ["process"]
         self.sources_missing = ["session-record", "registry"]
@@ -375,3 +379,196 @@ def test_the_session_record_never_reaches_the_payload(monkeypatch):
     flattened = json.dumps(payload)
     for secret in ("private-consumer", "cc-socks", "messagingSocketPath"):
         assert secret not in flattened, f"{secret} reached the payload"
+
+
+# --------------------------------------------------------------------------- #
+# instruction and waiters — tasks 6.3 and 6.6
+# --------------------------------------------------------------------------- #
+
+from set_orch.fleet import instruct as fleet_instruct
+from set_orch.api.fleet import InstructBody
+
+
+def _seat(session="s-1"):
+    return fleet_instruct.Seat(seat="proj#aaaa", agent="proj", session=session,
+                               liveness="live")
+
+
+def test_an_agent_with_no_seat_is_409_with_the_reason_not_a_generic_failure(monkeypatch):
+    """4.4 — the reason travels in the body so the surface can put it where the
+    input would be. A bare 500 or a 400 would render as "something broke"."""
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: agent)
+    monkeypatch.setattr(fleet_instruct, "read_seats", lambda **k: {})
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_instruct_agent(7, InstructBody(text="csináld"))
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["reason"] == fleet_instruct.NO_SEAT
+
+
+def test_an_unreadable_bus_is_a_different_reason_from_an_unenrolled_agent(monkeypatch):
+    """Per CLAUDE.md the answer to *not enrolled* is enrolment, never a second
+    transport — so the surface must be able to tell the two apart."""
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: agent)
+    monkeypatch.setattr(fleet_instruct, "read_seats", lambda **k: None)
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_instruct_agent(7, InstructBody(text="csináld"))
+    assert excinfo.value.detail["reason"] == fleet_instruct.BUS_UNREADABLE
+
+
+def test_a_pid_that_is_not_an_agent_is_404_rather_than_someone_elses_agent(monkeypatch):
+    """A pid is recycled. Instructing whatever session it now maps to would
+    deliver one person's message to another's agent."""
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: None)
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_instruct_agent(999999, InstructBody(text="x"))
+    assert excinfo.value.status_code == 404
+
+
+def test_the_route_carries_the_outcome_and_never_infers_it_from_the_200(monkeypatch):
+    """6.3 — a 200 means the send was made and answered, not that it arrived."""
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: agent)
+    monkeypatch.setattr(fleet_instruct, "read_seats", lambda **k: {"s-1": _seat()})
+    monkeypatch.setattr(fleet_instruct, "live_waiters", lambda **k: [])
+    monkeypatch.setattr(fleet_api, "read_state", lambda *a, **k: _State())
+    monkeypatch.setattr(fleet_instruct, "send_instruction",
+                        lambda *a, **k: fleet_instruct.DeliveryReport(
+                            outcome=fleet_instruct.SITS_UNREAD, accepted=True,
+                            seat="proj#aaaa", wakes=["proj#aaaa"]))
+    out = fleet_api.fleet_instruct_agent(7, InstructBody(text="csináld"))
+    assert out["accepted"] is True
+    assert out["outcome"] == fleet_instruct.SITS_UNREAD
+    assert out["delivered_to_agent"] is False
+    assert out["waiters_here"] == 0
+
+
+def test_a_refusal_from_the_bus_is_409_and_is_not_retried_as_a_broadcast(monkeypatch):
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    sends = []
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: agent)
+    monkeypatch.setattr(fleet_instruct, "read_seats", lambda **k: {"s-1": _seat()})
+    monkeypatch.setattr(fleet_instruct, "live_waiters", lambda **k: [])
+    monkeypatch.setattr(fleet_api, "read_state", lambda *a, **k: _State())
+
+    def _send(*a, **k):
+        sends.append(k)
+        return fleet_instruct.DeliveryReport(
+            outcome=fleet_instruct.REFUSED, seat="proj#aaaa", reason="nobody is called that")
+
+    monkeypatch.setattr(fleet_instruct, "send_instruction", _send)
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_instruct_agent(7, InstructBody(text="csináld"))
+    assert excinfo.value.status_code == 409
+    assert len(sends) == 1, "the route retried after a refusal"
+
+
+def test_an_empty_instruction_is_refused_before_the_bus_is_touched(monkeypatch):
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    asked = []
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: agent)
+    monkeypatch.setattr(fleet_instruct, "read_seats", lambda **k: asked.append(1) or {})
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_instruct_agent(7, InstructBody(text="   "))
+    assert excinfo.value.status_code == 400
+    assert asked == []
+
+
+def test_a_send_never_uses_the_cached_roster(monkeypatch):
+    """The cache exists so a POLL does not spawn a process per tile. An outcome
+    depends on who is live at this instant, and a ten-second-old answer to that
+    is exactly the stale measurement this screen exists to avoid."""
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    used = []
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid, **k: agent)
+    monkeypatch.setattr(fleet_instruct, "seats_cached",
+                        lambda *a, **k: used.append("cached") or {"s-1": _seat()})
+    monkeypatch.setattr(fleet_instruct, "read_seats",
+                        lambda **k: used.append("fresh") or {"s-1": _seat()})
+    monkeypatch.setattr(fleet_instruct, "live_waiters", lambda **k: [])
+    monkeypatch.setattr(fleet_api, "read_state", lambda *a, **k: _State())
+    monkeypatch.setattr(fleet_instruct, "send_instruction",
+                        lambda *a, **k: fleet_instruct.DeliveryReport(
+                            outcome=fleet_instruct.SITS_UNREAD, accepted=True))
+    fleet_api.fleet_instruct_agent(7, InstructBody(text="x"))
+    assert used == ["fresh"]
+
+
+def test_the_listing_carries_why_an_agent_cannot_be_instructed():
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    payload = fleet_api._agent_payload(agent, _State(), {}, {})
+    assert payload["instructable"] is False
+    assert payload["reason"] == fleet_instruct.NO_SEAT
+    assert payload["seat"] is None
+
+
+def test_the_listing_names_the_seat_where_there_is_one():
+    agent = _Agent(7)
+    agent.session_id = "s-1"
+    payload = fleet_api._agent_payload(agent, _State(), {}, {"s-1": _seat()})
+    assert payload["instructable"] is True and payload["seat"] == "proj#aaaa"
+
+
+# --- waiters ---------------------------------------------------------------- #
+
+
+def _waiter(pid, session):
+    return fleet_instruct.Waiter(pid=pid, session=session, cwd="/x")
+
+
+def test_an_unreadable_process_table_is_not_an_empty_waiter_list(monkeypatch):
+    """"No waiters" invites installing one; "we could not look" does not."""
+    monkeypatch.setattr(fleet_instruct, "live_waiters", lambda **k: None)
+    out = fleet_api.fleet_waiters()
+    assert out["measured"] is False and out["orphaned_count"] == 0
+    assert out["reason"]
+
+
+def test_undeterminable_liveness_orphans_nothing_and_says_so(monkeypatch):
+    monkeypatch.setattr(fleet_instruct, "live_waiters",
+                        lambda **k: [_waiter(1, "a"), _waiter(2, "b")])
+    monkeypatch.setattr(fleet_api, "live_session_ids", lambda **k: None)
+    out = fleet_api.fleet_waiters()
+    assert out["measured"] is False
+    assert out["orphaned"] == [] and all(not r["removable"] for r in out["waiters"])
+
+
+def test_the_three_statuses_are_kept_apart(monkeypatch):
+    """`orphaned` may be removed, `live` must not be, and `undeterminable` is a
+    waiter whose session cannot be read — listed, never offered."""
+    monkeypatch.setattr(fleet_instruct, "live_waiters",
+                        lambda **k: [_waiter(1, "halott"), _waiter(2, "elo"), _waiter(3, None)])
+    monkeypatch.setattr(fleet_api, "live_session_ids", lambda **k: {"elo"})
+    out = fleet_api.fleet_waiters()
+    by_pid = {r["pid"]: r for r in out["waiters"]}
+    assert by_pid[1]["status"] == "orphaned" and by_pid[1]["removable"] is True
+    assert by_pid[2]["status"] == "live" and by_pid[2]["removable"] is False
+    assert by_pid[3]["status"] == "undeterminable" and by_pid[3]["removable"] is False
+    assert out["orphaned"] == [1]
+
+
+def test_a_refused_removal_is_409_carrying_its_reason(monkeypatch):
+    monkeypatch.setattr(fleet_api, "live_session_ids", lambda **k: {"elo"})
+    monkeypatch.setattr(fleet_instruct, "remove_waiter",
+                        lambda pid, **k: {"removed": False, "pid": pid, "reason": "its session is alive"})
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_remove_waiter(2)
+    assert excinfo.value.status_code == 409
+    assert "alive" in excinfo.value.detail["reason"]
+
+
+def test_there_is_no_bulk_remove_route():
+    """A cleanup that takes a list is one mistaken list away from killing live
+    waiters, and a killed live waiter is invisible."""
+    from set_orch.api import router
+    removes = [r.path for r in router.routes if "waiter" in r.path and "remove" in r.path]
+    assert removes == ["/api/fleet/waiters/{pid}/remove"]
+    assert not any(r.path.endswith("/waiters/remove") for r in router.routes)
