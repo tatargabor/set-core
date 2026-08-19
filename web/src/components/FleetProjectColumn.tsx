@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import { Archive, Bot, Clock, TriangleAlert } from 'lucide-react'
+
+import { age, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
 import type { FleetProject, FleetResponse } from '../lib/fleetTypes'
 import {
@@ -352,9 +355,14 @@ function ProjectFacts({ project }: { project: FleetProject | undefined }) {
   if (!project) return null
   const standing = capabilityStanding(project.capabilities)
   const sources = extraSources(project.sources)
-  if (standing.kind === 'none' && sources.length === 0) return null
+  const stalest = stalestSeconds(project)
+  if (standing.kind === 'none' && sources.length === 0 && stalest === null) return null
+  // WRAPS rather than truncates. Measured at a 279 px column: the marks, the age
+  // and the sources did not fit on one line and it was being cut mid-word — a
+  // fact silently removed is worse than an uneven row, and this column is a list
+  // rather than a table.
   return (
-    <span className="flex items-center gap-1.5 mt-0.5 min-w-0" data-fleet-project-facts={project.name}>
+    <span className="flex items-center gap-x-1.5 gap-y-0.5 mt-0.5 min-w-0 flex-wrap" data-fleet-project-facts={project.name}>
       {standing.kind === 'unmeasured' && (
         /* Said, not drawn as an empty strip. A row of nothing would claim the
            modules were measured and none found — a gap rendered as a zero, and
@@ -386,12 +394,25 @@ function ProjectFacts({ project }: { project: FleetProject | undefined }) {
           ))}
         </span>
       )}
+      {stalest !== null && (
+        /* How long the STILLEST agent here has been still — the maximum, so one
+           busy agent cannot vouch for a project whose others have stopped. The
+           screen exists to find where work halted, and this is the only number
+           on the row that answers it directly. */
+        <span
+          className="inline-flex items-center gap-1 text-xs text-fg-ghost tabular-nums shrink-0"
+          data-fleet-project-stalest={stalest}
+          title="the longest any agent here has gone without moving"
+        >
+          <Clock size={11} strokeWidth={1.75} />{age(stalest)}
+        </span>
+      )}
       {sources.length > 0 && (
         /* AC-8. Named rather than merged: known to the registry AND to a live
            process is a different fact from either alone, and the union exists
            precisely so that difference survives. */
         <span
-          className="text-xs text-fg-ghost truncate"
+          className="text-xs text-fg-ghost"
           data-fleet-project-sources={sources.length}
           title={`known to: ${sources.join(', ')}`}
         >
@@ -475,15 +496,45 @@ function ProjectRow(p: RowProps) {
         )}
         <button
           onClick={p.onSelect}
+          title={p.project?.root}
           className={`flex-1 min-w-0 text-left py-1 pr-1 ${p.active ? 'text-fg-loud' : 'text-fg-strong'}`}
         >
           <span className="text-sm truncate block">{p.name}</span>
-          {p.project && p.project.archived && (
-            <span className="text-xs text-fg-ghost">archived</span>
-          )}
+          {/* Line two: what is happening inside. It used to sit to the RIGHT of
+              the name on one line, which is why the name had to be truncated
+              hard and why nothing else fitted — a project row that shows a name
+              and three numbers makes the reader open the project to learn
+              anything, and with six projects that is six openings. */}
+          <span className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <Counts t={t} waitingKnown={p.waitingKnown} showAgents={false} />
+            {t.agents > 0 && (
+              <span className="inline-flex items-center gap-1 text-fg-muted text-xs tabular-nums"
+                    title={`${t.agents} agent(s) running here`}>
+                <Bot size={11} strokeWidth={1.75} />{t.agents}
+              </span>
+            )}
+            {/* Per project, not only in the header. The header already counted
+                contradicting declarations, so the screen SAID there were some
+                and gave the reader no way to find them — a failure counted at
+                the top and invisible where it lives is the compaction rule's
+                own example. */}
+            {t.conflicts > 0 && (
+              <span
+                data-fleet-project-conflicts={t.conflicts}
+                className="inline-flex items-center gap-1 text-amber-400 text-xs tabular-nums"
+                title="an agent's declared state is contradicted by its log"
+              >
+                <TriangleAlert size={11} strokeWidth={1.75} />{t.conflicts}
+              </span>
+            )}
+            {p.project?.archived && (
+              <span className="inline-flex items-center gap-1 text-fg-ghost text-xs" title="archived project">
+                <Archive size={11} strokeWidth={1.75} />archived
+              </span>
+            )}
+          </span>
           <ProjectFacts project={p.project} />
         </button>
-        <Counts t={t} waitingKnown={p.waitingKnown} showAgents={t.agents > 0} />
         <button
           onClick={p.onMenu}
           aria-expanded={p.menuOpen}

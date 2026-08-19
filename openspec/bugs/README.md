@@ -143,7 +143,7 @@ consumer's name, path, or content.
 - **fixed when:** the count is 0, or each remaining one is named here with a reason.
 
 ### B-9 — the shipped statusline's `Agents: N` is always 0: it reads a key the runtime does not send
-- **state:** open
+- **state:** closed (`e2eb3dab`)
 - **reported:** 2026-08-19 by this session, while measuring the context-window carrier
 - **measured:** a project-local `statusLine` command dumping its stdin was run twice
   under a pty — once with no subagent, once in a run that spawned one
@@ -203,9 +203,11 @@ consumer's name, path, or content.
   korábban vagy 3 soros status állapotokkal meg minden volt tervezve és egyszer
   láttam is, az hova lett? ki kell bővíteni minden funkcióval amit érdemes látni
   ikonokkal"*
-- **not yet measured:** whether the earlier three-line design exists in git
-  history or only in a design document. That is the first step — a redesign that
-  ignores what was already agreed would be the parallel-mechanism failure.
+- **searched first, and the answer was NO:** the earlier three-line design is in
+  neither `design.md` nor the file's git history (six commits, all recent). What
+  IS written down is the spec's own word — it says *project TILE* while the
+  implementation was a thin row. That gap is what got rebuilt, rather than a
+  design invented on top of a half-remembered one.
 - **fixed when:** the project row carries what is worth seeing, in icons, and the
   earlier design is either restored or explicitly superseded with a reason.
 

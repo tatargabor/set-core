@@ -556,3 +556,33 @@ describe('the agent tile and the header must not contradict each other', () => {
     expect(within(right).queryByText('csendes')).toBeNull()
   })
 })
+
+describe('B-9 — the project tile carries what is worth seeing, where it lives', () => {
+  it('marks a contradicting declaration ON the project, not only in the header', () => {
+    // The header already counted these. A failure counted at the top and
+    // invisible where it lives is the compaction rule's own example: the screen
+    // SAID something was wrong and gave the reader no way to find it.
+    const bad = { ...agent(7, 'a1'), declaration_ignored: 'the log refutes it' }
+    install(fleet([project('demo', [bad]), project('calm', [agent(8, 'b1')])]))
+    const { container } = render(<Fleet />)
+    return screen.findByText('demo').then(() => {
+      const row = container.querySelector('[data-fleet-project="demo"]')!
+      expect(row.querySelector('[data-fleet-project-conflicts]')?.getAttribute('data-fleet-project-conflicts')).toBe('1')
+      // And the calm project carries no marker at all — a badge on every row
+      // would make the one that matters unfindable.
+      const calm = container.querySelector('[data-fleet-project="calm"]')!
+      expect(calm.querySelector('[data-fleet-project-conflicts]')).toBeNull()
+    })
+  })
+
+  it('reports the STALEST agent, so one busy agent cannot vouch for the project', () => {
+    const busy = { ...agent(1, 'busy'), last_movement_seconds: 5 }
+    const stuck = { ...agent(2, 'stuck'), last_movement_seconds: 3600 }
+    install(fleet([project('demo', [busy, stuck])]))
+    const { container } = render(<Fleet />)
+    return screen.findByText('demo').then(() => {
+      const row = container.querySelector('[data-fleet-project="demo"]')!
+      expect(row.querySelector('[data-fleet-project-stalest]')?.getAttribute('data-fleet-project-stalest')).toBe('3600')
+    })
+  })
+})

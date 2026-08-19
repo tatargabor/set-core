@@ -37,6 +37,7 @@ import FleetProjectColumn from '../components/FleetProjectColumn'
 import FleetTerminal from '../components/FleetTerminal'
 import { Columns2, Columns3, Columns4, Square } from 'lucide-react'
 
+import { age } from '../lib/fleetAge'
 import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
@@ -62,13 +63,6 @@ interface LogResponse {
   problem?: string
   pid?: number
   name?: string | null
-}
-
-function age(seconds: number | null): string {
-  if (seconds === null || seconds === undefined) return '—'
-  if (seconds < 90) return `${Math.round(seconds)}s`
-  if (seconds < 5400) return `${Math.round(seconds / 60)}m`
-  return `${Math.round(seconds / 3600)}h`
 }
 
 function clock(ts: string | null): string {
