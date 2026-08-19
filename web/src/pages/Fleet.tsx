@@ -35,7 +35,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 
 import FleetProjectColumn from '../components/FleetProjectColumn'
 import FleetTerminal from '../components/FleetTerminal'
-import { readView, resolveEnlarged, writeView } from '../lib/fleetViewState'
+import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { terminalOffer } from '../lib/fleetTerminal'
@@ -388,6 +388,57 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
  * doing. `StateLine` is the same component the card uses, so a state cannot
  * read one way enlarged and another way collapsed.
  */
+/**
+ * Column counts as WHOLE class names, not built by interpolation.
+ *
+ * Tailwind scans the source for literal class strings; `grid-cols-${n}` is
+ * invisible to that scan, so the class exists in the DOM and not in the CSS —
+ * a layout that silently does not apply, which reads as "the grid does not
+ * work" rather than as a build problem.
+ */
+const GRID_COLS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-1 md:grid-cols-2',
+  3: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3',
+  4: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4',
+}
+
+/**
+ * Who started this agent — task 7.8.
+ *
+ * Two sources, shown as two different claims rather than as one "parent",
+ * because they answer different questions: the OWNER's note says who asked for
+ * the start (a record, and the only thing that can answer for a
+ * framework-started agent at all — those have the owner process as their
+ * ancestor); the ancestry walk says who is above it in the process tree
+ * (measured, and it survives when nothing was recorded). They can disagree, and
+ * a screen that picked one silently would report the disagreement as a fact.
+ */
+function Lineage({ agent }: { agent: FleetAgent }) {
+  const p = agent.parent
+  if (!p) return null
+  const recorded = p.source === 'recorded'
+  // A pid with no session record has no seat name. Saying "unknown parent"
+  // there would be a false absence — the relation IS known, only the name is
+  // missing, so the pid stands in for it.
+  const who = p.seat ?? (p.pid_without_seat != null ? `pid ${p.pid_without_seat}` : null)
+  if (!who) return null
+  return (
+    <span
+      data-fleet-parent={p.source}
+      className="text-xs text-fg-ghost shrink-0"
+      title={recorded
+        ? 'A tulajdonos feljegyezte, ki kérte ennek az agentnek az indítását — rekord, nem következtetés.'
+        : 'A processzfából mérve: ez az első agent-ős. Nem ugyanaz, mint aki kérte — a kettő eltérhet.'}
+    >
+      ← {who}
+      <span className={recorded ? 'ml-1 text-fg-ghost' : 'ml-1 text-amber-400/70'}>
+        {recorded ? 'feljegyezve' : 'processzfából'}
+      </span>
+    </span>
+  )
+}
+
 function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void }) {
   return (
     <button
@@ -397,7 +448,9 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
       className="w-full text-left flex items-baseline gap-2 px-3 py-1 rounded border border-transparent hover:border-surface-line hover:bg-surface-raised/40 transition-colors"
     >
       <span className="text-xs text-fg-strong truncate max-w-[14rem] shrink-0">
-        {agent.name ?? <span className="text-fg-muted">névtelen</span>}
+        {/* Same identity rule as the card — a row and a card must not name the
+            same agent differently. */}
+        {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">névtelen</span>}
         {!agent.binding_confirmed && (
           <span className="ml-1 text-amber-400" title="A naplóhoz kötés nem rekordból származik">?</span>
         )}
@@ -434,7 +487,12 @@ function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOp
     >
       <div className="flex items-baseline gap-2 flex-wrap">
         <span className="text-sm text-fg-strong">
-          {agent.name ?? <span className="text-fg-muted">névtelen</span>}
+          {/* The name the OWNER gave it wins over the one derived from the
+              session id. Measured 2026-08-19: the tile said `set-core-9a` for
+              an agent the owner holds as `set-core-0906`, so matching a tile
+              against `sac`/journal output meant translating between two names
+              for one thing — the second-place defect, inside one screen. */}
+          {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">névtelen</span>}
           {/* No guessing path exists today, so this marker should never appear —
               which is exactly why it is rendered rather than assumed away. */}
           {!agent.binding_confirmed && (
@@ -443,6 +501,7 @@ function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOp
         </span>
         <StateLine agent={agent} />
         <Contradiction agent={agent} />
+        <Lineage agent={agent} />
         <span className="text-xs text-fg-muted truncate">{agent.branch ?? '—'}</span>
         <span className="ml-auto text-xs text-fg-ghost tabular-nums shrink-0">
           {age(agent.last_movement_seconds)} · {agent.pid}
@@ -674,6 +733,7 @@ export default function Fleet() {
   )
   const activeName = active?.name ?? null
   const remembered = memory.project === activeName ? memory.view : readView(activeName)
+  const columns = resolveColumns(remembered)
   const enlarged = resolveEnlarged(remembered, active?.agents.map(a => a.pid) ?? [])
   const setEnlarged = useCallback((project: string | null, pid: number | null) => {
     writeView(project, { enlarged: pid })
@@ -689,6 +749,11 @@ export default function Fleet() {
    * the socket reopens, the server replays the buffered screen, and the reader
    * lands on the screen as it already is rather than on a blank one.
    */
+  const setColumns = useCallback((project: string | null, columns: number) => {
+    writeView(project, { columns })
+    setMemory({ project, view: readView(project) })
+  }, [])
+
   const setTerminal = useCallback((project: string | null, label: string | null) => {
     writeView(project, { terminal: label })
     setMemory({ project, view: readView(project) })
@@ -786,6 +851,28 @@ export default function Fleet() {
                   project={active}
                   onStarted={label => { setTerminal(active.name, label); load() }}
                 />
+                {/* Density is a per-project choice — task 7.5. Offered only
+                    where it can change anything: with one agent there is
+                    nothing to lay out, and while a tile is enlarged the grid
+                    is not the arrangement in use. */}
+                {enlarged === null && active.agents.length > 1 && (
+                  <span className="ml-auto flex items-center gap-1 shrink-0" title="Hány oszlopban jelenjenek meg az agentek ebben a projektben">
+                    <span className="text-xs text-fg-ghost">oszlop</span>
+                    {COLUMN_CHOICES.map(c => (
+                      <button
+                        key={c}
+                        data-fleet-columns={c}
+                        aria-pressed={c === columns}
+                        onClick={() => setColumns(active.name, c)}
+                        className={`text-xs tabular-nums px-1.5 rounded border ${
+                          c === columns
+                            ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
+                            : 'border-transparent text-fg-ghost hover:text-fg-muted'
+                        }`}
+                      >{c}</button>
+                    ))}
+                  </span>
+                )}
                 {enlarged !== null && active.agents.length > 1 && (
                   <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
                     {active.agents.length - 1} sorként — kattints egyre a váltáshoz
@@ -805,6 +892,12 @@ export default function Fleet() {
                   every other agent keeps a row. Rendering the enlarged one in
                   place (rather than lifting it to the top) is what makes a row
                   the way back: the agent you clicked is where you clicked. */}
+              {/* A grid when nothing is enlarged, a single column when
+                  something is — an enlarged tile carries a log or a terminal
+                  and needs the width, and the rows beside it are a list, not
+                  a layout. `space-y-2` on the parent still spaces the header
+                  and the panels; the grid owns its own gaps. */}
+              <div className={enlarged === null ? `grid gap-2 ${GRID_COLS[columns] ?? GRID_COLS[2]}` : 'space-y-2'}>
               {active.agents.map(a => (
                 a.pid === enlarged ? (
                   <AgentCard
@@ -831,6 +924,7 @@ export default function Fleet() {
                   />
                 )
               ))}
+              </div>
             </>
           ) : (
             <div className="text-sm text-fg-muted">

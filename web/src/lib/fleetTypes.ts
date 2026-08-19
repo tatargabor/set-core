@@ -55,6 +55,24 @@ export interface FleetAgent {
   population?: Population | string | null
   /** The terminal's address. Non-null only for `started-here`. */
   terminal_label?: string | null
+  /**
+   * Who started this agent — task 7.8, and it is deliberately not a string.
+   *
+   * `source: "recorded"` is the owner's own note of who ASKED for the start;
+   * `source: "ancestry"` is measured from the process tree. They answer
+   * different questions and can disagree, so the surface marks which one it is
+   * showing rather than flattening them into one "parent".
+   *
+   * `pid_without_seat` exists because an ancestor with no session record has no
+   * seat name at all; reporting nothing there would lose the relation entirely,
+   * which is a false absence.
+   */
+  parent?: {
+    seat?: string | null
+    session_id?: string | null
+    source: 'recorded' | 'ancestry'
+    pid_without_seat?: number | null
+  } | null
 }
 
 export interface FleetProject {

@@ -46,6 +46,34 @@ export interface ProjectView {
    * nothing.
    */
   terminal?: string | null
+  /**
+   * How many columns the agent grid uses for THIS project — task 7.5's
+   * "density", asked for on 2026-08-19: *"elég nagy a képernyő hozzá, hogy
+   * csináljunk legalább két oszlopot"*.
+   *
+   * Per project rather than global, because the right number follows the
+   * project's own shape: two agents want one column each, eight want four.
+   * `undefined` means no choice yet — the default applies; a stored number is
+   * a deliberate choice and outranks it, the same rule as `enlarged`.
+   */
+  columns?: number
+}
+
+/** Column counts a reader may choose. Two is the default the user asked for. */
+export const COLUMN_CHOICES = [1, 2, 3, 4] as const
+export const DEFAULT_COLUMNS = 2
+
+/**
+ * The column count to render with — clamped to what the UI can actually lay
+ * out, so a hand-edited or stale stored value cannot produce an unreadable
+ * grid. A remembered choice wins; anything outside the range is not honoured
+ * as "the closest thing they meant", it falls back to the default, because a
+ * value that was never offered is corruption rather than preference.
+ */
+export function resolveColumns(view: ProjectView): number {
+  const c = view.columns
+  if (typeof c !== 'number' || !Number.isInteger(c)) return DEFAULT_COLUMNS
+  return (COLUMN_CHOICES as readonly number[]).includes(c) ? c : DEFAULT_COLUMNS
 }
 
 type Store = Record<string, ProjectView>
