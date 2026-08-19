@@ -87,5 +87,5 @@ Each phase is independently committable and deployable.
 1. Each phase is a separate commit (or commit series)
 2. No rollback needed — if a phase has issues, revert the commit
 3. No deployment changes — install.sh copies bin/ and lib/ as before
-4. Consumer projects (sales-raketa) get changes via `set-project init` redeploy
+4. Consumer projects (consumer-c) get changes via `set-project init` redeploy
 5. No migration scripts needed — purely source-level restructuring

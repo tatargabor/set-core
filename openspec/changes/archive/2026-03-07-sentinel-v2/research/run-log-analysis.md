@@ -24,7 +24,7 @@
 
 ## 2. Production Config Analysis
 
-The sales-raketa `orchestration.yaml` uses these directives:
+The consumer-c `orchestration.yaml` uses these directives:
 
 ```yaml
 merge_policy: eager

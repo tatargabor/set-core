@@ -8,8 +8,8 @@ The `set-memory metrics` command SHALL read the SQLite database and print a form
 - **THEN** it SHALL display metrics for the last 7 days including: session count, total injections, total tokens burned, per-layer breakdown (count, avg tokens, avg relevance), relevance distribution (strong >0.7, partial 0.3-0.7, filtered <0.3), usage rate (passively matched/injected), legacy citation rate, dedup hit rate, empty injection rate
 
 #### Scenario: Project-filtered report
-- **WHEN** `set-memory metrics --project sales-raketa` is run
-- **THEN** it SHALL display metrics filtered to sessions whose project name starts with `sales-raketa`
+- **WHEN** `set-memory metrics --project consumer-c` is run
+- **THEN** it SHALL display metrics filtered to sessions whose project name starts with `consumer-c`
 
 #### Scenario: Custom time range
 - **WHEN** `set-memory metrics --since 30d` is run
@@ -29,8 +29,8 @@ The `set-memory metrics` command SHALL read the SQLite database and print a form
 The `query_report()` function SHALL accept an optional `project` parameter for filtering.
 
 #### Scenario: Query with project filter
-- **WHEN** `query_report(project="sales-raketa")` is called
-- **THEN** all SQL queries SHALL include `WHERE sessions.project LIKE 'sales-raketa%'` in addition to the date cutoff
+- **WHEN** `query_report(project="consumer-c")` is called
+- **THEN** all SQL queries SHALL include `WHERE sessions.project LIKE 'consumer-c%'` in addition to the date cutoff
 
 #### Scenario: Query without project filter
 - **WHEN** `query_report()` is called without a project parameter

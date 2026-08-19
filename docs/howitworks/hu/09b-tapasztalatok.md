@@ -2,7 +2,7 @@
 
 ## Megoldott problémák
 
-Az alábbiak éles orchestrációs futtatások során derültek ki — jellemzően az első néhány production run (sales-raketa, MiniShop, CraftBrew) tanulságai.
+Az alábbiak éles orchestrációs futtatások során derültek ki — jellemzően az első néhány production run (consumer-c, MiniShop, CraftBrew) tanulságai.
 
 ### Token budget kalibráció
 

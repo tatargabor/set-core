@@ -1,6 +1,6 @@
 ## Why
 
-`set-orchestrate` is a 5,220-line monolithic bash script handling planning, dispatch, polling, verification, merging, smoke testing, replanning, and state management in a single file. Four production orchestration runs (v8-v11) on sales-raketa exposed systemic problems: orchestrator stalls requiring SIGKILL (v11 2x), merge conflicts from parallel changes touching shared files (v8, v11), no event audit trail for post-mortem analysis, 370K of unnecessary context files in worktrees, and agents missing cross-cutting concerns (sidebar, i18n, activity-log) when implementing features.
+`set-orchestrate` is a 5,220-line monolithic bash script handling planning, dispatch, polling, verification, merging, smoke testing, replanning, and state management in a single file. Four production orchestration runs (v8-v11) on consumer-c exposed systemic problems: orchestrator stalls requiring SIGKILL (v11 2x), merge conflicts from parallel changes touching shared files (v8, v11), no event audit trail for post-mortem analysis, 370K of unnecessary context files in worktrees, and agents missing cross-cutting concerns (sidebar, i18n, activity-log) when implementing features.
 
 The monolith must be decomposed into testable modules, enhanced with self-healing capabilities, and integrated with a structured project-knowledge system so that both the orchestrator and the agents it supervises produce reliable, complete work.
 

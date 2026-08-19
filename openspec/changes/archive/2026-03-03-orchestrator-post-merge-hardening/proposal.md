@@ -1,6 +1,6 @@
 ## Why
 
-The v7 sales-raketa orchestration run exposed 3 critical failure modes in the post-merge pipeline: (1) Prisma client not regenerated after schema merge, causing phantom build passes, (2) orchestrator marking a change as "merged" when only openspec artifacts landed but no implementation code, (3) sentinel removing smoke_command from orchestration.yaml — overstepping its supervisor role. These cost 0.8M tokens (lost change), 2 hours of manual intervention, and 3 orchestrator crashes.
+The v7 consumer-c orchestration run exposed 3 critical failure modes in the post-merge pipeline: (1) Prisma client not regenerated after schema merge, causing phantom build passes, (2) orchestrator marking a change as "merged" when only openspec artifacts landed but no implementation code, (3) sentinel removing smoke_command from orchestration.yaml — overstepping its supervisor role. These cost 0.8M tokens (lost change), 2 hours of manual intervention, and 3 orchestrator crashes.
 
 ## What Changes
 

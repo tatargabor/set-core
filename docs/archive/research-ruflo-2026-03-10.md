@@ -144,7 +144,7 @@ Csak ha a korrupció ismétlődő probléma lesz.
 | Spec digest | `digest.sh` — domain decomposition | Nincs |
 | State management | Git-alapú, tartós | In-memory Map |
 | Verification | Valódi verifier pipeline | Nincs |
-| Battle-tested | sales-raketa produkció | Nincs produkciós evidence |
+| Battle-tested | consumer-c produkció | Nincs produkciós evidence |
 | Requirement traceability | REQ-ID → change → coverage | Flat tasks |
 
 ## IV. Összesített prioritási mátrix

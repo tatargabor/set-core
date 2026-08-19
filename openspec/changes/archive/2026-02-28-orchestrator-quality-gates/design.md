@@ -1,6 +1,6 @@
 ## Context
 
-The orchestrator (`set-orchestrate`) can plan, dispatch, and merge changes at scale, but the v3 sales-raketa run revealed that speed came at the cost of quality: no tests, no build checks, duplicate changes, and broken worktree environments. The verify gate had test execution and code review but lacked build verification and test existence awareness. Worktree creation had no dependency or environment bootstrapping.
+The orchestrator (`set-orchestrate`) can plan, dispatch, and merge changes at scale, but the v3 consumer-c run revealed that speed came at the cost of quality: no tests, no build checks, duplicate changes, and broken worktree environments. The verify gate had test execution and code review but lacked build verification and test existence awareness. Worktree creation had no dependency or environment bootstrapping.
 
 ## Goals / Non-Goals
 

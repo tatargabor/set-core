@@ -7,7 +7,7 @@ Validates that `run_planning_pipeline()` with the new strategy router:
   - Produces a plan that passes validation.
   - Records `plan_method=serial` in the enriched output.
 
-Uses the reconstructed dimop-info digest (37 reqs, 7 domains) as the
+Uses the reconstructed consumer-d digest (37 reqs, 7 domains) as the
 realistic input. Claude is mocked — no network or billing.
 
 Capability: planner-strategy-routing (decompose-replan-optimization).
@@ -27,14 +27,14 @@ from set_orch import planner
 from set_orch.subprocess_utils import ClaudeResult
 
 
-# Path to the reconstructed dimop-info digest staged earlier by the user.
+# Path to the reconstructed consumer-d digest staged earlier by the user.
 # Falls back to building one if not present.
-_DIMOP_DIGEST = Path("/tmp/dimop-info-digest-test")
+_DIMOP_DIGEST = Path("/tmp/consumer-d-digest-test")
 
 
 @pytest.fixture
 def dimop_project(tmp_path, monkeypatch):
-    """Stage a project layout with the dimop-info digest at the canonical path.
+    """Stage a project layout with the consumer-d digest at the canonical path.
 
     `run_planning_pipeline` derives `digest_dir` from `os.getcwd()`, so the
     test must chdir into a directory whose `set/orchestration/digest`
@@ -42,7 +42,7 @@ def dimop_project(tmp_path, monkeypatch):
     """
     if not _DIMOP_DIGEST.is_dir():
         pytest.skip(
-            f"Reconstructed dimop-info digest not present at {_DIMOP_DIGEST}; "
+            f"Reconstructed consumer-d digest not present at {_DIMOP_DIGEST}; "
             "skip the e2e mock test"
         )
     project = tmp_path / "project"

@@ -1,6 +1,6 @@
 ## Why
 
-A set-core production bugok (sales-raketa tapasztalat) 90%-a a komponensek közti interakcióból ered — nem az izolált funkciókból. A jelenlegi tesztek (unit, orchestrator parse) nem fedik le a teljes flow-t: project bootstrap → spec → plan → dispatch → implement → smoke → merge → archive. Egy valódi, végig futtatható test projektre van szükség ahol a teljes pipeline-t teszteljük, és git checkpoint-okkal visszatérhetünk javítás után.
+A set-core production bugok (consumer-c tapasztalat) 90%-a a komponensek közti interakcióból ered — nem az izolált funkciókból. A jelenlegi tesztek (unit, orchestrator parse) nem fedik le a teljes flow-t: project bootstrap → spec → plan → dispatch → implement → smoke → merge → archive. Egy valódi, végig futtatható test projektre van szükség ahol a teljes pipeline-t teszteljük, és git checkpoint-okkal visszatérhetünk javítás után.
 
 ## What Changes
 

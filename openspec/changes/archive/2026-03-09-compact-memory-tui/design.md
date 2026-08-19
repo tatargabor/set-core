@@ -38,7 +38,7 @@ No project filtering exists in `query_report()`. The `sessions` table has a `pro
 **Alternative considered**: 2-column — doesn't fit sessions list comfortably.
 
 ### D3: Session list shows worktree suffix, not full project name
-**Decision**: Strip the base project prefix from session project names. `sales-raketa-wt-smoke-tests` → `wt-smoke-tests`. Main repo sessions show as `(main)`.
+**Decision**: Strip the base project prefix from session project names. `consumer-c-wt-smoke-tests` → `wt-smoke-tests`. Main repo sessions show as `(main)`.
 **Rationale**: In project-scoped view, the common prefix is redundant. The worktree change name is the differentiator.
 
 ### D4: Auto-detect project in tui, explicit in metrics
@@ -51,6 +51,6 @@ No project filtering exists in `query_report()`. The `sessions` table has a `pro
 
 ## Risks / Trade-offs
 
-- [Prefix match false positives] Projects like `foo` would match `foobar`. → Mitigated by convention: project names are unique enough (e.g., `sales-raketa` won't prefix-collide).
+- [Prefix match false positives] Projects like `foo` would match `foobar`. → Mitigated by convention: project names are unique enough (e.g., `consumer-c` won't prefix-collide).
 - [Inline Python complexity] The 3-column layout is more complex inline Python in bash. → Acceptable — the current TUI is already 180 lines of inline Python. Could extract to a file later if needed.
 - [Session list truncation] Long worktree names need truncation. → Use `..` suffix, keep to 22 chars max.

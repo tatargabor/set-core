@@ -2,7 +2,7 @@
 
 ## Solved Problems
 
-The following were discovered during live orchestration runs — typically lessons from the first few production runs (sales-raketa, MiniShop, CraftBrew).
+The following were discovered during live orchestration runs — typically lessons from the first few production runs (consumer-c, MiniShop, CraftBrew).
 
 ### Token Budget Calibration
 

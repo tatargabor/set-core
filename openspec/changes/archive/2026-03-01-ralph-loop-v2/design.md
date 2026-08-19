@@ -2,7 +2,7 @@
 
 The Ralph loop (`bin/wt-loop`) runs Claude Code iteratively in a terminal to complete tasks. Each iteration spawns a new `claude` process via pipe: `echo "$prompt" | claude --verbose`. This means every iteration rebuilds context from scratch (30-50K tokens), there's no per-iteration log separation, no real-time visibility, and token budget enforcement auto-stops and triggers orchestrator restart cascades.
 
-The v6 orchestration runs on sales-raketa showed 24x token overhead (1.6M vs 50K manual) for trivial tasks. Key failure modes: sessions ending before FF completes all artifacts, budget exceeded → restart → budget exceeded cascade, 22+ no-op iterations with no done detection, and zero visibility into what Claude was doing during execution.
+The v6 orchestration runs on consumer-c showed 24x token overhead (1.6M vs 50K manual) for trivial tasks. Key failure modes: sessions ending before FF completes all artifacts, budget exceeded → restart → budget exceeded cascade, 22+ no-op iterations with no done detection, and zero visibility into what Claude was doing during execution.
 
 Claude CLI supports: `--resume <session-id>` (resume specific session, interactive mode), `--continue` (resume most recent, interactive mode), `--session-id <uuid>` (pre-assign session ID), `--output-format stream-json` (print mode only). Interactive mode is required for skills (`/opsx:ff`, `/opsx:apply`) and hooks.
 

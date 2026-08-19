@@ -1,6 +1,6 @@
 ## Why
 
-The v5/v6 orchestration runs on sales-raketa revealed several failure modes that cause token waste and stuck pipelines. The most critical: when `opsx:ff` fails to create `tasks.md`, the Ralph loop enters an infinite cycle — re-running `ff:` every iteration with no escape, burning 150K+ tokens on what should be a trivial change. Secondary issues include missing `.env` in worktrees, memory pollution from redundant loop iterations, and no token budget guardrails.
+The v5/v6 orchestration runs on consumer-c revealed several failure modes that cause token waste and stuck pipelines. The most critical: when `opsx:ff` fails to create `tasks.md`, the Ralph loop enters an infinite cycle — re-running `ff:` every iteration with no escape, burning 150K+ tokens on what should be a trivial change. Secondary issues include missing `.env` in worktrees, memory pollution from redundant loop iterations, and no token budget guardrails.
 
 ## What Changes
 

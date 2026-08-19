@@ -1,6 +1,6 @@
 ## Why
 
-The v5 orchestration run (sales-raketa, 5 changes, 75 min, 3.3M tokens) exposed several efficiency and reliability issues. Merge conflict resolution wasted tokens by trying sonnet first on large conflicts that always time out. The stale loop-state check spams 100+ identical log lines per run. Parallel changes that modify shared files (e.g., conventions docs) cause guaranteed merge conflicts. Replan cycle boundaries are invisible in the TUI and logs. The TUI token counter flashes to zero during replan. There is no self-restart mechanism if the orchestrator process crashes.
+The v5 orchestration run (consumer-c, 5 changes, 75 min, 3.3M tokens) exposed several efficiency and reliability issues. Merge conflict resolution wasted tokens by trying sonnet first on large conflicts that always time out. The stale loop-state check spams 100+ identical log lines per run. Parallel changes that modify shared files (e.g., conventions docs) cause guaranteed merge conflicts. Replan cycle boundaries are invisible in the TUI and logs. The TUI token counter flashes to zero during replan. There is no self-restart mechanism if the orchestrator process crashes.
 
 ## What Changes
 

@@ -1,6 +1,6 @@
 ## Why
 
-The memory system's only hard save point is the Stop hook (session-end transcript extraction). If a session crashes, times out, or the user closes the terminal before the Stop hook runs, all learned knowledge is lost. Active projects (eg-sales: 11 memories from 20+ commits, itline-web: 13 memories from 30+ commits) show suspiciously low memory counts, suggesting many sessions end without proper extraction. Mid-session checkpoints and tool-triggered saves would prevent this data loss.
+The memory system's only hard save point is the Stop hook (session-end transcript extraction). If a session crashes, times out, or the user closes the terminal before the Stop hook runs, all learned knowledge is lost. Active projects (eg-sales: 11 memories from 20+ commits, consumer-e: 13 memories from 30+ commits) show suspiciously low memory counts, suggesting many sessions end without proper extraction. Mid-session checkpoints and tool-triggered saves would prevent this data loss.
 
 ## What Changes
 

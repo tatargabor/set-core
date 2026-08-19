@@ -2,7 +2,7 @@
 
 The orchestrator's plan decomposition has a single dependency rule: "if change B needs code from change A, list A in depends_on." This relies entirely on Claude's general reasoning, which misses semantic ordering patterns like "cleanup before features" or "schema before data layer." The result: changes that should be sequential run in parallel, causing avoidable merge conflicts.
 
-Real example from sales-raketa: `ui-cleanup-pack`, `impersonation`, and `form-submission-unification` all ran in parallel with no dependencies. The cleanup should have run first — it touches the same UI components the other two build on.
+Real example from consumer-c: `ui-cleanup-pack`, `impersonation`, and `form-submission-unification` all ran in parallel with no dependencies. The cleanup should have run first — it touches the same UI components the other two build on.
 
 The fix is two-layered:
 1. **Spec time** — `/wt:plan-review` should detect and suggest dependency annotations before the spec reaches the planner

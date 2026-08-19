@@ -11,7 +11,7 @@ Additionally, `_watchdog_check_progress()` independently detects:
 - **Spinning**: 3+ consecutive no_op iterations → `failed`
 - **Stuck**: 3+ iterations without commits → `pause`
 
-The problem: both L4 and spinning lead to `failed`, which is terminal. The change requires a full replan cycle (~500K+ tokens) or manual intervention to recover. Production runs show this happens 1-3 times per orchestration run (MiniShop admin-auth: 3x manual restart, sales-raketa stalls).
+The problem: both L4 and spinning lead to `failed`, which is terminal. The change requires a full replan cycle (~500K+ tokens) or manual intervention to recover. Production runs show this happens 1-3 times per orchestration run (MiniShop admin-auth: 3x manual restart, consumer-c stalls).
 
 The dispatcher (`dispatch_change()`) already handles creating fresh worktrees, bootstrapping them, building proposals, and launching Ralph. This infrastructure can be reused for re-dispatch.
 

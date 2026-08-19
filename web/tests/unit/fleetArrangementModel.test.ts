@@ -29,10 +29,10 @@ const RESPONSE = {
   version: 7,
   groups: [
     { id: 'g-set', name: 'set-*', collapsed: false, projects: ['set-core', 'set-designer'], missing: ['set-gone'] },
-    { id: 'g-work', name: 'munka', collapsed: true, projects: ['itline-web'], missing: [] },
+    { id: 'g-work', name: 'munka', collapsed: true, projects: ['consumer-e'], missing: [] },
   ],
-  parked: ['blackbelt-web'],
-  ungrouped: ['deckforge', 'veleje'],
+  parked: ['consumer-f'],
+  ungrouped: ['consumer-h', 'consumer-g'],
   // Group missings first, then the parked ones — the shape `apply_to` produces.
   missing: ['set-gone', 'parked-gone'],
 }
@@ -108,8 +108,8 @@ describe('ordering', () => {
   it('reorders inside one group and touches no other group', () => {
     const a = moveProject(base(), 'g-set', 1, 0)
     expect(a.groups[0].projects).toEqual(['set-designer', 'set-core'])
-    expect(a.groups[1].projects).toEqual(['itline-web'])
-    expect(a.ungrouped).toEqual(['deckforge', 'veleje'])
+    expect(a.groups[1].projects).toEqual(['consumer-e'])
+    expect(a.ungrouped).toEqual(['consumer-h', 'consumer-g'])
   })
 })
 
@@ -117,7 +117,7 @@ describe('membership is an explicit act, and a project has exactly one home', ()
   it('moving a project into another group removes it from the first', () => {
     const a = assign(base(), 'set-core', { kind: 'group', id: 'g-work' })
     expect(a.groups[0].projects).toEqual(['set-designer'])
-    expect(a.groups[1].projects).toEqual(['itline-web', 'set-core'])
+    expect(a.groups[1].projects).toEqual(['consumer-e', 'set-core'])
     // The invariant, asserted as a count rather than by reading two lists: a
     // project in two places renders twice and its position then depends on
     // iteration order.
@@ -136,9 +136,9 @@ describe('membership is an explicit act, and a project has exactly one home', ()
   })
 
   it('a target group that does not exist leaves the project ungrouped, never nowhere', () => {
-    const a = assign(base(), 'deckforge', { kind: 'group', id: 'g-nope' })
-    expect(a.ungrouped).toContain('deckforge')
-    expect(arrangedNames(a)).toContain('deckforge')
+    const a = assign(base(), 'consumer-h', { kind: 'group', id: 'g-nope' })
+    expect(a.ungrouped).toContain('consumer-h')
+    expect(arrangedNames(a)).toContain('consumer-h')
   })
 
   it('deleting a group moves its members out instead of deleting them', () => {
@@ -189,11 +189,11 @@ describe('a prefix seeds a group once; it is never a rule', () => {
 
 describe('a discovered project the arrangement places nowhere', () => {
   it('is reported rather than rendered nowhere', () => {
-    expect(orphans(base(), ['set-core', 'deckforge', 'brand-new'])).toEqual(['brand-new'])
+    expect(orphans(base(), ['set-core', 'consumer-h', 'brand-new'])).toEqual(['brand-new'])
   })
 
   it('is empty when every discovered project has a home, including a parked one', () => {
-    expect(orphans(base(), ['set-core', 'set-designer', 'itline-web', 'blackbelt-web', 'deckforge', 'veleje']))
+    expect(orphans(base(), ['set-core', 'set-designer', 'consumer-e', 'consumer-f', 'consumer-h', 'consumer-g']))
       .toEqual([])
   })
 })

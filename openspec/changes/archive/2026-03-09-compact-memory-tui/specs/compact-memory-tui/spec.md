@@ -19,8 +19,8 @@ The `set-memory tui` command SHALL auto-detect the current project from the work
 - **THEN** it SHALL detect the project name from the git root directory basename and filter all metrics to that project (prefix match)
 
 #### Scenario: Running with explicit project flag
-- **WHEN** `set-memory tui --project sales-raketa` is run
-- **THEN** it SHALL filter all metrics to sessions whose project name starts with `sales-raketa`
+- **WHEN** `set-memory tui --project consumer-c` is run
+- **THEN** it SHALL filter all metrics to sessions whose project name starts with `consumer-c`
 
 #### Scenario: Running outside a git repo without project flag
 - **WHEN** `set-memory tui` is run outside a git repository without `--project` flag

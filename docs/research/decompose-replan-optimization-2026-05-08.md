@@ -1,6 +1,6 @@
 # Decompose / Replan Token & Stability Optimization — 2026-05-08
 
-Optimization plan for the planning subsystem after the dimop-info and set-designer runs of 2026-05-07. Builds on `token-optimization-analysis-2026-04-09.md` (which covered agent-side cost) — this one covers the **planner-side** cost (digest → decompose → replan → merge).
+Optimization plan for the planning subsystem after the consumer-d and set-designer runs of 2026-05-07. Builds on `token-optimization-analysis-2026-04-09.md` (which covered agent-side cost) — this one covers the **planner-side** cost (digest → decompose → replan → merge).
 
 ## Executive Summary
 
@@ -15,7 +15,7 @@ The planning pipeline currently:
 Concrete observations from the 2026-05-07 runs:
 
 - **set-designer**: 24 changes planned, 1 ran. The single agent burned **2.39M uncached input tokens + 3.23M cache_read tokens in 7 minutes** before being SIGTERM'd at the spec_verify retry. The orchestrator never replanned (plan_version stayed 1) but the *agent* re-read the same context every iteration with no breakpoint cache.
-- **dimop-info**: 5 full digest cycles in ~3 hours, no DISPATCH events. Memory hygiene latency grew from 318 ms (29 entries) to 3363 ms (200 entries) — linear scan on every poll. A "flash digest" at 22:32 finished in 1 second and dropped req_count from 76 → 41 (suspicious — probably partial output silently accepted).
+- **consumer-d**: 5 full digest cycles in ~3 hours, no DISPATCH events. Memory hygiene latency grew from 318 ms (29 entries) to 3363 ms (200 entries) — linear scan on every poll. A "flash digest" at 22:32 finished in 1 second and dropped req_count from 76 → 41 (suspicious — probably partial output silently accepted).
 - **53 `LineagePaths fallback`** debug lines in the 7-min set-designer window — ~7/min, one per poll cycle × 3 path lookups, all looking for a lineage-suffixed file/dir that does not exist. Pure I/O waste.
 - **No prompt caching declared** in `templates.py:render_planning_prompt`, `_phase1/_phase2/_phase3_*` prompts, or `_DIGEST_PROMPT_TEMPLATE`. Every Claude call rebuilds the whole prefix.
 
@@ -41,7 +41,7 @@ Result: the agent's prefix grew unbounded across iterations (each retry re-injec
 
 The orchestrator itself never replanned. Plan was generated once at 22:05:48 with `plan_method=api`, 24 changes for `docs/v1-set-designer.md`. Phase pipeline: brief (Phase 1) → 13 parallel domain decomposes (Phase 2) → merge (Phase 3) — all completed cleanly.
 
-### 1.2 dimop-info — digest treadmill
+### 1.2 consumer-d — digest treadmill
 
 ```
 20:15:25  DIGEST → 34 reqs, 9 domains   (3m 23s)
@@ -78,13 +78,13 @@ It is not a `git merge`-time background thread — `merger.py` is fully synchron
 | ID | Root cause | Evidence | Impact |
 |---|---|---|---|
 | **R1** | No `cache_control` on planner / digest / Phase 1–3 prompts | `grep cache_control lib/set_orch/templates.py` → 0 hits | Every Claude call pays full input rate; on a 24-change run with 13 domains, that's ~6× $0.50–1.00 calls. |
-| **R2** | Digest re-runs from scratch on every cycle | 5 digests in 3 hours, dimop-info | ~3 m of Claude time × 5 = 15 m of pure rework when the spec didn't change |
+| **R2** | Digest re-runs from scratch on every cycle | 5 digests in 3 hours, consumer-d | ~3 m of Claude time × 5 = 15 m of pure rework when the spec didn't change |
 | **R3** | Phase 2 ThreadPoolExecutor lacks retry / backpressure / partial-success policy | planner.py:2250–2301, no `try/except` per future, no per-worker timeout knob | Failed workers leave silent gaps; planner accepts empty-domain decomposes; user-visible instability |
 | **R4** | Phase 3 merge prompt scales O(domain_count × scope_size) | 80–120 k tokens for 6 domains × 50 changes; 30-min timeout | One bad domain plan can OOM the merge; partial-parse fallback exists but is fragile (planner.py:2770–2787) |
 | **R5** | Replan trigger model is reactive, not bounded | `_handle_auto_replan` retries on AMB / coverage_gap / e2e_failure with cap=2 cycles, 5 retries — but each retry re-runs full Phase 1+2+3 | A 2-cycle replan on a 13-domain spec ≈ 2 × (1 brief + 13 domain + 1 merge) Claude calls = 30 LLM calls before user sees a result |
 | **R6** | AMB resolution coupled to replan | `_build_digest_content` 1653–1672 injects deferred ambiguities into every planner prompt | If the planner can't auto-resolve, AMB persists, replan fires, AMB persists again → the loop the user complained about |
 | **R7** | `LineagePaths fallback` re-checks missing files every poll | paths.py:451, 562; 53 hits in 7 min | Cumulative I/O + log noise; not expensive but indicates a missing memoization |
-| **R8** | Memory hygiene scans grow linearly | dimop-info: 318 ms → 3363 ms over 3 h | O(n) on every poll — at 1000 entries this becomes ~15 s and starves the monitor loop |
+| **R8** | Memory hygiene scans grow linearly | consumer-d: 318 ms → 3363 ms over 3 h | O(n) on every poll — at 1000 entries this becomes ~15 s and starves the monitor loop |
 | **R9** | `enrich_plan_metadata` re-scans the lineage archive JSONL on every decompose | planner.py:1766–1783, sequential | Background fixed cost per decompose, scales with archive size |
 | **R10** | `compute_phase_offset` and digest-related path fallbacks not memoized within a poll | engine + paths | 4–5 lookup operations × 17 polls × 2 projects = ~170 redundant calls per hour |
 
@@ -115,7 +115,7 @@ Wrap `paths.py:LineagePaths.{plan_path, digest_dir}` in `functools.lru_cache(max
 `planner.py:1732–1785` is called once per `enrich_plan_metadata` and walks the JSONL archive. Build an index file `set/orchestration/lineage-index.json` with `{spec_lineage_id: max_phase}` updated when archive entries are added. Fall back to full scan on first call after archive mutation.
 
 **A4. Index-based memory hygiene.**
-`shodh-memory` should keep a sorted-by-id cache so duplicate detection is O(1) lookup, not O(n) scan. The dimop-info data shows the scan dominates the poll cycle once memory crosses ~150 entries. Either move hygiene off the poll path (separate background sweep, every 10 polls) or rebuild the index incrementally on remember/forget.
+`shodh-memory` should keep a sorted-by-id cache so duplicate detection is O(1) lookup, not O(n) scan. The consumer-d data shows the scan dominates the poll cycle once memory crosses ~150 entries. Either move hygiene off the poll path (separate background sweep, every 10 polls) or rebuild the index incrementally on remember/forget.
 
 **A5. Demote `LineagePaths fallback` from DEBUG to TRACE-equivalent (drop unless `SET_ORCH_VERBOSE=1`).**
 Even if the lookup is cheap, the log spam blinds the operator to real issues. The fallback is the *expected* path for non-lineage runs.
@@ -204,7 +204,7 @@ The single rule we will not break: **`coverage.json` and `triage.md` must reflec
 - B3 always on (purely defensive).
 - B4 behind `merge_strategy: map_reduce` (default `single` until validated).
 - B5 always on (cheap).
-- **Validation**: run the dimop-info scaffold (which exhibited the digest treadmill) and confirm:
+- **Validation**: run the consumer-d scaffold (which exhibited the digest treadmill) and confirm:
   - Replan count ≤ stall cap.
   - No silent domain drops on injected fault.
   - `triage.md` and `coverage.json` byte-equivalent to today's output on a clean run (gap-analysis regression test).
@@ -222,7 +222,7 @@ The single rule we will not break: **`coverage.json` and `triage.md` must reflec
 2. Replan triggered by a single AMB fires ≤1 LLM call (vs 15 today).
 3. Phase 2 ThreadPoolExecutor never produces a silent-empty domain on injected fault.
 4. Phase 3 merge does not exceed 50 k input tokens per call (today: 80–120 k).
-5. `coverage.json` and `triage.md` regression test passes on dimop-info, set-designer, micro-web scaffolds.
+5. `coverage.json` and `triage.md` regression test passes on consumer-d, set-designer, micro-web scaffolds.
 6. End-to-end: set-designer scaffold reaches at least 3 merged changes on a single SLA without manual replan.
 
 ---

@@ -119,7 +119,7 @@ describe('journalToAttemptGraph', () => {
   })
 
   it('integration-merge-conflict retry classifies via retry_context (no merge_result delta)', () => {
-    // Regression: dimop-info i18n-setup-and-migration attempt #1 was retried
+    // Regression: consumer-d i18n-setup-and-migration attempt #1 was retried
     // because the integration merge conflicted with main. The verifier path
     // (verifier.py:4138) sets `retry_context = "Integration merge conflict..."`
     // between verify-failed and the next running, but never writes a

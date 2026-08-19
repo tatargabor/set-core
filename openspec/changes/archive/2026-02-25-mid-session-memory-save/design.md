@@ -1,6 +1,6 @@
 ## Context
 
-The memory system has a single hard save point: the Stop hook at session end. All mid-session hooks (UserPromptSubmit, PostToolUse) only perform recall. If a session crashes, times out, or the user closes the terminal, all knowledge from that session is lost. Diagnosis shows active projects have suspiciously low memory counts (eg-sales: 11, itline-web: 13) despite heavy commit activity, confirming the Stop hook frequently doesn't run.
+The memory system has a single hard save point: the Stop hook at session end. All mid-session hooks (UserPromptSubmit, PostToolUse) only perform recall. If a session crashes, times out, or the user closes the terminal, all knowledge from that session is lost. Diagnosis shows active projects have suspiciously low memory counts (eg-sales: 11, consumer-e: 13) despite heavy commit activity, confirming the Stop hook frequently doesn't run.
 
 The existing infrastructure already supports what we need:
 - Session dedup cache (`/tmp/set-memory-session-*.json`) persists across hook events within a session and already stores frustration_history and _metrics

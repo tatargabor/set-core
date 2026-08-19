@@ -4,7 +4,7 @@ The `set-memory tui` dashboard is currently a single-column 66-char wide layout 
 
 ## What Changes
 
-- Add `--project` filtering to `query_report()` in `lib/metrics.py` — filter sessions by project name prefix match (so worktree sessions like `sales-raketa-wt-smoke..` are included when filtering for `sales-raketa`)
+- Add `--project` filtering to `query_report()` in `lib/metrics.py` — filter sessions by project name prefix match (so worktree sessions like `consumer-c-wt-smoke..` are included when filtering for `consumer-c`)
 - Redesign `cmd_tui()` inline Python to use a 3-column ANSI layout that fits 160×80 terminals
 - Auto-detect project from CWD (git root basename) when `--project` is not explicitly passed to `set-memory tui`
 - Add a recent sessions list panel showing per-session breakdown (time, worktree name, injections, tokens, citations)

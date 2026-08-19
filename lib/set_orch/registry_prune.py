@@ -59,7 +59,7 @@ def e2e_runs_root() -> Path:
     """The framework's own E2E run root.
 
     Location — not age — is what separates test fixtures from real projects:
-    measured 2026-07-24, `sales-raketa` (62d) and `minishop0412` (62d) are real
+    measured 2026-07-24, `consumer-c` (62d) and `consumer-i` (62d) are real
     projects exactly as old as the E2E runs to be archived.
     """
     return Path.home() / ".local" / "share" / "set-core" / "e2e-runs"

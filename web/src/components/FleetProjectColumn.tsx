@@ -150,7 +150,7 @@ function useReorder(
    * lower half of a row is already past that row's midpoint, so it answers with
    * the NEXT row — a move of one position, committed by a gesture that looks like
    * nothing happening. Measured against the running server: one click on
-   * `deckforge`'s grip moved it six positions and saved the result, because the
+   * `consumer-h`'s grip moved it six positions and saved the result, because the
    * rows in between were hidden by the ungrouped filter and the answer is a
    * STORED index.
    *

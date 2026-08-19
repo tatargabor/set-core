@@ -337,6 +337,6 @@ class TestResolveLogPath:
         assert path == Path("orchestration-events.jsonl")
 
     def test_state_filename_complex(self, monkeypatch):
-        monkeypatch.setenv("STATE_FILENAME", "/var/data/sales-raketa-state.json")
+        monkeypatch.setenv("STATE_FILENAME", "/var/data/consumer-c-state.json")
         path = _resolve_log_path()
-        assert path == Path("/var/data/sales-raketa-events.jsonl")
+        assert path == Path("/var/data/consumer-c-events.jsonl")

@@ -1,6 +1,6 @@
 ## Why
 
-set-orchestrate dispatches Ralph loops that implement changes autonomously, but has no quality verification before merge. A Phase 1 run on sales-raketa produced 11 critical bugs (tenant leaks, missing auth guards, crypto corruption) — all found by manual code review *after* orchestration completed. Tests were planned for Phase 2 in the spec, meaning the most security-critical code shipped untested. The orchestrator needs a verify gate and test-aware planning to catch these issues automatically.
+set-orchestrate dispatches Ralph loops that implement changes autonomously, but has no quality verification before merge. A Phase 1 run on consumer-c produced 11 critical bugs (tenant leaks, missing auth guards, crypto corruption) — all found by manual code review *after* orchestration completed. Tests were planned for Phase 2 in the spec, meaning the most security-critical code shipped untested. The orchestrator needs a verify gate and test-aware planning to catch these issues automatically.
 
 ## What Changes
 

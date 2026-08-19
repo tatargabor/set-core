@@ -28,7 +28,7 @@ Jelenlegi test infra: `tests/unit/` (bash), `tests/orchestrator/` (parse/state),
 
 **Választás:** Express.js, better-sqlite3, Jest
 **Alternatívák:** Fastify, SQLite via knex, Vitest
-**Indoklás:** Express a legelterjedtebb — az orchestrator és a Ralph biztosan ismeri. better-sqlite3 zero-config, nincs szerver, a teszt bárhol fut. Jest mert a sales-raketa is azt használta és az orchestrator smoke_command-ja is `npm test`-et hív.
+**Indoklás:** Express a legelterjedtebb — az orchestrator és a Ralph biztosan ismeri. better-sqlite3 zero-config, nincs szerver, a teszt bárhol fut. Jest mert a consumer-c is azt használta és az orchestrator smoke_command-ja is `npm test`-et hív.
 
 ### D2: 4 change dependency gráffal
 
@@ -43,7 +43,7 @@ orders (depends: cart, products-crud)
 auth (cross-cutting, depends: products-crud, cart, orders — runs LAST)
 ```
 
-**Indoklás:** Ez a minimális gráf ami teszteli: szekvenciális dispatch-ot (products előbb), párhuzamos lehetőséget (cart és auth egyszerre mehet miután products kész), és cross-cutting change-et (auth módosítja a korábbi route-okat). A sales-raketa gráf hasonló struktúrájú volt, csak nagyobb.
+**Indoklás:** Ez a minimális gráf ami teszteli: szekvenciális dispatch-ot (products előbb), párhuzamos lehetőséget (cart és auth egyszerre mehet miután products kész), és cross-cutting change-et (auth módosítja a korábbi route-okat). A consumer-c gráf hasonló struktúrájú volt, csak nagyobb.
 
 ### D3: Valódi pipeline, nincs mock
 

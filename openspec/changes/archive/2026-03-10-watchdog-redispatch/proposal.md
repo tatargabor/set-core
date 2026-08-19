@@ -1,6 +1,6 @@
 ## Why
 
-When a Ralph loop gets stuck (3+ no-progress iterations, hash loop, or timeout), the watchdog currently escalates to kill + `failed` status. The change is lost and requires either manual intervention or a full replan cycle. Production evidence (MiniShop admin-auth: 3x manual restart, sales-raketa stalls) shows this is the #1 source of wasted tokens and human intervention during orchestration runs. Inspired by ruflo's work-stealing pattern, we can automatically re-dispatch stuck changes to fresh worktrees with clean context, dramatically reducing manual interventions.
+When a Ralph loop gets stuck (3+ no-progress iterations, hash loop, or timeout), the watchdog currently escalates to kill + `failed` status. The change is lost and requires either manual intervention or a full replan cycle. Production evidence (MiniShop admin-auth: 3x manual restart, consumer-c stalls) shows this is the #1 source of wasted tokens and human intervention during orchestration runs. Inspired by ruflo's work-stealing pattern, we can automatically re-dispatch stuck changes to fresh worktrees with clean context, dramatically reducing manual interventions.
 
 ## What Changes
 

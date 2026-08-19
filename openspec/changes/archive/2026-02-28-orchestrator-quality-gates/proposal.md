@@ -1,6 +1,6 @@
 ## Why
 
-A sales-raketa v3 orchestration run exposed systemic quality gaps: 0 tests, 0 seed data updates, 5 duplicate changes (24% waste), no build verification, and repeated manual worktree setup pain (.env, pnpm install). This change addresses the most impactful gaps identified in `docs/v3/v3_conclusions.md`.
+A consumer-c v3 orchestration run exposed systemic quality gaps: 0 tests, 0 seed data updates, 5 duplicate changes (24% waste), no build verification, and repeated manual worktree setup pain (.env, pnpm install). This change addresses the most impactful gaps identified in `docs/v3/v3_conclusions.md`.
 
 ## What Changes
 

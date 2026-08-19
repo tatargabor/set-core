@@ -177,7 +177,7 @@ export default function FleetInstruct({ agent, compact, terminalOpen }: {
       seat on the messaging bus"* rendered directly above a live terminal that
       takes keystrokes. The sentence is true about the BUS and false about what
       the reader takes from it — whether they can type at this agent. Measured
-      2026-08-19 on the wpc-pont tile, and it is the class `evidence-discipline`
+      2026-08-19 on the consumer-a tile, and it is the class `evidence-discipline`
       calls false absence: the surface announcing that something is missing when
       it is right there.
 

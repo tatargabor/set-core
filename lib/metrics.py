@@ -259,8 +259,8 @@ def query_report(since_days=7, project=None):
 
     Args:
         since_days: Number of days to look back
-        project: Optional project name for prefix filtering (e.g. "sales-raketa"
-                 matches "sales-raketa", "sales-raketa-wt-smoke-tests", etc.)
+        project: Optional project name for prefix filtering (e.g. "consumer-c"
+                 matches "consumer-c", "consumer-c-wt-smoke-tests", etc.)
 
     Returns dict with all data needed for TUI and HTML reports.
     """
