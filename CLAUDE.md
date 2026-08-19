@@ -521,6 +521,50 @@ generated layer** (`find lib modules set_tools -name '*_pb2.py' -o -name '*_gene
 → empty), so `tests/unit` is not exposed. The dashboard under `web/` does have a build
 product, and that path has **not** been measured — do not assume it is clean.
 
+## The product is in ENGLISH — stated by the user, 2026-08-19
+
+**set-core and every open-source `set-*` project are English.** Code, identifiers, UI strings,
+comments, `.md` documentation, OpenSpec artifacts — all of it. The reason is not taste: these
+repositories are public (`set-core`, `set-agent-comm`, `set-designer`,
+`set-voice-agent-delivery` are on GitHub), and a framework nobody outside one language can read
+is a framework nobody outside it can use. **The consumer projects are the Hungarian ones** —
+which is the same split the abstraction already draws: the domain lives on the project's side,
+and so does its language.
+
+**Talking to the user stays Hungarian.** The rule is about what is written INTO the repository,
+not about the conversation.
+
+**The exceptions are the load-bearing half of this rule**, because a rule stated without them
+is either ignored or applied to things it would damage. Measured on 2026-08-19: **130 `.md`
+files under this repo carry Hungarian**, and most of them are one of these:
+
+- **`docs/howitworks/hu/`** — a deliberate translation living beside `docs/howitworks/en/`.
+  A translated doc set is not a breach of an English-first rule; it is the rule succeeding.
+- **Test fixtures that simulate a Hungarian consumer** (`tests/e2e/scaffolds/**`). Translating
+  them would make the fixture stop resembling what it stands for, and weaken the test.
+- **Verbatim quotes of the user inside English comments.** A quote is a quote because it is
+  what was actually said; paraphrasing it into English destroys the evidence it carries.
+
+Everything else — a UI string, a doc, a spec, an error message — is English.
+
+**What this rule was written after, so the next reader knows what it costs.** The fleet screen
+shipped with 318 + 209 + 55 Hungarian characters of user-visible text while **every other file
+in `web/src` was English**. Two things made it expensive rather than trivial:
+
+- **There is no i18n layer** — the strings are literals. So six unit tests asserted the
+  Hungarian text directly, and the translation broke **15 tests, all fifteen on wording and not
+  one on behaviour**. A language switch in a codebase without an i18n layer is a test-suite
+  change, and that is the part that gets underestimated.
+- **A half-translated screen is worse than either state**, because an assertion written against
+  a string the source does not say yet is a test for a screen nobody built. Translate a file and
+  its tests in the same commit, and say in the commit which files are still untranslated.
+
+⚠ **NOT settled, and deliberately left open rather than decided quietly: commit messages.**
+Measured the same day — **40 of the last 40 are Hungarian**, and the repository is public, so
+they are published too. The user named "the program language and the `.md` files"; commit
+messages were not named, and converting a history is a different act from writing the next
+message. Ask before changing the practice; do not drift either way.
+
 ## External Project Confidentiality
 
 **NEVER reference external/private consumer projects by name** in set-core code, comments, commit messages, specs, rules, templates, or documentation. When adopting lessons, patterns, or fixes from consumer projects (E2E runs, harvest, diagnostics), always generalize — describe the pattern, not the source. Consumer project names are private and must not leak into the framework codebase.
