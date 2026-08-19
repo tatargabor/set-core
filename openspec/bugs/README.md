@@ -480,7 +480,7 @@ consumer's name, path, or content.
 
 ### B-23 — a refused send says it failed four times and offers a remedy for a cause it never reached
 
-- **state:** closed (`<this commit>`)
+- **state:** closed (`1d8f41a4`)
 - **reported:** 2026-08-19 by the user with a screenshot — *"send comand hibára
   futott"*
 - **measured, off the reported card, in render order:** `refused` ·
