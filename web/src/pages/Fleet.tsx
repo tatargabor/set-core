@@ -46,6 +46,7 @@ import { blockUnexpectedFrom, declaredStanding, phaseRepeatsBlock, purposeStandi
 import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
+import FleetInstall from '../components/FleetInstall'
 import TileControls from '../components/TileControls'
 import { plainExcerpt } from '../lib/excerptText'
 import { descendantStanding, parentClaim } from '../lib/fleetLineage'
@@ -1535,6 +1536,13 @@ export default function Fleet() {
                     `waiters_here: 0` invites installing one. Only orphans are
                     offered, one at a time, and removal says it stops a process. */}
                 <FleetWaiters />
+                {/* Task 7.15 — the modules this project has, and installing one
+                    that is missing. In the project's own strip because the act
+                    is a project's, not an agent's; folded shut because it is
+                    the only control here that writes into a foreign tree, and
+                    an offer that is always open is one somebody clicks by
+                    accident. */}
+                <FleetInstall project={active.name} root={active.root} capabilities={active.capabilities} />
                 {/* Density is a per-project choice — task 7.5. Offered only
                     where it can change anything: with one agent there is
                     nothing to lay out, and while a tile is enlarged the grid

@@ -55,6 +55,21 @@ const SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/
  */
 const TABLE_RULE = /\|(?:\s*:?-{2,}:?\s*\|)+/
 
+/**
+ * The same tell, cut off — `… | most | |--…` at the end of a fragment.
+ *
+ * Measured on the live screen after the joined-line fix shipped: the producer
+ * truncates the tail and appends an ellipsis, so a table whose header row
+ * survived can lose its rule's closing pipe. The complete-rule pattern then
+ * matched nothing and the pipes stayed on screen — the same defect one step
+ * further along, and again found by looking rather than by a test.
+ *
+ * Anchored to the END, and the tail may hold nothing but dashes: `ls | grep
+ * --color` keeps its pipe because letters follow the dashes, which is the case
+ * this anchor exists to protect.
+ */
+const TABLE_RULE_CUT = /\|\s*:?-{2,}:?\s*(?:…|\.{3})?\s*$/
+
 /** A fenced code block's delimiter, with or without a language. */
 const FENCE = /^\s*(```|~~~)/
 
@@ -84,11 +99,12 @@ function stripTable(line: string): string {
   const t = line.trim()
   // Either shape: a row that begins a line, or a whole table flattened into
   // one. Without the rule, a lone `|` is left alone — see TABLE_RULE.
-  if (!t.startsWith('|') && !TABLE_RULE.test(t)) return line
+  if (!t.startsWith('|') && !TABLE_RULE.test(t) && !TABLE_RULE_CUT.test(t)) return line
   // Cells joined by a middle dot: a table read aloud, not a table. Empty cells
   // drop out, which is what the `| | |` runs of a flattened table are.
   return t
     .replace(new RegExp(TABLE_RULE.source, 'g'), '|')
+    .replace(TABLE_RULE_CUT, '')
     .split('|').map(c => c.trim()).filter(Boolean).join(' · ')
 }
 

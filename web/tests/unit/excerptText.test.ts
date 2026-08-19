@@ -97,9 +97,25 @@ describe('markdown marks go, words stay', () => {
    * is ordinary prose on this screen. Stripping every `|` would rewrite a
    * command into something that does not run.
    */
+  /**
+   * The same defect one step further along, and again found by LOOKING rather
+   * than by a test: the producer truncates the tail and appends an ellipsis, so
+   * a table whose header row survived can lose its rule's closing pipe. The
+   * complete-rule pattern then matched nothing and the pipes stayed on screen.
+   * This fixture is the live string, with the words replaced.
+   */
+  it('reads a table whose rule row was cut off by the truncation', () => {
+    expect(plainExcerpt('no overflow at any of the three breakpoints. | metric | before | now | |--…'))
+      .toBe('no overflow at any of the three breakpoints. · metric · before · now')
+  })
+
   it('leaves a shell pipe alone when no table rule says otherwise', () => {
     expect(plainExcerpt('the check is `pgrep -af x | grep -c y` and it over-reports'))
       .toBe('the check is pgrep -af x | grep -c y and it over-reports')
+    // The truncated-rule pattern is anchored to the END and admits nothing but
+    // dashes after the pipe, so a long option keeps its pipe.
+    expect(plainExcerpt('run `ls -1 | grep --color=auto x` to see it'))
+      .toBe('run ls -1 | grep --color=auto x to see it')
   })
 
   it('does not eat an asterisk used as a word', () => {

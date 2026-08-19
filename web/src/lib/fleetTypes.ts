@@ -28,6 +28,8 @@ export type Population = 'started-here' | 'orphaned' | 'foreign' | 'unknown'
 
 import type { AttentionAwaiting } from './fleetAttention'
 
+import type { CapabilityReport } from './fleetInstall'
+
 export interface FleetAgent {
   pid: number
   name: string | null
@@ -267,6 +269,14 @@ export interface FleetProject {
   sources: string[]
   archived: boolean
   agents: FleetAgent[]
+  /**
+   * What set-core modules this project has — the capability report (task 7.9,
+   * and the namespace task 7.15 installs from). Optional because an older
+   * server does not send it, and an absent report is not a project with no
+   * modules: `fleetInstall.moduleStanding` reads the shape rather than the
+   * numbers, so the two stay distinguishable on screen.
+   */
+  capabilities?: CapabilityReport | null
 }
 
 export interface FleetResponse {
