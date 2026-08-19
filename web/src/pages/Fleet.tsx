@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 
 /**
  * Fleet — every agent session running on this machine.
@@ -17,13 +17,13 @@ import { useEffect, useState, useCallback } from 'react'
  *    2026-08-18: the runtime flushes a turn's entries to the session log in
  *    batches, and a log was observed ~25s stale while its session was actively
  *    working. `quiet` means "no outstanding tool call as of the last flush".
- *  - **There is no terminal here, and that is a measurement, not an omission.**
- *    Task 5.2 forbids reporting a terminal for a session the framework does not
- *    own, and adoption of a running session was measured to fail twice over
- *    (resume forks the conversation; the cross-session channel reaches but does
- *    not attach). So the tile offers the log — which every agent has, through a
- *    recorded binding — and a terminal will appear only for agents set-core
- *    starts itself.
+ *  - **A terminal is offered exactly where one can exist, and where it cannot
+ *    the tile says why** (task 8.2). The producer carries `population` as a
+ *    fact, with THREE values: `started-here` has a terminal, `foreign` cannot
+ *    have one, and `unknown` means the owner service could not be asked. The
+ *    third is not a shade of the second — see `lib/fleetTerminal.ts`, which
+ *    holds that decision as a pure function so it can be asserted in both
+ *    directions.
  *
  * This is now the LANDING screen (task 7.10), which changes what the empty and
  * degraded states cost: they are the first thing a reader sees, not an edge
@@ -33,38 +33,12 @@ import { useEffect, useState, useCallback } from 'react'
  * than replacing a true screen with an error.
  */
 
-interface FleetAgent {
-  pid: number
-  name: string | null
-  project: string | null
-  branch: string | null
-  session_id: string | null
-  binding_confirmed: boolean
-  sources: string[]
-  kind: string
-  state: string
-  tool: string | null
-  tool_elapsed_seconds: number | null
-  other_tools: string[]
-  last_movement_seconds: number | null
-  unknown_reason: string | null
-}
-
-interface FleetProject {
-  name: string
-  root: string
-  sources: string[]
-  archived: boolean
-  agents: FleetAgent[]
-}
-
-interface FleetResponse {
-  agents: number
-  working: number
-  unknown: number
-  projects: FleetProject[]
-  quiet_means: string
-}
+import FleetProjectColumn from '../components/FleetProjectColumn'
+import FleetTerminal from '../components/FleetTerminal'
+import { readView, resolveEnlarged, writeView } from '../lib/fleetViewState'
+import type { ProjectView } from '../lib/fleetViewState'
+import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
+import { terminalOffer } from '../lib/fleetTerminal'
 
 interface Turn {
   role: string
@@ -137,56 +111,123 @@ function StateLine({ agent }: { agent: FleetAgent }) {
       </span>
     )
   }
+  // Waiting for a person (task 3.8). It reaches the tile through the same field
+  // as every other state, and it is the loudest one on the screen because it is
+  // the only one that is waiting for the reader.
+  if (agent.state === 'waiting') {
+    // `waiting_for` may be null — the runtime did not write down WHAT it is
+    // waiting for. That is a gap in the reason, never a doubt about the state:
+    // the agent is waiting either way, and softening the label because the
+    // reason is missing would let the calmer reading win, which is the exact
+    // trade this screen refuses everywhere else.
+    const why = agent.waiting_for
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-sky-300 font-semibold whitespace-nowrap"
+        title={why ?? 'A munkamenet emberi válaszra vár. Hogy mire, azt a futtatókörnyezet nem írta meg — az állapot ettől még mért.'}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-300 shrink-0" />
+        válaszra vár
+        {why
+          ? <span className="text-fg-muted font-normal truncate max-w-[16rem]">{why}</span>
+          : <span className="text-fg-ghost font-normal">(mire, azt nem írta meg)</span>}
+      </span>
+    )
+  }
+  if (agent.state === 'quiet') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-fg-muted whitespace-nowrap">
+        <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
+        csendes
+      </span>
+    )
+  }
+  // A state this screen does not know is printed AS ITSELF, never as `csendes`.
+  // Measured 2026-08-19 on the live screen: a `waiting` agent rendered as quiet
+  // through this fall-through, while the header two panels away counted it as
+  // waiting — two fields contradicting each other, and the calmer one winning.
+  // A default branch that names one state answers for every state that arrives
+  // after it was written.
   return (
-    <span className="inline-flex items-center gap-1.5 text-fg-muted whitespace-nowrap">
-      <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
-      csendes
+    <span className="inline-flex items-center gap-1.5 text-amber-400 whitespace-nowrap"
+          title="A felderítés olyan állapotot jelentett, amit ez a képernyő még nem ismer — a neve látszik, jelentést nem tulajdonítunk neki.">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+      {agent.state}
     </span>
   )
 }
 
-function ProjectTile({ project, active, onSelect }: {
-  project: FleetProject
-  active: boolean
-  onSelect: () => void
-}) {
-  const working = project.agents.filter(a => a.state === 'working').length
-  const unknown = project.agents.filter(a => a.state === 'unknown').length
+/**
+ * A state the record DECLARED that the log refuted — the `declaration_ignored`
+ * field.
+ *
+ * The measurement already won: `state` holds the log's answer, and nothing
+ * downstream needs this. Which is precisely why it is rendered. A contradiction
+ * the surface never shows is one nobody ever fixes — it sits in the payload
+ * being correct-but-unread, and the record that keeps lying about itself keeps
+ * lying about itself. It is amber rather than red because nothing is broken for
+ * the reader; it is a fact about the producer.
+ */
+function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolean }) {
+  const declared = agent.declaration_ignored
+  if (typeof declared !== 'string' || declared === '') return null
+  const explain =
+    `A rekord „${declared}” állapotot deklarált, a napló ezt megcáfolta — a mérés (“${agent.state}”) nyer. ` +
+    'Ez nem a képernyő hibája és nem is javítja el: a producer rekordja mond mást, mint a naplója.'
   return (
-    <button
-      onClick={onSelect}
-      className={`w-full text-left px-3 py-2 rounded border transition-colors ${
-        active
-          ? 'border-surface-line bg-surface-raised text-fg-loud'
-          : 'border-transparent hover:bg-surface-raised/50 text-fg-strong'
-      }`}
+    <span
+      data-fleet-conflict-agent={agent.pid}
+      title={explain}
+      className="inline-flex items-center gap-1 text-xs text-amber-400 whitespace-nowrap"
     >
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm truncate flex-1">{project.name}</span>
-        <span className="text-xs text-fg-muted tabular-nums shrink-0">{project.agents.length}</span>
-      </div>
-      {/* Task 7.2 — state visible WITHOUT selecting the project. A tab that hides
-          something wrong is the failure this whole screen is built against, so
-          the counts that matter are printed on the closed tile. */}
-      <div className="flex items-center gap-2.5 mt-0.5 text-xs">
-        {working > 0 && (
-          <span className="inline-flex items-center gap-1 text-emerald-400 tabular-nums">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{working}
-          </span>
-        )}
-        {unknown > 0 && (
-          <span className="inline-flex items-center gap-1 text-amber-400 tabular-nums">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{unknown}
-          </span>
-        )}
-        {working === 0 && unknown === 0 && <span className="text-fg-ghost">csendes</span>}
-        {!project.sources.includes('registry') && (
-          <span className="text-fg-ghost ml-auto" title="Csak élő processzből ismert — nincs a projekt-registryben">
-            nem reg.
-          </span>
-        )}
-      </div>
-    </button>
+      <span aria-hidden>⚠</span>
+      {compact ? (
+        <span className="sr-only">ellentmondó deklaráció</span>
+      ) : (
+        <span className="font-normal">
+          deklarált: <span className="line-through">{declared}</span>
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * The terminal control on a tile — task 8.2, both halves.
+ *
+ * The offer exists only where a terminal can; where it cannot, the reason stands
+ * in its place. And the three outcomes are three, not two: `unknown` says we
+ * could not find out, in amber, and never "there is no terminal". The wording is
+ * in `lib/fleetTerminal.ts` next to the decision, so the screen cannot say one
+ * thing while the model decides another.
+ */
+function TerminalControl({ agent, ownerReachable, open, onToggle }: {
+  agent: FleetAgent
+  ownerReachable?: boolean
+  open: boolean
+  onToggle: () => void
+}) {
+  const offer = terminalOffer(agent, ownerReachable)
+  if (offer.kind === 'available') {
+    return (
+      <button
+        onClick={onToggle}
+        data-fleet-terminal-open={offer.label}
+        className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
+        title="A keret indította ezt az agentet és tartja a terminálját — a nézet bezárása nem állítja le."
+      >
+        {open ? 'terminál bezárása' : 'terminál megnyitása'}
+      </button>
+    )
+  }
+  return (
+    <span
+      data-fleet-terminal-absent={offer.kind}
+      title={offer.reason}
+      className={`text-xs ${offer.kind === 'unknown' ? 'text-amber-400' : 'text-fg-ghost'}`}
+    >
+      {offer.kind === 'unknown' ? 'terminál: nem tudjuk' : 'terminál: nem a kereté'}
+    </span>
   )
 }
 
@@ -362,6 +403,11 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
         )}
       </span>
       <span className="text-xs shrink-0"><StateLine agent={agent} /></span>
+      {/* The contradiction rides on the ROW too, not only on the enlarged card:
+          a row is where an agent sits while another tile is open, and a marker
+          that only appears when you enlarge is a marker for something you
+          already decided to look at. */}
+      <Contradiction agent={agent} compact />
       <span className="text-xs text-fg-muted truncate min-w-0">{agent.branch ?? '—'}</span>
       <span className="ml-auto text-xs text-fg-ghost tabular-nums shrink-0">
         {age(agent.last_movement_seconds)} · {agent.pid}
@@ -370,12 +416,17 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged }: {
+function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOpen, onTerminal }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
   enlarged?: boolean
+  ownerReachable?: boolean
+  /** Whether THIS agent's terminal is the one open. */
+  terminalOpen: boolean
+  onTerminal: (label: string | null) => void
 }) {
+  const offer = terminalOffer(agent, ownerReachable)
   return (
     <div
       data-fleet-enlarged={enlarged ? agent.pid : undefined}
@@ -391,6 +442,7 @@ function AgentCard({ agent, open, onToggle, enlarged }: {
           )}
         </span>
         <StateLine agent={agent} />
+        <Contradiction agent={agent} />
         <span className="text-xs text-fg-muted truncate">{agent.branch ?? '—'}</span>
         <span className="ml-auto text-xs text-fg-ghost tabular-nums shrink-0">
           {age(agent.last_movement_seconds)} · {agent.pid}
@@ -404,16 +456,133 @@ function AgentCard({ agent, open, onToggle, enlarged }: {
         >
           {open ? 'vissza a rácshoz' : 'napló megnyitása'}
         </button>
-        {/* Stated, not silently missing. Task 5.2 forbids reporting a terminal for
-            a session the framework does not own, and every session listed here was
-            started by a person in their own terminal. */}
-        <span className="text-xs text-fg-ghost" title="Futó, idegen munkamenethez a keret nem csatolhat terminált (mérve 2026-08-17 és 2026-08-18)">
-          terminál: nem a kereté
-        </span>
+        {/* Offered where it can exist, reasoned where it cannot — task 8.2. */}
+        <TerminalControl
+          agent={agent}
+          ownerReachable={ownerReachable}
+          open={terminalOpen}
+          onToggle={() => onTerminal(terminalOpen ? null : (offer.kind === 'available' ? offer.label : null))}
+        />
       </div>
 
       {open && <LogPanel pid={agent.pid} onClose={onToggle} tall={enlarged} />}
+      {terminalOpen && offer.kind === 'available' && (
+        <FleetTerminal label={offer.label} onClose={() => onTerminal(null)} />
+      )}
     </div>
+  )
+}
+
+/**
+ * Starting an agent — task 8.3, first half.
+ *
+ * Two rules shape this, and both are about not offering what does not exist:
+ *
+ *  - **The owner is asked first.** `GET /api/fleet/owner` answers whether an
+ *    agent can be started at all, and the answer carries the reason when it
+ *    cannot. A button that is present and fails is worse than one that is absent
+ *    with a reason beside it — the same rule the terminal control follows.
+ *  - **The label is the user's, and it is what everything else addresses.** Stop
+ *    and terminal both take a label, so it is prefilled rather than generated
+ *    silently: a name the reader chose is one they can find again.
+ *
+ * The dashboard process never forks the agent itself — it asks the owner
+ * service, whose whole reason to exist is that a process started from here would
+ * join this service's control group and die with the next deploy.
+ */
+interface OwnerHealth { available: boolean; reason?: string; held?: number }
+
+function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: (label: string) => void }) {
+  const [owner, setOwner] = useState<OwnerHealth | null>(null)
+  const [open, setOpen] = useState(false)
+  const [label, setLabel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/fleet/owner')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(d => { if (!cancelled) setOwner(d) })
+      .catch(e => { if (!cancelled) setOwner({ available: false, reason: String(e?.message ?? e) }) })
+    return () => { cancelled = true }
+  }, [])
+
+  const suggest = useCallback(() => {
+    const stamp = new Date().toTimeString().slice(0, 5).replace(':', '')
+    return `${project.name}-${stamp}`
+  }, [project.name])
+
+  // Not asked yet. Silence here would read as "you cannot start one".
+  if (owner === null) {
+    return <span className="text-xs text-fg-ghost">indítás: a tulajdonos szolgáltatás megkérdezése…</span>
+  }
+  if (!owner.available) {
+    return (
+      <span data-fleet-start="unavailable" className="text-xs text-amber-400" title={owner.reason ?? ''}>
+        agent nem indítható innen: {owner.reason ?? 'a tulajdonos szolgáltatás nem elérhető'}
+      </span>
+    )
+  }
+
+  if (!open) {
+    return (
+      <button
+        data-fleet-start="offer"
+        onClick={() => { setLabel(suggest()); setOpen(true); setError(null) }}
+        className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
+        title="A keret indítja és tartja — ennek lesz terminálja a böngészőben."
+      >
+        + agent indítása
+      </button>
+    )
+  }
+
+  return (
+    <form
+      data-fleet-start="form"
+      className="inline-flex items-baseline gap-1.5"
+      onSubmit={e => {
+        e.preventDefault()
+        const name = label.trim()
+        if (!name || busy) return
+        setBusy(true)
+        setError(null)
+        fetch('/api/fleet/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: name, cwd: project.root }),
+        })
+          .then(async r => {
+            if (!r.ok) {
+              const body = await r.json().catch(() => null)
+              throw new Error(String(body?.detail ?? `HTTP ${r.status}`))
+            }
+            return r.json()
+          })
+          .then((agent: { label?: string }) => {
+            setOpen(false)
+            onStarted(String(agent.label ?? name))
+          })
+          .catch(e => setError(String(e?.message ?? e)))
+          .finally(() => setBusy(false))
+      }}
+    >
+      <input
+        autoFocus
+        value={label}
+        onChange={e => setLabel(e.target.value)}
+        aria-label="az indítandó agent neve"
+        className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-48"
+      />
+      <button type="submit" disabled={busy} className="text-xs text-sky-300 hover:underline disabled:opacity-50">
+        {busy ? 'indítás…' : 'indítás'}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="text-xs text-fg-muted hover:text-fg-strong">
+        mégse
+      </button>
+      {error && <span className="text-xs text-red-400" title={error}>nem indult el: {error}</span>}
+    </form>
   )
 }
 
@@ -472,7 +641,14 @@ export default function Fleet() {
   const [answeredAt, setAnsweredAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [enlargedPid, setEnlargedPid] = useState<number | null>(null)
+  // The remembered view, cached against the project it belongs to. `localStorage`
+  // has no subscription, so a write has to put the new value here as well or the
+  // next render reads the old choice back — and the project it was read FOR is
+  // stored with it, so a project switch cannot show the previous project's memory
+  // for one frame.
+  const [memory, setMemory] = useState<{ project: string | null; view: ProjectView }>(
+    { project: null, view: {} },
+  )
 
   const load = useCallback(() => {
     fetch('/api/fleet/agents')
@@ -486,6 +662,44 @@ export default function Fleet() {
     const t = setInterval(load, 5000)
     return () => clearInterval(t)
   }, [load])
+
+  const projects = useMemo(() => data?.projects ?? [], [data])
+  const populated = useMemo(() => projects.filter(p => p.agents.length > 0), [projects])
+  // No fallback to "whatever discovery listed first": the column picks the
+  // first project in the ARRANGED order and says so through `onSelect`, so the
+  // selected project is always one the reader can find in the list.
+  const active = useMemo(
+    () => projects.find(p => p.name === selected) ?? null,
+    [projects, selected],
+  )
+  const activeName = active?.name ?? null
+  const remembered = memory.project === activeName ? memory.view : readView(activeName)
+  const enlarged = resolveEnlarged(remembered, active?.agents.map(a => a.pid) ?? [])
+  const setEnlarged = useCallback((project: string | null, pid: number | null) => {
+    writeView(project, { enlarged: pid })
+    setMemory({ project, view: readView(project) })
+  }, [])
+  /**
+   * Which terminal is open — task 8.3's reattach half.
+   *
+   * Remembered by LABEL, per project, and resolved against the live answer on
+   * every render: a remembered label whose agent is gone, or which no longer
+   * belongs to a `started-here` agent, opens nothing. The memory says what to
+   * show; it never says what exists. That is what makes a reload a reattach —
+   * the socket reopens, the server replays the buffered screen, and the reader
+   * lands on the screen as it already is rather than on a blank one.
+   */
+  const setTerminal = useCallback((project: string | null, label: string | null) => {
+    writeView(project, { terminal: label })
+    setMemory({ project, view: readView(project) })
+  }, [])
+  const openTerminal = useMemo(() => {
+    const want = remembered.terminal
+    if (typeof want !== 'string' || !active) return null
+    const alive = active.agents.some(a => terminalOffer(a, data?.owner_reachable).kind === 'available'
+      && a.terminal_label === want)
+    return alive ? want : null
+  }, [remembered.terminal, active, data?.owner_reachable])
 
   // Discovery has never answered. An error here is the real thing — there is no
   // measurement to fall back on — so it replaces the screen.
@@ -504,20 +718,15 @@ export default function Fleet() {
     return <Looking />
   }
 
-  const populated = data.projects.filter(p => p.agents.length > 0 && !p.archived)
-  const empty = data.projects.filter(p => p.agents.length === 0 && !p.archived)
-  const active = populated.find(p => p.root === selected) ?? populated[0] ?? null
-  // A remembered enlargement never determines what is shown: if that agent is
-  // gone from the answer, the grid comes back rather than an empty big tile.
-  const enlarged = active?.agents.some(a => a.pid === enlargedPid) ? enlargedPid : null
-
   return (
     <div className="h-full flex flex-col" data-fleet-phase={data.agents === 0 ? 'answered-empty' : 'answered'}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
         <span className="text-sm font-semibold text-fg-loud">Flotta</span>
-        <span className="text-xs text-fg-muted tabular-nums">{data.agents} agent · {populated.length} projekt</span>
-        {data.working > 0 && <span className="text-xs text-emerald-400 tabular-nums">{data.working} dolgozik</span>}
-        {data.unknown > 0 && <span className="text-xs text-amber-400 tabular-nums">{data.unknown} ismeretlen</span>}
+        <span className="text-xs text-fg-muted tabular-nums">{data.agents} agent · {populated.length} projektben</span>
+        {/* The per-state counts moved into the column's attention header, which
+            is where the jump to the first one lives. Two places carrying the
+            same count is one place too many: the copy nobody maintains is the
+            one that drifts, and it is always the one being read. */}
         {/* The caveat explains a state; with nothing in that state it is noise
             at the top of the landing screen. Rendered from the data, so it can
             never explain away a screen that has no agents on it. */}
@@ -525,6 +734,20 @@ export default function Fleet() {
           <span className="text-xs text-fg-muted">
             a <span className="text-fg-strong">csendes</span> nem azt jelenti, hogy nem történik semmi — csak azt,
             hogy a napló legutóbbi kiírásakor nem volt nyitott eszközhívás
+          </span>
+        )}
+        {/* One cause, named once. A screen that can offer no terminal ANYWHERE
+            has a single reason, and stating it per row would put 22 copies of it
+            on the landing screen while still not saying it is one fact. `false`
+            only — an absent key is not a `false`, and an older server that says
+            nothing must not be reported as a dead owner. */}
+        {data.owner_reachable === false && (
+          <span
+            data-fleet-owner="unreachable"
+            className="text-xs text-amber-400"
+            title="A tulajdonos szolgáltatás nem válaszolt, ezért egyetlen agentről sem tudjuk, a keret tartja-e. Ez nem azt jelenti, hogy egyiknek sincs terminálja."
+          >
+            a tulajdonos szolgáltatás nem válaszol — a terminálok hovatartozása ismeretlen, nem hiányzó
           </span>
         )}
         {/* A refresh that failed after a good answer keeps the answer — and says
@@ -539,46 +762,45 @@ export default function Fleet() {
         )}
       </div>
 
-      {data.agents === 0 ? (
-        <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
-      ) : (
       <div className="flex-1 flex min-h-0">
-        <div className="w-56 shrink-0 border-r border-surface-line overflow-y-auto p-2 space-y-0.5">
-          {populated.map(p => (
-            <ProjectTile
-              key={p.root}
-              project={p}
-              active={active?.root === p.root}
-              onSelect={() => { setSelected(p.root); setEnlargedPid(null) }}
-            />
-          ))}
-          {empty.length > 0 && (
-            <details className="mt-3 px-3">
-              <summary className="text-xs text-fg-ghost cursor-pointer">
-                {empty.length} agent nélkül
-              </summary>
-              <div className="mt-1.5 space-y-0.5">
-                {empty.map(p => (
-                  <div key={p.root} className="text-xs text-fg-ghost truncate">{p.name}</div>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
+        {/* Task 7.1 / D-2 — the hand-made arrangement. It renders even when
+            nothing is running: a project's position is a statement about the
+            project, not about who happens to be in it, so the list must not
+            empty itself when the agents close. */}
+        <FleetProjectColumn
+          data={data}
+          selected={active?.name ?? null}
+          onSelect={name => setSelected(name)}
+        />
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2 min-w-0">
-          {active ? (
+          {data.agents === 0 ? (
+            <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
+          ) : active ? (
             <>
-              <div className="flex items-baseline gap-2 px-0.5">
+              <div className="flex items-baseline gap-2 px-0.5 flex-wrap">
                 <span className="text-sm text-fg-loud">{active.name}</span>
                 <span className="text-xs text-fg-muted tabular-nums">{active.agents.length} agent</span>
                 <span className="text-xs text-fg-ghost truncate">{active.root}</span>
+                <StartAgent
+                  project={active}
+                  onStarted={label => { setTerminal(active.name, label); load() }}
+                />
                 {enlarged !== null && active.agents.length > 1 && (
                   <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
                     {active.agents.length - 1} sorként — kattints egyre a váltáshoz
                   </span>
                 )}
               </div>
+              {/* A selected project with nothing running is not an error and not
+                  an empty panel: the arrangement keeps it in the list on
+                  purpose, so the right-hand side says what it measured. */}
+              {active.agents.length === 0 && (
+                <div className="text-sm text-fg-muted">
+                  Ebben a projektben a felderítés nem talált futó agentet.
+                  {active.archived && <span className="text-fg-ghost"> (archivált projekt)</span>}
+                </div>
+              )}
               {/* Task 7.4 — the enlarged tile stays in the list's own order, and
                   every other agent keeps a row. Rendering the enlarged one in
                   place (rather than lifting it to the top) is what makes a row
@@ -590,16 +812,22 @@ export default function Fleet() {
                     agent={a}
                     enlarged
                     open
-                    onToggle={() => setEnlargedPid(null)}
+                    onToggle={() => setEnlarged(active.name, null)}
+                    ownerReachable={data.owner_reachable}
+                    terminalOpen={openTerminal !== null && openTerminal === a.terminal_label}
+                    onTerminal={label => setTerminal(active.name, label)}
                   />
                 ) : enlarged !== null ? (
-                  <AgentRow key={a.pid} agent={a} onSelect={() => setEnlargedPid(a.pid)} />
+                  <AgentRow key={a.pid} agent={a} onSelect={() => setEnlarged(active.name, a.pid)} />
                 ) : (
                   <AgentCard
                     key={a.pid}
                     agent={a}
                     open={false}
-                    onToggle={() => setEnlargedPid(a.pid)}
+                    onToggle={() => setEnlarged(active.name, a.pid)}
+                    ownerReachable={data.owner_reachable}
+                    terminalOpen={openTerminal !== null && openTerminal === a.terminal_label}
+                    onTerminal={label => setTerminal(active.name, label)}
                   />
                 )
               ))}
@@ -611,7 +839,6 @@ export default function Fleet() {
           )}
         </div>
       </div>
-      )}
     </div>
   )
 }

@@ -59,10 +59,23 @@ const project = (name: string, agents: Json[]): Json => ({
   agents,
 })
 
-/** A fetch stub that answers the fleet route from a queue and the log route flatly. */
-function installFetch(answers: (() => Promise<unknown>)[]) {
+/**
+ * A fetch stub that answers the fleet route from a queue, and the log and
+ * arrangement routes flatly.
+ *
+ * The arrangement is answered OUTSIDE the queue on purpose. It is a second
+ * request the screen makes on its own schedule, so letting it consume a queue
+ * entry would silently shift every later answer by one — and the tests that
+ * depend on the ORDER of answers (a good measurement followed by a failed
+ * refresh) would then be measuring something else while still passing or
+ * failing for reasons nobody could see.
+ */
+function installFetch(answers: (() => Promise<unknown>)[], layout: unknown = { version: 1, groups: [], parked: [], ungrouped: [], missing: [] }) {
   let i = 0
   const stub = vi.fn((url: string) => {
+    if (String(url).includes('/api/fleet/layout')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(layout) } as Response)
+    }
     if (String(url).includes('/log')) {
       return Promise.resolve({
         ok: true,
@@ -82,7 +95,15 @@ const ok = (body: unknown) => () =>
 const never = () => () => new Promise<Response>(() => {})
 const fails = (msg: string) => () => Promise.reject(new Error(msg))
 
-beforeEach(() => { vi.useRealTimers() })
+beforeEach(() => {
+  vi.useRealTimers()
+  // Task 7.5 made the enlarged tile PERSISTENT, per project, in localStorage.
+  // Without this the memory written by one test decides the starting state of
+  // the next one — which is a real leak between tests, and it fails in the
+  // direction that looks like a product defect rather than like a dirty
+  // fixture: a screen that "starts enlarged" for no visible reason.
+  try { localStorage.clear() } catch { /* no storage in this environment */ }
+})
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('task 7.11 — an unfinished answer is not an empty one', () => {
@@ -187,9 +208,14 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
 
 describe('task 7.12 — the log view leaves room for the timeline without building it', () => {
   it('offers the conversation, and names the timeline as absent rather than clickable', async () => {
-    installFetch([ok(fleet([project('demo', [agent(1, 'demo-a1')])]))])
+    installFetch([ok(fleet([project('demo', [agent(1, 'demo-a1'), agent(2, 'demo-a2')])]))])
     const { container } = render(<Fleet />)
     await screen.findByText('demo-a1')
+    // Two agents on purpose. With exactly one the tile is enlarged by the
+    // single-agent default (task 7.5) and there is no `napló megnyitása` to
+    // click — so a one-agent fixture would assert the tabs through a path the
+    // reader never takes, and would break again the next time that default
+    // moves.
     fireEvent.click(screen.getAllByText('napló megnyitása')[0])
 
     const conversation = container.querySelector('[data-log-tab="conversation"]')!

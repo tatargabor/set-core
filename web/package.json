@@ -19,6 +19,8 @@
   "dependencies": {
     "@soniox/speech-to-text-web": "^1.4.0",
     "@tailwindcss/vite": "^4.2.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.10.2",
     "lucide-react": "^1.7.0",
     "react": "^19.2.4",
