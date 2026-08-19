@@ -176,71 +176,79 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
     agent(2, 'demo-a2', { state: 'unknown', unknown_reason: 'no session log' }),
   ])])
 
-  it('leaves every other agent as a row carrying its state', async () => {
+  /**
+   * REPLACED 2026-08-19 — the others are TABS now, not rows, asked for in those
+   * words: *"teljes nézetnél a nem megnyitott agenteket ne sorokba csukja ossze
+   * hanem tabokat kel csinalni egy uj felső sorba"*.
+   *
+   * What 7.4 asks for is unchanged and is what these still assert: enlarging
+   * one tile may not make the others unreadable. Only the shape changed — from
+   * a line each to one line for all of them.
+   */
+  it('leaves every other agent in a tab that carries its state', async () => {
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
     await screen.findByText('demo-a1')
 
-    expect(container.querySelectorAll('[data-fleet-row]').length).toBe(0)
-    // The enlarge control, not the log button. Since 2026-08-19 those are two
-    // acts: opening a log no longer hides the other agents (asked for — the
-    // grid tiles were too small to read anything in). What 7.4 asserts is
-    // unchanged, and it is asserted below; only the control that triggers it
-    // moved.
+    expect(container.querySelectorAll('[data-fleet-agent-tab]').length).toBe(0)
     fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
 
-    const rows = container.querySelectorAll('[data-fleet-row]')
-    expect(rows.length).toBe(1)
+    const tabs = container.querySelectorAll('[data-fleet-agent-tab]')
+    // EVERY agent, the selected one included: a strip that omitted the current
+    // one would have no way to show which is current.
+    expect(tabs.length).toBe(2)
     expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeTruthy()
-    // The row is not a bare name. An agent in an undetermined state must be
-    // readable from the row, or enlarging one tile hides the broken one.
-    expect(within(rows[0] as HTMLElement).getByText(/unknown/i)).toBeTruthy()
-    expect(within(rows[0] as HTMLElement).getByText('demo-a2')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-agent-tab="1"]')!.getAttribute('data-fleet-agent-tab-active')).toBe('on')
+    expect(container.querySelector('[data-fleet-agent-tab="2"]')!.getAttribute('data-fleet-agent-tab-active')).toBeNull()
+
+    // The row carried the state as a WORD; a tab carries it as a colour and
+    // keeps the word in its accessible name. `ui-quality.md` — an alarm may be
+    // compacted, never hidden — so the undetermined agent must still be
+    // readable from the strip without opening anything.
+    const other = container.querySelector('[data-fleet-agent-tab="2"]') as HTMLElement
+    expect(within(other).getByText(/unknown/i)).toBeTruthy()
+    expect(within(other).getByText('demo-a2')).toBeTruthy()
   })
 
-  it('a ROW keeps its input — enlarging a different tile must not disarm this agent', async () => {
-    // The requirement is explicit: *"Under any density, the tile SHALL retain its
-    // state and its input"*. The row used to carry identity, state, branch and
-    // age and no input at all, so an agent you could instruct became
-    // uninstructable purely because you enlarged somebody else's tile — an
-    // affordance removed by a layout choice, with nothing on screen to say so.
-    installFetch([ok(two)])
-    const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
-    expect(container.querySelectorAll('[data-fleet-instruct]').length).toBe(2)
-
-    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
-    expect(container.querySelector('[data-fleet-row="2"]')).toBeTruthy()
-    // Still two, and the second one is INSIDE the row.
-    expect(container.querySelectorAll('[data-fleet-instruct]').length).toBe(2)
-    expect(container.querySelector('[data-fleet-row="2"] [data-fleet-instruct]')).toBeTruthy()
-  })
-
-  it('typing in a row\'s input does not enlarge that row', async () => {
-    // The row is a div with a guarded click now, and the guard is the load-bearing
-    // half: without it every click inside the input would also select the row, so
-    // giving the row an input would have taken away the ability to use it.
+  it('selects back: clicking a tab enlarges that agent instead', async () => {
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
     await screen.findByText('demo-a1')
     fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
 
-    const surface = container.querySelector('[data-fleet-row="2"] [data-fleet-instruct]')!
-    fireEvent.click(surface)
-    expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeTruthy()
-    expect(container.querySelector('[data-fleet-enlarged="2"]')).toBeNull()
-  })
-
-  it('selects back: clicking a row enlarges that agent instead', async () => {
-    installFetch([ok(two)])
-    const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
-    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
-
-    fireEvent.click(container.querySelector('[data-fleet-row="2"]')!)
+    fireEvent.click(container.querySelector('[data-fleet-agent-tab="2"]')!)
     expect(container.querySelector('[data-fleet-enlarged="2"]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeNull()
-    expect(container.querySelector('[data-fleet-row="1"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-agent-tab="1"]')).toBeTruthy()
+  })
+
+  /**
+   * ⚠ THE COST OF THE TAB STRIP, PINNED SO IT CANNOT BE FORGOTTEN.
+   *
+   * The row used to carry a compact input, and the spec still says *"Under any
+   * density, the tile SHALL retain its state and its input"* — written after an
+   * agent became uninstructable purely because a DIFFERENT tile was enlarged.
+   * A tab is too small to hold an input honestly, so the guarantee is now
+   * weaker by exactly one click: select the agent, then type into its card.
+   *
+   * This test asserts the weaker guarantee rather than pretending the old one
+   * holds. If somebody later restores an input to the strip, it fails and
+   * whoever reads it learns why it was ever gone.
+   */
+  it('costs one click to instruct an unselected agent, and never more', async () => {
+    installFetch([ok(two)])
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo-a1')
+    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
+
+    // The unselected agent has no input while it is a tab — stated, not hidden.
+    expect(container.querySelectorAll('[data-fleet-instruct]').length).toBe(1)
+
+    // One click, and it has one.
+    fireEvent.click(container.querySelector('[data-fleet-agent-tab="2"]')!)
+    expect(container.querySelector('[data-fleet-enlarged="2"]')).toBeTruthy()
+    expect(container.querySelectorAll('[data-fleet-instruct]').length).toBe(1)
+    expect(container.querySelector('[data-fleet-enlarged="2"] [data-fleet-instruct]')).toBeTruthy()
   })
 })
 

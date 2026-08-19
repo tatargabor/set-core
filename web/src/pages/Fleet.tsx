@@ -91,10 +91,25 @@ function dayLabel(ts: string | null): string {
   return d.toLocaleDateString('hu-HU', { month: '2-digit', day: '2-digit' })
 }
 
+/*
+  ONE size for every branch — *"quiet main feliratok kulon fontméret?????"*,
+  asked on 2026-08-19, and it was not a misreading.
+
+  Measured from the source, not from the picture: nothing between `body` and
+  this span sets a font size (`grep -n 'font-size' src/index.css` → only the
+  none; the card, the grid and the title row carry no `text-*`). So these five
+  branches inherited the browser default of **16px**, while the agent's NAME
+  beside them is `text-sm` (14px) and its branch is `text-xs` (12px). Three
+  sizes in one row, with the largest spent on the least important word.
+
+  The size belongs here rather than on the row, because `StateLine` is rendered
+  in two places — the tile and the compact row — and a size supplied by the
+  caller is a second copy that drifts the moment one caller is restyled.
+*/
 function StateLine({ agent }: { agent: FleetAgent }) {
   if (agent.state === 'working') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-emerald-400 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
         <span>{agent.tool ?? 'working'}</span>
         {agent.tool_elapsed_seconds !== null && (
@@ -106,7 +121,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   }
   if (agent.state === 'unknown') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-amber-400 whitespace-nowrap" title={agent.unknown_reason ?? ''}>
+      <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 whitespace-nowrap" title={agent.unknown_reason ?? ''}>
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
         unknown
       </span>
@@ -124,7 +139,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     const why = agent.waiting_for
     return (
       <span
-        className="inline-flex items-center gap-1.5 text-sky-300 font-semibold whitespace-nowrap"
+        className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold whitespace-nowrap"
         title={why ?? 'The session is waiting for a person. What for was not written down by the runtime — the state is measured either way.'}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-sky-300 shrink-0" />
@@ -137,7 +152,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   }
   if (agent.state === 'quiet') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-fg-muted whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
         quiet
       </span>
@@ -150,7 +165,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   // A default branch that names one state answers for every state that arrives
   // after it was written.
   return (
-    <span className="inline-flex items-center gap-1.5 text-amber-400 whitespace-nowrap"
+    <span className="inline-flex items-center gap-1.5 text-xs text-amber-400 whitespace-nowrap"
           title="Discovery reported a state this screen does not know yet — its name is shown and no meaning is attributed to it.">
       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
       {agent.state}
@@ -955,58 +970,109 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
  * control — so the selecting button is the identity half only, and the input
  * sits beside it with its own surface marker.
  */
-function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void }) {
+/**
+ * The other agents as TABS, when one tile is enlarged — asked for 2026-08-19:
+ * *"teljes nézetnél a nem megnyitott agenteket ne sorokba csukja ossze hanem
+ * tabokat kel csinalni egy uj felső sorba"*.
+ *
+ * They were rows, stacked above and below the big tile, and each row was a
+ * full line: name, state, branch, age, pid and an input box. With three agents
+ * that is two lines of chrome around the thing you enlarged in order to see
+ * more of; with eight it is eight, and the enlarged tile is back to the size it
+ * had in the grid. A tab strip is one line no matter how many there are, and it
+ * scrolls sideways rather than wrapping — wrapping would rebuild the problem.
+ *
+ * ## What a tab must still carry, and what it cannot
+ *
+ * `ui-quality.md`: compacting must never hide a failure. A tab is the most
+ * compact thing on this screen, so everything that is an ALARM rides on it —
+ * the state's colour and dot, the unconfirmed-binding mark, and the
+ * contradiction. Those are the three that mean *look at this one*.
+ *
+ * What does NOT fit is the branch, the age and the pid — none of which is an
+ * alarm — so they move into the tab's `title` and its accessible name. They are
+ * findable, not lost.
+ *
+ * ⚠ **One thing the row could do and a tab cannot: instruct an agent without
+ * selecting it.** The row carried a compact input; a tab is too small to hold
+ * one honestly. The cost is one click — select the agent, then type into its
+ * card — and it is stated here rather than discovered later.
+ */
+function AgentTabs({ agents, selected, onSelect }: {
+  agents: readonly FleetAgent[]
+  selected: number | null
+  onSelect: (pid: number) => void
+}) {
   return (
     <div
-      data-fleet-row={agent.pid}
-      /* The whole row still selects, through the same guard the card uses: a
-         click on a control, on an own surface (the input), or one that ends a
-         text selection is not a selection of the row. Without it the input
-         would enlarge the tile on every keystroke's click, and with it the row
-         keeps behaving the way it did before it grew an input. */
-      onClick={e => {
-        if (tileClickOpens({
-          target: e.target as Element,
-          card: e.currentTarget,
-          selection: currentSelection(),
-        })) onSelect()
-      }}
-      className="w-full flex items-baseline gap-2 px-3 py-1 rounded border border-transparent hover:border-surface-line hover:bg-surface-raised/40 transition-colors"
+      role="tablist"
+      aria-label="agents in this project"
+      data-fleet-agent-tabs={agents.length}
+      /* `overflow-x-auto` with `shrink-0` tabs: many agents scroll, they never
+         wrap onto a second line. A tab strip that grows downwards is a row list
+         with extra steps. */
+      className="flex items-center gap-1 overflow-x-auto shrink-0 border-b border-surface-line pb-1 mb-2"
     >
-    <button
-      onClick={onSelect}
-      title="Click: this tile is enlarged"
-      className="text-left flex items-baseline gap-2 min-w-0 flex-1"
-    >
-      <span className="text-xs text-fg-strong truncate max-w-[14rem] shrink-0">
-        {/* Same identity rule as the card — a row and a card must not name the
-            same agent differently. */}
-        {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
-        {!agent.binding_confirmed && (
-          <span className="ml-1 text-amber-400" title="The binding to the session log did not come from a record">?</span>
-        )}
-      </span>
-      <span className="text-xs shrink-0"><StateLine agent={agent} /></span>
-      {/* The contradiction rides on the ROW too, not only on the enlarged card:
-          a row is where an agent sits while another tile is open, and a marker
-          that only appears when you enlarge is a marker for something you
-          already decided to look at. */}
-      <Contradiction agent={agent} compact />
-      <span className="text-xs text-fg-muted truncate min-w-0">{agent.branch ?? '—'}</span>
-      <span className="ml-auto text-xs text-fg-ghost tabular-nums shrink-0">
-        {age(agent.last_movement_seconds)} · {agent.pid}
-      </span>
-    </button>
-      {/* Beside the row, not under it — the row stays one line. Where the agent
-          cannot be instructed the producer's own sentence stands here instead,
-          which is the same answer the card gives: the density changes the frame
-          and never what can be said to whom. */}
-      <span className="shrink-0 w-[26rem] max-w-[45%] min-w-0">
-        <FleetInstruct agent={agent} compact />
-      </span>
+      {agents.map(a => {
+        const on = a.pid === selected
+        const why = [
+          a.terminal_label ?? a.name ?? 'unnamed',
+          a.state,
+          a.branch ?? 'no branch',
+          `pid ${a.pid}`,
+          `last moved ${age(a.last_movement_seconds)} ago`,
+        ].join(' · ')
+        return (
+          <button
+            key={a.pid}
+            role="tab"
+            aria-selected={on}
+            title={why}
+            data-fleet-agent-tab={a.pid}
+            data-fleet-agent-tab-active={on ? 'on' : undefined}
+            onClick={() => onSelect(a.pid)}
+            className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
+              on
+                ? 'border-sky-400 text-fg-loud bg-surface-raised/60'
+                : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'
+            }`}
+          >
+            {/* The state's DOT, not its word: the colour is the alarm and it
+                survives at any width, while the word would be the first thing
+                a narrow strip truncated. The word is in the tooltip. */}
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAB_DOT[a.state] ?? 'bg-amber-400'}`} aria-hidden />
+            <span className="truncate max-w-[10rem]">
+              {a.terminal_label ?? a.name ?? 'unnamed'}
+            </span>
+            {!a.binding_confirmed && (
+              <span className="text-amber-400 shrink-0" title="The binding to the session log did not come from a record">?</span>
+            )}
+            {typeof a.declaration_ignored === 'string' && a.declaration_ignored !== '' && (
+              <span className="text-amber-400 shrink-0" title="This agent declared a state the log refuted — open it to see which.">⚠</span>
+            )}
+            <span className="sr-only">{why}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
+
+/**
+ * The dot's colour per state, in ONE place.
+ *
+ * `StateLine` draws the same five states, and a second copy of this mapping
+ * would drift the day a state is added — the tab would then be calm about
+ * something the tile marks. Keyed by the state STRING and defaulting to amber,
+ * so a state neither knows about is loud rather than invisible.
+ */
+const TAB_DOT: Record<string, string> = {
+  working: 'bg-emerald-400 animate-pulse',
+  waiting: 'bg-sky-300',
+  quiet: 'bg-surface-line',
+  unknown: 'bg-amber-400',
+}
+
 
 /**
  * What the agent SAYS about itself — tasks 3.4 and 3.5.
@@ -1200,6 +1266,34 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   // Computed once: the header marker and the block below must not be able to
   // disagree about what the agent declared.
   const standing = declaredStanding(agent)
+  /*
+    THE TERMINAL OUTRANKS THE LOG — asked for 2026-08-19: *"csinaltam wpc-be egy
+    uj agentet és erre megnyitotta a history log-ot és a terminalt is … ha van
+    terminal nezet akkor meg az legyen!!!"*.
+
+    Both really were open, and neither was a bug on its own. Starting an agent
+    opens its terminal (`onStarted`), and `resolveLogs` opens the ENLARGED
+    tile's log while no choice has been made — a default that is deliberate and
+    tested. A newly started agent is both at once, so the tile stacked an empty
+    log panel (*"no session log is bound to this agent"*) on top of the live
+    terminal that had the answer.
+
+    The rule is a precedence, not a removal: the log stays exactly as it was and
+    comes back the moment the terminal closes. What may not happen is the two
+    rendering together, because then the reader has to work out which of the two
+    is the live one.
+
+    And the control must not lie about it: `logOpen` is what is SHOWN, so the
+    log icon is not lit for a panel the terminal is covering. Clicking it is an
+    explicit choice and therefore outranks the default the other way — it closes
+    the terminal and shows the log.
+  */
+  const logShown = open && !terminalOpen
+  const showLog = () => {
+    if (!terminalOpen) { onToggle(); return }
+    onTerminal(null)
+    if (!open) onToggle()
+  }
   return (
     <div
       data-fleet-enlarged={enlarged ? agent.pid : undefined}
@@ -1277,8 +1371,8 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
         <TileControls
           agent={agent}
           ownerReachable={ownerReachable}
-          logOpen={open}
-          onLog={onToggle}
+          logOpen={logShown}
+          onLog={showLog}
           enlarged={enlarged}
           onEnlarge={onEnlarge}
           focused={focused}
@@ -1298,19 +1392,24 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
       {/* ONE line, then an ellipsis — B-11: *"ez a több soros first message az
           agent után értelmetlen. le kell vágni egy sorba aztán ..."*. What fills
           the tile is `TileActivity` below, not this. */}
-      <Excerpt agent={agent} lines={1} />
+      {/* Not while the terminal is up: the excerpt is the last thing said, and
+          the terminal shows it live, three rows lower. A second copy of one
+          fact costs a row on every tile and is the one that goes stale. */}
+      {!terminalOpen && <Excerpt agent={agent} lines={1} />}
 
       {/* Task 7.7 — the agent's own input, and task 4.4 where there is nothing
-          to type into: the producer's reason stands in the input's place. */}
-      <FleetInstruct agent={agent} />
+          to type into: the producer's reason stands in the input's place.
+          `terminalOpen` is passed so that reason cannot be stated over a live
+          terminal — see `FleetInstruct`. */}
+      <FleetInstruct agent={agent} terminalOpen={terminalOpen} />
 
-      {!open && !terminalOpen && (
+      {!logShown && !terminalOpen && (
         <TileActivity
           pid={agent.pid}
           onOpenTerminal={offer.kind === 'available' ? () => onTerminal(offer.label) : undefined}
         />
       )}
-      {open && <LogPanel pid={agent.pid} onClose={onToggle} />}
+      {logShown && <LogPanel pid={agent.pid} onClose={onToggle} />}
       {terminalOpen && offer.kind === 'available' && (
         <FleetTerminal
           label={offer.label}
@@ -1870,7 +1969,7 @@ export default function Fleet() {
                 )}
                 {!focused && enlarged !== null && active.agents.length > 1 && (
                   <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
-                    {active.agents.length - 1} as rows — click one to switch
+                    {active.agents.length - 1} as tabs — click one to switch
                   </span>
                 )}
               </div>
@@ -1931,7 +2030,18 @@ export default function Fleet() {
               ) : (
               <div className={enlarged === null
                 ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[columns] ?? GRID_COLS[2]}`
-                : 'flex-1 min-h-0 overflow-y-auto flex flex-col gap-2'}>
+                : 'flex-1 min-h-0 flex flex-col'}>
+              {/* One enlarged tile: the others are a tab strip, not rows. The
+                  strip is OUTSIDE the scrolling area so it stays put while the
+                  enlarged tile scrolls — a tab bar that scrolls away is a tab
+                  bar you have to go looking for. */}
+              {enlarged !== null && active.agents.length > 1 && (
+                <AgentTabs
+                  agents={active.agents}
+                  selected={enlarged}
+                  onSelect={pid => setEnlarged(active.name, pid)}
+                />
+              )}
               {active.agents.map(a => {
                 const card = (extra: { enlarged?: boolean; open: boolean; onToggle: () => void }) => (
                   <AgentCard
@@ -1976,7 +2086,13 @@ export default function Fleet() {
                 return a.pid === enlarged
                   ? card({ enlarged: true, open, onToggle: toggle })
                   : enlarged !== null
-                    ? <AgentRow key={a.pid} agent={a} onSelect={() => setEnlarged(active.name, a.pid)} />
+                    /* The unselected agents are in the tab strip above. They
+                       used to be `AgentRow`s here — one line each, with an
+                       input — and `AgentRow` is DELETED rather than left
+                       unused: a component nothing renders is a second answer
+                       to "how is an unselected agent shown", and it drifts
+                       from the tabs the moment either is touched. */
+                    ? null
                     : card({ open, onToggle: toggle })
               })}
               </div>

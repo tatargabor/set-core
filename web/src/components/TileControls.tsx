@@ -31,7 +31,7 @@ import { terminalOffer } from '../lib/fleetTerminal'
  * lives — `ui-quality.md`'s rule about compaction applied to a title bar.
  */
 
-function IconButton({ icon: Icon, label, active, tone, onClick, testId, mark }: {
+export function IconButton({ icon: Icon, label, active, tone, onClick, testId, mark }: {
   icon: LucideIcon
   /** The sentence this control used to be. It is rendered, not just hinted. */
   label: string

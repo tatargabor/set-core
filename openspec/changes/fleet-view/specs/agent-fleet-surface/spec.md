@@ -77,11 +77,21 @@ answer "where has work stopped", and the stopped work usually has no one standin
 ### Requirement: An agent tile carries state, log excerpt and its own input
 
 Each agent tile SHALL show the agent's identity, its derived state, a recent excerpt of its log, and
-an input for instructing it. Under any density, the tile SHALL retain its state and its input.
+an input for instructing it. Under any density that still renders a TILE, the tile SHALL retain its
+state and its input.
 
 The input belongs on the tile rather than behind an opened view: the reason the screen exists is to
 answer a waiting agent without changing context. A density that drops the input reintroduces the
 step it was built to remove.
+
+**NARROWED 2026-08-19, deliberately, and this is the whole of the narrowing.** The clause used to
+read *"under any density"*, written when the densest layout was a row list and every agent had a
+row with an input in it. The tab strip replaced the rows (see the enlarge requirement below), and a
+tab carries no tile and therefore no input. So the guarantee holds wherever a tile is drawn, and an
+agent shown only as a tab is instructable in one further act — selecting it. The step this
+requirement was built to remove is *changing context to answer somebody*; one click inside the same
+panel is not that step, whereas the original defect — an agent becoming uninstructable with nothing
+on screen to say so — is still forbidden.
 
 #### Scenario: A tile shows what the agent is doing
 - **WHEN** an agent is inside a tool
@@ -95,31 +105,53 @@ step it was built to remove.
 - **WHEN** the number of agents forces a denser layout
 - **THEN** each tile still shows its state and its input, with other content shortened instead
 
+#### Scenario: An agent shown only as a tab is one act from an input
+- **WHEN** a tile is enlarged and another agent is therefore drawn as a tab
+- **THEN** selecting that tab makes it the enlarged tile, with its input
+
 #### Scenario: A tile whose binding is a guess says so
 - **WHEN** an agent's session log was bound heuristically
 - **THEN** the tile marks the log as unconfirmed
 
-### Requirement: A tile can be enlarged, and the other agents stay visible as rows
+### Requirement: A tile can be enlarged, and the other agents stay visible as a tab strip
 
 The surface SHALL allow one agent tile to be enlarged, giving it a larger log area. While a tile is
-enlarged, every other agent of that project SHALL remain visible as a single-line row carrying at
-least its state and what it is doing, and selecting a row SHALL enlarge that agent instead.
+enlarged, every other agent of that project SHALL remain visible in a single-line tab strip carrying
+at least its state and any marker that calls for attention, and selecting a tab SHALL enlarge that
+agent instead.
 
-Rows rather than nothing, because hiding the others would put an agent that is stuck behind a screen
-that looks calm — the one thing this surface may not do. A row carries state and current activity
-specifically so that choosing which agent to open is a decision rather than a guess.
+Visible rather than hidden, because hiding the others would put an agent that is stuck behind a screen
+that looks calm — the one thing this surface may not do. The strip carries state specifically so that
+choosing which agent to open is a decision rather than a guess.
+
+One line for all of them rather than one line each: rows cost a line per agent, so with eight agents
+the tile that was enlarged in order to show more was back to the size it had in the grid. The strip
+SHALL scroll sideways rather than wrap, because a strip that grows downwards is the row list again.
+
+**What the strip may compact, and what it may not.** State, the unconfirmed-binding mark and a
+contradicted declaration are alarms and SHALL ride on the tab itself — state as a colour is
+acceptable where the word does not fit, provided the word remains in the tab's accessible name.
+Branch, age and pid are not alarms and MAY move into the tab's accessible name alone.
+
+**The instructing cost is accepted and stated.** A tab is too small to carry an input, so an agent
+that is not selected SHALL be instructable in exactly one further act — selecting it. This narrows
+the guarantee below, and it is written here rather than left to be discovered.
 
 #### Scenario: Enlarging one tile
 - **WHEN** an agent tile is enlarged
-- **THEN** it shows a larger log area and the other agents appear as rows
+- **THEN** it shows a larger log area and the other agents appear as tabs in one strip
 
 #### Scenario: The other agents are still readable
 - **WHEN** a tile is enlarged while another agent is waiting
-- **THEN** that agent's row shows its waiting state
+- **THEN** that agent's tab shows its waiting state
 
-#### Scenario: A row is the way back
-- **WHEN** a row is selected
+#### Scenario: A tab is the way back
+- **WHEN** a tab is selected
 - **THEN** that agent becomes the enlarged tile
+
+#### Scenario: The strip does not become a row list
+- **WHEN** more agents are in the project than fit across the strip
+- **THEN** the strip scrolls sideways and stays one line high
 
 ### Requirement: The arrangement is the user's, and it never becomes the inventory
 

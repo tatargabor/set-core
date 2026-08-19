@@ -223,11 +223,15 @@ describe('a log opens where the tile already is', () => {
     await waitFor(() => expect(container.querySelectorAll('[data-log-tab="conversation"]')).toHaveLength(1))
   })
 
-  it('keeps enlarging as its own act, which still leaves the others as rows', async () => {
+  it('keeps enlarging as its own act, which puts the others in the tab strip', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
     fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="enlarge"]')[0])
     await waitFor(() => expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeTruthy())
-    expect(container.querySelectorAll('[data-fleet-row]')).toHaveLength(1)
+    // Rows are gone as of 2026-08-19 — the unselected agents are TABS. The
+    // strip lists EVERY agent, the selected one included, so the count is the
+    // fleet's and not the fleet minus one.
+    expect(container.querySelectorAll('[data-fleet-row]')).toHaveLength(0)
+    expect(container.querySelectorAll('[data-fleet-agent-tab]')).toHaveLength(2)
   })
 })
 

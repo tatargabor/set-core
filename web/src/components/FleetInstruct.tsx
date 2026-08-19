@@ -64,7 +64,7 @@ const TONE: Record<string, string> = {
   unknown: 'text-amber-400',
 }
 
-export default function FleetInstruct({ agent, compact }: {
+export default function FleetInstruct({ agent, compact, terminalOpen }: {
   agent: FleetAgent
   /**
    * Rendered on a ROW rather than inside a card — task 7.3.
@@ -77,6 +77,14 @@ export default function FleetInstruct({ agent, compact }: {
    * decide it.
    */
   compact?: boolean
+  /**
+   * A terminal is open on this tile, so an input already exists.
+   *
+   * Only the REFUSAL branch reads it. The input itself stays: a seat and a pty
+   * are two addresses for one agent, and the box also carries dictation, which
+   * the terminal does not.
+   */
+  terminalOpen?: boolean
 }) {
   const [text, setText] = useState('')
   /** In-progress dictation. Never merged into `text` — see the header. */
@@ -164,6 +172,20 @@ export default function FleetInstruct({ agent, compact }: {
   }, [agent.pid, text, sending])
 
   if (can.kind === 'no') {
+    /*
+      A FALSE ABSENCE, and it was on screen: *"no input: this session has no
+      seat on the messaging bus"* rendered directly above a live terminal that
+      takes keystrokes. The sentence is true about the BUS and false about what
+      the reader takes from it — whether they can type at this agent. Measured
+      2026-08-19 on the wpc-pont tile, and it is the class `evidence-discipline`
+      calls false absence: the surface announcing that something is missing when
+      it is right there.
+
+      So the reason stands only where it is the whole story. With a terminal
+      open there IS an input, and the seat's absence is not what the reader
+      needs at that moment.
+    */
+    if (terminalOpen) return null
     return (
       <div className={compact ? 'min-w-0' : 'mt-2 border-t border-surface-line pt-2'} data-fleet-instruct="refused">
         {/*

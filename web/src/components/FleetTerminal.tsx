@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight, CircleStop, Eye, Maximize2, Minimize2, Scissors, X } from 'lucide-react'
 import {
   type AttachedEvent,
   parseControl,
   terminalUrl,
 } from '../lib/fleetTerminal'
+import { IconButton } from './TileControls'
 
 /**
  * One framework-owned terminal, in the browser — task 8.1.
@@ -88,6 +90,10 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState<string | null>(null)
   const [stopConfirm, setStopConfirm] = useState(false)
+  // The attachment details start CLOSED: they are the two facts nothing goes
+  // wrong for lack of — the label is already in the tile's title, and the byte
+  // count is a measurement of the replay, not of the agent.
+  const [details, setDetails] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -247,85 +253,136 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       data-fleet-terminal={label}
       data-fleet-own-surface="terminal"
     >
-      <div className="flex items-baseline gap-2 flex-wrap mb-1.5">
-        <span className="text-xs text-fg-strong">terminal</span>
-        <span className="text-xs text-fg-ghost truncate max-w-[16rem]">{label}</span>
+      {/*
+        ONE row, and it does NOT wrap — asked for 2026-08-19: *"latszik hogy sok
+        helyet elfoglal az agent felső menüsora még a terminal nezet előtt, ezt
+        kompaktálni kell. 1 sor elég kellene legyen ikonokkal"*. It used to be
+        two: `flex-wrap` plus an `ml-auto` control block meant the three
+        sentences dropped onto a line of their own, so five rows stood between
+        the tile's title and the terminal.
+
+        ## What stays visible, and why it is not a style choice
+
+        `ui-quality.md`: compaction must never hide a failure. So the split here
+        is not text-vs-icon, it is **caveat vs detail**:
+
+        - The PHASE always shows, in its own colour — `connecting…`, `live`,
+          a refusal, a close reason. A terminal whose state is one disclosure
+          away is a terminal that looks attached while it is not.
+        - The two amber facts — a replay whose head was cut, and a second viewer
+          who sees your keystrokes — stay as coloured icons. An alarm in a
+          tooltip is not an alarm; it is something you have to already suspect.
+        - Only the plain numbers move behind the toggle: the label and the byte
+          count. Neither is wrong when unseen.
+      */}
+      <div className="flex items-center gap-1.5 mb-1.5 min-w-0">
+        <span className="text-xs text-fg-strong shrink-0">terminal</span>
 
         {phase.kind === 'connecting' && (
-          <span className="text-xs text-sky-400" data-fleet-terminal-phase="connecting">connecting…</span>
+          <span className="text-xs text-sky-400 shrink-0" data-fleet-terminal-phase="connecting">connecting…</span>
         )}
         {phase.kind === 'attached' && (
           <>
-            <span className="text-xs text-emerald-400" data-fleet-terminal-phase="attached">live</span>
+            <span className="text-xs text-emerald-400 shrink-0" data-fleet-terminal-phase="attached">live</span>
             {/* Rendered from the acknowledgement, not from a guess: a replay that
-                quietly lost its head reads as a session that began there. */}
-            <span className="text-xs text-fg-ghost tabular-nums" title="How much of the screen was replayed when this view attached.">
-              {phase.ack.replayed_bytes} bytes replayed
-              {phase.ack.replay_truncated && (
-                <span className="text-amber-400"> · the start of the buffer was cut</span>
-              )}
-            </span>
+                quietly lost its head reads as a session that began there. The
+                sentence is unchanged — it moved from the row into the icon's
+                accessible name, so nothing that had to be SAID is now unsaid. */}
+            {phase.ack.replay_truncated && (
+              <IconButton
+                icon={Scissors}
+                tone="amber"
+                testId="replay-truncated"
+                mark={{ 'data-fleet-terminal-replay-truncated': 'yes' }}
+                label="the start of the buffer was cut — this replay does not begin where the session began"
+              />
+            )}
             {phase.ack.viewers > 1 && (
-              <span className="text-xs text-amber-400 tabular-nums" title="Somebody else is watching this same terminal — they see what you type.">
-                {phase.ack.viewers} watching
-              </span>
+              <IconButton
+                icon={Eye}
+                tone="amber"
+                testId="viewers"
+                mark={{ 'data-fleet-terminal-viewers': String(phase.ack.viewers) }}
+                label={`${phase.ack.viewers} watching — somebody else is on this same terminal and sees what you type`}
+              />
             )}
           </>
         )}
         {phase.kind === 'refused' && (
-          <span className="text-xs text-red-400" data-fleet-terminal-phase="refused">
+          <span className="text-xs text-red-400 truncate" data-fleet-terminal-phase="refused">
             did not open: {phase.reason}
           </span>
         )}
         {phase.kind === 'closed' && (
-          <span className="text-xs text-amber-400" data-fleet-terminal-phase="closed">{phase.reason}</span>
+          <span className="text-xs text-amber-400 truncate" data-fleet-terminal-phase="closed">{phase.reason}</span>
         )}
 
-        <div className="ml-auto flex items-baseline gap-2">
+        {/* The details, on request — *"esetleg lenyitható részletekkel"*. */}
+        <IconButton
+          icon={details ? ChevronDown : ChevronRight}
+          testId="details"
+          active={details}
+          label={details ? 'hide the attachment details' : 'the terminal label and how much screen was replayed'}
+          onClick={() => setDetails(d => !d)}
+        />
+
+        <span className="ml-auto flex items-center gap-0.5 shrink-0">
           {/* Two controls, never one. Requirement 5.4: closing the view is not a
-              stop, so the stop has to be its own act — and it says so. */}
+              stop, so the stop has to be its own act — and it still says so, in
+              the accessible name that replaced the sentence. The confirm step is
+              what an icon on its own could not carry, so it is kept: the first
+              click arms, the second acts. */}
           {stopConfirm ? (
-            <button
-              onClick={() => void stop()}
-              disabled={stopping}
-              data-fleet-terminal-stop-confirm
-              className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
-              title="The process stops. This is not the same as closing the view."
-            >
-              {stopping ? 'stopping…' : 'sure? stop it'}
-            </button>
+            <IconButton
+              icon={CircleStop}
+              tone="amber"
+              testId="stop-confirm"
+              active
+              mark={{ 'data-fleet-terminal-stop-confirm': 'armed' }}
+              label={stopping ? 'stopping…' : 'sure? stop it — the process ends, which is not the same as closing this view'}
+              onClick={() => { if (!stopping) void stop() }}
+            />
           ) : (
-            <button
+            <IconButton
+              icon={CircleStop}
+              testId="stop"
+              mark={{ 'data-fleet-terminal-stop': 'armable' }}
+              label="stop the agent — a separate, explicit act"
               onClick={() => setStopConfirm(true)}
-              data-fleet-terminal-stop
-              className="text-xs text-fg-muted hover:text-red-400"
-              title="Stop the agent — a separate, explicit act"
-            >
-              stop the agent
-            </button>
+            />
           )}
           {onToggleFull && (
-            <button
+            <IconButton
+              icon={full ? Minimize2 : Maximize2}
+              testId="full"
+              active={full}
+              mark={{ 'data-fleet-terminal-full': full ? 'on' : 'off' }}
+              label={full
+                ? 'back to the grid — the terminal stays attached, nothing is stopped or reconnected'
+                : 'show this agent alone, filling the panel — the other agents are counted in the header, not silently dropped'}
               onClick={onToggleFull}
-              data-fleet-terminal-full={full ? 'on' : 'off'}
-              className="text-xs text-fg-muted hover:text-fg-strong"
-              title={full
-                ? 'Back to the grid. The terminal stays attached — nothing is stopped or reconnected.'
-                : 'Show this agent alone, filling the panel. The other agents are counted in the header, not silently dropped.'}
-            >
-              {full ? '⤡ back to the grid' : '⤢ full screen'}
-            </button>
+            />
           )}
-          <button
+          <IconButton
+            icon={X}
+            testId="close"
+            mark={{ 'data-fleet-terminal-close': 'yes' }}
+            label="close (the agent keeps running) — detach only, and you can attach here again later"
             onClick={onClose}
-            data-fleet-terminal-close
-            className="text-xs text-fg-muted hover:text-fg-strong"
-            title="Detach only. The agent keeps running and you can attach here again later."
-          >
-            close (the agent keeps running)
-          </button>
-        </div>
+          />
+        </span>
       </div>
+
+      {details && (
+        <div className="text-xs text-fg-ghost mb-1.5 flex items-baseline gap-2 flex-wrap" data-fleet-terminal-details>
+          <span className="truncate max-w-[24rem]">{label}</span>
+          {phase.kind === 'attached' && (
+            <span className="tabular-nums" title="How much of the screen was replayed when this view attached.">
+              {phase.ack.replayed_bytes} bytes replayed
+            </span>
+          )}
+        </div>
+      )}
 
       {stopError && (
         <div className="text-xs text-red-400 mb-1">the stop failed: {stopError}</div>

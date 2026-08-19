@@ -289,6 +289,34 @@ consumer's name, path, or content.
 - **fixed when:** a narrow tile shows a scrollable window onto a terminal that is
   still at least 80 columns wide, and the pty is never told it is narrower.
 
+### B-16 — a terminal re-attached after a project switch draws a broken screen until a keystroke repairs it
+
+- **state:** open
+- **reported:** 2026-08-19 by the user — *"terminal also status bar elromlik ha
+  projektet valtok, beleirok, majd visszavaltok"*, and then the half that names
+  the cause: *"beiras utan megjavul"*
+- **measured:** reported with a screenshot, NOT yet reproduced by a session —
+  said plainly so nobody quotes this as a measurement. The recipe is exact:
+  switch to another project, type into an agent there, switch back. The agent's
+  status bar comes back mangled — in the screenshot only `34236` and
+  `· ← 7 agents` survive of a line that is normally full width — and any
+  keystroke restores it.
+- **what the repair-on-keystroke rules OUT, which is the useful half:** the
+  socket is fine, the pty is fine and the buffer is fine. A keystroke changes
+  nothing about any of them; what it does is make the REMOTE program repaint.
+  So the screen is stale, not lost — a redraw that never happened rather than
+  bytes that never arrived.
+- **where to look first:** switching projects unmounts the tile, so coming back
+  is a fresh attach: `FleetTerminal` replays the buffered screen and a
+  `ResizeObserver` refits xterm. A replay written at one column count and
+  refitted to another leaves exactly this — a line that was drawn for a
+  different width, with nothing prompting the far end to redraw it. The column
+  FLOOR (80) shipped in `387ba8c2`, so the tile's width and the pty's width are
+  deliberately allowed to differ, which is what makes the ordering matter.
+- **fixed when:** switch away, type, switch back — the status bar is whole
+  before anything is typed. Prove it the way this repo proves a fix: break the
+  ordering again and watch the check go red.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open
