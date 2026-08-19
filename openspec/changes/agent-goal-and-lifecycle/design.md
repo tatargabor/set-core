@@ -81,10 +81,23 @@ so the framework hands a framework-started agent its own statusline carrier **wi
 the project's tree** — the cheapest way to satisfy this repository's write guards is not to be a
 write path at all.
 
-**Not established:** whether a hook fired at a defined moment carries the same figures. A statusline
-command runs *on render*, which is a proxy for "the agent is alive and drawing" rather than a defined
-event, and a proxy is what this repository keeps getting caught by. Task group 1 settles it; nothing
-is designed around either answer first.
+**Settled 2026-08-19, and the answer is negative:** no hook carries the figures. Nine were
+registered and eight fired — `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`,
+`SubagentStop`, `SessionEnd` — and `context_window` appears in the statusline dump alone. So the
+statusline is the carrier, chosen because it is the only one, not because it is the best shape.
+
+Its cadence was measured rather than hoped: **5 renders in 56 s, gaps 3.0–20.8 s**, event-driven
+rather than timed. That is adequate for a reason worth stating, because "fast enough" would be luck:
+a rotation can only happen between turns (D5), so the reading's granularity matches the act it gates.
+
+⚠ **And the very first render carries a size with NO usage** — `used_percentage: null`,
+`total_input_tokens: 0` — so a naive division reports **0 %, meaning plenty of room**, for a reading
+that does not exist. This is the reassuring direction of the false-value class, and it is the
+concrete reason `unknown` below must be a value rather than a number.
+
+`PreCompact` never fired in the probe and is **unmeasured**. It would be the better trigger in
+principle — it fires exactly when the runtime is about to compact, which is the event a threshold is
+a proxy for — but every hook that *was* measured lacks the figures, so it stays a hypothesis.
 
 **Fail direction, decided now regardless of the carrier:** a reading the framework cannot obtain is
 `unknown`, and `unknown` never triggers a rotation. Rotating on a reading nobody has would clear a
@@ -122,9 +135,21 @@ the same process. This is the repository's standing rule (a subagent's "done" is
 to a keystroke.
 
 It also decides the pre-condition: the agent must be established as *between turns* before the clear
-is sent, and where turn state cannot be established, no clear is sent. How turn state is established
-is measured in group 1 — the candidates are the pty's own rendering, the tail of the transcript, and
-`pendingBackgroundAgentCount`, and none of them is assumed.
+is sent, and where turn state cannot be established, no clear is sent.
+
+**Settled 2026-08-19.** Turn state comes from the framework's own `UserPromptSubmit` / `Stop` hooks,
+installed through `--settings`. Measured over 32 samples across a 14 s tool-call turn and a
+sub-second text-only turn: the pair read BUSY ×15 against a BUSY truth and IDLE ×7 against an IDLE
+truth, with *no event yet* — honest unknown — as the only value on both sides, and only before the
+session's first prompt. On the sub-second turn it read BUSY exactly during it.
+
+**The obvious alternative is refuted, and refuted fail-open**, which is why it is recorded rather
+than merely dropped: reading the transcript's last row overlaps on `last-prompt`, and on a text-only
+turn the tail never becomes `assistant/tool_use` at all — it goes `attachment`, then `atis-latch`. So
+*"busy iff the tail is a tool call"* says IDLE while the agent is answering, and the clear lands
+mid-turn. The row types it does show are the runtime's internal bookkeeping; the tail correlated with
+turn state without being about it. `pendingBackgroundAgentCount` was `None` throughout — it counts
+background agents, not turns.
 
 ### D6 — Refusing a start without a goal changes an existing entry point
 
@@ -168,9 +193,16 @@ sessions.
 
 ## Open Questions
 
-- **Which carrier delivers the context reading** — statusline on render, or a hook at a defined
-  moment. Settled by measurement in group 1 (D3).
-- **How turn state is established** before a clear is sent (D5). Candidates named, none assumed.
+- ~~Which carrier delivers the context reading~~ — **settled 2026-08-19 (D3): the statusline, because
+  no hook carries the figures.** Remaining sub-question: whether `PreCompact`, which never fired in
+  the probe, would be a better trigger than a threshold.
+- ~~How turn state is established~~ — **settled 2026-08-19 (D5): the framework's own
+  `UserPromptSubmit` / `Stop` pair.** The transcript-tail alternative is refuted and the refutation is
+  in `measurements.md`, because it fails in the direction that clears a busy agent.
+- **A hook payload is a persistence hazard.** `Stop` carries `last_assistant_message` verbatim, so a
+  hook that logs what it receives writes conversation content to disk. The framework's hooks must
+  record the event and never the payload — named here because it is a constraint on how D5 is built,
+  not merely a caution.
 - **What a goal's evidence looks like when the work was not run as work units.** The engine covers
   the ordinary case; a goal spanning several changes, or work done interactively, may need its own
   evidence shape rather than being declared unverifiable by default. Deliberately left open — this

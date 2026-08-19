@@ -15,16 +15,29 @@ last open question. Do not resolve it by inventing a second definition of comple
 
 ## 1. Measure first — the two carriers the design left open
 
-- [ ] 1.1 CORE — Establish whether a hook carries the same `context_window` figures the statusline
-  payload does, and at what moment it fires. Measured already (`measurements.md` M2): the statusline
-  command receives `context_window_size`, `used_percentage`, `remaining_percentage`, `session_id` and
-  `transcript_path`. Unknown: whether any hook does. A statusline runs **on render**, which is a proxy
-  for "the agent is alive and drawing" — record which of the two is chosen and why. [REQ: remaining-context-is-read-from-the-runtime-per-model-and-an-unknown-reading-never-triggers-a-rotation]
-- [ ] 1.2 CORE — Measure how "the agent is between turns" can be established, and prove the chosen
-  signal fires in BOTH directions: it must say busy for an agent mid-turn and idle for one waiting.
-  Candidates, none assumed: the pty's own rendering, the tail of the transcript, and
-  `pendingBackgroundAgentCount` (observed with values 1 and 2). A signal that only ever says idle is
-  the failure this task exists to prevent. [REQ: rotation-is-attempted-only-where-the-framework-owns-the-terminal-and-the-agent-is-between-turns]
+- [x] 1.1 CORE — Establish whether a hook carries the same `context_window` figures the statusline
+  payload does, and at what moment it fires. **DONE 2026-08-19 — the answer is NO, so the statusline
+  is the carrier.** Nine hooks were registered and eight fired (`SessionStart`, `UserPromptSubmit`,
+  `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `SessionEnd`); `grep -l context_window` over
+  every dump matches **`StatusLine.jsonl` alone**. Cadence measured at **5 renders in 56 s, gaps
+  3.0–20.8 s** — event-driven, not a timer, and adequate for the reason that matters rather than by
+  luck: a rotation can only happen between turns, so the reading's granularity matches the act it
+  gates. ⚠ **The first render carries a size and NO usage** — `used_percentage: null`,
+  `current_usage: null`, `total_input_tokens: 0` — so dividing yields **0 %, i.e. plenty of room**,
+  for a reading that does not exist (1 of 5 renders). That is why 4.2's `unknown` must be a value and
+  not a number. `PreCompact` and `Notification` never fired and are **not measured**; `PreCompact` is
+  named in 10.1 as a hypothesis rather than a plan. [REQ: remaining-context-is-read-from-the-runtime-per-model-and-an-unknown-reading-never-triggers-a-rotation]
+- [x] 1.2 CORE — Measure how "the agent is between turns" can be established, and prove the chosen
+  signal fires in BOTH directions. **DONE 2026-08-19 — the hook pair wins and the obvious candidate
+  is refuted in the dangerous direction.** 32 samples at ~1 s across two deliberately different turns
+  (14 s with a tool call; one sub-second and text-only). The **`UserPromptSubmit` / `Stop` pair**:
+  BUSY → `BUSY` ×15 + *no-event-yet* ×1, IDLE → `IDLE` ×7 + *no-event-yet* ×3 — the single overlapping
+  value is honest unknown, occurring only before the first prompt, and on the sub-second turn it read
+  BUSY **exactly during it**. The **transcript tail is REFUTED**: it overlaps on `last-prompt`, and on
+  the text-only turn it never became `assistant/tool_use` at all (it read `attachment`, then
+  `atis-latch`), so the obvious rule *"busy iff the tail is a tool call"* reports IDLE **while the
+  agent is answering** — the fail-open direction that sends the clear mid-turn. `pendingBackground
+  AgentCount` was `None` throughout: it counts background agents, not turns. Dropped. [REQ: rotation-is-attempted-only-where-the-framework-owns-the-terminal-and-the-agent-is-between-turns]
 - [ ] 1.3 CORE — Confirm on a framework-started agent that `--settings <file-or-json>` delivers the
   chosen carrier from a framework-owned path, and that **no file in the project's tree is written**.
   Prove the negative by hashing the tree before and after, not by reading the code. [REQ: remaining-context-is-read-from-the-runtime-per-model-and-an-unknown-reading-never-triggers-a-rotation]
@@ -152,7 +165,14 @@ last open question. Do not resolve it by inventing a second definition of comple
 
 ## 10. Debt this change names rather than absorbs
 
-- [ ] 10.1 Record in the bug register whatever group 1 refutes. A measurement that changes the design
+- [ ] 10.1 Record in the bug register whatever group 1 refutes. **Two are already standing,
+  from 1.1/1.2:** `SubagentStop` fires for work nobody spawned (`agent_type: ""`, 3.8 s after `Stop`
+  in a session with no subagent) and names an `agent_transcript_path` that **is not on disk** — so
+  descendant accounting built on it would count phantoms, and the missing file independently confirms
+  M3. And `Stop` carries `last_assistant_message` verbatim, which makes any hook that logs its own
+  payload a persistence path for conversation content: the framework's hooks record the EVENT, never
+  the payload. Also open: whether `PreCompact` carries the figures — it never fired here, so it is a
+  hypothesis. A measurement that changes the design
   is worth more than the design, and the refuted carrier is the durable half. [REQ: remaining-context-is-read-from-the-runtime-per-model-and-an-unknown-reading-never-triggers-a-rotation]
 - [ ] 10.2 Name in `fleet-view`'s task list that its start path must supply a goal (design D6), so the
   coordination is discovered by reading rather than during apply. [REQ: a-framework-started-agent-carries-a-goal-declared-when-it-is-started]
