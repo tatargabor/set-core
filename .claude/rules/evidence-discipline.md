@@ -45,6 +45,73 @@ and a count of matches that its own query created. Resolve each hit to an identi
 discriminate on something the impostor cannot fake — here, process age: a real watcher is
 hours old, the self-match is always `00:00`.
 
+**The measuring instrument hits the very wall it was built to measure, and reports a zero.**
+Sibling of the class above, and it fails in the reassuring direction. Measured 2026-08-17: a test
+written to find out how many file-watcher instances a library allocates returned **0** for every
+variant — one watcher over six directories, six watchers over one each, before and after. The
+number looked like good news. It was not a measurement at all: the kernel's per-user watcher table
+was **full** (126 of 128), so every allocation failed and the library silently fell back to polling.
+A direct probe made it plain — `inotify_init()` → `EMFILE`, zero successful allocations.
+
+The general form: **a resource meter cannot be trusted while the resource is exhausted**, and
+neither can a rate meter under throttling, a cache-hit meter with a cold cache, or a concurrency
+meter at the connection limit. Each returns a small, tidy number that reads as efficiency. Before
+believing a suspiciously low figure, allocate one unit of the thing by hand and check that it
+succeeds — the zero and the refusal look identical from inside the test.
+
+**Two agents can be wrong in the same step, four times running, and the shape is the tell.**
+Measured across one day on a cross-session channel: four consecutive rounds in which **the
+measurement was correct and the generalisation was not** — a class absent from a sample read as a
+class that cannot appear; a *missing* key described as a *stale* value; an attribution asserted
+without measuring who held the resource; and a per-process rule from one runtime applied to
+another. Plus a fifth, the worst kind, on this side: a **wrong measurement stated confidently**,
+because the classifier was a bare substring test (`"code" in cmd`) that swept this repo's own
+server into a category named for an editor — 61 descriptors misfiled.
+
+The common cause was not carelessness, and naming it is what makes it avoidable: **each side
+generalised from the runtime it could see.** One measured Node and concluded about Python; the
+other measured Python and concluded about the peer's processes. So: when a conclusion crosses to
+the other side's environment, it has to be measured *there* — and the round is cheap precisely
+because neither side believed the other.
+
+**A filter downstream of a source undoes it, and reads exactly like a source that returned
+nothing.** Measured 2026-08-19. A project list built as a union of its sources gained a third
+source; the union returned 49 entries and the endpoint served 41. Nothing errored. One line
+further down, a filter dropped every entry that had neither a live process nor an entry in *one
+named source* — a condition that was harmless while there were two sources and every entry had
+one or the other, and that silently discarded the eight the new source had just supplied.
+
+Two things make it worth a rule. **The two obvious checks disagreed and neither was wrong:** the
+in-process call reported 49 because it stopped at the union, the HTTP call reported 41 because it
+went all the way through. And **the fail shape is indistinguishable from the boring one** — a
+source that contributes nothing looks the same from the outside as a source whose contribution is
+discarded afterwards, so the first instinct is to go and debug the new reader, which is correct
+code. The general form: *completing a set means auditing everything downstream of it*, because
+any later step that names one member of the set is a copy of the set's definition, and it drifted
+the moment the set changed.
+
+**A reproducer is a measurement with a timestamp, and a symptom that stops appearing is not a
+repair.** Same day, on this file's own advice. A latent flake was recorded with its exact
+reproducer — eight named files, in that order — and re-checked "after every commit", which was
+true when written. The files then grew from 144 tests to 189 as unrelated work landed, the
+collection order that produced the fault changed with them, and the combination went green. The
+record still said *still fails*; the code still had the fault.
+
+The repair is not to re-measure more often, it is to **make the CAUSE fatal instead of waiting for
+the symptom**. Here the cause was an unraisable exception the interpreter prints and carries on
+from; running the same eight files with that warning promoted to an error answered the question
+directly — 3 failures and 1 error before the fix, 192 passed after — and that check does not care
+what order anything is collected in. Where a symptom is a side effect of a cause, assert the cause.
+
+**The harness's own cleanup can answer the question before the code under test does.** A test for
+"shutdown ends its client handlers" asked whether the tasks were done *after* the loop runner
+returned — and the loop runner cancels whatever is left before closing the loop, so it passed with
+the entire shutdown logic removed. The mutation run is what found it; nothing about the test looked
+wrong. Same class as the check that proves the renderer produced a node: it verified the
+mechanism's *end state* at a point where something else had already produced that state. When a
+test asserts about teardown, the assertion has to be taken **at the moment the code under test
+finishes**, not after the fixture has tidied up behind it.
+
 **A dead test looks exactly like a passing one, from far enough away.** Fifteen tests here
 raised `TypeError` on a removed keyword argument *before reaching any assertion* — including
 the one test written to guard against a quoted verdict being read as a verdict. Collection
