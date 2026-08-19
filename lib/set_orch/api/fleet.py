@@ -40,7 +40,9 @@ from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.awaiting import awaiting_for
-from ..fleet.discovery import discover_agent, live_session_ids, parent_seat
+from ..fleet.discovery import (
+    discover_agent, live_session_ids, parent_seat, read_messaging_projects,
+)
 from ..fleet import scopes as fleet_scopes
 from ..fleet import instruct as fleet_instruct
 from ..fleet import purpose as fleet_purpose
@@ -322,7 +324,8 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         registered = []
 
     agents = discover_agents(include_oneshot=include_oneshot)
-    projects = discover_projects(agents, registered=registered)
+    projects = discover_projects(agents, registered=registered,
+                                 messaging=_safe_messaging())
 
     states = {agent.pid: read_state(agent.session_log, record=agent.record) for agent in agents}
     by_pid = {agent.pid: agent for agent in agents}
@@ -484,6 +487,20 @@ def _safe_registry() -> List[Dict[str, Any]]:
         return []
 
 
+def _safe_messaging() -> List[Dict[str, Any]]:
+    """The messaging registry's projects, or none — the union's third source.
+
+    Measured 2026-08-19: **8 of 49** roots were known only here, every one of them
+    a directory that exists. Without this the screen calls itself an inventory
+    and silently stops a sixth of the way short.
+    """
+    try:
+        return read_messaging_projects()
+    except Exception as exc:                      # never empty the fleet for it
+        logger.warning("fleet api: messaging registry unreadable: %s", type(exc).__name__)
+        return []
+
+
 def _known_roots() -> set:
     """Directories the screen can actually see an agent in.
 
@@ -632,7 +649,8 @@ def fleet_get_layout() -> Dict[str, Any]:
     """
     stored = fleet_layout.load()
     names = [p.name for p in discover_projects(discover_agents(include_oneshot=False),
-                                               registered=_safe_registry())]
+                                               registered=_safe_registry(),
+                                               messaging=_safe_messaging())]
     return fleet_layout.apply_to(stored, names)
 
 
@@ -659,7 +677,8 @@ def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"cannot write the arrangement: {exc}") from exc
 
     names = [p.name for p in discover_projects(discover_agents(include_oneshot=False),
-                                               registered=_safe_registry())]
+                                               registered=_safe_registry(),
+                                               messaging=_safe_messaging())]
     return fleet_layout.apply_to(saved, names)
 
 

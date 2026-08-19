@@ -515,10 +515,70 @@ def discover_agent(
     )
 
 
+# --------------------------------------------------------------------------- #
+# the third source — the messaging registry
+# --------------------------------------------------------------------------- #
+
+#: Where the messaging system keeps its registry. The env var is the one that
+#: system itself honours, so an isolated store is isolated for this reader too.
+MESSAGING_DIR_ENV = "SET_AGENT_COMM_DIR"
+MESSAGING_DEFAULT_DIR = "~/.local/share/set-agent-comm"
+
+
+def messaging_registry_path() -> str:
+    root = os.environ.get(MESSAGING_DIR_ENV) or MESSAGING_DEFAULT_DIR
+    return os.path.join(os.path.expanduser(root), "registry.json")
+
+
+def read_messaging_projects(path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """The projects the messaging registry knows about — the union's third source.
+
+    Measured 2026-08-19: **8 of 49** project roots were known ONLY here. They are
+    not exotic — every one of the eight is a directory that exists on disk, with a
+    seat enrolled against it. A surface that calls itself an inventory and cannot
+    see a sixth of the estate is the false-absence class at the level of the whole
+    screen: nothing is marked missing, the list simply stops.
+
+    Fails **open** — an absent, unreadable or reshaped registry yields an empty
+    list rather than an exception, because this is one contributor to a union and
+    the other two must still answer. The cost of that choice is stated where it
+    lands: an empty result and an absent registry are indistinguishable here, so
+    the caller learns "the messaging registry named no project", never "there is
+    no messaging registry".
+
+    Nothing read here is logged. The registry names projects outside this
+    framework, and the confidentiality boundary is persistence rather than
+    naming — a count is safe to log, a path is not.
+    """
+    target = path or messaging_registry_path()
+    try:
+        with open(target, "r", encoding="utf-8", errors="replace") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError) as exc:
+        logger.debug("fleet: messaging registry unreadable (%s)", type(exc).__name__)
+        return []
+    agents = raw.get("agents") if isinstance(raw, dict) else None
+    if not isinstance(agents, dict):
+        logger.debug("fleet: messaging registry has no agents map")
+        return []
+    found: Dict[str, Dict[str, Any]] = {}
+    for name, record in agents.items():
+        if not isinstance(record, dict):
+            continue
+        root = str(record.get("project") or "").rstrip("/")
+        if not root:
+            continue
+        entry = found.setdefault(root, {"root": root, "name": str(name), "seats": []})
+        entry["seats"].append(str(name))
+    logger.debug("fleet: messaging registry named %d project(s)", len(found))
+    return list(found.values())
+
+
 def discover_projects(
     agents: Sequence[Agent],
     *,
     registered: Optional[Sequence[dict]] = None,
+    messaging: Optional[Sequence[dict]] = None,
 ) -> List[ProjectEntry]:
     """The project list as a union of its sources, naming them per entry.
 
@@ -539,6 +599,25 @@ def discover_projects(
             sources=["registry"],
             archived=bool(entry.get("archived")),
         )
+
+    # The messaging registry, added second so a registered project keeps the
+    # registry's name and archived flag while still gaining this source. A
+    # project only this source knows about is NOT archived by omission — it is a
+    # project no one registered, which is a different thing and renders as one.
+    for entry in messaging or ():
+        root = str(entry.get("root") or "").rstrip("/")
+        if not root:
+            continue
+        found = by_root.get(root)
+        if found is None:
+            found = ProjectEntry(
+                root=root,
+                name=str(entry.get("name") or os.path.basename(root) or root),
+                sources=[],
+            )
+            by_root[root] = found
+        if "messaging" not in found.sources:
+            found.sources.append("messaging")
 
     for agent in agents:
         root = (agent.project_root or agent.cwd).rstrip("/")

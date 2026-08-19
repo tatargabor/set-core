@@ -21,7 +21,9 @@ the session record's identity fields matched live processes 23 of 23, while its
 `status` field had a median age of 11 hours and a maximum of 83.
 """
 
-from .discovery import Agent, ProjectEntry, discover_agents, discover_projects
+from .discovery import (
+    Agent, ProjectEntry, discover_agents, discover_projects, read_messaging_projects,
+)
 from .state import AgentState, read_state
 from .instruct import (
     DeliveryReport,
@@ -42,6 +44,7 @@ __all__ = [
     "AgentState",
     "discover_agents",
     "discover_projects",
+    "read_messaging_projects",
     "read_state",
     "Seat",
     "Waiter",

@@ -361,3 +361,128 @@ def test_two_worktrees_of_one_repository_are_one_project(tmp_path, monkeypatch):
     a_root, a_name = disc.resolve_project(str(tmp_path / "repo"))
     b_root, b_name = disc.resolve_project(str(tmp_path / "worktrees" / "feature-x"))
     assert (a_root, a_name) == (b_root, b_name)
+
+
+# --------------------------------------------------------------------------- #
+# the union's third source — task 2.4
+#
+# Measured 2026-08-19 before this was built: 8 of 49 project roots were known
+# ONLY to the messaging registry, and every one of the eight was a directory that
+# exists on disk with a seat enrolled against it. A screen that calls itself an
+# inventory and stops a sixth of the way short is the false-absence class at the
+# level of the whole surface — nothing is marked missing, the list simply ends.
+# --------------------------------------------------------------------------- #
+
+def _messaging_registry(tmp_path: Path, agents: dict) -> str:
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps({"agents": agents}), encoding="utf-8")
+    return str(path)
+
+
+def test_a_project_only_the_messaging_registry_knows_is_in_the_union(tmp_path):
+    """The case the union existed for and could not answer."""
+    path = _messaging_registry(tmp_path, {
+        "only-here": {"agent": "only-here", "project": "/somewhere/only-here"},
+    })
+    entries = discovery.read_messaging_projects(path)
+    projects = discovery.discover_projects([], registered=[], messaging=entries)
+    assert [p.name for p in projects] == ["only-here"]
+    assert projects[0].sources == ["messaging"], (
+        "a project reached the union without naming the source that supplied it"
+    )
+
+
+def test_a_project_both_sources_know_keeps_the_registrys_facts_and_gains_the_source(tmp_path):
+    """Order matters here and the failure would be quiet.
+
+    The registry carries the name a person chose and the archived flag every
+    other surface honours. If the messaging entry could overwrite either, an
+    archived project would silently return to the screen under a different name —
+    two false values at once, and neither looks like an error.
+    """
+    path = _messaging_registry(tmp_path, {
+        "seat-name": {"agent": "seat-name", "project": "/repo/thing"},
+    })
+    projects = discovery.discover_projects(
+        [],
+        registered=[{"path": "/repo/thing", "name": "registered-name", "archived": True}],
+        messaging=discovery.read_messaging_projects(path),
+    )
+    assert len(projects) == 1
+    assert projects[0].name == "registered-name"
+    assert projects[0].archived is True
+    assert projects[0].sources == ["registry", "messaging"]
+
+
+def test_several_seats_in_one_project_are_one_entry(tmp_path):
+    """The registry is keyed by seat, and a project routinely has several."""
+    path = _messaging_registry(tmp_path, {
+        "a": {"project": "/repo/one"},
+        "b": {"project": "/repo/one"},
+        "c": {"project": "/repo/two"},
+    })
+    entries = discovery.read_messaging_projects(path)
+    assert sorted(e["root"] for e in entries) == ["/repo/one", "/repo/two"]
+    assert sorted(next(e for e in entries if e["root"] == "/repo/one")["seats"]) == ["a", "b"]
+
+
+@pytest.mark.parametrize("content, why", [
+    (None, "the file does not exist"),
+    ("{not json", "the file is not JSON"),
+    ('{"agents": []}', "agents is a list rather than a map"),
+    ('{"seats": {}}', "the shape changed under us"),
+    ('{"agents": {"x": {"project": ""}}}', "a seat records no project"),
+    ('{"agents": {"x": "a string"}}', "a seat record is not a map"),
+])
+def test_an_unusable_registry_yields_no_projects_rather_than_an_exception(tmp_path, content, why):
+    """Fails OPEN, deliberately, and the cost is stated rather than hidden.
+
+    This is one contributor to a union; the other two must still answer. So an
+    absent registry and a registry that named nothing are indistinguishable to
+    the caller — which is a real loss, and the honest report is "the messaging
+    registry named no project", never "there is no messaging registry".
+    """
+    path = str(tmp_path / "registry.json")
+    if content is not None:
+        Path(path).write_text(content, encoding="utf-8")
+    assert discovery.read_messaging_projects(path) == [], why
+
+
+def test_the_env_var_the_messaging_system_honours_is_the_one_this_reader_honours(tmp_path, monkeypatch):
+    """An isolated store must be isolated for this reader too, or a test that
+    thinks it is sandboxed reads the developer's real registry — and the first
+    sign of it is a project name from another repository on the screen."""
+    monkeypatch.setenv(discovery.MESSAGING_DIR_ENV, str(tmp_path))
+    assert discovery.messaging_registry_path() == str(tmp_path / "registry.json")
+
+
+def test_reading_the_messaging_registry_writes_none_of_it_to_the_log(tmp_path, caplog):
+    """The confidentiality boundary is persistence, not naming.
+
+    This registry names projects outside this framework — paths, and the seat
+    names built from them. Rendering them is the point; a log line is a file that
+    leaves the machine. A count is safe, a path is not.
+    """
+    import logging
+    marker = "a-name-that-must-not-be-logged"
+    path = _messaging_registry(tmp_path, {
+        marker: {"agent": marker, "project": f"/home/somebody/{marker}"},
+    })
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="set_orch.fleet.discovery"):
+        entries = discovery.read_messaging_projects(path)
+    assert entries and entries[0]["root"].endswith(marker), "the fixture read nothing"
+    leaked = [r.getMessage() for r in caplog.records if marker in r.getMessage()]
+    assert leaked == [], f"the registry's content reached the log: {leaked}"
+
+
+def test_the_marker_would_have_been_found_if_it_had_leaked(tmp_path, caplog):
+    """The detector, proven to fire. A confidentiality test that cannot fail is
+    indistinguishable from one that passes, and reads as an assurance either way.
+    """
+    import logging
+    marker = "a-name-that-must-not-be-logged"
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="set_orch.fleet.discovery"):
+        logging.getLogger("set_orch.fleet.discovery").debug("leaking %s on purpose", marker)
+    assert [r.getMessage() for r in caplog.records if marker in r.getMessage()]

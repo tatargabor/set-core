@@ -342,7 +342,7 @@ def test_the_reason_a_terminal_is_unavailable_is_said_once_not_per_row(monkeypat
     """
     monkeypatch.setattr(fleet_api, "_load_projects", lambda: [])
     monkeypatch.setattr(fleet_api, "discover_agents", lambda **k: [])
-    monkeypatch.setattr(fleet_api, "discover_projects", lambda a, registered=None: [])
+    monkeypatch.setattr(fleet_api, "discover_projects", lambda a, **k: [])
     monkeypatch.setattr(fleet_api, "_owned_by_pid", lambda: None)
     assert fleet_api.fleet_agents()["owner_reachable"] is False
 
