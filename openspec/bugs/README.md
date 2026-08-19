@@ -416,6 +416,68 @@ consumer's name, path, or content.
 - **how you would know it is fixed:** unprotect `main` on that project, force-push,
   re-protect; then `git rev-parse origin/main gitlab/main` returns one SHA twice.
 
+### B-21 — a project the screen SHOWS, with a start control next to it, refuses the start
+
+- **state:** closed (`<this commit>`)
+- **reported:** 2026-08-19 by the user, with a screenshot: the panel header names
+  the project and its path, offers *start an agent*, and the answer is
+  *"… is not a project this screen knows; register it first"*
+- **measured, in-process against the running server:** the list serves **49**
+  projects; `_known_roots()` — the guard the start endpoint asks — knew **39**.
+  **10 projects were shown with a start control and refused**: 9 supplied only by
+  the messaging registry, 1 by a live process whose root the guard's own
+  enumeration missed.
+- **cause, and it is not about any one project:** the guard ENUMERATED ITS OWN
+  SOURCES — the registry, plus the roots of discovered agents — which is a second
+  definition of *what this screen knows*. It was correct while the list had those
+  same two sources and went wrong silently when a third arrived. The union's
+  downstream filter had already been bitten by the same third source
+  (`api/fleet.py`, the note at the `if not members and not project.sources`
+  line); that one was fixed and this one was not.
+- **the class:** *completing a set means auditing everything downstream of it* —
+  any later step that re-states the set is a copy, and it drifted the moment the
+  set changed. The guard now asks the list rather than rebuilding it, so a
+  fourth source cannot reintroduce this.
+- **a second finding fell out, and it nearly caused a mirrored bug:** the fix's
+  first docstring claimed archived projects stay out, taken from
+  `discover_projects`'s own docstring — *"an `archived` project is excluded by
+  every other surface in this framework, so it is excluded here too"*. Measured:
+  **19 of the 49 served projects are archived**, and the screen shows them all.
+  Believing that sentence and filtering here would have rebuilt the same
+  divergence in the other direction. See B-22.
+- **proven by mutation, both directions:** restoring the two-source guard fails
+  2 of 4 tests; making the guard accept everything fails 2 of 4 — a different 2,
+  including the one that keeps the protection. Restore verified by file identity.
+- **⚠ one thing this fix does NOT answer.** The refusal told the reader to
+  *register it first*, and the screen offers no way to do that. `set-project
+  init` does register (`bin/set-project`, the *Add project to registry* branch),
+  but the reported project is not in `~/.config/set-core/projects.json` — so
+  either that command did not run for it or it ran under another name. Not
+  investigated further, and not guessed at here.
+
+### B-22 — `discover_projects`'s docstring claims an archived filter the code does not have
+
+- **state:** open
+- **reported:** 2026-08-19 by this session, while fixing B-17
+- **measured:** the docstring says *"an `archived` project is excluded by every
+  other surface in this framework, so it is excluded here too — but the flag is
+  carried rather than dropped"*. The code below it sets `archived=` on the entry
+  and never filters on it; `grep -n archived lib/set_orch/api/fleet.py` finds one
+  use, and it is the field being copied into the response. Live: **19 of 49
+  served projects are archived**, all shown.
+- **why it is worth an entry rather than a one-word edit:** this is the *comment
+  claiming a guard the code does not have* class, and it already cost something —
+  it was read as fact while writing B-17's fix and nearly produced a mirrored
+  version of the very bug being repaired. A comment that is wrong is worse than
+  none, because the next reader stops looking.
+- **it needs a DECISION, not just a rewrite:** either the sentence is stale and
+  should describe what the function does, or the filter was intended and is
+  missing — in which case 19 projects are on screen that this framework's other
+  surfaces exclude, which is a bigger question than a docstring.
+- **fixed when:** the docstring and the code agree, and whichever way it is
+  settled, a test holds it — the wrong reading is what has to be unable to come
+  back.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open

@@ -516,18 +516,46 @@ def _known_roots() -> set:
     exposed, but because *not* choosing here chooses the permissive option
     silently: an endpoint that accepts any existing directory runs an agent
     anywhere on the machine, and nothing on the screen ever offers that.
+
+    ## Built from the SAME union the list is, and that is the whole point
+
+    This used to enumerate its own two sources — the registry, and the roots of
+    discovered agents — which was a second definition of *what this screen
+    knows*. It was correct while the list had those same two sources, and it
+    went wrong silently the moment a third arrived.
+
+    Measured 2026-08-19, on a report that a project visible on screen refused to
+    start an agent: **49 projects served, 39 roots known here, 10 refused** — 9
+    of them supplied only by the messaging registry, and 1 by a live process
+    whose root this enumeration missed. The screen offered a start control on
+    every one of them.
+
+    This is the defect the union's own filter already had, thirty lines below,
+    and the note there says why it recurs: *a filter can undo a source.* Fixing
+    that one and leaving this one is the same class again — **completing a set
+    means auditing everything downstream of it**, because any later step that
+    re-states the set is a copy that drifted the moment the set changed. So the
+    guard now asks the list rather than rebuilding it, and a fourth source
+    cannot reintroduce this.
+
+    ⚠ Archived projects are IN, and that is measured rather than reasoned.
+    `discover_projects`'s own docstring says an archived project *"is excluded by
+    every other surface in this framework, so it is excluded here too"* — and the
+    code below it carries the flag without ever filtering on it. Measured
+    2026-08-19 on the live server: **19 of the 49 projects served are archived**,
+    and the screen shows every one. Believing that sentence and filtering here
+    would have re-created the very divergence this function was just repaired
+    for, in the other direction: a project on screen, with a start control, that
+    the guard refuses. The rule is *what the screen shows*, so the guard follows
+    the list wherever it goes and never decides on its own what ought to be in
+    it.
     """
     roots = set()
-    try:
-        for entry in _load_projects():
-            root = entry.get("path") or entry.get("root")
-            if root:
-                roots.add(os.path.realpath(root))
-    except Exception as exc:
-        logger.warning("fleet api: project registry unreadable while validating cwd: %s", exc)
-    for agent in discover_agents(include_oneshot=True):
-        if agent.project_root:
-            roots.add(os.path.realpath(agent.project_root))
+    for project in discover_projects(discover_agents(include_oneshot=True),
+                                     registered=_safe_registry(),
+                                     messaging=_safe_messaging()):
+        if project.root:
+            roots.add(os.path.realpath(project.root))
     return roots
 
 
