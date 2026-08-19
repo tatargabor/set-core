@@ -41,7 +41,7 @@ import struct
 import termios
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import discovery, scopes
 from .scopes import Scope, ScopeError
@@ -348,6 +348,37 @@ class AgentOwner:
         if agent is None:
             raise OwnerError(f"no terminal owned here for {label}")
         self._set_window(agent.master_fd, rows, cols)
+
+    @staticmethod
+    def _get_window(fd: int) -> Optional[Tuple[int, int]]:
+        """The pty's CURRENT geometry, asked of the kernel.
+
+        Read rather than remembered, deliberately. A stored copy of a size that
+        `resize` also writes is a second place, and it drifts the first time
+        anything else changes the window — another viewer, the program itself,
+        a `stty`. The question this answers is *what geometry was the buffered
+        screen drawn at*, and only the fd knows.
+
+        `None` when the fd cannot answer (closed, or not a tty): the caller then
+        says nothing rather than guessing, because a wrong geometry is worse
+        here than an absent one — it would be applied.
+        """
+        try:
+            packed = fcntl.ioctl(fd, termios.TIOCGWINSZ, struct.pack("HHHH", 0, 0, 0, 0))
+        except OSError as exc:
+            logger.debug("fleet owner: cannot read window size: %s", exc)
+            return None
+        rows, cols, _, _ = struct.unpack("HHHH", packed)
+        if rows <= 0 or cols <= 0:
+            return None
+        return rows, cols
+
+    def window(self, label: str) -> Optional[Tuple[int, int]]:
+        """`(rows, cols)` of one owned terminal, or `None` if it cannot be read."""
+        agent = self._agents.get(label)
+        if agent is None:
+            raise OwnerError(f"no terminal owned here for {label}")
+        return self._get_window(agent.master_fd)
 
     # -- what this owner can say about the world -------------------------- #
 

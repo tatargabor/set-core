@@ -130,6 +130,19 @@ export interface AttachedEvent {
   replayed_bytes: number
   replay_truncated: boolean
   viewers: number
+  /**
+   * The pty's geometry at the moment of attaching — B-16.
+   *
+   * The buffered screen is bytes a program laid out for a specific number of
+   * columns, and a terminal is a fixed-grid device: rendering that tail at a
+   * different width destroys the layout instead of adapting it, silently,
+   * because the result still looks like a terminal.
+   *
+   * `null` where the owner could not read the fd. The viewer then leaves its
+   * own size alone rather than applying a guess.
+   */
+  rows: number | null
+  cols: number | null
 }
 
 export interface RefusedEvent {

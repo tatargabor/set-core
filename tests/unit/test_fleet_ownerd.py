@@ -165,6 +165,13 @@ class _FakeOwner:
         self.stopped.append(label)
         return True
 
+    # The geometry the buffered screen was drawn at (B-16). This double answers
+    # a fixed pair; that the REAL owner READS the fd rather than remembering a
+    # number is asserted in `test_fleet_owner_window.py` — it has to be
+    # separate, because a double returning a constant cannot tell the two apart.
+    def window(self, label):
+        return getattr(self, "geometry", (24, 80))
+
 
 def test_the_tail_is_bounded_and_admits_when_it_lost_its_head(tmp_path):
     """A tail that silently starts mid-stream reads as the whole stream. The

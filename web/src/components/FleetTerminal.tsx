@@ -54,6 +54,17 @@ import { IconButton } from './TileControls'
  */
 const MIN_COLS = 80
 
+/**
+ * How long to wait for a replay that never finishes arriving — B-16.
+ *
+ * The replay is normally one burst and this timer never fires. It exists for
+ * the case where the byte count and what arrives disagree: without it the
+ * viewer would keep the pty at the geometry it was found in and never send its
+ * own, so a resize would silently stop working. One second is far longer than a
+ * local burst and far shorter than a person noticing.
+ */
+const REPLAY_GRACE_MS = 1000
+
 interface Props {
   label: string
   /** Called when the reader closes the view. Detach only — never a stop. */
@@ -147,10 +158,36 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       socket = ws
       const encoder = new TextEncoder()
 
-      /** The pty's size, sent once attached and on every resize afterwards. */
+      /** The pty's size, sent once the replay has landed and on every resize. */
       const sendSize = () => {
         if (ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify({ resize: { rows: term.rows, cols: term.cols } }))
+      }
+
+      /*
+        THE TWO GEOMETRIES, AND WHY THEY ARE SEQUENCED — B-16.
+
+        The replay must render at the pty's shape; the tile must then get its
+        own. Doing the second before the first has finished resizes the grid out
+        from under the bytes, which is the bug this repairs, one layer down.
+
+        `replayLeft` is counted down from `replayed_bytes` — an exact number the
+        server sends BEFORE any byte — so the end of the replay is arithmetic,
+        not a guess about timing. `settle` is idempotent and also fires on a
+        timer, because a replay that arrives short (a dropped frame, a socket
+        that ends mid-burst) must not leave the pty stuck at a size nobody is
+        looking at. Failing towards "send our size late" is the safe direction;
+        failing towards "never send it" is not.
+      */
+      let replayLeft = 0
+      let settled = false
+      let settleTimer: number | undefined
+      const settle = () => {
+        if (settled) return
+        settled = true
+        if (settleTimer !== undefined) { window.clearTimeout(settleTimer); settleTimer = undefined }
+        refit()
+        sendSize()
       }
 
       ws.onmessage = ev => {
@@ -158,8 +195,35 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           const control = parseControl(ev.data)
           if (!control) return
           if (control.event === 'attached') {
-            setPhase({ kind: 'attached', ack: control as AttachedEvent })
-            sendSize()
+            const ack = control as AttachedEvent
+            setPhase({ kind: 'attached', ack })
+            /*
+              B-16 — RENDER THE REPLAY AT THE GEOMETRY IT WAS DRAWN AT.
+              Reported 2026-08-19: *"terminal also status bar elromlik ha
+              projektet valtok, beleirok, majd visszavaltok"*, and the half that
+              names the cause: *"beiras utan megjavul"*. A keystroke changes
+              nothing about the socket, the pty or the buffer — it makes the
+              remote program REPAINT. So the screen was stale, not lost.
+
+              This ack reaches the browser BEFORE any replay byte (the bridge
+              sends it, then starts the output pump), which is what makes the
+              repair possible here and nowhere else: adopt the pty's shape
+              first, and the bytes that follow land on the grid they were
+              composed for. Without it the viewer fitted to its own tile and
+              rendered a screen laid out for some other width — silently,
+              because the result still looks like a terminal.
+
+              Then, and only then, our own size goes back. If it differs the
+              program gets a SIGWINCH and repaints, which is the ordinary path;
+              if it matches there is nothing to repaint and nothing is stale.
+            */
+            if (ack.rows && ack.cols) term.resize(ack.cols, ack.rows)
+            // Our own size goes back only once the replay has landed — see
+            // `settle` below. Sending it here would resize the grid out from
+            // under the very bytes this is protecting.
+            replayLeft = ack.replayed_bytes
+            if (replayLeft <= 0) settle()
+            else settleTimer = window.setTimeout(settle, REPLAY_GRACE_MS)
             term.focus()
             return
           }
@@ -169,7 +233,15 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           return
         }
         // Bytes, straight through. No decode: see the header of this file.
-        term.write(new Uint8Array(ev.data as ArrayBuffer))
+        const bytes = new Uint8Array(ev.data as ArrayBuffer)
+        term.write(bytes)
+        // The replay is counted DOWN, not detected. `replayed_bytes` is exact
+        // and the server sends it before a single byte, so the end of the
+        // replay is arithmetic rather than a guess about timing.
+        if (replayLeft > 0) {
+          replayLeft -= bytes.length
+          if (replayLeft <= 0) settle()
+        }
       }
       ws.onerror = () => {
         setPhase(p => (p.kind === 'attached' ? p : { kind: 'refused', reason: 'the connection was not established' }))
@@ -202,6 +274,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       el.addEventListener('focusout', lost)
 
       dispose = () => {
+        if (settleTimer !== undefined) window.clearTimeout(settleTimer)
         observer.disconnect()
         el.removeEventListener('focusin', gained)
         el.removeEventListener('focusout', lost)

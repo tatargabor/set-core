@@ -291,7 +291,10 @@ consumer's name, path, or content.
 
 ### B-16 — a terminal re-attached after a project switch draws a broken screen until a keystroke repairs it
 
-- **state:** open
+- **state:** open — the cause is found and the fix is shipped in code, and the
+  entry stays open because nobody has yet performed the reported recipe against
+  the running build. A fix is a fix when somebody LOOKS; until then this is a
+  repair of the mechanism the screenshot is consistent with.
 - **reported:** 2026-08-19 by the user — *"terminal also status bar elromlik ha
   projektet valtok, beleirok, majd visszavaltok"*, and then the half that names
   the cause: *"beiras utan megjavul"*
@@ -316,6 +319,23 @@ consumer's name, path, or content.
 - **fixed when:** switch away, type, switch back — the status bar is whole
   before anything is typed. Prove it the way this repo proves a fix: break the
   ordering again and watch the check go red.
+- **what was found, and it is structural rather than a guess:** the `attached`
+  ack reaches the browser BEFORE any replay byte — `lib/set_orch/api/fleet.py`
+  sends it, then starts the output pump — and it carried how MUCH was replayed
+  and never what SHAPE it was. So the viewer fitted to its own tile and then
+  rendered a screen that a program had laid out for some other width. A terminal
+  is a fixed-grid device: that does not adapt the screen, it destroys it, and
+  silently, because the result still looks like a terminal.
+- **the repair, in two ordered steps:** the ack now carries the pty's geometry,
+  READ from the master fd with `TIOCGWINSZ` rather than remembered (a stored
+  copy drifts the moment anything else resizes the window); the viewer adopts
+  that shape before the first replayed byte, and sends its own size back only
+  once the replay has landed — counted down from `replayed_bytes`, with a
+  one-second fallback so a short replay cannot leave the pty stuck.
+- **proven by mutation, not by a green run:** 4 of 6 client tests fail on the
+  old ordering, the 5th on substituting a default geometry for `null`, and 2 of
+  4 owner tests fail when the size is remembered instead of read. Restores
+  verified by file identity.
 
 ## Closed
 

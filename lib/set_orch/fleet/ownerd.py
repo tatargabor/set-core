@@ -421,6 +421,23 @@ class OwnerDaemon:
         if tail:
             for frame in self._frames(label, tail, replay=True):
                 writer.write(frame)
+        # THE GEOMETRY THE REPLAY WAS DRAWN AT — B-16.
+        #
+        # A terminal is a fixed-grid device: the buffered tail is bytes a program
+        # laid out for a specific number of columns. A viewer that renders it at
+        # a different width does not adapt the screen, it destroys it — and the
+        # damage is silent, because the result still looks like a terminal. The
+        # viewer had no way to know the width: this ack carried how MUCH was
+        # replayed and never what shape it was.
+        #
+        # Sent as `null` rather than a guess when the fd cannot answer. A wrong
+        # geometry here is worse than an absent one, because the viewer would
+        # apply it.
+        window = None
+        try:
+            window = self.owner.window(label)
+        except OwnerError:  # pragma: no cover - the label was checked above
+            logger.debug("fleet owner: no window geometry for %s", label)
         return {
             "attached": label,
             "replayed_bytes": len(tail),
@@ -428,6 +445,8 @@ class OwnerDaemon:
             # is then honestly incomplete rather than silently so.
             "replay_truncated": self._dropped.get(label, False),
             "viewers": len(self._subscribers.get(label, [])),
+            "rows": window[0] if window else None,
+            "cols": window[1] if window else None,
         }
 
     async def _do_detach(
