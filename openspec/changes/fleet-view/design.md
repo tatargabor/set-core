@@ -751,13 +751,36 @@ Three consequences, and the third is uncomfortable:
   running interactive agent, so it stays — as the delivery path for an answer, not as something
   a human looks at.
 - **Reading is settled and the terminal is not the answer to it.** Measured the same day:
-  a keystroke reaches the terminal in **6.6–21.3 ms** and the session log in **0.3–5.5 s**. The
-  log's figure is not a transport cost — tightening the poll from 250 ms to 20 ms made it
-  *worse*, which is the tell: the agent writes its JSONL on **turn boundaries**, not
-  continuously. So the log is not slow, it is intermittent, and for reading it is enough.
+  a keystroke reaches the terminal in **6.6–21.3 ms** and the session log in **0.3–5.5 s** —
+  and a few seconds is explicitly enough, because agents run for minutes to hours.
+
+  ⚠ **The first explanation written here was wrong, and the user caught it within a minute.**
+  It said the agent writes its JSONL on **turn boundaries**, inferred from one observation:
+  the *typed* line only reaches the log when it is submitted. Measured properly afterwards,
+  over this very session's 2034-line log: **median gap 0.92 s, 65 % of gaps under 3 s, 90 %
+  under 13 s** — a line per assistant message and per tool call, written continuously. The
+  single 25432 s gap is that night's shutdown, not the mechanism.
+
+  The correction is worth keeping because the conclusion survived and the reasoning did not:
+  one case, generalised in one direction — the defect class this repository already names as
+  *the measurement is correct and the generalisation is not*. A reader who inherited the wrong
+  reason would have designed around an intermittency that does not exist.
 - **Group 8's visible half is off the critical path.** The xterm component in the browser is a
   debug view; the OWNER service beneath it is on the path and stays. This is written down so
   the finished work is not later mistaken for the goal it does not serve.
+
+**Default terminal, switchable comm — decided from the resource measurement, same day.**
+The owner holding **3** agents costs **22.0 MB RSS and 10 file descriptors in total** (three
+`/dev/ptmx`, five sockets, one epoll); a pty is an fd pair, not a socket, and a viewer
+connection exists only while somebody is actually looking. Against that, `set-agent-comm` runs
+a **separate node process per enrolled agent** — measured at **54 MB + 72 MB for two**, i.e.
+~62 MB each. So the terminal may be the default wherever a pty exists, and `sac` enrolment is
+a per-agent switch, not a default: at forty agents the difference is ~2.5 MB against ~2.5 GB.
+
+⚠ **"Default terminal" cannot be wider than the pty.** The orchestrator stays on `claude -p`
+(decided above), so apply agents have no pty and never will. For them the log is the only
+window — which the 0.92 s median makes sufficient. The terminal is the default only for agents
+started from the surface.
 
 **What is on the path instead:** noticing that an agent is waiting for an answer (group 3 /
 7.14), carrying the question out (group 4), and writing the answer back into the same session
