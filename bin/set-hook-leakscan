@@ -35,12 +35,32 @@ if ! command -v set-leakscan >/dev/null 2>&1; then
     exit 2
 fi
 
-OUT=$(set-leakscan 2>&1)
+# WHICH REPOSITORY. The hook process inherits the SESSION's working directory,
+# not the directory the command will run in. A command that begins `cd <path> &&
+# git push` therefore got scanned against whatever repository the session
+# happened to be sitting in — measured on the first live push: the gate listed
+# findings from a completely different repository and refused a clean one.
+#
+# Its fail direction goes both ways, which is why it is not a cosmetic bug: it
+# blocks a correct push, and it would PASS a leaking one whenever the session
+# directory is clean and the target is not.
+TARGET=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+LAST_CD=$(grep -oE '(^|[;&|][[:space:]]*)cd[[:space:]]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^;&|[:space:]]+)' <<<"$CMD" | tail -1           | sed -E 's/^[;&|[:space:]]*cd[[:space:]]+//; s/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
+if [[ -n "$LAST_CD" ]]; then
+    case "$LAST_CD" in
+        "~"*) LAST_CD="${HOME}${LAST_CD#\~}" ;;
+    esac
+    [[ -d "$LAST_CD" ]] && TARGET="$LAST_CD"
+fi
+[[ -n "$TARGET" && -d "$TARGET" ]] || TARGET="$PWD"
+
+OUT=$(cd "$TARGET" && set-leakscan 2>&1)
 RC=$?
 if [[ $RC -ne 0 ]]; then
     echo "BLOCKED by set-hook-leakscan — this push would publish content that must" >&2
     echo "not leave the repository:" >&2
     echo "" >&2
+    echo "  (repository: $TARGET)" >&2
     echo "$OUT" >&2
     echo "" >&2
     echo "Do NOT work around this with --no-verify or core.hooksPath. Fix the" >&2

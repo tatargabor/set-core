@@ -115,6 +115,30 @@ consumer's name, path, or content.
   the defect is upstream, in the two namespaces disagreeing.
 - **fixed when:** every capability the report names either resolves to a module or
   is not offered as installable, and the panel's first row is not a dead end.
+- **traced 2026-08-19, and it needs a DECISION rather than a patch.** The two
+  namespaces are built from two different sources and neither is wrong:
+  `framework_capabilities()` (`lib/set_orch/fleet/capabilities.py:186`) derives
+  `core-rules` from the directory that ships the rules, `templates/core/rules/*.md`;
+  `resolve_module()` (`lib/set_orch/module_install.py:447`) resolves a name by
+  globbing `modules/*/*/templates/<name>/manifest.yaml`, and the core rules have
+  no manifest and do not live under `modules/`. So the report is right that the
+  capability exists and the installer is right that no module carries it.
+- **two ways out, and the difference is who owns the files:**
+  - **(a) make it installable** — widen the resolver to build a declaration from
+    the same directory the report reads. Truthful, because those rules ARE
+    deployed; `set-project init` does it. ⚠ But `templates/core/rules/*.md`
+    deploy **un-prefixed into the project's own namespace** and are `once: true`
+    seeded (see `ae9706bb`), so this panel would gain a button that writes files
+    a consumer owns. That is a write path into a foreign tree, and this repo's
+    whole 2026-07-19 safety track is about not adding one by accident.
+  - **(b) make the report honest** — the capability declares that this panel
+    cannot install it and names what does (`set-project init`). Not a false
+    absence: the claim is *this surface cannot install it*, not *these rules do
+    not exist*. Cheap, and it ends the dead end.
+- **recommendation: (b), and (a) only on the user's say-so.** (b) removes the
+  reported defect — the first row stops refusing — without this screen growing a
+  new way to write into somebody else's repository. Left undone deliberately
+  rather than half-built.
 
 ### B-4 — `check_requirements` cannot fire: no shipped module declares `requires:`
 - **state:** open
