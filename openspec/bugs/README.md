@@ -138,7 +138,7 @@ consumer's name, path, or content.
   `for c in $(ls openspec/changes/ | grep -v archive); do openspec validate "$c" --strict >/dev/null 2>&1 || echo "$c"; done | wc -l` → **14**
 - **fixed when:** the count is 0, or each remaining one is named here with a reason.
 
-### B-7 — the shipped statusline's `Agents: N` is always 0: it reads a key the runtime does not send
+### B-9 — the shipped statusline's `Agents: N` is always 0: it reads a key the runtime does not send
 - **state:** open
 - **reported:** 2026-08-19 by this session, while measuring the context-window carrier
 - **measured:** a project-local `statusLine` command dumping its stdin was run twice
@@ -163,7 +163,7 @@ consumer's name, path, or content.
   (or the count is removed), and a session with a live subagent shows a non-zero
   figure — proven by a capture taken while the child is running, not after it.
 
-### B-8 — `context-window-metrics` divides by a hardcoded 200 000, which is wrong for this repo's own sessions
+### B-10 — `context-window-metrics` divides by a hardcoded 200 000, which is wrong for this repo's own sessions
 - **state:** open — **owned by the change `agent-goal-and-lifecycle`**, listed here
   because it was found while measuring something else and predates that change
 - **reported:** 2026-08-19 by this session
