@@ -154,6 +154,50 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # agent: no bus on the machine, a bus that could not be asked, or a bus
         # that was asked and does not know this session.
         **fleet_instruct.instructability(agent.session_id, seats).as_dict(),
+        # Tasks 3.4 and 3.5 — what the agent SAID, kept apart from what was
+        # measured. Three rules are load-bearing here and each is a defect this
+        # repository has already paid for:
+        #
+        #  · `phase` is null unless the agent declared one. None is not a phase;
+        #    a guessed one is wrong exactly when the situation is unusual, which
+        #    is when somebody opened this screen.
+        #  · `blocked` does NOT contradict `state`. An agent can be measured
+        #    working and declare itself blocked at the same moment — working a
+        #    detour while an answer is outstanding — and that pair is the case
+        #    worth surfacing. Folding them into one field makes it unsayable.
+        #  · `declared_at` travels with it, because a declaration does not
+        #    expire on its own and its AGE is what lets a reader weigh it.
+        #
+        # ⚠ CONFIDENTIALITY. `focus` is a sentence an agent wrote about work that
+        # may be a consumer's — measured on the live roster, one named a partner
+        # company and an unpaid invoice, and `focus_files` are that project's own
+        # paths. Read at request time, shown, and never written down.
+        "declared": _declared_payload(agent.session_id, seats),
+    }
+
+
+def _declared_payload(session_id, seats) -> Dict[str, Any]:
+    """What the agent declared about itself, or a stated absence.
+
+    `known` is false when the bus could not be asked at all. That is not the
+    same as an agent that declared nothing, and the two must not render alike:
+    one is "this agent says nothing about itself", the other is "we could not
+    find out", and only the first is a fact about the agent.
+    """
+    if seats is None:
+        return {"known": False, "focus": None, "phase": None,
+                "blocked": False, "files": [], "declared_at": None}
+    seat = seats.get(str(session_id)) if session_id else None
+    if seat is None:
+        return {"known": True, "focus": None, "phase": None,
+                "blocked": False, "files": [], "declared_at": None}
+    return {
+        "known": True,
+        "focus": seat.focus_text,
+        "phase": seat.phase,
+        "blocked": seat.declared_blocked,
+        "files": list(seat.focus_files),
+        "declared_at": seat.focus_at,
     }
 
 

@@ -572,3 +572,68 @@ def test_there_is_no_bulk_remove_route():
     removes = [r.path for r in router.routes if "waiter" in r.path and "remove" in r.path]
     assert removes == ["/api/fleet/waiters/{pid}/remove"]
     assert not any(r.path.endswith("/waiters/remove") for r in router.routes)
+
+
+# --------------------------------------------------------------------------- #
+# 3.4 / 3.5 in the payload — declared, never merged into measured
+# --------------------------------------------------------------------------- #
+
+
+def _seat_with(**over):
+    base = dict(seat="proj#aaaa", agent="proj", session="s-1", liveness="live")
+    base.update(over)
+    return fleet_instruct.Seat(**base)
+
+
+def test_an_unreadable_bus_is_not_an_agent_that_declared_nothing():
+    """Two different sentences: "it says nothing about itself" and "we could not
+    find out". Only the first is a fact about the agent."""
+    agent = _Agent(7); agent.session_id = "s-1"
+    silent = fleet_api._agent_payload(agent, _State(), {}, None)["declared"]
+    nothing = fleet_api._agent_payload(agent, _State(), {}, {})["declared"]
+    assert silent["known"] is False and nothing["known"] is True
+    assert silent["phase"] is None and nothing["phase"] is None
+
+
+def test_blocked_and_working_are_both_reported():
+    """3.5 — the pair the surface exists to show."""
+    agent = _Agent(7); agent.session_id = "s-1"
+    seats = {"s-1": _seat_with(phase="blocked", focus_text="egy válaszra várok")}
+    payload = fleet_api._agent_payload(agent, _StateOf("working", tool="Bash"), {}, seats)
+    assert payload["state"] == "working"
+    assert payload["declared"]["blocked"] is True
+    assert payload["declared"]["phase"] == "blocked"
+
+
+def test_a_waiting_agent_that_declared_nothing_is_not_blocked():
+    agent = _Agent(7); agent.session_id = "s-1"
+    payload = fleet_api._agent_payload(agent, _StateOf("waiting"), {}, {"s-1": _seat_with()})
+    assert payload["state"] == "waiting"
+    assert payload["declared"]["blocked"] is False and payload["declared"]["phase"] is None
+
+
+def test_the_declaration_never_reaches_a_log_record(caplog):
+    """CONFIDENTIALITY — measured on the live roster: one project's focus named a
+    partner company and an unpaid invoice. Shown at request time, never written."""
+    import logging
+    agent = _Agent(7); agent.session_id = "s-1"
+    marker = "Saltex Kft kifizetetlen szamlai"
+    seats = {"s-1": _seat_with(focus_text=marker, focus_files=("knowledge/tetelek.md",))}
+    with caplog.at_level(logging.DEBUG):
+        payload = fleet_api._agent_payload(agent, _State(), {}, seats)
+    assert payload["declared"]["focus"] == marker     # it REACHED the reader…
+    blob = " ".join(r.getMessage() for r in caplog.records) + " ".join(
+        str(r.args) for r in caplog.records)
+    assert marker not in blob                          # …and nowhere else
+    assert "tetelek.md" not in blob
+
+
+def _StateOf(state, **over):
+    """`_State` fixes `state="quiet"`; these tests need another one.
+
+    A separate helper rather than a parameter on `_State`, because that fixture
+    is used by a dozen tests whose point is that the state is quiet — widening
+    it would put a default in their path.
+    """
+    from set_orch.fleet.state import AgentState
+    return AgentState(state=state, last_movement_age=1.0, **over)

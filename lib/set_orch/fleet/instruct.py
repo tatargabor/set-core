@@ -175,9 +175,44 @@ class Seat:
     rooms: tuple = ()
     project: Optional[str] = None
 
+    #: What the agent DECLARED it is doing — tasks 3.4 and 3.5. The bus carries
+    #: it because the agent put it there (`sac focus`), so it is a claim rather
+    #: than a measurement, and every reader must keep the two apart.
+    #:
+    #: ⚠ CONFIDENTIALITY. `focus_text` is a sentence an agent wrote about work
+    #: that may be a consumer's. Measured 2026-08-19 on the live roster: one
+    #: project's focus named a partner company and an unpaid invoice. The
+    #: boundary in CLAUDE.md is PERSISTENCE, not naming — this may be shown at
+    #: request time and must never reach a log line, a cache, a memory or a
+    #: committed artifact. Nothing here logs it, and nothing downstream may.
+    focus_text: Optional[str] = None
+    #: `explore` | `plan` | `apply` | `verify` | `blocked`, or None where the
+    #: agent declared no phase. **None is not a phase**, and a surface must not
+    #: render it as one — a guessed phase is wrong exactly when the situation is
+    #: unusual, which is when a reader is looking.
+    phase: Optional[str] = None
+    #: Files the agent says it is on. Names, not content — but they are a
+    #: consumer's path names, so the persistence rule above covers them too.
+    focus_files: tuple = ()
+    #: When the declaration was made. A declaration does not expire on its own,
+    #: so its AGE is what a reader needs in order to weigh it.
+    focus_at: Optional[str] = None
+
     @property
     def known_gone(self) -> bool:
         return self.liveness == "gone"
+
+    @property
+    def declared_blocked(self) -> bool:
+        """The agent said it is blocked — independently of what it is doing.
+
+        Task 3.5. `blocked` is a phase the agent declares, and it does not
+        contradict a measured `working`: an agent can be running a tool while
+        the work itself waits on somebody. Folding the two into one field makes
+        *blocked-while-busy* unrepresentable, and that is the state a reader
+        most needs to see.
+        """
+        return self.phase == "blocked"
 
 
 def read_seats(
@@ -238,6 +273,15 @@ def read_seats(
                 # processes share its file. It cannot be addressed as *this*
                 # agent, so it is not a candidate for the join.
                 continue
+            focus = raw.get("focus") or {}
+            if not isinstance(focus, dict):
+                focus = {}
+            # A phase is carried ONLY if the bus states one. `None` stays `None`
+            # rather than becoming a default: task 3.4 emits nothing where the
+            # agent declared nothing, and the bus's own documentation says a
+            # re-declaration without a phase CLEARS it rather than carrying the
+            # old one over. Substituting a value here would resurrect it.
+            phase = focus.get("phase")
             seat = Seat(
                 seat=str(raw.get("seat") or ""),
                 agent=agent,
@@ -245,6 +289,10 @@ def read_seats(
                 liveness=str(raw.get("liveness") or "unknown"),
                 rooms=tuple(entry.get("rooms") or ()),
                 project=str(project) if project else None,
+                focus_text=focus.get("text") or None,
+                phase=str(phase) if phase else None,
+                focus_files=tuple(focus.get("files") or ()),
+                focus_at=focus.get("ts") or None,
             )
             existing = seats.get(seat.session)
             # One session, one seat by construction — but a store that has both

@@ -547,3 +547,74 @@ def test_a_held_message_is_a_modelled_outcome_and_not_a_manufactured_one(tmp_pat
         sac, _ = _fake_sac(box, stdout=json.dumps(answer))
         got = instruct.send_instruction(SEAT, "x", sac_bin=sac)
         assert got.outcome != instruct.HELD
+
+
+# --------------------------------------------------------------------------- #
+# 3.4 / 3.5 — what the agent DECLARED, kept apart from what was measured
+# --------------------------------------------------------------------------- #
+
+
+def _roster(focus):
+    return {"agents": [{"agent": "proj", "rooms": ["proj"], "seats": [
+        {"seat": "proj#aaaa", "session": "s-1", "liveness": "live", "focus": focus}]}]}
+
+
+def test_a_declared_phase_is_carried_verbatim(tmp_path):
+    sac, _ = _fake_sac(tmp_path, stdout=json.dumps(_roster(
+        {"text": "a kapuréteget írom", "files": ["a.py"], "phase": "apply",
+         "ts": "2026-08-19T10:00:00+02:00"})))
+    seat = instruct.read_seats(sac_bin=sac)["s-1"]
+    assert seat.phase == "apply"
+    assert seat.focus_files == ("a.py",)
+    assert seat.focus_at == "2026-08-19T10:00:00+02:00"
+
+
+def test_an_undeclared_phase_stays_none_and_is_never_defaulted(tmp_path):
+    """3.4 — none is not a phase.
+
+    The bus's own rule is that a re-declaration without a phase CLEARS it rather
+    than carrying the old one over. Substituting any value here would resurrect
+    a phase the agent deliberately dropped.
+    """
+    for focus in ({"text": "csinálom", "phase": None}, {"text": "csinálom"}, {}, None):
+        box = tmp_path / f"c{abs(hash(str(focus)))}"
+        box.mkdir()
+        sac, _ = _fake_sac(box, stdout=json.dumps(_roster(focus)))
+        seat = instruct.read_seats(sac_bin=sac)["s-1"]
+        assert seat.phase is None, focus
+        assert seat.declared_blocked is False
+
+
+def test_blocked_is_a_declaration_and_does_not_touch_the_measured_state(tmp_path):
+    """3.5 — blocked-while-busy must be REPRESENTABLE, which is the whole task.
+
+    Folding the two into one field is what makes "working, but stuck on an
+    answer for three hours" unsayable — and that pair is the case the surface
+    exists to show.
+    """
+    sac, _ = _fake_sac(tmp_path, stdout=json.dumps(_roster(
+        {"text": "várok egy válaszra", "phase": "blocked"})))
+    seat = instruct.read_seats(sac_bin=sac)["s-1"]
+    assert seat.declared_blocked is True
+    # and nothing about the measurement moved: the two are separate objects
+    assert not hasattr(seat, "state")
+
+
+def test_a_measured_wait_is_not_a_declared_blockage(tmp_path):
+    """3.5's negative half. A quiet agent may simply have finished a turn."""
+    sac, _ = _fake_sac(tmp_path, stdout=json.dumps(_roster({"text": "kész", "phase": "verify"})))
+    assert instruct.read_seats(sac_bin=sac)["s-1"].declared_blocked is False
+
+
+def test_the_declaration_carries_its_own_age(tmp_path):
+    """A declaration does not expire on its own, so its age is what weighs it."""
+    sac, _ = _fake_sac(tmp_path, stdout=json.dumps(_roster(
+        {"text": "x", "ts": "2026-08-01T00:00:00+02:00"})))
+    assert instruct.read_seats(sac_bin=sac)["s-1"].focus_at == "2026-08-01T00:00:00+02:00"
+
+
+def test_a_malformed_focus_does_not_take_the_roster_down(tmp_path):
+    """A bus that answers oddly must cost the fleet its declarations, not its inventory."""
+    sac, _ = _fake_sac(tmp_path, stdout=json.dumps(_roster("nem objektum")))
+    seat = instruct.read_seats(sac_bin=sac)["s-1"]
+    assert seat.seat == "proj#aaaa" and seat.phase is None and seat.focus_text is None
