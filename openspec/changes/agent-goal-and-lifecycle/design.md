@@ -52,6 +52,43 @@ the act; a goal is the same shape and is recorded the same way.
 and restart would keep neither. `fleet-view` task 7.5 already keys the open terminal by label for the
 same reason.
 
+**Read before designed, and the reading changed this decision twice** (2026-08-19):
+
+- **`OwnedAgent.requested_by` already exists** (`lib/set_orch/fleet/owner.py:121`), recorded in the
+  act of starting, for the same measured reason given above. The goal is a field beside it, not a new
+  subsystem — inventing a parallel record here would be the failure this repository names.
+- ⚠ **But the owner persists nothing, and that inverts the decision.** `AgentOwner` holds its agents
+  in an in-memory dict; the only write in `ownerd.py` is the `health` command printing JSON. And
+  `recover(owner, unit, session_id, cwd, label, resume_argv)` (`ownerd.py:378`) **takes no
+  requester**. Meanwhile `scopes.py` deliberately starts each agent in its own transient scope *so
+  that it outlives the service*. So the agent survives a restart the record does not — and a goal
+  stored the way `requested_by` is stored would disappear while its agent kept working.
+
+  Hence the requirement added to `agent-goal-record`: the goal is written durably at the moment of
+  the act and survives the owner, and a recovered agent whose goal cannot be restored is reported as
+  **unrecoverable** rather than as having none. Those are different claims about the same screen, and
+  collapsing them is the false-absence class.
+
+### D7 — The goal is not `Purpose`, and the boundary between them is stated so neither grows into the other
+
+`lib/set_orch/fleet/purpose.py` already answers *what an agent is working towards* — change, unit,
+group, kind, verdict, progress — by reading the work-cycle engine's on-disk records, never what an
+agent says, and deliberately without importing the engine.
+
+They answer different questions and must not merge:
+
+| | `Purpose` (exists) | goal (this change) |
+|---|---|---|
+| question | what work record exists for this agent | why this agent was started |
+| source | the engine's records, read | declared by the caller, written at the act |
+| exists for | agents running an engine unit | every framework-started agent, engine or not |
+| when absent | no engine record — reported as nothing | only for agents the framework did not start |
+
+The practical consequence is that `agent-goal-closure` does not need a new evidence reader:
+`Purpose` already carries the `verdict` and a `progress.measured` flag, and already refuses to derive
+progress from turn counts. D2's "reuse the verdict" therefore names an implementation, not an
+aspiration.
+
 **Alternatives considered.** *In the agent's own session log* — impossible: it is the agent's
 artifact, and reading it back would make the goal a claim rather than a record. *On the messaging
 bus* — the bus is an optional dependency and an agent that enrolled no seat is still an agent. *In
@@ -99,6 +136,16 @@ concrete reason `unknown` below must be a value rather than a number.
 principle — it fires exactly when the runtime is about to compact, which is the event a threshold is
 a proxy for — but every hook that *was* measured lacks the figures, so it stays a hypothesis.
 
+**The delivery was measured end to end (task 1.3), including the part that could have been
+destructive.** An agent started with `--settings <framework-owned>` in a tree carrying its own
+`.claude/settings.json` produced real statusline renders, and the tree came out **byte-identical with
+no new file**. The merge is **per-key**: the project's `UserPromptSubmit` hook still fired (lists are
+additive), while a colliding `statusLine` went to the framework 2 renders to 0 (scalars override).
+The first half is what matters — a consumer's gate chain hangs off hooks, and a framework that
+replaced them would disable the thing an entire safety track exists to protect. The second half is
+acceptable and is **stated rather than discovered**: for an agent the framework starts, the
+framework's status line replaces the project's.
+
 **Fail direction, decided now regardless of the carrier:** a reading the framework cannot obtain is
 `unknown`, and `unknown` never triggers a rotation. Rotating on a reading nobody has would clear a
 conversation for no established reason; declining merely postpones.
@@ -108,6 +155,17 @@ conversation for no established reason; declining merely postpones.
 **Measured:** `/clear` rotates the session id and the transcript *inside the same process* — pid
 1701204 and its `/proc/<pid>/stat` starttime token unchanged across it, one transcript before and two
 after. So the process, the pty, the label and the tile all survive.
+
+**Re-measured on the real configuration (task 1.4)** rather than on the probe's cheap model:
+`["claude", "--dangerously-skip-permissions"]` verbatim from `ownerd.py:65`, the transcript reporting
+`claude-opus-5`. Same pid, same starttime token, one transcript before and two after. The systemd
+scope was not exercised — it changes the cgroup, not the tty or the session identity — and 5.3 runs
+the real path.
+
+That run also produced the sharpest evidence for the window-size defect this change corrects: the
+agent's own status line read **`Ctx: 4% (36801/1000k)`**. Against the `200_000` constant the same
+session renders as **18 %** — a measured 5× overstatement, in the direction that calls a session with
+96 % of its context free nearly full.
 
 **Alternatives considered, and why they lose:**
 

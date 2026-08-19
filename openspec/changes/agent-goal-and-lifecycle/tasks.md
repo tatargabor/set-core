@@ -38,16 +38,39 @@ last open question. Do not resolve it by inventing a second definition of comple
   `atis-latch`), so the obvious rule *"busy iff the tail is a tool call"* reports IDLE **while the
   agent is answering** — the fail-open direction that sends the clear mid-turn. `pendingBackground
   AgentCount` was `None` throughout: it counts background agents, not turns. Dropped. [REQ: rotation-is-attempted-only-where-the-framework-owns-the-terminal-and-the-agent-is-between-turns]
-- [ ] 1.3 CORE — Confirm on a framework-started agent that `--settings <file-or-json>` delivers the
+- [x] 1.3 CORE — Confirm on a framework-started agent that `--settings <file-or-json>` delivers the
   chosen carrier from a framework-owned path, and that **no file in the project's tree is written**.
-  Prove the negative by hashing the tree before and after, not by reading the code. [REQ: remaining-context-is-read-from-the-runtime-per-model-and-an-unknown-reading-never-triggers-a-rotation]
-- [ ] 1.4 CORE — Re-run the `/clear` rotation probe against the model and flags the framework actually
-  starts agents with, not the probe's Haiku: same pid, same `/proc/<pid>/stat` starttime, one
-  transcript before and two after (`measurements.md` M1). A keystroke interface is version-fragile;
-  this is the baseline the regression test in 9.3 is written against. [REQ: rotation-happens-in-place-one-process-one-label-one-position-a-new-session]
+  **DONE 2026-08-19, and it grew a third question that mattered more than the first two.** The carrier
+  arrived (2 renders, real figures) and the tree came out **byte-identical with no new file** — every
+  file hashed before and after, hidden ones included, with the trust prompt answered inside the run.
+  ⚠ Then the collision case was measured, because "additional settings" could mean merge or replace,
+  and replace would silently disable a consumer's gate chain: the merge is **per-key**. The project's
+  own `UserPromptSubmit` hook **still fired** (lists are additive) while a colliding `statusLine` went
+  to the framework **2 renders to 0** (scalars override). The hook result is the safe one and is the
+  reason this is not a hazard; the statusLine override is acceptable and is now STATED — for an agent
+  the framework starts, its status line replaces the project's. [REQ: remaining-context-is-read-from-the-runtime-per-model-and-an-unknown-reading-never-triggers-a-rotation]
+- [x] 1.4 CORE — Re-run the `/clear` rotation probe against the model and flags the framework actually
+  starts agents with. **DONE 2026-08-19 — M1 holds on the real configuration.** `["claude",
+  "--dangerously-skip-permissions"]` verbatim from `ownerd.py:65`, transcript reporting
+  **`claude-opus-5`**: pid 3999775 and starttime token 102977747 unchanged across the clear, **1
+  transcript before → 2 after**. Limit stated rather than glossed: the agent ran under the probe's own
+  pty, not under a `systemd-run --scope` — that changes the cgroup, not the tty or the session
+  identity, and 5.3 exercises the real path. ⚠ **By-catch, and it is the best evidence yet for group
+  6:** that agent's own status line read `Ctx: 4% (36801/1000k)` — a **1M** window on the framework's
+  default agent. Against the `200_000` constant the same session renders as **18 %**: a measured 5×
+  overstatement, in the direction that calls a session with 96 % of its context free nearly full. [REQ: rotation-happens-in-place-one-process-one-label-one-position-a-new-session]
 
 ## 2. The goal record (CORE)
 
+- [ ] 2.0 Read the two records this extends BEFORE adding a third: `OwnedAgent.requested_by`
+  (`lib/set_orch/fleet/owner.py:121`), which already records the requester in the act, and
+  `purpose.py`, which already answers *what an agent is working towards* from the engine's records.
+  The goal is a field beside the first and a different question from the second (design D7); a third
+  subsystem here would be the parallel-mechanism failure. [REQ: a-framework-started-agent-carries-a-goal-declared-when-it-is-started]
+- [ ] 2.6 Persist the goal durably at the moment of the act, so it survives a restart of the owner —
+  measured: `AgentOwner` writes nothing and `recover(...)` takes no requester, while `scopes.py`
+  deliberately makes the agent outlive the service. Report a recovered agent whose goal cannot be
+  restored as **unrecoverable**, never as absent. [REQ: a-goal-outlives-the-process-that-recorded-it]
 - [ ] 2.1 Define the goal record — text, kind, requester, declaration time, verifiability — and write
   it at the moment the framework starts an agent, keyed by LABEL rather than pid. The label survives
   the rotation in group 5; the pid survives nothing. [REQ: a-framework-started-agent-carries-a-goal-declared-when-it-is-started]
@@ -195,6 +218,11 @@ last open question. Do not resolve it by inventing a second definition of comple
 
 - [ ] AC-5: WHEN an agent is started with a kind the lane vocabulary defines THEN the goal record carries that kind [REQ: a-goal-s-kind-comes-from-the-lane-vocabulary-and-an-unknown-kind-is-refused, scenario: a-declared-kind-resolves-through-the-existing-vocabulary]
 - [ ] AC-6: WHEN an agent is started with a kind the lane vocabulary does not define THEN the start is refused and the kind is not mapped to a default lane [REQ: a-goal-s-kind-comes-from-the-lane-vocabulary-and-an-unknown-kind-is-refused, scenario: an-unknown-kind-is-refused-rather-than-defaulted]
+
+**A goal outlives the process that recorded it**
+
+- [ ] AC-32: WHEN the component that started an agent is restarted while the agent keeps running THEN the agent's goal, kind, requester and declaration time are still readable [REQ: a-goal-outlives-the-process-that-recorded-it, scenario: a-goal-survives-a-restart-of-the-starting-component]
+- [ ] AC-33: WHEN a recovered agent's goal cannot be restored THEN it is reported as unrecoverable, and not as absent nor as a goal with unknown text [REQ: a-goal-outlives-the-process-that-recorded-it, scenario: a-goal-that-cannot-be-restored-is-named-as-unrecoverable]
 
 **A goal is readable while its agent runs, without reading the agent's session**
 

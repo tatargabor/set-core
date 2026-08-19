@@ -3,10 +3,11 @@
 ### Requirement: Context window size constant
 
 **Reason**: Measured 2026-08-19 — the runtime reports `context_window.context_window_size` **per
-model** in the payload it hands a hook: 200 000 for `claude-haiku-4-5-20251001` in the probe, while
-this repository's own sessions run a 1M window. A fixed `CONTEXT_WINDOW_SIZE = 200_000` is therefore
-not merely inflexible, it is currently wrong, and every utilization percentage derived from it is
-wrong by the same factor — in the direction that reports a comfortable session as nearly full.
+model** in the payload it hands the statusline command — 200 000 for `claude-haiku-4-5-20251001` in
+one probe, and **1M** for an agent started with the framework's own default argv, whose status line
+read `Ctx: 4% (36801/1000k)`. The constant renders that same session as **18 %**. So
+`CONTEXT_WINDOW_SIZE = 200_000` is not merely inflexible: it is wrong today by a measured factor of
+five, in the direction that reports a session with 96 % of its context free as nearly full.
 
 The requirement is removed rather than modified because its surviving scenario asserted the constant's
 existence by name (*"Constant is defined and used"*). Rewriting that scenario's body to assert the

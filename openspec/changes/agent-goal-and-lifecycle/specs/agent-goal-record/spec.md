@@ -3,6 +3,7 @@
 - The goal's kind, resolved through the vocabulary that already owns change lanes
 - Reporting the absence of a goal for an agent the framework did not start
 - Reading a goal while its agent runs, without touching the agent's transcript
+- Surviving a restart of the component that started the agent, because the agent survives it too
 
 ## OUT OF SCOPE
 - Deciding WHICH goals get handed out, and in what waves (a later change)
@@ -67,6 +68,30 @@ that decision, and it would drift on the day it was written.
 - **WHEN** an agent is started with a kind the lane vocabulary does not define
 - **THEN** the framework SHALL refuse the start
 - **AND** it SHALL NOT map the kind to a default lane
+
+### Requirement: A goal outlives the process that recorded it
+The goal record SHALL survive a restart of the component that started the agent, and SHALL be
+readable for an agent recovered after such a restart. A recovered agent whose goal cannot be
+restored SHALL be reported as having an **unrecoverable** goal — distinct both from an agent that
+never had one and from an agent whose goal is known.
+
+This is not a general durability preference; it is forced by an asymmetry the framework already
+builds in deliberately. A started agent runs in its own transient scope precisely so that it
+**outlives** the service that started it, while the record of who asked for it is held in memory —
+measured: `AgentOwner` keeps its agents in a dict and writes nothing, and the recovery path takes
+`unit`, `session_id`, `cwd`, `label` and `resume_argv` but no requester. So a goal stored the same
+way would vanish while the agent it describes keeps working, and the surface would show a running
+agent whose purpose the framework has forgotten. That is a false absence about the very field this
+capability exists to add.
+
+#### Scenario: A goal survives a restart of the starting component
+- **WHEN** the component that started an agent is restarted while the agent keeps running
+- **THEN** the agent's goal, kind, requester and declaration time are still readable
+
+#### Scenario: A goal that cannot be restored is named as unrecoverable
+- **WHEN** a recovered agent's goal cannot be restored
+- **THEN** it is reported as unrecoverable
+- **AND** it is not reported as absent, and not reported as a goal with unknown text
 
 ### Requirement: A goal is readable while its agent runs, without reading the agent's session
 The framework SHALL make a goal record readable at any time during the agent's life, and SHALL read

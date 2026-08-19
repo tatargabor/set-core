@@ -174,11 +174,15 @@ consumer's name, path, or content.
 - **measured:** `openspec/specs/context-window-metrics/spec.md:47` requires
   `CONTEXT_WINDOW_SIZE = 200_000` as the divisor of every utilization percentage.
   The runtime reports `context_window.context_window_size` **per model** in the
-  statusline payload (200000 for `claude-haiku-4-5-20251001` in the probe); this
-  session's own window is 1M.
+  statusline payload. Re-measured 2026-08-19 on an agent started with the
+  framework's own default argv (`claude --dangerously-skip-permissions`,
+  `ownerd.py:65`, model `claude-opus-5`): its status line read
+  **`Ctx: 4% (36801/1000k)`** — a 1M window. The constant renders that same
+  session as **18 %**.
 - **fail direction:** it over-reports utilization by the ratio of the real window to
-  200 000 — a comfortable session is displayed as nearly full, which is the
-  direction that triggers unnecessary action.
+  200 000 — measured at **5×** on the framework's own default agent, so a session
+  with 96 % of its context free is displayed as nearly full. That is the direction
+  that triggers unnecessary action.
 - **fixed when:** the divisor comes from the reported size, an unreported size
   renders as unknown rather than as a percentage, and a session on a non-200k model
   shows a figure that matches what the runtime says.

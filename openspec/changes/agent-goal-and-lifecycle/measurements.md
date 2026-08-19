@@ -203,3 +203,80 @@ one.
 **`Stop` carries `last_assistant_message`** — the agent's final text, verbatim. Any hook that logs
 its own payload is therefore a persistence path for conversation content, which the confidentiality
 boundary forbids. The framework's own hooks must record the *event*, never the payload.
+
+## 1.3 — `--settings` carries the reader from outside the tree, and the merge is per-key
+
+**A — the carrier arrives.** A scratch "project" tree was created with `src/app.py`, `README.md` and
+its own `.claude/settings.json`. An agent was started in it with
+`--settings <framework-owned>/settings.json`, whose `statusLine` dumps its stdin. Result: **2
+statusline renders**, carrying `context_window_size=200000`, `used_percentage=17`,
+`total_input_tokens=34409`.
+
+**B — the tree is untouched.** Every file hashed before and after (`find -type f`, sha256, hidden
+files included): **identical, and no new file appeared** — not a settings file, not a cache, not a
+`.claude` addition. The trust prompt was answered inside the run and still wrote nothing into the
+tree.
+
+**C — and the merge is per-key, which is the part that decides whether this is safe.** The tree's
+settings were then given BOTH a `UserPromptSubmit` hook and its own `statusLine`, deliberately
+colliding with the framework's:
+
+| what collided | outcome |
+|---|---|
+| hooks (a list) | **additive** — the project's `UserPromptSubmit` hook fired with `--settings` in place |
+| `statusLine` (a scalar) | **the framework's wins** — 2 renders for the framework, **0** for the project's |
+
+The hook result is the one that matters: a consumer's gate chain hangs off hooks, and a framework
+that silently replaced them would disable exactly the thing this repository has spent a safety track
+protecting. It does not. The `statusLine` override is acceptable but must be **stated**, not
+discovered: for an agent the framework started, the framework's status line replaces the project's.
+
+## 1.4 — The rotation, re-measured with the framework's real argv and real model
+
+Re-run with `["claude", "--dangerously-skip-permissions"]` verbatim — `DEFAULT_AGENT_ARGV`,
+`lib/set_orch/fleet/ownerd.py:65` — and no `--model`, so the agent ran on whatever the framework's
+agents run on. The transcript says **`claude-opus-5`**.
+
+    pid=3999775  starttime=102977747   before the clear
+    pid=3999775  starttime=102977747   after  the clear     → SAME PROCESS
+    transcripts: 1 before → 2 after    (daaea35b… then 1e43e794…)
+
+So M1 holds on the real configuration and not merely on the probe's Haiku. **Limit, stated rather
+than glossed:** the agent was forked under this probe's own pty, not under a `systemd-run --scope`
+as `scopes.py` does. That does not touch the question — a scope changes the cgroup, not the tty or
+the session identity — but it is not the same run, and 5.3 exercises the real path.
+
+### The by-catch is the strongest evidence yet for the window-size defect
+
+That agent's own status line read:
+
+    Ctx: 4% (36801/1000k)
+
+A **1M** window, on the framework's own default agent, on this machine. The
+`context-window-metrics` requirement divides by `200_000`, so the same session it would render as
+**18 %**. Measured, not inferred: a **5× overstatement**, in the direction that reports a session
+with 96 % of its context free as approaching full.
+
+## What group 1 found that the change did not know about itself
+
+Reading the code the change has to extend — before designing anything, per the standing rule:
+
+- **`OwnedAgent.requested_by` already exists** (`lib/set_orch/fleet/owner.py:121`), recorded in the
+  act of starting, for the same measured reason this change gives for the goal. The goal belongs
+  beside it, not in a new subsystem.
+- **`purpose.py` already answers "what is this agent working towards"** — change, unit, group,
+  `kind`, `verdict`, progress — read from the engine's on-disk records, never from what an agent
+  says, and deliberately without importing the engine. So `agent-goal-closure`'s evidence path
+  **already has an implementation to read**, and D2's "reuse the verdict" is concrete rather than
+  aspirational.
+- ⚠ **But the owner persists NOTHING.** `AgentOwner` holds its agents in an in-memory dict; a grep
+  for a write path in `ownerd.py` finds only the `health` command printing JSON. And the recovery
+  path — `recover(owner, unit, session_id, cwd, label, resume_argv)`,
+  `lib/set_orch/fleet/ownerd.py:378` — **takes no `requested_by`**, so an agent recovered after an
+  owner restart comes back without its requester.
+
+  This is load-bearing for the change and it inverts a convenience: `scopes.py` deliberately makes a
+  started agent **outlive** the service, so the agent survives a restart that its record does not.
+  A goal kept where `requested_by` is kept would therefore vanish while the agent it describes keeps
+  working — and the surface would show a running agent whose purpose the framework has forgotten,
+  which is a false absence about the one field this change exists to add.

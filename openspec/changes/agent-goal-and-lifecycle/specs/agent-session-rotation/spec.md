@@ -20,7 +20,8 @@ that agent is running, and SHALL NOT compute it from a fixed window size. Where 
 obtained, the remaining context SHALL be reported as unknown, and an unknown reading SHALL NOT
 trigger a rotation.
 
-Measured 2026-08-19: the runtime hands a hook `context_window` carrying `context_window_size`,
+Measured 2026-08-19: the runtime hands the **statusline command** — and, of nine hooks registered and
+eight fired, no hook at all — a `context_window` object carrying `context_window_size`,
 `used_percentage` and `remaining_percentage`, with the size stated **per model**. The fail direction
 decides the second half of this requirement — rotating on a reading the framework does not have would
 clear a conversation for no established reason, which is destructive; declining to rotate merely
