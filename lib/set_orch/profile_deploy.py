@@ -53,6 +53,52 @@ class FileEntry:
     once: bool = False
 
 
+@dataclass
+class FileOutcome:
+    """What the deploy engine did with ONE file, as data rather than as a sentence.
+
+    The engine has always reported per-file results as human prose — `"  Skipped
+    (protected): x"` — and that is what its callers print. A second caller now needs
+    the same facts to build a structured report for a screen, and the tempting shortcut
+    is to parse the sentences back. That would be a parser over human-facing text,
+    which is a defect class this repository has already paid for: an example read as an
+    instruction, a rule quoted before a verdict read as the verdict.
+
+    So the outcome is produced first and the sentence is rendered FROM it. The prose is
+    unchanged byte for byte — including its two inconsistencies, which are preserved
+    deliberately rather than tidied: `exists` and `protected` say "Skipped" even in a
+    dry run, where every other skip says "Would skip". Fixing them here would change
+    `set-project init`'s output in a change about something else.
+
+    `action` is one of: `deployed`, `overwritten`, `unchanged`, `merged`, `skipped`,
+    `warning`. `reason` is the parenthetical the engine already states, verbatim, so
+    the vocabulary has exactly one owner.
+    """
+    action: str
+    #: Target-relative path. Absent for `warning`, which is about the manifest.
+    path: Optional[str] = None
+    reason: Optional[str] = None
+    #: The message the engine printed for this outcome — kept so the rendering and the
+    #: data can never drift apart in a caller that shows both.
+    message: str = ""
+    dry_run: bool = False
+
+
+def _outcome(sink: Optional[List[FileOutcome]], messages: List[str], *,
+             action: str, message: str, path: Optional[str] = None,
+             reason: Optional[str] = None, dry_run: bool = False) -> None:
+    """Record one file's result in both forms, in one place.
+
+    Both, always, from a single call — a helper that appended to only one of them would
+    be a second place for the two to diverge, and the divergence would be silent in
+    whichever form the reader is not looking at.
+    """
+    messages.append(message)
+    if sink is not None:
+        sink.append(FileOutcome(action=action, path=path, reason=reason,
+                                message=message, dry_run=dry_run))
+
+
 # Map template-relative paths to target-relative paths
 _PATH_MAPPINGS: Dict[str, str] = {
     "rules/": ".claude/rules/",
@@ -387,6 +433,7 @@ def _deploy_single_template(
     force: bool = False,
     dry_run: bool = False,
     ledger: Optional["DeployLedger"] = None,
+    outcomes: Optional[List[FileOutcome]] = None,
 ) -> List[str]:
     """Deploy files from a single template directory into the target."""
     manifest = _load_manifest(template_dir)
@@ -417,20 +464,27 @@ def _deploy_single_template(
     file_entries, warns = _resolve_file_list(template_dir, manifest, modules)
 
     for w in warns:
-        messages.append(f"  Warning: {w}")
+        _outcome(outcomes, messages, action="warning", reason=w,
+                 message=f"  Warning: {w}", dry_run=dry_run)
 
     # Deploy files
     for entry in file_entries:
         src_path = template_dir / entry.path
         dst = _target_path(entry.path, target_dir)
         key = ledger.rel_key(dst)
+        # Computed once. It was `dst.relative_to(target_dir)` inline at nine call sites,
+        # which is nine chances for one of them to render a path differently from the
+        # data beside it.
+        rel = str(dst.relative_to(target_dir))
 
         # Tombstone: the project deployed this once and then deleted it. Re-creating
         # it would re-arm content the project deliberately removed, so never do it
         # implicitly — the ledger's `tombstones` entry must be dropped by hand first.
         if ledger.is_tombstoned(key):
             verb = "Would skip" if dry_run else "Skipped"
-            messages.append(f"  {verb} (removed by project): {dst.relative_to(target_dir)}")
+            _outcome(outcomes, messages, action="skipped", path=rel,
+                     reason="removed by project", dry_run=dry_run,
+                     message=f"  {verb} (removed by project): {rel}")
             continue
 
         # Neither absence rule below applies to a path git currently ignores. Absence
@@ -447,9 +501,9 @@ def _deploy_single_template(
             if not dry_run:
                 ledger.tombstone(key)
             verb = "Would skip" if dry_run else "Skipped"
-            messages.append(
-                f"  {verb} (deleted by project, tombstoned): {dst.relative_to(target_dir)}"
-            )
+            _outcome(outcomes, messages, action="skipped", path=rel,
+                     reason="deleted by project, tombstoned", dry_run=dry_run,
+                     message=f"  {verb} (deleted by project, tombstoned): {rel}")
             continue
 
         # Absent and unknown to the ledger. On a first init that describes both a
@@ -459,24 +513,29 @@ def _deploy_single_template(
             if not dry_run:
                 ledger.tombstone(key, source="git history")
             verb = "Would skip" if dry_run else "Skipped"
-            messages.append(
-                f"  {verb} (deleted in git history, tombstoned): {dst.relative_to(target_dir)}"
-            )
+            _outcome(outcomes, messages, action="skipped", path=rel,
+                     reason="deleted in git history, tombstoned", dry_run=dry_run,
+                     message=f"  {verb} (deleted in git history, tombstoned): {rel}")
             continue
 
         if dst.exists() and not force:
-            messages.append(f"  Skipped (exists): {dst.relative_to(target_dir)}")
+            _outcome(outcomes, messages, action="skipped", path=rel,
+                     reason="exists", dry_run=dry_run,
+                     message=f"  Skipped (exists): {rel}")
             continue
 
         # Handle merge-mode files (additive YAML merge)
         if entry.merge and dst.exists():
             if dry_run:
-                messages.append(f"  Would merge: {dst.relative_to(target_dir)}")
+                _outcome(outcomes, messages, action="merged", path=rel, dry_run=True,
+                         message=f"  Would merge: {rel}")
             else:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 modified = _merge_yaml_additive(dst, src_path)
                 verb = "Merged" if modified else "Merged (no new keys)"
-                messages.append(f"  {verb}: {dst.relative_to(target_dir)}")
+                _outcome(outcomes, messages, action="merged", path=rel,
+                         reason=None if modified else "no new keys",
+                         message=f"  {verb}: {rel}")
             continue
 
         # Scaffold: written once to start a project, then owned by it. Present is
@@ -484,16 +543,18 @@ def _deploy_single_template(
         # scaffold file forward is an upgrade decision, never a side effect of init.
         if entry.once and dst.exists():
             verb = "Would skip" if dry_run else "Skipped"
-            messages.append(f"  {verb} (scaffold, already present): {dst.relative_to(target_dir)}")
+            _outcome(outcomes, messages, action="skipped", path=rel,
+                     reason="scaffold, already present", dry_run=dry_run,
+                     message=f"  {verb} (scaffold, already present): {rel}")
             continue
 
         # Handle protected files (skip if project has modified them)
         identical = False
         if entry.protected and force and dst.exists():
             if not _file_matches_template(dst, src_path):
-                messages.append(
-                    f"  Skipped (protected): {dst.relative_to(target_dir)}"
-                )
+                _outcome(outcomes, messages, action="skipped", path=rel,
+                         reason="protected", dry_run=dry_run,
+                         message=f"  Skipped (protected): {rel}")
                 continue
             # Content matches template — safe to overwrite
             identical = True
@@ -513,10 +574,11 @@ def _deploy_single_template(
             )
             if stamp.verdict == "refuse":
                 verb = "Would skip" if dry_run else "Skipped"
-                messages.append(
-                    f"  {verb} (newer generator at destination): "
-                    f"{dst.relative_to(target_dir)} — {stamp.reason}"
-                )
+                _outcome(outcomes, messages, action="skipped", path=rel,
+                         reason=f"newer generator at destination — {stamp.reason}",
+                         dry_run=dry_run,
+                         message=(f"  {verb} (newer generator at destination): "
+                                  f"{rel} — {stamp.reason}"))
                 continue
 
         verb = "Would deploy" if dry_run else "Deployed"
@@ -536,7 +598,14 @@ def _deploy_single_template(
             # from "the template moved on", and a later deletion becomes a tombstone.
             ledger.record(key, src_path)
 
-        messages.append(f"  {verb}: {dst.relative_to(target_dir)}")
+        _outcome(
+            outcomes, messages, path=rel, dry_run=dry_run,
+            action=("unchanged" if verb.startswith("Unchanged")
+                    else "overwritten" if "overwrite" in verb.lower()
+                    else "deployed"),
+            reason="identical" if verb.startswith("Unchanged") else None,
+            message=f"  {verb}: {rel}",
+        )
 
     # The announcement runs after the files, and only for a module that asked for one. It
     # is the same call on every path that announces, rather than a behaviour one entry point
@@ -544,7 +613,14 @@ def _deploy_single_template(
     # behaviour the system does not have.
     if manifest is not None and decl.announce is not None:
         ann_msgs, written_body = perform_announcement(decl, target_dir, dry_run=dry_run)
-        messages.extend(ann_msgs)
+        # The announcement edits a file the PROJECT owns, so it is a write like any
+        # other and belongs in the outcomes. It is not one of the planned files, which
+        # is exactly why it would otherwise be the one write no report mentions — and a
+        # write nobody reports is the same class of defect as a skip nobody reports.
+        for m in ann_msgs:
+            _outcome(outcomes, messages, action="announced",
+                     path=(decl.announce.file if decl.announce else None),
+                     message=m, dry_run=dry_run)
         if written_body is not None and not dry_run:
             record = read_install_record(target_dir)
             record.announcements[decl.name] = written_body
