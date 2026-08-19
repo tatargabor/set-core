@@ -888,3 +888,29 @@ def test_lineage_does_not_stop_at_the_project_boundary(monkeypatch):
     before_loop = src.split("for project in projects:")[0]
     assert "_descendants_index(" in before_loop, \
         "the index is built inside the per-project loop"
+
+
+def test_a_project_only_the_messaging_registry_knows_survives_the_listing(monkeypatch):
+    """A filter can undo a source, and this one did — silently, after the union.
+
+    Measured 2026-08-19: the listing dropped every project that had no live agent
+    and no registry entry. That condition named ONE source, which was harmless
+    while there were two and every entry had an agent or a registration; the
+    third source broke it without a word, and **8 real projects** passed the
+    union and then vanished one loop later. The whole point of a union is that a
+    later step cannot quietly narrow it.
+    """
+    from set_orch.fleet.discovery import ProjectEntry
+    monkeypatch.setattr(fleet_api, "discover_agents", lambda **k: [])
+    monkeypatch.setattr(fleet_api, "_safe_registry", lambda: [])
+    monkeypatch.setattr(fleet_api, "_load_projects", lambda: [])
+    monkeypatch.setattr(fleet_api, "_safe_messaging", lambda: [])
+    monkeypatch.setattr(
+        fleet_api, "discover_projects",
+        lambda a, **k: [ProjectEntry(root="/repo/only-messaging", name="only-messaging",
+                                     sources=["messaging"])],
+    )
+    names = [p["name"] for p in fleet_api.fleet_agents()["projects"]]
+    assert names == ["only-messaging"], (
+        f"the listing dropped a project a source had supplied; got {names!r}"
+    )

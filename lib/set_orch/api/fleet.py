@@ -348,7 +348,15 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     grouped: List[Dict[str, Any]] = []
     for project in projects:
         members = [by_pid[pid] for pid in project.agent_pids if pid in by_pid]
-        if not members and "registry" not in project.sources:
+        # Every entry here came from a source that named it, so the question is
+        # not whether to trust it — it is whether the entry is a leftover with no
+        # source at all, which would be a bug upstream. Naming ONE source here
+        # was safe while there were two and every entry had a live agent or a
+        # registration; the third source broke that silently. Measured
+        # 2026-08-19: this line discarded **8 projects** the messaging registry
+        # had just supplied, and discarded them after they had passed the union
+        # — a filter can undo a source, and this one did it without a word.
+        if not members and not project.sources:
             continue
         purposes = fleet_purpose.read_purposes(project.root) if project.root else []
         grouped.append({
