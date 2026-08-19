@@ -319,3 +319,48 @@ def test_a_file_already_byte_identical_is_reported_as_unchanged_not_as_written(t
     assert report.written == [], "a byte-identical no-op was reported as a write"
     assert [(s.path, s.reason) for s in report.skipped] == [("a.md", "identical")]
     assert report.changed_nothing is True
+
+
+# ── finding a module by the name the surface shows ────────────────────────────────────────
+
+def test_a_module_is_found_by_the_name_the_capability_report_shows(tmp_path):
+    """The resolver and the report must agree on the name, or a reader asks for something
+    they were just shown and is told it does not exist.
+
+    Asserted against the real shipped modules and against the real reporter, rather than
+    against a fixture that could agree with itself.
+    """
+    from set_orch.fleet.capabilities import framework_capabilities
+    from set_orch.module_install import resolve_module
+
+    shown = [c.name for c in framework_capabilities() if c.name != "core-rules"]
+    assert shown, "the capability report named no module; this test proves nothing"
+    for name in shown:
+        assert resolve_module(name).name == name
+
+
+def test_two_modules_under_one_name_are_refused_not_resolved(tmp_path):
+    """A silent tie-break inside a decision that writes into somebody's repository.
+
+    `glob()[0]`, `next(iter(...))`, "the first match" — every one of them is a guess
+    wearing a result's clothes, and this one would install the wrong module's files. Two
+    manifests under one name means a broken checkout or a shadowing plugin, and both want
+    a human, not a coin toss.
+    """
+    from set_orch.module_install import resolve_module
+    for pkg in ("alpha", "beta"):
+        d = tmp_path / "modules" / pkg / f"set_project_{pkg}" / "templates" / "dup"
+        d.mkdir(parents=True)
+        (d / "manifest.yaml").write_text("version: '1.0.0'\ncore: []\n", encoding="utf-8")
+
+    with pytest.raises(InstallRefused) as excinfo:
+        resolve_module("dup", root=tmp_path)
+    assert "refusing to guess" in str(excinfo.value)
+
+
+def test_an_unknown_module_is_refused_with_where_it_looked(tmp_path):
+    from set_orch.module_install import resolve_module
+    with pytest.raises(InstallRefused) as excinfo:
+        resolve_module("no-such-module", root=tmp_path)
+    assert "no-such-module" in str(excinfo.value)
+    assert "modules" in str(excinfo.value), "the refusal did not say where it looked"

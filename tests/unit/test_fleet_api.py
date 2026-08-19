@@ -967,3 +967,117 @@ def test_the_source_of_a_parent_binding_travels_with_it(monkeypatch):
     )["parent"]
     assert walked["source"] != recorded["source"]
     assert recorded["source"] == "recorded"
+
+
+# --------------------------------------------------------------------------- #
+# the install route — fleet-view 6.5 / module-install-writer 5.1
+#
+# The most dangerous action this screen can take: everything else reads, this
+# writes into a repository the framework does not own. The tests below are about
+# the two things the ROUTE decides — which targets it will accept, and whether
+# the installer's report survives the trip — because everything else that makes
+# an install safe lives underneath it and is tested there.
+# --------------------------------------------------------------------------- #
+
+def _install_stubs(monkeypatch, project_name="proj", root="/repo/proj"):
+    from set_orch.fleet.discovery import ProjectEntry
+    monkeypatch.setattr(fleet_api, "discover_agents", lambda **k: [])
+    monkeypatch.setattr(fleet_api, "_safe_registry", lambda: [])
+    monkeypatch.setattr(fleet_api, "_safe_messaging", lambda: [])
+    monkeypatch.setattr(
+        fleet_api, "discover_projects",
+        lambda a, **k: [ProjectEntry(root=root, name=project_name, sources=["registry"])],
+    )
+
+
+def test_a_project_the_screen_never_listed_is_refused(monkeypatch):
+    """Refused rather than resolved from the filesystem.
+
+    Accepting any path that exists would let this endpoint write into a directory
+    nothing on the screen ever offered — and the screen is the only thing that made
+    the target legible to whoever clicked.
+    """
+    _install_stubs(monkeypatch)
+    with pytest.raises(fleet_api.HTTPException) as excinfo:
+        fleet_api.fleet_install_module("not-listed", fleet_api.InstallBody(module="starter"))
+    assert excinfo.value.status_code == 404
+
+
+def test_a_listed_project_whose_directory_is_gone_is_refused_before_the_installer(monkeypatch):
+    """Listed and absent are different, and the difference matters here: a listing is
+    a memory, and this route is about to write."""
+    _install_stubs(monkeypatch, root="/definitely/not/here")
+    monkeypatch.setattr(fleet_api, "install_module" if hasattr(fleet_api, "install_module") else "logger",
+                        fleet_api.logger)   # nothing to patch; the check must come first
+    with pytest.raises(fleet_api.HTTPException) as excinfo:
+        fleet_api.fleet_install_module("proj", fleet_api.InstallBody(module="starter"))
+    assert excinfo.value.status_code == 409
+    assert "not readable" in str(excinfo.value.detail)
+
+
+def test_the_default_is_a_dry_run(monkeypatch):
+    """The default IS the decision. A route whose default writes turns "I clicked it to
+    see what it does" into a destructive act, and every other write into a consumer tree
+    in this framework is approached through a preview first."""
+    assert fleet_api.InstallBody(module="starter").dry_run is True
+
+
+def test_the_installers_report_reaches_the_caller_whole(monkeypatch, tmp_path):
+    """Written, skipped WITH REASONS, and `changed_nothing` as its own field.
+
+    A route that returned only a success flag would re-create one layer up exactly the
+    silence the installer's contract forbids — an install that left six files alone
+    because the project edited them is a good outcome and a misleading screen.
+    """
+    from set_orch.module_install import InstallReport
+    _install_stubs(monkeypatch, root=str(tmp_path))
+
+    report = InstallReport(module="starter")
+    report.wrote("a.md")
+    report.skip("rules/r.md", "protected")
+    monkeypatch.setattr(fleet_api, "_safe_messaging", lambda: [])
+    import set_orch.module_install as mi
+    monkeypatch.setattr(mi, "resolve_module", lambda name, **k: object())
+    monkeypatch.setattr(mi, "install_module", lambda decl, root, **k: report)
+
+    body = fleet_api.fleet_install_module("proj", fleet_api.InstallBody(module="starter"))
+    assert body["written"] == ["a.md"]
+    assert body["skipped"] == [{"path": "rules/r.md", "reason": "protected"}]
+    assert body["changed_nothing"] is False
+    assert any("protected" in line for line in body["lines"])
+
+
+def test_a_run_that_changed_nothing_says_so_in_its_own_field(monkeypatch, tmp_path):
+    """Not derivable from an empty list by the caller. `len(written) == 0` is exactly the
+    check that reads as success, and a second copy of the rule is a second place to get
+    it wrong."""
+    from set_orch.module_install import InstallReport
+    _install_stubs(monkeypatch, root=str(tmp_path))
+    report = InstallReport(module="starter")
+    report.skip("a.md", "protected")
+    import set_orch.module_install as mi
+    monkeypatch.setattr(mi, "resolve_module", lambda name, **k: object())
+    monkeypatch.setattr(mi, "install_module", lambda decl, root, **k: report)
+
+    body = fleet_api.fleet_install_module("proj", fleet_api.InstallBody(module="starter"))
+    assert body["changed_nothing"] is True
+    assert body["written"] == []
+
+
+def test_a_refusal_is_a_conflict_not_a_bad_request(monkeypatch, tmp_path):
+    """409, not 400. The request is well-formed and the project is real; what is wrong is
+    the STATE — a missing requirement, an ambiguous name, a module that does not ship
+    here. That distinction is what tells a reader whether to fix their click or fix their
+    project."""
+    from set_orch.module_install import InstallRefused
+    _install_stubs(monkeypatch, root=str(tmp_path))
+    import set_orch.module_install as mi
+
+    def _refuse(name, **k):
+        raise InstallRefused("module 'beta' requires 'alpha', which this project does not have")
+    monkeypatch.setattr(mi, "resolve_module", _refuse)
+
+    with pytest.raises(fleet_api.HTTPException) as excinfo:
+        fleet_api.fleet_install_module("proj", fleet_api.InstallBody(module="beta"))
+    assert excinfo.value.status_code == 409
+    assert "alpha" in str(excinfo.value.detail)

@@ -32,6 +32,7 @@ from .module_declaration import (
     VersionComparison,
     check_requirements,
     compare_versions,
+    load_declaration,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ __all__ = [
     "version_report",
     "install_module",
     "InstallRefused",
+    "resolve_module",
 ]
 
 #: Project-owned: what this project asks for. Edited by the project.
@@ -389,3 +391,44 @@ def install_module(
         decl.name, len(report.written), len(report.skipped), " (dry run)" if dry_run else "",
     )
     return report
+
+
+def framework_root() -> Path:
+    """Where this framework's own deploy sources live."""
+    return Path(__file__).resolve().parents[2]
+
+
+def resolve_module(name: str, *, root: Optional[str | Path] = None) -> ModuleDeclaration:
+    """Find a module by the name the surface knows it by, or refuse.
+
+    The name is the template directory's name, because that is what
+    `fleet.capabilities.framework_capabilities()` reports and a caller can only ask for
+    what it was shown. Keeping the two in step matters more than either spelling: a
+    resolver that accepted a different name from the one on screen would answer
+    "no such module" for something the reader is looking at.
+
+    **Ambiguity is refused, never resolved.** Two manifests under one name is a broken
+    checkout or a shadowing plugin, and picking the first — `glob()[0]`, `next(iter(...))`,
+    "the first match" — is a silent tie-break inside a decision that writes into somebody's
+    repository. When the count matters, assert the count.
+    """
+    base = Path(root) if root is not None else framework_root()
+    matches = sorted((base / "modules").glob(f"*/*/templates/{name}/manifest.yaml"))
+    if not matches:
+        raise InstallRefused(
+            f"no module named {name!r} ships with this framework "
+            f"(looked under {base / 'modules'})"
+        )
+    if len(matches) > 1:
+        raise InstallRefused(
+            f"{len(matches)} modules named {name!r}: "
+            + ", ".join(str(m.relative_to(base)) for m in matches)
+            + " — refusing to guess which one to install"
+        )
+    manifest_path = matches[0]
+    try:
+        import yaml
+        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # noqa: BLE001
+        raise InstallRefused(f"module {name!r}: its manifest is unreadable ({exc})") from exc
+    return load_declaration(data, name=name, source=manifest_path)

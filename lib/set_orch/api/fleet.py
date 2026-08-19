@@ -1070,3 +1070,84 @@ async def fleet_terminal(websocket: WebSocket, label: str) -> None:
     finally:
         await stream.close()
         logger.info("fleet terminal: a browser detached from %s", label)
+
+
+# --------------------------------------------------------------------------- #
+# installing a module into a project — task 6.5
+#
+# The most dangerous action this screen can take. Everything else here reads;
+# this WRITES into a repository the framework does not own. What makes it safe
+# is not this route: it is the machinery underneath — the hash ledger, the
+# `protected` and `once` rules, committed deletions read as intent, tombstones,
+# the ownership checks, and a `dry_run` that is honest about its blast radius.
+# This route's only jobs are to refuse a target the screen never showed, and to
+# hand the installer's report back UNCHANGED.
+# --------------------------------------------------------------------------- #
+
+class InstallBody(BaseModel):
+    module: str
+    dry_run: bool = True
+
+
+@router.post("/api/fleet/projects/{name}/install")
+def fleet_install_module(name: str, body: InstallBody) -> Dict[str, Any]:
+    """Install one module into one project, and return what the installer said it did.
+
+    `dry_run` defaults to **True**, and that default is the decision. A preview is
+    the documented way to approach every other write into a consumer tree
+    (`set-project init --dry-run`), and a route whose default writes would make
+    "I clicked it to see what it does" a destructive act.
+
+    The report is returned as the installer produced it — every file written, every
+    file skipped with its reason, and `changed_nothing` stated in its own right. This
+    route does not summarise, reorder or interpret it. A surface that runs an installer
+    and renders "done" has re-created one layer up exactly the silence the installer's
+    contract forbids: an install that left six files alone because the project had
+    edited them is a *good* outcome and a *misleading* screen unless the screen says it.
+    """
+    from ..module_install import InstallRefused, install_module, resolve_module
+
+    target = None
+    for project in discover_projects(discover_agents(include_oneshot=False),
+                                     registered=_safe_registry(),
+                                     messaging=_safe_messaging()):
+        if project.name == name:
+            target = project
+            break
+    if target is None or not target.root:
+        # A project the screen never listed. Refused rather than resolved from the
+        # filesystem: accepting any path that exists would let this endpoint write
+        # into a directory nothing on the screen ever offered.
+        raise HTTPException(status_code=404, detail=f"no project named {name!r} is listed")
+    if not os.path.isdir(target.root):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{name} is listed but its directory is not readable; refusing to install",
+        )
+
+    try:
+        decl = resolve_module(body.module)
+        report = install_module(decl, target.root, dry_run=body.dry_run)
+    except InstallRefused as exc:
+        # 409, not 400: the request is well-formed and the project is real. What is
+        # wrong is the state — a missing requirement, an ambiguous name, a module that
+        # does not ship here — and that distinction is what tells a reader whether to
+        # fix their click or fix their project.
+        logger.info("fleet api: install refused (%s into %s): %s", body.module, name, exc)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error("fleet api: install of %s failed: %s", body.module, exc)
+        raise HTTPException(status_code=500, detail=f"install failed: {exc}") from exc
+
+    return {
+        "module": report.module,
+        "project": name,
+        "dry_run": body.dry_run,
+        "written": list(report.written),
+        "skipped": [{"path": s.path, "reason": s.reason} for s in report.skipped],
+        # Stated as its own field rather than left to be derived from an empty list.
+        # A caller that computes it from `written` is a second copy of the rule, and
+        # `len(written) == 0` is exactly the check that reads as success.
+        "changed_nothing": report.changed_nothing,
+        "lines": report.as_lines(),
+    }
