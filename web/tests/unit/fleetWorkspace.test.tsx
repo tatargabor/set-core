@@ -89,30 +89,33 @@ describe('more than one terminal at a time', () => {
   it('opens a second terminal without closing the first', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
 
-    const openers = screen.getAllByText('open the terminal')
-    fireEvent.click(openers[0])
+    // The CLOSED one: with icons, an open terminal's control stays in place and
+    // becomes "close", so `[0]` would toggle the first one shut instead of
+    // opening the second. The state is in the attribute, so ask for it.
+    const closed = () => container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')
+    fireEvent.click(closed()[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
 
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container).sort()).toEqual(['t-1', 't-2']))
   })
 
   it('closes one and leaves the other attached', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container)).toHaveLength(2))
 
-    fireEvent.click(screen.getAllByText('close the terminal')[0])
+    fireEvent.click(container.querySelector('[data-tile-control="terminal"][data-tile-control-active="on"]')!)
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-2']))
   })
 
   it('offers no terminal for a foreign agent, however many are open', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2', { population: 'foreign', terminal_label: null })]))
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
-    expect(screen.queryAllByText('open the terminal')).toHaveLength(0)
+    expect(container.querySelectorAll('[data-tile-control="terminal"]')).toHaveLength(1)
   })
 })
 
@@ -121,7 +124,7 @@ describe('one agent alone, and what that covers', () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
     expect(container.querySelectorAll('[data-fleet-ownership]')).toHaveLength(2)
 
-    fireEvent.click(container.querySelector('[data-fleet-focus-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="focus"]')[0])
     await waitFor(() => expect(container.querySelector('[data-fleet-focused="1"]')).toBeTruthy())
     expect(container.querySelectorAll('[data-fleet-ownership]')).toHaveLength(1)
   })
@@ -138,7 +141,7 @@ describe('one agent alone, and what that covers', () => {
       agent(2, 'a2', { state: 'unknown', unknown_reason: 'no session log' }),
       agent(3, 'a3', { state: 'waiting', waiting_for: 'approval' }),
     ]))
-    fireEvent.click(container.querySelector('[data-fleet-focus-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="focus"]')[0])
 
     await waitFor(() => expect(container.querySelector('[data-fleet-focus-cover]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-focus-cover]')!.getAttribute('data-fleet-focus-cover')).toBe('2')
@@ -148,7 +151,7 @@ describe('one agent alone, and what that covers', () => {
 
   it('does not announce hidden states it does not have', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(container.querySelector('[data-fleet-focus-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="focus"]')[0])
     await waitFor(() => expect(container.querySelector('[data-fleet-focus-cover]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-focus-hidden="unknown"]')).toBeNull()
     expect(container.querySelector('[data-fleet-focus-hidden="waiting"]')).toBeNull()
@@ -156,7 +159,7 @@ describe('one agent alone, and what that covers', () => {
 
   it('comes back to the grid, with every agent again', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(container.querySelector('[data-fleet-focus-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="focus"]')[0])
     await waitFor(() => expect(container.querySelectorAll('[data-fleet-ownership]')).toHaveLength(1))
     fireEvent.click(container.querySelector('[data-fleet-focus-exit')!)
     await waitFor(() => expect(container.querySelectorAll('[data-fleet-ownership]')).toHaveLength(2))
@@ -164,11 +167,11 @@ describe('one agent alone, and what that covers', () => {
 
   it('tells the focused agent’s terminal it is full screen, and the others that they are not', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
     expect(container.querySelector('[data-fleet-terminal="t-1"]')!.getAttribute('data-fleet-terminal-full')).toBe('off')
 
-    fireEvent.click(container.querySelector('[data-fleet-focus-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="focus"]')[0])
     await waitFor(() => expect(
       container.querySelector('[data-fleet-terminal="t-1"]')!.getAttribute('data-fleet-terminal-full'),
     ).toBe('on'))
@@ -178,9 +181,9 @@ describe('one agent alone, and what that covers', () => {
 describe('where the keyboard is', () => {
   it('marks the tile whose terminal has the focus, and only that one', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
-    fireEvent.click(screen.getAllByText('open the terminal')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="terminal"]:not([data-tile-control-active="on"])')[0])
     await waitFor(() => expect(openTerminals(container)).toHaveLength(2))
 
     expect(container.querySelector('[data-fleet-typing]')).toBeNull()
@@ -200,8 +203,8 @@ describe('a log opens where the tile already is', () => {
    */
   it('opens two logs at once, in the grid, with every tile still a tile', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2'), agent(3, 'a3')]))
-    fireEvent.click(container.querySelector('[data-fleet-log-toggle="1"]')!)
-    fireEvent.click(container.querySelector('[data-fleet-log-toggle="2"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="log"]')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="2"] [data-tile-control="log"]')[0])
 
     await waitFor(() => expect(container.querySelectorAll('[data-log-tab="conversation"]')).toHaveLength(2))
     // The negative half: nothing collapsed to a row, and nothing was enlarged.
@@ -212,17 +215,17 @@ describe('a log opens where the tile already is', () => {
 
   it('closes one log and leaves the other open', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(container.querySelector('[data-fleet-log-toggle="1"]')!)
-    fireEvent.click(container.querySelector('[data-fleet-log-toggle="2"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="log"]')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="2"] [data-tile-control="log"]')[0])
     await waitFor(() => expect(container.querySelectorAll('[data-log-tab="conversation"]')).toHaveLength(2))
 
-    fireEvent.click(container.querySelector('[data-fleet-log-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="log"]')[0])
     await waitFor(() => expect(container.querySelectorAll('[data-log-tab="conversation"]')).toHaveLength(1))
   })
 
   it('keeps enlarging as its own act, which still leaves the others as rows', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(container.querySelector('[data-fleet-enlarge-toggle="1"]')!)
+    fireEvent.click(container.querySelectorAll('[data-tile-controls="1"] [data-tile-control="enlarge"]')[0])
     await waitFor(() => expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeTruthy())
     expect(container.querySelectorAll('[data-fleet-row]')).toHaveLength(1)
   })

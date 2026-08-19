@@ -176,12 +176,12 @@ describe('nothing compacted may hide a state', () => {
     const { container } = render(<Fleet />)
     const header = await waitFor(() => {
       const el = container.querySelector('[data-fleet-attention]') as HTMLElement
-      expect(el.textContent).toMatch(/ismeretlen/)
+      expect(el.textContent).toMatch(/unknown/)
       return el
     })
     // Two agents in an undetermined state: one inside a COLLAPSED group, one
     // inside the parked section. Neither row is on screen; both are counted.
-    expect(header.textContent).toMatch(/2 ismeretlen/)
+    expect(header.textContent).toMatch(/2 unknown/)
     expect(container.querySelector('[data-fleet-project="hidden"]')).toBeNull()
     expect(container.querySelector('[data-fleet-project="felretett"]')).toBeNull()
   })
@@ -465,7 +465,7 @@ describe('a discovered project the arrangement places nowhere', () => {
     })
     expect(within(block).getByText('sehol')).toBeTruthy()
     // And it is counted, so the header cannot read calm while it is there.
-    expect(container.querySelector('[data-fleet-attention]')!.textContent).toMatch(/1 ismeretlen/)
+    expect(container.querySelector('[data-fleet-attention]')!.textContent).toMatch(/1 unknown/)
   })
 })
 
@@ -515,7 +515,7 @@ describe('the arrangement outlives the agents in it', () => {
     // A project's position is a statement about the project, not about who
     // happens to be running in it — so an empty fleet must not empty the list.
     expect(container.querySelector('[data-fleet-project="set-core"]')).toBeTruthy()
-    expect(screen.getByText(/lefutott/i)).toBeTruthy()
+    expect(screen.getByText(/discovery ran/i)).toBeTruthy()
   })
 })
 
@@ -541,7 +541,7 @@ describe('the agent tile and the header must not contradict each other', () => {
     // being edited in parallel and is translated in the follow-up. Asserting the
     // English here before the source says it would be a test that passes on a
     // screen nobody built yet.
-    expect(within(right).getByText(/válaszra vár/)).toBeTruthy()
+    expect(within(right).getByText(/waiting for an answer/)).toBeTruthy()
     expect(within(right).queryByText('csendes')).toBeNull()
     expect(within(right).getByText('approval needed')).toBeTruthy()
   })

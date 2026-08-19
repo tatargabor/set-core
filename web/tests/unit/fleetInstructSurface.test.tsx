@@ -205,8 +205,8 @@ describe('what an agent declares is shown and never written down', () => {
     // Drive the paths that actually WRITE. Without this the assertion below
     // passes on an empty store and measures nothing — the dead-test shape,
     // where a check that cannot fail reads exactly like one that held.
-    fireEvent.click(container.querySelector('[data-fleet-log-toggle="7"]')!)
-    fireEvent.click(container.querySelector('[data-fleet-focus-toggle="7"]')!)
+    fireEvent.click(container.querySelector('[data-tile-controls="7"] [data-tile-control="log"]')!)
+    fireEvent.click(container.querySelector('[data-tile-controls="7"] [data-tile-control="focus"]')!)
 
     // Read by KEY rather than by enumerating the Storage object: in jsdom
     // `Object.entries(localStorage)` returns the prototype's methods, so the

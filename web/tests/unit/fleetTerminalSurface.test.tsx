@@ -121,7 +121,11 @@ describe('the tile offers a terminal only where one can exist', () => {
     expect(absent.getAttribute('data-fleet-terminal-absent')).toBe('unknown')
 
     const text = absent.textContent ?? ''
-    expect(text).toContain('we could not find out')
+    // The wording now comes from `fleetTerminal.ts`'s own reason rather than
+    // from a second sentence in the tile — one source, so the screen cannot say
+    // one thing while the model decides another. The assertion is unchanged in
+    // substance: this case says we do not KNOW.
+    expect(text).toContain('we do not know')
     // The refuted rendering, held: printing the foreign wording here is the
     // whole defect, and it looks identical in every structural count.
     expect(text).not.toContain('not the framework’s')

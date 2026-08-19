@@ -46,6 +46,8 @@ import { blockUnexpectedFrom, declaredStanding, purposeStanding } from '../lib/f
 import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
+import TileControls from '../components/TileControls'
+import { plainExcerpt } from '../lib/excerptText'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
@@ -59,9 +61,9 @@ interface LogResponse {
 
 function age(seconds: number | null): string {
   if (seconds === null || seconds === undefined) return '—'
-  if (seconds < 90) return `${Math.round(seconds)}mp`
-  if (seconds < 5400) return `${Math.round(seconds / 60)}p`
-  return `${Math.round(seconds / 3600)}ó`
+  if (seconds < 90) return `${Math.round(seconds)}s`
+  if (seconds < 5400) return `${Math.round(seconds / 60)}m`
+  return `${Math.round(seconds / 3600)}h`
 }
 
 function clock(ts: string | null): string {
@@ -95,7 +97,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-emerald-400 whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-        <span>{agent.tool ?? 'dolgozik'}</span>
+        <span>{agent.tool ?? 'working'}</span>
         {agent.tool_elapsed_seconds !== null && (
           <span className="text-fg-muted tabular-nums">{age(agent.tool_elapsed_seconds)}</span>
         )}
@@ -107,7 +109,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-amber-400 whitespace-nowrap" title={agent.unknown_reason ?? ''}>
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-        ismeretlen
+        unknown
       </span>
     )
   }
@@ -124,13 +126,13 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     return (
       <span
         className="inline-flex items-center gap-1.5 text-sky-300 font-semibold whitespace-nowrap"
-        title={why ?? 'A munkamenet emberi válaszra vár. Hogy mire, azt a futtatókörnyezet nem írta meg — az állapot ettől még mért.'}
+        title={why ?? 'The session is waiting for a person. What for was not written down by the runtime — the state is measured either way.'}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-sky-300 shrink-0" />
-        válaszra vár
+        waiting for an answer
         {why
           ? <span className="text-fg-muted font-normal truncate max-w-[16rem]">{why}</span>
-          : <span className="text-fg-ghost font-normal">(mire, azt nem írta meg)</span>}
+          : <span className="text-fg-ghost font-normal">(what for was not written down)</span>}
       </span>
     )
   }
@@ -138,7 +140,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-fg-muted whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
-        csendes
+        quiet
       </span>
     )
   }
@@ -150,7 +152,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   // after it was written.
   return (
     <span className="inline-flex items-center gap-1.5 text-amber-400 whitespace-nowrap"
-          title="A felderítés olyan állapotot jelentett, amit ez a képernyő még nem ismer — a neve látszik, jelentést nem tulajdonítunk neki.">
+          title="Discovery reported a state this screen does not know yet — its name is shown and no meaning is attributed to it.">
       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
       {agent.state}
     </span>
@@ -172,8 +174,8 @@ function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolea
   const declared = agent.declaration_ignored
   if (typeof declared !== 'string' || declared === '') return null
   const explain =
-    `A rekord „${declared}” állapotot deklarált, a napló ezt megcáfolta — a mérés (“${agent.state}”) nyer. ` +
-    'Ez nem a képernyő hibája és nem is javítja el: a producer rekordja mond mást, mint a naplója.'
+    `The record declared the state “${declared}” and the log refuted it — the measurement (“${agent.state}”) wins. ` +
+    'This is not the screen\'s fault and the screen does not fix it: the producer\'s record says one thing and its log another.'
   return (
     <span
       data-fleet-conflict-agent={agent.pid}
@@ -182,66 +184,12 @@ function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolea
     >
       <span aria-hidden>⚠</span>
       {compact ? (
-        <span className="sr-only">ellentmondó deklaráció</span>
+        <span className="sr-only">contradicting declaration</span>
       ) : (
         <span className="font-normal">
-          deklarált: <span className="line-through">{declared}</span>
+          declared: <span className="line-through">{declared}</span>
         </span>
       )}
-    </span>
-  )
-}
-
-/**
- * The terminal control on a tile — task 8.2, both halves.
- *
- * The offer exists only where a terminal can; where it cannot, the reason stands
- * in its place. The wording is in `lib/fleetTerminal.ts` next to the decision,
- * so the screen cannot say one thing while the model decides another.
- *
- * **FOUR outcomes, not three** (task 5.5). `orphaned` used to fall through to
- * the same sentence as `foreign` — *not the framework's* — which is a false
- * statement about an agent the framework STARTED and then lost the terminal of.
- * It gets its own line, with the scope named, because the scope is the thing a
- * recovery stops and the reader needs to know it is still there.
- */
-function TerminalControl({ agent, ownerReachable, open, onToggle }: {
-  agent: FleetAgent
-  ownerReachable?: boolean
-  open: boolean
-  onToggle: () => void
-}) {
-  const offer = terminalOffer(agent, ownerReachable)
-  if (offer.kind === 'available') {
-    return (
-      <button
-        onClick={onToggle}
-        data-fleet-terminal-open={offer.label}
-        className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
-        title="The framework started this agent and holds its terminal — closing the view does not stop it."
-      >
-        {open ? 'close the terminal' : 'open the terminal'}
-      </button>
-    )
-  }
-  if (offer.kind === 'orphaned') {
-    return (
-      <span
-        data-fleet-terminal-absent="orphaned"
-        title={offer.reason}
-        className="text-xs text-amber-400"
-      >
-        terminal lost — ours, scope <span className="text-fg-muted">{offer.scope}</span> still running
-      </span>
-    )
-  }
-  return (
-    <span
-      data-fleet-terminal-absent={offer.kind}
-      title={offer.reason}
-      className={`text-xs ${offer.kind === 'unknown' ? 'text-amber-400' : 'text-fg-ghost'}`}
-    >
-      {offer.kind === 'unknown' ? 'terminal: we could not find out' : 'terminal: not the framework’s'}
     </span>
   )
 }
@@ -647,12 +595,12 @@ function Lineage({ agent }: { agent: FleetAgent }) {
       data-fleet-parent={p.source}
       className="text-xs text-fg-ghost shrink-0"
       title={recorded
-        ? 'A tulajdonos feljegyezte, ki kérte ennek az agentnek az indítását — rekord, nem következtetés.'
-        : 'A processzfából mérve: ez az első agent-ős. Nem ugyanaz, mint aki kérte — a kettő eltérhet.'}
+        ? 'The owner wrote down who asked for this agent to be started — a record, not an inference.'
+        : 'Measured from the process tree: this is the nearest agent ancestor. Not the same as who asked — the two can disagree.'}
     >
       ← {who}
       <span className={recorded ? 'ml-1 text-fg-ghost' : 'ml-1 text-amber-400/70'}>
-        {recorded ? 'feljegyezve' : 'processzfából'}
+        {recorded ? 'recorded' : 'from the process tree'}
       </span>
     </span>
   )
@@ -671,7 +619,10 @@ function Lineage({ agent }: { agent: FleetAgent }) {
  * this screen — a gap is not a zero.
  */
 function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
-  if (!agent.excerpt) {
+  // An excerpt made entirely of table scaffolding leaves nothing after
+  // stripping. That is the same absence as a tail of pure tool traffic, and it
+  // gets the same sentence rather than an empty line.
+  if (!agent.excerpt || !plainExcerpt(agent.excerpt)) {
     return (
       <div className="text-xs text-fg-ghost mt-1 italic">
         the tail of the log is all tool traffic — nothing was said recently
@@ -684,6 +635,11 @@ function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
   // runtime (`<command-name>`, `<command-message>`, `<local-command-stdout>`),
   // not by the person. So the label is decided from the text as well as the
   // role, and `te` is reserved for what the person actually said.
+  // Markdown marks stripped line by line — raised 2026-08-19: the busiest agent
+  // showed `| |---|---| | **7.7** utasítás | …` as its excerpt, which is pipes
+  // and asterisks where the answer to "what is happening" should be. Nothing is
+  // rendered, interpreted or shortened; the marks go and the words stay.
+  const shown = plainExcerpt(agent.excerpt)
   const speaker: Speaker = agent.excerpt_from === 'user'
     ? speakerOf('user', agent.excerpt)
     : agent.excerpt_from === 'agent' ? 'agent' : 'other'
@@ -703,7 +659,7 @@ function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
         className="text-xs text-fg-muted min-w-0"
         style={{ display: '-webkit-box', WebkitLineClamp: lines, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
       >
-        {agent.excerpt}
+        {shown}
       </span>
     </div>
   )
@@ -714,7 +670,7 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
     <button
       onClick={onSelect}
       data-fleet-row={agent.pid}
-      title="Kattints: ez a tábla nagyítódik ki"
+      title="Click: this tile is enlarged"
       className="w-full text-left flex items-baseline gap-2 px-3 py-1 rounded border border-transparent hover:border-surface-line hover:bg-surface-raised/40 transition-colors"
     >
       <span className="text-xs text-fg-strong truncate max-w-[14rem] shrink-0">
@@ -862,13 +818,15 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onTyping }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onTyping }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
   enlarged?: boolean
   /** The tile is alone on the panel — full screen. */
   focused?: boolean
+  /** Take the whole row of the grid: something is open inside and needs width. */
+  wide?: boolean
   /** The reader's keyboard is in this tile's terminal. Measured, not inferred. */
   typing?: boolean
   ownerReachable?: boolean
@@ -904,9 +862,14 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
       data-fleet-ownership={ownership}
       data-fleet-typing={typing ? agent.pid : undefined}
       title={OWNERSHIP_NOTE[ownership]}
-      className={cardClasses(ownership, { enlarged, focused, typing })}
+      className={`${cardClasses(ownership, { enlarged, focused, typing })}${wide ? ' md:col-span-full' : ''}`}
     >
-      <div className="flex items-baseline gap-2 flex-wrap">
+      {/* Two parts, so the controls stay in the corner. With everything in one
+          wrapping row, a long name pushed the icons onto a second line — a
+          title bar that moves is not a title bar. The left half wraps; the
+          right half never does. */}
+      <div className="flex items-start gap-2">
+      <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
         <span className="text-sm text-fg-strong">
           {/* The name the OWNER gave it wins over the one derived from the
               session id. Measured 2026-08-19: the tile said `set-core-9a` for
@@ -942,58 +905,32 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           {age(agent.last_movement_seconds)} · {agent.pid}
         </span>
       </div>
+        {/* Window controls, top right — asked for 2026-08-19. They used to be
+            four sentences in a row under the excerpt, which is a paragraph
+            where a title bar belongs. Every sentence survives in the tooltip
+            and in `aria-label`, so nothing that had to be SAID is now unsaid. */}
+        <TileControls
+          agent={agent}
+          ownerReachable={ownerReachable}
+          logOpen={open}
+          onLog={onToggle}
+          enlarged={enlarged}
+          onEnlarge={onEnlarge}
+          focused={focused}
+          onFocus={onFocus}
+          terminalOpen={terminalOpen}
+          onTerminal={onTerminal}
+        />
+      </div>
 
       <Purpose agent={agent} />
       <Declared standing={standing} full={enlarged || focused} />
-      <Excerpt agent={agent} lines={enlarged ? 4 : 2} />
-
-      <div className="flex items-center gap-3 mt-1.5">
-        <button
-          onClick={onToggle}
-          data-fleet-log-toggle={agent.pid}
-          className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
-          title="The conversation opens here, on this tile. Opening it no longer hides the other agents."
-        >
-          {open ? 'close the log' : 'open the log'}
-        </button>
-        {/* The 7.4 layout, as its own control. Offered only where it changes
-            anything: with one agent there are no rows to make. */}
-        {onEnlarge && !focused && (
-          <button
-            onClick={onEnlarge}
-            data-fleet-enlarge-toggle={agent.pid}
-            className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
-            title={enlarged
-              ? 'Back to the grid — every tile the same size again.'
-              : 'This tile big, the others as rows. Nothing is hidden: a row still carries its state.'}
-          >
-            {enlarged ? '⤡ grid' : '⤢ enlarge'}
-          </button>
-        )}
-        {/* The same full screen the terminal header offers, here as well —
-            asked for on the terminal, but the log needs the width just as
-            much, and a control that exists in only one of two places is a
-            control the reader has to remember the location of. */}
-        {onFocus && (
-          <button
-            onClick={onFocus}
-            data-fleet-focus-toggle={agent.pid}
-            className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
-            title={focused
-              ? 'Back to the grid — the other agents come back into view.'
-              : 'Show this agent alone, filling the panel. What it covers is counted in the header.'}
-          >
-            {focused ? '⤡ back to the grid' : '⤢ full screen'}
-          </button>
-        )}
-        {/* Offered where it can exist, reasoned where it cannot — task 8.2. */}
-        <TerminalControl
-          agent={agent}
-          ownerReachable={ownerReachable}
-          open={terminalOpen}
-          onToggle={() => onTerminal(terminalOpen ? null : (offer.kind === 'available' ? offer.label : null))}
-        />
-      </div>
+      {/* More of the conversation on an unopened tile — asked for 2026-08-19:
+          *"egy projektben fő agent 6-8 lesz … még jobb bele info akkor is ha
+          nincs nyitva a terminál"*. A tile that shows two lines makes the
+          reader open something to learn anything, and with eight agents that is
+          eight openings. */}
+      <Excerpt agent={agent} lines={enlarged || focused ? 8 : 4} />
 
       {/* Task 7.7 — the agent's own input, and task 4.4 where there is nothing
           to type into: the producer's reason stands in the input's place. */}
@@ -1055,12 +992,12 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
 
   // Not asked yet. Silence here would read as "you cannot start one".
   if (owner === null) {
-    return <span className="text-xs text-fg-ghost">indítás: a tulajdonos szolgáltatás megkérdezése…</span>
+    return <span className="text-xs text-fg-ghost">start: asking the owner service…</span>
   }
   if (!owner.available) {
     return (
       <span data-fleet-start="unavailable" className="text-xs text-amber-400" title={owner.reason ?? ''}>
-        agent nem indítható innen: {owner.reason ?? 'a tulajdonos szolgáltatás nem elérhető'}
+        no agent can be started from here: {owner.reason ?? 'the owner service is not reachable'}
       </span>
     )
   }
@@ -1071,9 +1008,9 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
         data-fleet-start="offer"
         onClick={() => { setLabel(suggest()); setOpen(true); setError(null) }}
         className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
-        title="A keret indítja és tartja — ennek lesz terminálja a böngészőben."
+        title="The framework starts it and holds it — this one will have a terminal in the browser."
       >
-        + agent indítása
+        + start an agent
       </button>
     )
   }
@@ -1112,14 +1049,14 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
         autoFocus
         value={label}
         onChange={e => setLabel(e.target.value)}
-        aria-label="az indítandó agent neve"
+        aria-label="name for the agent to start"
         className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-48"
       />
       <button type="submit" disabled={busy} className="text-xs text-sky-300 hover:underline disabled:opacity-50">
-        {busy ? 'indítás…' : 'indítás'}
+        {busy ? 'starting…' : 'start'}
       </button>
       <button type="button" onClick={() => setOpen(false)} className="text-xs text-fg-muted hover:text-fg-strong">
-        mégse
+        cancel
       </button>
       {error && <span className="text-xs text-red-400" title={error}>nem indult el: {error}</span>}
     </form>
@@ -1140,11 +1077,11 @@ function Looking() {
     <div className="p-6 max-w-2xl" data-fleet-phase="looking">
       <div className="flex items-center gap-2 text-sm text-sky-400">
         <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse shrink-0" />
-        Agentek keresése…
+        Looking for agents…
       </div>
       <p className="mt-2 text-xs text-fg-muted leading-relaxed">
-        A felderítés még nem válaszolt. Ez <span className="text-fg-strong">nem</span> azt jelenti, hogy nem fut
-        agent — amíg a mérés meg nem érkezik, a képernyő nem állít se számot, se ürességet.
+        Discovery has not answered yet. This does <span className="text-fg-strong">not</span> mean no agent is
+        running — until the measurement arrives, the screen states neither a count nor an emptiness.
       </p>
     </div>
   )
@@ -1166,11 +1103,11 @@ function AnsweredEmpty({ at, projects }: { at: number | null; projects: number }
     <div className="p-6 max-w-2xl" data-fleet-phase="answered-empty">
       <div className="flex items-center gap-2 text-sm text-fg-strong">
         <span className="w-2 h-2 rounded-full bg-surface-line shrink-0" />
-        A felderítés lefutott: egyetlen agent sem fut.
+        Discovery ran: no agent is running.
       </div>
       <p className="mt-2 text-xs text-fg-muted leading-relaxed tabular-nums">
-        Mérve {at ? new Date(at).toLocaleTimeString('hu-HU') : '—'}-kor, {projects} ismert projekt felett.
-        Ez mért eredmény, nem betöltés alatt álló képernyő.
+        Measured at {at ? new Date(at).toLocaleTimeString() : '—'}, over {projects} known projects.
+        This is a result, not a screen still loading.
       </p>
     </div>
   )
@@ -1322,10 +1259,10 @@ export default function Fleet() {
     if (error) {
       return (
         <div className="p-6 max-w-2xl" data-fleet-phase="unreachable">
-          <div className="text-sm text-red-400">A flotta nem olvasható: {error}</div>
+          <div className="text-sm text-red-400">The fleet cannot be read: {error}</div>
           <p className="mt-2 text-xs text-fg-muted">
-            A felderítés egyszer sem válaszolt, tehát a képernyő semmit nem tud a futó agentekről —
-            ez nem azonos azzal, hogy nincs egy sem.
+            Discovery has never answered, so this screen knows nothing about the running agents —
+            which is not the same as there being none.
           </p>
         </div>
       )
@@ -1336,8 +1273,23 @@ export default function Fleet() {
   return (
     <div className="h-full flex flex-col" data-fleet-phase={data.agents === 0 ? 'answered-empty' : 'answered'}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
-        <span className="text-sm font-semibold text-fg-loud">Flotta</span>
-        <span className="text-xs text-fg-muted tabular-nums">{data.agents} agent · {populated.length} projektben</span>
+        <span className="text-sm font-semibold text-fg-loud">Fleet</span>
+        {/*
+          ONE count, and it says which projects it is counting — raised
+          2026-08-19. The header said `12 agent · 6 projektben` while the column
+          said `12 agents · 41 projects`: the same screen, two numbers for
+          "projects", and nothing saying that one was the projects holding an
+          agent and the other every project known. That is the second-copy
+          defect inside a single view, and the copy nobody maintains is the one
+          being read. The sentence now carries both numbers and their relation,
+          and the column's duplicate is gone.
+        */}
+        <span
+          className="text-xs text-fg-muted tabular-nums"
+          title="Agents discovered on this machine, and how many of the known projects are holding at least one."
+        >
+          {data.agents} agents in {populated.length} of {data.projects.length} projects
+        </span>
         {/* The per-state counts moved into the column's attention header, which
             is where the jump to the first one lives. Two places carrying the
             same count is one place too many: the copy nobody maintains is the
@@ -1347,8 +1299,8 @@ export default function Fleet() {
             never explain away a screen that has no agents on it. */}
         {data.agents > 0 && (
           <span className="text-xs text-fg-muted">
-            a <span className="text-fg-strong">csendes</span> nem azt jelenti, hogy nem történik semmi — csak azt,
-            hogy a napló legutóbbi kiírásakor nem volt nyitott eszközhívás
+            <span className="text-fg-strong">quiet</span> does not mean nothing is happening — only that no tool
+            call was open when the log was last flushed
           </span>
         )}
         {/* One cause, named once. A screen that can offer no terminal ANYWHERE
@@ -1360,9 +1312,9 @@ export default function Fleet() {
           <span
             data-fleet-owner="unreachable"
             className="text-xs text-amber-400"
-            title="A tulajdonos szolgáltatás nem válaszolt, ezért egyetlen agentről sem tudjuk, a keret tartja-e. Ez nem azt jelenti, hogy egyiknek sincs terminálja."
+            title="The owner service did not answer, so for no agent do we know whether the framework holds it. This does not mean none of them has a terminal."
           >
-            a tulajdonos szolgáltatás nem válaszol — a terminálok hovatartozása ismeretlen, nem hiányzó
+            the owner service is not answering — who holds the terminals is unknown, not absent
           </span>
         )}
         {/* A refresh that failed after a good answer keeps the answer — and says
@@ -1371,8 +1323,8 @@ export default function Fleet() {
             on the landing screen. */}
         {error && (
           <span className="ml-auto text-xs text-amber-400" title={error}>
-            a frissítés nem sikerült — az adat {answeredAt ? new Date(answeredAt).toLocaleTimeString('hu-HU') : '—'}-kor
-            {' '}mért állapot
+            the refresh failed — this is the state measured at{' '}
+            {answeredAt ? new Date(answeredAt).toLocaleTimeString() : '—'}
           </span>
         )}
       </div>
@@ -1411,8 +1363,8 @@ export default function Fleet() {
                     nothing to lay out, and while a tile is enlarged the grid
                     is not the arrangement in use. */}
                 {!focused && enlarged === null && active.agents.length > 1 && (
-                  <span className="ml-auto flex items-center gap-1 shrink-0" title="Hány oszlopban jelenjenek meg az agentek ebben a projektben">
-                    <span className="text-xs text-fg-ghost">oszlop</span>
+                  <span className="ml-auto flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project">
+                    <span className="text-xs text-fg-ghost">columns</span>
                     {COLUMN_CHOICES.map(c => (
                       <button
                         key={c}
@@ -1466,7 +1418,7 @@ export default function Fleet() {
                 )}
                 {!focused && enlarged !== null && active.agents.length > 1 && (
                   <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
-                    {active.agents.length - 1} sorként — kattints egyre a váltáshoz
+                    {active.agents.length - 1} as rows — click one to switch
                   </span>
                 )}
               </div>
@@ -1475,8 +1427,8 @@ export default function Fleet() {
                   purpose, so the right-hand side says what it measured. */}
               {active.agents.length === 0 && (
                 <div className="text-sm text-fg-muted">
-                  Ebben a projektben a felderítés nem talált futó agentet.
-                  {active.archived && <span className="text-fg-ghost"> (archivált projekt)</span>}
+                  Discovery found no running agent in this project.
+                  {active.archived && <span className="text-fg-ghost"> (archived project)</span>}
                 </div>
               )}
               {/* Task 7.4 — the enlarged tile stays in the list's own order, and
@@ -1521,6 +1473,16 @@ export default function Fleet() {
                   <AgentCard
                     key={a.pid}
                     agent={a}
+                    /*
+                      A tile that has opened something takes the whole row.
+                      Raised 2026-08-19: *"a sorok megtörnek"* — with one tile
+                      three times the height of its neighbour, the grid's rows
+                      stop lining up and a hole opens under the short one. The
+                      cause is that a log or a terminal is a different KIND of
+                      element from a tile: it wants width, and it is the one
+                      thing on screen the reader is actually looking at.
+                    */
+                    wide={extra.open || openTerminals.includes(a.terminal_label ?? '')}
                     {...extra}
                     onEnlarge={() => setEnlarged(active.name, enlarged === a.pid ? null : a.pid)}
                     ownerReachable={data.owner_reachable}
@@ -1544,7 +1506,7 @@ export default function Fleet() {
             </>
           ) : (
             <div className="text-sm text-fg-muted">
-              Van futó agent, de egyik ismert projekthez sem sikerült kötni.
+              There are running agents, but none could be bound to a known project.
             </div>
           )}
         </div>

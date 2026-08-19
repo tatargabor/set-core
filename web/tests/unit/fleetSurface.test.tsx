@@ -113,7 +113,7 @@ describe('task 7.11 — an unfinished answer is not an empty one', () => {
 
     expect(container.querySelector('[data-fleet-phase]')?.getAttribute('data-fleet-phase'))
       .toBe('looking')
-    expect(screen.getByText(/keresése/i)).toBeTruthy()
+    expect(screen.getByText(/looking for agents/i)).toBeTruthy()
 
     // The negative half, and it is the one that matters. A zero is an ANSWER,
     // and no answer has arrived. `\b0\b` rather than a hard-coded "0 agent",
@@ -131,9 +131,9 @@ describe('task 7.11 — an unfinished answer is not an empty one', () => {
         .toBe('answered-empty')
     })
     // It reads as a RESULT — the word for the measurement, not for the wait.
-    expect(screen.getByText(/lefutott/i)).toBeTruthy()
+    expect(screen.getByText(/discovery ran/i)).toBeTruthy()
     // And it is not the other screen wearing a different colour.
-    expect(screen.queryByText(/keresése/i)).toBeNull()
+    expect(screen.queryByText(/looking for agents/i)).toBeNull()
   })
 
   it('keeps the last measurement when a refresh fails, and says how old it is', async () => {
@@ -151,7 +151,7 @@ describe('task 7.11 — an unfinished answer is not an empty one', () => {
     expect(screen.getByText('demo-a1')).toBeTruthy()
 
     await act(async () => { await vi.advanceTimersByTimeAsync(5100) })
-    expect(screen.getByText(/nem sikerült/i)).toBeTruthy()
+    expect(screen.getByText(/the refresh failed/i)).toBeTruthy()
     // The agent is still on screen: trading a stale measurement for NO
     // measurement is the worse of the two on the landing screen.
     expect(screen.getByText('demo-a1')).toBeTruthy()
@@ -187,14 +187,14 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
     // grid tiles were too small to read anything in). What 7.4 asserts is
     // unchanged, and it is asserted below; only the control that triggers it
     // moved.
-    fireEvent.click(container.querySelector('[data-fleet-enlarge-toggle="1"]')!)
+    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
 
     const rows = container.querySelectorAll('[data-fleet-row]')
     expect(rows.length).toBe(1)
     expect(container.querySelector('[data-fleet-enlarged="1"]')).toBeTruthy()
     // The row is not a bare name. An agent in an undetermined state must be
     // readable from the row, or enlarging one tile hides the broken one.
-    expect(within(rows[0] as HTMLElement).getByText(/ismeretlen/i)).toBeTruthy()
+    expect(within(rows[0] as HTMLElement).getByText(/unknown/i)).toBeTruthy()
     expect(within(rows[0] as HTMLElement).getByText('demo-a2')).toBeTruthy()
   })
 
@@ -202,7 +202,7 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
     await screen.findByText('demo-a1')
-    fireEvent.click(container.querySelector('[data-fleet-enlarge-toggle="1"]')!)
+    fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
 
     fireEvent.click(container.querySelector('[data-fleet-row="2"]')!)
     expect(container.querySelector('[data-fleet-enlarged="2"]')).toBeTruthy()
@@ -220,7 +220,7 @@ describe('task 7.12 — the log view leaves room for the timeline without buildi
     // single-agent default (task 7.5) and its log is already open — so a
     // one-agent fixture would assert the tabs through a path the reader never
     // takes, and would break again the next time that default moves.
-    fireEvent.click(screen.getAllByText('open the log')[0])
+    fireEvent.click(container.querySelectorAll('[data-tile-control="log"]')[0])
 
     const conversation = container.querySelector('[data-log-tab="conversation"]')!
     expect(conversation.getAttribute('aria-selected')).toBe('true')

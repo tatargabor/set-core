@@ -445,7 +445,7 @@ function ProjectRow(p: RowProps) {
               onClick={() => p.onAssign({ kind: 'ungrouped' })}
               className="block w-full text-left px-1.5 py-0.5 rounded text-fg-strong hover:bg-surface-raised"
             >
-              → besorolatlan
+              → ungrouped
             </button>
           )}
           {p.parked ? (
@@ -940,7 +940,7 @@ export default function FleetProjectColumn({
               className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline underline-offset-2 tabular-nums"
             >
               <span className="w-2 h-2 rounded-full bg-amber-400" />
-              {totals.unknown} ismeretlen
+              {totals.unknown} unknown
               <span className="text-fg-muted">→</span>
             </button>
           )}
@@ -950,18 +950,20 @@ export default function FleetProjectColumn({
             </span>
           )}
         </div>
-        {/* One line, not four. The explanation of WHAT is counted belongs in the
-            tooltip; the counts belong on the landing screen, where four lines of
-            prose at the top push the list itself below the fold. */}
-        <div
-          className="text-xs text-fg-ghost tabular-nums truncate"
-          title="The counts above include agents in the parked section and inside collapsed groups."
-        >
-          {totals.agents} agents · {present.length} projects
-          {missingCount > 0 && (
-            <span className="text-amber-400"> · {missingCount} names missing</span>
-          )}
-        </div>
+        {/* The agent and project totals used to live here AND in the screen's
+            header, with different filters and no way to tell which was which
+            (raised 2026-08-19). They are now stated once, in the header, as one
+            sentence that carries the relation between the two numbers. What
+            stays here is the thing only this column knows: arranged names that
+            discovery no longer finds. */}
+        {missingCount > 0 && (
+          <div
+            className="text-xs text-amber-400 tabular-nums truncate"
+            title="Projects placed in this arrangement that the latest discovery did not return."
+          >
+            {missingCount} arranged name(s) missing
+          </div>
+        )}
       </div>
 
       {conflict && (
@@ -1019,7 +1021,7 @@ export default function FleetProjectColumn({
               onForget={project => void save(forgetMissing(view, project))}
               forcedOpen={forcedOpen.has(g.id)}
               groupIndex={i}
-              groupHandle={handleAttrs(groupReorder.handlers, i, `group:${g.id}`, `${g.name} csoport sorrendje`)}
+              groupHandle={handleAttrs(groupReorder.handlers, i, `group:${g.id}`, `order of the ${g.name} group`)}
               groupDragging={groupReorder.dragFrom === i}
               groupDropTarget={groupReorder.dragFrom !== null && groupReorder.dragTo === i && groupReorder.dragFrom !== i}
               menuFor={menuFor}
@@ -1036,7 +1038,7 @@ export default function FleetProjectColumn({
             <div className="flex items-center gap-1 px-0.5 py-0.5">
               <span className="px-1 py-1 opacity-0" aria-hidden><Grip /></span>
               <span className="flex-1 min-w-0 text-xs font-semibold uppercase tracking-wide text-fg-muted truncate">
-                besorolatlan
+                ungrouped
                 <span className="ml-1.5 font-normal normal-case tracking-normal text-fg-ghost tabular-nums">
                   {view.ungrouped.length}
                 </span>
@@ -1188,7 +1190,7 @@ export default function FleetProjectColumn({
             onClick={() => setNewGroup({ name: '', prefix: '' })}
             className="text-xs text-fg-muted hover:text-fg-strong"
           >
-            + csoport
+            + group
           </button>
         ) : (
           <form
