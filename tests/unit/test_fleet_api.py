@@ -677,3 +677,121 @@ def test_a_stale_record_is_never_shown_as_this_agents_purpose():
     agent = _Agent(7); agent.session_id = "s-1"
     stale = _purpose(7, status="stale")
     assert fleet_api._agent_payload(agent, _State(), {}, {}, [stale])["purpose"] is None
+
+
+# --------------------------------------------------------------------------- #
+# 5.10 / 9.16 — exactly ONE path starts a work unit
+# --------------------------------------------------------------------------- #
+
+from set_orch.api.fleet import StartUnitBody
+
+
+def test_the_unit_route_runs_the_engines_command_and_never_spawns_an_agent(monkeypatch, tmp_path):
+    """5.10 — a run started outside the engine is absent from the engine's state,
+    which is the source the rest of this screen reads."""
+    seen = {}
+    monkeypatch.setattr(fleet_api, "_known_roots", lambda: {str(tmp_path)})
+    monkeypatch.setattr(fleet_api.OwnerClient, "start",
+                        lambda self, **kw: seen.update(kw) or {"label": kw["label"], "pid": 5})
+    out = fleet_api.fleet_start_unit(StartUnitBody(
+        change="fleet-view", cwd=str(tmp_path), seat="set-core#aaaa", limit=3))
+    argv = seen["argv"]
+    assert argv[0] == fleet_api.ENGINE_COMMAND
+    assert fleet_api.ENGINE_RUN in argv
+    assert "--seat" in argv and "set-core#aaaa" in argv
+    assert "--limit" in argv and "3" in argv
+    assert out["kind"] == "work-unit" and out["change"] == "fleet-view"
+
+
+def test_the_unit_route_builds_the_argv_and_takes_none(tmp_path):
+    """No parameter through which a second start path could be smuggled in."""
+    fields = set(StartUnitBody.model_fields)
+    assert "argv" not in fields and "command" not in fields and "label" not in fields
+
+
+def test_the_engine_subcommand_this_route_names_is_the_one_that_starts_a_unit():
+    """9.16 — asserted against the ENGINE's own parser, not against a string.
+
+    The engine marks its start command `starts_a_unit=True` precisely so a
+    caller can check rather than assume. A test that only checked our constant
+    spelled `run` would pass on a build where the engine renamed it.
+    """
+    from set_workcycle.cli import build_parser
+    import argparse
+    parser = build_parser()
+    subs = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
+    assert len(subs) == 1
+    starting = [name for name, sp in subs[0].choices.items()
+                if getattr(sp.get_default("starts_a_unit"), "__bool__", lambda: False)()]
+    assert starting == [fleet_api.ENGINE_RUN], starting
+
+
+def test_exactly_one_surface_route_starts_a_work_unit(monkeypatch, tmp_path):
+    """9.16 — enumerate the START paths and DRIVE each one; do not read the source.
+
+    A source scan for the engine's name is a substring test wearing a
+    guarantee: it passes on a route that merely mentions the constant and fails
+    on one that reaches it through a variable. So each starter is actually
+    called against a fake owner, and what is asserted is the argv it handed over
+    — the thing the owner would really execute.
+
+    Two starters are expected, not one. The bare-session route is deliberately
+    still here (5.8), so "only one start route" would be wrong in the other
+    direction; what must be unique is the one that starts a WORK UNIT.
+    """
+    import inspect
+    from set_orch.api import fleet as mod
+
+    calls = []
+    monkeypatch.setattr(mod, "_known_roots", lambda: {str(tmp_path)})
+    monkeypatch.setattr(mod.OwnerClient, "start",
+                        lambda self, **kw: calls.append(kw) or {"label": kw["label"], "pid": 1})
+
+    starters = [name for name, fn in vars(mod).items()
+                if name.startswith("fleet_") and callable(fn)
+                and "OwnerClient().start(" in (inspect.getsource(fn) if inspect.isfunction(fn) else "")]
+    assert sorted(starters) == ["fleet_start_agent", "fleet_start_unit"], starters
+
+    mod.fleet_start_agent(StartAgentBody(label="bare", cwd=str(tmp_path)))
+    mod.fleet_start_unit(StartUnitBody(change="c", cwd=str(tmp_path), seat="p#1"))
+
+    engine_starts = [c for c in calls
+                     if (c.get("argv") or [None])[0] == mod.ENGINE_COMMAND]
+    assert len(calls) == 2, calls
+    assert len(engine_starts) == 1, calls
+    # …and the bare one hands over NO argv at all, so it cannot become a second
+    # way to run the engine by passing one in.
+    bare = [c for c in calls if c not in engine_starts]
+    assert bare[0].get("argv") is None
+
+
+def test_a_directory_outside_every_known_project_cannot_start_a_unit(monkeypatch, tmp_path):
+    monkeypatch.setattr(fleet_api, "_known_roots", lambda: set())
+    monkeypatch.setattr(fleet_api.OwnerClient, "start",
+                        lambda self, **kw: pytest.fail("the owner was asked"))
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_start_unit(StartUnitBody(change="c", cwd=str(tmp_path), seat="s#1"))
+    assert excinfo.value.status_code == 400
+
+
+def test_an_absent_owner_is_503_with_no_local_fallback(monkeypatch, tmp_path):
+    """Starting it here would rebuild CB-1: the dashboard restarts on every
+    deploy and would take every agent it started with it."""
+    monkeypatch.setattr(fleet_api, "_known_roots", lambda: {str(tmp_path)})
+    def _down(self, **kw):
+        raise OwnerUnavailable("no owner")
+    monkeypatch.setattr(fleet_api.OwnerClient, "start", _down)
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_start_unit(StartUnitBody(change="c", cwd=str(tmp_path), seat="s#1"))
+    assert excinfo.value.status_code == 503
+
+
+def test_the_label_tells_a_unit_run_from_a_bare_session(monkeypatch, tmp_path):
+    """The terminal column, the stop action and recovery all key on the label."""
+    seen = {}
+    monkeypatch.setattr(fleet_api, "_known_roots", lambda: {str(tmp_path)})
+    monkeypatch.setattr(fleet_api.OwnerClient, "start",
+                        lambda self, **kw: seen.update(kw) or {"label": kw["label"]})
+    fleet_api.fleet_start_unit(StartUnitBody(change="c", cwd=str(tmp_path), seat="p#1"))
+    assert seen["label"].startswith("unit-")
+    assert "#" not in seen["label"] and "/" not in seen["label"]

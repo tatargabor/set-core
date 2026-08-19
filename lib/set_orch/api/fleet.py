@@ -4,7 +4,8 @@
     GET  /api/fleet/agents/{pid}/state — one agent's measured state, without the fleet
     GET  /api/fleet/agents/{pid}/log   — the raw conversation of one agent (design §5.8)
     GET  /api/fleet/owner              — whether an agent can be started at all
-    POST /api/fleet/agents             — start one, through the agent owner (task 5.8)
+    POST /api/fleet/agents             — start one BARE session, through the agent owner (5.8)
+    POST /api/fleet/units              — start a WORK UNIT, through the engine's one command (5.10)
     POST /api/fleet/agents/{label}/stop — stop one this framework started
     POST /api/fleet/agents/{pid}/instruct — address one instruction, and say what became of it
     GET  /api/fleet/waiters            — waiter processes, and which of them are orphaned
@@ -597,6 +598,105 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         # mid-turn, and would present `quiet` as "nothing is happening".
         "quiet_means": "no outstanding tool call as of the session log's last flush",
     }
+
+
+# --------------------------------------------------------------------------- #
+# Starting a WORK UNIT — through the engine's one command (task 5.10)
+# --------------------------------------------------------------------------- #
+
+#: The engine's command entry point, invoked as a command and never imported.
+#: `set_orch` may not import `set_workcycle` (engine design D10), and this is the
+#: interface that exists for exactly this purpose: the engine's contract names
+#: the framework's surface as a caller and says there is no second mechanism.
+ENGINE_COMMAND = "set-work-cycle"
+
+#: The one subcommand that starts a unit. Named here so the argv this route
+#: builds is checkable; `tests/unit/test_fleet_api.py` asserts against the
+#: engine's own parser, where `run` carries `starts_a_unit=True`.
+ENGINE_RUN = "run"
+
+
+class StartUnitBody(BaseModel):
+    """What the screen may ask the ENGINE for.
+
+    Deliberately not a superset of `StartAgentBody`. This route does not take a
+    label, an argv or a command: it builds the engine's argv itself, so there is
+    no parameter through which a second start path could be smuggled in.
+    """
+
+    change: str
+    cwd: str
+    #: The agent session this unit belongs to. The engine refuses a project name
+    #: here, and that refusal is carried through rather than pre-empted — its
+    #: wording is the engine's to own.
+    seat: str
+    limit: Optional[int] = None
+    model: Optional[str] = None
+    rows: int = 40
+    cols: int = 120
+    requested_by: Optional[str] = None
+
+
+@router.post("/api/fleet/units")
+def fleet_start_unit(body: StartUnitBody) -> Dict[str, Any]:
+    """Start one work unit by RUNNING the engine's command under an owned pty.
+
+    Not by spawning an agent and hoping. A run started outside the engine is
+    absent from the engine's recorded state — which is the source the rest of
+    this screen reads (task 3.9) — so the surface would have started something
+    it then could not describe. That is why the engine's contract says any
+    caller uses this entry point and no second mechanism exists, and why this
+    route builds the argv rather than accepting one.
+
+    The pty is the framework's, exactly as for a bare session: the difference is
+    WHAT runs inside it, not who owns it. The label says which of the two this
+    is, because a screen that cannot tell a work unit from a hand-started shell
+    cannot report either honestly.
+    """
+    # The SAME two refusals as the bare start, deliberately reusing the same
+    # check rather than a second one: a directory this screen may start a unit
+    # in and one it may start a session in are the same set, and two checks that
+    # are meant to agree drift.
+    root = os.path.realpath(os.path.expanduser(body.cwd))
+    if not os.path.isdir(root):
+        raise HTTPException(status_code=400, detail=f"no such directory: {body.cwd}")
+    if root not in _known_roots():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{root} is not a project this screen knows; register it first",
+        )
+
+    argv = [ENGINE_COMMAND, "--tree", root, "--change", body.change, ENGINE_RUN,
+            "--seat", body.seat, "--started-by", "fleet-surface"]
+    if body.limit is not None:
+        argv += ["--limit", str(body.limit)]
+    if body.model:
+        argv += ["--model", body.model]
+
+    # A label that says what it is. `unit-` is not decoration: the terminal
+    # column, the stop action and the recovery path all key on the label, and a
+    # unit run and a bare shell need to be distinguishable there without asking
+    # anything else.
+    label = f"unit-{body.change}-{body.seat}".replace("/", "-").replace("#", "-")
+    try:
+        result = OwnerClient().start(
+            label=label, cwd=root, argv=argv, rows=body.rows, cols=body.cols,
+            requested_by=body.requested_by,
+        )
+    except OwnerUnavailable as exc:
+        # 503 and no local fallback, for the same reason as the bare start:
+        # starting it in this process rebuilds finding CB-1, where a dashboard
+        # restart took every agent it had started with it.
+        raise HTTPException(status_code=503, detail=str(exc))
+    except OwnerClientError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    result["kind"] = "work-unit"
+    result["change"] = body.change
+    result["engine_argv"] = argv
+    logger.info("fleet api: work unit started for change=%s seat=%s label=%s",
+                body.change, body.seat, label)
+    return result
 
 
 # --------------------------------------------------------------------------- #
