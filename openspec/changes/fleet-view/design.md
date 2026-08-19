@@ -735,6 +735,41 @@ invisible to it. It must report coverage, not just conclusions.
 capability, so that a reader can tell at a glance which claims on this screen were measured and
 which were inferred.
 
+## 6.6 What the fleet is FOR — stated by the user, 2026-08-19, and it demotes a group
+
+Recorded at the moment it was said, because it reverses the direction the work was drifting
+in and a summary would lose exactly the part that matters.
+
+**The goal is not to switch between eighty terminals.** In the user's own words: *"pont nem az
+a cél, hogy terminálba gépeljek karaktereket"* — the point is to take what comes OUT of an
+agent, carry it over automations and communication tools (Discord was the example), and wire
+the ANSWER back into the same session.
+
+Three consequences, and the third is uncomfortable:
+
+- **The terminal is plumbing, not a surface.** A pty is the only channel that can WRITE into a
+  running interactive agent, so it stays — as the delivery path for an answer, not as something
+  a human looks at.
+- **Reading is settled and the terminal is not the answer to it.** Measured the same day:
+  a keystroke reaches the terminal in **6.6–21.3 ms** and the session log in **0.3–5.5 s**. The
+  log's figure is not a transport cost — tightening the poll from 250 ms to 20 ms made it
+  *worse*, which is the tell: the agent writes its JSONL on **turn boundaries**, not
+  continuously. So the log is not slow, it is intermittent, and for reading it is enough.
+- **Group 8's visible half is off the critical path.** The xterm component in the browser is a
+  debug view; the OWNER service beneath it is on the path and stays. This is written down so
+  the finished work is not later mistaken for the goal it does not serve.
+
+**What is on the path instead:** noticing that an agent is waiting for an answer (group 3 /
+7.14), carrying the question out (group 4), and writing the answer back into the same session
+(group 4 + the owner's `write`). Not group 8.
+
+**And the orchestrator does NOT move onto the owner** — decided the same conversation, against
+an earlier suggestion in this document's own §6.2 direction. `claude -p` keeps three things an
+interactive pty would take away: structured context accounting (`--output-format stream-json`,
+`manager/supervisor.py:326`), interruptibility, and *clear as non-resumption* — with
+`-p --resume`, not resuming IS a context clear, so the `/clear` a pty would buy is already
+available without one.
+
 ## 7. How this will be proven, when it is built
 
 Two checks decided in advance, because both classes of failure here are the reassuring kind:
