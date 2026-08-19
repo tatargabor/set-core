@@ -293,10 +293,16 @@ class _Agent:
         self.record = None
 
 
-class _State:
-    state, tool, tool_elapsed, other_tools, last_movement_age, reason = "quiet", None, None, [], 1.0, None
-    waiting_for = None
-    declaration_ignored = None
+# The REAL dataclass, not a hand-written stand-in.
+#
+# It used to be a class listing the fields by hand, which is a second copy of
+# `AgentState` — and it drifted the moment the dataclass gained a field: four
+# tests failed with `AttributeError` on a product that was correct. A stand-in
+# that must be maintained in step with the thing it stands in for is a
+# maintenance burden pretending to be a test fixture.
+def _State(**over):
+    from set_orch.fleet.state import AgentState
+    return AgentState(state="quiet", last_movement_age=1.0, **over)
 
 
 def test_an_agent_the_owner_holds_is_started_here_and_names_its_terminal():
@@ -363,9 +369,6 @@ def test_the_session_record_never_reaches_the_payload(monkeypatch):
             "name": "private-consumer-12", "status": "idle",
         }
 
-    class _State:
-        state, tool, tool_elapsed, other_tools = "quiet", None, None, []
-        last_movement_age, reason, waiting_for, declaration_ignored = 1.0, None, None, None
 
     payload = fleet_api._agent_payload(_WithRecord(), _State(), {})
     assert "record" not in payload

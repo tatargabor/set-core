@@ -56,6 +56,17 @@ export interface FleetAgent {
   /** The terminal's address. Non-null only for `started-here`. */
   terminal_label?: string | null
   /**
+   * The last thing said in this session — task 7.3, so the tile answers "what
+   * is going on" without being opened.
+   *
+   * `null`/absent means nothing was said RECENTLY (a tail of pure tool
+   * traffic), which is not the same as an empty session — so the surface must
+   * say which, rather than rendering a blank line for both.
+   */
+  excerpt?: string | null
+  /** `agent` or `user`. Carried, because the same sentence means two things. */
+  excerpt_from?: 'agent' | 'user' | null
+  /**
    * Who started this agent — task 7.8, and it is deliberately not a string.
    *
    * `source: "recorded"` is the owner's own note of who ASKED for the start;

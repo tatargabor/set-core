@@ -68,6 +68,23 @@ class AgentState:
     #: state wins, and this says the declaration disagreed rather than hiding it:
     #: a contradiction the surface cannot see is one nobody will ever fix.
     declaration_ignored: Optional[str] = None
+    #: The last thing said in this session, for the tile — task 7.3.
+    #:
+    #: `None` means no text was found, which is NOT the same as an empty
+    #: session and must not render as one: an agent whose tail holds only tool
+    #: traffic has said nothing recently, and a blank line would claim it said
+    #: nothing at all.
+    #:
+    #: ⚠ CONFIDENTIALITY. This carries verbatim content from a session that may
+    #: be running in a consumer project. The boundary in `CLAUDE.md` is
+    #: PERSISTENCE, not display: this may be shown at runtime, and must never be
+    #: written to a log, a cache, a memory or any committed artifact. Nothing
+    #: here logs it, and nothing downstream may either.
+    excerpt: Optional[str] = None
+    #: Who said it — `agent` or `user`. Carried rather than guessed at by the
+    #: surface, because the same sentence means different things depending on
+    #: which end of the conversation it came from.
+    excerpt_from: Optional[str] = None
 
 
 def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
@@ -88,6 +105,63 @@ def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
         return None
     text = raw.decode("utf-8", errors="replace")
     return text.splitlines()
+
+
+#: How much of the last utterance the tile carries. Long enough to recognise
+#: what is going on, short enough that a tile stays a tile — the density rule
+#: in `ui-quality.md` is about the first screenful answering the question.
+EXCERPT_CHARS = 240
+
+
+def _last_text(lines: List[str]) -> tuple[Optional[str], Optional[str]]:
+    """The last thing actually SAID in this session, and by whom.
+
+    Read backwards from the tail the state pass already loaded, so this costs
+    no extra I/O — the file is read once for both answers.
+
+    What counts as "said" is text a person would recognise: an assistant's
+    prose or a user's message. Tool calls, tool results and thinking blocks are
+    skipped, because a tile showing `Bash` tells the reader nothing they do not
+    already get from the state line, and a tile showing a thinking block shows
+    something the conversation never contained.
+
+    Returns `(None, None)` when nothing qualifies. That is deliberately not
+    `("", ...)`: a tail made entirely of tool traffic means *nothing was said
+    recently*, and an empty string on the tile would read as *nothing was ever
+    said* — the false-absence class this module already refuses for state.
+    """
+    for line in reversed(lines):
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        if role not in ("assistant", "user"):
+            continue
+        content = message.get("content")
+        # A string content is the plain-text shape; a list is the block shape.
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        if not isinstance(blocks, list):
+            continue
+        for block in reversed(blocks):
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            text = block.get("text")
+            if not isinstance(text, str):
+                continue
+            text = " ".join(text.split())
+            if not text:
+                continue
+            if len(text) > EXCERPT_CHARS:
+                text = text[: EXCERPT_CHARS - 1].rstrip() + "\u2026"
+            return text, ("agent" if role == "assistant" else "user")
+    return None, None
 
 
 def _outstanding_calls(lines: List[str]) -> tuple[Dict[str, dict], bool]:
@@ -228,17 +302,30 @@ def read_state(
             reason="the session log could not be read",
         )
 
+    excerpt, excerpt_from = _last_text(lines)
+
     outstanding, saw_entry = _outstanding_calls(lines)
     if not saw_entry:
         return AgentState(
             state=UNKNOWN,
             last_movement_age=movement,
             reason="the session log holds no parsable entry",
+            # Carried even here: a log with no parsable ENTRY can still hold a
+            # readable line, and the excerpt is the one thing that helps a
+            # reader work out why the state could not be measured.
+            excerpt=excerpt,
+            excerpt_from=excerpt_from,
         )
 
     if not outstanding:
         return _apply_declared_wait(
-            AgentState(state=QUIET, last_movement_age=movement), record
+            AgentState(
+                state=QUIET,
+                last_movement_age=movement,
+                excerpt=excerpt,
+                excerpt_from=excerpt_from,
+            ),
+            record,
         )
 
     ordered = sorted(
@@ -257,4 +344,6 @@ def read_state(
         tool=first.get("name"),
         tool_elapsed=_age_seconds(first.get("timestamp"), reference),
         other_tools=[m.get("name") for m in ordered[1:] if m.get("name")],
+        excerpt=excerpt,
+        excerpt_from=excerpt_from,
     )

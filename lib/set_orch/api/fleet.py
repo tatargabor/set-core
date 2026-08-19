@@ -119,6 +119,15 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # rather than dropped: a contradiction the surface cannot see is one
         # nobody will ever fix.
         "declaration_ignored": state.declaration_ignored,
+        # The last thing said in this session — task 7.3, so the tile answers
+        # "what is going on" without being opened.
+        #
+        # ⚠ Read at request time and never written down: this is verbatim
+        # content from a session that may be running in a consumer project, and
+        # CLAUDE.md's boundary is persistence, not display. It must not reach a
+        # log line, a cache, a memory or a committed artifact.
+        "excerpt": state.excerpt,
+        "excerpt_from": state.excerpt_from,
         # Which population this agent belongs to, as a CARRIED fact rather than
         # something the surface infers (task 5.1). A terminal is attachable only
         # for `started-here`, and only under the label named here.

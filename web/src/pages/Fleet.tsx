@@ -439,6 +439,42 @@ function Lineage({ agent }: { agent: FleetAgent }) {
   )
 }
 
+/**
+ * The last thing said in this session — task 7.3.
+ *
+ * The point of the tile is that a reader learns what is going on WITHOUT
+ * opening anything; a state word alone ("quiet", "working") says the shape of
+ * the moment and nothing about the subject.
+ *
+ * Absence is stated rather than rendered as a blank: a tail made entirely of
+ * tool traffic means nothing was said recently, and an empty line would read as
+ * a session in which nothing was ever said. Same rule as everywhere else on
+ * this screen — a gap is not a zero.
+ */
+function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
+  if (!agent.excerpt) {
+    return (
+      <div className="text-xs text-fg-ghost mt-1 italic">
+        a napló vége csupa eszközhívás — mostanában nem hangzott el mondat
+      </div>
+    )
+  }
+  const fromUser = agent.excerpt_from === 'user'
+  return (
+    <div className="flex gap-1.5 mt-1 min-w-0" data-fleet-excerpt={agent.excerpt_from ?? 'ismeretlen'}>
+      <span className={`text-xs shrink-0 ${fromUser ? 'text-sky-400/80' : 'text-fg-muted'}`}>
+        {fromUser ? 'te' : 'agent'}
+      </span>
+      <span
+        className="text-xs text-fg-muted min-w-0"
+        style={{ display: '-webkit-box', WebkitLineClamp: lines, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+      >
+        {agent.excerpt}
+      </span>
+    </div>
+  )
+}
+
 function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void }) {
   return (
     <button
@@ -507,6 +543,8 @@ function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOp
           {age(agent.last_movement_seconds)} · {agent.pid}
         </span>
       </div>
+
+      <Excerpt agent={agent} lines={enlarged ? 4 : 2} />
 
       <div className="flex items-center gap-3 mt-1.5">
         <button

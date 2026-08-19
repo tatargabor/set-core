@@ -235,9 +235,14 @@ def test_a_recorded_origin_outranks_ancestry_and_says_which_it_is(monkeypatch):
         sources_missing = ["session-record", "registry"]
         kind = "interactive"
 
-    class _S:
-        state, tool, tool_elapsed, other_tools = "quiet", None, None, []
-        last_movement_age, reason, waiting_for, declaration_ignored = 1.0, None, None, None
+    # The REAL dataclass. A hand-listed stand-in is a second copy of
+    # `AgentState`, and this one drifted the moment the dataclass gained a
+    # field: the test failed with `AttributeError` on a product that was
+    # correct, which accuses the code of a fault the fixture caused.
+    from set_orch.fleet.state import AgentState
+
+    def _S():
+        return AgentState(state="quiet", last_movement_age=1.0)
 
     monkeypatch.setattr(fleet_api, "parent_seat", lambda pid: {"seat": "x", "source": "ancestry"})
     payload = fleet_api._agent_payload(_A(), _S(), {7: {"label": "l", "requested_by": "set-core-12"}})

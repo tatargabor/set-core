@@ -235,3 +235,102 @@ def test_a_record_saying_anything_else_does_not_become_waiting(tmp_path):
     for status in ("idle", "shell", "busy", "", None):
         state = read_state(_finished_turn(tmp_path), record={"status": status})
         assert state.state == "quiet", status
+
+
+# --------------------------------------------------------------------------- #
+# the tile's excerpt — task 7.3
+# --------------------------------------------------------------------------- #
+
+def _line(role, content):
+    return json.dumps({"type": role, "message": {"role": role, "content": content}})
+
+
+def test_the_excerpt_is_the_last_thing_actually_said():
+    from set_orch.fleet.state import _last_text
+    lines = [
+        _line("user", [{"type": "text", "text": "az első kérdés"}]),
+        _line("assistant", [{"type": "text", "text": "a válasz"}]),
+        _line("assistant", [{"type": "text", "text": "a LEGUTOLSÓ mondat"}]),
+    ]
+    assert _last_text(lines) == ("a LEGUTOLSÓ mondat", "agent")
+
+
+def test_tool_traffic_is_skipped_rather_than_shown():
+    """A tile showing `Bash` tells the reader nothing the state line does not
+    already say, and a thinking block shows something the conversation never
+    contained. So the newest entries here are deliberately not text.
+    """
+    from set_orch.fleet.state import _last_text
+    lines = [
+        _line("assistant", [{"type": "text", "text": "amit mondott"}]),
+        _line("assistant", [{"type": "thinking", "thinking": "belső gondolat"}]),
+        _line("assistant", [{"type": "tool_use", "name": "Bash", "input": {}}]),
+        _line("user", [{"type": "tool_result", "content": "kimenet"}]),
+    ]
+    assert _last_text(lines) == ("amit mondott", "agent")
+
+
+def test_a_tail_with_no_text_is_ABSENT_not_empty():
+    """The false-absence rule, applied to the tile: a tail made entirely of tool
+    traffic means *nothing was said recently*. An empty string would render as
+    *nothing was ever said*, which is a different claim and a wrong one.
+    """
+    from set_orch.fleet.state import _last_text
+    lines = [_line("assistant", [{"type": "tool_use", "name": "Bash", "input": {}}])]
+    assert _last_text(lines) == (None, None)
+
+
+def test_the_speaker_is_carried_because_the_same_sentence_means_two_things():
+    from set_orch.fleet.state import _last_text
+    assert _last_text([_line("user", [{"type": "text", "text": "csináld meg"}])]) == (
+        "csináld meg", "user",
+    )
+
+
+def test_a_plain_string_content_is_read_too():
+    """Both shapes occur in a real log; reading only the block shape would drop
+    every plain-text entry and report ABSENT for a session full of them.
+    """
+    from set_orch.fleet.state import _last_text
+    assert _last_text([_line("user", "sima szöveg")]) == ("sima szöveg", "user")
+
+
+def test_a_long_utterance_is_cut_and_says_so():
+    from set_orch.fleet.state import EXCERPT_CHARS, _last_text
+    text, who = _last_text([_line("assistant", [{"type": "text", "text": "x" * 5000}])])
+    assert who == "agent"
+    assert len(text) == EXCERPT_CHARS
+    assert text.endswith("…"), "a cut that does not show it is a cut reads as the whole sentence"
+
+
+def test_unparsable_and_foreign_lines_do_not_stop_the_search():
+    """A tail is cut at an arbitrary byte and holds whatever the runtime wrote,
+    so a broken line is ordinary. Stopping at the first one would make the
+    excerpt depend on where the tail happened to start.
+    """
+    from set_orch.fleet.state import _last_text
+    lines = [
+        _line("assistant", [{"type": "text", "text": "a keresett mondat"}]),
+        '{"type":"summary","summary":"nem üzenet"}',
+        '{"broken json',
+        "",
+    ]
+    assert _last_text(lines) == ("a keresett mondat", "agent")
+
+
+def test_whitespace_is_collapsed_so_a_tile_stays_one_line():
+    from set_orch.fleet.state import _last_text
+    text, _ = _last_text([_line("assistant", [{"type": "text", "text": "első\n\n  második\ttab"}])])
+    assert text == "első második tab"
+
+
+def test_read_state_carries_the_excerpt_on_a_quiet_agent(tmp_path):
+    """The excerpt comes from the SAME read the state pass already does — this
+    asserts it arrives through `read_state`, not only from the helper.
+    """
+    from set_orch.fleet.state import read_state
+    log = tmp_path / "s.jsonl"
+    log.write_text(_line("assistant", [{"type": "text", "text": "készen vagyok"}]) + "\n")
+    st = read_state(str(log))
+    assert st.state == "quiet"
+    assert (st.excerpt, st.excerpt_from) == ("készen vagyok", "agent")
