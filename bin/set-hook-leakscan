@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# set-hook-leakscan — Claude Code PreToolUse hook: block a publishing command
+# that would carry a consumer name, a credential, a local path or a phone number.
+#
+# WHY A SECOND GATE
+#   The `pre-push` git hook binds a human at a terminal. It does NOT bind an
+#   agent, which can pass `-c core.hooksPath=` or `--no-verify` without meaning
+#   any harm — an instruction is not a constraint; what an agent cannot do is
+#   decided by the tools it holds. This hook is the half that binds the agent.
+#   Neither gate is redundant: they cover different actors.
+#
+# Referenced by name in .claude/settings.json:
+#   {"matcher": "Bash", "hooks": [{"type": "command", "command": "set-hook-leakscan"}]}
+#
+# Exit 0 = allow, exit 2 = block (stderr is shown to the model).
+
+set -uo pipefail
+
+INPUT=$(cat)
+CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
+[[ -z "$CMD" ]] && exit 0
+
+# Only publishing commands. A local commit is not a publication, and gating it
+# would train the user to disable the hook.
+if ! grep -qE '(^|[;&|[:space:]])git[[:space:]]+([^;&|]*[[:space:]])?(push|tag)([[:space:]]|$)' <<<"$CMD"; then
+    exit 0
+fi
+# `gh release create` / `gh repo create --public` publish too.
+:
+
+if ! command -v set-leakscan >/dev/null 2>&1; then
+    echo "set-hook-leakscan: set-leakscan is not on PATH, so this push cannot be" >&2
+    echo "checked. Refusing rather than allowing an unchecked publication — a gate" >&2
+    echo "that cannot run must not report clean." >&2
+    exit 2
+fi
+
+OUT=$(set-leakscan 2>&1)
+RC=$?
+if [[ $RC -ne 0 ]]; then
+    echo "BLOCKED by set-hook-leakscan — this push would publish content that must" >&2
+    echo "not leave the repository:" >&2
+    echo "" >&2
+    echo "$OUT" >&2
+    echo "" >&2
+    echo "Do NOT work around this with --no-verify or core.hooksPath. Fix the" >&2
+    echo "findings, or add a deliberate exception to" >&2
+    echo "~/.config/set-core/leakscan-allow.txt and say so to the user." >&2
+    exit 2
+fi
+exit 0

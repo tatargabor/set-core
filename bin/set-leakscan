@@ -1,0 +1,310 @@
+#!/usr/bin/env python3
+"""set-leakscan — refuse to publish what must not leave the repository.
+
+Usage:
+    set-leakscan [--range <rev-range>] [--staged] [--tree] [--json] [--quiet]
+    set-leakscan --list-patterns     # show WHAT is searched for, not the values
+
+Exit status: 0 = clean, 1 = findings, 2 = the scan itself could not run.
+
+WHY THIS EXISTS
+    set-core and its sibling `set-*` projects are public. The consumer projects
+    they are developed against are not. A rule in prose cannot stop a push; this
+    can. It is meant to be wired to a `pre-push` git hook and to a `PreToolUse`
+    Claude hook, because a git hook does not bind an agent that sets
+    `core.hooksPath`, and a Claude hook does not bind a human at a terminal.
+
+THE NAME LIST IS NEVER STORED IN THE REPOSITORY
+    Consumer names are exactly what must not be committed, so a checked-in
+    pattern file would BE the leak — the same trap the project rules describe
+    for `.gitignore`. The names are resolved at run time from the local project
+    registry (`~/.config/set-core/projects.json`) and from an optional
+    user-level allow/deny file. Neither path is inside any repository.
+
+IT REPORTS WHAT IT COULD NOT CHECK
+    If the registry is unreadable the consumer-name check is SKIPPED, and that
+    is stated loudly instead of being folded into a clean result. A scan that
+    cannot see a category must not report zero for it: a gap is not a zero, and
+    the failure direction of a silent skip is the expensive one.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+REGISTRY = os.path.join(HOME, ".config", "set-core", "projects.json")
+ALLOWLIST = os.path.join(HOME, ".config", "set-core", "leakscan-allow.txt")
+
+# Slugs that are legitimately public: this project's own E2E fixtures and the
+# public `set-*` family. They live in the registry beside the private ones, so
+# without this the scan fires on every run and gets muted — a gate that cries
+# daily on nothing is a gate nobody keeps.
+BUILTIN_ALLOW = {
+    "minishop", "craftbrew", "micro-web", "dungeon", "demo", "example",
+    "test", "main", "app", "web", "shop", "site", "code", "docs",
+}
+
+SECRET_PATTERNS = [
+    ("anthropic key",  r"sk-ant-[A-Za-z0-9_\-]{16,}"),
+    ("openai key",     r"sk-[A-Za-z0-9]{32,}"),
+    ("github token",   r"ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"),
+    ("aws key id",     r"AKIA[0-9A-Z]{16}"),
+    ("slack token",    r"xox[baprs]-[A-Za-z0-9-]{10,}"),
+    ("google api key", r"AIza[0-9A-Za-z_\-]{30,}"),
+    ("private key",    r"-----BEGIN [A-Z ]*PRIVATE KEY"),
+]
+
+# `\+36…` style numbers are the local case; the shape generalises to any long
+# run of digits that a human would recognise as a phone number.
+PHONE_PATTERN = r"\+\d{1,3}[- ]?\d{2}[- ]?\d{3}[- ]?\d{4}\b|\"\+?\d{11,13}\""
+
+def home_path_pattern():
+    """A path under THIS user's home — not any `/home/<something>/`.
+
+    Two corrections, both measured on the first real run rather than guessed:
+
+    * Anchored on a token boundary, because the unanchored form read the path
+      segment of `https://www.atia.org/home/at-resources/` as a filesystem path.
+    * Restricted to the actual local username, because a repository that follows
+      the confidentiality rule is FULL of deliberately anonymised examples —
+      `/home/someone/clients/...`, `/home/x/...`, `/home/linuxbrew/...`. Those
+      are the rule succeeding, and flagging them is how a gate earns its way
+      into `--no-verify`. What leaks is this machine's own layout.
+    """
+    import getpass
+    try:
+        user = re.escape(getpass.getuser())
+    except Exception:
+        user = r"[a-z_][a-z0-9_-]*"
+    return (
+        r"(?:^|[\s\"'`=(\[,;:])(?:/home/" + user + r"|/Users/" + user + r")/"
+    )
+
+
+HOME_PATH_PATTERN = home_path_pattern()
+
+
+def sh(args, cwd=None):
+    """Run a command, return stdout. Never raises on a non-zero git status."""
+    p = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    return p.stdout
+
+
+def load_allow():
+    allow = set(BUILTIN_ALLOW)
+    if os.path.exists(ALLOWLIST):
+        for line in open(ALLOWLIST, encoding="utf-8"):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                allow.add(line.lower())
+    return allow
+
+
+def private_slugs():
+    """Consumer slugs, resolved at run time. Returns (slugs, note-or-None).
+
+    The note is non-None when the list could not be built. Callers must surface
+    it rather than treating an empty list as "nothing to look for".
+    """
+    if not os.path.exists(REGISTRY):
+        return set(), f"registry not found ({REGISTRY}) — consumer-name check SKIPPED"
+    try:
+        data = json.load(open(REGISTRY, encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        return set(), f"registry unreadable ({exc}) — consumer-name check SKIPPED"
+
+    projects = data.get("projects", data)
+    if not isinstance(projects, dict):
+        return set(), "registry has an unexpected shape — consumer-name check SKIPPED"
+
+    allow = load_allow()
+    slugs = set()
+    for name, meta in projects.items():
+        path = (meta or {}).get("path", "") if isinstance(meta, dict) else ""
+        # An E2E scaffold living inside a set-* checkout is this project's own
+        # fixture, not a consumer.
+        if "/e2e-runs/" in path or "/tests/e2e/" in path:
+            continue
+        candidates = {name}
+        if path:
+            candidates.add(os.path.basename(path.rstrip("/")))
+        for c in candidates:
+            c = re.sub(r"-run\b.*$", "", c)
+            c = re.sub(r"-\d{8}-\d{4}$", "", c).lower()
+            if len(c) >= 5 and not c.startswith("set-") and c not in allow:
+                slugs.add(c)
+    return slugs, None
+
+
+def tracked_files(cwd):
+    out = sh(["git", "ls-files", "-z"], cwd=cwd)
+    return [f for f in out.split("\0") if f]
+
+
+def scan_blob(cwd, path, checks, findings, self_paths):
+    if path in self_paths:
+        return  # the scanner's own patterns are not findings — see module docstring
+    try:
+        with open(os.path.join(cwd, path), encoding="utf-8", errors="replace") as fh:
+            for lineno, line in enumerate(fh, 1):
+                if len(line) > 4000:
+                    line = line[:4000]
+                for label, rx in checks:
+                    if rx.search(line):
+                        findings.append({
+                            "category": label, "file": path,
+                            "line": lineno, "text": line.strip()[:160],
+                        })
+                        break
+    except (OSError, UnicodeError):
+        pass
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--range", dest="rev_range", default=None)
+    ap.add_argument("--staged", action="store_true")
+    ap.add_argument("--tree", action="store_true",
+                    help="scan the whole tracked tree, not only the range")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--list-patterns", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args()
+
+    if args.help:
+        print(__doc__)
+        return 0
+
+    slugs, skip_note = private_slugs()
+
+    if args.list_patterns:
+        print("categories: consumer-name, secret, home-path, phone")
+        print(f"consumer-name patterns resolved at run time: {len(slugs)}")
+        print(f"  source   : {REGISTRY}")
+        print(f"  allowlist: {ALLOWLIST}")
+        print("  (values deliberately not printed — that is the thing being protected)")
+        if skip_note:
+            print(f"  WARNING  : {skip_note}")
+        return 0
+
+    cwd = sh(["git", "rev-parse", "--show-toplevel"]).strip()
+    if not cwd:
+        print("set-leakscan: not inside a git repository", file=sys.stderr)
+        return 2
+
+    self_paths = {"bin/set-leakscan", ".claude/rules/release-safety.md"}
+
+    checks = []
+    if slugs:
+        checks.append(("consumer-name",
+                       re.compile(r"\b(" + "|".join(re.escape(s) for s in sorted(slugs)) + r")\b",
+                                  re.IGNORECASE)))
+    for label, rx in SECRET_PATTERNS:
+        checks.append((f"secret:{label}", re.compile(rx)))
+    checks.append(("home-path", re.compile(HOME_PATH_PATTERN)))
+    checks.append(("phone", re.compile(PHONE_PATTERN)))
+
+    findings = []
+
+    # --- which files ---------------------------------------------------------
+    if args.staged:
+        files = [f for f in sh(["git", "diff", "--cached", "--name-only", "-z"],
+                               cwd=cwd).split("\0") if f]
+    elif args.tree:
+        files = tracked_files(cwd)
+    else:
+        rng = args.rev_range
+        if not rng:
+            up = sh(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+                    cwd=cwd).strip()
+            rng = f"{up}..HEAD" if up else None
+        if rng:
+            files = [f for f in sh(["git", "diff", "--name-only", "-z", rng],
+                                   cwd=cwd).split("\0") if f]
+        else:
+            files = tracked_files(cwd)
+        args.rev_range = rng
+
+    for f in files:
+        scan_blob(cwd, f, checks, findings, self_paths)
+
+    # --- file NAMES ----------------------------------------------------------
+    if slugs:
+        name_rx = checks[0][1]
+        for f in files:
+            if name_rx.search(f):
+                findings.append({"category": "consumer-name:filename",
+                                 "file": f, "line": 0, "text": f})
+
+    # --- commit and tag MESSAGES --------------------------------------------
+    # A message is in no diff and in no tree, so the content checks above are
+    # structurally blind to it.
+    if slugs and not args.staged:
+        rng = args.rev_range
+        log_args = ["git", "log", "--format=%H%x1f%s%n%b%x1e"]
+        log_args.append(rng if rng else "--all")
+        for entry in sh(log_args, cwd=cwd).split("\x1e"):
+            if "\x1f" not in entry:
+                continue
+            sha, msg = entry.split("\x1f", 1)
+            if checks[0][1].search(msg):
+                findings.append({"category": "consumer-name:commit-message",
+                                 "file": sha.strip()[:12], "line": 0,
+                                 "text": msg.strip().splitlines()[0][:160] if msg.strip() else ""})
+        for tagline in sh(["git", "tag", "-l", "-n99"], cwd=cwd).splitlines():
+            if checks[0][1].search(tagline):
+                findings.append({"category": "consumer-name:tag-message",
+                                 "file": tagline.split()[0] if tagline.split() else "?",
+                                 "line": 0, "text": tagline[:160]})
+
+    # --- ignored BUT tracked -------------------------------------------------
+    # A path listed in .gitignore that is nevertheless tracked was added before
+    # the ignore rule and still ships on every push.
+    # `--no-index` is load-bearing: without it git refuses to call a TRACKED
+    # path ignored, so the check answers "clean" for exactly the condition it
+    # exists to find. The instrument hit the wall it was built to measure and
+    # returned a reassuring zero — caught by a unit test, not by inspection.
+    for f in tracked_files(cwd):
+        if subprocess.run(["git", "check-ignore", "--no-index", "-q", f],
+                          cwd=cwd).returncode == 0:
+            findings.append({"category": "ignored-but-tracked",
+                             "file": f, "line": 0, "text": f})
+
+    # --- report --------------------------------------------------------------
+    if args.json:
+        print(json.dumps({"findings": findings,
+                          "skipped": skip_note,
+                          "scanned_files": len(files)}, indent=2))
+    elif not args.quiet or findings or skip_note:
+        if skip_note:
+            print(f"⚠ set-leakscan: {skip_note}", file=sys.stderr)
+        if findings:
+            print(f"✖ set-leakscan: {len(findings)} finding(s) in {len(files)} scanned file(s)\n",
+                  file=sys.stderr)
+            by_cat = {}
+            for f in findings:
+                by_cat.setdefault(f["category"], []).append(f)
+            for cat, items in sorted(by_cat.items()):
+                print(f"  {cat} ({len(items)})", file=sys.stderr)
+                for it in items[:8]:
+                    loc = f"{it['file']}:{it['line']}" if it["line"] else it["file"]
+                    print(f"    {loc}  {it['text']}", file=sys.stderr)
+                if len(items) > 8:
+                    print(f"    … and {len(items) - 8} more", file=sys.stderr)
+            print("\n  Nothing is pushed. Fix the findings, or record a deliberate",
+                  file=sys.stderr)
+            print(f"  exception in {ALLOWLIST} (one slug per line).", file=sys.stderr)
+        elif not args.quiet:
+            print(f"✔ set-leakscan: clean ({len(files)} file(s), "
+                  f"{len(slugs)} consumer pattern(s))")
+
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
