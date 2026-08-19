@@ -914,3 +914,56 @@ def test_a_project_only_the_messaging_registry_knows_survives_the_listing(monkey
     assert names == ["only-messaging"], (
         f"the listing dropped a project a source had supplied; got {names!r}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# the parent seat on the payload — task 6.1's remaining half
+#
+# 2.5 measured the reason this cannot rest on the process tree: **0 of 23** live
+# agents had an agent ancestor, and an agent this surface starts has the OWNER —
+# a plain python process — as its parent with systemd above it. So the walk is
+# the fallback and the record is the answer, not the other way round.
+# --------------------------------------------------------------------------- #
+
+def test_a_recorded_parent_seat_is_preferred_over_the_process_walk(monkeypatch):
+    """The record wins, and the walk is never consulted when it exists.
+
+    Not a preference: the relation exists only at the moment of the act. If the
+    walk ran first it would answer `None` for exactly the agents whose parent is
+    known — a false absence produced by asking the source that cannot know.
+    """
+    monkeypatch.setattr(fleet_api, "parent_seat",
+                        lambda pid: pytest.fail("the walk was consulted despite a record"))
+    payload = fleet_api._agent_payload(
+        _Agent(7), _State(), {7: {"label": "child", "requested_by": "set-core#abc123"}}
+    )
+    assert payload["parent"] == {"seat": "set-core#abc123", "source": "recorded"}
+
+
+def test_without_a_record_the_walk_answers_and_its_silence_is_not_a_parent(monkeypatch):
+    """The other direction, both halves.
+
+    A walk that finds an agent ancestor reports it; a walk that finds none
+    reports `None` rather than a seat nobody is in. A positive-only test passes
+    on a build that invents a parent from the nearest process.
+    """
+    monkeypatch.setattr(fleet_api, "parent_seat", lambda pid: {"seat": "other#1", "source": "ancestry"})
+    assert fleet_api._agent_payload(_Agent(7), _State(), {})["parent"] == {
+        "seat": "other#1", "source": "ancestry"
+    }
+    monkeypatch.setattr(fleet_api, "parent_seat", lambda pid: None)
+    assert fleet_api._agent_payload(_Agent(7), _State(), {})["parent"] is None
+
+
+def test_the_source_of_a_parent_binding_travels_with_it(monkeypatch):
+    """A recorded binding and a guessed one are different claims, and a screen
+    that renders both as "parent" has flattened a measurement into an inference.
+    The field exists so the surface can say which it is holding.
+    """
+    monkeypatch.setattr(fleet_api, "parent_seat", lambda pid: {"seat": "other#1", "source": "ancestry"})
+    walked = fleet_api._agent_payload(_Agent(7), _State(), {})["parent"]
+    recorded = fleet_api._agent_payload(
+        _Agent(7), _State(), {7: {"requested_by": "set-core#abc123"}}
+    )["parent"]
+    assert walked["source"] != recorded["source"]
+    assert recorded["source"] == "recorded"
