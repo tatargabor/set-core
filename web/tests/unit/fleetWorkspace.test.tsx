@@ -89,30 +89,30 @@ describe('more than one terminal at a time', () => {
   it('opens a second terminal without closing the first', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
 
-    const openers = screen.getAllByText('terminál megnyitása')
+    const openers = screen.getAllByText('open the terminal')
     fireEvent.click(openers[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
 
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container).sort()).toEqual(['t-1', 't-2']))
   })
 
   it('closes one and leaves the other attached', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toHaveLength(2))
 
-    fireEvent.click(screen.getAllByText('terminál bezárása')[0])
+    fireEvent.click(screen.getAllByText('close the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-2']))
   })
 
   it('offers no terminal for a foreign agent, however many are open', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2', { population: 'foreign', terminal_label: null })]))
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
-    expect(screen.queryAllByText('terminál megnyitása')).toHaveLength(0)
+    expect(screen.queryAllByText('open the terminal')).toHaveLength(0)
   })
 })
 
@@ -164,7 +164,7 @@ describe('one agent alone, and what that covers', () => {
 
   it('tells the focused agent’s terminal it is full screen, and the others that they are not', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
     expect(container.querySelector('[data-fleet-terminal="t-1"]')!.getAttribute('data-fleet-terminal-full')).toBe('off')
 
@@ -178,9 +178,9 @@ describe('one agent alone, and what that covers', () => {
 describe('where the keyboard is', () => {
   it('marks the tile whose terminal has the focus, and only that one', async () => {
     const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2')]))
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toEqual(['t-1']))
-    fireEvent.click(screen.getAllByText('terminál megnyitása')[0])
+    fireEvent.click(screen.getAllByText('open the terminal')[0])
     await waitFor(() => expect(openTerminals(container)).toHaveLength(2))
 
     expect(container.querySelector('[data-fleet-typing]')).toBeNull()

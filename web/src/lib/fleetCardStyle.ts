@@ -43,8 +43,15 @@
 import { terminalOffer } from './fleetTerminal'
 import type { FleetAgent } from './fleetTypes'
 
-/** Who holds this agent. Read from the producer's `population`, never guessed. */
-export type Ownership = 'ours' | 'foreign' | 'unknown'
+/**
+ * Who holds this agent. Read from the producer's `population`, never guessed.
+ *
+ * `orphaned` is a fourth value rather than a shade of the others (task 5.5):
+ * the framework STARTED it and no longer holds its terminal. Calling it foreign
+ * would deny that we started it; calling it unknown would deny that we measured
+ * it. The scope it still runs in is what a recovery would stop.
+ */
+export type Ownership = 'ours' | 'orphaned' | 'foreign' | 'unknown'
 
 /**
  * Ownership from the same source the terminal offer uses.
@@ -56,7 +63,10 @@ export type Ownership = 'ours' | 'foreign' | 'unknown'
  */
 export function ownershipOf(agent: Partial<FleetAgent>, ownerReachable?: boolean): Ownership {
   const kind = terminalOffer(agent, ownerReachable).kind
-  return kind === 'available' ? 'ours' : kind === 'foreign' ? 'foreign' : 'unknown'
+  if (kind === 'available') return 'ours'
+  if (kind === 'orphaned') return 'orphaned'
+  if (kind === 'foreign') return 'foreign'
+  return 'unknown'
 }
 
 export interface CardState {
@@ -71,6 +81,7 @@ export interface CardState {
 /** One short label for the ownership, for a title attribute or a marker. */
 export const OWNERSHIP_NOTE: Record<Ownership, string> = {
   ours: 'the framework started this agent and holds it — it has a terminal and can be told what to do',
+  orphaned: 'the framework started this agent and lost its terminal — the scope survived, the pty did not',
   foreign: 'started outside the framework — nothing here holds it, so it cannot be driven from set',
   unknown: 'the owner service could not be asked — we do not know who holds this one',
 }
@@ -87,9 +98,13 @@ export const OWNERSHIP_NOTE: Record<Ownership, string> = {
 export function cardClasses(ownership: Ownership, state: CardState = {}): string {
   const edge =
     ownership === 'ours' ? 'border-surface-edge'
-      : ownership === 'unknown' ? 'border-amber-400/40 border-dashed'
-        : 'border-surface-edge-soft/40 border-dashed'
-  const fill = ownership === 'ours' ? 'bg-surface-raised/40' : 'bg-transparent'
+      // Ours, damaged. A solid edge because we started it and it is still
+      // running; amber because something about it needs attention — which is
+      // the same meaning amber carries everywhere else on this screen.
+      : ownership === 'orphaned' ? 'border-amber-400/50'
+        : ownership === 'unknown' ? 'border-amber-400/40 border-dashed'
+          : 'border-surface-edge-soft/40 border-dashed'
+  const fill = ownership === 'ours' || ownership === 'orphaned' ? 'bg-surface-raised/40' : 'bg-transparent'
   const ring = state.typing ? 'ring-2 ring-sky-400/70' : ''
   const size = state.focused ? 'p-4' : 'px-3 py-2'
   return ['border rounded', edge, fill, ring, size].filter(Boolean).join(' ')

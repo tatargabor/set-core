@@ -121,7 +121,7 @@ describe('the tile offers a terminal only where one can exist', () => {
     expect(absent.getAttribute('data-fleet-terminal-absent')).toBe('unknown')
 
     const text = absent.textContent ?? ''
-    expect(text).toContain('nem tudjuk')
+    expect(text).toContain('we could not find out')
     // The refuted rendering, held: printing the foreign wording here is the
     // whole defect, and it looks identical in every structural count.
     expect(text).not.toContain('not the framework’s')

@@ -99,6 +99,144 @@ export interface FleetAgent {
     source: 'recorded' | 'ancestry'
     pid_without_seat?: number | null
   } | null
+  /**
+   * Whether this agent can be addressed at all — task 4.4 — and why not when it
+   * cannot. The reason is a sentence for the reader, and the surface puts it
+   * WHERE THE INPUT WOULD BE: dropping the agent would hide running work, and
+   * showing an input that silently goes nowhere is worse than both.
+   */
+  instructable?: boolean
+  reason?: string | null
+  /** The bus address, when there is one. Shown as identity, never typed by hand. */
+  seat?: string | null
+  /**
+   * What the agent SAID about itself — tasks 3.4 and 3.5, kept apart from what
+   * was measured.
+   *
+   * ⚠ **CONFIDENTIALITY.** `focus` is a sentence an agent wrote about work that
+   * may be a consumer's, and `files` are that project's own paths. Measured on
+   * the live roster: one focus named a partner company and an unpaid invoice.
+   * Displaying them is allowed — that is the whole point of the abstraction —
+   * but they must never be written down: not to `localStorage`, not to a log,
+   * not to a cache, not into any state that outlives the render.
+   *
+   * `known: false` means the bus could not be asked. That is NOT an agent that
+   * declared nothing, and the two must not render alike: one is "this agent
+   * says nothing about itself", the other is "we could not find out".
+   *
+   * `blocked` does not contradict `state`. An agent can be measured `working`
+   * and declare itself blocked in the same moment — a detour while an answer is
+   * outstanding — and that pair is the case worth showing. Measured live:
+   * `state: quiet` beside `blocked: true`, which today's tile renders as calm.
+   */
+  declared?: {
+    known: boolean
+    focus?: string | null
+    phase?: string | null
+    blocked?: boolean
+    files?: string[]
+    declared_at?: string | null
+  } | null
+  /**
+   * What this agent is working TOWARDS — task 3.9, from the engine's own record.
+   *
+   * `null` where there is no record, which on a machine with no engine running
+   * is every agent (measured: 13 of 13). The surface states that absence rather
+   * than drawing an empty progress bar, and `progress.measured` is why
+   * `fraction` is nullable: a `0.0` for an unmeasured change draws identically
+   * to a change nobody has started.
+   */
+  purpose?: {
+    change: string
+    unit_id?: string
+    group?: string | null
+    kind?: string | null
+    lens?: string | null
+    seat?: string | null
+    pid?: number
+    started_at?: string | null
+    /** `finished` | `running` | `stale` — the third is a record whose process is gone. */
+    status?: string
+    verdict?: unknown
+    pid_unverified?: boolean
+    progress?: {
+      done: number
+      total: number
+      partial: number
+      measured: boolean
+      fraction: number | null
+    }
+  } | null
+}
+
+/**
+ * What became of one instruction — task 7.7, and the three fields are three
+ * facts rather than one.
+ *
+ * An HTTP 200 here means *the send was made and answered*, which is compatible
+ * with the message reaching nobody. So `accepted` (it went and came back),
+ * `outcome` (what the channel said) and `delivered_to_agent` (the agent has it)
+ * are separate, and no two of them may be collapsed.
+ */
+export type InstructOutcome =
+  | 'arrives-now' | 'at-turn-end' | 'sits-unread' | 'wakes-nobody'
+  | 'held' | 'expired' | 'unknown' | 'refused' | 'not-instructable'
+
+export interface InstructReport {
+  outcome: InstructOutcome | string
+  accepted: boolean
+  delivered_to_agent: boolean
+  /**
+   * Whether anything further is expected. **`held` is never settled** — it has
+   * a clock and expires on its own, so a surface that renders it once and stops
+   * is showing "held" for a message that is already dead.
+   */
+  settled: boolean
+  seat?: string | null
+  room?: string | null
+  /** Who the channel says it wakes. `null` is an admission; `[]` is a measurement. */
+  wakes?: string[] | null
+  /** Live waiters for that session at send time. A zero is where the remedy goes. */
+  waiters?: number
+  waiters_here?: number
+  /** The channel's own notices, verbatim. Shown, never parsed for a verdict. */
+  notices?: string[]
+  reason?: string | null
+  /** Set when a later notice replaced this outcome (a hold that lapsed). */
+  superseded?: string | null
+  pid?: number
+  session_id?: string | null
+  /** Only on a 409 body. */
+  error?: string
+}
+
+/** One waiter process — task 7.13. */
+export interface Waiter {
+  pid: number
+  session_id?: string | null
+  cwd?: string | null
+  rooms?: string[]
+  /**
+   * `orphaned` may be removed, `live` must not be, and `undeterminable` is a
+   * waiter whose session could not be read — treated as live, listed, never
+   * offered. Collapsing the third into either of the others is the only way to
+   * get this wrong, and one direction of that mistake kills a live waiter.
+   */
+  status: 'orphaned' | 'live' | 'undeterminable' | string
+  removable: boolean
+}
+
+export interface WaitersResponse {
+  /**
+   * `false` means we could not look — the process table or session liveness was
+   * unreadable. **That is not an empty list.** "No orphans" invites installing
+   * another waiter; "we could not look" does not.
+   */
+  measured: boolean
+  reason?: string | null
+  waiters: Waiter[]
+  orphaned?: number[]
+  orphaned_count?: number
 }
 
 export interface FleetProject {

@@ -42,6 +42,10 @@ import { terminalOffer } from '../lib/fleetTerminal'
 import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
 import { tally } from '../lib/fleetAttention'
+import { blockUnexpectedFrom, declaredStanding, purposeStanding } from '../lib/fleetDeclared'
+import type { DeclaredStanding } from '../lib/fleetDeclared'
+import FleetInstruct from '../components/FleetInstruct'
+import FleetWaiters from '../components/FleetWaiters'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
@@ -192,10 +196,14 @@ function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolea
  * The terminal control on a tile — task 8.2, both halves.
  *
  * The offer exists only where a terminal can; where it cannot, the reason stands
- * in its place. And the three outcomes are three, not two: `unknown` says we
- * could not find out, in amber, and never "there is no terminal". The wording is
- * in `lib/fleetTerminal.ts` next to the decision, so the screen cannot say one
- * thing while the model decides another.
+ * in its place. The wording is in `lib/fleetTerminal.ts` next to the decision,
+ * so the screen cannot say one thing while the model decides another.
+ *
+ * **FOUR outcomes, not three** (task 5.5). `orphaned` used to fall through to
+ * the same sentence as `foreign` — *not the framework's* — which is a false
+ * statement about an agent the framework STARTED and then lost the terminal of.
+ * It gets its own line, with the scope named, because the scope is the thing a
+ * recovery stops and the reader needs to know it is still there.
  */
 function TerminalControl({ agent, ownerReachable, open, onToggle }: {
   agent: FleetAgent
@@ -210,10 +218,21 @@ function TerminalControl({ agent, ownerReachable, open, onToggle }: {
         onClick={onToggle}
         data-fleet-terminal-open={offer.label}
         className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
-        title="A keret indította ezt az agentet és tartja a terminálját — a nézet bezárása nem állítja le."
+        title="The framework started this agent and holds its terminal — closing the view does not stop it."
       >
-        {open ? 'terminál bezárása' : 'terminál megnyitása'}
+        {open ? 'close the terminal' : 'open the terminal'}
       </button>
+    )
+  }
+  if (offer.kind === 'orphaned') {
+    return (
+      <span
+        data-fleet-terminal-absent="orphaned"
+        title={offer.reason}
+        className="text-xs text-amber-400"
+      >
+        terminal lost — ours, scope <span className="text-fg-muted">{offer.scope}</span> still running
+      </span>
     )
   }
   return (
@@ -222,7 +241,7 @@ function TerminalControl({ agent, ownerReachable, open, onToggle }: {
       title={offer.reason}
       className={`text-xs ${offer.kind === 'unknown' ? 'text-amber-400' : 'text-fg-ghost'}`}
     >
-      {offer.kind === 'unknown' ? 'terminál: nem tudjuk' : 'terminál: nem a kereté'}
+      {offer.kind === 'unknown' ? 'terminal: we could not find out' : 'terminal: not the framework’s'}
     </span>
   )
 }
@@ -655,7 +674,7 @@ function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
   if (!agent.excerpt) {
     return (
       <div className="text-xs text-fg-ghost mt-1 italic">
-        a napló vége csupa eszközhívás — mostanában nem hangzott el mondat
+        the tail of the log is all tool traffic — nothing was said recently
       </div>
     )
   }
@@ -701,9 +720,9 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
       <span className="text-xs text-fg-strong truncate max-w-[14rem] shrink-0">
         {/* Same identity rule as the card — a row and a card must not name the
             same agent differently. */}
-        {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">névtelen</span>}
+        {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
         {!agent.binding_confirmed && (
-          <span className="ml-1 text-amber-400" title="A naplóhoz kötés nem rekordból származik">?</span>
+          <span className="ml-1 text-amber-400" title="The binding to the session log did not come from a record">?</span>
         )}
       </span>
       <span className="text-xs shrink-0"><StateLine agent={agent} /></span>
@@ -717,6 +736,129 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
         {age(agent.last_movement_seconds)} · {agent.pid}
       </span>
     </button>
+  )
+}
+
+/**
+ * What the agent SAYS about itself — tasks 3.4 and 3.5.
+ *
+ * Rendered BESIDE the measured state, never instead of it. The load-bearing
+ * case is the pair that disagrees: measured `quiet` next to a declared block is
+ * an agent the tile would otherwise draw as calm — and it exists on this
+ * machine right now, not hypothetically (pid 1433849, measured 2026-08-19).
+ *
+ * Three absences are three different sentences: the bus could not be asked, the
+ * agent declares nothing, and there is no declaration to age. Only the middle
+ * one is a fact about the agent.
+ *
+ * ⚠ `focus` and `files` may carry a consumer's own words and paths — one live
+ * focus named a partner company and an unpaid invoice. They are shown and never
+ * written anywhere: no `localStorage`, no log, no cache.
+ */
+function Declared({ standing, full }: {
+  standing: DeclaredStanding
+  full?: boolean
+}) {
+  if (standing.kind === 'unasked') {
+    return (
+      <div className="text-xs text-amber-400 mt-1" data-fleet-declared="unasked"
+           title="The messaging bus could not be asked, so nothing is known about what this agent says it is doing. That is not the same as an agent that says nothing.">
+        ⚠ we could not ask what this agent says about itself
+      </div>
+    )
+  }
+  if (standing.kind === 'silent') {
+    // Stated only where there is room for it. Seen on the live screen: with
+    // most agents declaring nothing, this line appeared on every tile in the
+    // grid — a sentence that says there is nothing to say, repeated thirteen
+    // times, which is the noise `ui-quality.md` puts below a compact screen.
+    // The distinction it protects (silent vs unasked) still matters, so it is
+    // moved rather than dropped: an enlarged tile says it, and the tile that
+    // could NOT be asked says so everywhere.
+    if (!full) return null
+    return (
+      <div className="text-xs text-fg-ghost mt-1" data-fleet-declared="silent">
+        declares nothing about itself
+      </div>
+    )
+  }
+  return (
+    <div className="text-xs mt-1 space-y-0.5" data-fleet-declared="declared">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-fg-ghost shrink-0">says:</span>
+        {standing.phase && (
+          <span className="text-fg-muted shrink-0" data-fleet-declared-phase={standing.phase}>{standing.phase}</span>
+        )}
+        {standing.focus && (
+          <span className="text-fg-normal min-w-0" style={full ? undefined : {
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>{standing.focus}</span>
+        )}
+        {/* A declaration does not expire on its own, so its AGE is what lets a
+            reader weigh it. Deliberately not turned into a staleness verdict:
+            a threshold discards the true positives first. */}
+        {standing.ageSeconds !== null && (
+          <span className="text-fg-ghost tabular-nums shrink-0"
+                title="How long ago the agent said this. It has not been restated since.">
+            {age(standing.ageSeconds)} ago
+          </span>
+        )}
+      </div>
+      {standing.files.length > 0 && (
+        <div className="text-fg-ghost truncate" title={standing.files.join('\n')}>
+          {standing.files.length} file(s): {standing.files.slice(0, full ? 8 : 3).join(', ')}
+          {standing.files.length > (full ? 8 : 3) && ' …'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * What the agent is working TOWARDS — task 3.9, from the engine's own record.
+ *
+ * Two absences that must not look alike: no record at all (on a machine with no
+ * engine that is every agent — measured 13 of 13), and a record whose task file
+ * could not be counted. Neither draws a progress bar, because a `0/0` renders
+ * identically to a change nobody has started.
+ *
+ * `stale` is the third status and the one worth seeing: a record claiming a run
+ * whose process is gone. `pid_unverified` is its quieter sibling — a pid held by
+ * something that is not an agent, which is what pid reuse looks like from here.
+ */
+function Purpose({ agent }: { agent: FleetAgent }) {
+  const p = purposeStanding(agent)
+  if (p.kind === 'no-record') return null
+  const tone = p.status === 'running' ? 'text-emerald-400'
+    : p.status === 'finished' ? 'text-fg-muted' : 'text-amber-400'
+  return (
+    <div className="flex items-baseline gap-2 flex-wrap text-xs mt-1" data-fleet-purpose={p.change}>
+      <span className="text-fg-ghost shrink-0">for:</span>
+      <span className="text-fg-normal truncate min-w-0">{p.change}</span>
+      {p.group && <span className="text-fg-ghost shrink-0">· {p.group}</span>}
+      <span className={`shrink-0 ${tone}`} data-fleet-purpose-status={p.status}
+            title={p.status === 'stale'
+              ? 'The record claims a run whose process is gone — see task 7.14: 68 days of “in progress” that was not.'
+              : undefined}>
+        {p.status}
+      </span>
+      {p.pidUnverified && (
+        <span className="text-amber-400 shrink-0"
+              title="The record claims a live run, and the pid it names is held by something that is not an agent. A pid is recycled, so this says which question was answered.">
+          pid unverified
+        </span>
+      )}
+      {p.progress ? (
+        <span className="text-fg-muted tabular-nums shrink-0" data-fleet-progress={`${p.progress.done}/${p.progress.total}`}>
+          {p.progress.done}/{p.progress.total} tasks
+        </span>
+      ) : (
+        <span className="text-fg-ghost shrink-0" data-fleet-progress="unmeasured"
+              title="The task file could not be counted. A 0/0 would draw a bar for a change nobody measured.">
+          progress not measured
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -752,6 +894,9 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   // `surface-line`, which is the same neutral-800 as the surface behind them:
   // an edge that cannot be seen, which is what made the grid read as one block.
   const ownership = ownershipOf(agent, ownerReachable)
+  // Computed once: the header marker and the block below must not be able to
+  // disagree about what the agent declared.
+  const standing = declaredStanding(agent)
   return (
     <div
       data-fleet-enlarged={enlarged ? agent.pid : undefined}
@@ -768,14 +913,28 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
               an agent the owner holds as `set-core-0906`, so matching a tile
               against `sac`/journal output meant translating between two names
               for one thing — the second-place defect, inside one screen. */}
-          {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">névtelen</span>}
+          {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
           {/* No guessing path exists today, so this marker should never appear —
               which is exactly why it is rendered rather than assumed away. */}
           {!agent.binding_confirmed && (
-            <span className="ml-1.5 text-amber-400" title="A naplóhoz kötés nem rekordból származik">?</span>
+            <span className="ml-1.5 text-amber-400" title="The binding to the session log did not come from a record">?</span>
           )}
         </span>
         <StateLine agent={agent} />
+        {/* The declared block rides BESIDE the measured state and never instead
+            of it — task 3.5. The case this exists for is the disagreement:
+            measured `quiet` with the agent declaring itself blocked, which the
+            tile would otherwise draw as calm. Marked only where it is
+            unexpected: beside `waiting` it adds a reason, not a surprise. */}
+        {blockUnexpectedFrom(agent.state, standing) && (
+          <span
+            data-fleet-declared-blocked={agent.pid}
+            className="inline-flex items-center gap-1 text-xs text-amber-400 font-semibold whitespace-nowrap"
+            title="The agent declares itself blocked while the measurement says otherwise. Both are true: the state is measured from the log, the block is what the agent says. Neither replaces the other."
+          >
+            <span aria-hidden>⚠</span> says it is blocked
+          </span>
+        )}
         <Contradiction agent={agent} />
         <Lineage agent={agent} />
         <span className="text-xs text-fg-muted truncate">{agent.branch ?? '—'}</span>
@@ -784,6 +943,8 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
         </span>
       </div>
 
+      <Purpose agent={agent} />
+      <Declared standing={standing} full={enlarged || focused} />
       <Excerpt agent={agent} lines={enlarged ? 4 : 2} />
 
       <div className="flex items-center gap-3 mt-1.5">
@@ -833,6 +994,10 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           onToggle={() => onTerminal(terminalOpen ? null : (offer.kind === 'available' ? offer.label : null))}
         />
       </div>
+
+      {/* Task 7.7 — the agent's own input, and task 4.4 where there is nothing
+          to type into: the producer's reason stands in the input's place. */}
+      <FleetInstruct agent={agent} />
 
       {open && <LogPanel pid={agent.pid} onClose={onToggle} tall={enlarged} />}
       {terminalOpen && offer.kind === 'available' && (
@@ -1236,6 +1401,11 @@ export default function Fleet() {
                   project={active}
                   onStarted={label => { toggleTerminal(active.name, label, true); load() }}
                 />
+                {/* Task 7.13 — the orphaned waiters live next to the offer that
+                    would otherwise add to the pile: an instruction reporting
+                    `waiters_here: 0` invites installing one. Only orphans are
+                    offered, one at a time, and removal says it stops a process. */}
+                <FleetWaiters />
                 {/* Density is a per-project choice — task 7.5. Offered only
                     where it can change anything: with one agent there is
                     nothing to lay out, and while a tile is enlarged the grid
