@@ -192,6 +192,34 @@ to write in preview and proven to *intend* nothing destructive — but no real i
 with `once: true`, git-history intent, and the removed external call all in place. The first
 one that does is still worth watching.
 
+## "comm" means `set-agent-comm` (`sac`) — stated by the user, 2026-08-19
+
+**When anything in this project says *comm*, *messaging*, or *the bus*, the default subject is
+[`set-agent-comm`](https://github.com/tatargabor/set-agent-comm) (`sac`, `~/code2/set-agent-comm`)
+— the newer external system, and the good one.** Written down because a session got it wrong in
+exactly the way that costs a decision: it read a review finding's "framework bus" column as the
+**git-based** `/set:msg` path and merged that path's measurement into `sac`'s, which made a
+working system look dead.
+
+The three things are separate and only one of them is *comm*:
+
+| | what it is | measured state |
+|---|---|---|
+| **`sac`** — THIS is comm | file channel + registry, rooms, typed messages, declared focus, appending writes, and it solved waking an idle session | 2026-08-19: **2 of 4** live agents reachable — see the enrolment note below |
+| `/set:msg`, `/set:inbox`, `/set:broadcast`, MCP `send_message`/`get_inbox` | the **older git-based** path through a `.set-control` worktree | 2026-08-19: **0 of 39** registered projects have that worktree, so these error everywhere. Do not build on it; do not quote its numbers as comm's. |
+| the runtime's own cross-session socket | Claude Code's native channel, `/run/user/1000/cc-socks/<pid>.sock` | reaches every live session because a session does not opt into existing |
+
+**Why `sac`'s coverage is not a defect, and what follows from it — the user's answer, 2026-08-19:**
+`sac` knows an agent that **enrolled a seat**; it cannot message one that has not. That is not a
+gap to route around with a second channel — **enrolling an agent is its own module**, and the way
+to 4-of-4 is to enrol, not to keep two transports alive forever. So a surface that finds an
+unreachable agent offers *enrolment*, never a parallel path.
+
+**And the older path's number must not be borrowed.** `0/39` is a fact about the git-based
+worktree bus. Stating it about "comm" describes a working system as a dead one — the same
+defect class as measuring a proxy instead of the thing, with the fail direction that abandons
+something that works.
+
 ## Cross-project agent channel — TEMPORARY (from 2026-07-24)
 
 While set-core and a consumer project are being integrated, their two copilot sessions
