@@ -361,6 +361,61 @@ consumer's name, path, or content.
   4 owner tests fail when the size is remembered instead of read. Restores
   verified by file identity.
 
+### B-17 — set-core's PUBLISHED history still names private consumer projects, and a fork network makes that permanent
+- **state:** open — deliberately, and the decision is the entry
+- **reported:** 2026-08-19 by the user — *"ellenőrizd, hogy ... ne tudjon kimenni
+  personális adat token projektspecifikus olyan, ami problémát jelent"*
+- **measured:** `git grep -lE '<slugs>' origin/main` → **34 files**;
+  `git log origin/main --format='%s%n%b' | grep -icE '<slugs>'` → **8 commit
+  messages**; the published tag `refs/tags/orch/complete` carries **10**. The slug
+  list is built at run time from `~/.config/set-core/projects.json`, never stored
+  in the repo.
+- **why it is not being fixed the obvious way:** `gh repo view` reports **6 forks
+  and 30 stars**. GitHub keeps a fork network's objects reachable by SHA, so a
+  `filter-repo` + force-push would rewrite every SHA, break every clone, and still
+  not remove the content. The five sibling public repos have **0 forks**, and all
+  five were fully scrubbed instead (`set-agent-comm`, `set-copilot`, `set-atlas`,
+  `set-demo`, `set-claude-handoff`).
+- **what was done instead:** the working tree is clean (`set-leakscan --tree` →
+  0 findings), and both gates are installed so nothing new joins it.
+- **how you would know it changed:** `set-leakscan --tree` in this repo reports
+  only `consumer-name:commit-message` entries, all of them reachable from
+  `origin/main` — never a content finding, and never one in `origin/main..HEAD`.
+
+### B-18 — two local backup tags hold the pre-scrub content, and `push --tags` would republish it
+- **state:** open
+- **measured:** `git tag -l 'backup-*'` → `backup-pre-scrub-2026-07-24`,
+  `backup-preslugscrub-20260731`; each resolves to a commit whose history carries
+  8 leaking commit messages. `git ls-remote --tags origin | grep backup` → **empty**,
+  so they are local only *today*.
+- **why it matters:** this is rule 8 of `.claude/rules/release-safety.md` observed
+  in the wild — a scrub's own leftovers. A single `git push --tags`, `--mirror` or
+  `--all` publishes exactly what an earlier scrub removed.
+- **how you would know it is fixed:** either the tags are deleted, or a push
+  refspec policy exists that cannot name them. Verified by
+  `git ls-remote --tags origin | grep -c backup` staying 0 after any push.
+
+### B-19 — the public GitLab mirror of set-core was not updated with the cleanup
+- **state:** open
+- **measured:** `curl .../api/v4/projects?per_page=100` anonymously lists exactly
+  two public projects on the self-hosted instance: `root/set-core` and
+  `root/craftbrew-run`. The mirror's newest commit is **2026-07-09**, i.e. it
+  predates the cleanup entirely. (`root/craftbrew-run` holds only GitLab's default
+  README — nothing to clean.)
+- **how you would know it is fixed:** the mirror's tip equals the GitHub tip, and
+  `set-leakscan --tree` run against a fresh clone of it is clean.
+
+### B-20 — set-voice-agent-delivery's two remotes have diverged: GitLab refused the scrubbed history
+- **state:** open
+- **measured:** `git push --force gitlab main` →
+  `GitLab: You are not allowed to force push code to a protected branch on this
+  project` / `[remote rejected] ... (pre-receive hook declined)`. GitHub took the
+  same push. That GitLab project is **not** in the public list, so nothing is
+  exposed — but the two copies now hold different histories, and the GitLab one
+  still contains a real phone number.
+- **how you would know it is fixed:** unprotect `main` on that project, force-push,
+  re-protect; then `git rev-parse origin/main gitlab/main` returns one SHA twice.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open

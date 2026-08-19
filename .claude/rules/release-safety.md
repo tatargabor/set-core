@@ -7,6 +7,42 @@ or credential is not revocable once pushed.
 Run the scan on the **release range** (`<last-tag>..HEAD`), not just the last commit.
 Nothing is pushed until every check is clean or explicitly cleared.
 
+## Run it, do not re-derive it — `set-leakscan`
+
+**This file used to be a recipe whose commands carried `<name1>|<name2>` placeholders
+that somebody had to fill in from memory. Measured 2026-08-19: `grep -rl 'release-safety'`
+over the whole repository returned ZERO references, and every public `set-*` repo was
+contaminated. A check whose input list has to be reconstructed by hand is a check that
+never runs.** The checks below are now implemented:
+
+```bash
+set-leakscan                 # the unpushed range — what a push would publish
+set-leakscan --tree          # the whole tracked tree, for an audit
+set-leakscan --staged        # before a commit
+set-leakscan --list-patterns # what it looks for, without printing the values
+```
+
+It resolves the consumer-name list **at run time** from `~/.config/set-core/projects.json`,
+because a pattern file committed to the repository would itself be the leak — the same trap
+this project's rules already describe for `.gitignore`. Deliberate exceptions go in
+`~/.config/set-core/leakscan-allow.txt`, one slug per line; the user's own public repos are
+already listed there.
+
+Two gates run it, and they bind **different actors** — neither is redundant:
+
+| gate | binds | file |
+|---|---|---|
+| `.git/hooks/pre-push` | a human at a terminal | per-repo, installed by hand |
+| `set-hook-leakscan` (`PreToolUse`, matcher `Bash`) | an agent | `.claude/settings.json` |
+
+An agent can pass `-c core.hooksPath=` without meaning any harm, because **an instruction is
+not a constraint — what an agent cannot do is decided by the tools it holds.** A human can
+disable a Claude hook. Hence both.
+
+**If a gate blocks you, do not reach for `--no-verify`.** Fix the finding, or record the
+exception in the allow file and say so out loud. A bypassed gate and an absent one are the
+same thing, except the bypassed one also tells you it is fine.
+
 ## The checks
 
 1. **Consumer / customer project names** — in the diff, in commit messages, in tag

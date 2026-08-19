@@ -551,9 +551,18 @@ narrower statement is the one somebody can act on, and the checking cost seconds
 
 **set-core and every open-source `set-*` project are English.** Code, identifiers, UI strings,
 comments, `.md` documentation, OpenSpec artifacts — all of it. The reason is not taste: these
-repositories are public (`set-core`, `set-agent-comm`, `set-designer`,
-`set-voice-agent-delivery` are on GitHub), and a framework nobody outside one language can read
-is a framework nobody outside it can use. **The consumer projects are the Hungarian ones** —
+repositories are public, and a framework nobody outside one language can read
+is a framework nobody outside it can use.
+
+⚠ **Which repositories those are is a MEASUREMENT WITH A DATE, not a list to inherit.**
+Measured 2026-08-19 with `gh repo list tatargabor --json name,visibility`: **PUBLIC** are
+`set-core`, `set-agent-comm`, `set-copilot`, `set-atlas`, `set-demo`, `set-claude-handoff`
+and `set-voice-agent-delivery`; **`set-designer` is PRIVATE**. This paragraph previously
+named four repos and called `set-designer` public. Both errors ran in the reassuring
+direction — the surface looked smaller and safer than it was — and the four it omitted
+included the two most heavily contaminated ones. Re-run the command; do not trust the list.
+
+**The consumer projects are the Hungarian ones** —
 which is the same split the abstraction already draws: the domain lives on the project's side,
 and so does its language.
 
