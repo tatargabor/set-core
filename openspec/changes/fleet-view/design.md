@@ -777,6 +777,35 @@ a **separate node process per enrolled agent** — measured at **54 MB + 72 MB f
 ~62 MB each. So the terminal may be the default wherever a pty exists, and `sac` enrolment is
 a per-agent switch, not a default: at forty agents the difference is ~2.5 MB against ~2.5 GB.
 
+**⚠ CORRECTED the same morning, by the comm project's own measurement — and it reverses
+the switch decision back.** This section briefly concluded that `sac`'s HTTP daemon mode
+(~135 KB per client against stdio's ~62 MB) removed the reason for an enrolment switch. The
+`set-agent-comm` side re-measured, agreed the ratio, and refuted the conclusion:
+
+- **The identity cannot travel.** HTTP identity is the URL path, whose regex cannot express a
+  SEAT. Two clients on one path both wrote under the same name, and the second's inbox showed
+  **0 unread** for the first's message — the one-file-one-cursor defect the seat concept exists
+  to prevent.
+- **The config cannot carry a session id.** Measured on their side: `${CLAUDE_CODE_SESSION_ID}`
+  in `.mcp.json` resolves to the PARENT's id inside a subagent, and arrives URL-encoded and
+  literal in an ordinary window.
+- **The port has no authentication at all** — a foreign process wrote under another project's
+  name with nothing to show. Under stdio the identity is the `cwd`, which cannot be forged.
+- **And the standing cost is bigger than the transport.** Of ~63 MB per stdio server, 51.7 MB is
+  an empty node process and 25 MB the MCP SDK; on top of that each enrolled agent runs a `sac
+  wait` watcher (~37.7 MB). So the real figure is **~101 MB per agent**, of which the transport
+  is 62 %.
+
+**So the enrolment switch stays**, and the earlier "no need to switch" line is withdrawn.
+
+**What this framework can contribute, and it is narrow on purpose:** for a FRAMEWORK-STARTED
+agent the name exists before the agent does — the owner picks it, creates the scope and writes
+the config — so a literal per-agent path and a per-agent secret need no runtime substitution at
+all. That closes both identity holes *for agents this screen starts*, and closes nothing for a
+hand-opened window, where nobody writes the config and `cwd`-based stdio remains the only
+unforgeable route. The question is therefore not HTTP versus stdio; it is **who writes the
+config**.
+
 ⚠ **"Default terminal" cannot be wider than the pty.** The orchestrator stays on `claude -p`
 (decided above), so apply agents have no pty and never will. For them the log is the only
 window — which the 0.92 s median makes sufficient. The terminal is the default only for agents
