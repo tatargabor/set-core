@@ -100,6 +100,22 @@ export interface FleetAgent {
     pid_without_seat?: number | null
   } | null
   /**
+   * Who runs UNDER this agent — task 7.18.
+   *
+   * `known: false` means there was no key to look it up by, and a `0` there
+   * would state "nothing runs under it" about an agent that may have started
+   * five. `live_only` bounds the number: it counts recorded starts that are
+   * still running, so a child that has already exited is not in it — and a
+   * count shown without that sentence is a claim nobody measured.
+   */
+  descendants?: {
+    known: boolean
+    live?: number
+    pids?: number[]
+    live_only?: boolean
+    reason?: string
+  } | null
+  /**
    * Whether this agent can be addressed at all — task 4.4 — and why not when it
    * cannot. The reason is a sentence for the reader, and the surface puts it
    * WHERE THE INPUT WOULD BE: dropping the agent would hide running work, and

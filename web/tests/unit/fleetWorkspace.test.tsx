@@ -231,6 +231,65 @@ describe('a log opens where the tile already is', () => {
   })
 })
 
+describe('lineage on the tile, both directions', () => {
+  it('offers a way to the parent when the parent is on this screen', async () => {
+    const { container } = await show(fleet([
+      agent(1, 'parent', { seat: 'demo#p' }),
+      agent(2, 'child', { parent: { seat: 'demo#p', source: 'recorded' } }),
+    ]))
+    await waitFor(() => expect(container.querySelector('[data-fleet-parent-jump]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-parent]')!.getAttribute('data-fleet-parent')).toBe('recorded')
+  })
+
+  /**
+   * A control that goes nowhere is the shape 8.2 forbids. A parent outside the
+   * fleet is still a FACT — it is shown — but it is not a destination.
+   */
+  it('states a parent that is not on this screen without offering to go there', async () => {
+    const { container } = await show(fleet([
+      agent(2, 'child', { parent: { seat: 'somewhere#else', source: 'ancestry' } }),
+    ]))
+    await waitFor(() => expect(container.querySelector('[data-fleet-parent]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-parent]')!.getAttribute('data-fleet-parent')).toBe('ancestry')
+    expect(container.querySelector('[data-fleet-parent-jump]')).toBeNull()
+  })
+
+  it('shows the descendant count with its bound, and a way into each one', async () => {
+    const { container } = await show(fleet([
+      agent(1, 'top', { descendants: { known: true, live: 1, pids: [2], live_only: true, reason: 'live only' } }),
+      agent(2, 'under'),
+    ]))
+    await waitFor(() => expect(container.querySelector('[data-fleet-descendants]')).toBeTruthy())
+    const mark = container.querySelector('[data-fleet-descendants]')!
+    expect(mark.getAttribute('data-fleet-descendants')).toBe('1')
+    // The bound is ON the number, not only in a tooltip.
+    expect(mark.textContent).toMatch(/\*/)
+    expect(container.querySelector('[data-fleet-descendant-jump="2"]')).toBeTruthy()
+  })
+
+  /**
+   * Seen on the live screen: `↳ ?` on four tiles out of five, because the lookup
+   * needs a seat and most agents have none — while the same tile already says
+   * `no input: … no seat`. One cause, two markers, on every tile that has
+   * nothing to report.
+   */
+  it('does not repeat "we could not look" on a tile that already says it has no seat', async () => {
+    const { container } = await show(fleet([
+      agent(1, 'a1', { instructable: false, reason: 'this session has no seat on the messaging bus' }),
+    ]))
+    await waitFor(() => expect(container.querySelector('[data-fleet-ownership]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-descendants="unknown"]')).toBeNull()
+    expect(container.textContent).toMatch(/no seat on the messaging bus/)
+  })
+
+  it('keeps the marker where it is the ONLY thing saying so — a seat that could not be looked up', async () => {
+    const { container } = await show(fleet([
+      agent(1, 'a1', { instructable: true, seat: 'demo#a', descendants: { known: false, reason: 'roster unreadable' } }),
+    ]))
+    await waitFor(() => expect(container.querySelector('[data-fleet-descendants="unknown"]')).toBeTruthy())
+  })
+})
+
 describe('ownership is on the tile, not only in a sentence', () => {
   it('marks each tile with what the producer measured', async () => {
     const { container } = await show(fleet([

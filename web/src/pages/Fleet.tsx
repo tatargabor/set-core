@@ -48,6 +48,7 @@ import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
 import TileControls from '../components/TileControls'
 import { plainExcerpt } from '../lib/excerptText'
+import { descendantStanding, parentClaim } from '../lib/fleetLineage'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
@@ -581,27 +582,123 @@ const GRID_COLS: Record<number, string> = {
  * (measured, and it survives when nothing was recorded). They can disagree, and
  * a screen that picked one silently would report the disagreement as a fact.
  */
-function Lineage({ agent }: { agent: FleetAgent }) {
-  const p = agent.parent
-  if (!p) return null
-  const recorded = p.source === 'recorded'
-  // A pid with no session record has no seat name. Saying "unknown parent"
-  // there would be a false absence — the relation IS known, only the name is
-  // missing, so the pid stands in for it.
-  const who = p.seat ?? (p.pid_without_seat != null ? `pid ${p.pid_without_seat}` : null)
-  if (!who) return null
-  return (
-    <span
-      data-fleet-parent={p.source}
-      className="text-xs text-fg-ghost shrink-0"
-      title={recorded
-        ? 'The owner wrote down who asked for this agent to be started — a record, not an inference.'
-        : 'Measured from the process tree: this is the nearest agent ancestor. Not the same as who asked — the two can disagree.'}
-    >
-      ← {who}
-      <span className={recorded ? 'ml-1 text-fg-ghost' : 'ml-1 text-amber-400/70'}>
-        {recorded ? 'recorded' : 'from the process tree'}
+function Lineage({ agent, canJumpSeat, onJumpSeat }: {
+  agent: FleetAgent
+  canJumpSeat?: (seat: string) => boolean
+  onJumpSeat?: (seat: string) => void
+}) {
+  const claim = parentClaim(agent)
+  if (claim.kind === 'none') return null
+  /*
+    Asking and acting are two callbacks on purpose. One that did both would be
+    called DURING RENDER to decide whether to offer the control — and would
+    then navigate while rendering, which is a state change inside a render pass
+    and an infinite loop with it. The question is pure; the act is not.
+  */
+  const reachable = claim.seat !== null && canJumpSeat?.(claim.seat) === true
+  const body = (
+    <>
+      ← {claim.label}
+      <span className={claim.measured ? 'ml-1 text-fg-ghost' : 'ml-1 text-amber-400/70'}>
+        {claim.measured ? 'recorded' : 'from the process tree'}
       </span>
+    </>
+  )
+  return reachable ? (
+    <button
+      data-fleet-parent={claim.measured ? 'recorded' : 'ancestry'}
+      data-fleet-parent-jump={claim.seat}
+      onClick={() => onJumpSeat?.(claim.seat as string)}
+      className="text-xs text-fg-ghost shrink-0 hover:text-fg-strong underline-offset-2 hover:underline"
+      title={`${claim.note}. Click to go to it.`}
+    >
+      {body}
+    </button>
+  ) : (
+    <span
+      data-fleet-parent={claim.measured ? 'recorded' : 'ancestry'}
+      className="text-xs text-fg-ghost shrink-0"
+      title={claim.note}
+    >
+      {body}
+    </span>
+  )
+}
+
+/**
+ * Who runs UNDER this agent — task 7.18.
+ *
+ * The count is never shown bare. `live_only` says it covers recorded starts
+ * that are still running, so a child started with `claude -p` that has already
+ * exited is not in it — and a lone `2` reads as *this agent has two children*,
+ * which is a claim nobody measured. The caveat rides in the tooltip and the
+ * bound is marked on the number itself.
+ *
+ * `known: false` renders as *we could not look*, never as zero: without a seat
+ * there is no key to look the agent up by, and a zero there would answer a
+ * question nobody asked.
+ */
+function Descendants({ agent, canJumpPid, onJumpPid }: {
+  agent: FleetAgent
+  canJumpPid?: (pid: number) => boolean
+  onJumpPid?: (pid: number) => void
+}) {
+  const standing = descendantStanding(agent)
+  if (standing.kind === 'unknown') {
+    /*
+      Seen on the live screen: `↳ ?` on four tiles out of five, because the
+      lookup needs a seat and most agents have none. The absence is real and it
+      is already SAID on the same tile — `no input: this session has no seat on
+      the messaging bus` — so a second marker for the same cause is the
+      second-copy defect inside one card, and it fires on every tile that has
+      nothing to report.
+
+      It stays for the case that is NOT already explained: an agent that has a
+      seat and still could not be looked up. There the marker is the only thing
+      that says so, and it means what it says.
+    */
+    if (agent.instructable !== true) return null
+    return (
+      <span
+        data-fleet-descendants="unknown"
+        className="text-xs text-amber-400/70 shrink-0"
+        title={`We could not look: ${standing.reason}. This is not "nothing runs under it".`}
+      >
+        ↳ ?
+      </span>
+    )
+  }
+  if (standing.kind === 'none') return null
+  return (
+    <span className="inline-flex items-baseline gap-1 shrink-0" data-fleet-descendants={standing.live}>
+      <span
+        className="text-xs text-fg-muted tabular-nums"
+        title={standing.caveat
+          ? `${standing.live} agent(s) run under this one — ${standing.caveat}.`
+          : `${standing.live} agent(s) run under this one.`}
+      >
+        ↳ {standing.live}
+        {/* The bound, ON the number. A count whose limit lives only in a
+            tooltip is a count the reader takes for complete. */}
+        {standing.caveat && <span className="text-fg-ghost">*</span>}
+      </span>
+      {standing.pids.map(pid => (
+        canJumpPid?.(pid) ? (
+          <button
+            key={pid}
+            data-fleet-descendant-jump={pid}
+            onClick={() => onJumpPid?.(pid)}
+            className="text-xs text-fg-ghost tabular-nums hover:text-fg-strong underline-offset-2 hover:underline"
+            title="Go to this agent"
+          >
+            {pid}
+          </button>
+        ) : (
+          <span key={pid} className="text-xs text-fg-ghost tabular-nums" title="Running, but not on this screen">
+            {pid}
+          </span>
+        )
+      ))}
     </span>
   )
 }
@@ -818,7 +915,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onTyping }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -845,6 +942,18 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
   onEnlarge?: () => void
   /** Reports the keyboard entering or leaving this agent's terminal. */
   onTyping?: (typing: boolean) => void
+  /**
+   * Go to an agent by seat (7.8, upwards) or by pid (7.18, downwards).
+   *
+   * They return whether that agent is on this screen AT ALL, so the tile can
+   * decide whether to offer a way in: a control that scrolls to nothing is the
+   * shape 8.2 forbids, and a relative outside the fleet is a fact rather than a
+   * destination.
+   */
+  canJumpSeat?: (seat: string) => boolean
+  onJumpSeat?: (seat: string) => void
+  canJumpPid?: (pid: number) => boolean
+  onJumpPid?: (pid: number) => void
 }) {
   const offer = terminalOffer(agent, ownerReachable)
   // Ownership decides the tile's edge — see `lib/fleetCardStyle.ts` for why it
@@ -899,7 +1008,10 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
           </span>
         )}
         <Contradiction agent={agent} />
-        <Lineage agent={agent} />
+        {/* Both directions of the same relation: 7.8 upwards (who started this
+            one) and 7.18 downwards (who runs under it). */}
+        <Lineage agent={agent} canJumpSeat={canJumpSeat} onJumpSeat={onJumpSeat} />
+        <Descendants agent={agent} canJumpPid={canJumpPid} onJumpPid={onJumpPid} />
         <span className="text-xs text-fg-muted truncate">{agent.branch ?? '—'}</span>
         <span className="ml-auto text-xs text-fg-ghost tabular-nums shrink-0">
           {age(agent.last_movement_seconds)} · {agent.pid}
@@ -1240,6 +1352,39 @@ export default function Fleet() {
   const [typingLabel, setTypingLabel] = useState<string | null>(null)
 
   /**
+   * Go to an agent, wherever it is — tasks 7.8 and 7.18.
+   *
+   * Both directions of the lineage need the same act: find that agent on this
+   * screen and put the reader in front of it. It crosses projects, because a
+   * parent that started an agent in another project is exactly the case a
+   * reader is trying to follow; it selects the project first, so the tile is
+   * actually on screen when it is enlarged.
+   *
+   * Returns whether the agent is here at all, so a tile can decide whether to
+   * OFFER the jump — a control that goes nowhere is the shape 8.2 forbids.
+   */
+  const findAgent = useCallback((match: (a: FleetAgent) => boolean) => {
+    for (const p of projects) {
+      const found = p.agents.find(match)
+      if (found) return { project: p.name, agent: found }
+    }
+    return null
+  }, [projects])
+
+  const goTo = useCallback((match: (a: FleetAgent) => boolean) => {
+    const hit = findAgent(match)
+    if (!hit) return
+    setSelected(hit.project)
+    writeView(hit.project, { enlarged: hit.agent.pid })
+    setMemory({ project: hit.project, view: readView(hit.project) })
+  }, [findAgent])
+
+  const canJumpSeat = useCallback((seat: string) => findAgent(a => a.seat === seat) !== null, [findAgent])
+  const onJumpSeat = useCallback((seat: string) => goTo(a => a.seat === seat), [goTo])
+  const canJumpPid = useCallback((pid: number) => findAgent(a => a.pid === pid) !== null, [findAgent])
+  const onJumpPid = useCallback((pid: number) => goTo(a => a.pid === pid), [goTo])
+
+  /**
    * Whose log is open — several at once, and in the grid rather than only on an
    * enlarged tile. Reading a log and choosing a layout are two acts; tying them
    * together made "what is this agent saying" cost "hide every other agent".
@@ -1461,6 +1606,10 @@ export default function Fleet() {
                   terminalOpen={openTerminals.includes(focused.terminal_label ?? '')}
                   onTerminal={label => toggleTerminal(active.name, label ?? focused.terminal_label ?? null, label !== null)}
                   onFocus={() => setFocus(active.name, null)}
+                  canJumpSeat={canJumpSeat}
+                  onJumpSeat={onJumpSeat}
+                  canJumpPid={canJumpPid}
+                  onJumpPid={onJumpPid}
                   typing={typingLabel !== null && typingLabel === focused.terminal_label}
                   onTyping={on => setTypingLabel(on ? focused.terminal_label ?? null : null)}
                 />
@@ -1489,6 +1638,10 @@ export default function Fleet() {
                     terminalOpen={openTerminals.includes(a.terminal_label ?? '')}
                     onTerminal={label => toggleTerminal(active.name, label ?? a.terminal_label ?? null, label !== null)}
                     onFocus={() => setFocus(active.name, a.pid)}
+                    canJumpSeat={canJumpSeat}
+                    onJumpSeat={onJumpSeat}
+                    canJumpPid={canJumpPid}
+                    onJumpPid={onJumpPid}
                     typing={typingLabel !== null && typingLabel === a.terminal_label}
                     onTyping={on => setTypingLabel(on ? a.terminal_label ?? null : null)}
                   />
