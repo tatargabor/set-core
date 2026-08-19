@@ -443,3 +443,116 @@ def test_an_unrecognised_status_says_so_rather_than_guessing():
     """
     from set_orch.fleet.owner import _describe_exit
     assert "raw wait status" in _describe_exit(0x7F)      # stopped, neither exited nor signalled
+
+
+# --------------------------------------------------------------------------- #
+# task 9.11, second half — the SHAPE of the damage, not only the refusal
+#
+# The four tests above assert that the resume is refused. All four pass on a
+# build whose refusal guards the wrong thing, as long as it raises: they check a
+# rule, and a rule is a proxy for a harm. This pair drives the SAME code path
+# twice, changing only what the liveness reader answers, and reads the harm off
+# the transcript afterwards — a parent with two children, where a session has
+# exactly one continuation.
+#
+# Recorded in design §6.1 as seen once by hand. What follows makes it a fixture
+# instead of an anecdote, and gives the fork a name that a later reader can
+# search for: two leaves under one parent.
+# --------------------------------------------------------------------------- #
+
+def _tail_uuid(path):
+    import json
+    lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return json.loads(lines[-1])["uuid"] if lines else None
+
+
+def _append_turn(path, *, uuid, parent):
+    """What a session does when it writes a turn: it appends under the tail it
+    read. Two processes that read the same tail therefore write the same parent —
+    which is the entire mechanism, and why nothing errors."""
+    import json
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"uuid": uuid, "parentUuid": parent, "type": "assistant"}) + "\n")
+
+
+def _forks(path):
+    """Parents with more than one child. A healthy transcript has none."""
+    import json
+    children = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        children.setdefault(rec.get("parentUuid"), []).append(rec["uuid"])
+    return {p: kids for p, kids in children.items() if len(kids) > 1}
+
+
+def _transcript(tmp_path):
+    path = tmp_path / "session.jsonl"
+    path.write_text("", encoding="utf-8")
+    parent = None
+    for i in range(1, 4):
+        _append_turn(path, uuid=f"turn-{i}", parent=parent)
+        parent = f"turn-{i}"
+    return path
+
+
+def _resuming_owner(monkeypatch, transcript):
+    """An owner whose `start` does what a resumed session does first: read the
+    transcript's tail and append under it."""
+    o = AgentOwner()
+    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    monkeypatch.setattr(
+        o, "start",
+        lambda *a, **k: _append_turn(transcript, uuid="resumed-1", parent=_tail_uuid(transcript)) or "started",
+    )
+    return o
+
+
+def test_a_resume_against_a_live_session_forks_its_transcript(tmp_path, monkeypatch):
+    """The harm, performed. This is the build the refusal is protecting against —
+    one that answers the liveness question wrongly (a unit-based check clears a
+    session started by hand, because it has no scope). Nothing raises, nothing
+    logs, and the damage is only visible in the file afterwards.
+    """
+    transcript = _transcript(tmp_path)
+    tail_the_original_holds = _tail_uuid(transcript)
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
+    o = _resuming_owner(monkeypatch, transcript)
+
+    recover(o, unit="set-agent-x.scope", session_id="live-one", cwd=str(tmp_path))
+    # The original is still running and knows nothing about any of this. Its next
+    # turn goes under the tail it was holding — the same parent the resume used.
+    _append_turn(transcript, uuid="original-4", parent=tail_the_original_holds)
+
+    forks = _forks(transcript)
+    assert forks == {"turn-3": ["resumed-1", "original-4"]}, (
+        "the forbidden resume did not produce the fork this test exists to show; "
+        f"got {forks!r}"
+    )
+
+
+def test_the_refusal_is_what_keeps_the_transcript_single_threaded(tmp_path, monkeypatch):
+    """Same fixture, same call, same writer — only the liveness answer differs.
+
+    So the assertion below is about the guard and nothing else: with the session
+    known to be live, `recover` never reaches `start`, the second writer never
+    exists, and the transcript keeps exactly one leaf. Remove the refusal and this
+    test produces the fork from the test above instead.
+    """
+    transcript = _transcript(tmp_path)
+    tail_the_original_holds = _tail_uuid(transcript)
+    monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: {"live-one"})
+    o = _resuming_owner(monkeypatch, transcript)
+
+    with pytest.raises(OwnerError):
+        recover(o, unit="set-agent-x.scope", session_id="live-one", cwd=str(tmp_path))
+    _append_turn(transcript, uuid="original-4", parent=tail_the_original_holds)
+
+    assert _forks(transcript) == {}, (
+        "a fork survived the refusal — the guard let a second writer onto the transcript"
+    )
+    # And the positive half, so this cannot pass on a transcript nothing wrote to.
+    assert _tail_uuid(transcript) == "original-4", (
+        "the original's own turn is missing; the fixture proved nothing"
+    )
