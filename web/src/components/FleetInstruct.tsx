@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import VoiceInput from './VoiceInput'
 import type { FleetAgent, InstructReport } from '../lib/fleetTypes'
 import { holdNote, isSettled, meaningOf, offerWaiterRemedy } from '../lib/fleetInstructOutcome'
 import { instructability } from '../lib/fleetDeclared'
@@ -32,6 +33,27 @@ import { instructability } from '../lib/fleetDeclared'
  * in its place. Not a disabled box (which invites typing), not the agent
  * dropped from the screen (which hides running work), and not a box that
  * silently goes nowhere — which is the worst of the three.
+ *
+ * ## Dictation is a way of filling the box, not a second way of sending
+ *
+ * Task 7.6. The mic is the dashboard's existing `VoiceInput`, unchanged, and it
+ * writes into the SAME `text` the keyboard writes into — so everything after
+ * the words exist is one path: the same review, the same Enter, the same three
+ * facts back. Two rules shape it, and both are about what dictation must not
+ * quietly become:
+ *
+ *  - **it never sends.** A transcript that dispatched itself would put words
+ *    nobody read in front of a live agent, and the send is the irreversible
+ *    half. What arrives is a draft;
+ *  - **a partial is not what you have.** In-progress text is shown BESIDE the
+ *    box, dim and labelled, never inside it. If the connection drops mid
+ *    sentence the box still holds only finalised words — a partial sitting in
+ *    the box looks exactly like something you typed and meant.
+ *
+ * When Soniox is not configured or there is no microphone, `VoiceInput` renders
+ * nothing at all. That is the task's *absent rather than failing*, and it is the
+ * component's own behaviour rather than a check repeated here — a second copy of
+ * that condition is the one that would drift.
  */
 
 const TONE: Record<string, string> = {
@@ -44,6 +66,10 @@ const TONE: Record<string, string> = {
 
 export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
   const [text, setText] = useState('')
+  /** In-progress dictation. Never merged into `text` — see the header. */
+  const [heard, setHeard] = useState('')
+  /** When the last partial arrived — the preview's own freshness. */
+  const heardAt = useRef(0)
   const [sending, setSending] = useState(false)
   const [report, setReport] = useState<InstructReport | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
@@ -63,6 +89,26 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
     const t = setInterval(() => setTick(n => n + 1), 1000)
     return () => clearInterval(t)
   }, [open])
+
+  /**
+   * The preview expires on its own.
+   *
+   * `VoiceInput` announces a transcript but never announces that it stopped
+   * hearing anything: a recording ended with no finalised words leaves the last
+   * partial standing, and *"hearing: …"* about a microphone that is off is the
+   * false-presence shape this screen exists against. Partials arrive
+   * continuously while a mic is live, so silence for a few seconds is the
+   * measurement that the dictation is over — and the box, which is the part
+   * that can be sent, is never touched either way.
+   */
+  const listening = heard.trim().length > 0
+  useEffect(() => {
+    if (!listening) return
+    const t = setInterval(() => {
+      if (Date.now() - heardAt.current > 3000) setHeard('')
+    }, 1000)
+    return () => clearInterval(t)
+  }, [listening])
 
   const send = useCallback(async () => {
     const body = text.trim()
@@ -95,6 +141,8 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
       // refusal it stays in the box: retyping a lost instruction is the kind of
       // small cruelty that makes a surface untrustworthy.
       setText('')
+      // And with it the preview: a sent instruction leaves nothing being heard.
+      setHeard('')
     } catch (e) {
       setFailure(String((e as Error)?.message ?? e))
     } finally {
@@ -122,7 +170,7 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
   const meaning = report ? meaningOf(report.outcome) : null
 
   return (
-    <div className="mt-2 border-t border-surface-line pt-2" data-fleet-instruct={can.kind}>
+    <div className="mt-2 border-t border-surface-line pt-2" data-fleet-instruct={can.kind} data-fleet-own-surface="instruct">
       <div className="flex items-end gap-2">
         <textarea
           ref={box}
@@ -138,6 +186,14 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
             : `send an instruction to ${can.seat ?? 'this agent'}`}
           className="flex-1 min-w-0 resize-y bg-surface-page border border-surface-edge rounded px-2 py-1 text-xs text-fg-normal placeholder:text-fg-ghost focus:outline-none focus:border-sky-400/60"
         />
+        {/* Task 7.6 — dictation into the same box. `onTranscript` appends, so
+            speaking after typing continues the sentence instead of replacing
+            it, and the reader can fix a misheard word before sending. */}
+        <VoiceInput
+          onTranscript={t => { setText(prev => (prev ? `${prev} ${t}` : t)); setHeard('') }}
+          onPartial={t => { heardAt.current = Date.now(); setHeard(t) }}
+          disabled={sending}
+        />
         <button
           onClick={() => void send()}
           disabled={sending || !text.trim()}
@@ -147,6 +203,14 @@ export default function FleetInstruct({ agent }: { agent: FleetAgent }) {
           {sending ? 'sending…' : 'send'}
         </button>
       </div>
+
+      {/* What is being heard right now — outside the box on purpose, so a
+          sentence that never finalises cannot be sent as if it had been. */}
+      {heard.trim() && (
+        <div className="mt-1 text-xs text-fg-ghost italic" data-fleet-instruct-heard={agent.pid}>
+          hearing: {heard}
+        </div>
+      )}
 
       {failure && <div className="mt-1 text-xs text-red-400">the send failed: {failure}</div>}
 
