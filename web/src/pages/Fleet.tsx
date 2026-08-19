@@ -35,6 +35,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 
 import FleetProjectColumn from '../components/FleetProjectColumn'
 import FleetTerminal from '../components/FleetTerminal'
+import { Columns2, Columns3, Columns4, Square } from 'lucide-react'
+
 import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
@@ -572,6 +574,11 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
  * a layout that silently does not apply, which reads as "the grid does not
  * work" rather than as a build problem.
  */
+/** The layout each choice produces, drawn rather than numbered. */
+const COLUMN_GLYPH: Record<number, typeof Square> = {
+  1: Square, 2: Columns2, 3: Columns3, 4: Columns4,
+}
+
 const GRID_COLS: Record<number, string> = {
   1: 'grid-cols-1',
   2: 'grid-cols-1 md:grid-cols-2',
@@ -953,7 +960,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -961,7 +968,6 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
   /** The tile is alone on the panel — full screen. */
   focused?: boolean
   /** Take the whole row of the grid: something is open inside and needs width. */
-  wide?: boolean
   /** The reader's keyboard is in this tile's terminal. Measured, not inferred. */
   typing?: boolean
   ownerReachable?: boolean
@@ -1035,7 +1041,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
          scrolling inside it. `flex-1` only where the card is meant to fill: the
          full-screen one, and the enlarged one in a stack of rows. */
       className={`${cardClasses(ownership, { enlarged, focused, typing })} flex flex-col min-h-0 overflow-hidden${
-        focused || enlarged ? ' flex-1' : ''}${wide ? ' md:col-span-full' : ''}${onOpen ? ' cursor-pointer' : ''}`}
+        focused || enlarged ? ' flex-1' : ''}${onOpen ? ' cursor-pointer' : ''}`}
     >
       {/* Two parts, so the controls stay in the corner. With everything in one
           wrapping row, a long name pushed the icons onto a second line — a
@@ -1606,24 +1612,36 @@ export default function Fleet() {
                     clicked it is worse than one that is missing. */}
                 {active.agents.length > 1 && (
                   <span className="ml-auto flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
-                    <span className="text-xs text-fg-ghost">columns</span>
-                    {COLUMN_CHOICES.map(c => (
-                      <button
-                        key={c}
-                        data-fleet-columns={c}
-                        aria-pressed={c === columns}
-                        onClick={() => {
-                          setColumns(active.name, c)
-                          setFocus(active.name, null)
-                          setEnlarged(active.name, null)
-                        }}
-                        className={`text-xs tabular-nums px-1.5 rounded border ${
-                          c === columns
-                            ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
-                            : 'border-transparent text-fg-ghost hover:text-fg-muted'
-                        }`}
-                      >{c}</button>
-                    ))}
+                    <span className="text-xs text-fg-ghost">layout</span>
+                    {COLUMN_CHOICES.map(c => {
+                      /* The icon SHOWS the arrangement — asked for 2026-08-19:
+                         *"oszlop 1,2,3,4 helyett ikonok kellenek amin látszik
+                         hogy hogy fog kinézni! layout ikonok"*. A digit names
+                         the count and leaves the reader to picture it; the
+                         glyph is the picture. The number stays in the label and
+                         in `data-fleet-columns`, so nothing that could only
+                         read the digit lost anything. */
+                      const Glyph = COLUMN_GLYPH[c] ?? Columns2
+                      return (
+                        <button
+                          key={c}
+                          data-fleet-columns={c}
+                          aria-pressed={c === columns}
+                          aria-label={`${c} column${c > 1 ? 's' : ''}`}
+                          title={`${c} column${c > 1 ? 's' : ''} of agents`}
+                          onClick={() => {
+                            setColumns(active.name, c)
+                            setFocus(active.name, null)
+                            setEnlarged(active.name, null)
+                          }}
+                          className={`p-1 rounded border ${
+                            c === columns
+                              ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
+                              : 'border-transparent text-fg-ghost hover:text-fg-muted'
+                          }`}
+                        ><Glyph size={14} strokeWidth={1.75} /></button>
+                      )
+                    })}
                   </span>
                 )}
                 {/* The full screen covers its siblings, so it says what it is
@@ -1732,15 +1750,22 @@ export default function Fleet() {
                     key={a.pid}
                     agent={a}
                     /*
-                      A tile that has opened something takes the whole row.
-                      Raised 2026-08-19: *"a sorok megtörnek"* — with one tile
-                      three times the height of its neighbour, the grid's rows
-                      stop lining up and a hole opens under the short one. The
-                      cause is that a log or a terminal is a different KIND of
-                      element from a tile: it wants width, and it is the one
-                      thing on screen the reader is actually looking at.
+                      No `wide` any more, and the reason it existed is now fixed
+                      at its source. A tile that had opened something used to
+                      take the whole row, because *"a sorok megtörnek"* — one
+                      tile three times the height of its neighbour left a hole
+                      under the short one. The rows are UNIFORM now
+                      (`auto-rows-[minmax(11rem,1fr)]`), so a tall tile cannot
+                      ragged a row and the override has nothing left to fix.
+                      What it did still have was a cost, reported 2026-08-19:
+                      *"column most itt a második rowt változtatta csak … és nem
+                      az összeset?"* — with two of three tiles holding something
+                      open, choosing three columns changed one tile and the
+                      control looked broken. A layout control the reader picked
+                      must not be overruled by which panels happen to be open;
+                      the way to give one tile the whole panel is to maximise it,
+                      which is a control the reader operates on purpose.
                     */
-                    wide={extra.open || openTerminals.includes(a.terminal_label ?? '')}
                     {...extra}
                     onEnlarge={() => setEnlarged(active.name, enlarged === a.pid ? null : a.pid)}
                     /* The tile's body opens the agent, and only while it is not

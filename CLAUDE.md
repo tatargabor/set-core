@@ -521,6 +521,32 @@ generated layer** (`find lib modules set_tools -name '*_pb2.py' -o -name '*_gene
 → empty), so `tests/unit` is not exposed. The dashboard under `web/` does have a build
 product, and that path has **not** been measured — do not assume it is clean.
 
+## Every reported defect goes into the bug register — stated by the user, 2026-08-19
+
+**A defect that anybody reports — the user, you, a peer session — and that is NOT a
+task in an open change goes into [`openspec/bugs/README.md`](openspec/bugs/README.md),
+at the moment it is reported.** The user's reason is the one that matters: a session
+runs out, and a defect held only in the conversation goes with it.
+
+The line, in the user's own framing (*"olyat ami nem az adott change-be tartozik mint
+task"*): in scope for an open change → it is a task in that change's `tasks.md`;
+anything else → the register. A register entry leaves by becoming a task or a commit,
+never by being deleted.
+
+**Two conditions, and they are what decide whether the file is used or abandoned:**
+
+- **Every entry names how it was MEASURED and what would prove it fixed.** A pile of
+  "this looks wrong" is unactionable, which is the same as not having a register. The
+  file's own format section carries the shape.
+- **Closed with evidence, never removed.** A deleted entry and one that was never
+  written are indistinguishable — the same reason a completeness claim must be a
+  measurement rather than a summary.
+
+**And verify a relayed report before entering it.** The first three entries came from
+three different reporters and one was wider than the code: "the screen cannot stop an
+agent at all" was really "stopping is reachable only through an open terminal". The
+narrower statement is the one somebody can act on, and the checking cost seconds.
+
 ## The product is in ENGLISH — stated by the user, 2026-08-19
 
 **set-core and every open-source `set-*` project are English.** Code, identifiers, UI strings,
