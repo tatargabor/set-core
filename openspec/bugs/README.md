@@ -532,8 +532,8 @@ consumer's name, path, or content.
   that does.
 
 ### B-25 — three repositories tracked a file their own `.gitignore` claimed to exclude
-- **state:** closed for the three found (`set-voice-agent-delivery`, `veleje`,
-  `tg-copilot`); open as a *class* until the deploy path carries the check
+- **state:** closed for the three found (one public `set-*` project and two
+  private ones); open as a *class* until the deploy path carries the check
 - **measured:** `git check-ignore --no-index -q <path>` over `git ls-files`.
   **The `--no-index` is the whole finding**: without it git refuses to call a
   TRACKED path ignored, so the obvious form of this check returns zero for

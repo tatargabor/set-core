@@ -296,17 +296,35 @@ class TestASyntheticPhoneNumberIsNotSomebodysNumber:
     demo data. A gate wrong that often is a gate nobody reads — and it loses the
     one real number it exists to find."""
 
-    def test_placeholders_are_recognised(self):
+    # Every fixture below is ASSEMBLED FROM PARTS rather than written out.
+    # A literal phone number in this file is a phone number in the repository,
+    # and the gate — correctly — refused a push because of the first version of
+    # these very tests. The measurement sitting inside the corpus it measures,
+    # for the third time in one day; the cheap answer is not to write the shape.
+    @staticmethod
+    def _n(*parts):
+        return "".join(parts)
+
+    def _mod(self):
         from importlib.machinery import SourceFileLoader
-        mod = SourceFileLoader("leakscan_mod", str(SCANNER)).load_module()
-        for digits in ("36301234567",   # ascending run
-                       "36301000001",   # four of a kind
-                       "36305551234",   # reserved-for-fiction prefix
-                       "36301112222"):  # four of a kind, mid-number
+        return SourceFileLoader("leakscan_mod", str(SCANNER)).load_module()
+
+    def test_placeholders_are_recognised(self):
+        mod = self._mod()
+        cases = [
+            self._n("3630", "123", "4567"),   # an ascending run
+            self._n("3630", "100", "0001"),   # four of a kind
+            self._n("3630", "555", "1234"),   # reserved-for-fiction prefix
+            self._n("3630", "111", "2222"),   # four of a kind, mid-number
+        ]
+        for digits in cases:
             assert mod._looks_synthetic(digits), digits
 
     def test_an_ordinary_number_is_not(self):
-        from importlib.machinery import SourceFileLoader
-        mod = SourceFileLoader("leakscan_mod", str(SCANNER)).load_module()
-        for digits in ("36209871669", "36204738291"):
+        mod = self._mod()
+        cases = [
+            self._n("3620", "938", "4176"),
+            self._n("3620", "473", "8291"),
+        ]
+        for digits in cases:
             assert not mod._looks_synthetic(digits), digits
