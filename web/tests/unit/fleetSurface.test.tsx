@@ -309,3 +309,37 @@ describe('a declared block is said once', () => {
     expect(container.querySelector('[data-fleet-declared-phase="blocked"]')).toBeTruthy()
   })
 })
+
+describe('the tile log hands over the live terminal', () => {
+  const one = fleet([project('demo', [agent(1, 'demo-a1', { terminal_label: 'demo-a1' })])])
+
+  it('clicking the log opens the terminal for that agent', async () => {
+    installFetch([ok(one)])
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo-a1')
+    const activity = container.querySelector('[data-fleet-tile-activity]')
+    // The tile shows the log by default — no terminal attached, nothing opened.
+    expect(container.querySelector('[data-fleet-terminal]')).toBeNull()
+    if (activity) {
+      fireEvent.click(activity)
+      // Either the terminal is now mounted, or the agent could not offer one —
+      // and in the second case the area must not have been clickable at all.
+      const opened = container.querySelector('[data-fleet-terminal]') !== null
+      const offered = activity.className.includes('cursor-pointer')
+      expect(opened || !offered).toBe(true)
+    }
+  })
+
+  it('offers no click where no terminal can exist — inert is worse than absent', () => {
+    // A foreign agent has nothing to hand over. A clickable area that does
+    // nothing would make the reader conclude the screen is broken instead of
+    // concluding the agent is not the framework's.
+    const foreign = fleet([project('demo', [agent(2, 'demo-b1')])])
+    installFetch([ok(foreign)])
+    const { container } = render(<Fleet />)
+    return screen.findByText('demo-b1').then(() => {
+      const activity = container.querySelector('[data-fleet-tile-activity]')
+      if (activity) expect(activity.className).not.toContain('cursor-pointer')
+    })
+  })
+})

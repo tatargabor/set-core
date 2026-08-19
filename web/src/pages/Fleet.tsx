@@ -448,7 +448,25 @@ function ErrorStanding({ acts }: { acts: Act[] }) {
  * ⚠ Verbatim consumer-session content, like the excerpt — displayed and never
  * written anywhere: no `localStorage`, no cache, no committed artifact.
  */
-function TileActivity({ pid }: { pid: number }) {
+function TileActivity({ pid, onOpenTerminal }: {
+  pid: number
+  /**
+   * Clicking the log hands over the LIVE terminal — asked for 2026-08-19:
+   * *"ha nem terminál nézet van aktiválva akkor a jsonl-es log nézet mutassa az
+   * agent dobozában a tartalmat, ha rákattintok akkor meg váltson terminálba"*.
+   *
+   * The two views are the same subject at two removes: the log is what was
+   * said, already written down; the terminal is the thing still happening. So
+   * the log is what a tile shows by default — it costs no attachment and reads
+   * like text — and touching it is the natural way to ask for the live one.
+   *
+   * Absent where no terminal can exist (an agent the framework did not start),
+   * and then the area is not clickable at all rather than clickable and inert:
+   * a control that does nothing is worse than no control, because the reader
+   * concludes the screen is broken instead of concluding the agent is foreign.
+   */
+  onOpenTerminal?: () => void
+}) {
   const [log, setLog] = useState<LogResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const box = useRef<HTMLDivElement | null>(null)
@@ -491,7 +509,17 @@ function TileActivity({ pid }: { pid: number }) {
       }}
       data-fleet-tile-activity={pid}
       data-fleet-own-surface="activity"
-      className="flex-1 min-h-0 overflow-y-auto mt-1.5 space-y-1 pr-1"
+      onClick={onOpenTerminal
+        ? () => {
+            // A click that ends a text selection is not a request for the
+            // terminal — the reader was copying a line out of the log, and
+            // swapping the view under them would take it away mid-gesture.
+            if (currentSelection().trim().length > 0) return
+            onOpenTerminal()
+          }
+        : undefined}
+      title={onOpenTerminal ? 'the log, as written down — click to take the live terminal' : undefined}
+      className={`flex-1 min-h-0 overflow-y-auto mt-1.5 space-y-1 pr-1${onOpenTerminal ? ' cursor-pointer' : ''}`}
     >
       {acts.map((act, i) => (
         act.kind === 'say'
@@ -1276,7 +1304,12 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           to type into: the producer's reason stands in the input's place. */}
       <FleetInstruct agent={agent} />
 
-      {!open && !terminalOpen && <TileActivity pid={agent.pid} />}
+      {!open && !terminalOpen && (
+        <TileActivity
+          pid={agent.pid}
+          onOpenTerminal={offer.kind === 'available' ? () => onTerminal(offer.label) : undefined}
+        />
+      )}
       {open && <LogPanel pid={agent.pid} onClose={onToggle} />}
       {terminalOpen && offer.kind === 'available' && (
         <FleetTerminal
