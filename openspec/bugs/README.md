@@ -396,7 +396,9 @@ consumer's name, path, or content.
   `git ls-remote --tags origin | grep -c backup` staying 0 after any push.
 
 ### B-19 — the public GitLab mirror of set-core was not updated with the cleanup
-- **state:** open
+- **state:** CLOSED 2026-08-20. `git push gitlab main` → `83245a86..d193b775`;
+  `git ls-remote <gitlab> main` and `git rev-parse HEAD` now return the same
+  `d193b775`. Verified by comparing the two, not by the push reporting success.
 - **measured:** `curl .../api/v4/projects?per_page=100` anonymously lists exactly
   two public projects on the self-hosted instance: `root/set-core` and
   `root/craftbrew-run`. The mirror's newest commit is **2026-07-09**, i.e. it
