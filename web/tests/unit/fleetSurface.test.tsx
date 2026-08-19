@@ -182,7 +182,12 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
     await screen.findByText('demo-a1')
 
     expect(container.querySelectorAll('[data-fleet-row]').length).toBe(0)
-    fireEvent.click(screen.getAllByText('napló megnyitása')[0])
+    // The enlarge control, not the log button. Since 2026-08-19 those are two
+    // acts: opening a log no longer hides the other agents (asked for — the
+    // grid tiles were too small to read anything in). What 7.4 asserts is
+    // unchanged, and it is asserted below; only the control that triggers it
+    // moved.
+    fireEvent.click(container.querySelector('[data-fleet-enlarge-toggle="1"]')!)
 
     const rows = container.querySelectorAll('[data-fleet-row]')
     expect(rows.length).toBe(1)
@@ -197,7 +202,7 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
     await screen.findByText('demo-a1')
-    fireEvent.click(screen.getAllByText('napló megnyitása')[0])
+    fireEvent.click(container.querySelector('[data-fleet-enlarge-toggle="1"]')!)
 
     fireEvent.click(container.querySelector('[data-fleet-row="2"]')!)
     expect(container.querySelector('[data-fleet-enlarged="2"]')).toBeTruthy()
@@ -212,11 +217,10 @@ describe('task 7.12 — the log view leaves room for the timeline without buildi
     const { container } = render(<Fleet />)
     await screen.findByText('demo-a1')
     // Two agents on purpose. With exactly one the tile is enlarged by the
-    // single-agent default (task 7.5) and there is no `napló megnyitása` to
-    // click — so a one-agent fixture would assert the tabs through a path the
-    // reader never takes, and would break again the next time that default
-    // moves.
-    fireEvent.click(screen.getAllByText('napló megnyitása')[0])
+    // single-agent default (task 7.5) and its log is already open — so a
+    // one-agent fixture would assert the tabs through a path the reader never
+    // takes, and would break again the next time that default moves.
+    fireEvent.click(screen.getAllByText('open the log')[0])
 
     const conversation = container.querySelector('[data-log-tab="conversation"]')!
     expect(conversation.getAttribute('aria-selected')).toBe('true')

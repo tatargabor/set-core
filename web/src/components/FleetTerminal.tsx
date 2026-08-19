@@ -48,6 +48,24 @@ interface Props {
   label: string
   /** Called when the reader closes the view. Detach only — never a stop. */
   onClose: () => void
+  /**
+   * Whether this terminal's agent is alone on the panel. Only changes the
+   * height — the socket, the replay and the pty are identical either way.
+   */
+  full?: boolean
+  /** Ask the panel to show this agent alone, or to go back to the grid. */
+  onToggleFull?: () => void
+  /**
+   * Called when the keyboard enters or leaves this terminal.
+   *
+   * Asked for on 2026-08-19: *"az aktuális csempe, amin gépelek, lehetne
+   * aktívan jelezve"* — and with several terminals open at once (which is now
+   * possible) it stops being decoration: a keystroke goes to exactly one agent,
+   * and the reader has to be able to see which. It is taken from real DOM focus
+   * on the emulator's own textarea, not from which pane was opened last — the
+   * latter is a proxy, and it would say "here" while the keys went elsewhere.
+   */
+  onFocusChange?: (focused: boolean) => void
 }
 
 type Phase =
@@ -56,7 +74,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   const [phase, setPhase] = useState<Phase>({ kind: 'connecting' })
   const [stopping, setStopping] = useState(false)
@@ -139,8 +157,23 @@ export default function FleetTerminal({ label, onClose }: Props) {
       })
       observer.observe(host.current)
 
+      // Focus is READ from the DOM rather than tracked by hand. `focusin` /
+      // `focusout` bubble (unlike focus/blur), so one pair on the host covers
+      // the emulator's textarea whatever it does internally.
+      const el = host.current
+      const gained = () => onFocusChange?.(true)
+      const lost = () => onFocusChange?.(false)
+      el.addEventListener('focusin', gained)
+      el.addEventListener('focusout', lost)
+
       dispose = () => {
         observer.disconnect()
+        el.removeEventListener('focusin', gained)
+        el.removeEventListener('focusout', lost)
+        // Leaving takes the keyboard with it: a tile left marked as typed-into
+        // after its terminal is gone points at an agent that cannot receive a
+        // keystroke.
+        onFocusChange?.(false)
         typed.dispose()
         term.dispose()
       }
@@ -154,6 +187,10 @@ export default function FleetTerminal({ label, onClose }: Props) {
       // not a stop, so nothing here touches the agent's lifetime.
       socket?.close()
     }
+    // `label` only. Adding the callbacks here would tear down the socket and
+    // re-attach every time the parent re-renders with a new closure — a reattach
+    // storm that looks like a flickering terminal and costs a replay each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label])
 
   const stop = useCallback(async () => {
@@ -234,6 +271,18 @@ export default function FleetTerminal({ label, onClose }: Props) {
               stop the agent
             </button>
           )}
+          {onToggleFull && (
+            <button
+              onClick={onToggleFull}
+              data-fleet-terminal-full={full ? 'on' : 'off'}
+              className="text-xs text-fg-muted hover:text-fg-strong"
+              title={full
+                ? 'Back to the grid. The terminal stays attached — nothing is stopped or reconnected.'
+                : 'Show this agent alone, filling the panel. The other agents are counted in the header, not silently dropped.'}
+            >
+              {full ? '⤡ back to the grid' : '⤢ full screen'}
+            </button>
+          )}
           <button
             onClick={onClose}
             data-fleet-terminal-close
@@ -252,7 +301,7 @@ export default function FleetTerminal({ label, onClose }: Props) {
       <div
         ref={host}
         data-fleet-terminal-host
-        className="h-72 rounded border border-surface-line overflow-hidden bg-[#0b0f14]"
+        className={`${full ? 'h-[62vh]' : 'h-72'} rounded border border-surface-edge overflow-hidden bg-[#0b0f14]`}
       />
     </div>
   )

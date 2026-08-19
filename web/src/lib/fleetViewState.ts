@@ -47,6 +47,52 @@ export interface ProjectView {
    */
   terminal?: string | null
   /**
+   * Every terminal the reader has open in this project, by label.
+   *
+   * Replaces the single `terminal` above, which held exactly one — asked for on
+   * 2026-08-19: *"ezt az egy terminalt meg at kell gondolnunk"*. Two terminals
+   * open at once is not a new capability on the server: attaching is a
+   * reattach, the buffered screen is replayed on connect, and a second viewer
+   * is the same code path as the first (task 8.3). So the ONE was a shape of
+   * this memory, not a limit of the thing.
+   *
+   * The alternative the request also named — keeping a picture of a terminal
+   * while looking at another — is refused on purpose: a frozen screen is wrong
+   * exactly while something is happening on it, and it looks like data. The
+   * replay gives the real screen back instead of a photograph of an old one.
+   *
+   * `terminal` is still read for a reader whose memory predates this; see
+   * {@link resolveTerminals}.
+   */
+  terminals?: string[]
+  /**
+   * The agent shown ALONE, filling the panel — asked for on 2026-08-19: a full
+   * screen that shows one agent and not the column grid.
+   *
+   * Same `undefined` / `null` distinction as `enlarged`, and the same rule: a
+   * remembered pid is resolved against the live answer before anything is
+   * rendered. What it may NOT do is hide a state — a focused agent covers its
+   * siblings, so the surface counts what it is covering and says so. That is
+   * `ui-quality.md`'s rule about compaction, applied to a layout that hides the
+   * most.
+   */
+  focus?: number | null
+  /**
+   * Which agents have their log open, by pid.
+   *
+   * Before this, opening a log MEANT enlarging the tile — one log at a time,
+   * and never in the grid. Raised 2026-08-19: *"túl kicsi így is, ami nincs
+   * nyitva … ott is látni kellene az utolsó üzeneteket, naplót is"*. Reading a
+   * log and choosing a layout are two different acts, and tying them together
+   * made the commonest one (read what this agent is saying) cost the most
+   * expensive one (hide every other agent).
+   *
+   * `undefined` — no choice yet, and the enlarged tile's log is open, which is
+   * what the single-agent default (task 7.5) relied on. An array is a
+   * deliberate choice and outranks it, including the empty one.
+   */
+  logs?: number[]
+  /**
    * How many columns the agent grid uses for THIS project — task 7.5's
    * "density", asked for on 2026-08-19: *"elég nagy a képernyő hozzá, hogy
    * csináljunk legalább két oszlopot"*.
@@ -122,4 +168,66 @@ export function resolveEnlarged(view: ProjectView, alive: readonly number[]): nu
     return alive.includes(view.enlarged) ? view.enlarged : (alive.length === 1 ? alive[0] : null)
   }
   return alive.length === 1 ? alive[0] : null
+}
+
+/**
+ * Which terminals to show, given what is remembered and what exists.
+ *
+ * The memory says what to SHOW; `alive` says what exists — a label that no
+ * longer belongs to an agent the framework holds opens nothing, and is dropped
+ * here rather than rendered as a dead pane.
+ *
+ * A reader whose memory predates the multi-terminal shape has a single
+ * `terminal` label. It is read as a one-element list, so the first render after
+ * an upgrade shows what they left open rather than an empty panel. An explicit
+ * `terminals` — including the empty array, which means *I closed them all* —
+ * always outranks it.
+ */
+export function resolveTerminals(view: ProjectView, alive: readonly string[]): string[] {
+  const remembered = Array.isArray(view.terminals)
+    ? view.terminals
+    : typeof view.terminal === 'string' ? [view.terminal] : []
+  const seen = new Set<string>()
+  return remembered.filter(l => {
+    if (typeof l !== 'string' || seen.has(l) || !alive.includes(l)) return false
+    seen.add(l)
+    return true
+  })
+}
+
+/**
+ * The agent to show alone, or `null`.
+ *
+ * Deliberately NOT falling back to "the nearest live agent" when the remembered
+ * one is gone: a full screen is a claim about which agent you are looking at,
+ * and silently substituting another one would put a different session under a
+ * heading the reader trusts. Gone means back to the grid.
+ */
+export function resolveFocus(view: ProjectView, alive: readonly number[]): number | null {
+  return typeof view.focus === 'number' && alive.includes(view.focus) ? view.focus : null
+}
+
+/**
+ * Whose log is open.
+ *
+ * With no choice recorded, the enlarged tile's log is open — that is the
+ * pre-existing behaviour (task 7.5's single-agent default lands on it), and
+ * changing it silently would make a reader's first visit differ from every
+ * later one. Once anything has been opened or closed by hand, the list is the
+ * answer, and a pid that is no longer running is dropped rather than rendered.
+ */
+export function resolveLogs(
+  view: ProjectView,
+  alive: readonly number[],
+  enlarged: number | null,
+): number[] {
+  if (!Array.isArray(view.logs)) {
+    return enlarged !== null && alive.includes(enlarged) ? [enlarged] : []
+  }
+  const seen = new Set<number>()
+  return view.logs.filter(p => {
+    if (typeof p !== 'number' || seen.has(p) || !alive.includes(p)) return false
+    seen.add(p)
+    return true
+  })
 }

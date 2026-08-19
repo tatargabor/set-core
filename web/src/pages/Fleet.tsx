@@ -35,11 +35,13 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 
 import FleetProjectColumn from '../components/FleetProjectColumn'
 import FleetTerminal from '../components/FleetTerminal'
-import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, writeView } from '../lib/fleetViewState'
+import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { terminalOffer } from '../lib/fleetTerminal'
 import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
+import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
+import { tally } from '../lib/fleetAttention'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
@@ -718,21 +720,46 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOpen, onTerminal }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onTyping }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
   enlarged?: boolean
+  /** The tile is alone on the panel — full screen. */
+  focused?: boolean
+  /** The reader's keyboard is in this tile's terminal. Measured, not inferred. */
+  typing?: boolean
   ownerReachable?: boolean
-  /** Whether THIS agent's terminal is the one open. */
+  /** Whether THIS agent's terminal is open. Several may be open at once. */
   terminalOpen: boolean
   onTerminal: (label: string | null) => void
+  /** Ask for this agent alone on the panel, or back to the grid. */
+  onFocus?: () => void
+  /**
+   * Ask for the 7.4 layout — this tile big, the others as rows.
+   *
+   * Its own control since 2026-08-19. It used to be what the log button did,
+   * which meant reading one agent's log hid every other agent; the two acts are
+   * now separate and the log opens where the tile already is.
+   */
+  onEnlarge?: () => void
+  /** Reports the keyboard entering or leaving this agent's terminal. */
+  onTyping?: (typing: boolean) => void
 }) {
   const offer = terminalOffer(agent, ownerReachable)
+  // Ownership decides the tile's edge — see `lib/fleetCardStyle.ts` for why it
+  // is the edge's SHAPE and not a colour. The tiles used to be bordered with
+  // `surface-line`, which is the same neutral-800 as the surface behind them:
+  // an edge that cannot be seen, which is what made the grid read as one block.
+  const ownership = ownershipOf(agent, ownerReachable)
   return (
     <div
       data-fleet-enlarged={enlarged ? agent.pid : undefined}
-      className={`border rounded px-3 py-2 ${enlarged ? 'border-surface-line bg-surface-raised/30' : 'border-surface-line'}`}
+      data-fleet-focused={focused ? agent.pid : undefined}
+      data-fleet-ownership={ownership}
+      data-fleet-typing={typing ? agent.pid : undefined}
+      title={OWNERSHIP_NOTE[ownership]}
+      className={cardClasses(ownership, { enlarged, focused, typing })}
     >
       <div className="flex items-baseline gap-2 flex-wrap">
         <span className="text-sm text-fg-strong">
@@ -762,10 +789,42 @@ function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOp
       <div className="flex items-center gap-3 mt-1.5">
         <button
           onClick={onToggle}
+          data-fleet-log-toggle={agent.pid}
           className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
+          title="The conversation opens here, on this tile. Opening it no longer hides the other agents."
         >
-          {open ? 'vissza a rácshoz' : 'napló megnyitása'}
+          {open ? 'close the log' : 'open the log'}
         </button>
+        {/* The 7.4 layout, as its own control. Offered only where it changes
+            anything: with one agent there are no rows to make. */}
+        {onEnlarge && !focused && (
+          <button
+            onClick={onEnlarge}
+            data-fleet-enlarge-toggle={agent.pid}
+            className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
+            title={enlarged
+              ? 'Back to the grid — every tile the same size again.'
+              : 'This tile big, the others as rows. Nothing is hidden: a row still carries its state.'}
+          >
+            {enlarged ? '⤡ grid' : '⤢ enlarge'}
+          </button>
+        )}
+        {/* The same full screen the terminal header offers, here as well —
+            asked for on the terminal, but the log needs the width just as
+            much, and a control that exists in only one of two places is a
+            control the reader has to remember the location of. */}
+        {onFocus && (
+          <button
+            onClick={onFocus}
+            data-fleet-focus-toggle={agent.pid}
+            className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
+            title={focused
+              ? 'Back to the grid — the other agents come back into view.'
+              : 'Show this agent alone, filling the panel. What it covers is counted in the header.'}
+          >
+            {focused ? '⤡ back to the grid' : '⤢ full screen'}
+          </button>
+        )}
         {/* Offered where it can exist, reasoned where it cannot — task 8.2. */}
         <TerminalControl
           agent={agent}
@@ -777,7 +836,13 @@ function AgentCard({ agent, open, onToggle, enlarged, ownerReachable, terminalOp
 
       {open && <LogPanel pid={agent.pid} onClose={onToggle} tall={enlarged} />}
       {terminalOpen && offer.kind === 'available' && (
-        <FleetTerminal label={offer.label} onClose={() => onTerminal(null)} />
+        <FleetTerminal
+          label={offer.label}
+          onClose={() => onTerminal(null)}
+          full={focused}
+          onToggleFull={onFocus}
+          onFocusChange={onTyping}
+        />
       )}
     </div>
   )
@@ -1005,17 +1070,86 @@ export default function Fleet() {
     setMemory({ project, view: readView(project) })
   }, [])
 
-  const setTerminal = useCallback((project: string | null, label: string | null) => {
-    writeView(project, { terminal: label })
+  /**
+   * Which labels have a terminal open — several at once since 2026-08-19.
+   *
+   * The single-terminal limit was a shape of this memory, not of the server:
+   * attaching replays the buffered screen and a second viewer is the same code
+   * path as the first (task 8.3). The alternative the request also floated —
+   * freezing a picture of one terminal while looking at another — is refused
+   * because a frozen screen is wrong exactly while something is happening on
+   * it, and it looks like data while being wrong.
+   */
+  const setTerminals = useCallback((project: string | null, labels: string[]) => {
+    writeView(project, { terminals: labels })
     setMemory({ project, view: readView(project) })
   }, [])
-  const openTerminal = useMemo(() => {
-    const want = remembered.terminal
-    if (typeof want !== 'string' || !active) return null
-    const alive = active.agents.some(a => terminalOffer(a, data?.owner_reachable).kind === 'available'
-      && a.terminal_label === want)
-    return alive ? want : null
-  }, [remembered.terminal, active, data?.owner_reachable])
+  const attachable = useMemo(
+    () => (active?.agents ?? [])
+      .filter(a => terminalOffer(a, data?.owner_reachable).kind === 'available')
+      .map(a => a.terminal_label)
+      .filter((l): l is string => typeof l === 'string'),
+    [active, data?.owner_reachable],
+  )
+  const openTerminals = useMemo(
+    () => resolveTerminals(remembered, attachable),
+    [remembered, attachable],
+  )
+  const toggleTerminal = useCallback((project: string | null, label: string | null, on: boolean) => {
+    if (!label) { return }
+    const next = on
+      ? (openTerminals.includes(label) ? openTerminals : [...openTerminals, label])
+      : openTerminals.filter(l => l !== label)
+    setTerminals(project, next)
+  }, [openTerminals, setTerminals])
+
+  /**
+   * The agent shown ALONE — the full screen asked for on 2026-08-19.
+   *
+   * Kept as its own state rather than folded into `enlarged`, because they
+   * answer different questions: `enlarged` is *this one is big and the others
+   * are rows*, focus is *this one and nothing else*. What focus may not do is
+   * make a broken sibling invisible, so the header counts what it covers —
+   * see `hiddenTally` below.
+   */
+  const focus = resolveFocus(remembered, active?.agents.map(a => a.pid) ?? [])
+  const focused = active?.agents.find(a => a.pid === focus) ?? null
+  /**
+   * What the full screen is COVERING — `ui-quality.md`'s rule about compaction,
+   * and this layout hides the most of any on the screen.
+   *
+   * Counted from the hidden agents themselves, never from the difference of two
+   * totals: a count taken by subtraction stays plausible while the list it
+   * describes is wrong. The same `tally` the project column uses, so a hidden
+   * `unknown` cannot be counted one way here and another way there.
+   */
+  const hidden = focused ? (active?.agents ?? []).filter(a => a.pid !== focused.pid) : []
+  const hiddenTally = tally(hidden.length > 0 ? [{ name: active?.name ?? '', agents: hidden }] : [])
+  const setFocus = useCallback((project: string | null, pid: number | null) => {
+    writeView(project, { focus: pid })
+    setMemory({ project, view: readView(project) })
+  }, [])
+
+  /**
+   * Where the keyboard is. Session state, deliberately NOT remembered: it is a
+   * fact about right now, and a remembered "you were typing here" would be a
+   * claim about a keyboard that is somewhere else.
+   */
+  const [typingLabel, setTypingLabel] = useState<string | null>(null)
+
+  /**
+   * Whose log is open — several at once, and in the grid rather than only on an
+   * enlarged tile. Reading a log and choosing a layout are two acts; tying them
+   * together made "what is this agent saying" cost "hide every other agent".
+   */
+  const openLogs = resolveLogs(remembered, active?.agents.map(a => a.pid) ?? [], enlarged)
+  const toggleLog = useCallback((project: string | null, pid: number, on: boolean) => {
+    const next = on
+      ? (openLogs.includes(pid) ? openLogs : [...openLogs, pid])
+      : openLogs.filter(p => p !== pid)
+    writeView(project, { logs: next })
+    setMemory({ project, view: readView(project) })
+  }, [openLogs])
 
   // Discovery has never answered. An error here is the real thing — there is no
   // measurement to fall back on — so it replaces the screen.
@@ -1100,13 +1234,13 @@ export default function Fleet() {
                 <span className="text-xs text-fg-ghost truncate">{active.root}</span>
                 <StartAgent
                   project={active}
-                  onStarted={label => { setTerminal(active.name, label); load() }}
+                  onStarted={label => { toggleTerminal(active.name, label, true); load() }}
                 />
                 {/* Density is a per-project choice — task 7.5. Offered only
                     where it can change anything: with one agent there is
                     nothing to lay out, and while a tile is enlarged the grid
                     is not the arrangement in use. */}
-                {enlarged === null && active.agents.length > 1 && (
+                {!focused && enlarged === null && active.agents.length > 1 && (
                   <span className="ml-auto flex items-center gap-1 shrink-0" title="Hány oszlopban jelenjenek meg az agentek ebben a projektben">
                     <span className="text-xs text-fg-ghost">oszlop</span>
                     {COLUMN_CHOICES.map(c => (
@@ -1124,7 +1258,43 @@ export default function Fleet() {
                     ))}
                   </span>
                 )}
-                {enlarged !== null && active.agents.length > 1 && (
+                {/* The full screen covers its siblings, so it says what it is
+                    covering — and marks the states a reader would have to act
+                    on. A tidy screen that reports calm it has not verified is
+                    worse than a cluttered one; here the calm would be a layout
+                    choice rather than a measurement. */}
+                {focused && (
+                  <span className="ml-auto flex items-baseline gap-2 shrink-0" data-fleet-focus-cover={hidden.length}>
+                    {hidden.length > 0 && (
+                      <span className="text-xs text-fg-muted tabular-nums">
+                        {hidden.length} more agent(s) hidden
+                      </span>
+                    )}
+                    {hiddenTally.unknown > 0 && (
+                      <span className="text-xs text-amber-400 tabular-nums" data-fleet-focus-hidden="unknown">
+                        {hiddenTally.unknown} unknown
+                      </span>
+                    )}
+                    {hiddenTally.waiting > 0 && (
+                      <span className="text-xs text-sky-300 font-semibold tabular-nums" data-fleet-focus-hidden="waiting">
+                        {hiddenTally.waiting} waiting for a person
+                      </span>
+                    )}
+                    {hiddenTally.conflicts > 0 && (
+                      <span className="text-xs text-amber-400 tabular-nums" data-fleet-focus-hidden="conflicts">
+                        {hiddenTally.conflicts} contradicting record(s)
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setFocus(active.name, null)}
+                      data-fleet-focus-exit
+                      className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
+                    >
+                      ⤡ back to the grid
+                    </button>
+                  </span>
+                )}
+                {!focused && enlarged !== null && active.agents.length > 1 && (
                   <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
                     {active.agents.length - 1} sorként — kattints egyre a váltáshoz
                   </span>
@@ -1148,34 +1318,59 @@ export default function Fleet() {
                   and needs the width, and the rows beside it are a list, not
                   a layout. `space-y-2` on the parent still spaces the header
                   and the panels; the grid owns its own gaps. */}
-              <div className={enlarged === null ? `grid gap-2 ${GRID_COLS[columns] ?? GRID_COLS[2]}` : 'space-y-2'}>
-              {active.agents.map(a => (
-                a.pid === enlarged ? (
+              {/* `items-start` because a stretched tile is an EMPTY tile: the
+                  grid used to make every card as tall as the tallest in its
+                  row, so one open terminal left its neighbour as a large empty
+                  box — raised 2026-08-19 (*"az sem segít hogy különböző
+                  méretűek"*). Each card now ends where its content ends, and
+                  the shared minimum keeps the short ones from looking like
+                  scraps. */}
+              {focused ? (
+                /* Full screen — one agent, the whole panel. What it covers is
+                   counted in the header above, never silently dropped. */
+                <AgentCard
+                  key={focused.pid}
+                  agent={focused}
+                  enlarged
+                  focused
+                  open={openLogs.includes(focused.pid)}
+                  onToggle={() => toggleLog(active.name, focused.pid, !openLogs.includes(focused.pid))}
+                  ownerReachable={data.owner_reachable}
+                  terminalOpen={openTerminals.includes(focused.terminal_label ?? '')}
+                  onTerminal={label => toggleTerminal(active.name, label ?? focused.terminal_label ?? null, label !== null)}
+                  onFocus={() => setFocus(active.name, null)}
+                  typing={typingLabel !== null && typingLabel === focused.terminal_label}
+                  onTyping={on => setTypingLabel(on ? focused.terminal_label ?? null : null)}
+                />
+              ) : (
+              <div className={enlarged === null
+                ? `grid gap-2 items-start ${GRID_COLS[columns] ?? GRID_COLS[2]}`
+                : 'space-y-2'}>
+              {active.agents.map(a => {
+                const card = (extra: { enlarged?: boolean; open: boolean; onToggle: () => void }) => (
                   <AgentCard
                     key={a.pid}
                     agent={a}
-                    enlarged
-                    open
-                    onToggle={() => setEnlarged(active.name, null)}
+                    {...extra}
+                    onEnlarge={() => setEnlarged(active.name, enlarged === a.pid ? null : a.pid)}
                     ownerReachable={data.owner_reachable}
-                    terminalOpen={openTerminal !== null && openTerminal === a.terminal_label}
-                    onTerminal={label => setTerminal(active.name, label)}
-                  />
-                ) : enlarged !== null ? (
-                  <AgentRow key={a.pid} agent={a} onSelect={() => setEnlarged(active.name, a.pid)} />
-                ) : (
-                  <AgentCard
-                    key={a.pid}
-                    agent={a}
-                    open={false}
-                    onToggle={() => setEnlarged(active.name, a.pid)}
-                    ownerReachable={data.owner_reachable}
-                    terminalOpen={openTerminal !== null && openTerminal === a.terminal_label}
-                    onTerminal={label => setTerminal(active.name, label)}
+                    terminalOpen={openTerminals.includes(a.terminal_label ?? '')}
+                    onTerminal={label => toggleTerminal(active.name, label ?? a.terminal_label ?? null, label !== null)}
+                    onFocus={() => setFocus(active.name, a.pid)}
+                    typing={typingLabel !== null && typingLabel === a.terminal_label}
+                    onTyping={on => setTypingLabel(on ? a.terminal_label ?? null : null)}
                   />
                 )
-              ))}
+                const open = openLogs.includes(a.pid)
+                const toggle = () => toggleLog(active.name, a.pid, !open)
+                return a.pid === enlarged
+                  ? card({ enlarged: true, open, onToggle: toggle })
+                  : enlarged !== null
+                    ? <AgentRow key={a.pid} agent={a} onSelect={() => setEnlarged(active.name, a.pid)} />
+                    : card({ open, onToggle: toggle })
+              })}
               </div>
+              )}
             </>
           ) : (
             <div className="text-sm text-fg-muted">
