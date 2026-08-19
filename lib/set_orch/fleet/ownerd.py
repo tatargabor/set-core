@@ -115,6 +115,10 @@ class OwnerDaemon:
         #: label -> the connections currently watching that terminal. A terminal
         #: may have several viewers; none of them owns it.
         self._subscribers: Dict[str, List[asyncio.StreamWriter]] = {}
+        #: the per-connection handler tasks. asyncio makes one per accepted
+        #: connection and keeps no public handle on them, so shutdown cannot
+        #: reach them without this set — see `shutdown()` for why that matters.
+        self._clients: "set[asyncio.Task]" = set()
 
     # -- the drain -------------------------------------------------------- #
 
@@ -459,6 +463,9 @@ class OwnerDaemon:
     async def _serve_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._clients.add(task)
         try:
             while True:
                 line = await reader.readline()
@@ -475,12 +482,27 @@ class OwnerDaemon:
         except (ConnectionResetError, BrokenPipeError):
             logger.debug("fleet owner: client went away mid-request")
         finally:
+            if task is not None:
+                self._clients.discard(task)
             # A connection that goes away is a viewer that went away. Nothing
             # else reports it, and a subscriber list that only grows would push
             # into dead transports for the life of the service.
             for label in list(self._subscribers):
                 self._unsubscribe(label, writer)
-            writer.close()
+            # `close()` schedules a callback on the loop, so a transport closed
+            # after the loop is gone raises `RuntimeError: Event loop is closed`
+            # — and this `finally` may be running inside the garbage collector,
+            # where nothing can catch it. Python reports that as an *unraisable*
+            # exception: the traceback is printed, the interpreter carries on,
+            # and no caller ever sees a failure. Measured 2026-08-19: four per
+            # test session, and the symptom that finally surfaced was a
+            # `KeyError` in an unrelated import lock (task 10.3).
+            try:
+                writer.close()
+            except RuntimeError as exc:
+                logger.debug(
+                    "fleet owner: closing a client transport after the loop: %s", exc
+                )
 
     def _claim_socket(self) -> None:
         """Take the socket path, or refuse — never clobber a live owner.
@@ -543,6 +565,19 @@ class OwnerDaemon:
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
+        # `wait_closed()` answers about the LISTENING sockets, not about the
+        # handlers — on this runtime it returns with client coroutines still
+        # suspended on `readline()`. Whatever happens to them then happens after
+        # the loop is gone: the `finally` above runs from the garbage collector,
+        # so the unsubscribe is skipped and the close raises where nothing can
+        # catch it. Cancelling here runs each handler's cleanup while the loop
+        # is still alive, which is the only moment it can do its job.
+        clients = list(self._clients)
+        for task in clients:
+            task.cancel()
+        if clients:
+            await asyncio.gather(*clients, return_exceptions=True)
+            logger.debug("fleet owner: %d client handler(s) cancelled", len(clients))
         for agent in self.owner.owned():
             self._detach_drain(agent.master_fd)
         try:

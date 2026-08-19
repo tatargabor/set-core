@@ -64,6 +64,20 @@ def _run(coro):
     try:
         return loop.run_until_complete(coro)
     finally:
+        # A scenario that opens a server leaves one handler task per connection
+        # suspended on `readline()`. Closing the loop under them destroys them
+        # *pending*, and their `finally` then runs from the garbage collector —
+        # after the loop is gone, so the cleanup cannot do its job and the
+        # transport close raises where nothing can catch it. Python reports that
+        # as an unraisable exception and attributes it to whichever test happens
+        # to be running when the collector fires, which is how a fault in this
+        # file surfaced as a `KeyError` in an unrelated import lock (task 10.3).
+        # Cancelling here runs each handler's cleanup while the loop is alive.
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         loop.close()
 
 
@@ -671,3 +685,105 @@ def test_no_single_frame_exceeds_the_readers_line_limit(tmp_path):
     import base64 as _b64, json as _json
     rebuilt = b"".join(_b64.b64decode(_json.loads(f)["data_b64"]) for f in frames)
     assert rebuilt == b"x" * (64 * 1024)
+
+
+# --------------------------------------------------------------------------- #
+# teardown — the client handlers, and what happens to them when the loop ends
+#
+# Task 10.3's symptom was a `KeyError` inside an import lock in a test file that
+# does not touch the fleet. Its cause is here: asyncio makes one handler task per
+# accepted connection and keeps no public handle on it, `Server.wait_closed()`
+# answers about the listening sockets rather than about the handlers, and a
+# handler still suspended when the loop closes has its `finally` run by the
+# garbage collector instead — at which point the loop is gone, the unsubscribe is
+# skipped, and `writer.close()` raises where nothing can catch it.
+#
+# The direction is what makes it expensive: Python prints an *unraisable*
+# exception and carries on, so no caller ever sees a failure and the traceback is
+# attributed to whichever test the collector happened to interrupt.
+# --------------------------------------------------------------------------- #
+
+def test_shutdown_ends_the_client_handlers_while_the_loop_is_still_alive(tmp_path):
+    """`wait_closed()` is not enough, and the gap is invisible without this.
+
+    Stash the `_clients` cancellation in `shutdown()` and this test fails with a
+    handler still pending — which is exactly the state that produces the
+    unraisable exception one garbage collection later.
+    """
+    path = str(tmp_path / "owner.sock")
+    daemon = OwnerDaemon(path, owner=_Streamable())
+
+    async def scenario():
+        daemon._claim_socket()
+        daemon._server = await asyncio.start_unix_server(
+            daemon._serve_client, path=path
+        )
+        reader, writer = await asyncio.open_unix_connection(path)
+        await asyncio.sleep(0.05)          # let the handler task reach readline()
+        handlers = list(daemon._clients)
+        assert handlers, "no handler task was tracked for an accepted connection"
+        await daemon.shutdown()
+        # Asked HERE, inside the loop, and that placement is the whole test.
+        # `_run` cancels whatever is left before closing the loop, so a question
+        # asked after it returns is answered by the runner's cleanup rather than
+        # by `shutdown()` — measured: the first version of this test passed with
+        # the cancellation removed. Same class as the check that proves the
+        # renderer produced a node and says nothing about the screen.
+        still_pending = [t for t in handlers if not t.done()]
+        writer.close()
+        return still_pending, list(daemon._clients)
+
+    still_pending, tracked = _run(scenario())
+    assert not still_pending, (
+        "a client handler outlived shutdown(); its cleanup will run from the "
+        "garbage collector, after the loop is closed"
+    )
+    assert not tracked, "shutdown() left tracked client tasks behind"
+
+
+def test_the_handlers_cleanup_survives_a_transport_that_can_no_longer_be_closed(tmp_path):
+    """The second half, for the connection that arrives during the race.
+
+    Cancelling the tracked handlers closes the ordinary path. It cannot close the
+    one where the loop is already gone by the time the `finally` runs — there the
+    close raises `RuntimeError: Event loop is closed` from inside the collector.
+    Driven here with a transport that refuses to close, because that is the one
+    condition the real failure has and a live socket never reproduces on demand.
+    """
+    class _DeadWriter:
+        def close(self):
+            raise RuntimeError("Event loop is closed")
+
+    class _EmptyReader:
+        async def readline(self):
+            return b""                      # returns at once, so the finally runs
+
+    daemon = OwnerDaemon(str(tmp_path / "owner.sock"), owner=_Streamable())
+    _run(daemon._serve_client(_EmptyReader(), _DeadWriter()))   # must not raise
+
+
+def test_this_files_loop_runner_does_not_abandon_pending_tasks():
+    """Holds the pattern that was WRONG — a bare `loop.close()` in `_run`.
+
+    Its sibling above guards `asyncio.run`. This one guards the other half of the
+    same teardown: closing the loop with a task still pending is what turned an
+    owner-test fault into a `KeyError` in an unrelated file's import. A comment
+    asks to be believed; a test refuses to be reverted.
+    """
+    seen = {}
+
+    async def scenario():
+        async def forever():
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                seen["cancelled"] = True
+                raise
+
+        task = asyncio.ensure_future(forever())
+        await asyncio.sleep(0)
+        seen["task"] = task
+
+    _run(scenario())
+    assert seen["task"].done(), "_run() closed the loop with a task still pending"
+    assert seen.get("cancelled"), "the pending task was destroyed rather than cancelled"
