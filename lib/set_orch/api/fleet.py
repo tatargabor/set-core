@@ -41,6 +41,7 @@ from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.awaiting import awaiting_for
 from ..fleet.discovery import discover_agent, live_session_ids, parent_seat
 from ..fleet import instruct as fleet_instruct
+from ..fleet import purpose as fleet_purpose
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet.layout import LayoutConflict
@@ -71,7 +72,8 @@ def _owned_by_pid() -> Optional[Dict[int, Dict[str, Any]]]:
 
 
 def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
-                   seats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                   seats: Optional[Dict[str, Any]] = None,
+                   purposes: Optional[List[Any]] = None) -> Dict[str, Any]:
     # Three values, not two, and the third is why this is not a boolean. A
     # terminal exists only for a process the framework started and still holds
     # (task 5.2), so:
@@ -173,6 +175,13 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # company and an unpaid invoice, and `focus_files` are that project's own
         # paths. Read at request time, shown, and never written down.
         "declared": _declared_payload(agent.session_id, seats),
+        # Task 3.9 — what this agent is working TOWARDS, read from the engine's
+        # own record and joined on the pid the engine wrote. `None` where there
+        # is no record: on a machine with no engine that is every agent, and the
+        # surface states the absence rather than drawing an empty field.
+        "purpose": (purposes and
+                    (lambda p: p.as_dict() if p else None)(
+                        fleet_purpose.purpose_for_pid(purposes, agent.pid))) or None,
     }
 
 
@@ -238,18 +247,23 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         members = [by_pid[pid] for pid in project.agent_pids if pid in by_pid]
         if not members and "registry" not in project.sources:
             continue
+        purposes = fleet_purpose.read_purposes(project.root) if project.root else []
         grouped.append({
             "name": project.name,
             "root": project.root,
             "sources": project.sources,
             "archived": project.archived,
-            "agents": [_agent_payload(a, states[a.pid], owned, seats) for a in members],
+            "agents": [_agent_payload(a, states[a.pid], owned, seats, purposes) for a in members],
             # Task 7.14. What is waiting for a HUMAN here, independent of who is
             # running — the case an agent-centric screen gets wrong by
             # construction. Carried even when its total is zero, because the KEY
             # is what lets the surface tell "nothing awaits" from "this was
             # never measured"; `source_missing` inside it says which.
             "awaiting": awaiting_for(project.name).as_dict(),
+            # Task 3.9 at the project level. Read once per project rather than
+            # once per agent — the records are per project, and a stale one
+            # belongs on the screen even when nothing is running under it.
+            "runs": [p.as_dict() for p in purposes],
         })
 
     # Counted from the data, never from a declaration — a "hidden" tally taken

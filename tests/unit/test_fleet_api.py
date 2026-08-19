@@ -637,3 +637,43 @@ def _StateOf(state, **over):
     """
     from set_orch.fleet.state import AgentState
     return AgentState(state=state, last_movement_age=1.0, **over)
+
+
+# --------------------------------------------------------------------------- #
+# 3.9 in the payload — purpose from the engine's record, never invented
+# --------------------------------------------------------------------------- #
+
+
+def _purpose(pid, **over):
+    from set_orch.fleet.purpose import Progress, Purpose
+    base = dict(change="c", unit_id="u1", group="g1", pid=pid, status="running",
+                progress=Progress(done=2, total=5, measured=True))
+    base.update(over)
+    return Purpose(**base)
+
+
+def test_an_agent_with_no_recorded_run_reports_no_purpose():
+    """Design §8.1 — where the engine is absent the absence is stated, not filled."""
+    agent = _Agent(7); agent.session_id = "s-1"
+    assert fleet_api._agent_payload(agent, _State(), {}, {}, [])["purpose"] is None
+    assert fleet_api._agent_payload(agent, _State(), {}, {}, None)["purpose"] is None
+
+
+def test_the_purpose_is_joined_on_the_pid_the_engine_recorded():
+    agent = _Agent(7); agent.session_id = "s-1"
+    payload = fleet_api._agent_payload(agent, _State(), {}, {}, [_purpose(7)])
+    assert payload["purpose"]["change"] == "c" and payload["purpose"]["group"] == "g1"
+    assert payload["purpose"]["progress"]["done"] == 2
+
+
+def test_another_agents_run_does_not_leak_onto_this_tile():
+    agent = _Agent(7); agent.session_id = "s-1"
+    assert fleet_api._agent_payload(agent, _State(), {}, {}, [_purpose(9)])["purpose"] is None
+
+
+def test_a_stale_record_is_never_shown_as_this_agents_purpose():
+    """A record whose process is gone must not lend its purpose to whatever now
+    holds that pid — that is one project's work under another's agent."""
+    agent = _Agent(7); agent.session_id = "s-1"
+    stale = _purpose(7, status="stale")
+    assert fleet_api._agent_payload(agent, _State(), {}, {}, [stale])["purpose"] is None
