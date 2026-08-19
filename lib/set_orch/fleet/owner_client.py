@@ -223,6 +223,20 @@ class OwnerStream:
     #: what the reader needs, and a gap that is admitted beats a stale tail.
     MAX_QUEUED_FRAMES = 2048
 
+    #: The longest single wire line this client will accept.
+    #:
+    #: asyncio's default is 64 KiB, and a line longer than that does not read as
+    #: a short read or a closed socket — `readline` raises `LimitOverrunError`,
+    #: the read loop dies, and every waiter is told the OWNER closed the
+    #: connection. The owner had done nothing of the sort.
+    #:
+    #: The owner now splits its frames (`OwnerDaemon.MAX_FRAME_BYTES`), so this
+    #: is the second wall rather than the first: it keeps a client from being
+    #: killed by an owner that is older, differently configured, or fixed later.
+    #: Generous on purpose — the cost of a high limit is a buffer, the cost of a
+    #: low one is a terminal that dies exactly when it has something to show.
+    READ_LIMIT = 8 * 1024 * 1024
+
     def __init__(self, label: str, socket_path: Optional[str] = None) -> None:
         from .ownerd import default_socket_path
         self.label = label
@@ -242,7 +256,9 @@ class OwnerStream:
         """
         import asyncio
         try:
-            self._reader, self._writer = await asyncio.open_unix_connection(self.socket_path)
+            self._reader, self._writer = await asyncio.open_unix_connection(
+                self.socket_path, limit=self.READ_LIMIT
+            )
         except OSError as exc:
             raise OwnerUnavailable(
                 f"the agent owner is not running ({self.socket_path}: {exc}). "
@@ -257,6 +273,7 @@ class OwnerStream:
     async def _read_loop(self) -> None:
         import asyncio, json as _json
         assert self._reader is not None and self._frames is not None
+        failure = "the agent owner closed the terminal connection"
         try:
             while True:
                 line = await self._reader.readline()
@@ -290,14 +307,19 @@ class OwnerStream:
                 self._frames.put_nowait(frame)
         except (ConnectionResetError, asyncio.IncompleteReadError, OSError) as exc:
             logger.debug("fleet stream: %s read loop ended: %s", self.label, type(exc).__name__)
+        except (ValueError, asyncio.LimitOverrunError) as exc:
+            # A frame the reader refuses is OUR limit refusing it, not the owner
+            # hanging up — and the difference is the whole diagnosis. Reported
+            # loudly and by name, because the previous wording sent a reader
+            # looking at the owner's logs, where nothing was wrong.
+            failure = f"the terminal stream broke while reading a frame ({type(exc).__name__})"
+            logger.error("fleet stream: %s: %s", self.label, failure)
         finally:
             # Everyone waiting is told, rather than left on a future that will
             # never resolve — a hung terminal looks exactly like a busy one.
             for future in self._pending.values():
                 if not future.done():
-                    future.set_exception(
-                        OwnerUnavailable("the agent owner closed the terminal connection")
-                    )
+                    future.set_exception(OwnerUnavailable(failure))
             self._pending.clear()
             if self._frames is not None:
                 self._frames.put_nowait(None)

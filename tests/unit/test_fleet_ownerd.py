@@ -599,3 +599,75 @@ def test_a_second_viewer_attaches_to_the_same_terminal(tmp_path):
     assert (v1, v2) == (1, 2)
     assert replays == (b"ALREADY-ON-SCREEN", b"ALREADY-ON-SCREEN")
     assert lives == (b"-LIVE", b"-LIVE"), "live output must reach every viewer, not just the first"
+
+
+def test_a_full_screen_replay_survives_the_wire(tmp_path):
+    """The third bug the live probe found, and the only one that was CERTAIN
+    rather than merely likely.
+
+    Measured 2026-08-19 in a browser: the first attach to a freshly started
+    agent worked (0 bytes replayed), and the reattach a minute later reported
+    *the agent owner closed the terminal connection* — with the owner's own log
+    showing a clean attach at the same second. The owner had closed nothing.
+
+    A frame is one JSON line and its payload is base64, so N raw bytes go out as
+    4N/3. `asyncio.StreamReader` refuses a line over 64 KiB and raises
+    `LimitOverrunError`; that is not a short read and not a closed socket, so
+    the read loop died with an exception nobody retrieved and every waiter was
+    told the owner had hung up.
+
+    The two sizes in this file made it deterministic, not a race: `tail_bytes`
+    is 64 KiB and `owner.read()` takes 64 KiB at once, so any terminal that had
+    produced ~48 KiB could never be reattached to again. The failure direction
+    is what hid it — an EMPTY terminal is exactly the case that works, so every
+    quick check passed.
+
+    Sized at 60 KiB: over the 48 KiB where the old code starts failing, under
+    the 64 KiB tail cap so nothing here is testing truncation instead.
+    """
+    path = str(tmp_path / "owner.sock")
+    screen = bytes(bytearray((i * 7 + 33) % 94 + 32 for i in range(60 * 1024)))
+    daemon = _daemon_with_terminal(path, tail=screen)
+
+    async def scenario():
+        from set_orch.fleet.owner_client import OwnerStream
+        daemon._claim_socket()
+        server = await asyncio.start_unix_server(daemon._serve_client, path=path)
+        async with server:
+            stream = OwnerStream("term", path)
+            ack = await asyncio.wait_for(stream.open(), timeout=5)
+            got = bytearray()
+            frames = stream.frames()
+            while len(got) < len(screen):
+                chunk, replay = await asyncio.wait_for(frames.__anext__(), timeout=5)
+                assert replay is True, "a replayed chunk that claims to be live misdates the screen"
+                got.extend(chunk)
+            await stream.close()
+            return ack, bytes(got)
+
+    ack, got = _run(scenario())
+    assert ack["replayed_bytes"] == len(screen)
+    # Whole and in order. A split that loses or reorders a piece renders as
+    # garbage rather than as a gap, because escape sequences do not survive
+    # being cut — so equality is the only assertion worth making here.
+    assert got == screen, "the replayed screen did not arrive intact"
+
+
+def test_no_single_frame_exceeds_the_readers_line_limit(tmp_path):
+    """The rule stated as a size, so a later change cannot quietly re-cross it.
+
+    The test above proves the client survives today's owner. This one proves the
+    OWNER stays inside the limit that any default `StreamReader` enforces —
+    including one in a different process, an older client, or a consumer written
+    against the protocol rather than against this class.
+    """
+    daemon = OwnerDaemon(str(tmp_path / "owner.sock"), owner=_Streamable())
+    frames = daemon._frames("term", b"x" * (64 * 1024), replay=True)
+    assert len(frames) > 1, "a 64 KiB chunk must not go out as one line"
+    assert max(len(f) for f in frames) < 64 * 1024, (
+        "a frame at or over 64 KiB kills a default StreamReader with LimitOverrunError"
+    )
+    # The split is the only thing allowed to change the shape; the bytes are not.
+    import base64 as _b64, json as _json
+    rebuilt = b"".join(_b64.b64decode(_json.loads(f)["data_b64"]) for f in frames)
+    assert rebuilt == b"x" * (64 * 1024)

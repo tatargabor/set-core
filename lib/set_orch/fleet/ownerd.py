@@ -176,6 +176,43 @@ class OwnerDaemon:
     #: the drain is what keeps the AGENT running (see the module header).
     SLOW_VIEWER_BYTES = 4 * 1024 * 1024
 
+    #: The most RAW output one frame may carry. Not a tuning knob — a protocol
+    #: limit, measured on 2026-08-19 against a live terminal.
+    #:
+    #: A frame is one JSON line, and the payload is base64, so N raw bytes
+    #: become 4N/3 on the wire. asyncio's StreamReader refuses a line longer
+    #: than 64 KiB by default and raises `LimitOverrunError`, which is NOT the
+    #: connection closing: the reading task dies with an exception nobody
+    #: retrieves, and the viewer is told the owner hung up on it.
+    #:
+    #: Both of this file's own sizes crossed that line. `owner.read()` takes up
+    #: to 65536 bytes at once, and `tail_bytes` is 65536 — so a replay of a
+    #: screen that already held ~48 KiB was not merely at risk, it was
+    #: GUARANTEED to kill the connection. That is why the first attach to a
+    #: fresh agent worked (0 bytes replayed) and the reattach after a minute of
+    #: output never could.
+    #:
+    #: 32 KiB raw → ~43.7 KB of base64 plus a short envelope: under the limit
+    #: with room for the JSON around it, and still one syscall's worth.
+    MAX_FRAME_BYTES = 32 * 1024
+
+    def _frames(self, label: str, data: bytes, replay: bool = False) -> List[bytes]:
+        """Encode one chunk as one or more wire frames, none over the limit.
+
+        Split rather than truncated: a terminal replay with a hole in the middle
+        renders as garbage — escape sequences do not survive being cut — and a
+        hole that is not announced is worse than a slow screen.
+        """
+        out: List[bytes] = []
+        for start in range(0, max(len(data), 1), self.MAX_FRAME_BYTES):
+            piece = data[start : start + self.MAX_FRAME_BYTES]
+            if not piece:
+                break
+            out.append(
+                (make_frame(label, base64.b64encode(piece).decode("ascii"), replay=replay) + "\n").encode("utf-8")
+            )
+        return out
+
     def _publish(self, label: str, data: bytes) -> None:
         """Push one chunk to every viewer of this terminal.
 
@@ -191,7 +228,7 @@ class OwnerDaemon:
         watchers = self._subscribers.get(label)
         if not watchers:
             return
-        frame = (make_frame(label, base64.b64encode(data).decode("ascii")) + "\n").encode("utf-8")
+        frames = self._frames(label, data)
         for writer in list(watchers):
             try:
                 pending = writer.transport.get_write_buffer_size()  # type: ignore[union-attr]
@@ -205,7 +242,8 @@ class OwnerDaemon:
                 self._unsubscribe(label, writer)
                 continue
             try:
-                writer.write(frame)
+                for frame in frames:
+                    writer.write(frame)
             except (ConnectionResetError, BrokenPipeError, RuntimeError) as exc:
                 logger.debug("fleet owner: viewer of %s went away: %s", label, exc)
                 self._unsubscribe(label, writer)
@@ -377,9 +415,8 @@ class OwnerDaemon:
         self._subscribe(label, writer)
         tail = bytes(self._tails[label])
         if tail:
-            writer.write(
-                (make_frame(label, base64.b64encode(tail).decode("ascii"), replay=True) + "\n").encode("utf-8")
-            )
+            for frame in self._frames(label, tail, replay=True):
+                writer.write(frame)
         return {
             "attached": label,
             "replayed_bytes": len(tail),
