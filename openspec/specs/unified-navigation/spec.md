@@ -1,5 +1,19 @@
 # Unified Navigation
 
+> ⚠ **STALE AGAINST THE SHIPPED APP — recorded 2026-08-19, not corrected here.**
+>
+> This spec describes a `/manager/*` and `/set/*` route family. Measured in
+> `web/src/App.tsx`: the app serves `/projects` and `/p/:name/*`, and both
+> families this document is written around are **redirects** (`App.tsx:197`,
+> `App.tsx:208`). The root route renders the fleet screen, not an overview.
+>
+> Recorded by the `fleet-view` change (task 10.1) rather than fixed by it, on
+> purpose: rewriting an unrelated capability's spec inside a landing-screen
+> change is how a correction arrives with nobody having reviewed it as one. The
+> marker is here rather than only in that change's task list because **this is
+> the file a reader will believe**, and a note about it filed elsewhere is a
+> correction placed where nobody is standing.
+
 ## Purpose
 
 TBD — restored after delta-sync structural cleanup. Update Purpose with a one-line statement of what this capability owns.
