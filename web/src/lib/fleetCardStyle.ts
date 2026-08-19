@@ -92,8 +92,16 @@ export const OWNERSHIP_NOTE: Record<Ownership, string> = {
  * Every tile gets the SAME padding and the same edge width, so the grid reads
  * as one set of things; what varies is the edge's style and the fill. The
  * request also named the sizes — *"az sem segít hogy különböző méretűek"* — and
- * that is fixed at the grid (`items-start` plus a minimum height) rather than
- * here, because a tile cannot know how tall its neighbour is.
+ * that is settled at the grid rather than here, because a tile cannot know how
+ * tall its neighbour is: `Fleet.tsx` gives the rows
+ * `auto-rows-[minmax(11rem,1fr)]`, so every tile has the same height and a floor.
+ *
+ * ⚠ This paragraph used to say the grid did it with "`items-start` plus a
+ * minimum height". `items-start` was real; **the minimum height did not exist**
+ * — zero hits for `min-h` outside `min-h-0`. A comment claiming a guard the code
+ * does not have is worse than no comment: the next reader stops looking. Both
+ * halves are true as of 2026-08-19, and the grep that checks them is
+ * `grep -n 'auto-rows' src/pages/Fleet.tsx`.
  */
 export function cardClasses(ownership: Ownership, state: CardState = {}): string {
   const edge =

@@ -443,7 +443,10 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
   const sentences = sayCount(acts)
 
   return (
-    <div className="border-t border-surface-line mt-3 pt-2" data-fleet-own-surface="log">
+    <div
+      className={`border-t border-surface-line mt-3 pt-2${tall ? ' flex-1 min-h-0 flex flex-col' : ''}`}
+      data-fleet-own-surface="log"
+    >
       <div className="flex items-baseline gap-2 mb-1.5 flex-wrap" role="tablist" aria-label="log views">
         {LOG_TABS.map(tab => (
           tab.absent ? (
@@ -507,7 +510,10 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
         <div className="text-xs text-fg-muted">the log is readable and holds no conversation</div>
       )}
       {!log && !error && <div className="text-xs text-fg-muted">reading the log…</div>}
-      <div className={`${tall ? 'max-h-[55vh]' : 'max-h-80'} overflow-y-auto space-y-1 pr-1`}>
+      {/* Fills what the card gives it when the tile is enlarged. `55vh` was
+          the same guess as the terminal's `62vh` and wrong for the same
+          reason: the strip above it is not a fixed height. */}
+      <div className={`${tall ? 'flex-1 min-h-0' : 'max-h-80'} overflow-y-auto space-y-1 pr-1`}>
         {acts.map((act, i, all) => {
         // A day divider, because HH:MM alone made a 60-hour gap look like a
         // minute. Measured 2026-08-18: forty turns of one session spanned three
@@ -717,7 +723,22 @@ function Descendants({ agent, canJumpPid, onJumpPid }: {
  * a session in which nothing was ever said. Same rule as everywhere else on
  * this screen — a gap is not a zero.
  */
-function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
+/**
+ * The last thing actually said, and — when nothing else is open — the thing that
+ * fills the tile.
+ *
+ * `grow` is what stops the taller tiles from being emptier ones. The height now
+ * comes from the row rather than from this text, so without it a 355 px tile
+ * would hold four lines and 200 px of nothing, which is the objection the old
+ * `items-start` rule was right about. With it, the extra height becomes more of
+ * the conversation — *"még jobb bele info akkor is ha nincs nyitva a terminál"*.
+ *
+ * Two limits, and the smaller one wins: the line clamp caps how much is shown,
+ * the parent's height clips what does not fit. Neither alone is enough — a clamp
+ * without a bound overflows a short tile, a bound without a clamp cuts a line in
+ * half at the edge.
+ */
+function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?: number; grow?: boolean }) {
   // An excerpt made entirely of table scaffolding leaves nothing after
   // stripping. That is the same absence as a tail of pure tool traffic, and it
   // gets the same sentence rather than an empty line.
@@ -744,7 +765,10 @@ function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
     : agent.excerpt_from === 'agent' ? 'agent' : 'other'
   const tone = speaker === 'person' ? 'text-sky-400/80' : speaker === 'runtime' ? 'text-fg-ghost' : 'text-fg-muted'
   return (
-    <div className="flex gap-1.5 mt-1 min-w-0" data-fleet-excerpt={agent.excerpt_from ?? 'ismeretlen'}>
+    <div
+      className={`flex gap-1.5 mt-1 min-w-0${grow ? ' flex-1 min-h-0 overflow-hidden' : ''}`}
+      data-fleet-excerpt={agent.excerpt_from ?? 'ismeretlen'}
+    >
       <span
         className={`text-xs shrink-0 ${tone}`}
         data-fleet-excerpt-speaker={speaker}
@@ -1004,7 +1028,14 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
             })) onOpen()
           }
         : undefined}
-      className={`${cardClasses(ownership, { enlarged, focused, typing })}${wide ? ' md:col-span-full' : ''}${onOpen ? ' cursor-pointer' : ''}`}
+      /* A COLUMN, always — it is what lets the excerpt, the log and the terminal
+         take the height the row gives them instead of guessing a fraction of the
+         viewport. `min-h-0` is not decoration: without it a flex child refuses to
+         shrink below its content and the card grows past the panel instead of
+         scrolling inside it. `flex-1` only where the card is meant to fill: the
+         full-screen one, and the enlarged one in a stack of rows. */
+      className={`${cardClasses(ownership, { enlarged, focused, typing })} flex flex-col min-h-0 overflow-hidden${
+        focused || enlarged ? ' flex-1' : ''}${wide ? ' md:col-span-full' : ''}${onOpen ? ' cursor-pointer' : ''}`}
     >
       {/* Two parts, so the controls stay in the corner. With everything in one
           wrapping row, a long name pushed the icons onto a second line — a
@@ -1075,7 +1106,11 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
           nincs nyitva a terminál"*. A tile that shows two lines makes the
           reader open something to learn anything, and with eight agents that is
           eight openings. */}
-      <Excerpt agent={agent} lines={enlarged || focused ? 8 : 4} />
+      <Excerpt
+        agent={agent}
+        lines={enlarged || focused ? 8 : 12}
+        grow={!open && !terminalOpen}
+      />
 
       {/* Task 7.7 — the agent's own input, and task 4.4 where there is nothing
           to type into: the producer's reason stands in the input's place. */}
@@ -1518,7 +1553,17 @@ export default function Fleet() {
           onSelect={name => setSelected(name)}
         />
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-w-0">
+        {/* A COLUMN with a definite height, not a scrolling box — raised
+            2026-08-19: *"nem használjuk ki a helyet jobb oldalt … azt akarom
+            fixen legyen értelmes ablak mérete az agenteknek"*. Measured before
+            the change on 1900×1100: the content stopped at 450 px in an 1100 px
+            panel (59 % empty) with five agents, and at 292 px (73 %) with two,
+            while the left column was a dense list. The cause was here: a box
+            that scrolls has no height to give, so every tile below sized itself
+            from its own text and the rest of the screen stayed black. The
+            header keeps its natural height; the agent area takes what is left
+            and does its own scrolling. */}
+        <div className="flex-1 min-h-0 p-3 min-w-0 flex flex-col gap-2">
           {data.agents === 0 ? (
             <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
           ) : active ? (
@@ -1547,15 +1592,31 @@ export default function Fleet() {
                     where it can change anything: with one agent there is
                     nothing to lay out, and while a tile is enlarged the grid
                     is not the arrangement in use. */}
-                {!focused && enlarged === null && active.agents.length > 1 && (
-                  <span className="ml-auto flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project">
+                {/* Offered whenever there is more than one agent — including
+                    while a tile is open. It used to hide itself under
+                    `!focused && enlarged === null`, on the reasoning that the
+                    grid is not the arrangement in use. The reasoning was sound
+                    and the effect was not: opening a tile is exactly when a
+                    reader reaches for the layout, and the control had vanished
+                    — reported twice, the second time as *"megint nem látom a
+                    több oszlopos elrendezési lehetőséget. mi van itt?"*, and
+                    read as lost work rather than as a hidden control.
+                    So it stays, and choosing a count also closes whatever is
+                    open: a control that is visible but does nothing where you
+                    clicked it is worse than one that is missing. */}
+                {active.agents.length > 1 && (
+                  <span className="ml-auto flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
                     <span className="text-xs text-fg-ghost">columns</span>
                     {COLUMN_CHOICES.map(c => (
                       <button
                         key={c}
                         data-fleet-columns={c}
                         aria-pressed={c === columns}
-                        onClick={() => setColumns(active.name, c)}
+                        onClick={() => {
+                          setColumns(active.name, c)
+                          setFocus(active.name, null)
+                          setEnlarged(active.name, null)
+                        }}
                         className={`text-xs tabular-nums px-1.5 rounded border ${
                           c === columns
                             ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
@@ -1625,13 +1686,21 @@ export default function Fleet() {
                   and needs the width, and the rows beside it are a list, not
                   a layout. `space-y-2` on the parent still spaces the header
                   and the panels; the grid owns its own gaps. */}
-              {/* `items-start` because a stretched tile is an EMPTY tile: the
-                  grid used to make every card as tall as the tallest in its
-                  row, so one open terminal left its neighbour as a large empty
-                  box — raised 2026-08-19 (*"az sem segít hogy különböző
-                  méretűek"*). Each card now ends where its content ends, and
-                  the shared minimum keeps the short ones from looking like
-                  scraps. */}
+              {/* `auto-rows-[minmax(11rem,1fr)]` — a floor AND a share, which is
+                  what makes this different from the `items-start` it replaces.
+                  That earlier rule was a real fix for a real complaint (*"az sem
+                  segít hogy különböző méretűek"*): a stretched row made one
+                  card as tall as its tallest neighbour, so an open terminal left
+                  the tile beside it a large empty box. But it fixed the ragged
+                  row by handing the height decision back to each card's own
+                  text, and five cards of text in an 1100 px panel is 59 % black
+                  screen.
+                  The floor is what stops a stretch from being emptiness: every
+                  tile is at least 11rem, the excerpt grows into whatever the row
+                  gives it (see `Excerpt`), and `1fr` divides the panel evenly so
+                  the tiles are the same size as each other — which was the
+                  original complaint. When there are more agents than fit, the
+                  rows keep the floor and this box scrolls. */}
               {focused ? (
                 /* Full screen — one agent, the whole panel. What it covers is
                    counted in the header above, never silently dropped. */
@@ -1655,8 +1724,8 @@ export default function Fleet() {
                 />
               ) : (
               <div className={enlarged === null
-                ? `grid gap-2 items-start ${GRID_COLS[columns] ?? GRID_COLS[2]}`
-                : 'space-y-2'}>
+                ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[columns] ?? GRID_COLS[2]}`
+                : 'flex-1 min-h-0 overflow-y-auto flex flex-col gap-2'}>
               {active.agents.map(a => {
                 const card = (extra: { enlarged?: boolean; open: boolean; onToggle: () => void }) => (
                   <AgentCard

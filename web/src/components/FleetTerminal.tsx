@@ -213,7 +213,11 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   }, [label, onClose])
 
   return (
-    <div className="border-t border-surface-line mt-3 pt-2" data-fleet-terminal={label} data-fleet-own-surface="terminal">
+    <div
+      className={`border-t border-surface-line mt-3 pt-2${full ? ' flex-1 min-h-0 flex flex-col' : ''}`}
+      data-fleet-terminal={label}
+      data-fleet-own-surface="terminal"
+    >
       <div className="flex items-baseline gap-2 flex-wrap mb-1.5">
         <span className="text-xs text-fg-strong">terminal</span>
         <span className="text-xs text-fg-ghost truncate max-w-[16rem]">{label}</span>
@@ -301,7 +305,15 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       <div
         ref={host}
         data-fleet-terminal-host
-        className={`${full ? 'h-[62vh]' : 'h-72'} rounded border border-surface-edge overflow-hidden bg-[#0b0f14]`}
+        /* Full screen fills what the card gives it, rather than taking a guessed
+           fraction of the viewport. `62vh` was that guess, and it is why the
+           maximised agent stopped ~100 px short of the bottom — raised
+           2026-08-19: *"agent maximize nem nyitja ki teljesen az aljáig"*. No
+           single fraction can be right: the strip above this varies with the
+           header, the waiters and the modules panel, so the only correct height
+           is the one that is left. The `ResizeObserver` above refits xterm, so a
+           flexible box is not a problem for the terminal itself. */
+        className={`${full ? 'flex-1 min-h-0' : 'h-72'} rounded border border-surface-edge overflow-hidden bg-[#0b0f14]`}
       />
     </div>
   )
