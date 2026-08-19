@@ -149,3 +149,91 @@ class TestTheScannerDoesNotFindItself:
         git("commit", "-q", "-m", "vendor the scanner", cwd=repo)
         r = run(repo, registry, "--tree")
         assert "secret" not in r.stderr, r.stderr
+
+
+HOOK = Path(__file__).resolve().parents[2] / "bin" / "set-hook-leakscan"
+
+
+def _hook(session_dir, command, home):
+    return subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=json.dumps({"tool_name": "Bash", "cwd": str(session_dir),
+                          "tool_input": {"command": command}}),
+        capture_output=True, text=True, cwd=str(session_dir),
+        env=dict(os.environ, HOME=str(home)),
+    )
+
+
+@pytest.fixture
+def two_repos(tmp_path, registry):
+    """A repository that leaks and one that does not, plus a prepared HOME."""
+    home = registry.parent.parent
+    cfg = home / ".config" / "set-core"
+    cfg.mkdir(parents=True, exist_ok=True)
+    (cfg / "projects.json").write_text(registry.read_text())
+
+    dirty, clean = tmp_path / "dirty", tmp_path / "clean"
+    for r, body in ((dirty, f"the {CONSUMER} project\n"), (clean, "nothing here\n")):
+        r.mkdir()
+        git("init", "-q", cwd=r)
+        git("config", "user.email", "t@example.com", cwd=r)
+        git("config", "user.name", "t", cwd=r)
+        (r / "notes.md").write_text(body)
+        git("add", "-A", cwd=r)
+        git("commit", "-q", "-m", "init", cwd=r)
+    return dirty, clean, home
+
+
+class TestTheHookScansTheRepositoryTheCommandTargets:
+    """The hook runs in the SESSION's directory, not the command's.
+
+    Measured on the first live push: it listed findings from an unrelated
+    repository and refused a clean one. The fail direction runs both ways — it
+    blocks a correct push, and it would PASS a leaking one whenever the session
+    directory happens to be clean and the target is not.
+    """
+
+    def test_a_leading_cd_decides_which_repository_is_scanned(self, two_repos):
+        dirty, clean, home = two_repos
+        # Session in the CLEAN repo, push from the DIRTY one. Scanning the
+        # session directory would wave this through.
+        r = _hook(clean, f"cd {dirty}\ngit " + "push --force origin main", home)
+        assert r.returncode == 2, f"the leaking target was not scanned: {r.stderr}"
+        assert CONSUMER in r.stderr
+
+    def test_and_it_does_not_falsely_block_a_clean_target(self, two_repos):
+        dirty, clean, home = two_repos
+        r = _hook(dirty, f"cd {clean} && git " + "push origin main", home)
+        assert r.returncode == 0, f"a clean push was refused: {r.stderr}"
+
+    def test_without_a_cd_the_session_directory_is_the_target(self, two_repos):
+        dirty, _clean, home = two_repos
+        r = _hook(dirty, "git " + "push origin main", home)
+        assert r.returncode == 2, r.stderr
+
+
+class TestTheHookIsNotTriggeredByTextThatMerelyMentionsPushing:
+    """A heredoc body that WRITES about pushing is not a push.
+
+    Measured while writing this very file: `cat > test.py <<'EOF' … EOF` whose
+    body contained the verb was refused by the hook, so the test that hardens
+    the gate could not be written through it. That is the measurement sitting
+    inside the corpus it measures.
+    """
+
+    def test_a_heredoc_body_containing_the_verb_is_not_a_publication(self, two_repos):
+        dirty, _clean, home = two_repos
+        cmd = "cat > t.py <<'XEOF'\nrun('git " + "push origin main')\nXEOF"
+        r = _hook(dirty, cmd, home)
+        assert r.returncode == 0, r.stderr
+
+    def test_but_a_real_command_after_the_heredoc_still_counts(self, two_repos):
+        dirty, _clean, home = two_repos
+        cmd = "cat > t.py <<'XEOF'\nx = 1\nXEOF\ngit " + "push origin main"
+        r = _hook(dirty, cmd, home)
+        assert r.returncode == 2, r.stderr
+
+    def test_a_local_commit_is_not_a_publication(self, two_repos):
+        dirty, _clean, home = two_repos
+        r = _hook(dirty, "git commit -m 'wip'", home)
+        assert r.returncode == 0, r.stderr

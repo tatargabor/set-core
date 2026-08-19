@@ -1,71 +1,122 @@
-#!/usr/bin/env bash
-# set-hook-leakscan — Claude Code PreToolUse hook: block a publishing command
-# that would carry a consumer name, a credential, a local path or a phone number.
-#
-# WHY A SECOND GATE
-#   The `pre-push` git hook binds a human at a terminal. It does NOT bind an
-#   agent, which can pass `-c core.hooksPath=` or `--no-verify` without meaning
-#   any harm — an instruction is not a constraint; what an agent cannot do is
-#   decided by the tools it holds. This hook is the half that binds the agent.
-#   Neither gate is redundant: they cover different actors.
-#
-# Referenced by name in .claude/settings.json:
-#   {"matcher": "Bash", "hooks": [{"type": "command", "command": "set-hook-leakscan"}]}
-#
-# Exit 0 = allow, exit 2 = block (stderr is shown to the model).
+#!/usr/bin/env python3
+"""set-hook-leakscan — Claude Code PreToolUse hook: refuse a publishing command
+that would carry a consumer name, a credential, a local path or a phone number.
 
-set -uo pipefail
+WHY A SECOND GATE
+    The `pre-push` git hook binds a human at a terminal. It does NOT bind an
+    agent, which can pass `-c core.hooksPath=` or `--no-verify` without meaning
+    any harm — an instruction is not a constraint; what an agent cannot do is
+    decided by the tools it holds. This hook is the half that binds the agent.
+    Neither gate is redundant: they cover different actors.
 
-INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
-[[ -z "$CMD" ]] && exit 0
+Referenced by name in .claude/settings.json:
+    {"matcher": "Bash", "hooks": [{"type": "command", "command": "set-hook-leakscan"}]}
 
-# Only publishing commands. A local commit is not a publication, and gating it
-# would train the user to disable the hook.
-if ! grep -qE '(^|[;&|[:space:]])git[[:space:]]+([^;&|]*[[:space:]])?(push|tag)([[:space:]]|$)' <<<"$CMD"; then
-    exit 0
-fi
-# `gh release create` / `gh repo create --public` publish too.
-:
+Exit 0 = allow, exit 2 = block (stderr is shown to the model).
+"""
 
-if ! command -v set-leakscan >/dev/null 2>&1; then
-    echo "set-hook-leakscan: set-leakscan is not on PATH, so this push cannot be" >&2
-    echo "checked. Refusing rather than allowing an unchecked publication — a gate" >&2
-    echo "that cannot run must not report clean." >&2
-    exit 2
-fi
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
 
-# WHICH REPOSITORY. The hook process inherits the SESSION's working directory,
-# not the directory the command will run in. A command that begins `cd <path> &&
-# git push` therefore got scanned against whatever repository the session
-# happened to be sitting in — measured on the first live push: the gate listed
-# findings from a completely different repository and refused a clean one.
-#
-# Its fail direction goes both ways, which is why it is not a cosmetic bug: it
-# blocks a correct push, and it would PASS a leaking one whenever the session
-# directory is clean and the target is not.
-TARGET=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
-LAST_CD=$(grep -oE '(^|[;&|][[:space:]]*)cd[[:space:]]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^;&|[:space:]]+)' <<<"$CMD" | tail -1           | sed -E 's/^[;&|[:space:]]*cd[[:space:]]+//; s/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
-if [[ -n "$LAST_CD" ]]; then
-    case "$LAST_CD" in
-        "~"*) LAST_CD="${HOME}${LAST_CD#\~}" ;;
-    esac
-    [[ -d "$LAST_CD" ]] && TARGET="$LAST_CD"
-fi
-[[ -n "$TARGET" && -d "$TARGET" ]] || TARGET="$PWD"
+# A publishing verb, at the start of the command or after a separator. A local
+# commit is not a publication, and gating one trains the user to disable the hook.
+PUBLISH_RX = re.compile(
+    r"(?:^|[;&|\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
+    r"git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*(?:push|tag)(?:\s|$)"
+)
 
-OUT=$(cd "$TARGET" && set-leakscan 2>&1)
-RC=$?
-if [[ $RC -ne 0 ]]; then
-    echo "BLOCKED by set-hook-leakscan — this push would publish content that must" >&2
-    echo "not leave the repository:" >&2
-    echo "" >&2
-    echo "  (repository: $TARGET)" >&2
-    echo "$OUT" >&2
-    echo "" >&2
-    echo "Do NOT work around this with --no-verify or core.hooksPath. Fix the" >&2
-    echo "findings, or add a deliberate exception to" >&2
-    echo "~/.config/set-core/leakscan-allow.txt and say so to the user." >&2
-    exit 2
-fi
-exit 0
+HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+CD_RX = re.compile(r"""(?:^|[;&|\n])\s*cd\s+("[^"]+"|'[^']+'|[^;&|\s]+)""")
+
+
+def strip_heredocs(cmd):
+    """Remove heredoc BODIES before looking for a publishing verb.
+
+    A command that merely WRITES about pushing — a test fixture, a doc, a
+    script being generated — contains the verb inside a heredoc body. Matching
+    it there is the measurement sitting inside the corpus it measures, and it
+    fires on the very work that hardens this gate. Measured: writing this
+    file's own test suite was blocked by this hook.
+    """
+    out, skip_to = [], None
+    for line in cmd.split("\n"):
+        if skip_to is not None:
+            if line.strip() == skip_to:
+                skip_to = None
+            continue
+        m = HEREDOC_START.search(line)
+        if m:
+            skip_to = m.group(2)
+            out.append(line[: m.start()])
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def target_repo(payload, cmd):
+    """Which repository the command will actually run in.
+
+    The hook process inherits the SESSION's working directory, not the
+    command's. A command beginning `cd <path> && git push` was therefore
+    scanned against whatever repository the session happened to sit in —
+    measured on the first live push, where the gate listed findings from an
+    unrelated repository and refused a clean one. The fail direction runs both
+    ways: it blocks a correct push, and it would PASS a leaking one whenever
+    the session directory is clean and the target is not.
+    """
+    target = payload.get("cwd") or os.getcwd()
+    matches = CD_RX.findall(cmd)
+    if matches:
+        last = matches[-1].strip("\"'")
+        if last.startswith("~"):
+            last = os.path.expanduser(last)
+        if os.path.isdir(last):
+            target = last
+    return target
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return 0
+
+    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    if not cmd:
+        return 0
+
+    if not PUBLISH_RX.search(strip_heredocs(cmd)):
+        return 0
+
+    if not shutil.which("set-leakscan"):
+        print("set-hook-leakscan: set-leakscan is not on PATH, so this push cannot",
+              file=sys.stderr)
+        print("be checked. Refusing rather than allowing an unchecked publication —",
+              file=sys.stderr)
+        print("a gate that cannot run must not report clean.", file=sys.stderr)
+        return 2
+
+    target = target_repo(payload, cmd)
+    proc = subprocess.run(["set-leakscan"], cwd=target,
+                          capture_output=True, text=True)
+    if proc.returncode == 0:
+        return 0
+
+    print("BLOCKED by set-hook-leakscan — this push would publish content that must",
+          file=sys.stderr)
+    print(f"not leave the repository (repository: {target}):\n", file=sys.stderr)
+    print(proc.stdout + proc.stderr, file=sys.stderr)
+    print("\nDo NOT work around this with --no-verify or core.hooksPath. Fix the",
+          file=sys.stderr)
+    print("findings, or add a deliberate exception to", file=sys.stderr)
+    print("~/.config/set-core/leakscan-allow.txt and say so to the user.",
+          file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
