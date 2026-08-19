@@ -1,10 +1,29 @@
 ## Context
 
-`lib/set_orch/module_install.py` reads and never writes. `InstallReport` — a dataclass documented
-as "never silent, in either direction" — is not constructed anywhere in the repository, and no
-function places a module's declared files into a project. The reading half is live: the fleet
-screen consults it to report a capability as *not connected*, which is an invitation nothing can
-accept.
+⚠ **Corrected 2026-08-19, hours after this file was written.** The first version opened with
+*"`module_install.py` reads and never writes"*, and the proposal said no function places a module's
+files into a project. **Both were wrong, and wrong in the direction that would have built a second
+installer.** `profile_deploy._deploy_single_template` already copies every declared file, records
+each in the ledger, and runs the announcement. The mistake was to measure the absent *product*
+(`InstallReport`, genuinely never constructed outside tests) and conclude an absent *act*.
+
+The correction is kept in place rather than swapped in, for the reason this repository keeps
+finding: the corrected sentence is the cheap half, the refuted shape is the durable one. It also
+changes what gets built — from *a writer* to *a guard and a report around a write that exists*.
+
+What is actually missing, measured:
+
+| | |
+|---|---|
+| `InstallReport` constructed in `lib/` | **0** — only tests build one, by hand |
+| What the write returns instead | `List[str]` of human prose |
+| `check_requirements` called in `lib/` | **0** — a missing requirement does not refuse anything |
+| `plan_files` called in `lib/` | **0** — the executable exclusion never reaches the writer |
+| Install record written | only inside the `if decl.announce is not None` branch |
+
+So the act happens and every *account* of it is missing: no structured report, no refusal, and no
+record unless the module happens to announce itself. The fleet screen's measurement — **0 ledgered
+files and no declaration across three real projects** — is what that looks like from outside.
 
 The framework already writes into projects, through `set-project init` → `profile_deploy`. That
 path carries the 2026-07-19 safety track in full: a hash ledger (`set/.deploy-manifest.json`),
@@ -12,30 +31,32 @@ path carries the 2026-07-19 safety track in full: a hash ledger (`set/.deploy-ma
 rewritten, committed deletions read as intent, tombstones, and ownership checks. Every one of
 those exists because a specific silent overwrite reached a real repository.
 
-So the question this design answers is not "how do we copy files". It is **which of the two
-existing halves the writer belongs to**, and what to do about the fact that they already parse the
-same manifest twice.
+So the question is not "how do we copy files" — that is answered and guarded. It is **what has to
+surround that copy before a screen may offer it**, and what to do about a second finding that came
+out of the same measurement.
 
-**Measured while writing this design, on this repository:**
+**The second finding — two parsers of one manifest, agreeing by luck:**
 
 | what | measurement |
 |---|---|
-| `InstallReport` constructed anywhere | **0 sites** — the type exists, nothing produces one |
 | Manifests in the repo | 3 (`example/starter`, `mobile/capacitor-nextjs`, `web/nextjs`) |
 | Do the two parsers agree on those? | **yes: 3/3, 4/4, 50/50 paths identical** |
 | Manifests declaring `executable:` | **0** |
 | `profile_deploy` mentions of `executable` | **0** — the deploy path does not know the concept |
 
-The last two rows are the finding. The declaration parser (`plan_files`) excludes a module's
-executable part; the deploy parser has never heard of it. They agree today **only because no
-manifest exercises the difference**, which is the weakest possible reason for two things to agree.
+The declaration parser (`plan_files`) excludes a module's executable part; the deploy parser has
+never heard of it. They agree today **only because no manifest exercises the difference**, which is
+the weakest possible reason for two things to agree — and the difference is a module's own code
+being copied into a project, where nothing upgrades it and nothing can report its version.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- One function that performs an install and returns the report the module already defines.
+- One entry point that installs a module and returns the structured report the module already
+  defines — instead of the prose the write emits today.
+- A refusal — before the first byte — when a declared requirement is missing. Nothing refuses now.
+- A record of every successful install, not only of one that happens to announce itself.
 - Reuse of the per-file safety discipline, not a copy of it.
-- A refusal — before the first byte — when a declared requirement is missing.
 - A spec for this capability, covering the half that shipped without one as well as the new half.
 
 **Non-Goals:**
@@ -48,19 +69,27 @@ manifest exercises the difference**, which is the weakest possible reason for tw
 
 ## Decisions
 
-### D1 — The writer plans with the DECLARATION and writes with the DEPLOY ENGINE
+### D1 — Guard and report AROUND the existing write, never a second copier
 
-The plan (which paths) comes from `plan_files(decl)`; the write (each path, with the ledger and the
-flags) goes through the deploy engine's existing per-file path.
+`install_module` is a wrapper, not a writer. It checks requirements, plans with `plan_files(decl)`
+so the executable exclusion is structural, calls the deploy engine's own per-file path, converts
+that path's outcome into an `InstallReport`, and writes the install record last.
 
-*Alternatives considered.* **(a) A new copier inside `module_install`.** Rejected: it would have to
-re-implement the ledger, `protected`, `once`, deletion-intent and tombstones, and it would be a
-second place to fix each of them. The framework's own rule names this as the failure mode — a
-parallel mechanism built because ours would be tidier. **(b) Call `_deploy_single_template`
-wholesale and let it derive the file list.** Rejected on the measurement above: that path does not
-know `executable`, so a module that declares one would have its code copied into the project. The
-exclusion has to be structural, and the only way to make it structural is for the excluding parser
-to produce the list that reaches the writer.
+*Alternatives considered.* **(a) A new copier inside `module_install`.** Rejected, and after the
+correction above it is not merely redundant but actively harmful: the ledger, `protected`, `once`,
+deletion-intent and tombstones would all have to be re-implemented against a repository the
+framework does not own, and each would then have two places to be wrong. **(b) Add the report,
+the refusal and the record inside `_deploy_single_template` instead.** Rejected as scope: that
+function is on `set-project init`'s critical path, its return type is consumed by the CLI as prose,
+and changing what it refuses changes `project-init-deploy`'s behaviour. This capability wraps it;
+a later change may migrate the CLI onto the wrapper.
+
+*The one thing that cannot be a wrapper:* the deploy path emits **prose**, and a wrapper that
+parsed those strings back into structure would be a parser over model-and-human-facing text — a
+defect class named in `evidence-discipline.md`. So the per-file outcome has to be available as
+data. The narrowest way is for the engine's writer to report per-file outcomes structurally and
+for the existing prose to be rendered *from* that, rather than the other way round. That is a task
+here, and it is the only change this design makes to `profile_deploy`'s insides.
 
 *Consequence, stated so it is not discovered later:* the two parsers still both exist. This design
 does not collapse them; it makes the safer one authoritative for installs and **records the
@@ -77,10 +106,15 @@ caller renders "0 written, 12 skipped", and the reader has to notice that one of
 is categorically different from the others. The spec says a refusal, and a refusal is a control-flow
 fact, not a field.
 
-### D3 — The install record is written last, and only on a run that wrote something
+### D3 — The install record is written for every successful install, not only for an announcing one
 
-`InstallRecord.save()` exists and is called nowhere. It is written after the last file, never
-before and never on refusal.
+Measured: `record.save(target_dir)` sits inside `if manifest is not None and decl.announce is not
+None`. A module with no `announce:` section installs its files and leaves **no record that it was
+installed** — which is precisely why the capability report has to fall back to inferring from file
+presence, and why the fleet screen measured no declaration anywhere. The record the reader wants is
+one the framework never writes.
+
+It is written after the last file, never before and never on refusal.
 
 A record written first states that a module is installed while the write is still in progress —
 and every later reader believes it, including `version_report` and the fleet screen's capability

@@ -1,37 +1,61 @@
 ## Why
 
-`lib/set_orch/module_install.py` can read everything about a module install and perform none of
-it. Measured 2026-08-19: `InstallReport` — the dataclass whose whole design is "never silent, in
-either direction" — **is not constructed anywhere in the repository**, and no function writes a
-module's declared files into a project. The reading half is complete and in use: the fleet screen
-already consults `read_project_declaration`, `read_install_record` and `version_report` to tell a
-reader that a capability is *not connected*.
+⚠ **This section was rewritten 2026-08-19, hours after it was written, because its central claim
+was wrong.** It said *"no function writes a module's declared files into a project"*. It does:
+`profile_deploy._deploy_single_template` copies every declared file, records each in the deploy
+ledger, and runs the module's announcement. The original claim came from measuring
+`InstallReport` — which is genuinely never constructed outside tests — and generalising from a
+missing REPORT to a missing WRITE. The correction is kept here rather than swapped in silently,
+because the refuted shape is the durable half: *an absent product is not an absent act*.
 
-That is an invitation with no way to accept it. A surface that distinguishes *not connected* from
-*unknown* on the stated ground that "not connected invites wiring it in" is decoration until
-something can wire it in, and three tasks in the `fleet-view` change (6.5, 7.15, 9.17) are blocked
-on exactly this absence.
+What is actually missing is narrower, and worse:
 
-The second reason is the one the framework rule names: this module **shipped without a
-capability spec**. `openspec/specs/` has no module-install capability, so what the reading half
-guarantees lives only in code, docstrings and commit messages — the failure OpenSpec was
-re-adopted here to stop. Adding the writer without closing that gap would double it.
+| | measured 2026-08-19 |
+|---|---|
+| `InstallReport` constructed in `lib/` | **0** — the type exists; only tests build one, by hand |
+| What the write returns instead | `List[str]` of human prose (`"  Skipped (protected): …"`) |
+| `check_requirements` called in `lib/` | **0** — a module whose requirement is absent installs anyway |
+| `plan_files` called in `lib/` | **0** — so the executable-part exclusion never reaches the writer |
+| `profile_deploy` mentions of `executable` | **0** |
+| When the install record is written | **only if the module declares an `announce:` section** |
+
+So the framework can put a module's files in a project, and cannot report what it did, refuse what
+it should refuse, or record that it happened unless the module happens to announce itself. Every
+one of those is a *silence*, and this repository's own rule is that a silent skip is the same class
+of defect as a silent overwrite.
+
+The consequence is already visible on a screen: the fleet surface reports capabilities as *not
+connected* and measured **0 ledgered files and no declaration across three real projects** — which
+is what a write that records nothing looks like from the outside. Three `fleet-view` tasks (6.5,
+7.15, 9.17) are blocked on being able to offer an install and render its report; there is no report
+to render.
+
+The second reason is the framework rule's: this module **shipped without a capability spec**.
+`openspec/specs/` has no module-install capability, so what the reading half guarantees lives only
+in code, docstrings and commit messages — the failure OpenSpec was re-adopted here to stop.
 
 ## What Changes
 
-- **New: `install_module()`** — the writer. Takes a module declaration and a project root, writes
-  the module's declared files, and returns the `InstallReport` that already exists to describe the
-  run.
-- **The writer reuses the existing per-file deploy discipline; it does NOT copy files itself.**
-  The deploy engine already owns the hash ledger (`set/.deploy-manifest.json`), the `protected`
-  and `once` flags, git-history deletion intent, and tombstones. A second copier would be a
-  parallel mechanism with its own bugs against a repository the framework does not own.
-- **A missing required module is a refusal, not a warning.** `check_requirements` already
-  computes it; nothing acts on it. The writer raises before writing a single byte.
+- **New: `install_module()`** — a *guarded, structured* entry point over the write that already
+  exists. It does not copy a byte itself: the deploy engine keeps the hash ledger
+  (`set/.deploy-manifest.json`), the `protected` and `once` flags, git-history deletion intent and
+  tombstones, and every one of those exists because a specific silent overwrite reached a real
+  repository. What `install_module` adds is the three things missing around that write.
+- **A structured report instead of prose.** The write currently returns human-readable message
+  strings. A surface cannot render "which files were skipped, and why" out of sentences without
+  parsing them — and a parser over prose is a defect class this repository has paid for more than
+  once. `InstallReport` already models exactly this and is produced by nothing.
+- **A missing required module is a refusal, not a warning.** `check_requirements` is called
+  **nowhere in `lib/`** — measured. Today a module whose declared requirement is absent installs
+  anyway, and the project is left in the half-installed state the check exists to prevent. The new
+  entry point raises before writing a single byte.
 - **A run that changed nothing says so**, and every skipped file carries its reason. Both are
   already expressed by `InstallReport`; nothing produces one.
-- **The install record is written only after a successful run**, so a refused or partial install
-  cannot leave a record claiming the module is installed.
+- **The install record is written for every successful install, not only for one that announces.**
+  Measured: `record.save()` sits inside the `if decl.announce is not None` branch, so a module
+  with no announcement installs and leaves no trace of itself. That is why the capability report
+  falls back to inferring from file presence — the declaration it would rather read is one the
+  framework never writes. It stays written *after* the files, and never on refusal.
 - **Retroactive: the reading half gets the spec it shipped without** — declaration, install
   record, planned files, the executable-part exclusion, and the version comparison in which
   `unknown` is never a match. Those requirements describe code that already exists and passes.
