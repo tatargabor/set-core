@@ -183,6 +183,55 @@ consumer's name, path, or content.
   renders as unknown rather than as a percentage, and a session on a non-200k model
   shows a figure that matches what the runtime says.
 
+### B-8 — the log view does not open at the latest, and its tool lines say nothing
+- **state:** open
+- **reported:** 2026-08-19 by the user — *"scrollbar mindig alul kell legyen hogy
+  latest mutassa, illetve a Bash és tool feliratok nem mutatnak semmit a lognál
+  csak a helyet viszok, át kell gondolni"*
+- **measured:** the conversation list renders `16:24 Bash ↵1` rows between the
+  spoken turns; the row carries a tool NAME and a count and nothing about what
+  the tool did, so a reader learns only that something happened. And the scroll
+  box starts at the top, so the newest turn — the one the reader came for — is
+  off screen on any log with history.
+- **fixed when:** the box is scrolled to the newest turn on open and stays there
+  while new turns arrive unless the reader has scrolled away; and a tool line
+  either carries something a reader can act on or does not take a row.
+
+### B-9 — the project rows are thin, and a richer design that once existed is gone
+- **state:** open
+- **reported:** 2026-08-19 by the user — *"még mindig kicsik a projekt csempék.
+  korábban vagy 3 soros status állapotokkal meg minden volt tervezve és egyszer
+  láttam is, az hova lett? ki kell bővíteni minden funkcióval amit érdemes látni
+  ikonokkal"*
+- **not yet measured:** whether the earlier three-line design exists in git
+  history or only in a design document. That is the first step — a redesign that
+  ignores what was already agreed would be the parallel-mechanism failure.
+- **fixed when:** the project row carries what is worth seeing, in icons, and the
+  earlier design is either restored or explicitly superseded with a reason.
+
+### B-10 — an agent tile can be almost entirely empty while the log has plenty to say
+- **state:** open
+- **reported:** 2026-08-19 by the user — *"nem hiszem hogy üres kellene legyen
+  akár egy agent is., már biztosan van róla valami log, info"*
+- **measured:** a tile whose excerpt is one short sentence leaves the rest of its
+  ~500 px empty, while the same agent's log endpoint has turns and tool activity
+  to show.
+- **fixed when:** a tile with room to spare fills it from what is actually known
+  about the agent, rather than leaving the space blank.
+
+### B-11 — the excerpt spills over several lines where one and an ellipsis would do
+- **state:** open
+- **reported:** 2026-08-19 by the user — *"ez a több soros first message az agent
+  után értelmetlen. le kell vágni egy sorba aztán ..."*
+- **measured:** the tile clamps the excerpt at 12 lines since `c4f4842f`, which
+  was an overcorrection: it filled the taller tile with ONE long message instead
+  of with information.
+- ⚠ **reported together with B-10 and they pull in opposite directions on the
+  same space** — one line for the message, and the freed space filled with
+  something structured rather than more prose. Fixing either alone gets it wrong.
+- **fixed when:** the excerpt is a single line ending in an ellipsis, and what
+  fills the tile is not the excerpt.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open
