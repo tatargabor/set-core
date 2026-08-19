@@ -47,6 +47,9 @@ core:
   - path: rules/accessibility.md
     protected: true
     once: true
+  - path: rules/motion.md
+    protected: true
+    once: true
   - path: rules/performance.md
     protected: true
     once: true

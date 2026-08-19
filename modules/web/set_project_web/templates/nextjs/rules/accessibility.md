@@ -36,7 +36,7 @@ paths:
 ## Color & Motion
 - Color contrast ratio: minimum 4.5:1 for normal text, 3:1 for large text
 - Never convey information by color alone — use icons/text as well
-- Respect `prefers-reduced-motion` — disable animations when set
+- Respect `prefers-reduced-motion` — disable animations when set (see `motion.md` for scroll-driven animation)
 - Respect `prefers-color-scheme` if dark mode is supported
 
 ## Dynamic Content

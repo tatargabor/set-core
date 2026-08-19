@@ -772,7 +772,7 @@ The design repository MUST use exactly the following stack. The SET importer, th
 | **Class utilities** | `clsx` + `tailwind-merge` | Combined via the canonical `cn()` helper in `lib/utils.ts`. shadcn primitives import this — do not replace. |
 | **Icons** | `lucide-react` | Configured in `components.json` as `iconLibrary: "lucide"`. NO heroicons / react-icons / font-awesome. |
 | **Variants** | `class-variance-authority` (cva) | Used by shadcn primitives for variant props (button variants, badge variants, etc.). |
-| **Animation** | `framer-motion` (optional) + `tw-animate-css` | Use sparingly — animations are part of the design contract and the agent will preserve them. |
+| **Animation** | CSS `animation-timeline` + `tw-animate-css`; `framer-motion` (optional) | Use sparingly — animations are part of the design contract and the agent will preserve them. Scroll-linked motion goes through native CSS scroll-driven animation, not a library or a scroll listener; see `rules/motion.md`. Reach for `framer-motion` only for coordinated multi-scene timelines or pin-plus-snap. |
 | **Theming** | `next-themes` | Drives the `.dark` variant in `app/globals.css`. Mount `ThemeProvider` in `app/layout.tsx`. |
 | **Toasts** | `sonner` | Mounted via shadcn's `Toaster` primitive. NO react-hot-toast / react-toastify. |
 | **Date utilities** | `date-fns` ≥ 4 + `react-day-picker` ≥ 9 | Used by the shadcn `Calendar` primitive. NO moment / dayjs / luxon. |
