@@ -172,3 +172,82 @@ def test_the_payload_shape_carries_source_missing_so_a_zero_can_be_read(tmp_path
     unmeasured = Awaiting(source_missing=True).as_dict()
     assert empty["total"] == unmeasured["total"] == 0
     assert empty["source_missing"] is False and unmeasured["source_missing"] is True
+
+
+# --------------------------------------------------------------------------- #
+# 9.15 — an open decision with NO process running
+# --------------------------------------------------------------------------- #
+
+
+def test_the_awaiting_marker_still_matches_the_engines_own(tmp_path):
+    """SECOND COPY of the engine's regex, because `set_orch` may not import it.
+
+    A comment asking for the two to be kept in step would not have held. This
+    fails the day they diverge — and the test may import both because `tests/`
+    is outside the dependency scan on purpose.
+    """
+    from set_workcycle.connector import _AWAITING_RE
+    from set_orch.fleet.awaiting import _AWAITING_MARKER
+    assert _AWAITING_MARKER.pattern == _AWAITING_RE.pattern
+
+
+def _change(tmp_path, name, body):
+    d = tmp_path / "openspec" / "changes" / name
+    d.mkdir(parents=True)
+    (d / "tasks.md").write_text(body, encoding="utf-8")
+    return str(tmp_path)
+
+
+def test_an_open_decision_is_found_with_no_process_anywhere(tmp_path):
+    """9.15 — the common case, and the three original kinds were blind to it.
+
+    They read only the ORCHESTRATION STATE FILE. The engine writes an open
+    decision into the change's own task file, which is the carrier that outlives
+    the run — so by the time somebody looks there is no process, no state entry,
+    and nothing on any agent tile.
+    """
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "a-change",
+                   "- [?] 2.2 Decide the retention window <!-- awaiting: how long? -->\n"
+                   "- [ ] 2.3 Something else\n")
+    assert open_decisions(root) == ["a-change#2.2"]
+
+
+def test_a_project_with_an_open_decision_counts_as_awaiting(tmp_path):
+    """The total is what a tile renders, so the new kind has to reach it."""
+    from set_orch.fleet.awaiting import awaiting_for
+    root = _change(tmp_path, "c", "- [?] 1.1 x <!-- awaiting: which one? -->\n")
+    got = awaiting_for("nincs-ilyen-projekt", data_dir=str(tmp_path / "d"), project_root=root)
+    assert got.decision == ["c#1.1"] and got.total == 1
+    assert got.source_missing is True, "the state file is still separately unmeasured"
+
+
+def test_the_archive_is_not_counted(tmp_path):
+    """An archived change's decision was answered or overtaken; counting it would
+    make a finished project look permanently blocked."""
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "archive", "- [?] 1.1 x <!-- awaiting: old question -->\n")
+    assert open_decisions(root) == []
+
+
+def test_a_marker_on_an_unnumbered_line_is_kept_under_its_change(tmp_path):
+    """Still an open decision. Dropping it because the key is less precise is the
+    false absence this module exists against."""
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "c", "Some prose <!-- awaiting: a question -->\n")
+    assert open_decisions(root) == ["c"]
+
+
+def test_no_changes_directory_is_no_decisions_rather_than_an_error(tmp_path):
+    from set_orch.fleet.awaiting import open_decisions
+    assert open_decisions(str(tmp_path)) == []
+
+
+def test_decisions_are_kept_apart_from_the_other_three_kinds(tmp_path):
+    """Four kinds, never summed into one 'blocked': a reader acts on each
+    differently, and only `total` may add them up."""
+    from set_orch.fleet.awaiting import awaiting_for
+    root = _change(tmp_path, "c", "- [?] 1.1 x <!-- awaiting: q -->\n")
+    got = awaiting_for("p", data_dir=str(tmp_path / "d"), project_root=root).as_dict()
+    assert got["decision"] == ["c#1.1"]
+    assert got["manual"] == [] and got["stalled"] == [] and got["orphaned"] == []

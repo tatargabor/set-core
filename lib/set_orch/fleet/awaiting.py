@@ -21,6 +21,12 @@ are never summed into one "blocked":
 - **orphaned** — the state says `running` and the recorded process is **gone**.
   This one is MEASURED, and it is the dangerous case: nothing wrote it down,
   nothing will, and it reads as work in progress forever.
+- **decision** — the work-cycle engine set a unit aside on a question and wrote
+  the marker into the change's own task file. Added 2026-08-19 (task 9.15) after
+  measuring that the three kinds above read only the ORCHESTRATION STATE FILE and
+  were blind to this one entirely. It is the ordinary shape of stopped work: the
+  question outlives the run that asked it, so by the time anyone looks there is
+  no process, no state entry, and nothing on any agent tile.
 
 ## The fourth value, and why it is not counted
 
@@ -49,6 +55,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -70,6 +77,11 @@ class Awaiting:
     manual: List[str] = field(default_factory=list)
     stalled: List[str] = field(default_factory=list)
     orphaned: List[str] = field(default_factory=list)
+    #: `<change>#<task>` keys the engine marked as awaiting a human answer, read
+    #: from the change's own task file. Durable by construction — the marker is
+    #: written into the plan, not into runtime state, which is why it survives the
+    #: run and why nothing else on this screen could see it.
+    decision: List[str] = field(default_factory=list)
     #: Marked in flight, pid alive — but a pid is not an identity. Named, not counted.
     unverifiable: List[str] = field(default_factory=list)
     #: No orchestration state was found. NOT the same as "nothing is awaiting".
@@ -83,13 +95,14 @@ class Awaiting:
         finding, and a count that includes admissions cannot be trusted to
         drop to zero when the work is actually done.
         """
-        return len(self.manual) + len(self.stalled) + len(self.orphaned)
+        return len(self.manual) + len(self.stalled) + len(self.orphaned) + len(self.decision)
 
     def as_dict(self) -> Dict[str, object]:
         return {
             "manual": self.manual,
             "stalled": self.stalled,
             "orphaned": self.orphaned,
+            "decision": self.decision,
             "unverifiable": self.unverifiable,
             "source_missing": self.source_missing,
             "total": self.total,
@@ -200,6 +213,60 @@ def _classify(data: object) -> Awaiting:
     return out
 
 
+#: The engine's marker for a task awaiting a human answer.
+#:
+#: ⚠ SECOND COPY of `set_workcycle.connector._AWAITING_RE`, because `set_orch`
+#: may not import the engine (design D10) — the same seam `fleet/purpose.py`
+#: crosses. `tests/unit/test_fleet_awaiting.py` imports both and fails when they
+#: diverge; a comment asking for them to be kept in step would not.
+_AWAITING_MARKER = re.compile(r"<!--\s*awaiting:\s*(?P<question>.*?)\s*-->")
+
+#: Where a project keeps its changes. Overridable because a project may not use
+#: the default, and guessing would report `0 awaiting` for a project that has
+#: plenty — a zero from looking in the wrong place.
+CHANGES_REL = os.path.join("openspec", "changes")
+
+
+def open_decisions(project_root: str, *, changes_rel: str = CHANGES_REL) -> List[str]:
+    """`<change>#<task>` for every task marked as awaiting a human answer.
+
+    Read from the task files themselves rather than from any runtime record,
+    because that is where the engine puts it and because it is the only carrier
+    that outlives the run. A project with no changes directory returns an empty
+    list — which the caller must not confuse with "not measured"; that
+    distinction is carried by `source_missing` for the state file and stated
+    here for the same reason.
+    """
+    root = os.path.join(project_root, changes_rel)
+    if not os.path.isdir(root):
+        return []
+    found: List[str] = []
+    try:
+        names = sorted(os.listdir(root))
+    except OSError as exc:
+        logger.warning("fleet awaiting: cannot list changes: %s", exc)
+        return []
+    for change in names:
+        if change == "archive":
+            continue
+        path = os.path.join(root, change, "tasks.md")
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if not _AWAITING_MARKER.search(line):
+                continue
+            # The TASK NUMBER, so the key matches what the connector writes an
+            # answer under. A marker on a line with no number is still an open
+            # decision, so it is kept and named by its change — dropping it would
+            # be the false absence this whole module exists against.
+            m = re.match(r"^\s*-\s*\[[ xX~?]\]\s+(\d+(?:\.\d+)+)\b", line)
+            found.append(f"{change}#{m.group(1)}" if m else change)
+    return found
+
+
 def state_file_for(project_name: str, *, data_dir: Optional[str] = None) -> str:
     """Where a project's orchestration state lives.
 
@@ -214,5 +281,16 @@ def state_file_for(project_name: str, *, data_dir: Optional[str] = None) -> str:
     return os.path.join(root, "runtime", project_name, "orchestration", "state.json")
 
 
-def awaiting_for(project_name: str, *, data_dir: Optional[str] = None) -> Awaiting:
-    return read_awaiting(state_file_for(project_name, data_dir=data_dir))
+def awaiting_for(project_name: str, *, data_dir: Optional[str] = None,
+                 project_root: Optional[str] = None) -> Awaiting:
+    """What this project is waiting on a human for, from BOTH carriers.
+
+    The orchestration state file answers for runs; the change task files answer
+    for decisions, and the second is the one that survives the run. Reading only
+    the first — which is what this did until 2026-08-19 — renders the ordinary
+    shape of stopped work as nothing to do.
+    """
+    out = read_awaiting(state_file_for(project_name, data_dir=data_dir))
+    if project_root:
+        out.decision = open_decisions(project_root)
+    return out

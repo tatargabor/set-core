@@ -304,7 +304,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             # construction. Carried even when its total is zero, because the KEY
             # is what lets the surface tell "nothing awaits" from "this was
             # never measured"; `source_missing` inside it says which.
-            "awaiting": awaiting_for(project.name).as_dict(),
+            "awaiting": awaiting_for(project.name, project_root=project.root).as_dict(),
             # Task 3.9 at the project level. Read once per project rather than
             # once per agent — the records are per project, and a stale one
             # belongs on the screen even when nothing is running under it.
