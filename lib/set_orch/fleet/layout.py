@@ -52,7 +52,19 @@ class LayoutConflict(RuntimeError):
     """A write was based on a version that is no longer current."""
 
 
-EMPTY: Dict[str, Any] = {"version": 0, "groups": [], "parked": [], "ungrouped_order": []}
+#: The narrowest and widest a draggable divider may be stored at.
+#:
+#: The server does not know the viewport, so these are not a layout decision —
+#: they are the range outside which a stored value would make the surface
+#: unusable with no way back: a pane dragged to zero is indistinguishable from a
+#: pane that is gone, and one dragged past the window cannot be grabbed again.
+#: The client clamps to what actually fits; this clamps to what is recoverable.
+MIN_SPLIT = 140
+MAX_SPLIT = 1200
+
+EMPTY: Dict[str, Any] = {
+    "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
+}
 
 
 def _normalise_group(raw: Any, seen: set) -> Optional[Dict[str, Any]]:
@@ -76,6 +88,38 @@ def _normalise_group(raw: Any, seen: set) -> Optional[Dict[str, Any]]:
         "collapsed": bool(raw.get("collapsed")),
         "projects": projects,
     }
+
+
+def _normalise_splits(raw: Any) -> Dict[str, int]:
+    """Stored divider positions, in CSS pixels, keyed by which divider.
+
+    **An absent key means "never dragged", and that is NOT zero.** The client
+    then uses its own default width. Storing a zero for an untouched divider
+    would be the false-absence class with the expensive direction: a pane
+    collapsed to nothing looks exactly like a pane that was removed, and nobody
+    would think to drag an edge they cannot see.
+
+    So a value that is not a usable number is dropped rather than coerced —
+    dropping it restores the default, coercing it would invent a position the
+    user never chose.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, int] = {}
+    for key, value in raw.items():
+        name = str(key).strip()
+        if not name:
+            continue
+        try:
+            px = int(round(float(value)))
+        except (TypeError, ValueError):
+            logger.debug("fleet layout: divider %r has an unusable position %r; using the default", name, value)
+            continue
+        if px < MIN_SPLIT or px > MAX_SPLIT:
+            logger.debug("fleet layout: divider %r at %spx is outside [%s, %s]; clamping", name, px, MIN_SPLIT, MAX_SPLIT)
+            px = max(MIN_SPLIT, min(MAX_SPLIT, px))
+        out[name] = px
+    return out
 
 
 def normalise(raw: Any) -> Dict[str, Any]:
@@ -112,6 +156,11 @@ def normalise(raw: Any) -> Dict[str, Any]:
         "groups": groups,
         "parked": parked,
         "ungrouped_order": ungrouped_order,
+        # Normalised explicitly, because this function DROPS every key it does
+        # not name. A divider position added to the stored file but not handled
+        # here would survive a read and vanish on the next save — silently, and
+        # only for the user who had arranged something.
+        "splits": _normalise_splits(raw.get("splits")),
     }
 
 
@@ -131,6 +180,57 @@ def load(path: Optional[str] = None) -> Dict[str, Any]:
     except (OSError, ValueError) as exc:
         logger.warning("fleet layout: %s is unreadable (%s); treating as unarranged", path, exc)
         return dict(EMPTY)
+
+
+def _write_atomically(payload: Dict[str, Any], path: str) -> None:
+    """Temp file then rename — never opened for writing in the expression that reads it.
+
+    One helper rather than one per writer: two copies of an atomic write drift,
+    and the half that drifts is always the error handling nobody exercises.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=os.path.dirname(path), prefix=".fleet-layout.", delete=False
+    )
+    try:
+        with handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(handle.name, path)
+    except BaseException:
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
+        raise
+
+
+def save_splits(splits: Any, *, path: Optional[str] = None) -> Dict[str, int]:
+    """Store where the draggable dividers sit, WITHOUT touching the arrangement.
+
+    **Two deliberate differences from `save`, and both are load-bearing.**
+
+    *It does not bump `version`.* That version is the optimistic lock protecting a
+    hand-made arrangement, and a divider is not part of one. Bumping it would make
+    every drag of an edge invalidate the base version an open project column is
+    holding, so the next group edit in that tab would 409 — a conflict caused
+    entirely by the conflict machinery.
+
+    *It is last-write-wins, on purpose.* Losing a race here costs one number the
+    user re-drags in a second. Losing one on an arrangement costs work they did
+    once and rely on. The same reasoning the module header gives for storing the
+    arrangement on the server rather than in `localStorage` decides this the other
+    way, and that is the point of separating them.
+    """
+    path = path or default_layout_path()
+    current = load(path)
+    payload = dict(current)
+    payload["splits"] = _normalise_splits(splits)
+    _write_atomically(payload, path)
+    logger.info("fleet layout: %d divider position(s) stored at version %s (unchanged)",
+                len(payload["splits"]), payload["version"])
+    return payload["splits"]
 
 
 def save(new: Dict[str, Any], *, path: Optional[str] = None, base_version: Optional[int] = None) -> Dict[str, Any]:
@@ -154,23 +254,15 @@ def save(new: Dict[str, Any], *, path: Optional[str] = None, base_version: Optio
 
     payload = normalise(new)
     payload["version"] = int(current["version"]) + 1
+    # A caller that says nothing about dividers is not asking for them to be
+    # cleared. `normalise` returns `{}` for both "no dividers" and "not
+    # mentioned", so without this the project column — which posts groups and
+    # nothing else — would wipe the user's dragged edges on every drag of a
+    # project, silently and only for someone who had arranged both.
+    if new.get("splits") is None:
+        payload["splits"] = dict(current.get("splits") or {})
 
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=os.path.dirname(path), prefix=".fleet-layout.", delete=False
-    )
-    try:
-        with handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(handle.name, path)
-    except BaseException:
-        try:
-            os.unlink(handle.name)
-        except OSError:
-            pass
-        raise
+    _write_atomically(payload, path)
     logger.info(
         "fleet layout: saved version %s (%d group(s), %d parked)",
         payload["version"], len(payload["groups"]), len(payload["parked"]),
@@ -234,4 +326,7 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
         # Named rather than counted from the declaration: this list IS the data,
         # derived by comparing the arrangement against what discovery found.
         "missing": missing,
+        # Passed through unjoined: a divider belongs to the screen, not to a
+        # project, so there is nothing for it to be missing FROM.
+        "splits": dict(layout.get("splits") or {}),
     }

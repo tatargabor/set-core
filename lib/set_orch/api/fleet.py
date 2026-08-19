@@ -669,6 +669,13 @@ class LayoutBody(BaseModel):
     #: The unassigned block's order. A preference, not a membership: a name here
     #: that later joins a group is dropped rather than tracked in two places.
     ungrouped_order: List[str] = []
+    #: Where the draggable dividers sit, or `None` to leave them as they are.
+    #:
+    #: `None` rather than `{}` because the project column posts groups and says
+    #: nothing about dividers, and "I am not mentioning these" must not mean
+    #: "delete these". Dividers are normally written through their own route,
+    #: which does not bump the version this body's `base_version` guards.
+    splits: Optional[Dict[str, Any]] = None
     base_version: Optional[int] = None
 
 
@@ -703,7 +710,7 @@ def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
     try:
         saved = fleet_layout.save(
             {"groups": body.groups, "parked": body.parked,
-             "ungrouped_order": body.ungrouped_order},
+             "ungrouped_order": body.ungrouped_order, "splits": body.splits},
             base_version=body.base_version,
         )
     except LayoutConflict as exc:
@@ -1008,6 +1015,34 @@ def fleet_remove_waiter(pid: int) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # The terminal, both directions (tasks 5.3 and 6.4)
 # --------------------------------------------------------------------------- #
+
+class SplitsBody(BaseModel):
+    """Where the draggable dividers sit, in CSS pixels, keyed by divider."""
+
+    splits: Dict[str, Any] = {}
+
+
+@router.put("/api/fleet/layout/splits")
+def fleet_put_splits(body: SplitsBody) -> Dict[str, Any]:
+    """Store the divider positions alone, leaving the arrangement untouched.
+
+    A separate route rather than a field on the whole-document PUT, for a reason
+    that is about failure rather than tidiness: that PUT is guarded by
+    `base_version`, and a drag of an edge would have to either bump the version —
+    making the next group edit in the same tab conflict with the user's own
+    dragging — or skip the guard, which would put an unguarded write on the route
+    that protects the hand-made arrangement.
+
+    Last-write-wins here is the deliberate choice: what is lost in a race is one
+    number, re-dragged in a second.
+    """
+    try:
+        stored = fleet_layout.save_splits(body.splits)
+    except OSError as exc:
+        logger.error("fleet api: cannot write the divider positions: %s", exc)
+        raise HTTPException(status_code=500, detail=f"cannot write the divider positions: {exc}") from exc
+    return {"splits": stored}
+
 
 @router.websocket("/ws/fleet/agents/{label}/terminal")
 async def fleet_terminal(websocket: WebSocket, label: str) -> None:

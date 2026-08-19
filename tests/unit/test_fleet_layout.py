@@ -85,7 +85,9 @@ def test_a_missing_file_is_an_unarranged_screen_not_an_error(tmp_path):
     """A missing arrangement and an empty one mean the same thing, and both must
     produce a screen.
     """
-    assert load(_path(tmp_path)) == {"version": 0, "groups": [], "parked": [], "ungrouped_order": []}
+    assert load(_path(tmp_path)) == {
+        "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
+    }
 
 
 def test_an_unreadable_file_fails_toward_unarranged(tmp_path):
@@ -189,3 +191,75 @@ def test_an_ordered_name_that_joins_a_group_stops_being_unassigned():
     joined = apply_to(arranged, ["alpha", "zeta"])
     assert joined["ungrouped"] == ["alpha"]
     assert joined["groups"][0]["projects"] == ["zeta"]
+
+
+# --------------------------------------------------------------------------- #
+# draggable dividers — a position is not the arrangement, and an absent one is
+# not a zero
+# --------------------------------------------------------------------------- #
+
+def test_a_divider_position_survives_a_round_trip(tmp_path):
+    p = _path(tmp_path)
+    layout_mod.save_splits({"projects": 320}, path=p)
+    assert load(p)["splits"] == {"projects": 320}
+
+
+def test_a_divider_nobody_dragged_is_absent_rather_than_zero(tmp_path):
+    """The false-absence class, and its expensive direction.
+
+    A pane stored at 0 renders as no pane at all, and nobody thinks to drag an
+    edge they cannot see. So an unusable value is DROPPED — which restores the
+    client's default — rather than coerced into a position the user never chose.
+    """
+    p = _path(tmp_path)
+    layout_mod.save_splits({"projects": None, "dock": "wide", "empty": ""}, path=p)
+    assert load(p)["splits"] == {}
+
+
+def test_a_position_outside_the_recoverable_range_is_clamped_not_stored(tmp_path):
+    """Zero and ten-thousand are both unrecoverable: one hides the pane, the
+    other pushes its edge past the window. The server clamps to what can be
+    grabbed again; the client clamps to what actually fits."""
+    p = _path(tmp_path)
+    layout_mod.save_splits({"a": 0, "b": 99999}, path=p)
+    assert load(p)["splits"] == {"a": layout_mod.MIN_SPLIT, "b": layout_mod.MAX_SPLIT}
+
+
+def test_storing_a_divider_does_not_bump_the_arrangements_version(tmp_path):
+    """Otherwise dragging an edge invalidates the base version the project
+    column is holding, and the user's next group edit 409s against their own
+    dragging — a conflict manufactured entirely by the conflict machinery."""
+    p = _path(tmp_path)
+    saved = save({"groups": [{"name": "core", "projects": ["a"]}]}, path=p)
+    before = saved["version"]
+    layout_mod.save_splits({"projects": 300}, path=p)
+    assert load(p)["version"] == before
+    # And the arrangement itself is still there, not replaced by a splits-only doc.
+    assert [g["name"] for g in load(p)["groups"]] == ["core"]
+
+
+def test_saving_the_arrangement_does_not_wipe_dividers_it_never_mentioned(tmp_path):
+    """The project column posts groups and says nothing about dividers. Saying
+    nothing must not mean "delete these" — `normalise` returns `{}` for both, so
+    without the preserve step the user's dragged edges vanish on every drag of a
+    project."""
+    p = _path(tmp_path)
+    layout_mod.save_splits({"projects": 300}, path=p)
+    save({"groups": [{"name": "core", "projects": ["a"]}]}, path=p)
+    assert load(p)["splits"] == {"projects": 300}
+
+
+def test_a_caller_that_explicitly_sends_no_dividers_clears_them(tmp_path):
+    """The other half of the rule above: omission preserves, an explicit empty
+    map clears. If both meant "preserve" there would be no way to reset."""
+    p = _path(tmp_path)
+    layout_mod.save_splits({"projects": 300}, path=p)
+    save({"groups": [], "splits": {}}, path=p)
+    assert load(p)["splits"] == {}
+
+
+def test_apply_to_passes_dividers_through_unjoined():
+    """A divider belongs to the screen, not to a project, so there is nothing
+    for it to be missing FROM — it must not travel through the inventory join."""
+    joined = apply_to(normalise({"splits": {"projects": 300}}), ["a"])
+    assert joined["splits"] == {"projects": 300}

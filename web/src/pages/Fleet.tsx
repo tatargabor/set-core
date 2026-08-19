@@ -34,6 +34,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
  */
 
 import FleetProjectColumn from '../components/FleetProjectColumn'
+import FleetSplitter from '../components/FleetSplitter'
+import {
+  MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
+  type Splits,
+} from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
 import { Columns2, Columns3, Columns4, Square } from 'lucide-react'
 
@@ -1600,6 +1605,63 @@ export default function Fleet() {
     { project: null, view: {} },
   )
 
+  // ------------------------------------------------------------------ //
+  // The project list's width — a divider position, stored on the server //
+  // ------------------------------------------------------------------ //
+  //
+  // The default is the width this column had when it was fixed (`w-72` =
+  // 18rem = 288px), so a screen with nothing stored looks exactly as it did.
+  //
+  // The stored value arrives asynchronously and is only applied when it EXISTS.
+  // A read that fails leaves the default in place rather than resetting the pane
+  // to something — a preference that could not be read is not a preference to
+  // discard, and the fail direction matters: this pane can be dragged shut.
+  const DEFAULT_PROJECT_WIDTH = 288
+  const [projectWidth, setProjectWidth] = useState(DEFAULT_PROJECT_WIDTH)
+  const [splits, setSplits] = useState<Splits>({})
+  const shellRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void loadSplits().then(stored => {
+      if (cancelled) return
+      setSplits(stored)
+      setProjectWidth(positionOf(stored, SPLIT_PROJECTS, DEFAULT_PROJECT_WIDTH))
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // How far the divider may travel: never so far that the panel beside it has
+  // no room left. Measured against the shell rather than the window, because
+  // the shell is what the two panes actually share.
+  const [shellWidth, setShellWidth] = useState(0)
+  useEffect(() => {
+    const el = shellRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) setShellWidth(entry.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // 360px is the narrowest the agent panel stays useful at; below that the
+  // tiles stop being tiles. With no measurement yet, the cap is the static one —
+  // an unmeasured shell must not silently pin the divider to its minimum.
+  const maxProjectWidth = shellWidth > 0 ? Math.max(MIN_PANE, Math.min(MAX_PANE, shellWidth - 360)) : MAX_PANE
+
+  // Written on release, not per pixel. The local value is what the user is
+  // looking at, so it stays whatever they dragged even if the write fails —
+  // snapping the pane back to the stored value would undo a deliberate act to
+  // report a failure that has nothing to do with it.
+  const commitProjectWidth = useCallback((px: number) => {
+    const value = clampPane(px, MAX_PANE)
+    setProjectWidth(value)
+    const next = { ...splits, [SPLIT_PROJECTS]: value }
+    setSplits(next)
+    void saveSplits(next)
+  }, [splits])
+
   const load = useCallback(() => {
     fetch('/api/fleet/agents')
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
@@ -1835,7 +1897,7 @@ export default function Fleet() {
         )}
       </div>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0" ref={shellRef}>
         {/* Task 7.1 / D-2 — the hand-made arrangement. It renders even when
             nothing is running: a project's position is a statement about the
             project, not about who happens to be in it, so the list must not
@@ -1844,6 +1906,20 @@ export default function Fleet() {
           data={data}
           selected={active?.name ?? null}
           onSelect={name => setSelected(name)}
+          width={projectWidth}
+        />
+
+        {/* The divider between the list and the panel. Its size lives in the
+            same server-side document as the arrangement, because it is the same
+            kind of thing: a position set once by hand and relied on. */}
+        <FleetSplitter
+          axis="x"
+          label="project list width"
+          size={projectWidth}
+          min={MIN_PANE}
+          max={maxProjectWidth}
+          onDrag={setProjectWidth}
+          onCommit={commitProjectWidth}
         />
 
         {/* A COLUMN with a definite height, not a scrolling box — raised

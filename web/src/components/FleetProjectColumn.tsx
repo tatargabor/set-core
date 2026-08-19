@@ -761,10 +761,20 @@ export default function FleetProjectColumn({
   data,
   selected,
   onSelect,
+  width,
 }: {
   data: FleetResponse
   selected: string | null
   onSelect: (name: string) => void
+  /**
+   * The column's width in px, owned by the shell that renders the divider.
+   *
+   * Passed in rather than held here, so that a column which fails to load its
+   * arrangement still has the width the user set, and so that the divider and
+   * the pane cannot disagree about it — two copies of one number is how a drag
+   * ends up moving the edge and not the pane.
+   */
+  width?: number
 }) {
   const [arr, setArr] = useState<FleetArrangement | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -964,7 +974,14 @@ export default function FleetProjectColumn({
   const parkedFound = useMemo(() => new Set(view.parked), [view.parked])
 
   return (
-    <div className="w-72 shrink-0 border-r border-surface-line flex flex-col min-h-0">
+    <div
+      className="shrink-0 border-r border-surface-line flex flex-col min-h-0"
+      // `w-72` was the fixed width before the divider existed; it survives as
+      // the fallback so a shell that renders this column without one still gets
+      // the size everybody is used to, rather than a pane collapsing to its text.
+      style={{ width: width ? `${width}px` : '18rem' }}
+      data-fleet-project-column-width={width ?? ''}
+    >
       {/* ---------------------------------------------------------------- */}
       {/* The attention header. A flex sibling of the scroll area rather than
           `position: sticky`, so it cannot be scrolled past — sticky inside a
