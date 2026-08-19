@@ -44,6 +44,17 @@ export type TerminalOffer =
   | { kind: 'available'; label: string }
   /** No terminal, and none can exist. A statement, and it is measured. */
   | { kind: 'foreign'; reason: string }
+  /**
+   * The framework STARTED this agent and no longer holds its terminal — task 5.5.
+   *
+   * A separate kind rather than a shade of `foreign`, because the two lead to
+   * different actions and only one of them is recoverable. A pty master cannot
+   * be reacquired from outside, so the terminal really is gone; but the scope is
+   * still there, and `recover` can stop it and resume the session into a fresh
+   * pty. Calling this `foreign` would say the framework did not start it — which
+   * is false, and it would hide the one control that helps.
+   */
+  | { kind: 'orphaned'; reason: string; scope: string }
   /** We could not find out. NOT a statement that there is none. */
   | { kind: 'unknown'; reason: string }
 
@@ -55,6 +66,9 @@ export const OWNER_DOWN_REASON =
 
 export const OWNER_SILENT_REASON =
   'discovery did not say whose process this is — which is not a statement that it has no terminal'
+
+export const ORPHANED_REASON =
+  'the framework started it, but the terminal died with the owner that held it — a pty cannot be reattached, only replaced'
 
 const NO_LABEL_REASON =
   'reported as the framework\'s own, but with no label attached — a contradiction, not an absence'
@@ -68,7 +82,7 @@ const NO_LABEL_REASON =
  * owner is up" is not evidence about a process the owner did not list.
  */
 export function terminalOffer(
-  agent: Pick<FleetAgent, 'population' | 'terminal_label'>,
+  agent: Pick<FleetAgent, 'population' | 'terminal_label'> & { scope?: string | null },
   ownerReachable?: boolean,
 ): TerminalOffer {
   if (agent.population === 'started-here') {
@@ -76,6 +90,15 @@ export function terminalOffer(
     // contradiction. Rendering it as "no terminal" would file a bug as a fact.
     if (typeof agent.terminal_label === 'string' && agent.terminal_label !== '') {
       return { kind: 'available', label: agent.terminal_label }
+    }
+    return { kind: 'unknown', reason: NO_LABEL_REASON }
+  }
+  if (agent.population === 'orphaned') {
+    // The scope is what makes recovery possible, so an `orphaned` without one
+    // is a producer contradiction and must not render as a recoverable agent:
+    // an offer whose action cannot be performed is worse than no offer.
+    if (typeof agent.scope === 'string' && agent.scope !== '') {
+      return { kind: 'orphaned', reason: ORPHANED_REASON, scope: agent.scope }
     }
     return { kind: 'unknown', reason: NO_LABEL_REASON }
   }

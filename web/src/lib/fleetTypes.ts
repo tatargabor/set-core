@@ -9,10 +9,14 @@
 /**
  * Which population an agent belongs to — a CARRIED fact, never inferred here.
  *
- * Three values, and the third is not a shade of the second:
+ * Four values, and neither the third nor the fourth is a shade of the second:
  *
  *  - `started-here` — the framework started it and still holds the pty, so a
  *    terminal exists and `terminal_label` addresses it;
+ *  - `orphaned` — the framework STARTED it and no longer holds the terminal
+ *    (task 5.5). The scope survived; the pty did not, and a pty master cannot be
+ *    reacquired from outside. Distinct from `foreign` because it is recoverable
+ *    and because calling it foreign would say the framework did not start it;
  *  - `foreign` — nobody here holds it; there is no terminal and there cannot be;
  *  - `unknown` — **the owner could not be asked.** Not "no terminal": we do not
  *    know. Rendering it as `foreign` would state "no terminal" about agents that
@@ -20,7 +24,7 @@
  *    which is the false-absence class this whole screen exists against. The
  *    envelope's `owner_reachable` carries the reason once, not per row.
  */
-export type Population = 'started-here' | 'foreign' | 'unknown'
+export type Population = 'started-here' | 'orphaned' | 'foreign' | 'unknown'
 
 import type { AttentionAwaiting } from './fleetAttention'
 
@@ -55,6 +59,15 @@ export interface FleetAgent {
   declaration_ignored?: string | null
   /** See `Population`. Absent on an older server, which is `unknown`, not `foreign`. */
   population?: Population | string | null
+  /** The framework scope, present only for `orphaned` — what `recover` stops. */
+  scope?: string | null
+  /**
+   * What the framework may CLAIM this agent survives — today only
+   * `web-service-restart`. Measured: a pty-attached agent dies with its pty
+   * holder, so it does NOT survive the owner's death, and a surface promising
+   * more than this word promises something measured not to happen.
+   */
+  survives?: string | null
   /** The terminal's address. Non-null only for `started-here`. */
   terminal_label?: string | null
   /**

@@ -104,3 +104,27 @@ describe('control frames', () => {
     expect(parseControl('123')).toBeNull()
   })
 })
+
+describe('task 5.5 — an agent the framework started but no longer holds', () => {
+  it('is orphaned, not foreign — and carries the scope recovery needs', () => {
+    const offer = terminalOffer(
+      { population: 'orphaned', terminal_label: null, scope: 'set-agent-mine.scope' }, true)
+    expect(offer.kind).toBe('orphaned')
+    expect(offer.kind === 'orphaned' && offer.scope).toBe('set-agent-mine.scope')
+    // Calling this `foreign` would state that the framework did not start it —
+    // which is false, and it hides the one control that helps.
+    expect(offer.kind).not.toBe('foreign')
+  })
+
+  it('refuses to offer recovery it cannot perform', () => {
+    // `orphaned` with no scope is a producer contradiction. An offer whose
+    // action cannot be performed is worse than no offer.
+    const offer = terminalOffer({ population: 'orphaned', terminal_label: null, scope: null }, true)
+    expect(offer.kind).toBe('unknown')
+  })
+
+  it('still tells a genuinely foreign session apart', () => {
+    const offer = terminalOffer({ population: 'foreign', terminal_label: null, scope: null }, true)
+    expect(offer.kind).toBe('foreign')
+  })
+})

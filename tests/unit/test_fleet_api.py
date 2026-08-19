@@ -795,3 +795,47 @@ def test_the_label_tells_a_unit_run_from_a_bare_session(monkeypatch, tmp_path):
     fleet_api.fleet_start_unit(StartUnitBody(change="c", cwd=str(tmp_path), seat="p#1"))
     assert seen["label"].startswith("unit-")
     assert "#" not in seen["label"] and "/" not in seen["label"]
+
+
+# --------------------------------------------------------------------------- #
+# 5.5 — the terminal does not survive the owner, and `foreign` would be a lie
+# --------------------------------------------------------------------------- #
+
+
+def test_an_agent_the_framework_started_is_orphaned_not_foreign(monkeypatch):
+    """5.5 — after the owner restarts, its scope is still there and the pty is not.
+
+    Reporting this `foreign` says the framework did not start it. It did; it lost
+    the handle. And `foreign` hides the one control that helps, because recovery
+    is possible exactly here and impossible for a genuinely foreign session.
+    """
+    monkeypatch.setattr(fleet_api.fleet_scopes, "scope_of",
+                        lambda pid: "set-agent-mine.scope")
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {})
+    assert payload["population"] == "orphaned"
+    assert payload["scope"] == "set-agent-mine.scope"
+    assert payload["terminal_label"] is None, "an orphan has no terminal to attach to"
+
+
+def test_a_session_in_no_framework_scope_is_still_foreign(monkeypatch):
+    monkeypatch.setattr(fleet_api.fleet_scopes, "scope_of", lambda pid: None)
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {})
+    assert payload["population"] == "foreign" and payload["scope"] is None
+
+
+def test_an_unreachable_owner_is_still_unknown_and_the_cgroup_is_not_consulted(monkeypatch):
+    """`unknown` must not become `orphaned`: the owner being unreachable is not
+    evidence about whether it holds this pty, and a scope says nothing about that."""
+    asked = []
+    monkeypatch.setattr(fleet_api.fleet_scopes, "scope_of",
+                        lambda pid: asked.append(pid) or "set-agent-x.scope")
+    payload = fleet_api._agent_payload(_Agent(7), _State(), None)
+    assert payload["population"] == "unknown" and asked == []
+
+
+def test_the_survival_claim_is_narrower_than_the_scope_suggests():
+    """Measured both ways: pty-attached + owner killed → scope inactive, process
+    gone. So the framework may claim a web-service restart and nothing more."""
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {7: {"label": "mine"}})
+    assert payload["survives"] == "web-service-restart"
+    assert "owner" not in payload["survives"]

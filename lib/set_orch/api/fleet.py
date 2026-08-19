@@ -41,6 +41,7 @@ from pydantic import BaseModel
 from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.awaiting import awaiting_for
 from ..fleet.discovery import discover_agent, live_session_ids, parent_seat
+from ..fleet import scopes as fleet_scopes
 from ..fleet import instruct as fleet_instruct
 from ..fleet import purpose as fleet_purpose
 from ..fleet.conversation import read_conversation
@@ -84,11 +85,27 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
     # Collapsing `unknown` into `foreign` would let the screen say "no terminal"
     # about an agent that has one, whenever the owner is merely restarting.
     if owned is None:
-        population, terminal_label = "unknown", None
+        population, terminal_label, scope = "unknown", None, None
     elif agent.pid in owned:
         population, terminal_label = "started-here", owned[agent.pid].get("label")
+        scope = None
     else:
-        population, terminal_label = "foreign", None
+        # FOUR values, and the fourth is task 5.5. Measured: a pty-attached
+        # agent dies with its pty holder, so an agent this framework started
+        # cannot outlive its owner — but the OWNER can be restarted while a
+        # scope it started is still there, and after that the agent is no longer
+        # in `owned`. Reporting it `foreign` then is a false value: it says the
+        # framework did not start it, when the framework did and merely lost the
+        # handle. A pty master cannot be reacquired from outside, so the
+        # terminal is genuinely gone — but recovery (5.11) is possible, and this
+        # is exactly where it is offered.
+        #
+        # Asked of the PROCESS's own cgroup rather than of anything we wrote
+        # down: a record of what we started is a record of our intent, and after
+        # a crash the two differ precisely when it matters.
+        scope = fleet_scopes.scope_of(agent.pid)
+        population = "orphaned" if scope else "foreign"
+        terminal_label = None
 
     requested_by = (owned or {}).get(agent.pid, {}).get("requested_by")
     parent = (
@@ -142,6 +159,19 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # for `started-here`, and only under the label named here.
         "population": population,
         "terminal_label": terminal_label,
+        # The scope this agent runs in, when the framework started it and no
+        # longer holds it. Present ONLY for `orphaned`: it is what `recover`
+        # must stop before resuming, and that ordering is load-bearing —
+        # resuming first reproduces the design §6.1 silent fork.
+        "scope": scope,
+        # ⚠ What the framework may CLAIM about survival, carried in the
+        # payload rather than left to the surface to remember. The transient
+        # scope protects against a **cgroup kill** — a restart of the web
+        # service — and NOT against losing a tty: measured both ways, and
+        # pty-attached with the owner killed leaves the scope inactive and the
+        # process gone. A surface that promises more than this word is
+        # promising something that was measured not to happen.
+        "survives": "web-service-restart",
         # Who started this agent, and WHICH KIND of answer it is. The recorded
         # one wins when present because it is the only one that can answer for a
         # framework-started agent at all — measured: those have the owner, a
