@@ -516,8 +516,10 @@ socket's own name, with no heuristic. The framework bus offers nothing comparabl
 `member@hostname`.
 
 **The delivery report is real, not a constant.** An unresolvable recipient returns
-`{"success": false, "message": "No agent named '…' is reachable."}`. The framework bus returns a
-fixed `{"status": "queued"}` for every send, including into projects where nothing is listening.
+`{"success": false, "message": "No agent named '…' is reachable."}`. ⚠ **The second half of this
+paragraph was WRONG and is struck — see §6.3a below.** It said: *"The framework bus returns a fixed
+`{"status": "queued"}` for every send, including into projects where nothing is listening."* That
+constant belongs to a different mechanism, and the sentence steered this section's conclusion.
 
 **⚠ But the sender cannot tell delivered from held, and this corrects §3.** Two sends were made
 from this session (permission class `bypass`): one to a peer in the same class, one to a peer in
@@ -604,6 +606,56 @@ its roster needs the live-process join, and a directory listing is not a roster.
 
 One session owns **four** waiters at once, which no requirement anticipated: a per-session waiter
 count is not one, and a "missing waiter" check must count, not test presence.
+
+### 6.3a The measurement §6.3 attributed to the wrong bus — CORRECTED 2026-08-19, before group 4 was built
+
+§6.3 above said the framework bus *"returns a fixed `{"status": "queued"}` for every send"*, and
+built its conclusion — which channel is the contract — partly on that. **The constant is real and
+the attribution is not.** It comes from `mcp-server/set_mcp_server.py:530`, the **git-based
+`.set-control` path**, which `CLAUDE.md` records as living in **0 of 39** registered projects. It
+is not `set-agent-comm`, which is what the coverage table on the same page means by *framework
+bus*. One mechanism's measurement was written down about another.
+
+**What `sac send` actually returns — measured 2026-08-19 against an isolated store**
+(`SET_AGENT_COMM_DIR` pointed at a scratch directory, two seats joined to one room, so nobody
+else's channel was touched):
+
+| case | answer |
+|---|---|
+| addressed to a live seat | `wakes: ["proj-b#bbbbbbbb"]` — the seat, by name |
+| broadcast `FACT` | `wakes: []` **plus** a `notice` saying it wakes nobody and what to use instead |
+| addressee nobody in the room answers to | **refused**, exit 1, and the error lists who *is* there |
+
+So it is per-send, structured, identity-bearing, and it refuses rather than pretending. Every
+property §6.3 credits only to the runtime channel, the durable bus has as well. The source is
+`store.send` in `set-agent-comm`, which computes `wakes` per live seat and records the decision.
+
+**Why this is worth a section rather than a footnote — the conclusion it was holding up.** Read as
+written, §6.3 argues the runtime cross-session channel is the honest one and the framework bus a
+rubber stamp, which points `agent-fleet-instruct` straight at the socket. But
+`a-direct-channel-may-ring-the-bell-but-never-carry-the-message` forbids exactly that: the socket
+is fire-and-forget, leaving no record and no read cursor, so a surface whose rule is that nothing
+may be hidden cannot deliver through it. The correction and the requirement agree; the uncorrected
+paragraph did not.
+
+⚠ **Three things §6.3 measured are NOT affected and still stand**, because the correction is about
+one sentence, not about the section: the coverage asymmetry (21 of 21 against 11 of 21 — the
+runtime sees every session, `sac` only enrolled ones), the *held → expired* outcome pair, which
+exists on the runtime channel and on no other source, and the orphaned-waiter counts. What changes
+is which channel carries the instruction, not what was seen.
+
+**And `wakes` is a rule decision, not a delivery.** `store.liveSeats` admits a seat whose state is
+`true` *or* `null` — a registered writer pid is alive, or the seat was merely seen recently — so a
+named seat is *not known to be gone*, which is weaker than running. Whether a woken seat actually
+starts a turn depends on an armed `sac wait` for that session. The two facts are therefore composed
+rather than conflated, which is what makes the four outcomes distinguishable at all:
+
+| `wakes` names the seat | a live waiter for that session | agent state | reported outcome |
+|---|---|---|---|
+| yes | yes | any | **arrives now** |
+| yes | no | working | **at the end of the current turn** (the stop-hook) |
+| yes | no | not working | **sits unread** |
+| no | — | — | **wakes nobody** — carried verbatim, never upgraded |
 
 ### 6.4 What a project has wired in — MEASURED 2026-08-18, and the record task 2.9 prefers barely exists
 

@@ -69,6 +69,13 @@ set-work-cycle = "set_workcycle.cli:main"
 # invokes exactly this command.
 set-agent-owner = "set_orch.fleet.ownerd:main"
 
+# The deferred-work connector, registered rather than imported. `set_orch` may not
+# import `set_workcycle` (engine design D10) — so the surface finds the answer path
+# through this group, and finds nothing on a machine with no engine installed, which
+# is the stated behaviour rather than a failure.
+[project.entry-points."set_orch.deferred_work"]
+connector = "set_workcycle.connector"
+
 [project.entry-points."set_tools.plugins"]
 # Plugins register themselves here
 # Example:
