@@ -74,9 +74,27 @@ def _owned_by_pid() -> Optional[Dict[int, Dict[str, Any]]]:
         return None
 
 
+def _descendants_index(agents, owned) -> Dict[str, List[int]]:
+    """seat → the pids started BY that seat, from what was recorded at start time.
+
+    Built from `requested_by`, which the owner records in the act of starting —
+    the only moment the relation exists. The process tree cannot answer it:
+    measured, **0 of 23** live agents had an agent ancestor, and an agent this
+    surface starts has the OWNER (a plain python process) as its parent with
+    systemd above it, so no walk will ever find which agent asked for it.
+    """
+    index: Dict[str, List[int]] = {}
+    for a in agents:
+        who = (owned or {}).get(a.pid, {}).get("requested_by")
+        if who:
+            index.setdefault(str(who), []).append(a.pid)
+    return index
+
+
 def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
                    seats: Optional[Dict[str, Any]] = None,
-                   purposes: Optional[List[Any]] = None) -> Dict[str, Any]:
+                   purposes: Optional[List[Any]] = None,
+                   descendants: Optional[Dict[str, List[int]]] = None) -> Dict[str, Any]:
     # Three values, not two, and the third is why this is not a boolean. A
     # terminal exists only for a process the framework started and still holds
     # (task 5.2), so:
@@ -206,6 +224,15 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # may be a consumer's — measured on the live roster, one named a partner
         # company and an unpaid invoice, and `focus_files` are that project's own
         # paths. Read at request time, shown, and never written down.
+        # Task 7.18 — the same relation as `parent`, downwards. A COUNT and the
+        # pids, so the surface can offer a way in rather than only a number.
+        #
+        # ⚠ It counts only what it can see, and says so rather than letting the
+        # number imply completeness. An agent started with `claude -p` that has
+        # already exited leaves no process and no session record, so it is
+        # absent from this count — the same false-absence class as 7.14, and the
+        # reason `live_only` travels with the figure instead of a bare integer.
+        "descendants": _descendants_payload(agent, seats, descendants),
         "declared": _declared_payload(agent.session_id, seats),
         # Task 3.9 — what this agent is working TOWARDS, read from the engine's
         # own record and joined on the pid the engine wrote. `None` where there
@@ -228,6 +255,30 @@ def _framework_caps() -> List[Any]:
     if not _FRAMEWORK_CAPS:
         _FRAMEWORK_CAPS.extend(fleet_caps.framework_capabilities())
     return _FRAMEWORK_CAPS
+
+
+def _descendants_payload(agent, seats, index) -> Dict[str, Any]:
+    """Who runs under this agent, and what this answer cannot see.
+
+    `known` is false when the roster could not be read: without a seat there is
+    no key to look this agent up by, and a `0` in that state would say *nothing
+    runs under it* about an agent that may have started five.
+    """
+    seat = seats.get(str(agent.session_id)) if (seats and agent.session_id) else None
+    if seat is None or index is None:
+        return {"known": False, "live": 0, "pids": [], "live_only": True,
+                "reason": "this agent has no seat, so nothing can be looked up by it"}
+    pids = sorted(index.get(seat.seat, []))
+    return {
+        "known": True,
+        "live": len(pids),
+        "pids": pids,
+        # Stated with the number, always — including when it is zero, which is
+        # exactly when a reader is most likely to take it for completeness.
+        "live_only": True,
+        "reason": "counted from RECORDED starts that are still running; a child "
+                  "that has already exited is not here",
+    }
 
 
 def _declared_payload(session_id, seats) -> Dict[str, Any]:
@@ -286,6 +337,10 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     # a bounded false absence in the direction that offers no control rather
     # than one that fails. A SEND never uses this cache.
     seats = fleet_instruct.seats_cached()
+    # Built ONCE for the whole fleet: a descendant may sit in another project,
+    # so a per-project index would report a lineage that stops at the project
+    # boundary — which is not where lineage stops.
+    descendants = _descendants_index(agents, owned)
 
     grouped: List[Dict[str, Any]] = []
     for project in projects:
@@ -298,7 +353,8 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "root": project.root,
             "sources": project.sources,
             "archived": project.archived,
-            "agents": [_agent_payload(a, states[a.pid], owned, seats, purposes) for a in members],
+            "agents": [_agent_payload(a, states[a.pid], owned, seats, purposes, descendants)
+                       for a in members],
             # Task 7.14. What is waiting for a HUMAN here, independent of who is
             # running — the case an agent-centric screen gets wrong by
             # construction. Carried even when its total is zero, because the KEY

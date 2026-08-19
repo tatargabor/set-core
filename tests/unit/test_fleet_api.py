@@ -839,3 +839,52 @@ def test_the_survival_claim_is_narrower_than_the_scope_suggests():
     payload = fleet_api._agent_payload(_Agent(7), _State(), {7: {"label": "mine"}})
     assert payload["survives"] == "web-service-restart"
     assert "owner" not in payload["survives"]
+
+
+# --------------------------------------------------------------------------- #
+# 7.18 — descendants, and what the count cannot see
+# --------------------------------------------------------------------------- #
+
+
+def test_descendants_come_from_what_was_recorded_at_start_time():
+    """The process tree cannot answer this: measured, 0 of 23 live agents had an
+    agent ancestor, and an agent this surface starts has the OWNER as its parent."""
+    a, b = _Agent(7), _Agent(9)
+    index = fleet_api._descendants_index([a, b], {9: {"requested_by": "proj#aaaa"}})
+    assert index == {"proj#aaaa": [9]}
+
+
+def test_the_count_says_it_only_sees_live_children_even_when_it_is_zero():
+    """Zero is exactly when a reader takes a number for completeness. An agent
+    started with `claude -p` that has exited leaves no process to count."""
+    agent = _Agent(7); agent.session_id = "s-1"
+    payload = fleet_api._agent_payload(agent, _State(), {}, {"s-1": _seat_with()}, [], {})
+    d = payload["descendants"]
+    assert d["known"] is True and d["live"] == 0
+    assert d["live_only"] is True and "already exited" in d["reason"]
+
+
+def test_a_descendant_is_named_so_the_surface_can_offer_a_way_in():
+    agent = _Agent(7); agent.session_id = "s-1"
+    payload = fleet_api._agent_payload(
+        agent, _State(), {}, {"s-1": _seat_with()}, [], {"proj#aaaa": [11, 12]})
+    assert payload["descendants"]["live"] == 2
+    assert payload["descendants"]["pids"] == [11, 12]
+
+
+def test_an_agent_with_no_seat_reports_unknown_rather_than_zero():
+    """Without a seat there is no key to look this agent up by, and a zero would
+    say *nothing runs under it* about an agent that may have started five."""
+    agent = _Agent(7); agent.session_id = "s-1"
+    d = fleet_api._agent_payload(agent, _State(), {}, {}, [], {})["descendants"]
+    assert d["known"] is False and d["live"] == 0
+
+
+def test_lineage_does_not_stop_at_the_project_boundary(monkeypatch):
+    """The index is built once for the whole fleet. A per-project one would
+    report a lineage that ends where the project does, which is not where it ends."""
+    import inspect
+    src = inspect.getsource(fleet_api.fleet_agents)
+    before_loop = src.split("for project in projects:")[0]
+    assert "_descendants_index(" in before_loop, \
+        "the index is built inside the per-project loop"
