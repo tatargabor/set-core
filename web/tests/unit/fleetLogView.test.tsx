@@ -18,6 +18,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+import { buildActs } from '../../src/lib/fleetConversation'
 import Fleet from '../../src/pages/Fleet'
 
 type Json = Record<string, unknown>
@@ -159,7 +160,10 @@ describe('the sentence is findable and the machinery is not hidden', () => {
     const says = container.querySelectorAll('[data-log-act="say"]')
     const works = container.querySelectorAll('[data-log-act="work"]')
     expect(says).toHaveLength(2)
-    expect(works).toHaveLength(6)
+    // ONE work row, not six — since 2026-08-19 a run of tool calls between two
+    // sentences is one act (B-8). The thing this test is about, the hierarchy
+    // between a sentence and a tool line, is unchanged.
+    expect(works).toHaveLength(1)
 
     // Hierarchy, asserted rather than eyeballed: the sentence body is at the
     // reading size and the tool line is a step below it. A build that renders
@@ -177,9 +181,14 @@ describe('the sentence is findable and the machinery is not hidden', () => {
    * The compaction rule's hard half. Every act stays on screen; nothing is
    * collapsed behind a "show more" that a failed call could sit inside.
    */
-  it('leaves every act on screen — 13 turns become 8 acts, none of them hidden', async () => {
+  it('leaves every act on screen — whatever the model produced, none of it hidden', async () => {
+    // Asserted against the MODEL rather than a number written down here. The
+    // count used to be 8 and is 3 since the runs merge, and a hard-coded figure
+    // makes a rule change look like a regression while proving nothing about
+    // the thing the test is for: that the screen drops none of what was built.
     const { container } = await openLog(noisy)
-    expect(container.querySelectorAll('[data-log-act]')).toHaveLength(8)
+    const expected = buildActs(noisy as never).length
+    expect(container.querySelectorAll('[data-log-act]')).toHaveLength(expected)
     expect(container.querySelector('[data-log-sentences]')?.getAttribute('data-log-sentences')).toBe('2')
   })
 

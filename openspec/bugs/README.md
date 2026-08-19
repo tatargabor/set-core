@@ -168,7 +168,7 @@ consumer's name, path, or content.
   figure — proven by a capture taken while the child is running, not after it.
 
 ### B-10 — `context-window-metrics` divides by a hardcoded 200 000, which is wrong for this repo's own sessions
-- **state:** open — **owned by the change `agent-goal-and-lifecycle`**, listed here
+- **state:** closed (`e52ccdc4`) — **owned by the change `agent-goal-and-lifecycle`**, listed here
   because it was found while measuring something else and predates that change
 - **reported:** 2026-08-19 by this session
 - **measured:** `openspec/specs/context-window-metrics/spec.md:47` requires
@@ -184,7 +184,7 @@ consumer's name, path, or content.
   shows a figure that matches what the runtime says.
 
 ### B-8 — the log view does not open at the latest, and its tool lines say nothing
-- **state:** open
+- **state:** closed (`e52ccdc4`)
 - **reported:** 2026-08-19 by the user — *"scrollbar mindig alul kell legyen hogy
   latest mutassa, illetve a Bash és tool feliratok nem mutatnak semmit a lognál
   csak a helyet viszok, át kell gondolni"*
@@ -220,7 +220,7 @@ consumer's name, path, or content.
   about the agent, rather than leaving the space blank.
 
 ### B-11 — the excerpt spills over several lines where one and an ellipsis would do
-- **state:** open
+- **state:** closed (`e52ccdc4`)
 - **reported:** 2026-08-19 by the user — *"ez a több soros first message az agent
   után értelmetlen. le kell vágni egy sorba aztán ..."*
 - **measured:** the tile clamps the excerpt at 12 lines since `c4f4842f`, which
@@ -231,6 +231,41 @@ consumer's name, path, or content.
   something structured rather than more prose. Fixing either alone gets it wrong.
 - **fixed when:** the excerpt is a single line ending in an ellipsis, and what
   fills the tile is not the excerpt.
+
+### B-12 — inside a grid tile the terminal and the log stop at a fixed height and leave the column empty
+- **state:** closed (`e52ccdc4`)
+- **reported:** 2026-08-19 by the user, twice — *"oszlop engedné de nem megy le
+  alulra a terminál … kihasználni az adott hasábot, területet amit a layout tesz"*
+  and *"sima log nézetben jobb oldalt látjuk hogy félbevágja, nem húzza le a log
+  nézetet a terület aljáig"*
+- **measured:** the tiles themselves DO fill their row since `c4f4842f`; what
+  does not fill is what is inside them. `FleetTerminal`'s host is `h-72` and
+  `LogPanel`'s scroll box is `max-h-80` unless the tile is enlarged or full
+  screen — so in a grid tile both are cut at a fixed height with the rest of the
+  column blank below.
+- **why the first fix missed it:** `c4f4842f` replaced the guessed `62vh`/`55vh`
+  with flex **only on the full-screen path**, because that was the path in the
+  report. The same guess in the ordinary path was left standing, and it is the
+  one a reader meets every time.
+- **fixed when:** in any tile that has height to give, the terminal and the log
+  take what is left, with a floor so a short tile stays usable.
+
+### B-13 — a terminal in a narrow column re-wraps into an unreadable strip
+- **state:** closed (`e52ccdc4`)
+- **reported:** 2026-08-19 by the user — *"kevés a hely de hülyén tördel a
+  terminál … nagyban jól működik"*
+- **measured:** `FitAddon.fit()` sets the column count from the container's
+  width, and the resize is sent on to the pty. In a narrow tile that means the
+  AGENT re-renders its own terminal UI at ~30 columns, which no terminal program
+  is designed for — the screenshot shows a body wrapped to a third of the width
+  with a one-character column stranded at the right edge.
+- **the shape, and why "wrap better" is the wrong fix:** a terminal is a
+  fixed-grid device. Its content was laid out by the program for a given number
+  of columns, so re-flowing it is not a rendering choice — it destroys the
+  layout the program produced. The repair is a FLOOR on the columns plus a
+  window onto the result, never a cleverer wrap.
+- **fixed when:** a narrow tile shows a scrollable window onto a terminal that is
+  still at least 80 columns wide, and the pty is never told it is narrower.
 
 ## Closed
 

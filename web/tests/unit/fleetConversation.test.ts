@@ -129,14 +129,35 @@ describe('a call and its result are one act', () => {
   })
 
   /**
-   * The load-bearing negative. Merging consecutive acts would turn eighteen
-   * tool rows into one tidy line — and put a failed call inside a summary,
-   * which is the compaction the ui-quality rule forbids.
+   * The load-bearing negative, NARROWED rather than dropped — 2026-08-19.
+   *
+   * It used to say acts are never merged at all, for a reason that is still
+   * right: merging "would put a failed call inside a summary, which is the
+   * compaction the ui-quality rule forbids". But the blanket version had a cost
+   * the user met head on — with a log endpoint that carries only tool NAMES,
+   * nine silent call/result pairs took nine rows to say nothing.
+   *
+   * So the guarantee is now about FAILURE, which is what it was protecting:
+   * a run merges while nothing fails, and breaks where something does.
    */
-  it('never merges two consecutive acts into one row', () => {
-    const acts = buildActs([call('Bash'), result(), call('Bash'), result(), call('Bash'), result()])
-    expect(acts).toHaveLength(3)
-    expect(acts.every(a => a.kind === 'work')).toBe(true)
+  it('never merges ACROSS a failure — a failed call keeps its own row', () => {
+    const acts = buildActs([
+      call('Bash'), result({ errors: 0 }),
+      call('Bash'), result({ errors: 1 }),
+      call('Bash'), result({ errors: 0 }),
+    ])
+    const work = acts.filter(a => a.kind === 'work') as WorkAct[]
+    expect(work).toHaveLength(2)
+    // The failure is not averaged into a longer run: it closes the act it is in.
+    expect(work[0].errors).toBe(1)
+    expect(work[1].errors).toBe(0)
+  })
+
+  it('merges a silent run, which is what the failure rule is an exception to', () => {
+    const acts = buildActs([
+      call('Bash'), result({ errors: 0 }), call('Bash'), result({ errors: 0 }),
+    ])
+    expect(acts.filter(a => a.kind === 'work')).toHaveLength(1)
   })
 
   /**
@@ -246,7 +267,39 @@ describe('the sentences are countable, which is what makes them findable', () =>
       turn({ text: 'kész' }),
     ]
     const acts = buildActs(turns)
-    expect(acts).toHaveLength(4)
+    // Three, not four, since 2026-08-19: the two silent Bash pairs between the
+    // sentences are one run. The count this test is ABOUT — the sentences — is
+    // unchanged, which is the point.
+    expect(acts).toHaveLength(3)
     expect(sayCount(acts)).toBe(2)
+  })
+})
+
+describe('B-8 — a run of tool work between two sentences is ONE act', () => {
+  const call = (at: string) => ({ role: 'assistant', text: '', thinking: '', tools: [{ name: 'Bash' }], results: 0, timestamp: at })
+  const result = (at: string) => ({ role: 'user', text: '', thinking: '', tools: [], results: 1, timestamp: at })
+  const say = (at: string, text: string) => ({ role: 'assistant', text, thinking: '', tools: [], results: 0, timestamp: at })
+
+  it('collapses nine call/result pairs into one row instead of nine', () => {
+    // The reason is measured, not aesthetic: the log endpoint carries a tool's
+    // NAME and an id and nothing else, so each of these rows had nothing to say
+    // and took a row to say it — *"csak a helyet viszik"*.
+    const turns = []
+    for (let i = 0; i < 9; i++) { turns.push(call(`t${i}a`)); turns.push(result(`t${i}b`)) }
+    const acts = buildActs(turns as never)
+    expect(acts.filter(a => a.kind === 'work')).toHaveLength(1)
+    const work = acts.find(a => a.kind === 'work')!
+    expect(work.calls).toBe(9)
+    expect(work.results).toBe(9)
+    expect(work.unanswered).toBe(0)
+  })
+
+  it('still breaks the run where somebody SAID something', () => {
+    // The sentence is what the reader is scanning for; burying it inside a run
+    // of tool work would defeat the whole exercise.
+    const acts = buildActs([
+      call('1'), result('2'), say('3', 'halfway'), call('4'), result('5'),
+    ] as never)
+    expect(acts.map(a => a.kind)).toEqual(['work', 'say', 'work'])
   })
 })

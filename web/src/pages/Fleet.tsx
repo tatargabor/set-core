@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * Fleet — every agent session running on this machine.
@@ -265,15 +265,27 @@ const SAY_STYLE: Record<Speaker, { rail: string; label: string; body: string; no
 
 const CLIP = 600
 
-function SayRow({ act, showThinking, expanded, onExpand }: {
+function SayRow({ act, showThinking, expanded, onExpand, compact }: {
   act: SayAct
   showThinking: boolean
   expanded: boolean
   onExpand: () => void
+  /**
+   * On a TILE rather than in the log panel — B-10/B-11.
+   *
+   * The panel's job is to show what was said, in full, with the marks intact;
+   * measured on the tile that is 2340 characters of raw markdown — table pipes,
+   * `##` headings and all — which is the same *"több soros … értelmetlen"* the
+   * excerpt was just cut back for. So the compact row strips the marks (the
+   * producer's words, none of them rendered or interpreted) and stops at two
+   * lines, with no expand control: a tile is where you decide WHICH agent to
+   * open, and the panel is where you read.
+   */
+  compact?: boolean
 }) {
   const style = SAY_STYLE[act.speaker]
   const long = act.text.length > CLIP
-  const shown = long && !expanded ? act.text.slice(0, CLIP) : act.text
+  const shown = compact ? plainExcerpt(act.text) : (long && !expanded ? act.text.slice(0, CLIP) : act.text)
   return (
     <div
       data-log-act="say"
@@ -292,7 +304,14 @@ function SayRow({ act, showThinking, expanded, onExpand }: {
           {act.thinking.length > CLIP ? act.thinking.slice(0, CLIP) + ' …' : act.thinking}
         </div>
       )}
-      {act.text && (
+      {act.text && (compact ? (
+        <div
+          className={`${style.body} leading-relaxed break-words mt-0.5`}
+          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+        >
+          {shown}
+        </div>
+      ) : (
         <div className={`${style.body} leading-relaxed whitespace-pre-wrap break-words mt-0.5`}>
           {shown}
           {long && (
@@ -304,7 +323,7 @@ function SayRow({ act, showThinking, expanded, onExpand }: {
             </button>
           )}
         </div>
-      )}
+      ))}
       {!act.text && !act.thinking && (
         <div className="text-xs text-fg-ghost italic mt-0.5">
           thinking, with no text — the runtime did not keep its content
@@ -415,11 +434,96 @@ function ErrorStanding({ acts }: { acts: Act[] }) {
   )
 }
 
-function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; tall?: boolean }) {
+/**
+ * What the agent has been doing, on the tile itself — B-10.
+ *
+ * *"nem hiszem hogy üres kellene legyen akár egy agent is, már biztosan van róla
+ * valami log, info"*, and that is exactly right: the tile had ~500 px of height
+ * and one sentence in it, while the same agent's log endpoint had turns and tool
+ * runs to show. The first attempt at filling that space stretched the EXCERPT to
+ * twelve lines, which the same reader rejected in the next breath — one long
+ * message is not information, it is the same nothing spread wider.
+ *
+ * So the tile shows the conversation itself, in the same rows the log panel uses
+ * (`SayRow`, `WorkRow`), and the excerpt above it goes back to one line.
+ *
+ * Only where there is nothing better in the space: a tile with its log or its
+ * terminal open already has the real thing, and a second copy underneath would
+ * be noise and a second poll.
+ *
+ * ⚠ Verbatim consumer-session content, like the excerpt — displayed and never
+ * written anywhere: no `localStorage`, no cache, no committed artifact.
+ */
+function TileActivity({ pid }: { pid: number }) {
+  const [log, setLog] = useState<LogResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const box = useRef<HTMLDivElement | null>(null)
+  const stick = useRef(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      fetch(`/api/fleet/agents/${pid}/log?limit=20`)
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then(d => { if (!cancelled) { setLog(d); setError(null) } })
+        .catch(e => { if (!cancelled) setError(String(e.message ?? e)) })
+    }
+    load()
+    // Slower than the open log panel's 5 s: this runs for every tile of the
+    // selected project at once, and it is context rather than the thing being
+    // watched.
+    const t = setInterval(load, 10_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [pid])
+
+  const acts = useMemo(() => buildActs(log?.turns ?? []), [log])
+  useEffect(() => {
+    const el = box.current
+    if (el && stick.current) el.scrollTop = el.scrollHeight
+  })
+
+  // Three absences, three sentences. A blank box would claim the third while it
+  // might be either of the first two.
+  if (error) return <div className="text-xs text-fg-ghost mt-1.5">the log cannot be read: {error}</div>
+  if (!log) return <div className="text-xs text-fg-ghost mt-1.5">reading the log…</div>
+  if (acts.length === 0) return <div className="text-xs text-fg-muted mt-1.5">the log is readable and holds no conversation</div>
+
+  return (
+    <div
+      ref={box}
+      onScroll={e => {
+        const el = e.currentTarget
+        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+      }}
+      data-fleet-tile-activity={pid}
+      data-fleet-own-surface="activity"
+      className="flex-1 min-h-0 overflow-y-auto mt-1.5 space-y-1 pr-1"
+    >
+      {acts.map((act, i) => (
+        act.kind === 'say'
+          ? <SayRow key={i} act={act} showThinking={false} expanded={false} onExpand={() => undefined} compact />
+          : <WorkRow key={i} act={act} />
+      ))}
+    </div>
+  )
+}
+
+function LogPanel({ pid, onClose }: { pid: number; onClose: () => void }) {
   const [log, setLog] = useState<LogResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showThinking, setShowThinking] = useState(false)
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
+  const scrollBox = useRef<HTMLDivElement | null>(null)
+  /**
+   * Whether the reader is still at the newest end — B-8.
+   *
+   * A log opens at the LATEST, because the newest turn is what the reader came
+   * for and a box that starts at the top hides it behind the whole history.
+   * But it must not yank the view back while somebody is reading upwards, so
+   * the stickiness is a fact about where they are rather than a mode: at the
+   * bottom (within a line's slack) means follow, anywhere else means leave it.
+   */
+  const stick = useRef(true)
 
   useEffect(() => {
     let cancelled = false
@@ -434,6 +538,15 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
     return () => { cancelled = true; clearInterval(t) }
   }, [pid])
 
+  // Follow the newest turn, unless the reader has scrolled away from it. Runs
+  // on every render rather than on a length change: an act can grow (a turn
+  // gains text) without the count moving, and the reader watching the bottom
+  // would then see the new line half off screen.
+  useEffect(() => {
+    const el = scrollBox.current
+    if (el && stick.current) el.scrollTop = el.scrollHeight
+  })
+
   // Counted from the turns, not from a flag: the toggle below must never
   // announce a hidden thing that is not there (false absence), nor stay silent
   // about one that is.
@@ -446,7 +559,7 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
 
   return (
     <div
-      className={`border-t border-surface-line mt-3 pt-2${tall ? ' flex-1 min-h-0 flex flex-col' : ''}`}
+      className="border-t border-surface-line mt-3 pt-2 flex-1 min-h-0 flex flex-col"
       data-fleet-own-surface="log"
     >
       <div className="flex items-baseline gap-2 mb-1.5 flex-wrap" role="tablist" aria-label="log views">
@@ -515,7 +628,17 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
       {/* Fills what the card gives it when the tile is enlarged. `55vh` was
           the same guess as the terminal's `62vh` and wrong for the same
           reason: the strip above it is not a fixed height. */}
-      <div className={`${tall ? 'flex-1 min-h-0' : 'max-h-80'} overflow-y-auto space-y-1 pr-1`}>
+      <div
+        ref={scrollBox}
+        onScroll={e => {
+          const el = e.currentTarget
+          // One line of slack: a browser's fractional scroll heights mean an
+          // exact comparison reads as "scrolled away" while the reader has not
+          // moved, and following would then stop for no visible reason.
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+        }}
+        className="flex-1 min-h-[10rem] overflow-y-auto space-y-1 pr-1"
+      >
         {acts.map((act, i, all) => {
         // A day divider, because HH:MM alone made a 60-hour gap look like a
         // minute. Measured 2026-08-18: forty turns of one session spanned three
@@ -1150,17 +1273,17 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           nincs nyitva a terminál"*. A tile that shows two lines makes the
           reader open something to learn anything, and with eight agents that is
           eight openings. */}
-      <Excerpt
-        agent={agent}
-        lines={enlarged || focused ? 8 : 12}
-        grow={!open && !terminalOpen}
-      />
+      {/* ONE line, then an ellipsis — B-11: *"ez a több soros first message az
+          agent után értelmetlen. le kell vágni egy sorba aztán ..."*. What fills
+          the tile is `TileActivity` below, not this. */}
+      <Excerpt agent={agent} lines={1} />
 
       {/* Task 7.7 — the agent's own input, and task 4.4 where there is nothing
           to type into: the producer's reason stands in the input's place. */}
       <FleetInstruct agent={agent} />
 
-      {open && <LogPanel pid={agent.pid} onClose={onToggle} tall={enlarged} />}
+      {!open && !terminalOpen && <TileActivity pid={agent.pid} />}
+      {open && <LogPanel pid={agent.pid} onClose={onToggle} />}
       {terminalOpen && offer.kind === 'available' && (
         <FleetTerminal
           label={offer.label}

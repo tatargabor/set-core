@@ -202,11 +202,29 @@ export function buildActs(turns: LogTurn[]): Act[] {
     if (names.length === 0 && results === 0) return
 
     if (names.length > 0) {
-      // A new call group starts a new act unless the open one is still
-      // unanswered — parallel calls arrive as one turn, but a runtime that
-      // splits them across two turns before any result must not be split on
-      // screen either.
-      if (open && open.results > 0) closeOpen()
+      // A SENTENCE is the only boundary. Tool work between two sentences is one
+      // act however many call/result turns it took — B-8: *"a Bash és tool
+      // feliratok nem mutatnak semmit a lognál csak a helyet viszik"*, and they
+      // were right twice over. The log endpoint carries a tool's NAME and an id
+      // and nothing else — no arguments, no summary — so nine consecutive Bash
+      // calls had nothing to say nine times, and said it on nine rows.
+      //
+      // Merging is the honest repair rather than inventing a description the
+      // framework does not have: the run still reports what kinds of work
+      // happened and how much, in one row, and the sentences the reader is
+      // actually scanning for are no longer nine rows apart.
+      //
+      // The previous rule closed an act as soon as its results arrived, which
+      // is why a call and its answer became one act and the next call started
+      // another. `unanswered` still means calls minus results, now across the
+      // whole run.
+      //
+      // ONE exception, and a test caught me removing it: an act that began as an
+      // ORPHAN RESULT — a result whose call fell outside the window — must close
+      // before a new call joins it. Merging there would pair a result with a
+      // call that did not produce it, which is inventing a fact rather than
+      // compacting one.
+      if (open && open.calls === 0 && open.orphanResults > 0) closeOpen()
       if (!open) {
         open = {
           kind: 'work',
@@ -253,9 +271,19 @@ export function buildActs(turns: LogTurn[]): Act[] {
       } else {
         open.errors = null
       }
-      // Every call answered, and nothing else pending — close it, so the next
-      // call group starts its own row.
-      if (open.calls > 0 && open.results >= open.calls) closeOpen()
+      // A FAILURE ENDS THE RUN. This is the half of the old rule that must
+      // survive the merge, and the earlier test named it exactly: merging
+      // consecutive acts "would put a failed call inside a summary, which is the
+      // compaction the ui-quality rule forbids". So the run merges while nothing
+      // fails and breaks the moment something does — the failing act keeps its
+      // own row with its own count, and what follows starts fresh instead of
+      // being averaged into it.
+      if (typeof turn.errors === 'number' && turn.errors > 0) closeOpen()
+      // NOT closed when every call is answered — that was the rule that turned a
+      // run of tool work into one row per call/result pair, and with a log
+      // endpoint that carries only tool NAMES it meant nine rows saying nothing
+      // nine times (B-8). The act stays open until somebody SAYS something,
+      // which is the boundary the reader is actually scanning for.
     }
   })
 

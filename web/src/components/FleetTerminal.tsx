@@ -44,6 +44,14 @@ import {
  * canvas/DOM-heavy module into every jsdom unit test that renders an agent tile.
  */
 
+/**
+ * The narrowest terminal worth handing to a program — see `refit` below.
+ *
+ * 80 because that is the width terminal programs assume when they assume one;
+ * anything narrower is not a smaller terminal, it is a broken one.
+ */
+const MIN_COLS = 80
+
 interface Props {
   label: string
   /** Called when the reader closes the view. Detach only — never a stop. */
@@ -105,7 +113,28 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       const fit = new FitAddon()
       term.loadAddon(fit)
       term.open(host.current)
-      try { fit.fit() } catch { /* zero-sized container; the observer refits */ }
+
+      /**
+       * Fit to the box, but never below a usable width — B-13.
+       *
+       * `FitAddon` derives the column count from the container, and that number
+       * goes on to the pty, so a narrow tile does not merely wrap the view: it
+       * tells the AGENT to redraw its own terminal UI at that width. Measured at
+       * ~30 columns the result is a third-width body with a one-character column
+       * stranded at the right edge — *"hülyén tördel … nagyban jól működik"*.
+       *
+       * A terminal is a fixed-grid device: its content was laid out by the
+       * program for a given number of columns, so re-flowing it destroys the
+       * layout rather than adapting it. Hence a FLOOR and a window onto the
+       * result — the host scrolls horizontally — instead of a cleverer wrap.
+       * Above the floor nothing changes, which is why the large case already
+       * worked.
+       */
+      const refit = () => {
+        try { fit.fit() } catch { return /* zero-sized container; the observer refits */ }
+        if (term.cols < MIN_COLS) term.resize(MIN_COLS, term.rows)
+      }
+      refit()
 
       const ws = new WebSocket(terminalUrl(label))
       ws.binaryType = 'arraybuffer'
@@ -152,7 +181,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       })
 
       const observer = new ResizeObserver(() => {
-        try { fit.fit() } catch { /* detached mid-teardown */ }
+        refit()
         sendSize()
       })
       observer.observe(host.current)
@@ -214,7 +243,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
 
   return (
     <div
-      className={`border-t border-surface-line mt-3 pt-2${full ? ' flex-1 min-h-0 flex flex-col' : ''}`}
+      className="border-t border-surface-line mt-3 pt-2 flex-1 min-h-0 flex flex-col"
       data-fleet-terminal={label}
       data-fleet-own-surface="terminal"
     >
@@ -313,7 +342,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
            header, the waiters and the modules panel, so the only correct height
            is the one that is left. The `ResizeObserver` above refits xterm, so a
            flexible box is not a problem for the terminal itself. */
-        className={`${full ? 'flex-1 min-h-0' : 'h-72'} rounded border border-surface-edge overflow-hidden bg-[#0b0f14]`}
+        className="flex-1 min-h-[12rem] rounded border border-surface-edge overflow-x-auto overflow-y-hidden bg-[#0b0f14]"
       />
     </div>
   )
