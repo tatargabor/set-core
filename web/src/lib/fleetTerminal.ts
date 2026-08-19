@@ -48,16 +48,16 @@ export type TerminalOffer =
   | { kind: 'unknown'; reason: string }
 
 export const FOREIGN_REASON =
-  'a keret nem indította és nem tartja — futó, idegen munkamenethez terminál nem csatolható'
+  'the framework neither started nor holds it — a terminal cannot be attached to a running foreign session'
 
 export const OWNER_DOWN_REASON =
-  'a tulajdonos szolgáltatás nem válaszolt, ezért nem tudjuk, van-e terminálja'
+  'the owner service did not answer, so we do not know whether it has a terminal'
 
 export const OWNER_SILENT_REASON =
-  'a felderítés nem mondta meg, kié ez a folyamat — ez nem azt jelenti, hogy nincs terminálja'
+  'discovery did not say whose process this is — which is not a statement that it has no terminal'
 
 const NO_LABEL_REASON =
-  'a keret sajátjának jelenti, de címet nem adott hozzá — ellentmondás, nem hiány'
+  'reported as the framework\'s own, but with no label attached — a contradiction, not an absence'
 
 /**
  * The offer for one agent.

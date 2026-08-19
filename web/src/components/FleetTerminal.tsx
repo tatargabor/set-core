@@ -119,13 +119,13 @@ export default function FleetTerminal({ label, onClose }: Props) {
         term.write(new Uint8Array(ev.data as ArrayBuffer))
       }
       ws.onerror = () => {
-        setPhase(p => (p.kind === 'attached' ? p : { kind: 'refused', reason: 'a kapcsolat nem jött létre' }))
+        setPhase(p => (p.kind === 'attached' ? p : { kind: 'refused', reason: 'the connection was not established' }))
       }
       ws.onclose = () => {
         setPhase(p => (
           p.kind === 'refused'
             ? p
-            : { kind: 'closed', reason: 'a kapcsolat lezárult — az agent ettől még futhat' }
+            : { kind: 'closed', reason: 'the connection closed — the agent may still be running' }
         ))
       }
 
@@ -178,33 +178,33 @@ export default function FleetTerminal({ label, onClose }: Props) {
   return (
     <div className="border-t border-surface-line mt-3 pt-2" data-fleet-terminal={label}>
       <div className="flex items-baseline gap-2 flex-wrap mb-1.5">
-        <span className="text-xs text-fg-strong">terminál</span>
+        <span className="text-xs text-fg-strong">terminal</span>
         <span className="text-xs text-fg-ghost truncate max-w-[16rem]">{label}</span>
 
         {phase.kind === 'connecting' && (
-          <span className="text-xs text-sky-400" data-fleet-terminal-phase="connecting">csatlakozás…</span>
+          <span className="text-xs text-sky-400" data-fleet-terminal-phase="connecting">connecting…</span>
         )}
         {phase.kind === 'attached' && (
           <>
-            <span className="text-xs text-emerald-400" data-fleet-terminal-phase="attached">él</span>
+            <span className="text-xs text-emerald-400" data-fleet-terminal-phase="attached">live</span>
             {/* Rendered from the acknowledgement, not from a guess: a replay that
                 quietly lost its head reads as a session that began there. */}
-            <span className="text-xs text-fg-ghost tabular-nums" title="A csatlakozáskor visszajátszott képernyő mérete.">
-              {phase.ack.replayed_bytes} bájt visszajátszva
+            <span className="text-xs text-fg-ghost tabular-nums" title="How much of the screen was replayed when this view attached.">
+              {phase.ack.replayed_bytes} bytes replayed
               {phase.ack.replay_truncated && (
-                <span className="text-amber-400"> · a puffer eleje levágva</span>
+                <span className="text-amber-400"> · the start of the buffer was cut</span>
               )}
             </span>
             {phase.ack.viewers > 1 && (
-              <span className="text-xs text-amber-400 tabular-nums" title="Ugyanezt a terminált más is nézi — amit gépelsz, ő is látja.">
-                {phase.ack.viewers} néző
+              <span className="text-xs text-amber-400 tabular-nums" title="Somebody else is watching this same terminal — they see what you type.">
+                {phase.ack.viewers} watching
               </span>
             )}
           </>
         )}
         {phase.kind === 'refused' && (
           <span className="text-xs text-red-400" data-fleet-terminal-phase="refused">
-            nem nyílt meg: {phase.reason}
+            did not open: {phase.reason}
           </span>
         )}
         {phase.kind === 'closed' && (
@@ -220,33 +220,33 @@ export default function FleetTerminal({ label, onClose }: Props) {
               disabled={stopping}
               data-fleet-terminal-stop-confirm
               className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
-              title="A folyamat leáll. Ez nem ugyanaz, mint a nézet bezárása."
+              title="The process stops. This is not the same as closing the view."
             >
-              {stopping ? 'leállítás…' : 'biztos? leállítom'}
+              {stopping ? 'stopping…' : 'sure? stop it'}
             </button>
           ) : (
             <button
               onClick={() => setStopConfirm(true)}
               data-fleet-terminal-stop
               className="text-xs text-fg-muted hover:text-red-400"
-              title="Az agent leállítása — külön, kifejezett aktus"
+              title="Stop the agent — a separate, explicit act"
             >
-              agent leállítása
+              stop the agent
             </button>
           )}
           <button
             onClick={onClose}
             data-fleet-terminal-close
             className="text-xs text-fg-muted hover:text-fg-strong"
-            title="Csak lecsatlakozik. Az agent tovább fut, és később ugyanide visszakapcsolódhatsz."
+            title="Detach only. The agent keeps running and you can attach here again later."
           >
-            bezár (az agent fut tovább)
+            close (the agent keeps running)
           </button>
         </div>
       </div>
 
       {stopError && (
-        <div className="text-xs text-red-400 mb-1">a leállítás nem sikerült: {stopError}</div>
+        <div className="text-xs text-red-400 mb-1">the stop failed: {stopError}</div>
       )}
 
       <div

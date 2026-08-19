@@ -28,7 +28,7 @@ function agent(pid: number, name: string, state = 'quiet'): Json {
   return {
     pid, name, project: null, branch: 'main', session_id: 's', binding_confirmed: true,
     sources: ['process'], kind: 'interactive', state, tool: null, tool_elapsed_seconds: null,
-    other_tools: [], last_movement_seconds: 5, unknown_reason: state === 'unknown' ? 'nincs napló' : null,
+    other_tools: [], last_movement_seconds: 5, unknown_reason: state === 'unknown' ? 'no log' : null,
   }
 }
 
@@ -43,7 +43,7 @@ function fleet(projects: Json[], extra: Json = {}): Json {
     working: all.filter(a => a.state === 'working').length,
     unknown: all.filter(a => a.state === 'unknown').length,
     projects,
-    quiet_means: 'nincs nyitott eszközhívás',
+    quiet_means: 'no outstanding tool call',
     ...extra,
   }
 }
@@ -52,7 +52,7 @@ const LAYOUT = {
   version: 7,
   groups: [
     { id: 'g-set', name: 'set', collapsed: false, projects: ['set-core', 'set-designer'], missing: ['set-gone'] },
-    { id: 'g-zart', name: 'zárt', collapsed: true, projects: ['rejtett'], missing: [] },
+    { id: 'g-closed', name: 'closed', collapsed: true, projects: ['hidden'], missing: [] },
   ],
   parked: ['felretett'],
   ungrouped: ['maradek'],
@@ -77,7 +77,7 @@ function install(agentsBody: Json, layout: Json = LAYOUT): Harness {
         if (h.putStatus === 409) {
           return Promise.resolve({
             ok: false, status: 409,
-            json: () => Promise.resolve({ detail: h.putDetail || 'közben megváltozott' }),
+            json: () => Promise.resolve({ detail: h.putDetail || 'it changed meanwhile' }),
           } as Response)
         }
         // Echo the way the real server does: what came in as `projects` IS the
@@ -115,13 +115,13 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 const ALL = fleet([
   project('set-core', [agent(1, 'a1')]),
   project('set-designer'),
-  project('rejtett', [agent(2, 'a2', 'unknown')]),
+  project('hidden', [agent(2, 'a2', 'unknown')]),
   project('felretett', [agent(3, 'a3', 'unknown')]),
   project('maradek'),
 ])
 
 describe('the waiting count — a state the producer does not report is not a zero', () => {
-  it('says the state is unmeasured instead of rendering “0 vár válaszra”', async () => {
+  it('says the state is unmeasured instead of rendering “0 waiting for an answer”', async () => {
     install(ALL)
     const { container } = render(<Fleet />)
     const header = await waitFor(() => {
@@ -135,13 +135,13 @@ describe('the waiting count — a state the producer does not report is not a ze
     // an ANSWER nobody gave — the same false absence the whole screen exists
     // to prevent, arriving through the one control that is supposed to catch it.
     expect(header.querySelector('[data-fleet-waiting="unreported"]')).toBeTruthy()
-    expect(header.textContent ?? '').not.toMatch(/0\s*vár/)
+    expect(header.textContent ?? '').not.toMatch(/0\s*waiting/)
   })
 
   it('counts and offers the jump as soon as the producer reports the state', async () => {
     install(fleet([
       project('set-core', [agent(1, 'a1')]),
-      project('rejtett', [agent(2, 'a2', 'waiting')]),
+      project('hidden', [agent(2, 'a2', 'waiting')]),
       project('felretett', []),
     ], { waiting: 1 }))
     const { container } = render(<Fleet />)
@@ -150,7 +150,7 @@ describe('the waiting count — a state the producer does not report is not a ze
       expect(container.querySelector('[data-fleet-jump="waiting"]')).toBeTruthy()
     })
     expect(container.querySelector('[data-fleet-waiting="unreported"]')).toBeNull()
-    expect(container.querySelector('[data-fleet-jump="waiting"]')!.textContent).toMatch(/1 vár válaszra/)
+    expect(container.querySelector('[data-fleet-jump="waiting"]')!.textContent).toMatch(/1 waiting for an answer/)
   })
 
   /**
@@ -166,7 +166,7 @@ describe('the waiting count — a state the producer does not report is not a ze
       expect(container.querySelector('[data-fleet-attention]')).toBeTruthy()
     })
     expect(container.querySelector('[data-fleet-waiting="unreported"]')).toBeNull()
-    expect(container.querySelector('[data-fleet-attention]')!.textContent).toMatch(/0 vár válaszra/)
+    expect(container.querySelector('[data-fleet-attention]')!.textContent).toMatch(/0 waiting for an answer/)
   })
 })
 
@@ -182,7 +182,7 @@ describe('nothing compacted may hide a state', () => {
     // Two agents in an undetermined state: one inside a COLLAPSED group, one
     // inside the parked section. Neither row is on screen; both are counted.
     expect(header.textContent).toMatch(/2 ismeretlen/)
-    expect(container.querySelector('[data-fleet-project="rejtett"]')).toBeNull()
+    expect(container.querySelector('[data-fleet-project="hidden"]')).toBeNull()
     expect(container.querySelector('[data-fleet-project="felretett"]')).toBeNull()
   })
 
@@ -190,7 +190,7 @@ describe('nothing compacted may hide a state', () => {
     install(ALL)
     const { container } = render(<Fleet />)
     const group = await waitFor(() => {
-      const el = container.querySelector('[data-fleet-group="g-zart"]')
+      const el = container.querySelector('[data-fleet-group="g-closed"]')
       expect(el).toBeTruthy()
       return el as HTMLElement
     })
@@ -198,7 +198,7 @@ describe('nothing compacted may hide a state', () => {
     // The counter is on the closed header, not only in the global total. A
     // total tells the reader that something is wrong somewhere; this tells them
     // which closed box to open.
-    expect(within(group).getByTitle('ismeretlen állapot').textContent).toMatch(/1/)
+    expect(within(group).getByTitle('unknown state').textContent).toMatch(/1/)
   })
 
   it('marks the parked section with its own count while it stays closed', async () => {
@@ -210,19 +210,19 @@ describe('nothing compacted may hide a state', () => {
       return el as HTMLElement
     })
     expect(parked.getAttribute('data-fleet-parked-open')).toBe('false')
-    expect(within(parked).getByTitle('ismeretlen állapot').textContent).toMatch(/1/)
+    expect(within(parked).getByTitle('unknown state').textContent).toMatch(/1/)
   })
 
   it('jumps into a collapsed group, opening it rather than scrolling past it', async () => {
     install(ALL)
     const { container } = render(<Fleet />)
-    await waitFor(() => expect(container.querySelector('[data-fleet-group="g-zart"]')).toBeTruthy())
+    await waitFor(() => expect(container.querySelector('[data-fleet-group="g-closed"]')).toBeTruthy())
     const jump = container.querySelector('[data-fleet-jump="unknown"]') as HTMLElement
     expect(jump).toBeTruthy()
-    expect(container.querySelector('[data-fleet-project="rejtett"]')).toBeNull()
+    expect(container.querySelector('[data-fleet-project="hidden"]')).toBeNull()
     fireEvent.click(jump)
     // A jump that leaves the target closed is a jump to nothing.
-    expect(container.querySelector('[data-fleet-project="rejtett"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-project="hidden"]')).toBeTruthy()
   })
 })
 
@@ -233,7 +233,7 @@ describe('an arranged project discovery no longer finds', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-fleet-missing="set-gone"]')).toBeTruthy()
     })
-    expect(container.querySelector('[data-fleet-missing="set-gone"]')!.textContent).toMatch(/nincs meg/)
+    expect(container.querySelector('[data-fleet-missing="set-gone"]')!.textContent).toMatch(/missing/)
   })
 
   it('is still in the document a save writes back', async () => {
@@ -280,7 +280,7 @@ describe('reordering', () => {
     // wrong reason after it.
     const h = install(ALL, {
       version: 3,
-      groups: [{ id: 'g-veg', name: 'vég', collapsed: false, projects: ['set-core', 'set-designer'], missing: [], order: ['set-core', 'set-designer'] }],
+      groups: [{ id: 'g-veg', name: 'tail', collapsed: false, projects: ['set-core', 'set-designer'], missing: [], order: ['set-core', 'set-designer'] }],
       parked: [], parked_missing: [], parked_order: [], ungrouped: [], missing: [],
     })
     const { container } = render(<Fleet />)
@@ -310,7 +310,7 @@ describe('reordering', () => {
     const h = install(ALL, {
       version: 4,
       groups: [{
-        id: 'g-koz', name: 'köz', collapsed: false,
+        id: 'g-mid', name: 'mid', collapsed: false,
         projects: ['set-core', 'set-designer'], missing: ['set-gone'],
         order: ['set-core', 'set-gone', 'set-designer'],
       }],
@@ -318,7 +318,7 @@ describe('reordering', () => {
     })
     const { container } = render(<Fleet />)
     const handle = await waitFor(() => {
-      const el = container.querySelector('[data-drag-handle="g-koz:set-core"]')
+      const el = container.querySelector('[data-drag-handle="g-mid:set-core"]')
       expect(el).toBeTruthy()
       return el as HTMLElement
     })
@@ -348,7 +348,7 @@ describe('reordering', () => {
    * jsdom gives every rectangle zero size, so `indexAt` falls through to the LAST
    * rendered row. The handle under test therefore has to be one that is not last
    * — the first — or the wrong index and the right one coincide and the test
-   * passes on the unfixed component. Measured: with `g-k:rejtett` (the last row)
+   * passes on the unfixed component. Measured: with `g-k:hidden` (the last row)
    * the mutant came back NOT CAUGHT, which is what sent this comment here instead
    * of a green tick.
    *
@@ -363,8 +363,8 @@ describe('reordering', () => {
       version: 9,
       groups: [{
         id: 'g-k', name: 'k', collapsed: false,
-        projects: ['set-core', 'set-designer', 'rejtett'], missing: [],
-        order: ['set-core', 'set-designer', 'rejtett'],
+        projects: ['set-core', 'set-designer', 'hidden'], missing: [],
+        order: ['set-core', 'set-designer', 'hidden'],
       }],
       parked: [], parked_missing: [], parked_order: [], ungrouped: [], missing: [],
     })
@@ -421,7 +421,7 @@ describe('a refused save', () => {
   it('says so, keeps the unsaved change on screen, and offers the reload', async () => {
     const h = install(ALL)
     h.putStatus = 409
-    h.putDetail = 'az elrendezés megváltozott (tiéd 7, jelenlegi 9)'
+    h.putDetail = 'the arrangement changed (yours 7, current 9)'
     const { container } = render(<Fleet />)
     const handle = await waitFor(() => {
       const el = container.querySelector('[data-drag-handle="g-set:set-core"]')
@@ -435,9 +435,9 @@ describe('a refused save', () => {
       expect(el).toBeTruthy()
       return el as HTMLElement
     })
-    expect(banner.textContent).toMatch(/jelenlegi 9/)
-    expect(banner.textContent).toMatch(/nincs elmentve/)
-    expect(within(banner).getByText(/újratöltés/)).toBeTruthy()
+    expect(banner.textContent).toMatch(/current 9/)
+    expect(banner.textContent).toMatch(/not saved/)
+    expect(within(banner).getByText(/reload/)).toBeTruthy()
 
     // The move the user made is still what they see. Reverting it silently and
     // keeping it silently are both worse than saying which one happened.
@@ -452,7 +452,7 @@ describe('a discovered project the arrangement places nowhere', () => {
     install(fleet([
       project('set-core', [agent(1, 'a1')]),
       project('set-designer'),
-      project('rejtett'),
+      project('hidden'),
       project('felretett'),
       project('maradek'),
       project('sehol', [agent(9, 'a9', 'unknown')]),
@@ -479,8 +479,8 @@ describe('assignment is a control, never a cross-group drag', () => {
     await waitFor(() => expect(container.querySelector('[data-fleet-group="g-set"]')).toBeTruthy())
     const row = container.querySelector('[data-fleet-project="set-core"]') as HTMLElement
 
-    fireEvent.click(within(row).getByLabelText('set-core — csoport és félretevés'))
-    fireEvent.click(within(row).getByText('→ zárt'))
+    fireEvent.click(within(row).getByLabelText('set-core — group and park'))
+    fireEvent.click(within(row).getByText('→ closed'))
 
     await waitFor(() => expect(h.puts).toHaveLength(1))
     const body = h.puts[0].body as { groups: { id: string; projects: string[] }[] }
@@ -494,8 +494,8 @@ describe('assignment is a control, never a cross-group drag', () => {
     await waitFor(() => expect(container.querySelector('[data-fleet-group="g-set"]')).toBeTruthy())
     const row = container.querySelector('[data-fleet-project="set-core"]') as HTMLElement
 
-    fireEvent.click(within(row).getByLabelText('set-core — csoport és félretevés'))
-    fireEvent.click(within(row).getByText('⇣ félreteszem'))
+    fireEvent.click(within(row).getByLabelText('set-core — group and park'))
+    fireEvent.click(within(row).getByText('⇣ park it'))
 
     await waitFor(() => expect(h.puts).toHaveLength(1))
     expect((h.puts[0].body as { parked: string[] }).parked).toContain('set-core')
@@ -505,7 +505,7 @@ describe('assignment is a control, never a cross-group drag', () => {
 describe('the arrangement outlives the agents in it', () => {
   it('keeps every project in the column when discovery finds nothing running', async () => {
     install(fleet([
-      project('set-core'), project('set-designer'), project('rejtett'),
+      project('set-core'), project('set-designer'), project('hidden'),
       project('felretett'), project('maradek'),
     ]))
     const { container } = render(<Fleet />)
@@ -531,15 +531,19 @@ describe('the agent tile and the header must not contradict each other', () => {
    */
   it('renders a waiting agent as waiting, not as quiet', async () => {
     install(fleet([project('set-core', [
-      { ...agent(1, 'a1', 'waiting'), waiting_for: 'jóváhagyás kell' },
+      { ...agent(1, 'a1', 'waiting'), waiting_for: 'approval needed' },
     ])], { waiting: 1 }))
     const { container } = render(<Fleet />)
     await waitFor(() => expect(screen.getByText('a1')).toBeTruthy())
 
     const right = container.querySelector('[data-fleet-enlarged="1"]') as HTMLElement
+    // ⚠ Still Hungarian, on purpose: this string comes from `Fleet.tsx`, which is
+    // being edited in parallel and is translated in the follow-up. Asserting the
+    // English here before the source says it would be a test that passes on a
+    // screen nobody built yet.
     expect(within(right).getByText(/válaszra vár/)).toBeTruthy()
     expect(within(right).queryByText('csendes')).toBeNull()
-    expect(within(right).getByText('jóváhagyás kell')).toBeTruthy()
+    expect(within(right).getByText('approval needed')).toBeTruthy()
   })
 
   it('prints a state it does not recognise as itself rather than as quiet', async () => {

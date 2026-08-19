@@ -268,7 +268,7 @@ function handleAttrs(h: ReorderHandlers, index: number, key: string, label: stri
     'data-drag-handle': key,
     'data-drag-index': index,
     'aria-label': label,
-    title: `${label} — húzd, vagy fókuszban ↑/↓`,
+    title: `${label} — drag, or ↑/↓ when focused`,
   }
 }
 
@@ -295,17 +295,17 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
   return (
     <span className="inline-flex items-center gap-2 text-xs tabular-nums shrink-0">
       {waitingKnown && t.waiting > 0 && (
-        <span className="inline-flex items-center gap-1 text-sky-300 font-semibold" title="válaszra vár">
+        <span className="inline-flex items-center gap-1 text-sky-300 font-semibold" title="waiting for an answer">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />{t.waiting}
         </span>
       )}
       {t.working > 0 && (
-        <span className="inline-flex items-center gap-1 text-emerald-400" title="dolgozik">
+        <span className="inline-flex items-center gap-1 text-emerald-400" title="working">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{t.working}
         </span>
       )}
       {t.unknown > 0 && (
-        <span className="inline-flex items-center gap-1 text-amber-400" title="ismeretlen állapot">
+        <span className="inline-flex items-center gap-1 text-amber-400" title="unknown state">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{t.unknown}
         </span>
       )}
@@ -317,7 +317,7 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
         <span
           data-fleet-awaiting={t.awaiting}
           className="inline-flex items-center gap-1 text-violet-300"
-          title="emberre vár — akkor is, ha egyetlen agent sem fut itt"
+          title="waiting for a human — even where no agent is running here"
         >
           {/* A SQUARE, where every agent-state marker is a circle. The shape
               carries the meaning — an agent that exists versus work with nobody
@@ -412,15 +412,15 @@ function ProjectRow(p: RowProps) {
         >
           <span className="text-sm truncate block">{p.name}</span>
           {p.project && p.project.archived && (
-            <span className="text-xs text-fg-ghost">archivált</span>
+            <span className="text-xs text-fg-ghost">archived</span>
           )}
         </button>
         <Counts t={t} waitingKnown={p.waitingKnown} showAgents={t.agents > 0} />
         <button
           onClick={p.onMenu}
           aria-expanded={p.menuOpen}
-          aria-label={`${p.name} — csoport és félretevés`}
-          title="csoportba sorolás / félretevés — külön vezérlő, nem húzás"
+          aria-label={`${p.name} — group and park`}
+          title="assign to a group / park — a separate control, not a drag"
           className="px-1.5 py-1 text-fg-ghost hover:text-fg-strong shrink-0"
         >
           ⋯
@@ -429,7 +429,7 @@ function ProjectRow(p: RowProps) {
       {p.menuOpen && (
         <div data-fleet-assign={p.name} className="ml-6 mr-1 mb-1 mt-0.5 rounded border border-surface-line bg-surface-raised p-1.5 text-xs space-y-0.5">
           <div className="text-fg-ghost">
-            áthelyezés — a tagság ettől kezdve tárolt tény, nem névminta
+            move — from here on, membership is a stored fact rather than a name pattern
           </div>
           {p.groups.filter(g => g.id !== p.currentGroupId).map(g => (
             <button
@@ -453,14 +453,14 @@ function ProjectRow(p: RowProps) {
               onClick={() => p.onAssign({ kind: 'ungrouped' })}
               className="block w-full text-left px-1.5 py-0.5 rounded text-fg-strong hover:bg-surface-raised"
             >
-              ↩ visszateszem a listába
+              ↩ put back in the list
             </button>
           ) : (
             <button
               onClick={() => p.onAssign({ kind: 'parked' })}
               className="block w-full text-left px-1.5 py-0.5 rounded text-fg-strong hover:bg-surface-raised"
             >
-              ⇣ félreteszem
+              ⇣ park it
             </button>
           )}
         </div>
@@ -489,11 +489,11 @@ function MissingRow({ name, onForget, index }: { name: string; onForget: () => v
       className="flex items-center gap-2 pl-6 pr-1 py-0.5"
     >
       <span className="text-xs text-fg-ghost line-through truncate flex-1 min-w-0">{name}</span>
-      <span className="text-xs text-amber-400 shrink-0" title="Az elrendezésben szerepel, de a felderítés nem találja. Nem töröltük — egy kézzel rendezett listából eltűnő név információ.">
-        nincs meg
+      <span className="text-xs text-amber-400 shrink-0" title="It is in the arrangement, but discovery cannot find it. Not removed — a name vanishing from a hand-made list is information.">
+        missing
       </span>
-      <button onClick={onForget} className="text-xs text-fg-ghost hover:text-fg-strong shrink-0 underline underline-offset-2" title="Kivétel az elrendezésből">
-        elfelejt
+      <button onClick={onForget} className="text-xs text-fg-ghost hover:text-fg-strong shrink-0 underline underline-offset-2" title="Drop it from the arrangement">
+        forget
       </button>
     </div>
   )
@@ -575,15 +575,15 @@ function GroupBlock(p: GroupProps) {
         {p.confirmRemove ? (
           <button
             onClick={p.onRemove}
-            title="A projektjei a besorolatlanok közé kerülnek; a csoporton belüli sorrend elvész"
+            title="Its projects move to the ungrouped tail; the order inside the group is lost"
             className="px-1 text-xs text-amber-400 hover:text-fg-loud shrink-0"
           >
-            biztos? ✕
+            sure? ✕
           </button>
         ) : (
           <button
             onClick={p.onAskRemove}
-            title="Csoport megszüntetése — a projektjei a besorolatlanok közé kerülnek, egy sem tűnik el"
+            title="Remove the group — its projects move to the ungrouped tail, none disappears"
             className="px-1 text-xs text-fg-ghost hover:text-fg-strong shrink-0"
           >
             ✕
@@ -608,7 +608,7 @@ function GroupBlock(p: GroupProps) {
                 active={p.selected === name}
                 waitingKnown={p.waitingKnown}
                 onSelect={() => p.onSelect(name)}
-                handle={handleAttrs(reorder.handlers, i, `${p.group.id}:${name}`, `${name} sorrendje a(z) ${p.group.name} csoporton belül`)}
+                handle={handleAttrs(reorder.handlers, i, `${p.group.id}:${name}`, `order of ${name} within the group ${p.group.name}`)}
                 dragging={reorder.dragFrom === i}
                 dropTarget={reorder.dragFrom !== null && reorder.dragTo === i && reorder.dragFrom !== i}
                 menuOpen={p.menuFor === name}
@@ -623,12 +623,12 @@ function GroupBlock(p: GroupProps) {
             )
           ))}
           {p.group.order.length === 0 && (
-            <div className="pl-6 py-0.5 text-xs text-fg-ghost">üres csoport</div>
+            <div className="pl-6 py-0.5 text-xs text-fg-ghost">empty group</div>
           )}
         </div>
       )}
       {!open && p.group.missing.length > 0 && (
-        <div className="pl-6 text-xs text-amber-400">{p.group.missing.length} nincs meg</div>
+        <div className="pl-6 text-xs text-amber-400">{p.group.missing.length} missing</div>
       )}
     </div>
   )
@@ -706,7 +706,7 @@ export default function FleetProjectColumn({
       })
       if (res.status === 409) {
         const body = await res.json().catch(() => null)
-        setConflict(String(body?.detail ?? 'az elrendezés közben megváltozott'))
+        setConflict(String(body?.detail ?? 'the arrangement changed while you were editing it'))
         return
       }
       if (!res.ok) { setSaveError(`HTTP ${res.status}`); return }
@@ -861,15 +861,15 @@ export default function FleetProjectColumn({
                 className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold hover:underline underline-offset-2 tabular-nums"
               >
                 <span className="w-2 h-2 rounded-full bg-sky-300" />
-                {totals.waiting} vár válaszra
-                <span className="text-fg-muted font-normal">→ az elsőre</span>
+                {totals.waiting} waiting for an answer
+                <span className="text-fg-muted font-normal">→ first one</span>
               </button>
             ) : (
-              <span className="text-xs text-fg-muted tabular-nums">0 vár válaszra</span>
+              <span className="text-xs text-fg-muted tabular-nums">0 waiting for an answer</span>
             )
           ) : (
             /* NOT a zero. Where the producer does not report this state at all,
-               a rendered `0 vár válaszra` would be an answer nobody gave — the
+               a rendered `0 waiting for an answer` would be an answer nobody gave — the
                false-absence class this screen exists for.
 
                Measured 2026-08-19 (afternoon): the producer DOES report it now
@@ -881,9 +881,9 @@ export default function FleetProjectColumn({
             <span
               data-fleet-waiting="unreported"
               className="text-xs text-amber-400"
-              title="Ez a válasz nem tartalmaz 'válaszra vár' mérést. Nem nulla — hiányzó mérés."
+              title="This answer carries no 'waiting for an answer' measurement. Not a zero — a missing measurement."
             >
-              „válaszra vár” — ez a válasz nem méri
+              “waiting for an answer” — this answer does not measure it
             </span>
           )}
           {/* Task 7.14. In the header rather than only on the row, for the same
@@ -897,24 +897,24 @@ export default function FleetProjectColumn({
               data-fleet-jump="awaiting"
               onClick={() => jump(firstAwaitingProject)}
               className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:underline underline-offset-2 tabular-nums"
-              title="Emberre váró munka — akkor is, ha egyetlen agent sem fut. Kézi lépés, elakadt change, vagy 'fut' állapotú munka, aminek a processze már nincs meg."
+              title="Work waiting for a human — even where no agent is running. A manual step, a stalled change, or work marked running whose process is gone."
             >
               <span className="w-2 h-2 bg-violet-300" />
-              {totals.awaiting} emberre vár
+              {totals.awaiting} waiting for a human
               <span className="text-fg-muted">→</span>
             </button>
           )}
           {/* A zero here is only readable next to this. 37 of 41 projects had no
               orchestration state at all on the day this was built, so a bare
-              `0 emberre vár` would have described "we looked nowhere" as "there
+              `0 waiting for a human` would have described "we looked nowhere" as "there
               is nothing". */}
           {totals.unmeasured > 0 && (
             <span
               data-fleet-awaiting-unmeasured={totals.unmeasured}
               className="text-xs text-fg-ghost tabular-nums"
-              title="Ennyi projektnek nincs orchestration-állapota, tehát ott nem néztünk semmit. Nem nulla — meg nem mért."
+              title="This many projects have no orchestration state at all, so nothing was looked at there. Not a zero — not measured."
             >
-              {totals.unmeasured} projekt nincs mérve
+              {totals.unmeasured} projects not measured
             </span>
           )}
           {/* A contradiction the surface never shows is one nobody ever fixes.
@@ -926,10 +926,10 @@ export default function FleetProjectColumn({
               data-fleet-jump="conflict"
               onClick={() => jump(firstConflict)}
               className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline underline-offset-2 tabular-nums"
-              title="Ennyi agent rekordja olyan állapotot deklarált, amit a naplója megcáfolt. A mérés nyer; az ellentmondás a producer oldalán van."
+              title="This many agents' records declared a state their log contradicts. The measurement wins; the contradiction is on the producer's side."
             >
               <span aria-hidden>⚠</span>
-              {totals.conflicts} ellentmondó deklaráció
+              {totals.conflicts} contradicting declarations
               <span className="text-fg-muted">→</span>
             </button>
           )}
@@ -955,45 +955,45 @@ export default function FleetProjectColumn({
             prose at the top push the list itself below the fold. */}
         <div
           className="text-xs text-fg-ghost tabular-nums truncate"
-          title="A fenti számok a félretett szekcióban és az összecsukott csoportokban lévő agenteket is tartalmazzák."
+          title="The counts above include agents in the parked section and inside collapsed groups."
         >
-          {totals.agents} agent · {present.length} projekt
+          {totals.agents} agents · {present.length} projects
           {missingCount > 0 && (
-            <span className="text-amber-400"> · {missingCount} név nincs meg</span>
+            <span className="text-amber-400"> · {missingCount} names missing</span>
           )}
         </div>
       </div>
 
       {conflict && (
         <div data-fleet-conflict className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300 space-y-1">
-          <div>Az elrendezés mentése elutasítva: {conflict}</div>
+          <div>Saving the arrangement was refused: {conflict}</div>
           <div className="text-amber-200/80">
-            A képernyőn a te módosításod van, de <span className="font-semibold">nincs elmentve</span>.
+            The screen holds your change, but it is <span className="font-semibold">not saved</span>.
           </div>
           <button
             onClick={() => { void loadLayout() }}
             className="underline underline-offset-2 hover:text-amber-100"
           >
-            újratöltés a szerverről (a nem mentett módosításod elveszik)
+            reload from the server (your unsaved change is lost)
           </button>
         </div>
       )}
       {saveError && (
         <div className="shrink-0 border-b border-surface-line px-2 py-1 text-xs text-red-400">
-          az elrendezés mentése nem sikerült: {saveError} — a képernyőn látható sorrend nincs elmentve
+          saving the arrangement failed: {saveError} — the order you see is not saved
         </div>
       )}
       {loadError && (
         <div className="shrink-0 border-b border-surface-line px-2 py-1 text-xs text-amber-400">
-          az elrendezés nem olvasható ({loadError}) — a projektek besorolatlanként jelennek meg,
-          ez nem azt jelenti, hogy nincs elrendezés
+          the arrangement cannot be read ({loadError}) — the projects render as ungrouped,
+          which is not a statement that there is no arrangement
         </div>
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 space-y-1 min-h-0">
         {arr === null && !loadError && (
           <div data-fleet-arrangement="loading" className="px-2 py-1.5 text-xs text-fg-muted">
-            elrendezés betöltése…
+            loading the arrangement…
           </div>
         )}
         {/* Ordered groups. */}
@@ -1061,7 +1061,7 @@ export default function FleetProjectColumn({
                     active={selected === name}
                     waitingKnown={waitingKnown}
                     onSelect={() => onSelect(name)}
-                    handle={handleAttrs(ungroupedReorder.handlers, i, `ungrouped:${name}`, `${name} sorrendje a besorolatlanok között`)}
+                    handle={handleAttrs(ungroupedReorder.handlers, i, `ungrouped:${name}`, `order of ${name} among the ungrouped`)}
                     dragging={ungroupedReorder.dragFrom === i}
                     dropTarget={ungroupedReorder.dragFrom !== null && ungroupedReorder.dragTo === i && ungroupedReorder.dragFrom !== i}
                     menuOpen={menuFor === name}
@@ -1085,11 +1085,11 @@ export default function FleetProjectColumn({
                 data-fleet-ungrouped-filter={showQuietUngrouped ? 'off' : 'on'}
                 onClick={() => setShowQuietUngrouped(v => !v)}
                 className="ml-3 mt-0.5 text-xs text-fg-ghost hover:text-fg-strong tabular-nums"
-                title="Csak a rendezést könnyíti; ezek a projektek egyetlen agentet sem futtatnak, tehát nincs bennük elrejthető állapot."
+                title="Arranging aid only; these projects run no agents at all, so there is no state in them to hide."
               >
                 {showQuietUngrouped
-                  ? `${ungroupedQuiet.length} agent nélküli elrejtése`
-                  : `${ungroupedQuiet.length} agent nélkül — mutasd`}
+                  ? `hide ${ungroupedQuiet.length} with no agents`
+                  : `${ungroupedQuiet.length} with no agents — show`}
               </button>
             )}
           </div>
@@ -1101,8 +1101,8 @@ export default function FleetProjectColumn({
         {orphans.length > 0 && (
           <div data-fleet-orphans className="rounded border border-amber-500/40 p-1">
             <div className="text-xs text-amber-400 px-1 py-0.5">
-              {orphans.length} projekt nincs benne az elrendezésben — a két válasz külön kérdezve tér el
-              <button onClick={() => { void loadLayout() }} className="ml-1 underline underline-offset-2">frissítés</button>
+              {orphans.length} projects are not in the arrangement — the two answers differ when asked separately
+              <button onClick={() => { void loadLayout() }} className="ml-1 underline underline-offset-2">refresh</button>
             </div>
             {orphans.map((name, i) => (
               <ProjectRow
@@ -1135,7 +1135,7 @@ export default function FleetProjectColumn({
               className="w-full flex items-center gap-1.5 px-1.5 py-1 text-xs text-fg-muted hover:text-fg-strong"
             >
               <span aria-hidden className="inline-block w-3">{parkedOpen ? '▾' : '▸'}</span>
-              <span className="flex-1 text-left">félretéve</span>
+              <span className="flex-1 text-left">parked</span>
               <span className="tabular-nums text-fg-ghost">{view.parked.length + view.parkedMissing.length}</span>
               {/* The parked section is the most compacted thing on this screen,
                   so it carries the same counters as everything else. It is out
@@ -1159,7 +1159,7 @@ export default function FleetProjectColumn({
                       active={selected === name}
                       waitingKnown={waitingKnown}
                       onSelect={() => onSelect(name)}
-                      handle={handleAttrs(parkedReorder.handlers, i, `parked:${name}`, `${name} sorrendje a félretettek között`)}
+                      handle={handleAttrs(parkedReorder.handlers, i, `parked:${name}`, `order of ${name} among the parked`)}
                       dragging={parkedReorder.dragFrom === i}
                       dropTarget={parkedReorder.dragFrom !== null && parkedReorder.dragTo === i && parkedReorder.dragFrom !== i}
                       menuOpen={menuFor === name}
@@ -1205,25 +1205,25 @@ export default function FleetProjectColumn({
               autoFocus
               value={newGroup.name}
               onChange={e => setNewGroup({ ...newGroup, name: e.target.value })}
-              placeholder="csoport neve"
-              aria-label="csoport neve"
+              placeholder="group name"
+              aria-label="group name"
               className="w-full bg-surface-panel border border-surface-line rounded px-1.5 py-1 text-xs text-fg-strong"
             />
             <input
               value={newGroup.prefix}
               onChange={e => setNewGroup({ ...newGroup, prefix: e.target.value })}
-              placeholder="megcsíráztatás előtaggal (nem kötelező)"
-              aria-label="előtag a megcsíráztatáshoz"
+              placeholder="seed with a prefix (optional)"
+              aria-label="prefix to seed with"
               className="w-full bg-surface-panel border border-surface-line rounded px-1.5 py-1 text-xs text-fg-strong"
             />
             <div className="text-xs text-fg-ghost leading-snug">
               {newGroup.prefix.trim()
-                ? `most ${seedCandidates(view, newGroup.prefix).length} projekt kerül bele — egyszeri aktus, utána a tagság a tárolt tény, az előtag nem szabály`
-                : 'az előtag csak egyszer tölti fel a csoportot; szabályként soha nem fut újra'}
+                ? `${seedCandidates(view, newGroup.prefix).length} projects go in now — a one-time act; from then on membership is the stored fact and the prefix is not a rule`
+                : 'the prefix fills the group once; it never runs again as a rule'}
             </div>
             <div className="flex gap-2">
-              <button type="submit" className="text-xs text-sky-300 hover:underline">létrehozás</button>
-              <button type="button" onClick={() => setNewGroup(null)} className="text-xs text-fg-muted hover:text-fg-strong">mégse</button>
+              <button type="submit" className="text-xs text-sky-300 hover:underline">create</button>
+              <button type="button" onClick={() => setNewGroup(null)} className="text-xs text-fg-muted hover:text-fg-strong">cancel</button>
             </div>
           </form>
         )}

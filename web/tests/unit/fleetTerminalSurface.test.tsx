@@ -38,7 +38,7 @@ function fleet(projects: Json[], extra: Json = {}): Json {
     working: all.filter(a => a.state === 'working').length,
     unknown: all.filter(a => a.state === 'unknown').length,
     projects,
-    quiet_means: 'nincs nyitott eszközhívás',
+    quiet_means: 'no outstanding tool call',
     ...extra,
   }
 }
@@ -124,7 +124,7 @@ describe('the tile offers a terminal only where one can exist', () => {
     expect(text).toContain('nem tudjuk')
     // The refuted rendering, held: printing the foreign wording here is the
     // whole defect, and it looks identical in every structural count.
-    expect(text).not.toContain('nem a kereté')
+    expect(text).not.toContain('not the framework’s')
     expect(container.querySelector('[data-fleet-terminal-open]')).toBeNull()
   })
 
@@ -172,7 +172,7 @@ describe('a waiting agent, now that the producer measures it', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-fleet-jump="waiting"]')).toBeTruthy()
     })
-    await waitFor(() => expect(container.textContent ?? '').toContain('válaszra vár'))
+    await waitFor(() => expect(container.textContent ?? '').toContain('waiting for an answer'))
   })
 
   it('reports a real zero as a zero, and a missing measurement as missing', async () => {
@@ -181,7 +181,7 @@ describe('a waiting agent, now that the producer measures it', () => {
     const { container } = render(<Fleet />)
     await waitFor(() => expect(container.querySelector('[data-fleet-attention]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-waiting="unreported"]')).toBeNull()
-    expect(container.textContent ?? '').toContain('0 vár válaszra')
+    expect(container.textContent ?? '').toContain('0 waiting for an answer')
   })
 })
 
@@ -195,7 +195,7 @@ describe('a declaration the log refuted is shown, not swallowed', () => {
       expect(container.querySelector('[data-fleet-conflict-agent="1"]')).toBeTruthy()
     })
     expect(container.querySelector('[data-fleet-jump="conflict"]')).toBeTruthy()
-    expect(container.textContent ?? '').toContain('1 ellentmondó deklaráció')
+    expect(container.textContent ?? '').toContain('1 contradicting declarations')
   })
 
   it('counts from the data: a null field is not a contradiction and an empty string is not one either', async () => {
