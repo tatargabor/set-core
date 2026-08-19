@@ -131,8 +131,32 @@ export function holdNote(ageSeconds: number): string {
  * because nothing under that session can start a turn. Offered only when the
  * count was actually reported — an absent count is not a zero, and offering an
  * install off a missing field would propose a fix for a problem nobody measured.
+ *
+ * ## And only when a message EXISTS to sit unread
+ *
+ * Reported 2026-08-19 with a screenshot: a send the channel refused — the seat
+ * was in a room the sender had not joined — rendered this remedy underneath the
+ * refusal, saying *"every instruction sent here sits unread"*. Nothing had been
+ * sent. The waiter count is a true measurement of a condition the send never
+ * reached, and the sentence built on it is a present-tense claim about messages
+ * that do not exist.
+ *
+ * It also displaced the remedy that WAS true: the channel's own notice named
+ * the room to join, and the reader's eye had two remedies to choose between,
+ * one of which could not work.
+ *
+ * This is the same class as a count taken from a declaration instead of from
+ * the data — the number is right and the thing it is offered as evidence FOR
+ * was never in play. `accepted === false` means no message left, so there is
+ * nothing for a waiter to have failed to pick up.
  */
-export function offerWaiterRemedy(report: Pick<InstructReport, 'waiters_here' | 'waiters'>): boolean {
+export function offerWaiterRemedy(
+  report: Pick<InstructReport, 'waiters_here' | 'waiters' | 'accepted'>,
+): boolean {
+  // A refused send has nothing waiting. `false` only — an ABSENT `accepted` is
+  // not a refusal, and suppressing the remedy on a missing field would hide a
+  // real one on an older server.
+  if (report.accepted === false) return false
   const n = typeof report.waiters_here === 'number' ? report.waiters_here : report.waiters
   return n === 0
 }

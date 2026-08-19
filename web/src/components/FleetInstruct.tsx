@@ -255,17 +255,31 @@ export default function FleetInstruct({ agent, compact, terminalOpen }: {
             <span className={`text-xs font-semibold ${TONE[meaning.tone] ?? 'text-fg-muted'}`}>
               {meaning.label}
             </span>
-            {/* The three facts, as three. `delivered_to_agent` is the one a
-                reader actually wants and the one a status code cannot answer. */}
-            <span
-              className="text-xs text-fg-ghost"
-              data-fleet-delivered={report.delivered_to_agent ? 'yes' : 'no'}
-              title="Whether the AGENT has it. A held message is never counted as delivered."
-            >
-              {report.delivered_to_agent ? 'the agent has it' : 'the agent does not have it'}
-            </span>
-            {report.accepted === false && (
-              <span className="text-xs text-red-400">the send was not made</span>
+            {/* The three facts, as three — where they ARE three.
+                `delivered_to_agent` is the one a reader actually wants and the
+                one a status code cannot answer: accepted-but-not-delivered is a
+                real and common state (a hold), and only this line says so.
+
+                ⚠ But when the send was REFUSED it is not a third fact, it is
+                the first one restated: nothing was sent, so of course the agent
+                does not have it. Reported 2026-08-19 with a screenshot — the
+                line read *"refused · the agent does not have it · the send was
+                not made"*, three ways of saying one thing, above a note saying
+                it a fourth time, while the actual CAUSE sat two lines below in
+                the channel's own words. Density spent on restatement is density
+                taken from the reason. */}
+            {report.accepted === false ? (
+              <span className="text-xs text-red-400" data-fleet-delivered="no">
+                the send was not made
+              </span>
+            ) : (
+              <span
+                className="text-xs text-fg-ghost"
+                data-fleet-delivered={report.delivered_to_agent ? 'yes' : 'no'}
+                title="Whether the AGENT has it. A held message is never counted as delivered."
+              >
+                {report.delivered_to_agent ? 'the agent has it' : 'the agent does not have it'}
+              </span>
             )}
           </div>
 
@@ -288,9 +302,17 @@ export default function FleetInstruct({ agent, compact, terminalOpen }: {
           {report.reason && <div className="text-xs text-fg-muted">{report.reason}</div>}
 
           {/* The channel's own words, verbatim and unparsed. Shown because a
-              summary of a notice is a second judgement. */}
+              summary of a notice is a second judgement.
+
+              ⚠ NOT the faintest thing on the card, which is what they were.
+              Measured on the reported screenshot: the one line telling the
+              reader what to DO — join the room, then send — was `fg-ghost`,
+              while a remedy that could not work was amber. Amber means *needs
+              attention* everywhere on this screen, so the wrong instruction had
+              the alarm and the right one had the whisper. A colour spent on the
+              wrong thing is worse than no colour, because it is followed. */}
           {report.notices && report.notices.length > 0 && (
-            <ul className="text-xs text-fg-ghost list-none space-y-0.5">
+            <ul className="text-xs text-fg-muted list-none space-y-0.5" data-fleet-notices={report.notices.length}>
               {report.notices.map((n, i) => <li key={i}>· {n}</li>)}
             </ul>
           )}

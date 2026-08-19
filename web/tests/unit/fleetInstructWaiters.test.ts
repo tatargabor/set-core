@@ -107,6 +107,36 @@ describe('the missing-waiter remedy is offered where the count is zero', () => {
   it('offers nothing when no count was reported at all', () => {
     expect(offerWaiterRemedy({})).toBe(false)
   })
+
+  /**
+   * ⚠ THE REPORTED ONE, 2026-08-19, with a screenshot.
+   *
+   * A send the channel refused — the seat was in a room the sender had not
+   * joined — rendered this remedy under the refusal, saying *"every instruction
+   * sent here sits unread"*. Nothing had been sent. The waiter count was a true
+   * measurement of a condition the send never reached, and the sentence built
+   * on it was a present-tense claim about messages that do not exist.
+   *
+   * It cost more than a wrong sentence: the remedy is AMBER, which means *needs
+   * attention* everywhere on this screen, while the remedy that would have
+   * worked — the channel's own *join the room first* — was the faintest line on
+   * the card. The wrong instruction had the alarm and the right one had the
+   * whisper.
+   */
+  it('offers nothing when the send never happened', () => {
+    expect(offerWaiterRemedy({ waiters_here: 0, accepted: false })).toBe(false)
+    expect(offerWaiterRemedy({ waiters: 0, accepted: false })).toBe(false)
+  })
+
+  /**
+   * And an ABSENT `accepted` is not a refusal. Suppressing on a missing field
+   * would hide a real remedy on an older server — the same false-absence
+   * direction as the test above, mirrored.
+   */
+  it('still offers it when the send was made, or when nothing said whether it was', () => {
+    expect(offerWaiterRemedy({ waiters_here: 0, accepted: true })).toBe(true)
+    expect(offerWaiterRemedy({ waiters_here: 0 })).toBe(true)
+  })
 })
 
 describe('where the input cannot be, the reason stands in its place', () => {

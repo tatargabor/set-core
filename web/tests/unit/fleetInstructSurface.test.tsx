@@ -45,6 +45,81 @@ async function send(text = 'do the thing') {
 beforeEach(() => { vi.useRealTimers() })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
+describe('a refusal says the CAUSE, not the failure four times', () => {
+  /**
+   * Reported 2026-08-19 with a screenshot. The card carried, in this order:
+   * *refused* · *the agent does not have it* · *the send was not made*, then
+   * *the send did not happen*, then the channel's actual reason, then — in
+   * AMBER — a remedy about waiters that could not apply.
+   *
+   * Four ways of saying it failed, and the one line saying what to DO was the
+   * faintest thing on the card while the wrong instruction had the alarm
+   * colour. `ui-quality.md`: one visual weight per meaning, and density spent
+   * on restatement is density taken from the reason.
+   */
+  const refused = {
+    outcome: 'refused', accepted: false, delivered_to_agent: false, settled: true,
+    waiters_here: 0,
+    notices: ["`x#abc` is in no room you are in — join one first, then send there."],
+  }
+
+  it('does not restate the refusal as a delivery fact', async () => {
+    answerWith(200, refused)
+    const { container } = render(<FleetInstruct agent={agent()} />)
+    await send()
+    await waitFor(() => expect(container.querySelector('[data-fleet-outcome]')).toBeTruthy())
+
+    // `the agent does not have it` carries information when a send WAS made and
+    // is being held. After a refusal it is the first fact restated: nothing was
+    // sent, so of course it did not arrive.
+    expect(screen.queryByText('the agent does not have it')).toBeNull()
+    expect(screen.getByText('the send was not made')).toBeTruthy()
+    // And the delivery fact is still MARKED, for anything reading the DOM —
+    // suppressed from the eye, not from the record.
+    expect(container.querySelector('[data-fleet-delivered]')!.getAttribute('data-fleet-delivered')).toBe('no')
+  })
+
+  it('does not offer a remedy for a cause the send never reached', async () => {
+    answerWith(200, refused)
+    const { container } = render(<FleetInstruct agent={agent()} />)
+    await send()
+    await waitFor(() => expect(container.querySelector('[data-fleet-outcome]')).toBeTruthy())
+
+    expect(
+      container.querySelector('[data-fleet-remedy="no-waiter"]'),
+      'a refused send has nothing sitting unread — the waiter count measures a '
+      + 'condition it never reached',
+    ).toBeNull()
+  })
+
+  it('still shows the channel’s own words, which are the only actionable thing', async () => {
+    answerWith(200, refused)
+    const { container } = render(<FleetInstruct agent={agent()} />)
+    await send()
+    await waitFor(() => expect(container.querySelector('[data-fleet-notices]')).toBeTruthy())
+    expect(screen.getByText(/join one first/)).toBeTruthy()
+    // Not the faintest thing on the card. `fg-ghost` is what it was, and it lost
+    // to an amber remedy that could not work.
+    expect(container.querySelector('[data-fleet-notices]')!.className).not.toContain('fg-ghost')
+  })
+
+  /**
+   * The mirror, so the suppression cannot swing too far: an accepted send that
+   * nothing is listening for STILL gets the remedy. That is the case the remedy
+   * was built for, and losing it would be the false-absence direction.
+   */
+  it('keeps the remedy when the send WAS made and nothing is listening', async () => {
+    answerWith(200, {
+      outcome: 'sits-unread', accepted: true, delivered_to_agent: false, settled: true,
+      waiters_here: 0,
+    })
+    const { container } = render(<FleetInstruct agent={agent()} />)
+    await send()
+    await waitFor(() => expect(container.querySelector('[data-fleet-remedy="no-waiter"]')).toBeTruthy())
+    expect(screen.getByText('the agent does not have it')).toBeTruthy()
+  })
+})
+
 describe('a 200 is not a delivery', () => {
   it('says the agent does NOT have it when the message sits unread', async () => {
     answerWith(200, {

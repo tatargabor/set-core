@@ -478,6 +478,45 @@ consumer's name, path, or content.
   settled, a test holds it — the wrong reading is what has to be unable to come
   back.
 
+### B-23 — a refused send says it failed four times and offers a remedy for a cause it never reached
+
+- **state:** closed (`<this commit>`)
+- **reported:** 2026-08-19 by the user with a screenshot — *"send comand hibára
+  futott"*
+- **measured, off the reported card, in render order:** `refused` ·
+  *the agent does not have it* · *the send was not made*, then *the send did not
+  happen*, then the channel's own reason, then — in **amber** — a remedy about
+  missing waiters. Four statements that it failed, one cause, and the amber went
+  to the wrong one.
+- **the defect is not the wording, it is a claim about a stage never reached.**
+  `offerWaiterRemedy()` fired on `waiters_here === 0` alone. That count is a
+  true measurement of a condition the send never got to: the channel refused it
+  at the room check, so nothing left, and the sentence it produced —
+  *"every instruction sent here sits unread"* — is present tense about messages
+  that do not exist. Same class as a count taken from a declaration instead of
+  from the data: the number is right and the thing it is offered as evidence FOR
+  was not in play.
+- **and the colours were inverted.** Amber means *needs attention* everywhere on
+  this screen. The remedy that could not work had it; the remedy that would have
+  worked — the channel's own *join the room first, then send* — was `fg-ghost`,
+  the faintest thing on the card. A colour spent on the wrong thing is worse
+  than no colour, because it is followed.
+- **fixed:** the remedy requires that a send was actually made (`accepted !==
+  false`; an ABSENT `accepted` is still offered, so an older server does not
+  lose a real remedy); after a refusal *the agent does not have it* is dropped
+  as a restatement of the first fact and the delivery state stays in the DOM
+  marker; the channel's notices are no longer the quietest line.
+- **proven by mutation:** restoring the unconditional remedy fails 2 tests,
+  restoring the restatement fails 2 (one of them a pre-existing 409 test),
+  returning the notices to `fg-ghost` fails 1. Restores verified by file
+  identity. 570 web unit tests green, build exit 0.
+- **⚠ what is NOT fixed, deliberately:** the label/note pair still reads
+  *refused* / *the send did not happen*, which is one restatement remaining. It
+  is left because the note table is static and the fix that reads well —
+  suppressing a generic note when the channel gave a specific one — would also
+  drop `held`'s note, which carries something no reason does (the hold expires
+  on its own). Worth a decision, not a quiet edit.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open
