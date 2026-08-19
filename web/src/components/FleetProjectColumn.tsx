@@ -326,6 +326,8 @@ interface RowProps {
   handle?: Record<string, unknown>
   /** Position in the STORED list — what a drop on this row means. */
   index?: number
+  /** Last row of its list — no separator below it, so a block ends cleanly. */
+  last?: boolean
   dragging?: boolean
   dropTarget?: boolean
   menuOpen: boolean
@@ -347,9 +349,29 @@ function ProjectRow(p: RowProps) {
       data-fleet-project={p.name}
       className={p.dropTarget ? 'rounded outline outline-1 outline-sky-400' : undefined}
     >
+      {/* Task 7.17. A hairline under every row except the last of its list.
+
+          The token is `surface-edge`, NOT `surface-line`. Measured while
+          building this: `--color-surface-line` and `--color-surface-raised` are
+          the SAME value (neutral-800), so a border painted with it is invisible
+          against exactly the surface it is supposed to bound — the first
+          attempt rendered and could not be seen. A name that promises an edge
+          while aliasing a fill is the second-place defect in a palette.
+          These rows are COMPARABLE — same fields, same order — which is the
+          case `ui-quality.md` says wants a table's separation rather than a
+          list of floating cards. Without it the column reads as one surface
+          and the eye has nothing to land on; measured by the user as
+          "nagyon összefolynak a dolgok, mert nincsenek határok közöttük".
+
+          The separator is on the row and not between rows, because a gap
+          rendered between siblings disappears exactly when a row is dragged
+          out — and a boundary that vanishes during a reorder is worse than
+          none, since reordering is when you most need to see the rows. */}
       <div
         className={`flex items-center gap-1 rounded border transition-colors ${
-          p.active ? 'border-surface-line bg-surface-raised' : 'border-transparent hover:bg-surface-raised/50'
+          p.active
+            ? 'border-surface-line bg-surface-raised'
+            : `border-transparent hover:bg-surface-raised/50 ${p.last ? '' : 'border-b-surface-edge/70'}`
         } ${p.dragging ? 'opacity-50' : ''}`}
       >
         {p.handle ? (
@@ -495,7 +517,7 @@ function GroupBlock(p: GroupProps) {
       data-drag-index={p.groupIndex}
       data-fleet-group={p.group.id}
       data-fleet-group-collapsed={p.group.collapsed ? 'true' : 'false'}
-      className={`rounded ${p.groupDropTarget ? 'outline outline-1 outline-sky-400' : ''} ${p.groupDragging ? 'opacity-50' : ''}`}
+      className={`rounded border border-surface-edge/60 bg-surface-panel/50 ${p.groupDropTarget ? 'outline outline-1 outline-sky-400' : ''} ${p.groupDragging ? 'opacity-50' : ''}`}
     >
       <div className="flex items-center gap-1 px-0.5 py-0.5">
         {p.groupHandle ? (
@@ -559,6 +581,7 @@ function GroupBlock(p: GroupProps) {
                 key={name}
                 name={name}
                 index={i}
+                last={i === p.group.order.length - 1}
                 project={p.byName.get(name)}
                 active={p.selected === name}
                 waitingKnown={p.waitingKnown}
@@ -976,6 +999,7 @@ export default function FleetProjectColumn({
                     key={name}
                     name={name}
                     index={i}
+                    last={i === view.ungrouped.length - 1}
                     project={byName.get(name)}
                     active={selected === name}
                     waitingKnown={waitingKnown}
@@ -1023,10 +1047,11 @@ export default function FleetProjectColumn({
               {orphans.length} projekt nincs benne az elrendezésben — a két válasz külön kérdezve tér el
               <button onClick={() => { void loadLayout() }} className="ml-1 underline underline-offset-2">frissítés</button>
             </div>
-            {orphans.map(name => (
+            {orphans.map((name, i) => (
               <ProjectRow
                 key={name}
                 name={name}
+                last={i === orphans.length - 1}
                 project={byName.get(name)}
                 active={selected === name}
                 waitingKnown={waitingKnown}
@@ -1072,6 +1097,7 @@ export default function FleetProjectColumn({
                       key={name}
                       name={name}
                       index={i}
+                      last={i === view.parkedOrder.length - 1}
                       project={byName.get(name)}
                       active={selected === name}
                       waitingKnown={waitingKnown}
