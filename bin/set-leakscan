@@ -174,6 +174,69 @@ def private_slugs():
     return slugs, None
 
 
+# Categories that matter whatever the remote's visibility. A credential is a
+# credential in a private repository too, and a file that is gitignored yet
+# tracked is a mistake wherever it lives — that exact shape shipped a real phone
+# number for weeks from a repo whose author believed the ignore rule had worked.
+ALWAYS_ENFORCED = ("secret:", "ignored-but-tracked")
+
+VIS_CACHE = os.path.join(HOME, ".cache", "set-core", "leakscan-visibility.json")
+
+
+def remote_visibility(cwd):
+    """Is anything this repository pushes to publicly readable?
+
+    Returns "public", "private", or "unknown". UNKNOWN IS TREATED AS PUBLIC by
+    the caller: a gate that guesses "private" when it cannot tell fails in the
+    direction that publishes.
+
+    Why this exists at all: without it the gate reported 654 findings inside a
+    private project that legitimately names the client projects it coordinates —
+    that is its job, and none of it leaves a private remote. A gate that cries
+    on every push in the repositories somebody actually works in is a gate that
+    gets removed, and it takes the public-repo protection with it.
+    """
+    urls = sorted({u for u in sh(["git", "remote", "-v"], cwd=cwd).split()
+                   if "://" in u or "@" in u})
+    if not urls:
+        return "unknown"
+    try:
+        cache = json.load(open(VIS_CACHE, encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+
+    verdicts, dirty = [], False
+    for url in urls:
+        if url in cache:
+            verdicts.append(cache[url])
+            continue
+        v = "unknown"
+        if "github.com" in url:
+            slug = url.split("github.com")[-1].lstrip(":/").removesuffix(".git")
+            out = sh(["gh", "repo", "view", slug, "--json", "visibility",
+                      "-q", ".visibility"]).strip().lower()
+            if out in ("public", "private", "internal"):
+                v = "public" if out == "public" else "private"
+        cache[url] = v
+        verdicts.append(v)
+        dirty = True
+
+    if dirty:
+        try:
+            os.makedirs(os.path.dirname(VIS_CACHE), exist_ok=True)
+            payload = json.dumps(cache, indent=1)      # render BEFORE opening
+            with open(VIS_CACHE, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+        except OSError:
+            pass
+
+    if "public" in verdicts:
+        return "public"
+    if all(v == "private" for v in verdicts):
+        return "private"
+    return "unknown"
+
+
 def tracked_files(cwd):
     out = sh(["git", "ls-files", "-z"], cwd=cwd)
     return [f for f in out.split("\0") if f]
@@ -243,6 +306,20 @@ def main():
         return 2
 
     self_paths = {"bin/set-leakscan", ".claude/rules/release-safety.md"}
+
+    # A REPOSITORY MAY NAME ITSELF. Without this, running the gate inside one of
+    # the private projects reports its own name on every line that mentions it —
+    # 893 findings in one measured case, which is not a leak in any direction and
+    # would make the gate unusable exactly where somebody most needs to push.
+    own = {os.path.basename(cwd).lower()}
+    for url in sh(["git", "remote", "-v"], cwd=cwd).split():
+        if "/" in url or ":" in url:
+            tail = url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+            if tail.endswith(".git"):
+                tail = tail[:-4]
+            if tail:
+                own.add(tail.lower())
+    slugs = {s for s in slugs if s not in own}
 
     checks = []
     if slugs:
@@ -338,35 +415,57 @@ def main():
         findings = [f for f in findings
                     if not any(a in f["text"].lower() for a in allow_literals)]
 
+    # --- what actually blocks --------------------------------------------
+    visibility = remote_visibility(cwd)
+    if visibility == "private":
+        blocking = [f for f in findings
+                    if f["category"].startswith(ALWAYS_ENFORCED)]
+    else:
+        blocking = findings
+
     # --- report --------------------------------------------------------------
     if args.json:
-        print(json.dumps({"findings": findings,
-                          "skipped": skip_note,
+        print(json.dumps({"findings": findings, "blocking": blocking,
+                          "visibility": visibility, "skipped": skip_note,
                           "scanned_files": len(files)}, indent=2))
     elif not args.quiet or findings or skip_note:
         if skip_note:
             print(f"⚠ set-leakscan: {skip_note}", file=sys.stderr)
         if findings:
-            print(f"✖ set-leakscan: {len(findings)} finding(s) in {len(files)} scanned file(s)\n",
+            mark = "✖" if blocking else "•"
+            print(f"{mark} set-leakscan: {len(findings)} finding(s) in "
+                  f"{len(files)} scanned file(s) — remote is {visibility}\n",
                   file=sys.stderr)
             by_cat = {}
             for f in findings:
                 by_cat.setdefault(f["category"], []).append(f)
+            blocking_cats = {f["category"] for f in blocking}
             for cat, items in sorted(by_cat.items()):
-                print(f"  {cat} ({len(items)})", file=sys.stderr)
+                tag = "BLOCKS" if cat in blocking_cats else "advisory"
+                print(f"  {cat} ({len(items)}) [{tag}]", file=sys.stderr)
                 for it in items[:8]:
                     loc = f"{it['file']}:{it['line']}" if it["line"] else it["file"]
                     print(f"    {loc}  {it['text']}", file=sys.stderr)
                 if len(items) > 8:
                     print(f"    … and {len(items) - 8} more", file=sys.stderr)
-            print("\n  Nothing is pushed. Fix the findings, or record a deliberate",
-                  file=sys.stderr)
-            print(f"  exception in {ALLOWLIST} (one slug per line).", file=sys.stderr)
+            if blocking:
+                print("\n  Nothing is pushed. Fix the findings, or record a deliberate",
+                      file=sys.stderr)
+                print(f"  exception in {ALLOWLIST} (one slug per line).", file=sys.stderr)
+            else:
+                # Reported, not enforced — and SAID so. A gate that silently
+                # downgrades itself is indistinguishable from one that found
+                # nothing, which is the shape this whole tool exists to refuse.
+                print("\n  Every remote of this repository is private, so the findings above",
+                      file=sys.stderr)
+                print("  are reported and NOT enforced. They still matter the day a remote",
+                      file=sys.stderr)
+                print("  becomes public — nothing about them is retroactive.", file=sys.stderr)
         elif not args.quiet:
             print(f"✔ set-leakscan: clean ({len(files)} file(s), "
-                  f"{len(slugs)} consumer pattern(s))")
+                  f"{len(slugs)} consumer pattern(s), remote {visibility})")
 
-    return 1 if findings else 0
+    return 1 if blocking else 0
 
 
 if __name__ == "__main__":

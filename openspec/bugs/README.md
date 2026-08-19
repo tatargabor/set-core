@@ -517,6 +517,37 @@ consumer's name, path, or content.
   drop `held`'s note, which carries something no reason does (the hold expires
   on its own). Worth a decision, not a quiet edit.
 
+### B-24 — `CLAUDE.md` sends every session to `START.md`, and that file does not exist
+- **state:** open
+- **measured:** `CLAUDE.md:807` reads *"See [START.md](START.md) for application
+  startup commands (install, dev server, database, tests)."*; `ls START.md` →
+  no such file, and `git log --diff-filter=D -- START.md` finds no deletion
+  either, so it was never committed.
+- **why it matters more than a broken link:** it is in the *rule book*, which is
+  loaded into every session's context. An agent asked how to start the app is
+  pointed at nothing, and the failure is silent — a missing file reads as
+  "nothing to see" rather than as an error.
+- **how you would know it is fixed:** either `START.md` exists and lists the
+  install / dev-server / database / test commands, or the sentence names a file
+  that does.
+
+### B-25 — three repositories tracked a file their own `.gitignore` claimed to exclude
+- **state:** closed for the three found (`set-voice-agent-delivery`, `veleje`,
+  `tg-copilot`); open as a *class* until the deploy path carries the check
+- **measured:** `git check-ignore --no-index -q <path>` over `git ls-files`.
+  **The `--no-index` is the whole finding**: without it git refuses to call a
+  TRACKED path ignored, so the obvious form of this check returns zero for
+  exactly the condition it exists to detect. An earlier report in this session
+  stated "0 in all 16 repositories" on the strength of that broken check.
+- **what it had been shipping:** a real phone number (`contacts.yaml`, added to
+  `.gitignore` by a commit literally titled *remove personal data from repo* —
+  with no `git rm --cached` beside it, so the intent was recorded and the effect
+  never happened); a config file; and a **dictation transcript with 16 spoken
+  entries**.
+- **how you would know the class is closed:** `set-project init` deploys a
+  `pre-push` hook running `set-leakscan`, whose `ignored-but-tracked` category is
+  enforced regardless of remote visibility.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open

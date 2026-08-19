@@ -7,6 +7,30 @@
 [![Platform: Linux & macOS (Apple Silicon)](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20(Apple%20Silicon)-lightgrey.svg)]()
 [![Website](https://img.shields.io/badge/Website-setcode.dev-22c55e)](https://setcode.dev)
 
+---
+
+> ### ⚠ This document is behind the code — last substantially revised **2026-04-27**
+>
+> Several capabilities have shipped since and are **not described anywhere below**:
+>
+> | shipped since | what it is |
+> |---|---|
+> | **fleet view** | a live screen of every running agent across projects, with per-agent log and terminal |
+> | **work cycle** (`lib/set_workcycle`) | the sectioned apply loop, lifted out of a consumer project into the framework |
+> | **consumer status contract** | a project declares its bugs, releases, test system and live system; set-core reads them through a domain-free layer |
+> | **`set-leakscan`** | a pre-push and pre-tool gate that refuses to publish consumer names, credentials, local paths or phone numbers |
+>
+> Work on several of these is still in flight, and the documentation will be
+> refreshed once they land together rather than in pieces. **Until then, treat
+> this README as accurate about what it describes and silent about the rest** —
+> `openspec/changes/` and `openspec/specs/` are current.
+>
+> This notice is here rather than absent on purpose. Stale documentation that
+> says nothing about being stale is the more expensive of the two states: it
+> reads as a complete picture, and a reader cannot tell the difference.
+
+---
+
 I use Claude Code every day. It's great for writing code, but shipping software — coordinating parallel agents, testing, merging, recovering from failures — needs more structure. set-core is what I built around it: give it a markdown spec, it decomposes into independent changes, dispatches parallel agents in git worktrees, runs quality gates on each, and merges the results.
 
 Every change goes through [OpenSpec](https://github.com/fission-ai/openspec) — a structured workflow (proposal → design → spec → tasks → code → verify) that gives agents contracts to work against instead of prompts to interpret. Quality gates are deterministic: exit codes, not LLM judgment.

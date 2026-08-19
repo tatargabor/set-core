@@ -237,3 +237,76 @@ class TestTheHookIsNotTriggeredByTextThatMerelyMentionsPushing:
         dirty, _clean, home = two_repos
         r = _hook(dirty, "git commit -m 'wip'", home)
         assert r.returncode == 0, r.stderr
+
+
+class TestARepositoryMayNameItself:
+    """The gate ran inside one of the private projects and reported 893 findings
+    of its own name. That is not a leak in any direction, and it would make the
+    tool unusable exactly where somebody most needs to push."""
+
+    def test_the_repositorys_own_directory_name_is_not_a_finding(
+            self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        cfg = home / ".config" / "set-core"
+        cfg.mkdir(parents=True)
+        (cfg / "projects.json").write_text(json.dumps(
+            {"projects": {"acme-shop": {"path": "/somewhere/acme-shop"}}}))
+
+        repo = tmp_path / "acme-shop"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        git("config", "user.email", "t@example.com", cwd=repo)
+        git("config", "user.name", "t", cwd=repo)
+        (repo / "README.md").write_text("acme-shop is this project\n")
+        git("add", "-A", cwd=repo)
+        git("commit", "-q", "-m", "init", cwd=repo)
+
+        r = subprocess.run([sys.executable, str(SCANNER), "--tree"],
+                           cwd=repo, capture_output=True, text=True,
+                           env=dict(os.environ, HOME=str(home)))
+        assert r.returncode == 0, r.stderr
+
+    def test_but_a_DIFFERENT_projects_name_still_is(self, tmp_path):
+        # The other half: the exclusion must not blind the check.
+        home = tmp_path / "home"
+        cfg = home / ".config" / "set-core"
+        cfg.mkdir(parents=True)
+        (cfg / "projects.json").write_text(json.dumps(
+            {"projects": {"acme-shop": {"path": "/somewhere/acme-shop"},
+                          "other-client": {"path": "/somewhere/other-client"}}}))
+
+        repo = tmp_path / "acme-shop"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        git("config", "user.email", "t@example.com", cwd=repo)
+        git("config", "user.name", "t", cwd=repo)
+        (repo / "README.md").write_text("we borrowed this from other-client\n")
+        git("add", "-A", cwd=repo)
+        git("commit", "-q", "-m", "init", cwd=repo)
+
+        r = subprocess.run([sys.executable, str(SCANNER), "--tree"],
+                           cwd=repo, capture_output=True, text=True,
+                           env=dict(os.environ, HOME=str(home)))
+        assert r.returncode == 1
+        assert "other-client" in r.stderr
+
+
+class TestASyntheticPhoneNumberIsNotSomebodysNumber:
+    """101 of 101 phone findings across two public repos were E.164 examples and
+    demo data. A gate wrong that often is a gate nobody reads — and it loses the
+    one real number it exists to find."""
+
+    def test_placeholders_are_recognised(self):
+        from importlib.machinery import SourceFileLoader
+        mod = SourceFileLoader("leakscan_mod", str(SCANNER)).load_module()
+        for digits in ("36301234567",   # ascending run
+                       "36301000001",   # four of a kind
+                       "36305551234",   # reserved-for-fiction prefix
+                       "36301112222"):  # four of a kind, mid-number
+            assert mod._looks_synthetic(digits), digits
+
+    def test_an_ordinary_number_is_not(self):
+        from importlib.machinery import SourceFileLoader
+        mod = SourceFileLoader("leakscan_mod", str(SCANNER)).load_module()
+        for digits in ("36209871669", "36204738291"):
+            assert not mod._looks_synthetic(digits), digits
