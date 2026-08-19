@@ -174,3 +174,69 @@ def test_the_neighbouring_module_still_logs_a_project_path(tmp_path, caplog):
         read_project_declaration(proj)
     blob = " ".join(r.getMessage() for r in caplog.records)
     assert proj in blob, "module_install no longer logs the project path — delete this test"
+
+
+# --------------------------------------------------------------------------- #
+# the version half of task 2.9 — the answer inference is structurally blind to
+#
+# A file is either there or it is not, so a report built from file presence
+# cannot express a HALF-UPGRADED project: every file is present, every capability
+# reads connected, and the project is running a version it did not ask for. Only
+# a declaration can say that, which is why the requirement puts it first.
+#
+# Measured 2026-08-19 across three real projects: **no declaration anywhere**, so
+# this path is the exception here — and an exception nothing drives is a path
+# that has never run.
+# --------------------------------------------------------------------------- #
+
+def _declared(tmp_path, wants: dict, installed: dict):
+    """A project that asked for modules, and a record of what it actually has."""
+    import json as _json
+    (tmp_path / "set").mkdir(parents=True, exist_ok=True)
+    lines = ["modules:"]
+    for name, version in wants.items():
+        lines.append(f"  {name}:" if version is None else f"  {name}:\n    version: \"{version}\"")
+    (tmp_path / "set" / "modules.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (tmp_path / "set" / ".installed-modules.json").write_text(
+        _json.dumps({"modules": installed, "announcements": {}}), encoding="utf-8")
+    return str(tmp_path)
+
+
+def test_a_project_running_a_version_it_did_not_ask_for_is_reported_as_a_mismatch(tmp_path):
+    """The case the whole declaration path exists for, driven end to end."""
+    root = _declared(tmp_path, {"web": "1.2.0"}, {"web": "1.1.0"})
+    report = cap.report_for_project(root, capabilities=[])
+    assert report.declared is True
+    assert report.versions == [
+        {"module": "web", "expected": "1.2.0", "installed": "1.1.0", "state": "mismatch"}
+    ]
+
+
+def test_a_version_that_agrees_is_a_match_so_the_mismatch_above_means_something(tmp_path):
+    """The other direction. A report that says `mismatch` for everything is not a
+    report, and a positive-only test cannot tell the two apart."""
+    root = _declared(tmp_path, {"web": "1.2.0"}, {"web": "1.2.0"})
+    states = {v["module"]: v["state"] for v in cap.report_for_project(root, capabilities=[]).versions}
+    assert states == {"web": "match"}
+
+
+def test_a_module_asked_for_but_not_installed_is_unknown_never_a_match(tmp_path):
+    """`unknown` is not a polite way of saying fine.
+
+    A module the project wants and does not have compares as unknown, and so does
+    one whose version cannot be read on either side. Rendering either as a match
+    removes exactly the answer the comparison was asked for — the false-value
+    class, in the reassuring direction.
+    """
+    root = _declared(tmp_path, {"web": "1.2.0", "mobile": None}, {})
+    states = {v["module"]: v["state"] for v in cap.report_for_project(root, capabilities=[]).versions}
+    assert states == {"web": "unknown", "mobile": "unknown"}
+
+
+def test_a_project_that_declared_nothing_reports_no_versions_rather_than_agreement(tmp_path):
+    """`declared: False` and an empty comparison list, because a project that
+    never adopted the mechanism has not agreed with anything — and a surface that
+    renders "no mismatches" over it is reporting calm it did not verify."""
+    report = cap.report_for_project(str(tmp_path), capabilities=[])
+    assert report.declared is False
+    assert report.versions == []
