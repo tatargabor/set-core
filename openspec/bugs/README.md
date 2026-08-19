@@ -40,6 +40,14 @@ Three losses on 2026-08-19 alone, all of the same shape:
 2. **Entries are CLOSED with evidence, never deleted.** A removed entry and one
    that was never written look identical from the outside. Closing means a commit
    sha (or a change name) on the line, and the entry stays.
+3. **The number is allocated by MEASURING the file, never by memory.** Measured
+   2026-08-19: one session issued `B-9` and `B-10` twice, four commits apart
+   (`bf33e28e`, then `a2006254`), so one handle named two different defects and
+   *"B-9 is closed"* stopped being an answerable statement. Before writing an
+   entry: `grep -oE '^### B-[0-9]+' openspec/bugs/README.md | sort -t- -k2 -n | tail -1`.
+   The second pair was renumbered to **B-14** and **B-15**; the first pair keeps
+   its numbers because an open change already cites `B-10`
+   (`openspec/changes/agent-goal-and-lifecycle/tasks.md:138`).
 
 Also binding here: [External Project Confidentiality](../../CLAUDE.md). A defect
 found while looking at a consumer's data is described by its shape, never by the
@@ -201,8 +209,8 @@ consumer's name, path, or content.
   while new turns arrive unless the reader has scrolled away; and a tool line
   either carries something a reader can act on or does not take a row.
 
-### B-9 — the project rows are thin, and a richer design that once existed is gone
-- **state:** open
+### B-14 — the project rows are thin, and a richer design that once existed is gone
+- **state:** closed (`28ef5ce7`)
 - **reported:** 2026-08-19 by the user — *"még mindig kicsik a projekt csempék.
   korábban vagy 3 soros status állapotokkal meg minden volt tervezve és egyszer
   láttam is, az hova lett? ki kell bővíteni minden funkcióval amit érdemes látni
@@ -214,9 +222,13 @@ consumer's name, path, or content.
   design invented on top of a half-remembered one.
 - **fixed when:** the project row carries what is worth seeing, in icons, and the
   earlier design is either restored or explicitly superseded with a reason.
+- **closed:** `28ef5ce7` — three lines: name · states + agent count + conflict ·
+  capability marks + oldest stillness + sources. The earlier design is explicitly
+  SUPERSEDED, not restored: the search above found it nowhere, so the spec's own
+  word (*project tile*) is what got built.
 
-### B-10 — an agent tile can be almost entirely empty while the log has plenty to say
-- **state:** open
+### B-15 — an agent tile can be almost entirely empty while the log has plenty to say
+- **state:** closed (`f64c7554`)
 - **reported:** 2026-08-19 by the user — *"nem hiszem hogy üres kellene legyen
   akár egy agent is., már biztosan van róla valami log, info"*
 - **measured:** a tile whose excerpt is one short sentence leaves the rest of its
@@ -224,6 +236,10 @@ consumer's name, path, or content.
   to show.
 - **fixed when:** a tile with room to spare fills it from what is actually known
   about the agent, rather than leaving the space blank.
+- **closed:** `f64c7554` — a tile shows its LOG by default
+  (`web/src/pages/Fleet.tsx:458-460`), and clicking it hands over the live
+  terminal. Measured live at 2026-08-19 17:0x: 3 tiles showing a log, 2 of them
+  clickable — exactly the 2 the framework started.
 
 ### B-11 — the excerpt spills over several lines where one and an ellipsis would do
 - **state:** closed (`e52ccdc4`)
