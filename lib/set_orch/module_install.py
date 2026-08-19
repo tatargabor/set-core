@@ -37,6 +37,26 @@ from .module_declaration import (
 
 logger = logging.getLogger(__name__)
 
+
+def _shape(path: "Path") -> str:
+    """A path as its SHAPE, for logging — the project-relative tail, never the root.
+
+    The confidentiality boundary in this framework is persistence, not naming: reading
+    and displaying a consumer project's data at runtime is the whole point, and writing
+    anything derived from it into a file that can leave the machine is forbidden. A log
+    line is such a file. `/home/someone/clients/acme-invoicing/set/modules.yaml` names a
+    client in a log that ships with a bug report; `set/modules.yaml` says everything a
+    reader debugging this code needs.
+
+    `db_safety.py` is the pattern being copied: it logs a database URL's scheme and
+    nothing else.
+    """
+    parts = path.parts
+    for anchor in ("set", ".claude"):
+        if anchor in parts:
+            return "/".join(parts[parts.index(anchor):])
+    return path.name
+
 __all__ = [
     "PROJECT_DECLARATION_REL",
     "INSTALL_RECORD_REL",
@@ -111,7 +131,7 @@ class InstallRecord:
         )
         tmp.replace(path)
         self.path = path
-        logger.info("install record written: %s (%d module(s))", path, len(self.modules))
+        logger.info("install record written: %s (%d module(s))", _shape(path), len(self.modules))
         return path
 
 
@@ -164,17 +184,28 @@ def read_project_declaration(project_root: str | Path) -> ProjectDeclaration:
     """What the project asked for. An absent file is reported as absent, never as empty."""
     path = Path(project_root) / PROJECT_DECLARATION_REL
     if not path.is_file():
-        logger.debug("no project declaration at %s", path)
+        logger.debug("no project declaration at %s", _shape(path))
         return ProjectDeclaration(source=path, present=False)
     try:
         import yaml
 
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except Exception as exc:
-        logger.warning("project declaration at %s is unreadable (%s)", path, exc)
+        logger.warning("project declaration at %s is unreadable (%s)", _shape(path), type(exc).__name__)
         return ProjectDeclaration(source=path, present=False)
 
-    raw = data.get("modules") if isinstance(data, Mapping) else None
+    if not isinstance(data, Mapping):
+        # Parsed, and not a declaration: a top-level list, a bare string, a number.
+        # Reported as ABSENT rather than as present-and-empty, because the alternative
+        # is the false-value direction — a project that renders as *declared* while every
+        # comparison built on it comes back empty, which reads as agreement. The spec's
+        # word is "malformed", and a shape this reader cannot use is malformed whether or
+        # not the YAML parser objected.
+        logger.warning("project declaration at %s is not a mapping (%s) — treating as absent",
+                       _shape(path), type(data).__name__)
+        return ProjectDeclaration(source=path, present=False)
+
+    raw = data.get("modules")
     wants: dict[str, Optional[str]] = {}
     if isinstance(raw, Mapping):
         for name, spec in raw.items():
@@ -199,7 +230,8 @@ def read_install_record(project_root: str | Path) -> InstallRecord:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        logger.warning("install record at %s is unreadable (%s) — treating as empty", path, exc)
+        logger.warning("install record at %s is unreadable (%s) — treating as empty",
+                       _shape(path), type(exc).__name__)
         return InstallRecord(path=path)
     raw = data.get("modules") if isinstance(data, Mapping) else None
     modules: dict[str, Optional[str]] = {}

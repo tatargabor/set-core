@@ -364,3 +364,164 @@ def test_an_unknown_module_is_refused_with_where_it_looked(tmp_path):
         resolve_module("no-such-module", root=tmp_path)
     assert "no-such-module" in str(excinfo.value)
     assert "modules" in str(excinfo.value), "the refusal did not say where it looked"
+
+
+# ── confidentiality: the boundary is persistence, not naming ──────────────────────────────
+
+def test_reading_a_projects_records_writes_none_of_its_location_to_the_log(tmp_path):
+    """A log line is a file that can leave the machine.
+
+    Reading and displaying a consumer project's data at runtime is the point of this
+    framework; persisting anything derived from it is forbidden, and a log is persistence.
+    `/home/someone/clients/acme-invoicing/set/modules.yaml` names a client in a file that
+    ships with a bug report — `set/modules.yaml` says everything a reader debugging this
+    code needs.
+
+    Driven on all four log sites at once, including the two failure paths, because those
+    are the ones written in a hurry.
+    """
+    import logging
+    from set_orch.module_install import (
+        InstallRecord, read_install_record, read_project_declaration,
+    )
+
+    secret = "acme-invoicing-2026"
+    root = tmp_path / "clients" / secret
+    (root / "set").mkdir(parents=True)
+
+    with caplog_at(logging.DEBUG) as records:
+        read_project_declaration(root)                       # absent
+        (root / "set" / "modules.yaml").write_text("{{{ not yaml", encoding="utf-8")
+        read_project_declaration(root)                       # unparseable
+        # A THIRD failure path, added after a mutation run: the fixture above never
+        # reached the not-a-mapping branch, so its log site could have named the path
+        # and this test would still have passed. Every site, or the sweep is a sample.
+        (root / "set" / "modules.yaml").write_text("- a\n- b\n", encoding="utf-8")
+        read_project_declaration(root)                       # parsed, wrong shape
+        (root / "set" / ".installed-modules.json").write_text("{{{", encoding="utf-8")
+        read_install_record(root)                            # unreadable
+        InstallRecord(modules={"alpha": "1.0.0"}).save(root)  # written
+
+    leaked = [m for m in records if secret in m]
+    assert leaked == [], f"the project's location reached the log: {leaked}"
+    assert records, "nothing was logged at all; this test proves nothing"
+
+
+def test_the_detector_would_have_found_the_leak(tmp_path):
+    """A confidentiality test that cannot fail is indistinguishable from one that passes,
+    and reads as an assurance either way."""
+    import logging
+    secret = "acme-invoicing-2026"
+    with caplog_at(logging.DEBUG) as records:
+        logging.getLogger("set_orch.module_install").debug("leaking /home/x/%s on purpose", secret)
+    assert [m for m in records if secret in m]
+
+
+class caplog_at:
+    """A minimal capture scoped to THIS module's logger.
+
+    Deliberately not `caplog` over the root logger: a neighbouring module in this package
+    does log an absolute project path, and a root-scoped assertion here would fail for
+    somebody else's defect and be silenced by whoever met it next.
+    """
+
+    def __init__(self, level):
+        self.level = level
+        self.records = []
+
+    def __enter__(self):
+        import logging
+        self.logger = logging.getLogger("set_orch.module_install")
+        self.prev_level, self.prev_prop = self.logger.level, self.logger.propagate
+        self.logger.setLevel(self.level)
+        self.logger.propagate = False
+        outer = self
+
+        class _H(logging.Handler):
+            def emit(self, record):
+                outer.records.append(record.getMessage())
+
+        self.handler = _H()
+        self.logger.addHandler(self.handler)
+        return self.records
+
+    def __exit__(self, *exc):
+        self.logger.removeHandler(self.handler)
+        self.logger.setLevel(self.prev_level)
+        self.logger.propagate = self.prev_prop
+        return False
+
+
+# ── task 1.1: the declaration's failure paths ─────────────────────────────────────────────
+
+@pytest.mark.parametrize("body, why", [
+    ("{{{ not yaml at all", "the file is not YAML"),
+    ("modules: [", "the YAML is truncated"),
+    ("- a\n- b\n", "the top level is a list, not a mapping"),
+    ("", "the file is empty"),
+])
+def test_a_declaration_that_cannot_be_read_is_reported_as_absent_not_raised(tmp_path, body, why):
+    """Consulted while rendering a list of many projects. One broken file must not remove
+    the others from the answer, so this fails open — and the cost of that choice is that
+    "no declaration" and "a declaration I could not read" arrive the same, which is why
+    the failure path logs (without the path) rather than passing in silence.
+    """
+    from set_orch.module_install import read_project_declaration
+    root = _project(tmp_path)
+    (root / "set" / "modules.yaml").write_text(body, encoding="utf-8")
+    decl = read_project_declaration(root)
+    assert decl.wants == {}, why
+    assert decl.present is (body == ""), (
+        "an empty file is a present-but-empty declaration; a broken one is not a declaration"
+    )
+
+
+def test_a_declaration_naming_no_modules_is_present_and_empty(tmp_path):
+    """The distinction the whole `present` flag exists for. 'Has not adopted the mechanism'
+    and 'adopted it and wants nothing' are different states, and a reader that takes the
+    first for the second reports agreement with a project that never agreed to anything."""
+    from set_orch.module_install import read_project_declaration
+    root = _project(tmp_path)
+    (root / "set" / "modules.yaml").write_text("modules: {}\n", encoding="utf-8")
+    decl = read_project_declaration(root)
+    assert decl.present is True and decl.wants == {}
+
+
+# ── task 4.6: one module at a time ────────────────────────────────────────────────────────
+
+def test_installing_one_module_leaves_another_modules_files_alone(tmp_path):
+    """Addressable per module. A caller asked for one and must not get two — most of all
+    when the second one's files would land in a project that never asked for it."""
+    alpha, _ = _module(
+        tmp_path, "alpha",
+        {"version": "1.0.0", "core": [{"path": "alpha.md", "replace": True}]},
+        {"alpha.md": "A\n"},
+    )
+    beta, _ = _module(
+        tmp_path, "beta",
+        {"version": "1.0.0", "core": [{"path": "beta.md", "replace": True}]},
+        {"beta.md": "B\n"},
+    )
+    root = _project(tmp_path)
+    install_module(alpha, root)
+    install_module(beta, root)
+    assert (root / "alpha.md").exists() and (root / "beta.md").exists()
+
+    (root / "beta.md").unlink()                       # the project removed beta's file
+    report = install_module(alpha, root)              # install alpha again
+    assert not (root / "beta.md").exists(), "installing alpha wrote another module's file"
+    assert "beta.md" not in report.written
+    assert read_install_record(root).modules == {"alpha": "1.0.0", "beta": "1.0.0"}
+
+
+def test_a_logged_path_is_the_project_relative_tail_not_just_a_filename(tmp_path):
+    """The confidentiality half is satisfied by logging `modules.yaml` alone — and that
+    would be useless. Two projects, two records, one filename, and nothing tells the
+    reader which. The anchor logic exists for the debugging half, and a mutation removing
+    it leaks nothing, so only this asserts it.
+    """
+    from set_orch.module_install import _shape
+    from pathlib import Path
+    assert _shape(Path("/home/someone/clients/acme/set/modules.yaml")) == "set/modules.yaml"
+    assert _shape(Path("/x/y/.claude/rules/a.md")) == ".claude/rules/a.md"
+    assert _shape(Path("/x/y/loose.md")) == "loose.md"

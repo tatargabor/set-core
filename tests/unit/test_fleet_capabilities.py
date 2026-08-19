@@ -160,20 +160,31 @@ def test_nothing_about_the_project_reaches_THIS_modules_log(tmp_path, caplog):
     assert proj not in mine and "alpha.md" not in mine
 
 
-def test_the_neighbouring_module_still_logs_a_project_path(tmp_path, caplog):
-    """The finding above, held as a test so it is not lost in prose.
+def test_the_neighbouring_modules_leak_is_fixed_and_this_test_records_that_it_existed(tmp_path, caplog):
+    """This test used to assert the OPPOSITE, and the flip is the point.
 
-    It fails the day `module_install` stops naming the path — which is the day
-    this note should be deleted. A finding recorded only in a comment is one
-    nobody re-checks.
+    Its earlier form was `test_the_neighbouring_module_still_logs_a_project_path`: it held
+    a finding — `module_install.read_project_declaration` logged the absolute project path
+    — as a failing-when-fixed test, so the finding could not rot in a comment. On
+    2026-08-19 `module-install-writer` task 3.3 fixed it, this test went red, and that red
+    was the whole design working: a repaired defect announced itself instead of leaving a
+    stale note behind.
+
+    Kept in its inverted form rather than deleted, because the assertion is now worth
+    having on its own — and because the reason a fleet test cares about a neighbour's
+    logging is not obvious enough to survive being unwritten: the capability report calls
+    that reader for **every project on the screen**, so a path logged there is one line
+    per project per refresh.
     """
     import logging
     from set_orch.module_install import read_project_declaration
     proj = _project(tmp_path)
-    with caplog.at_level(logging.DEBUG):
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="set_orch.module_install"):
         read_project_declaration(proj)
     blob = " ".join(r.getMessage() for r in caplog.records)
-    assert proj in blob, "module_install no longer logs the project path — delete this test"
+    assert blob, "nothing was logged; this test proves nothing"
+    assert proj not in blob, f"the project path is back in the log: {blob}"
 
 
 # --------------------------------------------------------------------------- #
