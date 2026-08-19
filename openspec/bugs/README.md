@@ -550,6 +550,29 @@ consumer's name, path, or content.
   `pre-push` hook running `set-leakscan`, whose `ignored-but-tracked` category is
   enforced regardless of remote visibility.
 
+### B-26 — the dashboard's optional Discord bot fails on startup, and the traceback is the last line before a 40-second silence
+- **state:** open. Not blocking: the failure is caught, and the service does come
+  up — but only after a wait long enough that the first two checks after a
+  restart both answered "not listening".
+- **measured:** `systemctl --user restart set-web`, then
+  `journalctl --user -u set-web`:
+  `[SET] Discord bot startup failed: module 'discord' has no attribute 'Intents'`
+  at `lib/set_orch/discord/__init__.py:65`, from `server.py:54`. A `discord`
+  module IS importable — it simply is not the library this code expects, so the
+  import succeeds and the attribute access is where it fails.
+- **the part worth fixing, which is not the bot:** the traceback is printed at
+  the exact moment the service looks dead from outside, so it reads as the cause
+  of an outage it has nothing to do with. Two `curl` calls returned `000` after
+  the restart while the process was still loading 40 projects; a third, a minute
+  later, returned `200`. A reader following the obvious evidence would have gone
+  to debug Discord.
+- **how you would know it is fixed:** the startup path either does not attempt a
+  bot whose library is absent, or reports the attempt as skipped rather than as a
+  traceback; and the service says when it is *ready to serve*, distinctly from
+  when it started. A restart followed by an immediate `curl` should then not be
+  ambiguous.
+
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open
