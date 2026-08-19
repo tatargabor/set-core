@@ -418,7 +418,7 @@ consumer's name, path, or content.
 
 ### B-21 — a project the screen SHOWS, with a start control next to it, refuses the start
 
-- **state:** closed (`<this commit>`)
+- **state:** closed (`ec391a78`)
 - **reported:** 2026-08-19 by the user, with a screenshot: the panel header names
   the project and its path, offers *start an agent*, and the answer is
   *"… is not a project this screen knows; register it first"*
