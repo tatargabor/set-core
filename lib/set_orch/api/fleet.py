@@ -35,6 +35,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from pydantic import BaseModel
 
 from ..fleet import discover_agents, discover_projects, read_state
+from ..fleet.awaiting import awaiting_for
 from ..fleet.discovery import discover_agent, parent_seat
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
@@ -178,6 +179,12 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "sources": project.sources,
             "archived": project.archived,
             "agents": [_agent_payload(a, states[a.pid], owned) for a in members],
+            # Task 7.14. What is waiting for a HUMAN here, independent of who is
+            # running — the case an agent-centric screen gets wrong by
+            # construction. Carried even when its total is zero, because the KEY
+            # is what lets the surface tell "nothing awaits" from "this was
+            # never measured"; `source_missing` inside it says which.
+            "awaiting": awaiting_for(project.name).as_dict(),
         })
 
     # Counted from the data, never from a declaration — a "hidden" tally taken
@@ -189,12 +196,24 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     # it a screen cannot distinguish "nobody is waiting" from "waiting is not
     # measured here", and it would have to render one as the other.
     waiting = sum(1 for s in states.values() if s.state == "waiting")
+    # The other half of "where has work stopped", and deliberately a SEPARATE
+    # number rather than folded into `waiting`. That one counts live agents that
+    # asked a question; this one counts work with nobody standing on it. Summing
+    # them would make the total unusable for both, because a reader chasing a
+    # waiting agent and a reader chasing a stalled change do different things.
+    awaiting_total = sum(g["awaiting"]["total"] for g in grouped)
+    awaiting_unmeasured = sum(1 for g in grouped if g["awaiting"]["source_missing"])
 
     return {
         "agents": len(agents),
         "working": working,
         "unknown": unknown,
         "waiting": waiting,
+        "awaiting": awaiting_total,
+        # How many projects could not be measured at all. A zero `awaiting`
+        # next to a non-zero here means "nothing found where we looked", which
+        # is a different sentence from "nothing is waiting".
+        "awaiting_unmeasured": awaiting_unmeasured,
         "projects": grouped,
         # Why a quiet agent may in fact be mid-turn. Measured 2026-08-18: the
         # runtime flushes a turn's entries to the session log in batches, and a

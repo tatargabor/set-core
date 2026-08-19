@@ -42,9 +42,35 @@ export interface AttentionAgent {
   declaration_ignored?: string | null
 }
 
+/**
+ * What a project is waiting on a HUMAN for — task 7.14.
+ *
+ * Deliberately separate from the agent counts below and never summed into
+ * them. `waiting` counts a LIVE agent that asked a question; this counts work
+ * with nobody standing on it. Measured on this machine 2026-08-19: a project
+ * held two changes marked `running` since 12 June whose processes were long
+ * gone and whose state file had not been touched since 24 July — 68 days of
+ * "in progress" that was not. Counted by agents, that project rendered as
+ * nothing to do.
+ */
+export interface AttentionAwaiting {
+  /** The plan declares a step no agent can take (an API key, a DNS record). */
+  manual?: string[]
+  /** The engine recorded the change as stalled. */
+  stalled?: string[]
+  /** MEASURED: marked in flight, the recorded process is gone. */
+  orphaned?: string[]
+  /** Marked in flight, pid alive — a pid is not an identity. Named, not counted. */
+  unverifiable?: string[]
+  /** No orchestration state was found. NOT the same as "nothing awaits". */
+  source_missing?: boolean
+  total?: number
+}
+
 export interface AttentionProject {
   name: string
   agents: AttentionAgent[]
+  awaiting?: AttentionAwaiting | null
 }
 
 export const WAITING = 'waiting'
@@ -58,13 +84,26 @@ export interface Tally {
   waiting: number
   /** Agents whose declared state the log refuted — see the header of this file. */
   conflicts: number
+  /** Work awaiting a human, with or without an agent — task 7.14. */
+  awaiting: number
+  /** Projects whose orchestration state could not be read at all. */
+  unmeasured: number
 }
 
-export const EMPTY_TALLY: Tally = { agents: 0, working: 0, unknown: 0, waiting: 0, conflicts: 0 }
+export const EMPTY_TALLY: Tally = { agents: 0, working: 0, unknown: 0, waiting: 0, conflicts: 0, awaiting: 0, unmeasured: 0 }
 
 export function tally(projects: readonly AttentionProject[]): Tally {
-  let agents = 0, working = 0, unknown = 0, waiting = 0, conflicts = 0
+  let agents = 0, working = 0, unknown = 0, waiting = 0, conflicts = 0, awaiting = 0, unmeasured = 0
   for (const p of projects) {
+    // Counted from the DATA, like everything else here: `total` is what the
+    // producer computed from its own lists, and `source_missing` is the only
+    // thing that makes a zero readable. A project with no state file adds
+    // nothing to `awaiting` and one to `unmeasured` — never a silent zero.
+    const aw = p.awaiting
+    if (aw) {
+      if (typeof aw.total === 'number') awaiting += aw.total
+      if (aw.source_missing === true) unmeasured += 1
+    }
     for (const a of p.agents) {
       agents += 1
       if (a.state === WORKING) working += 1
@@ -75,7 +114,7 @@ export function tally(projects: readonly AttentionProject[]): Tally {
       if (typeof a.declaration_ignored === 'string' && a.declaration_ignored !== '') conflicts += 1
     }
   }
-  return { agents, working, unknown, waiting, conflicts }
+  return { agents, working, unknown, waiting, conflicts, awaiting, unmeasured }
 }
 
 export function tallyOf(names: readonly string[], byName: ReadonlyMap<string, AttentionProject>): Tally {
@@ -130,6 +169,25 @@ export function firstMatching(
   for (const name of order) {
     const project = byName.get(name)
     if (project?.agents.some(predicate)) return name
+  }
+  return null
+}
+
+/**
+ * The first project awaiting a human — task 7.14's jump target.
+ *
+ * It cannot reuse `firstMatching`, and that is the whole point of this
+ * function existing: that one looks for an AGENT satisfying a predicate, and
+ * the case here is a project with no agents at all. A jump built on agents
+ * would skip exactly the projects this count exists to reach.
+ */
+export function firstAwaiting(
+  order: readonly string[],
+  byName: ReadonlyMap<string, AttentionProject>,
+): string | null {
+  for (const name of order) {
+    const total = byName.get(name)?.awaiting?.total
+    if (typeof total === 'number' && total > 0) return name
   }
   return null
 }

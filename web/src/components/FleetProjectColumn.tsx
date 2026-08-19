@@ -27,6 +27,7 @@ import {
   EMPTY_TALLY,
   UNKNOWN,
   WAITING,
+  firstAwaiting,
   firstMatching,
   firstWith,
   hasConflict,
@@ -306,6 +307,27 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
       {t.unknown > 0 && (
         <span className="inline-flex items-center gap-1 text-amber-400" title="ismeretlen állapot">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{t.unknown}
+        </span>
+      )}
+      {/* Task 7.14 — work waiting for a HUMAN, with or without an agent. A
+          different shape from the state dots on purpose: those describe an
+          agent that exists, this one usually describes a project where none
+          does, and one visual weight per meaning is the rule. */}
+      {t.awaiting > 0 && (
+        <span
+          data-fleet-awaiting={t.awaiting}
+          className="inline-flex items-center gap-1 text-violet-300"
+          title="emberre vár — akkor is, ha egyetlen agent sem fut itt"
+        >
+          {/* A SQUARE, where every agent-state marker is a circle. The shape
+              carries the meaning — an agent that exists versus work with nobody
+              on it — so the two can never be confused at a glance.
+
+              It is CSS and not a glyph on purpose: the first version used ⏸,
+              which rendered as a tofu box in this monospace stack. A marker
+              that depends on a font's coverage is a marker that disappears on
+              somebody else's machine. */}
+          <span className="w-1.5 h-1.5 bg-violet-300" />{t.awaiting}
         </span>
       )}
       {showAgents && <span className="text-fg-muted">{t.agents}</span>}
@@ -755,6 +777,10 @@ export default function FleetProjectColumn({
     () => firstMatching(order, byName as ReadonlyMap<string, AttentionProject>, hasConflict),
     [order, byName],
   )
+  const firstAwaitingProject = useMemo(
+    () => firstAwaiting(order, byName as ReadonlyMap<string, AttentionProject>),
+    [order, byName],
+  )
 
   /**
    * The first selection follows the arrangement, not discovery's order.
@@ -858,6 +884,37 @@ export default function FleetProjectColumn({
               title="Ez a válasz nem tartalmaz 'válaszra vár' mérést. Nem nulla — hiányzó mérés."
             >
               „válaszra vár” — ez a válasz nem méri
+            </span>
+          )}
+          {/* Task 7.14. In the header rather than only on the row, for the same
+              reason the waiting count is: a hand-made order has no construction
+              that keeps this visible, and a project awaiting a human is the one
+              a reader could unblock in a minute. The jump has its own finder —
+              `firstMatching` looks for an AGENT, and these projects usually
+              have none. */}
+          {totals.awaiting > 0 && (
+            <button
+              data-fleet-jump="awaiting"
+              onClick={() => jump(firstAwaitingProject)}
+              className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:underline underline-offset-2 tabular-nums"
+              title="Emberre váró munka — akkor is, ha egyetlen agent sem fut. Kézi lépés, elakadt change, vagy 'fut' állapotú munka, aminek a processze már nincs meg."
+            >
+              <span className="w-2 h-2 bg-violet-300" />
+              {totals.awaiting} emberre vár
+              <span className="text-fg-muted">→</span>
+            </button>
+          )}
+          {/* A zero here is only readable next to this. 37 of 41 projects had no
+              orchestration state at all on the day this was built, so a bare
+              `0 emberre vár` would have described "we looked nowhere" as "there
+              is nothing". */}
+          {totals.unmeasured > 0 && (
+            <span
+              data-fleet-awaiting-unmeasured={totals.unmeasured}
+              className="text-xs text-fg-ghost tabular-nums"
+              title="Ennyi projektnek nincs orchestration-állapota, tehát ott nem néztünk semmit. Nem nulla — meg nem mért."
+            >
+              {totals.unmeasured} projekt nincs mérve
             </span>
           )}
           {/* A contradiction the surface never shows is one nobody ever fixes.

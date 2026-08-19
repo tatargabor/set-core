@@ -22,6 +22,8 @@
  */
 export type Population = 'started-here' | 'foreign' | 'unknown'
 
+import type { AttentionAwaiting } from './fleetAttention'
+
 export interface FleetAgent {
   pid: number
   name: string | null
@@ -87,6 +89,12 @@ export interface FleetAgent {
 }
 
 export interface FleetProject {
+  /**
+   * Work awaiting a HUMAN in this project — task 7.14, independent of who is
+   * running. Optional because an older server does not send it, and an absent
+   * key must stay distinguishable from a measured zero.
+   */
+  awaiting?: AttentionAwaiting | null
   name: string
   root: string
   sources: string[]
