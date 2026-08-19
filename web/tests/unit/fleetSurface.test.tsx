@@ -226,6 +226,6 @@ describe('task 7.12 — the log view leaves room for the timeline without buildi
     // reader must be able to tell "not built" from "nothing to show".
     expect(timeline.getAttribute('aria-disabled')).toBe('true')
     expect(timeline.tagName).not.toBe('BUTTON')
-    expect(timeline.textContent).toMatch(/még nincs/i)
+    expect(timeline.textContent).toMatch(/not built yet/i)
   })
 })

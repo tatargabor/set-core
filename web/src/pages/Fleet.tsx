@@ -39,19 +39,11 @@ import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, writeView } 
 import type { ProjectView } from '../lib/fleetViewState'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { terminalOffer } from '../lib/fleetTerminal'
-
-interface Turn {
-  role: string
-  timestamp: string | null
-  text: string
-  thinking: string
-  tools: { name: string | null; id: string | null }[]
-  results: number
-  sidechain: boolean
-}
+import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
+import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
-  turns: Turn[]
+  turns: LogTurn[]
   total_read?: number
   truncated?: boolean
   problem?: string
@@ -85,8 +77,10 @@ function dayLabel(ts: string | null): string {
   if (isNaN(d.getTime())) return ''
   const today = new Date()
   const y = new Date(today); y.setDate(y.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'ma'
-  if (d.toDateString() === y.toDateString()) return 'tegnap'
+  // Used only by the log's day divider, which is why it is translated with the
+  // rest of that view (the dashboard is English; only the projects are not).
+  if (d.toDateString() === today.toDateString()) return 'today'
+  if (d.toDateString() === y.toDateString()) return 'yesterday'
   return d.toLocaleDateString('hu-HU', { month: '2-digit', day: '2-digit' })
 }
 
@@ -247,18 +241,211 @@ function TerminalControl({ agent, ownerReachable, open, onToggle }: {
  * "not built" from "nothing to show".
  */
 const LOG_TABS: { id: string; label: string; absent?: string }[] = [
-  { id: 'conversation', label: 'beszélgetés' },
+  { id: 'conversation', label: 'conversation' },
   {
     id: 'timeline',
-    label: 'idővonal',
-    absent: 'a meglévő idővonal-nézet ide fog kerülni; ez a fül a helyét tartja fenn, tartalma még nincs (7.12)',
+    label: 'timeline',
+    absent: 'the existing activity timeline will move here; this tab holds its place and has no content yet (7.12)',
   },
 ]
+
+/**
+ * How a sentence and a machine action are told apart on screen — task 7.20.
+ *
+ * `lib/fleetConversation.ts` holds the model and the measurement; this is the
+ * weight given to each act. One rule decides every choice below: **the 7.5% of
+ * the log that is a sentence must be findable by running an eye down the
+ * column**, and the 92.5% that is machinery must stay legible without
+ * competing for that eye. So a sentence gets a card, the reading size and a
+ * coloured rail; an act gets one dim line at 11px.
+ *
+ * `te` appears for the person and for nobody else. A runtime-written turn under
+ * the `user` role says who wrote it, in its own weight — quieter than a person,
+ * louder than a tool line, and never silent, because a hidden entry is one the
+ * reader cannot account for.
+ */
+const SAY_STYLE: Record<Speaker, { rail: string; label: string; body: string; note?: string }> = {
+  person: {
+    rail: 'border-sky-400 bg-sky-400/[0.06]',
+    label: 'text-sky-300 font-semibold',
+    body: 'text-sm text-fg-normal',
+  },
+  agent: {
+    rail: 'border-surface-edge',
+    label: 'text-fg-muted font-semibold',
+    body: 'text-sm text-fg-normal',
+  },
+  runtime: {
+    rail: 'border-surface-line',
+    label: 'text-fg-ghost',
+    body: 'text-xs text-fg-muted',
+    note: 'written by the runtime under the `user` role — the person did not say this',
+  },
+  other: {
+    rail: 'border-amber-400/60',
+    label: 'text-amber-400',
+    body: 'text-sm text-fg-normal',
+    note: 'unknown role — printed as itself, no meaning is attributed to it',
+  },
+}
+
+const CLIP = 600
+
+function SayRow({ act, showThinking, expanded, onExpand }: {
+  act: SayAct
+  showThinking: boolean
+  expanded: boolean
+  onExpand: () => void
+}) {
+  const style = SAY_STYLE[act.speaker]
+  const long = act.text.length > CLIP
+  const shown = long && !expanded ? act.text.slice(0, CLIP) : act.text
+  return (
+    <div
+      data-log-act="say"
+      data-log-speaker={act.speaker}
+      className={`border-l-2 pl-2.5 pr-1 py-1 rounded-r ${style.rail}`}
+    >
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className={`text-xs ${style.label}`} title={style.note}>
+          {speakerLabel(act.speaker, act.role)}
+        </span>
+        <span className="text-xs text-fg-ghost tabular-nums">{clock(act.at)}</span>
+        {style.note && <span className="text-xs text-fg-ghost italic">{style.note}</span>}
+      </div>
+      {showThinking && act.thinking && (
+        <div className="text-xs text-fg-ghost italic whitespace-pre-wrap break-words mt-0.5">
+          {act.thinking.length > CLIP ? act.thinking.slice(0, CLIP) + ' …' : act.thinking}
+        </div>
+      )}
+      {act.text && (
+        <div className={`${style.body} leading-relaxed whitespace-pre-wrap break-words mt-0.5`}>
+          {shown}
+          {long && (
+            <button
+              onClick={onExpand}
+              className="ml-1 text-xs text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline"
+            >
+              {expanded ? 'less' : `… ${act.text.length - CLIP} more characters`}
+            </button>
+          )}
+        </div>
+      )}
+      {!act.text && !act.thinking && (
+        <div className="text-xs text-fg-ghost italic mt-0.5">
+          thinking, with no text — the runtime did not keep its content
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A tool call and its result — ONE line, because they are one act.
+ *
+ * What this line may never do is imply that nothing went wrong. Three separate
+ * facts ride on it, and the third is the one the compaction rule is about:
+ *
+ *  - `↩n` — results that came back.
+ *  - *n awaiting a result* — a call with no result in this window. Not a failure:
+ *    it is either still running or the tail cut between the two. Amber, which
+ *    on this screen means *undetermined*, never *broken*.
+ *  - a failed call, in red — **only when the data says so.** When it does not,
+ *    this line stays silent and the panel header carries the admission once,
+ *    where the reader is standing. Marking every line would be noise; marking
+ *    nothing and saying nothing would be the false absence.
+ */
+function WorkRow({ act }: { act: WorkAct }) {
+  const failed = act.errors !== null && act.errors > 0
+  return (
+    <div
+      data-log-act="work"
+      data-log-errors={act.errors === null ? 'unknown' : String(act.errors)}
+      className={`flex items-baseline gap-2 pl-2.5 border-l text-xs leading-5 ${
+        failed ? 'border-red-400/70' : 'border-surface-line/60'
+      }`}
+    >
+      <span className="text-fg-ghost tabular-nums shrink-0 w-8">{clock(act.at)}</span>
+      {act.calls > 0 ? (
+        <span className="text-emerald-400/70 min-w-0 truncate" title={act.names.join(', ')}>
+          {toolSummary(act)}
+        </span>
+      ) : (
+        <span className="text-fg-ghost italic min-w-0 truncate">
+          result — its call is outside this window
+        </span>
+      )}
+      {act.results > 0 && (
+        <span className="text-fg-ghost tabular-nums shrink-0" title={`${act.results} result(s) came back`}>
+          ↩{act.results}
+        </span>
+      )}
+      {act.unanswered > 0 && (
+        <span
+          className="text-amber-400/80 shrink-0"
+          title="The call has no result in this window: it is either still running, or the log tail cut between the two. Not a failure — but not finished either."
+        >
+          {act.unanswered} awaiting a result
+        </span>
+      )}
+      {failed && (
+        <span
+          className="text-red-400 font-semibold shrink-0"
+          title="The returned result reported a failure. Joining the call to its result may not hide that — so it is marked here, on the row it happened on."
+        >
+          ⚠ {act.errors} failed
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * What the panel may state about failures, stated once and at the top.
+ *
+ * The producer sends a COUNT of tool results and drops `is_error` (measured in
+ * one live log: 145 of 146 result blocks carry the flag, 4 of them true). So
+ * today this renders the admission rather than a number — and it renders it
+ * above the scroll container, which is where the reader is standing, not inside
+ * it where a scroll can carry it off screen.
+ */
+function ErrorStanding({ acts }: { acts: Act[] }) {
+  const standing = errorStanding(acts)
+  if (standing === null) return null
+  if (!standing.known) {
+    return (
+      <span
+        data-log-errors-standing="unknown"
+        className="text-xs text-amber-400"
+        title="Tool results are shown, but which of them failed is not carried by this data: the session log knows (is_error), the log endpoint passes on only the count. So this view does NOT claim that nothing failed."
+      >
+        ⚠ failure state not carried
+      </span>
+    )
+  }
+  if (standing.failed > 0) {
+    return (
+      <span data-log-errors-standing="failed" className="text-xs text-red-400 font-semibold tabular-nums">
+        {standing.failed} failed call(s)
+      </span>
+    )
+  }
+  return (
+    <span
+      data-log-errors-standing="none"
+      className="text-xs text-fg-ghost tabular-nums"
+      title="Measured: no tool call failed in this window."
+    >
+      0 failed calls
+    </span>
+  )
+}
 
 function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; tall?: boolean }) {
   const [log, setLog] = useState<LogResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showThinking, setShowThinking] = useState(false)
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -278,9 +465,14 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
   // about one that is.
   const thinkingTurns = log?.turns.filter(t => t.thinking).length ?? 0
 
+  // The turns become acts here (task 7.20). Every count below is taken from the
+  // ACTS, so the header can never disagree with the rows underneath it.
+  const acts = useMemo(() => buildActs(log?.turns ?? []), [log])
+  const sentences = sayCount(acts)
+
   return (
     <div className="border-t border-surface-line mt-3 pt-2">
-      <div className="flex items-baseline gap-2 mb-1.5 flex-wrap" role="tablist" aria-label="napló nézetek">
+      <div className="flex items-baseline gap-2 mb-1.5 flex-wrap" role="tablist" aria-label="log views">
         {LOG_TABS.map(tab => (
           tab.absent ? (
             <span
@@ -292,7 +484,7 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
               title={tab.absent}
               className="text-xs text-fg-ghost cursor-not-allowed"
             >
-              {tab.label} <span className="text-fg-ghost">(még nincs)</span>
+              {tab.label} <span className="text-fg-ghost">(not built yet)</span>
             </span>
           ) : (
             <span
@@ -308,67 +500,73 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
         ))}
         {log?.truncated && (
           <span className="text-xs text-fg-muted tabular-nums">
-            az utolsó {log.turns.length} a {log.total_read}-ből
+            the last {log.turns.length} of {log.total_read}
           </span>
         )}
+        {/* Counted from the acts. A log that is all machinery says so out loud:
+            an empty-looking conversation and a conversation of pure tool
+            traffic are two different facts, and the reader must not have to
+            infer which one they are looking at. */}
+        {acts.length > 0 && (
+          <span
+            data-log-sentences={sentences}
+            className="text-xs text-fg-muted tabular-nums"
+            title="How many acts carry an actual sentence. The rest are tool calls and their results — also in the log, just not speech."
+          >
+            {sentences > 0 ? `${sentences} sentence(s)` : 'not one sentence'} / {acts.length} acts
+          </span>
+        )}
+        <ErrorStanding acts={acts} />
         {thinkingTurns > 0 && (
           <button
             onClick={() => setShowThinking(v => !v)}
             className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline tabular-nums"
-            title="A gondolatmenet a naplóban benne van; alapból nem jelenik meg, hogy a beszélgetés olvasható maradjon."
+            title="The thinking is in the log; it stays hidden by default so the conversation remains readable."
           >
-            {showThinking ? 'gondolatmenet elrejtése' : `gondolatmenet (${thinkingTurns})`}
+            {showThinking ? 'hide thinking' : `thinking (${thinkingTurns})`}
           </button>
         )}
-        <button onClick={onClose} className="ml-auto text-xs text-fg-muted hover:text-fg-strong">bezár</button>
+        <button onClick={onClose} className="ml-auto text-xs text-fg-muted hover:text-fg-strong">close</button>
       </div>
-      {error && <div className="text-xs text-red-400">nem olvasható: {error}</div>}
+      {error && <div className="text-xs text-red-400">cannot be read: {error}</div>}
       {/* A problem is not an empty conversation, and the two must not look alike. */}
       {log?.problem && <div className="text-xs text-amber-400">{log.problem}</div>}
       {log && !log.problem && log.turns.length === 0 && (
-        <div className="text-xs text-fg-muted">a napló olvasható, de nem tartalmaz beszélgetést</div>
+        <div className="text-xs text-fg-muted">the log is readable and holds no conversation</div>
       )}
-      {!log && !error && <div className="text-xs text-fg-muted">napló olvasása…</div>}
-      <div className={`${tall ? 'max-h-[55vh]' : 'max-h-80'} overflow-y-auto space-y-1.5 pr-1`}>
-        {log?.turns.map((t, i, all) => {
+      {!log && !error && <div className="text-xs text-fg-muted">reading the log…</div>}
+      <div className={`${tall ? 'max-h-[55vh]' : 'max-h-80'} overflow-y-auto space-y-1 pr-1`}>
+        {acts.map((act, i, all) => {
         // A day divider, because HH:MM alone made a 60-hour gap look like a
         // minute. Measured 2026-08-18: forty turns of one session spanned three
         // calendar days, and the clock column rendered 00:04 next to 10:46 with
         // nothing between them — the reader's honest conclusion from that is a
         // session that has been busy all morning. Same false-value class as the
         // rest of this screen, arriving through a field that looked like data.
-        const prevDay = i > 0 ? dayKey(all[i - 1].timestamp) : ''
-        const thisDay = dayKey(t.timestamp)
+        const prevDay = i > 0 ? dayKey(all[i - 1].at) : ''
+        const thisDay = dayKey(act.at)
         const newDay = thisDay !== '' && thisDay !== prevDay
         return (
-          <div key={i} className="text-xs">
+          <div key={act.kind === 'say' ? `s${act.turn}` : `w${act.turns.join('-')}-${i}`}>
             {newDay && (
               <div className="flex items-center gap-2 mt-2 mb-1 first:mt-0">
-                <span className="text-fg-ghost tabular-nums shrink-0">{dayLabel(t.timestamp)}</span>
+                <span className="text-xs text-fg-ghost tabular-nums shrink-0">{dayLabel(act.at)}</span>
                 <span className="flex-1 border-t border-surface-line" />
               </div>
             )}
-            <div className="flex items-baseline gap-2">
-              <span className={`shrink-0 tabular-nums ${t.role === 'user' ? 'text-sky-400' : 'text-fg-muted'}`}>
-                {t.role === 'user' ? 'te' : t.role === 'assistant' ? 'agent' : t.role}
-              </span>
-              <span className="text-fg-ghost tabular-nums shrink-0">{clock(t.timestamp)}</span>
-              {t.tools.length > 0 && (
-                <span className="text-emerald-400/80 shrink-0">
-                  {t.tools.map(x => x.name).filter(Boolean).join(' ')}
-                </span>
-              )}
-              {t.results > 0 && <span className="text-fg-ghost shrink-0">↩{t.results}</span>}
-            </div>
-            {showThinking && t.thinking && (
-              <div className="text-fg-ghost italic whitespace-pre-wrap break-words mt-0.5 pl-1 border-l border-surface-line/60">
-                {t.thinking.length > 600 ? t.thinking.slice(0, 600) + ' …' : t.thinking}
-              </div>
-            )}
-            {t.text && (
-              <div className="text-fg-normal whitespace-pre-wrap break-words mt-0.5 pl-1 border-l border-surface-line">
-                {t.text.length > 600 ? t.text.slice(0, 600) + ' …' : t.text}
-              </div>
+            {act.kind === 'say' ? (
+              <SayRow
+                act={act}
+                showThinking={showThinking}
+                expanded={expanded.has(act.turn)}
+                onExpand={() => setExpanded(prev => {
+                  const next = new Set(prev)
+                  if (next.has(act.turn)) next.delete(act.turn); else next.add(act.turn)
+                  return next
+                })}
+              />
+            ) : (
+              <WorkRow act={act} />
             )}
           </div>
         )})}
@@ -459,11 +657,26 @@ function Excerpt({ agent, lines = 2 }: { agent: FleetAgent; lines?: number }) {
       </div>
     )
   }
-  const fromUser = agent.excerpt_from === 'user'
+  // `excerpt_from` is a ROLE, and a role is not a speaker — task 7.20, the same
+  // false value the log panel carries. Measured over the six most recent
+  // session logs: of 41 `user` turns that carry text, 9 were written by the
+  // runtime (`<command-name>`, `<command-message>`, `<local-command-stdout>`),
+  // not by the person. So the label is decided from the text as well as the
+  // role, and `te` is reserved for what the person actually said.
+  const speaker: Speaker = agent.excerpt_from === 'user'
+    ? speakerOf('user', agent.excerpt)
+    : agent.excerpt_from === 'agent' ? 'agent' : 'other'
+  const tone = speaker === 'person' ? 'text-sky-400/80' : speaker === 'runtime' ? 'text-fg-ghost' : 'text-fg-muted'
   return (
     <div className="flex gap-1.5 mt-1 min-w-0" data-fleet-excerpt={agent.excerpt_from ?? 'ismeretlen'}>
-      <span className={`text-xs shrink-0 ${fromUser ? 'text-sky-400/80' : 'text-fg-muted'}`}>
-        {fromUser ? 'te' : 'agent'}
+      <span
+        className={`text-xs shrink-0 ${tone}`}
+        data-fleet-excerpt-speaker={speaker}
+        title={speaker === 'runtime'
+          ? 'Written by the runtime under the `user` role — the person did not say this.'
+          : undefined}
+      >
+        {speaker === 'other' ? 'log' : speakerLabel(speaker, 'user')}
       </span>
       <span
         className="text-xs text-fg-muted min-w-0"
