@@ -30,6 +30,7 @@ from typing import Iterable, Mapping, Optional, Sequence
 from .module_declaration import (
     ModuleDeclaration,
     VersionComparison,
+    check_requirements,
     compare_versions,
 )
 
@@ -46,6 +47,8 @@ __all__ = [
     "read_install_record",
     "plan_files",
     "version_report",
+    "install_module",
+    "InstallRefused",
 ]
 
 #: Project-owned: what this project asks for. Edited by the project.
@@ -279,3 +282,110 @@ def perform_announcement(
     if result.outcome == "unchanged":
         return [f"  Announcement for {decl.name} already current"], decl.announce.body
     return [f"  Not announced ({decl.name}): {result.detail}"], None
+
+
+# ── performing an install ─────────────────────────────────────────────────────────────────
+
+
+class InstallRefused(Exception):
+    """An install that must not happen, refused before a byte is written.
+
+    A refusal rather than a report field, and rather than a warning. A warning is a thing a
+    reader can click past, and the state it leads to is a half-installed project nobody
+    chose: files present, requirement absent, and nothing on the project's side recording
+    that the two do not go together. Refusing *after* a partial write is the same failure
+    with extra steps, so this is raised before the first write, not alongside it.
+    """
+
+
+def install_module(
+    decl: ModuleDeclaration,
+    project_root: str | Path,
+    *,
+    template_dir: Optional[str | Path] = None,
+    dry_run: bool = False,
+    force: bool = True,
+) -> InstallReport:
+    """Install one module into a project, and report everything it did NOT do.
+
+    A **wrapper**, not a writer. Not a byte is copied here: the deploy engine owns the hash
+    ledger, the `protected` and `once` rules, committed deletions read as intent, tombstones
+    and the ownership checks, and every one of those exists because a specific silent
+    overwrite reached a real repository. A second copier would not merely duplicate them, it
+    would be a second place to fix each one the next time one is wrong.
+
+    What this adds is the three things that were missing around that write — measured on
+    2026-08-19, all three at zero:
+
+    - a **structured report**, where the engine returns human prose. A caller that wanted
+      "which files were skipped, and why" had to parse sentences;
+    - a **refusal** when a declared requirement is absent. `check_requirements` computes it
+      and nothing called it, so such a module installed anyway;
+    - the executable exclusion actually reaching the writer, via `plan_files`.
+
+    `force=True` by default, and that is not carelessness: with `force=False` the engine
+    skips every file that merely *exists*, which makes an install into a project that has the
+    module a no-op reporting nothing useful. The per-file guards — `protected`, `once`, the
+    ledger, tombstones — are what protect the project's own edits, and none of them is
+    weakened by `force`.
+    """
+    from .profile_deploy import FileOutcome, _deploy_single_template
+
+    root = Path(project_root)
+    source_dir = Path(template_dir) if template_dir is not None else (
+        decl.source.parent if decl.source is not None else None
+    )
+    if source_dir is None or not source_dir.is_dir():
+        raise InstallRefused(
+            f"module {decl.name!r}: cannot locate its files "
+            f"({'no source on the declaration' if source_dir is None else source_dir})"
+        )
+
+    # FIRST, and it raises. See `InstallRefused`.
+    installed = read_install_record(root).modules
+    missing = check_requirements(decl, installed=installed)
+    if missing:
+        raise InstallRefused(
+            f"module {decl.name!r} is not installed: "
+            + "; ".join(e.message for e in missing)
+        )
+
+    report = InstallReport(module=decl.name)
+    planned = set(plan_files(decl))
+
+    outcomes: list["FileOutcome"] = []
+    _deploy_single_template(
+        source_dir, root, force=force, dry_run=dry_run, outcomes=outcomes,
+    )
+
+    for outcome in outcomes:
+        if outcome.action == "warning":
+            report.skip(outcome.path or "(manifest)", outcome.reason or "manifest warning")
+        elif outcome.action in ("deployed", "overwritten", "merged", "announced"):
+            report.wrote(outcome.path or "(announcement)")
+        elif outcome.action == "unchanged":
+            # Present and byte-identical. Not a write, and saying it was would make a
+            # no-op read as a change; not silence either, because "nothing happened to
+            # this file" is exactly what a reader is entitled to be told.
+            report.skip(outcome.path or "?", outcome.reason or "identical")
+        else:
+            report.skip(outcome.path or "?", outcome.reason or "skipped")
+
+    # Stated, not silently tolerated: the engine's list and the module's plan should agree,
+    # and if they do not, the disagreement belongs in the report rather than in a log nobody
+    # reads. `planned` excludes the executable part; a path in the outcomes that is not in
+    # the plan means the two readers of this manifest have drifted apart again.
+    unplanned = [o.path for o in outcomes
+                 if o.action in ("deployed", "overwritten", "merged")
+                 and o.path and o.path not in planned and o.path.replace("\\", "/") not in planned]
+    if unplanned:
+        logger.warning(
+            "install_module(%s): %d file(s) written that the declaration did not plan",
+            decl.name, len(unplanned),
+        )
+
+    logger.info(
+        "install_module(%s): %d written, %d skipped%s",
+        decl.name, len(report.written), len(report.skipped), " (dry run)" if dry_run else "",
+    )
+    return report

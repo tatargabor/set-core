@@ -240,6 +240,16 @@ def _resolve_file_list(
         str(p) for p in (manifest.get("protected") or []) if isinstance(p, (str, int))
     }
 
+    # NOTE on `executable:`, kept because the obvious "fix" here is wrong and was written
+    # once already. This parser does not know the key, and it does not need to: a path
+    # declared BOTH as the module's executable part and as an installed file is **refused**
+    # by `validate_declaration`, which runs above this call — so the only input that could
+    # separate this reader from `plan_files` never reaches it. Adding an exclusion here
+    # would be unreachable code claiming to be a guard, which is the shape this repository
+    # has already been bitten by from the other side (a manifest that declared a protection
+    # nothing read). The guarantee is the refusal; see `test_a_manifest_that_declares_a_path
+    # _as_both_is_refused_by_the_deploy_path`.
+
     available_modules = manifest.get("modules", {})
     if modules:
         for mid in modules:
@@ -611,6 +621,23 @@ def _deploy_single_template(
     # is the same call on every path that announces, rather than a behaviour one entry point
     # happens to have — a behaviour only some entry points have is, statistically, a
     # behaviour the system does not have.
+    # The record of what is installed here, written for EVERY module — not only for one
+    # that happens to announce itself.
+    #
+    # Measured 2026-08-19: the only `record.save()` on this path sat inside the announce
+    # branch below, so a module with no `announce:` section installed its files and left no
+    # trace that it had. The consequence was visible three layers away: the capability
+    # report has to fall back to inferring from file presence, and the fleet screen measured
+    # **no declaration and 0 ledgered files across three real projects**. The record a
+    # reader wants was one the framework never wrote.
+    #
+    # Written after the files and never on a dry run, so it cannot claim an install that
+    # did not happen.
+    if manifest is not None and not dry_run and decl.name:
+        record = read_install_record(target_dir)
+        record.modules[decl.name] = decl.version
+        record.save(target_dir)
+
     if manifest is not None and decl.announce is not None:
         ann_msgs, written_body = perform_announcement(decl, target_dir, dry_run=dry_run)
         # The announcement edits a file the PROJECT owns, so it is a write like any
@@ -622,6 +649,9 @@ def _deploy_single_template(
                      path=(decl.announce.file if decl.announce else None),
                      message=m, dry_run=dry_run)
         if written_body is not None and not dry_run:
+            # Re-read rather than reuse the object above: `perform_announcement` may have
+            # written the file, and the record is the durable statement about it. The
+            # module line is already there from the block above; this adds the body.
             record = read_install_record(target_dir)
             record.announcements[decl.name] = written_body
             record.modules.setdefault(decl.name, decl.version)
