@@ -233,3 +233,46 @@ describe('task 7.12 — the log view leaves room for the timeline without buildi
     expect(timeline.textContent).toMatch(/not built yet/i)
   })
 })
+
+/**
+ * One claim, one weight — found by LOOKING at the live screen on 2026-08-19,
+ * where a tile carried `⚠ says it is blocked` in its header and `says: blocked`
+ * one line below it.
+ *
+ * `fleetInstructWaiters.test.ts` asserts the decision; this asserts that the
+ * tile actually asks it with the real answer. Both are needed, and a mutation
+ * proved it: hard-coding `blockShown={true}` at the call site left the decision
+ * tests entirely green while taking the block off every `waiting` tile.
+ */
+describe('a declared block is said once', () => {
+  const blocked = { known: true, blocked: true, phase: 'blocked', focus: 'the merge queue' }
+
+  it('drops the phase where the header is already shouting it', async () => {
+    installFetch([ok(fleet([project('demo', [
+      agent(1, 'demo-a1', { state: 'quiet', declared: blocked }),
+      agent(2, 'demo-a2'),
+    ])]))])
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo-a1')
+    expect(container.querySelector('[data-fleet-declared-blocked="1"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-declared-phase="blocked"]')).toBeNull()
+    // The focus is untouched — only the word that was doubled goes.
+    expect(screen.getByText('the merge queue')).toBeTruthy()
+  })
+
+  /**
+   * The direction that matters. Beside `waiting` the header marker is
+   * deliberately absent (a block there is a reason, not a surprise), so the
+   * phase is the only thing carrying it and must stay.
+   */
+  it('keeps the phase where nothing else on the tile carries the block', async () => {
+    installFetch([ok(fleet([project('demo', [
+      agent(1, 'demo-a1', { state: 'waiting', declared: blocked }),
+      agent(2, 'demo-a2'),
+    ])]))])
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo-a1')
+    expect(container.querySelector('[data-fleet-declared-blocked="1"]')).toBeNull()
+    expect(container.querySelector('[data-fleet-declared-phase="blocked"]')).toBeTruthy()
+  })
+})

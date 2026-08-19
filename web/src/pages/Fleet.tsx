@@ -42,13 +42,14 @@ import { terminalOffer } from '../lib/fleetTerminal'
 import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
 import { tally } from '../lib/fleetAttention'
-import { blockUnexpectedFrom, declaredStanding, purposeStanding } from '../lib/fleetDeclared'
+import { blockUnexpectedFrom, declaredStanding, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
 import TileControls from '../components/TileControls'
 import { plainExcerpt } from '../lib/excerptText'
 import { descendantStanding, parentClaim } from '../lib/fleetLineage'
+import { currentSelection, tileClickOpens } from '../lib/fleetTileClick'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
@@ -441,7 +442,7 @@ function LogPanel({ pid, onClose, tall }: { pid: number; onClose: () => void; ta
   const sentences = sayCount(acts)
 
   return (
-    <div className="border-t border-surface-line mt-3 pt-2">
+    <div className="border-t border-surface-line mt-3 pt-2" data-fleet-own-surface="log">
       <div className="flex items-baseline gap-2 mb-1.5 flex-wrap" role="tablist" aria-label="log views">
         {LOG_TABS.map(tab => (
           tab.absent ? (
@@ -808,9 +809,15 @@ function AgentRow({ agent, onSelect }: { agent: FleetAgent; onSelect: () => void
  * focus named a partner company and an unpaid invoice. They are shown and never
  * written anywhere: no `localStorage`, no log, no cache.
  */
-function Declared({ standing, full }: {
+function Declared({ standing, full, blockShown }: {
   standing: DeclaredStanding
   full?: boolean
+  /**
+   * Whether the header is already carrying the block. The phase is dropped only
+   * when it would repeat a marker the reader can see — never when the marker is
+   * absent, which would take the fact off the tile altogether.
+   */
+  blockShown?: boolean
 }) {
   if (standing.kind === 'unasked') {
     return (
@@ -839,11 +846,17 @@ function Declared({ standing, full }: {
     <div className="text-xs mt-1 space-y-0.5" data-fleet-declared="declared">
       <div className="flex items-baseline gap-2 flex-wrap">
         <span className="text-fg-ghost shrink-0">says:</span>
-        {standing.phase && (
+        {standing.phase && !phaseRepeatsBlock(standing.phase, !!blockShown) && (
           <span className="text-fg-muted shrink-0" data-fleet-declared-phase={standing.phase}>{standing.phase}</span>
         )}
+        {/* `flex-1` with a real minimum, so the focus shares the label's line
+            instead of wrapping under it and leaving `says:` alone in a row of
+            its own — visible the moment the doubled phase stopped filling that
+            gap. Below the minimum it still wraps, which is the right fallback:
+            a narrow tile gets a full-width sentence rather than a column of
+            three characters. */}
         {standing.focus && (
-          <span className="text-fg-normal min-w-0" style={full ? undefined : {
+          <span className="text-fg-normal flex-1 min-w-[14rem]" style={full ? undefined : {
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
           }}>{standing.focus}</span>
         )}
@@ -915,7 +928,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -940,6 +953,15 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
    * now separate and the log opens where the tile already is.
    */
   onEnlarge?: () => void
+  /**
+   * The tile's own body is a way in — asked for 2026-08-19.
+   *
+   * Absent on a tile that is ALREADY open, which makes the act one-directional
+   * on purpose: a click that closes what you are reading is a trap, and the
+   * control that closes it is visible in the corner. See `lib/fleetTileClick.ts`
+   * for what a click has to get past first.
+   */
+  onOpen?: () => void
   /** Reports the keyboard entering or leaving this agent's terminal. */
   onTyping?: (typing: boolean) => void
   /**
@@ -971,7 +993,17 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
       data-fleet-ownership={ownership}
       data-fleet-typing={typing ? agent.pid : undefined}
       title={OWNERSHIP_NOTE[ownership]}
-      className={`${cardClasses(ownership, { enlarged, focused, typing })}${wide ? ' md:col-span-full' : ''}`}
+      data-fleet-opens={onOpen ? agent.pid : undefined}
+      onClick={onOpen
+        ? e => {
+            if (tileClickOpens({
+              target: e.target as Element,
+              card: e.currentTarget,
+              selection: currentSelection(),
+            })) onOpen()
+          }
+        : undefined}
+      className={`${cardClasses(ownership, { enlarged, focused, typing })}${wide ? ' md:col-span-full' : ''}${onOpen ? ' cursor-pointer' : ''}`}
     >
       {/* Two parts, so the controls stay in the corner. With everything in one
           wrapping row, a long name pushed the icons onto a second line — a
@@ -1036,7 +1068,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, wide, typing, own
       </div>
 
       <Purpose agent={agent} />
-      <Declared standing={standing} full={enlarged || focused} />
+      <Declared standing={standing} full={enlarged || focused} blockShown={blockUnexpectedFrom(agent.state, standing)} />
       {/* More of the conversation on an unopened tile — asked for 2026-08-19:
           *"egy projektben fő agent 6-8 lesz … még jobb bele info akkor is ha
           nincs nyitva a terminál"*. A tile that shows two lines makes the
@@ -1634,6 +1666,9 @@ export default function Fleet() {
                     wide={extra.open || openTerminals.includes(a.terminal_label ?? '')}
                     {...extra}
                     onEnlarge={() => setEnlarged(active.name, enlarged === a.pid ? null : a.pid)}
+                    /* The tile's body opens the agent, and only while it is not
+                       already the enlarged one — see AgentCard's `onOpen`. */
+                    onOpen={extra.enlarged ? undefined : () => setEnlarged(active.name, a.pid)}
                     ownerReachable={data.owner_reachable}
                     terminalOpen={openTerminals.includes(a.terminal_label ?? '')}
                     onTerminal={label => toggleTerminal(active.name, label ?? a.terminal_label ?? null, label !== null)}

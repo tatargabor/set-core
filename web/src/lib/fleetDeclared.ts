@@ -85,6 +85,27 @@ export function declaresBlocked(standing: DeclaredStanding): boolean {
 }
 
 /**
+ * Whether the declared PHASE would only repeat the block marker.
+ *
+ * Seen on the live screen 2026-08-19: a tile carrying `⚠ says it is blocked` in
+ * the header and `says: blocked` a line below it — one claim, twice, in two
+ * visual weights, which is `ui-quality.md`'s second-place defect inside a
+ * single tile. They come from two different fields (`blocked` is a flag,
+ * `phase` is a name the agent chose) and coincide when the agent names its
+ * phase after the flag.
+ *
+ * The suppression is conditional on the marker being SHOWN, and that is the
+ * whole of the design: beside `waiting` the marker is deliberately left off,
+ * and dropping the phase there as well would take the block off the tile
+ * entirely — trading a duplicate for a false absence, which is the worse of the
+ * two by a distance.
+ */
+export function phaseRepeatsBlock(phase: string | null | undefined, blockShown: boolean): boolean {
+  if (!blockShown || !phase) return false
+  return phase.trim().toLowerCase() === 'blocked'
+}
+
+/**
  * Whether that block CONTRADICTS what was measured — the pair worth pointing at.
  *
  * `waiting` already tells the reader somebody is expected, so a declared block

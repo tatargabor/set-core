@@ -70,6 +70,38 @@ describe('markdown marks go, words stay', () => {
     expect(plainExcerpt(prose)).toBe(prose)
   })
 
+  /**
+   * The shape the producer ACTUALLY sends — measured 2026-08-19 on the live
+   * endpoint: **8 of 8 excerpts carried no newline at all.** The tail is joined
+   * before it leaves the producer, so a table row never begins a line and a
+   * rule row is never a line of its own.
+   *
+   * The refuted implementation is the one that shipped first: line-level rules
+   * only. Every case above passed with it and the screen was unchanged —
+   * `Kész, két commit: | | | |---|---| | 7c9d3ec |` still read as pipes. Held
+   * here so a later tidy-up back to "one rule per line" fails instead of
+   * looking identical and quietly stripping nothing.
+   */
+  it('reads a whole table flattened into ONE line', () => {
+    expect(plainExcerpt('Ready, two commits: | | | |---|---| | `7c9d3ec` | the rule went into the doc |'))
+      .toBe('Ready, two commits: · 7c9d3ec · the rule went into the doc')
+  })
+
+  it('strips a heading mark that lost its line', () => {
+    expect(plainExcerpt('Done. **Nothing hidden.** ## Two commits landed on `dev` and that is all'))
+      .toBe('Done. Nothing hidden. Two commits landed on dev and that is all')
+  })
+
+  /**
+   * The other direction, and the reason the rule row is the tell: a shell pipe
+   * is ordinary prose on this screen. Stripping every `|` would rewrite a
+   * command into something that does not run.
+   */
+  it('leaves a shell pipe alone when no table rule says otherwise', () => {
+    expect(plainExcerpt('the check is `pgrep -af x | grep -c y` and it over-reports'))
+      .toBe('the check is pgrep -af x | grep -c y and it over-reports')
+  })
+
   it('does not eat an asterisk used as a word', () => {
     expect(plainExcerpt('the glob is *.ts and it matched 12 files'))
       .toBe('the glob is *.ts and it matched 12 files')

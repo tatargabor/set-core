@@ -29,6 +29,7 @@ import {
   declaredStanding,
   declaresBlocked,
   instructability,
+  phaseRepeatsBlock,
   purposeStanding,
 } from '../../src/lib/fleetDeclared'
 
@@ -156,6 +157,35 @@ describe('what the agent SAYS, beside what was measured', () => {
   it('does not shout about a block beside `waiting`, where it is the reason rather than a surprise', () => {
     const standing = declaredStanding({ declared: { known: true, blocked: true } })
     expect(blockUnexpectedFrom('waiting', standing)).toBe(false)
+  })
+
+  /**
+   * Found by looking at the live screen, not by a test: one tile carried
+   * `⚠ says it is blocked` in its header and `says: blocked` a line below —
+   * one claim, twice, in two weights. The two come from different fields and
+   * coincide when an agent names its phase after the flag.
+   */
+  it('drops a phase that only repeats the marker already shown', () => {
+    expect(phaseRepeatsBlock('blocked', true)).toBe(true)
+    expect(phaseRepeatsBlock('  Blocked ', true)).toBe(true)
+  })
+
+  /**
+   * The direction that matters. Beside `waiting` the marker is deliberately not
+   * drawn, so dropping the phase there too would take the block off the tile
+   * entirely — a duplicate traded for a false absence.
+   */
+  it('keeps the phase when nothing else on the tile is carrying the block', () => {
+    expect(phaseRepeatsBlock('blocked', false)).toBe(false)
+    const standing = declaredStanding({ declared: { known: true, blocked: true, phase: 'blocked' } })
+    expect(blockUnexpectedFrom('waiting', standing)).toBe(false)
+    expect(phaseRepeatsBlock('blocked', blockUnexpectedFrom('waiting', standing))).toBe(false)
+  })
+
+  it('leaves any other phase alone', () => {
+    expect(phaseRepeatsBlock('verify', true)).toBe(false)
+    expect(phaseRepeatsBlock('blocked-on-review', true)).toBe(false)
+    expect(phaseRepeatsBlock(null, true)).toBe(false)
   })
 
   it('never lets a declaration stand in for a measurement', () => {

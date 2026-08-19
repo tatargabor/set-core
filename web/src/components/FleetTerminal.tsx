@@ -213,7 +213,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   }, [label, onClose])
 
   return (
-    <div className="border-t border-surface-line mt-3 pt-2" data-fleet-terminal={label}>
+    <div className="border-t border-surface-line mt-3 pt-2" data-fleet-terminal={label} data-fleet-own-surface="terminal">
       <div className="flex items-baseline gap-2 flex-wrap mb-1.5">
         <span className="text-xs text-fg-strong">terminal</span>
         <span className="text-xs text-fg-ghost truncate max-w-[16rem]">{label}</span>
