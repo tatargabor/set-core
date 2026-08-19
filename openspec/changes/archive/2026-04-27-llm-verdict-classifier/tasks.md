@@ -57,7 +57,7 @@
 
 ## 7. Unit tests — review gate regression fossils
 
-- [ ] 7.1 Create `tests/unit/fixtures/review_output_micro_create_task_2026_04_11.txt` containing the full review_output text from `/home/tg/demo/micro/set/orchestration/python.log` lines 5169-5181, starting with `## Retry Review — Verifying 3 Previous Findings` and including all three NOT_FIXED findings and the summary line [REQ: Review gate verdict is format-agnostic]
+- [ ] 7.1 Create `tests/unit/fixtures/review_output_micro_create_task_2026_04_11.txt` containing the full review_output text from `/home/user/demo/micro/set/orchestration/python.log` lines 5169-5181, starting with `## Retry Review — Verifying 3 Previous Findings` and including all three NOT_FIXED findings and the summary line [REQ: Review gate verdict is format-agnostic]
 - [ ] 7.2 Create `tests/unit/fixtures/review_output_minishop_0410_product_catalog_attempt4.txt` containing the review output from minishop_0410 attempt 4 (lines 3811-3821 of its python.log), including the `### Finding 5` header + `**REVIEW BLOCKED** — 1 unique critical issue remains` [REQ: Review gate verdict is format-agnostic]
 - [ ] 7.3 Create `tests/unit/fixtures/review_output_first_round_inline_format.txt` containing a synthetic first-round review with `ISSUE: [CRITICAL]` inline format to exercise the fast-path [REQ: Review gate verdict is format-agnostic]
 - [ ] 7.4 `test_review_gate_silent_pass_fossil_micro`: load the micro fixture, mock the classifier to return `critical_count: 3`, call `review_change()` with a monkeypatched `_parse_review_issues` (which returns 0 findings) AND a monkeypatched `classify_verdict`. Assert `has_critical == True` (classifier overrode) [REQ: Review gate verdict is format-agnostic]

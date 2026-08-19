@@ -223,7 +223,7 @@ def serve_screenshot(project: str, file_path: str):
         raise HTTPException(400, "Invalid path")
 
     # Absolute paths lose their leading "/" when captured by FastAPI's {path:path}
-    # parameter (e.g., "/home/tg/..." becomes "home/tg/..."). Restore it.
+    # parameter (e.g., "/home/user/..." becomes "home/user/..."). Restore it.
     if not os.path.isabs(file_path) and file_path.startswith("home/"):
         file_path = "/" + file_path
 

@@ -18,7 +18,7 @@
 
 - [x] 3.1 Update `tests/e2e/craftbrew/run-7.md` — add observations for: (a) decomposer narrowing scope to one category example, (b) phantom task completion on returns flow, (c) reference this change as the fix
 
-## set-project-web tasks (repo: /home/tg/code2/set-project-web)
+## set-project-web tasks (repo: /home/user/code2/set-project-web)
 
 ### 4. Extend WebProjectType.security_checklist()
 

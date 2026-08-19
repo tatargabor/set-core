@@ -104,7 +104,7 @@ def _claude_mangle(path: str) -> str:
     """Mangle a path the same way Claude CLI does for ~/.claude/projects/ dirs.
 
     Claude strips leading '/', replaces '/' with '-', and removes '.' from
-    directory names (e.g. '/home/tg/.local/share' -> 'home-tg--local-share').
+    directory names (e.g. '/home/user/.local/share' -> 'home-user--local-share').
     """
     return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
 

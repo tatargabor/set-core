@@ -12,7 +12,7 @@ prove that the classifier fallback now catches them.
 Fixtures
 --------
 - fixtures/review_output_micro_create_task_2026_04_11.txt — the full
-  review text from /home/tg/demo/micro/set/orchestration/python.log
+  review text from /home/user/demo/micro/set/orchestration/python.log
   line 5176. Contains `### Finding N:` + `**NOT_FIXED** [CRITICAL]` × 3.
 - fixtures/review_output_minishop_0410_product_catalog_attempt4.txt —
   minishop_0410/product-catalog attempt 4 review output. Contains a

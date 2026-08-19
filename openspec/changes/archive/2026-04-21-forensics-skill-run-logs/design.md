@@ -55,7 +55,7 @@ A single session jsonl can exceed 1 MB. Loading 30-80 of them fully before filte
 
 ### D3: Run-id → session dir mapping uses prefix matching, not exact name
 
-The encoding Claude Code applies to session directory names turns `/home/tg/.local/share/set-core/e2e-runs/<run>/` into `-home-tg--local-share-set-core-e2e-runs-<run>`. For the main run dir that's exact-match. For worktrees it becomes `-home-tg--local-share-set-core-e2e-runs-<run>-wt-<change>`.
+The encoding Claude Code applies to session directory names turns `/home/user/.local/share/set-core/e2e-runs/<run>/` into `-home-user--local-share-set-core-e2e-runs-<run>`. For the main run dir that's exact-match. For worktrees it becomes `-home-user--local-share-set-core-e2e-runs-<run>-wt-<change>`.
 
 **Decision:** prefix-match on the base encoded path, then require the character immediately after to be either end-of-string (main) or `-` (worktree separator). This handles the main dir + all worktrees in one pass and rejects name-collision neighbours (e.g. `<run>x`).
 

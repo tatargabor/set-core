@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -230,9 +231,15 @@ class TestResolveProjectName:
         assert name == "set-core"
 
     def test_resolve_with_explicit_path(self):
-        # Pass the repo path explicitly
-        name = resolve_project_name("/home/tg/code2/set-core")
-        assert name == "set-core"
+        # Pass the repo path explicitly. Derived from this file rather than
+        # hard-coded: the literal used to be an absolute path under the
+        # developer's own home directory, so the test only ever passed on that
+        # one machine — and it passed for the wrong reason, because the path
+        # happened to exist and be a checkout. Anywhere else it resolves to
+        # "_global" and fails. Surfaced when the hard-coded home was scrubbed.
+        repo_root = Path(__file__).resolve().parents[2]
+        name = resolve_project_name(str(repo_root))
+        assert name == repo_root.name
 
     def test_resolve_non_git_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:

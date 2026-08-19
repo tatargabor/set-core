@@ -186,11 +186,11 @@ def test_section_breakdown_ignores_h3():
 
 def test_encode_cwd_to_session_dir():
     assert _encode_cwd_to_session_dir(
-        "/home/tg/.local/share/foo"
-    ) == "-home-tg--local-share-foo"
+        "/home/user/.local/share/foo"
+    ) == "-home-user--local-share-foo"
     assert _encode_cwd_to_session_dir(
-        "/home/tg/code2/set-core"
-    ) == "-home-tg-code2-set-core"
+        "/home/user/code2/set-core"
+    ) == "-home-user-code2-set-core"
 
 
 def test_duplicate_reads_empty_when_no_sessions(tmp_path):

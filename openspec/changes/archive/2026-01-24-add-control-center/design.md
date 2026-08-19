@@ -49,7 +49,7 @@ cat /proc/$PID/stat | awk '{print $3}'
     {
       "project": "aitools-specdriven",
       "change_id": "add-control-center",
-      "path": "/home/tg/wt/aitools-specdriven/add-control-center",
+      "path": "/home/user/wt/aitools-specdriven/add-control-center",
       "branch": "change/add-control-center",
       "agent": {
         "status": "running|waiting|idle|done",

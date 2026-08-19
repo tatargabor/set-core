@@ -28,8 +28,8 @@ def _encode_cwd_to_session_dir(cwd: str) -> str:
     """Replicate Claude Code's directory-encoding for project session dirs.
 
     Format: replace ``/`` and ``.`` with ``-``. Examples:
-      ``/home/tg/.local/foo``         → ``-home-tg--local-foo``
-      ``/home/tg/code/set-core``      → ``-home-tg-code-set-core``
+      ``/home/user/.local/foo``         → ``-home-user--local-foo``
+      ``/home/user/code/set-core``      → ``-home-user-code-set-core``
     """
     return cwd.replace("/", "-").replace(".", "-")
 

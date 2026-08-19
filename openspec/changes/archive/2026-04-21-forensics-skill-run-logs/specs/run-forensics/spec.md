@@ -28,11 +28,11 @@ The resolution algorithm SHALL:
 3. Also resolve the orchestration run dir at `~/.local/share/set-core/e2e-runs/<run-id>/`. If it does not exist, emit a warning but continue — the session dirs alone are still useful for forensics.
 4. Emit a structured `ResolvedRun` value containing: `run_id`, `main_session_dir`, `worktree_session_dirs: dict[str, Path]` (change-name → dir), `orchestration_dir: Path | None`.
 
-The encoding used by Claude Code replaces path separators with `-` and prepends `-home-tg-` (or the equivalent user-home prefix). Implementations SHALL reuse the `claude projects` encoding helper rather than re-deriving it, so changes to the harness are picked up automatically.
+The encoding used by Claude Code replaces path separators with `-` and prepends `-home-user-` (or the equivalent user-home prefix). Implementations SHALL reuse the `claude projects` encoding helper rather than re-deriving it, so changes to the harness are picked up automatically.
 
 #### Scenario: Main run plus worktrees resolved
 - **WHEN** `set-run-logs discover craftbrew-run-20260421-0025` is invoked
-- **AND** `~/.claude/projects/` contains `-home-tg--local-share-set-core-e2e-runs-craftbrew-run-20260421-0025`, `-home-tg--local-share-set-core-e2e-runs-craftbrew-run-20260421-0025-wt-auth-core-and-admin-shell`, and `-home-tg--local-share-set-core-e2e-runs-craftbrew-run-20260421-0025-wt-stories-public`
+- **AND** `~/.claude/projects/` contains `-home-user--local-share-set-core-e2e-runs-craftbrew-run-20260421-0025`, `-home-user--local-share-set-core-e2e-runs-craftbrew-run-20260421-0025-wt-auth-core-and-admin-shell`, and `-home-user--local-share-set-core-e2e-runs-craftbrew-run-20260421-0025-wt-stories-public`
 - **THEN** the CLI SHALL report the main session dir and two worktree session dirs (keyed by `auth-core-and-admin-shell` and `stories-public`)
 - **AND** SHALL report the orchestration dir at `~/.local/share/set-core/e2e-runs/craftbrew-run-20260421-0025/`
 

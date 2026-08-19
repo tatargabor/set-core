@@ -2,7 +2,7 @@
 
 ## Setup
 - **set-core commit**: `b1179ccb6` (persist resolved model + 200K cleanup)
-- **Project dir**: `/home/tg/.local/share/set-core/e2e-runs/craftbrew-run6`
+- **Project dir**: `/home/user/.local/share/set-core/e2e-runs/craftbrew-run6`
 - **Config**: max_parallel=2, default_model=opus-1m, smoke=pnpm build && pnpm test
 - **Spec**: 24 files, 45 requirements, 9 domains → 15 changes planned
 

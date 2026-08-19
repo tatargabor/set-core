@@ -275,7 +275,7 @@ get_current_tokens() {
     local zero_json='{"input_tokens":0,"output_tokens":0,"cache_read_tokens":0,"cache_create_tokens":0,"total_tokens":0}'
 
     # Derive project dir from $PWD: replace / with -
-    # Claude's project dirs keep the leading dash (e.g. -home-tg-code-project)
+    # Claude's project dirs keep the leading dash (e.g. -home-user-code-project)
     # For worktrees: use the parent repo path (git common-dir → dirname),
     # since Claude tracks per-repo not per-worktree.
     local project_dir_flag=""

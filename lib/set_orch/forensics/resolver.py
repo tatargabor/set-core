@@ -35,8 +35,8 @@ def _encode_path_for_claude_projects(path: Path) -> str:
     """Claude Code encodes a filesystem path as a directory name under ~/.claude/projects/
     by replacing `/` and `.` with `-`.
 
-    Example: `/home/tg/.local/share/set-core/e2e-runs/foo`
-             → `-home-tg--local-share-set-core-e2e-runs-foo`
+    Example: `/home/user/.local/share/set-core/e2e-runs/foo`
+             → `-home-user--local-share-set-core-e2e-runs-foo`
     """
     s = str(path)
     return s.replace("/", "-").replace(".", "-")

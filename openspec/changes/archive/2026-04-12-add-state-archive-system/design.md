@@ -247,8 +247,8 @@ Existing projects have state.json files with gate result/output fields populated
 0.1 Verify this document's assumptions still match the running process:
    ```
    systemctl --user status set-web.service
-   ls -la /home/tg/.local/share/set-core/e2e-runs/minishop-run-20260412-0103/orchestration-state.json
-   tail -n 20 /home/tg/.local/share/set-core/runtime/minishop-run-20260412-0103/logs/orchestration.log
+   ls -la /home/user/.local/share/set-core/e2e-runs/minishop-run-20260412-0103/orchestration-state.json
+   tail -n 20 /home/user/.local/share/set-core/runtime/minishop-run-20260412-0103/logs/orchestration.log
    ```
 0.2 Snapshot the current git HEAD: `git rev-parse HEAD` — this is the rollback target.
 0.3 Confirm the orchestrator is actively updating state (log lines in the last 60 seconds). If not active, the plan becomes easier — there's no live run to protect.
@@ -305,7 +305,7 @@ File edits do not take effect until set-web.service restarts. The running orches
 
 3.3 Capture a final snapshot of the current state.json for postmortem:
    ```
-   cp /home/tg/.local/share/set-core/e2e-runs/minishop-run-20260412-0103/orchestration-state.json /tmp/pre-deploy-minishop-state.json
+   cp /home/user/.local/share/set-core/e2e-runs/minishop-run-20260412-0103/orchestration-state.json /tmp/pre-deploy-minishop-state.json
    ```
 
 ### Phase 4 — Deploy (service restart)
@@ -324,8 +324,8 @@ File edits do not take effect until set-web.service restarts. The running orches
 
 5.2 After the first gate runs, check that the journal file has been created:
    ```
-   ls -la /home/tg/.local/share/set-core/e2e-runs/<new-run>/journals/
-   cat /home/tg/.local/share/set-core/e2e-runs/<new-run>/journals/<first-change>.jsonl | head -5
+   ls -la /home/user/.local/share/set-core/e2e-runs/<new-run>/journals/
+   cat /home/user/.local/share/set-core/e2e-runs/<new-run>/journals/<first-change>.jsonl | head -5
    ```
    Expect at least one line with `status` or `current_step` transitions.
 

@@ -549,7 +549,7 @@ class TableMixin:
         """
         try:
             # Convert path to Claude's project directory format
-            # e.g., /home/tg/code2/foo -> -home-tg-code2-foo
+            # e.g., /home/user/code2/foo -> -home-user-code2-foo
             proj_dir_name = wt_path.replace('/', '-').lstrip('-')
             session_dir = Path.home() / ".claude" / "projects" / f"-{proj_dir_name}"
 

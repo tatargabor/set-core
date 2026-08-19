@@ -247,7 +247,7 @@ The single rule we will not break: **`coverage.json` and `triage.md` must reflec
 
 ## References
 
-External research is in `/home/tg/code2/set-core/docs/research/decompose-replan-optimization-2026-05-08-references.md` (companion file with sources).
+External research is in `/home/user/code2/set-core/docs/research/decompose-replan-optimization-2026-05-08-references.md` (companion file with sources).
 
 Sources cited inline:
 

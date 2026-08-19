@@ -148,8 +148,19 @@ def tracked_files(cwd):
 def scan_blob(cwd, path, checks, findings, self_paths):
     if path in self_paths:
         return  # the scanner's own patterns are not findings — see module docstring
+    full = os.path.join(cwd, path)
+    # Binary files produce byte soup that matches loose patterns — a GIF matched
+    # the phone-number shape twice here. Noise is not harmless in a gate: it is
+    # how the gate stops being read. A NUL byte in the first block is the same
+    # heuristic git itself uses to call a file binary.
     try:
-        with open(os.path.join(cwd, path), encoding="utf-8", errors="replace") as fh:
+        with open(full, "rb") as bh:
+            if b"\0" in bh.read(8000):
+                return
+    except OSError:
+        return
+    try:
+        with open(full, encoding="utf-8", errors="replace") as fh:
             for lineno, line in enumerate(fh, 1):
                 if len(line) > 4000:
                     line = line[:4000]

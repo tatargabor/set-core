@@ -2,7 +2,7 @@
 
 ## Setup
 - **set-core commit**: `80b72d5b8` (fix: prevent origin remote contamination)
-- **Project dir**: `/home/tg/.local/share/set-core/e2e-runs/craftbrew-run5`
+- **Project dir**: `/home/user/.local/share/set-core/e2e-runs/craftbrew-run5`
 - **Config**: max_parallel=2, checkpoint_every=3, default_model=opus, smoke=pnpm build && pnpm test
 - **Spec**: 24 files in docs/, 45 requirements, 9 domains → 15 changes planned
 

@@ -46,7 +46,7 @@ Each strategy is tested against these canonical conflict scenarios:
 ## Running the Benchmark
 
 ```bash
-cd /home/tg/code2/set-core
+cd /home/user/code2/set-core
 ./tests/merge-strategies/run-benchmark.sh /tmp/minishop-run3
 ```
 

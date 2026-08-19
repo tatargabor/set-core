@@ -34,7 +34,7 @@ from set_orch.subprocess_utils import CommandResult
 # Real-world truncated Playwright output captured mid-run (from the investigation).
 # Note the ANSI prefixes and the absence of any "N passed" / "1) [chromium]" lines.
 TIMED_OUT_STDOUT = """
-> my-app@0.1.0 test:e2e /home/tg/demo/project
+> my-app@0.1.0 test:e2e /home/user/demo/project
 > playwright test
 
 Running 104 tests using 1 worker
@@ -47,7 +47,7 @@ Running 104 tests using 1 worker
 
 # Synthetic crash output — no numbered failure list, just a segfault trace.
 CRASH_STDOUT = """
-> my-app@0.1.0 test:e2e /home/tg/demo/project
+> my-app@0.1.0 test:e2e /home/user/demo/project
 > playwright test
 
 Running 104 tests using 1 worker
@@ -58,7 +58,7 @@ Error: Playwright test runner crashed unexpectedly
 
 # Real Playwright failure list with a summary — the baseline-comparison happy path.
 REAL_FAILURE_STDOUT = """
-> my-app@0.1.0 test:e2e /home/tg/demo/project
+> my-app@0.1.0 test:e2e /home/user/demo/project
 > playwright test
 
 Running 10 tests using 1 worker
