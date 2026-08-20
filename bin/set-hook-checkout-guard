@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""set-hook-checkout-guard — refuse a command that would take, publish or move
+work another session in the same checkout is holding.
+
+WHY THIS EXISTS (bug B-32, measured 2026-08-20)
+    Several agent sessions work in one checkout here. A checkout has ONE index
+    and ONE working tree, so a git command that names no paths acts on all of
+    it. Measured in a throwaway repo:
+
+        git add -A          -> takes the other session's unstaged work
+        git commit          -> takes the other session's STAGED paths
+        git stash           -> REMOVES the other session's files from the tree
+        git commit -- <p>   -> takes nothing; their staged entry survives
+
+    The second row is the one that actually happened: this repository's rule
+    already said "stage explicit paths", both sessions obeyed it, and the
+    pathspec-less commit carried both anyway. So the guard belongs on the
+    COMMIT, not only on the sweeping add.
+
+WHY OWNERSHIP IS MEASURED AND NOT PARSED
+    Which paths belong to this session is decided by snapshotting the index
+    either side of the session's own git command and taking the difference.
+    Nothing reads the command's arguments to decide it. A pathspec reaches
+    `git add` as a shell glob, a variable, an `xargs` pipeline, `git -C`,
+    `--pathspec-from-file`, or from inside a script — every one of those
+    defeats argument parsing, and every defeat yields an unattributable path,
+    which must be treated as foreign. Parsing therefore does not fail loudly;
+    it degrades, one command at a time, into "every commit needs a pathspec".
+
+Referenced by name in .claude/settings.json, on BOTH events:
+    PreToolUse  / Bash -> set-hook-checkout-guard PreToolUse
+    PostToolUse / Bash -> set-hook-checkout-guard PostToolUse
+
+Exit 0 = allow, exit 2 = refuse (stderr is shown to the model).
+"""
+
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+# Session-scoped state. `/tmp` is right HERE precisely because the state is
+# session-scoped: a session does not survive a reboot either. (The opposite call
+# from this project's agent channel, which had to outlive the sessions using it.)
+STATE_DIR = os.environ.get("SET_CHECKOUT_GUARD_STATE_DIR", "/tmp")
+
+# Verbs worth looking at. Enforcement applies to a subset; the rest are here so
+# the ownership record is reconciled after anything that moves the index.
+# A deliberately loose pre-filter: it only decides whether the expensive parse is
+# worth doing. It must NOT be anchored to the start of a segment — `xargs git add`
+# is a real staging command whose `git` is preceded by a wrapper, and anchoring
+# here silently excluded it from the guard entirely (measured by the test named
+# for attribution-however-it-was-named).
+GIT_VERB_RX = re.compile(r"\bgit\b")
+
+# Commands that run another command. `git` after one of these is still a git
+# invocation; `git` after anything else — `echo git add` — is just a word.
+WRAPPERS = {"xargs", "env", "time", "nice", "sudo", "command", "nohup", "stdbuf"}
+ENV_ASSIGN_RX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+SNAPSHOT_VERBS = {"add", "commit", "stash", "reset", "restore", "rm", "mv"}
+
+HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+CD_RX = re.compile(r"""(?:^|[;&|\n])\s*cd\s+("[^"]+"|'[^']+'|[^;&|\s]+)""")
+SEGMENT_RX = re.compile(r"(?:&&|\|\||[;&|\n])")
+
+# `git` options that take a separate value, so the subcommand is not the token
+# straight after them. Without this, `git -C dir add` reads as subcommand `dir`.
+GIT_GLOBAL_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
+                         "--exec-path", "--config-env"}
+
+# `git commit` options that consume the following token. Anything left over
+# that is not an option is a pathspec.
+COMMIT_VALUE_OPTS = {"-m", "--message", "-F", "--file", "-C", "--reuse-message",
+                     "-c", "--reedit-message", "--author", "--date", "--cleanup",
+                     "--template", "-t", "--trailer", "--fixup", "--squash",
+                     "--pathspec-from-file", "-S", "--gpg-sign"}
+
+STASH_SUBS_THAT_TAKE_WORK = {"push", "save"}
+
+
+def strip_heredocs(cmd):
+    """Remove heredoc BODIES before looking at the command.
+
+    A command that merely WRITES about `git commit` — a test fixture, a doc, a
+    script being generated — contains the verb inside a heredoc body. Matching
+    it there is the measurement sitting inside the corpus it measures, and it
+    fires on the very work that hardens this hook. Lifted from
+    set-hook-leakscan, where writing that hook's own tests tripped it.
+    """
+    out, skip_to = [], None
+    for line in cmd.split("\n"):
+        if skip_to is not None:
+            if line.strip() == skip_to:
+                skip_to = None
+            continue
+        m = HEREDOC_START.search(line)
+        if m:
+            skip_to = m.group(2)
+            out.append(line[: m.start()])
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def target_repo(payload, cmd):
+    """Which repository the command will actually run in.
+
+    The hook inherits the SESSION's working directory, not the command's, so
+    `cd <path> && git commit` would otherwise be judged against whatever tree
+    the session happened to sit in. Lifted from set-hook-leakscan, where the
+    same mistake was measured on a live push.
+    """
+    target = payload.get("cwd") or os.getcwd()
+    matches = CD_RX.findall(cmd)
+    if matches:
+        last = matches[-1].strip("\"'")
+        if last.startswith("~"):
+            last = os.path.expanduser(last)
+        if os.path.isdir(last):
+            target = last
+    return target
+
+
+def git_invocations(cmd):
+    """Every `git <subcommand> <args...>` in the command, as parsed tokens.
+
+    Raises ValueError when the command cannot be tokenised; the caller decides
+    what an unparseable command means.
+    """
+    found = []
+    for segment in SEGMENT_RX.split(cmd):
+        segment = segment.strip()
+        if not segment:
+            continue
+        tokens = shlex.split(segment)  # ValueError on unbalanced quotes
+        i = 0
+        while i < len(tokens) and (tokens[i] in WRAPPERS
+                                   or tokens[i].startswith("-")
+                                   or ENV_ASSIGN_RX.match(tokens[i])):
+            i += 1
+        if i < len(tokens) and tokens[i] == "git":
+            j = i + 1
+            while j < len(tokens) and tokens[j].startswith("-"):
+                opt = tokens[j].split("=", 1)[0]
+                j += 2 if (opt in GIT_GLOBAL_VALUE_OPTS and "=" not in tokens[j]) else 1
+            if j < len(tokens):
+                found.append((tokens[j], tokens[j + 1:]))
+    return found
+
+
+def run_git(repo, args):
+    proc = subprocess.run(["git"] + args, cwd=repo, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def staged_paths(repo):
+    out = run_git(repo, ["diff", "--cached", "--name-only"])
+    if out is None:
+        return None
+    return {line for line in out.splitlines() if line}
+
+
+def is_repo(repo):
+    out = run_git(repo, ["rev-parse", "--is-inside-work-tree"])
+    return out is not None and out.strip() == "true"
+
+
+def state_path(session_id):
+    """Where this session's ownership record lives.
+
+    A payload without `session_id` collapses to one shared "unknown" record. That
+    is the safe direction: two unidentified sessions then see each other's paths
+    as their own only if both are unidentified, whereas inventing a per-process
+    id would make every hook invocation its own session and mark everything
+    foreign — refusing every commit in the tree.
+    """
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", session_id or "unknown")
+    return os.path.join(STATE_DIR, f"set-checkout-guard-{safe}.json")
+
+
+def load_state(session_id):
+    try:
+        with open(state_path(session_id)) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(session_id, state):
+    # Read and write are separate statements on purpose. Opening a file for
+    # writing inside the expression that reads it truncates it first; that
+    # mistake cost a 290 KB log on this project's agent channel.
+    tmp = state_path(session_id) + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(state, fh)
+    os.replace(tmp, state_path(session_id))
+
+
+def owned_paths(state, repo):
+    return set((state.get(repo) or {}).get("owned") or [])
+
+
+# --- what the command is asking for ------------------------------------------
+
+def sweeping_add(args):
+    """`git add` with no pathspec of its own: -A / --all / . / bare -u."""
+    if "--pathspec-from-file" in " ".join(args):
+        return False
+    positional, saw_all, saw_update = [], False, False
+    for tok in args:
+        if tok == "--":
+            continue
+        if tok.startswith("-"):
+            if tok in ("-A", "--all", "--no-ignore-removal"):
+                saw_all = True
+            elif tok in ("-u", "--update"):
+                saw_update = True
+            elif re.fullmatch(r"-[A-Za-z]+", tok):
+                saw_all = saw_all or "A" in tok[1:]
+                saw_update = saw_update or "u" in tok[1:]
+            continue
+        positional.append(tok)
+    if saw_all:
+        return True
+    if saw_update and not positional:
+        return True
+    return any(p in (".", "./", "*") for p in positional)
+
+
+def commit_stages_everything(args):
+    """`git commit -a` stages every tracked modification in the checkout."""
+    for tok in args:
+        if tok == "--":
+            break
+        if tok in ("-a", "--all"):
+            return True
+        if re.fullmatch(r"-[A-Za-z]+", tok) and "a" in tok[1:]:
+            return True
+    return False
+
+
+def has_pathspec(args, value_opts):
+    """True when the command names paths of its own."""
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--":
+            return len(args) > i + 1
+        if tok.startswith("-"):
+            opt = tok.split("=", 1)[0]
+            if opt in value_opts and "=" not in tok:
+                i += 2
+                continue
+            i += 1
+            continue
+        return True
+    return False
+
+
+def stash_takes_work(args):
+    """True for the forms that sweep the working tree, false for list/show/pop."""
+    sub = None
+    for tok in args:
+        if not tok.startswith("-"):
+            sub = tok
+            break
+    if sub is not None and sub not in STASH_SUBS_THAT_TAKE_WORK:
+        return False
+    return not has_pathspec(args, {"-m", "--message"})
+
+
+# --- refusals ----------------------------------------------------------------
+
+def refuse(lines):
+    for line in lines:
+        print(line, file=sys.stderr)
+    return 2
+
+
+def refuse_foreign_commit(foreign, owned_here, compound):
+    body = [
+        "BLOCKED by set-hook-checkout-guard — this commit would carry work another",
+        "session in this checkout is holding.",
+        "",
+        "Staged, but not staged by this session:",
+    ]
+    body += [f"    {p}" for p in sorted(foreign)]
+    body += [
+        "",
+        "There is one index per checkout, so a commit that names no paths publishes",
+        "whatever anybody staged. Measured on 2026-08-20 (bug B-32): a session that",
+        "had staged only its own 8 paths found them in another thread's commit, under",
+        "a message that named none of them. The content survived; the message and the",
+        "attribution did not.",
+        "",
+        "Name your paths on the COMMIT, not only on the add:",
+    ]
+    if compound:
+        body += [
+            "",
+            "    git add <your paths> && git commit -- <your paths>",
+            "",
+            "This command stages and commits in one call, so at the moment it is",
+            "checked your own paths are not in the index yet. Putting the pathspec on",
+            "the commit keeps the command's shape and makes it safe.",
+        ]
+    else:
+        example = " ".join(sorted(owned_here)[:3]) or "<your paths>"
+        body += ["", f"    git commit -- {example}"]
+    body += [
+        "",
+        "That form commits only the named paths and leaves the other session's staged",
+        "entries in the index, untouched — measured, not assumed.",
+        "",
+        "Note: it commits the WORKING TREE content of those paths, so a partial hunk",
+        "staged with `git add -p` would go in whole.",
+    ]
+    return refuse(body)
+
+
+def refuse_sweep(what, remedy):
+    return refuse([
+        f"BLOCKED by set-hook-checkout-guard — {what}",
+        "",
+        "Several sessions work in this checkout, and a command that names no paths",
+        "acts on all of it, including work another session is holding right now.",
+        "",
+        f"    {remedy}",
+        "",
+        "`git add -A` does not mean 'all my changes' — it means 'all changes'.",
+    ])
+
+
+def refuse_stash(foreign):
+    body = [
+        "BLOCKED by set-hook-checkout-guard — this stash would take another session's",
+        "work out of the working tree.",
+        "",
+        "Staged, but not staged by this session:",
+    ]
+    body += [f"    {p}" for p in sorted(foreign)]
+    body += [
+        "",
+        "This is the worse half of the shared-checkout hazard. A commit at least",
+        "leaves the content in a findable commit; a stash removes the other session's",
+        "files from the working tree, their `git status` reads CLEAN, and the work",
+        "sits in a stash entry they have no reason to look in.",
+        "",
+        "Stash only your own paths:",
+        "",
+        "    git stash push -- <your paths>",
+    ]
+    return refuse(body)
+
+
+# --- the two events ----------------------------------------------------------
+
+def handle_pre(payload, cmd, invocations, repo, session_id):
+    verbs = [(sub, args) for sub, args in invocations if sub in SNAPSHOT_VERBS]
+    if not verbs:
+        return 0
+
+    stages_first = any(
+        sub == "add" or (sub == "commit" and commit_stages_everything(args))
+        for sub, args in verbs
+    )
+
+    for sub, args in verbs:
+        if sub == "add" and sweeping_add(args):
+            return refuse_sweep(
+                "`git add` here stages everything, not what it was given.",
+                "git add <your paths>")
+        if sub == "commit" and commit_stages_everything(args):
+            return refuse_sweep(
+                "`git commit -a` stages every tracked modification in the checkout.",
+                "git add <your paths> && git commit -- <your paths>")
+
+    state = load_state(session_id)
+    owned = owned_paths(state, repo)
+
+    for sub, args in verbs:
+        if sub == "commit" and not has_pathspec(args, COMMIT_VALUE_OPTS):
+            staged = staged_paths(repo)
+            if staged is None:
+                return 0
+            foreign = staged - owned
+            # A staging step earlier in the SAME command has not run yet, so its
+            # paths cannot be in the index and cannot be owned. Refusing is the
+            # right answer: the remedy composes into the same command.
+            if foreign or stages_first:
+                return refuse_foreign_commit(foreign, owned, compound=stages_first)
+
+        if sub == "stash" and stash_takes_work(args):
+            staged = staged_paths(repo)
+            if staged is None:
+                return 0
+            foreign = staged - owned
+            if foreign:
+                return refuse_stash(foreign)
+
+    # Nothing refused: remember the index as it stands, so the PostToolUse pass
+    # can measure what THIS command changed.
+    entry = state.setdefault(repo, {})
+    before = staged_paths(repo)
+    entry["pending_pre"] = sorted(before) if before is not None else None
+    save_state(session_id, state)
+    return 0
+
+
+def handle_post(payload, cmd, invocations, repo, session_id):
+    if not any(sub in SNAPSHOT_VERBS for sub, _ in invocations):
+        return 0
+
+    state = load_state(session_id)
+    entry = state.get(repo)
+    if not entry or entry.get("pending_pre") is None:
+        return 0
+
+    before = set(entry.pop("pending_pre") or [])
+    after = staged_paths(repo)
+    if after is None:
+        save_state(session_id, state)
+        return 0
+
+    owned = set(entry.get("owned") or [])
+    # Arrivals are this command's doing, so they are this session's. Departures
+    # leave the record, or a claim outlives the fact and a neighbour who stages
+    # the same path later is mistaken for us.
+    #
+    # The attribution is NOT exact: another session staging between these two
+    # snapshots is credited here. The window is one command long — the narrowest
+    # this design reaches — but it is not zero, and it errs PERMISSIVE.
+    owned = (owned & after) | (after - before)
+    entry["owned"] = sorted(owned)
+    state[repo] = entry
+    save_state(session_id, state)
+    return 0
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return 0
+
+    event = sys.argv[1] if len(sys.argv) > 1 else (payload.get("hook_event_name") or "")
+    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    if not cmd:
+        return 0
+
+    cmd = strip_heredocs(cmd)
+    if not GIT_VERB_RX.search(cmd):
+        return 0
+
+    try:
+        invocations = git_invocations(cmd)
+    except ValueError:
+        print("set-hook-checkout-guard: could not tokenise this command, so it was",
+              file=sys.stderr)
+        print("not checked. Allowing it — a guard that cannot run must not block every",
+              file=sys.stderr)
+        print("shell command — but this one is unchecked.", file=sys.stderr)
+        return 0
+
+    if not invocations:
+        return 0
+
+    repo = target_repo(payload, cmd)
+    if not is_repo(repo):
+        return 0
+    root = run_git(repo, ["rev-parse", "--show-toplevel"])
+    if root:
+        repo = root.strip()
+
+    session_id = payload.get("session_id") or ""
+    if event == "PostToolUse":
+        return handle_post(payload, cmd, invocations, repo, session_id)
+    return handle_pre(payload, cmd, invocations, repo, session_id)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as exc:  # noqa: BLE001 - see D4
+        # The one deliberate fail-open. A crashing guard that blocks every Bash
+        # command is worse than the defect it prevents. Saying so on stderr is
+        # the only tell that the guard stopped guarding.
+        print(f"set-hook-checkout-guard: internal error, command NOT checked: {exc}",
+              file=sys.stderr)
+        sys.exit(0)
