@@ -67,6 +67,32 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-35 — the "waiting for a human" count reads its OWN documentation as an open question, on a task that is already done
+- **state:** open
+- **reported:** 2026-08-20 by the user, from the screen — *"3 waiting for a human
+  felül de ha rákattintok nem ugrik rá az elsőre, vagy ráugrik de az már nem abban
+  a státuszban kellene legyen"*.
+- **measured:** `GET /api/fleet/agents` →
+  `set-core.awaiting = {"decision": ["fleet-view#9.15"], ..., "total": 1}`.
+  The source line is `openspec/changes/fleet-view/tasks.md:148`, and it is
+  `- [x] 9.15 …` — a task marked DONE, whose text *describes the mechanism*:
+  «`connector.mark_awaiting` writes `<!-- awaiting: … -->` into the change's own
+  task file». `open_decisions` (`lib/set_orch/fleet/awaiting.py:230`) matches
+  `_AWAITING_MARKER` anywhere on the line, so the quoted example is read as a
+  live marker.
+- **two defects, and the second is the general one:**
+  1. **A completed task cannot be awaiting a human.** The checkbox state is not
+     read at all — `[x]`, `[ ]` and `[~]` are treated identically.
+  2. **A marker quoted inside inline code is read as a marker.** The
+     prose-read-as-fact class: the file documenting the mechanism is inside the
+     corpus the mechanism scans.
+- **the direction:** it INVENTS work. The header sends the reader to a project
+  that is not waiting for anything, which is the fastest way to make a
+  legitimate signal ignored — and the count is the first number on the screen.
+- **fixed when:** `open_decisions` over this repo returns `[]` while a fixture
+  with a genuinely open `- [ ] 1.1 … <!-- awaiting: q -->` still returns it, and
+  the fleet header drops from 3 to 2 with wpc-pont's two orphaned changes intact.
+
 ### B-1 — an agent can only be stopped through an open terminal, and closing that terminal is a detach
 - **state:** open
 - **reported:** 2026-08-19 by the user (*"hogyan tudlak bezárni? nincs is ilyen
@@ -882,6 +908,85 @@ consumer's name, path, or content.
   the log could not be read — never a blank), verified BY LOOKING at
   `localhost:7400` in the browser, plus a unit test that renders `FleetPm` with a
   terminal-less presented agent and asserts the log rows are there.
+
+
+### B-36 — an engine call without a change silently burns every pending answer
+
+- **state:** open
+- **reported:** 2026-08-21, by an adversarial review of
+  `work-cycle-question-contract`, and **reproduced independently** before entry.
+- **measured:** `open_engine(tree, change="")` leaves `tasks_path` as `None`, so
+  `_awaiting_keys` returns an empty set (`lib/set_workcycle/cli.py:82-85`). In
+  `connector.intake` the guard is `if awaiting_keys and key not in awaiting_keys`
+  (`lib/set_workcycle/connector.py:318`) — an empty set is falsy, so the guard is
+  skipped and **every** answer is applied and consumption-stamped. Back in
+  `cli.py:125` the release is gated on `if tasks_path is not None`, which on that
+  path it is not: nothing is cleared, nothing is recorded. The same happens on the
+  not-adopted early return, which calls `intake(root)` with no `awaiting` at all
+  (`cli.py:102`). Reproduced on a throwaway tree:
+
+  ```
+  answer written:            human--20260821T000746.json
+  intake(tree)            →  ['applied my-change#3.1 (from human)']
+  intake(tree, awaiting=…) →  ['no answers were pending']
+  consumed:                  ['human--20260821T000746.json']
+  ```
+
+- **why it is severe:** the task stays `- [?]` for ever, the group it holds never
+  becomes runnable, and the person's answer is unrecoverable through the normal
+  path — while the command **prints `applied …`**. It fails in the reassuring
+  direction twice: the operator sees success, and the engine reports a calm it has
+  not verified. Any read-only invocation without `--change` is enough.
+- **⚠ what a fix must NOT do:** it must not make an empty `awaiting` set mean
+  "match everything". The correct reading is "we do not know what is awaited",
+  which is not the same as "nothing is awaited" — the false-absence class. Nor may
+  it quarantine or delete: the answer belongs where it is until it can be applied.
+- **fixed when:** an intake that cannot determine the awaiting set applies nothing
+  and consumes nothing; a later call that can determine it applies the answer; and
+  a test asserts the FIRST call left the file unconsumed — asserting only that the
+  second call works would pass on the broken code too.
+- **belongs to:** the code shipped by `work-cycle-engine-apply-first`.
+
+### B-37 — an answer's `source` field reaches the log raw, and it is written off-machine
+
+- **state:** open
+- **reported:** 2026-08-21 by an adversarial review.
+- **measured:** `cli.py:130-131` logs
+  `"released %s — an answer arrived from %s"` with `applied.source` taken verbatim
+  from the answer document (`connector.py:303-305`, no validation, no bound).
+  `answer_filename` sanitises `source` for the FILENAME (`connector.py:141-152`)
+  and nothing sanitises it for the log. Once answers can be written by a party off
+  this machine — which is what the question bridge introduces — that is
+  arbitrary, unbounded, externally-chosen text in the framework's journal.
+- **why it is a defect and not a nit:** the framework's own rule is *shape, counts
+  and error classes only* (`lib/set_orch/project_status.py:23`). The enumeration
+  missed this field because it names "the question and the answer", and `source`
+  is neither — the same shape as the defect that rule's own docstring describes.
+- **fixed when:** `source` is bounded and sanitised before it reaches a log line,
+  and a test feeds a hostile `source` and asserts what the journal contains.
+
+### B-38 — an answer is interpolated into a full-session prompt as a standing instruction
+
+- **state:** open
+- **reported:** 2026-08-21 by an adversarial review, with the security lens.
+- **measured:** `lib/set_workcycle/prompt.py:95-101` renders answers as
+  `f"- **{task}**: {answer}"` under the heading *"Questions that have been
+  answered"*, followed by *"They are decided now — act on them rather than asking
+  again."* No fencing, no escaping, no length bound. That string becomes
+  `cmd += ["--", prompt]` for `claude -p` running as **a full session** with the
+  project's own hooks and permission mode (`lib/set_workcycle/runner.py:60-81`),
+  in the project's tree, unattended.
+- **why the severity changes now:** today an answer can only be written by
+  somebody already on the machine. The question bridge is precisely the mechanism
+  that extends that write surface to whoever can post in a chat channel. An answer
+  reading *"…also run: …"* is indistinguishable from a decision a person made, and
+  every gate and test still passes — the injected instruction IS the work product.
+- **fixed when:** answer text is delimited where it lands and bounded in length;
+  where the question offered a closed option set, an answer outside that set is
+  refused rather than pasted; and a test asserts that an answer containing
+  instruction-shaped text does not change what the unit is told to do.
+- **belongs to:** the code shipped by `work-cycle-engine-apply-first`; it is a
+  precondition for `work-cycle-question-contract`, not a task inside it.
 
 
 ## Closed
