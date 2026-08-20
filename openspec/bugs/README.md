@@ -712,9 +712,25 @@ consumer's name, path, or content.
   The instrument was proven before it was adopted: a minimal app with one stuck
   request was **still alive 60 s** after `SIGTERM` with the default, and exited in
   **10.5 s** with the timeout set.
-- **⚠ still open until it is seen on the real service.** The running process holds
-  the code it started with; the fix takes effect at the next restart. The closing
-  check is below and has not been run yet.
+- **the fix is RUNNING** since the 20:23 restart (the process started after the
+  commit, so it loaded the patched `cli.py`), and that restart took **2 s** —
+  which proves nothing about the fix, because there was no stuck task to wait
+  for. The old code would have taken 2 s too. Recorded so the number is not
+  mistaken for evidence later.
+- **⚠ still open: the closing check has been ATTEMPTED and the instrument ate it.**
+  To make a request genuinely hang, an isolated instance was given a *silent*
+  owner socket (accepts, never answers) so `OwnerClient` would sit on its 30 s
+  read timeout. Results: `GRACE=10` → 28.6 s, `GRACE=2` → 28.0 s, and — the line
+  that settles it — **no stuck request at all → 25.5 s**. The shutdown time is
+  therefore dominated by the silent socket the measurement itself installed, not
+  by the graceful window. Same defect class as the watcher count measured while
+  the kernel table was full: *a resource meter cannot be trusted while the
+  measurement is holding the resource.*
+- **what would close it:** a real `Stopping…`/`Started` pair on the live service
+  taken while a request is actually hanging — i.e. the next restart that happens
+  under load. Single-digit seconds closes it; anything near 90 s reopens the
+  cause. Do not substitute the isolated rig: it has now been shown to answer a
+  different question.
 - **why it is worth its own entry:** it converts a routine `restart` — which
   agents and the user both do — into a minute of dead dashboard, and B-30's tile
   chain makes that minute read as `connecting…` rather than as "the server is
