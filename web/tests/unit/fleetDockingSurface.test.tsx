@@ -40,14 +40,18 @@ function installFetch(layout: Json = {}) {
   const writes: { url: string; body: Json }[] = []
   let current: Json = {
     version: 1, groups: [], parked: [], ungrouped: ['demo'], missing: [],
-    splits: {}, docks: [], ...layout,
+    splits: {}, docks: {}, docks_legacy: [], ...layout,
   }
   const stub = vi.fn((url: string, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('/api/fleet/layout/docks') && init?.method === 'PUT') {
       const sent = JSON.parse(String(init.body)) as Json
       writes.push({ url: u, body: sent })
-      current = { ...current, docks: sent.docks }
+      current = {
+        ...current,
+        // Per project since 2026-08-20: the write replaces ONE key.
+        docks: { ...(current.docks as Json), [String(sent.project)]: sent.docks },
+      }
       return Promise.resolve({ ok: true, json: () => Promise.resolve(sent) } as unknown as Response)
     }
     if (u.includes('/api/fleet/layout/splits') && init?.method === 'PUT') {
@@ -100,14 +104,19 @@ describe('sending a panel to an edge', () => {
     ;(container.querySelector('[data-tile-control="dock-right"]') as HTMLElement).click()
     await waitFor(() => expect(writes.length).toBeGreaterThan(0))
     expect(writes[0].url).toContain('/api/fleet/layout/docks')
-    expect(writes[0].body).toEqual({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    expect(writes[0].body).toEqual({
+      // The project rides with it: docking used to be screen-wide, and a write
+      // that can omit the project is the shape that made it so.
+      project: 'demo',
+      docks: [{ kind: 'agent', id: 't-1', edge: 'right' }],
+    })
   })
 
   it('MOVES the panel — it does not leave a copy in the grid', async () => {
     // The claim neither module test can make. A duplicated panel looks like a
     // working feature until the two copies disagree, and the one nobody is
     // watching is the one that goes stale.
-    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     await waitFor(() => {
@@ -120,7 +129,7 @@ describe('sending a panel to an edge', () => {
   })
 
   it('renders the band on the edge it was docked to', async () => {
-    installFetch({ docks: [{ kind: 'agent', id: 't-2', edge: 'bottom' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-2', edge: 'bottom' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     const band = await waitFor(() => {
@@ -135,7 +144,7 @@ describe('sending a panel to an edge', () => {
 
 describe('bringing it back', () => {
   it('undocks by pressing the edge it is already on, so the control is never a dead end', async () => {
-    const { writes } = installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    const { writes } = installFetch({ docks: { demo: [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     const band = await waitFor(() => {
@@ -148,11 +157,11 @@ describe('bringing it back', () => {
     expect(active).not.toBeNull()
     ;(active as HTMLElement).click()
     await waitFor(() => expect(writes.length).toBeGreaterThan(0))
-    expect(writes[writes.length - 1].body).toEqual({ docks: [] })
+    expect(writes[writes.length - 1].body).toEqual({ project: 'demo', docks: [] })
   })
 
   it('returns the space — the band is gone and the agent is back in the grid', async () => {
-    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     const band = await waitFor(() => {
@@ -171,10 +180,12 @@ describe('bringing it back', () => {
 describe('two edges at once', () => {
   it('renders a band on each and leaves the grid what is left', async () => {
     installFetch({
-      docks: [
-        { kind: 'agent', id: 't-1', edge: 'right' },
-        { kind: 'agent', id: 't-2', edge: 'top' },
-      ],
+      docks: {
+        demo: [
+          { kind: 'agent', id: 't-1', edge: 'right' },
+          { kind: 'agent', id: 't-2', edge: 'top' },
+        ],
+      },
     })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
@@ -187,11 +198,46 @@ describe('two edges at once', () => {
   })
 })
 
+describe('docking belongs to ONE project', () => {
+  /**
+   * The defect the user reported by looking at the screen on 2026-08-20:
+   * *"layout nem projekt szinten van hanem globálisan. ez nem jó, projekt
+   * szinten kell értelmezni"*.
+   *
+   * Docking was stored screen-wide, so a terminal docked while looking at one
+   * project held the same edge in every other project. Nothing there could
+   * render in it, so the band could only say *"no running agent with this
+   * terminal in <the project you are looking at>"* — the whole right-hand side
+   * of the screen taken by an empty band naming somebody else's project. It
+   * fails in the reassuring direction: nothing throws, nothing is counted, and
+   * the screen still looks like a layout.
+   */
+  it('does not render another project\'s docked panel', async () => {
+    installFetch({ docks: { 'somewhere-else': [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
+    const { container } = render(<Fleet />)
+    await ready(container)
+    // Both agents are in the GRID, and no band belongs to this screen.
+    expect(container.querySelectorAll('[data-fleet-dock]').length).toBe(0)
+    expect(container.querySelectorAll('[data-tile-controls]').length).toBe(2)
+    expect(container.textContent).not.toMatch(/kept, not closed/i)
+  })
+
+  it('reads a pre-2026-08-20 flat list as NOTHING docked, never as this project\'s', async () => {
+    // The old shape carries no project, so adopting it into whichever project
+    // happens to be selected would put a band where nobody put it. The server
+    // keeps the list under `docks_legacy`, so refusing it here loses nothing.
+    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] as unknown as Json })
+    const { container } = render(<Fleet />)
+    await ready(container)
+    expect(container.querySelectorAll('[data-fleet-dock]').length).toBe(0)
+  })
+})
+
 describe('a docked panel whose agent is gone', () => {
   it('says the panel was kept rather than rendering an empty band', async () => {
     // A blank band is indistinguishable from a broken one, and the reader would
     // conclude the screen lost something.
-    installFetch({ docks: [{ kind: 'agent', id: 't-999', edge: 'right' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-999', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     const band = await waitFor(() => {
@@ -205,7 +251,7 @@ describe('a docked panel whose agent is gone', () => {
   it('reports its failing count as UNKNOWN, not as zero', async () => {
     // There is no agent to ask, so "nothing is wrong" would be a claim of calm
     // nobody measured — the false-absence class.
-    installFetch({ docks: [{ kind: 'agent', id: 't-999', edge: 'right' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-999', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     const marker = await waitFor(() => {
@@ -230,7 +276,7 @@ describe('docking a panel that the grid was treating specially', () => {
    */
   it('does not empty the grid when the ENLARGED panel is the one docked', async () => {
     localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { enlarged: 1 } }))
-    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     await waitFor(() => {
@@ -247,7 +293,7 @@ describe('docking a panel that the grid was treating specially', () => {
     // The mirror image: focus resolved against every agent would put one agent
     // in the band and full-screen over the grid at the same time.
     localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { focus: 1 } }))
-    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
     const { container } = render(<Fleet />)
     await screen.findByText('demo')
     await waitFor(() => {

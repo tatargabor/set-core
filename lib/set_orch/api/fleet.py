@@ -704,9 +704,12 @@ class LayoutBody(BaseModel):
     #: "delete these". Dividers are normally written through their own route,
     #: which does not bump the version this body's `base_version` guards.
     splits: Optional[Dict[str, Any]] = None
-    #: Which views are docked where, or `None` to leave them as they are — the
-    #: same omission rule as `splits`, and for the same reason.
-    docks: Optional[List[Dict[str, Any]]] = None
+    #: Which views are docked where, keyed by PROJECT (2026-08-20), or `None` to
+    #: leave them as they are — the same omission rule as `splits`, and for the
+    #: same reason. A flat list is refused rather than accepted and re-keyed:
+    #: it is the shape that made docking screen-wide, and silently adopting it
+    #: would put a dock in a project nobody chose.
+    docks: Optional[Dict[str, List[Dict[str, Any]]]] = None
     base_version: Optional[int] = None
 
 
@@ -1049,8 +1052,14 @@ def fleet_remove_waiter(pid: int) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 class DocksBody(BaseModel):
-    """Which view instances are docked, and to which edge."""
+    """Which view instances ONE PROJECT has docked, and to which edge.
 
+    `project` is required and has no default. Docking used to be screen-wide,
+    and a body that can omit the project is the shape that produced that —
+    see `fleet_put_docks`.
+    """
+
+    project: str
     docks: List[Dict[str, Any]] = []
 
 
@@ -1066,13 +1075,23 @@ def fleet_put_docks(body: DocksBody) -> Dict[str, Any]:
     divider position and goes through the divider route, because a docked view's
     edge is a divider like any other. Two stores for one edge is how a screen
     ends up rendering a width nobody set.
+
+    **It carries the PROJECT, and refuses a body without one (2026-08-20).**
+    Docking was stored screen-wide, so a terminal docked in one project occupied
+    the same edge in every other project — where nothing could render in it, and
+    the band could only report that this project has no such agent. A dock's
+    identity is an agent's terminal label, and a label belongs to a project;
+    the project was the missing half of the key, not a scoping preference.
     """
+    project = (body.project or "").strip()
+    if not project:
+        raise HTTPException(status_code=400, detail="docking needs the project it belongs to")
     try:
-        stored = fleet_layout.save_docks(body.docks)
+        stored = fleet_layout.save_docks(body.docks, project=project)
     except OSError as exc:
         logger.error("fleet api: cannot write the docking: %s", exc)
         raise HTTPException(status_code=500, detail=f"cannot write the docking: {exc}") from exc
-    return {"docks": stored}
+    return {"project": project, "docks": stored}
 
 
 class SplitsBody(BaseModel):

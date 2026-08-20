@@ -69,7 +69,8 @@ DOCK_EDGES = ("left", "right", "top", "bottom")
 
 EMPTY: Dict[str, Any] = {
     "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
-    "docks": [],
+    # Keyed by project since 2026-08-20 — see `_normalise_docks`.
+    "docks": {}, "docks_legacy": [],
 }
 
 
@@ -128,8 +129,8 @@ def _normalise_splits(raw: Any) -> Dict[str, int]:
     return out
 
 
-def _normalise_docks(raw: Any) -> List[Dict[str, Any]]:
-    """Which view instances are docked, and to which edge.
+def _normalise_dock_list(raw: Any) -> List[Dict[str, Any]]:
+    """One project's docked views, in order, and to which edge each is docked.
 
     **A list, not a map keyed by edge.** Two views can share an edge, and the
     order they sit in along it is a thing the user arranged — a map would either
@@ -178,6 +179,56 @@ def _normalise_docks(raw: Any) -> List[Dict[str, Any]]:
     return out
 
 
+def _normalise_docks(raw: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """Docking, keyed by the PROJECT it belongs to.
+
+    **Per project, not per screen — corrected by the user on 2026-08-20.** This
+    used to be one flat list, on the reasoning that a docked band is a property
+    of the screen rather than of a project. The reasoning was tidy and the effect
+    was not: a terminal docked while looking at one project stayed docked while
+    looking at every other one, where its own renderer could only say *"no
+    running agent with this terminal in <other project>"*. So the reader lost
+    the whole right-hand side of the fleet screen to an empty band that named a
+    project they were not looking at — a false absence produced by the layout,
+    which is exactly the class this screen exists to refuse.
+
+    The identity that makes a dock renderable is an agent's terminal label, and
+    a label belongs to a project. Keying by project is therefore not a scoping
+    preference; it is the missing half of the entry's identity.
+
+    An empty list is stored as no key at all: "nothing docked here" and "never
+    docked here" render the same, and keeping a key per project the reader once
+    docked in would grow the document forever.
+    """
+    if not isinstance(raw, dict):
+        # A legacy flat list arrives here. It is NOT dropped — `_normalise_dock_legacy`
+        # keeps it verbatim, because a dock without a project cannot be placed
+        # without guessing which project it belonged to, and guessing is what
+        # produced the defect above.
+        return {}
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for project, entries in raw.items():
+        name = str(project).strip()
+        if not name:
+            continue
+        docked = _normalise_dock_list(entries)
+        if docked:
+            out[name] = docked
+    return out
+
+
+def _normalise_dock_legacy(raw: Any) -> List[Dict[str, Any]]:
+    """The pre-2026-08-20 flat dock list, preserved verbatim and never rendered.
+
+    Kept rather than deleted for one reason: a deleted entry and one that was
+    never written are indistinguishable. It is not adopted into a project
+    either, because the document does not say which project each entry belonged
+    to — only the live agent inventory could answer that, and it is not what
+    this module reads. The API states it so the answer is inspectable.
+    """
+    return _normalise_dock_list(raw)
+
+
 def normalise(raw: Any) -> Dict[str, Any]:
     """Coerce whatever was stored or posted into the shape the surface expects.
 
@@ -218,8 +269,13 @@ def normalise(raw: Any) -> Dict[str, Any]:
         # only for the user who had arranged something.
         "splits": _normalise_splits(raw.get("splits")),
         # Same rule as `splits`: named explicitly, because this function drops
-        # every key it does not name.
+        # every key it does not name. Keyed by project since 2026-08-20; a
+        # document written before that carries a flat list, which lands in
+        # `docks_legacy` instead of being guessed into a project.
         "docks": _normalise_docks(raw.get("docks")),
+        "docks_legacy": _normalise_dock_legacy(
+            raw.get("docks") if isinstance(raw.get("docks"), list) else raw.get("docks_legacy")
+        ),
     }
 
 
@@ -265,8 +321,8 @@ def _write_atomically(payload: Dict[str, Any], path: str) -> None:
         raise
 
 
-def save_docks(docks: Any, *, path: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Store which views are docked where, without touching the arrangement.
+def save_docks(docks: Any, *, project: str, path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Store which views ONE PROJECT has docked, without touching the arrangement.
 
     Same two properties as `save_splits`, and for the same reasons: the version
     guarding the hand-made arrangement does not move, and last-write-wins is
@@ -275,15 +331,31 @@ def save_docks(docks: Any, *, path: Optional[str] = None) -> List[Dict[str, Any]
     Kept as a separate function rather than a flag on one writer: the two write
     different keys, and a shared writer with a mode parameter is where a caller
     eventually passes the wrong mode and clears the other key.
+
+    **`project` is required and replaces only that project's list.** A write
+    that named no project is what made docking global; refusing one here means
+    the shape cannot regress to a screen-wide list by a caller forgetting an
+    argument. Every other project's docking is left exactly as it was, so
+    docking a terminal in one project cannot take one apart in another.
     """
+    name = str(project or "").strip()
+    if not name:
+        raise ValueError("save_docks needs the project the docking belongs to")
     path = path or default_layout_path()
     current = load(path)
     payload = dict(current)
-    payload["docks"] = _normalise_docks(docks)
+    stored = {k: list(v) for k, v in (current.get("docks") or {}).items()}
+    docked = _normalise_dock_list(docks)
+    if docked:
+        stored[name] = docked
+    else:
+        # Nothing docked is stored as no key: see `_normalise_docks`.
+        stored.pop(name, None)
+    payload["docks"] = stored
     _write_atomically(payload, path)
-    logger.info("fleet layout: %d docked view(s) stored at version %s (unchanged)",
-                len(payload["docks"]), payload["version"])
-    return payload["docks"]
+    logger.info("fleet layout: %d docked view(s) stored for project %r at version %s (unchanged)",
+                len(docked), name, payload["version"])
+    return docked
 
 
 def save_splits(splits: Any, *, path: Optional[str] = None) -> Dict[str, int]:
@@ -344,7 +416,10 @@ def save(new: Dict[str, Any], *, path: Optional[str] = None, base_version: Optio
     # And the same for docking, for the same reason and with the same escape:
     # omission preserves, an explicit empty list clears.
     if new.get("docks") is None:
-        payload["docks"] = list(current.get("docks") or [])
+        payload["docks"] = {k: list(v) for k, v in (current.get("docks") or {}).items()}
+    # The legacy list is never written by a caller; it only ever survives.
+    if not payload.get("docks_legacy"):
+        payload["docks_legacy"] = list(current.get("docks_legacy") or [])
 
     _write_atomically(payload, path)
     logger.info(
@@ -413,6 +488,11 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
         # Passed through unjoined: a divider belongs to the screen, not to a
         # project, so there is nothing for it to be missing FROM.
         "splits": dict(layout.get("splits") or {}),
-        # Unjoined too: a docked view belongs to the screen, not to a project.
-        "docks": list(layout.get("docks") or []),
+        # Keyed by project since 2026-08-20 — a docked view belongs to the
+        # project whose agent it shows, not to the screen. Unjoined all the
+        # same: the client picks its own project's list out of the map.
+        "docks": {k: list(v) for k, v in (layout.get("docks") or {}).items()},
+        # Stated rather than dropped: docking arranged before it became
+        # per-project. Preserved, never rendered — see `_normalise_dock_legacy`.
+        "docks_legacy": list(layout.get("docks_legacy") or []),
     }

@@ -49,9 +49,9 @@ import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
 import {
-  bandsOn, dockSplitKey, dockedBands, loadDocks, remainingArea, saveDocks, withCollapsed,
+  bandsOn, dockSplitKey, dockedBands, docksFor, loadDocks, remainingArea, saveDocks, withCollapsed,
   withDock,
-  type DockEdge, type DockedView,
+  type DockEdge, type DockedView, type DockMap,
 } from '../lib/fleetDocks'
 import { PANEL_AGENT } from '../lib/fleetPanels'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
@@ -1308,7 +1308,25 @@ export default function Fleet() {
   const [splits, setSplits] = useState<Splits>({})
   const shellRef = useRef<HTMLDivElement | null>(null)
 
-  const [docks, setDocks] = useState<DockedView[]>([])
+  /**
+   * Docking, keyed by PROJECT — corrected by the user 2026-08-20: *"layout nem
+   * projekt szinten van hanem globálisan. ez nem jó, projekt szinten kell
+   * értelmezni"*.
+   *
+   * This was one flat list, and the reasoning behind it was that a docked band
+   * belongs to the screen rather than to a project. The reasoning was tidy and
+   * the effect was not: a terminal docked in one project held the same edge in
+   * every other project, and `renderDocked` below could only say *"no running
+   * agent with this terminal in <the project you are looking at>"*. The whole
+   * right-hand side of the screen was an empty band naming somebody else's
+   * project — a false absence produced by the layout itself.
+   *
+   * What renders is `docks`: the SELECTED project's list and nothing else. A
+   * project with no key has nothing docked, which is also what an unselected
+   * screen has.
+   */
+  const [dockMap, setDockMap] = useState<DockMap>({})
+  const docks = useMemo(() => docksFor(dockMap, selected), [dockMap, selected])
 
   useEffect(() => {
     let cancelled = false
@@ -1317,10 +1335,23 @@ export default function Fleet() {
       setSplits(stored)
       setProjectWidth(positionOf(stored, SPLIT_PROJECTS, DEFAULT_PROJECT_WIDTH))
     })
-    void loadDocks().then(stored => { if (!cancelled) setDocks(stored) })
+    void loadDocks().then(stored => { if (!cancelled) setDockMap(stored) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /**
+   * Store one project's docking — the local map first, the server after.
+   *
+   * Only the selected project's key is touched, so docking a terminal here
+   * cannot take a band apart in a project the reader is not looking at. A write
+   * with no project selected is not made at all rather than made somewhere.
+   */
+  const writeDocks = useCallback((next: DockedView[]) => {
+    if (!selected) return
+    setDockMap(prev => ({ ...prev, [selected]: next }))
+    void saveDocks(selected, next)
+  }, [selected])
 
   /**
    * Dock a panel to an edge, or undock it — task 5.1 / 5.7.
@@ -1330,10 +1361,8 @@ export default function Fleet() {
    * deliberate act to report an unrelated failure is worse than the failure.
    */
   const dockPanel = useCallback((kind: string, id: string, edge: DockEdge | null) => {
-    const next = withDock(docks, { kind, id }, edge)
-    setDocks(next)
-    void saveDocks(next)
-  }, [docks])
+    writeDocks(withDock(docks, { kind, id }, edge))
+  }, [docks, writeDocks])
 
   /**
    * Tidy a band away to a strip, or open it again — task 6.1's other half.
@@ -1344,10 +1373,8 @@ export default function Fleet() {
    * and it is worse than an absent one because it reads as done.
    */
   const collapseBand = useCallback((kind: string, id: string, collapsed: boolean) => {
-    const next = withCollapsed(docks, { kind, id }, collapsed)
-    setDocks(next)
-    void saveDocks(next)
-  }, [docks])
+    writeDocks(withCollapsed(docks, { kind, id }, collapsed))
+  }, [docks, writeDocks])
 
   /** Resize one docked band. Same two-callback split as every other divider. */
   const resizeBand = useCallback((key: string, px: number, commit: boolean) => {

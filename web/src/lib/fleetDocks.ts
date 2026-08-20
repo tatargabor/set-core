@@ -187,31 +187,77 @@ export function withDock(
 }
 
 /**
+ * Docking, keyed by the PROJECT it belongs to — corrected by the user
+ * 2026-08-20: *"layout nem projekt szinten van hanem globálisan. ez nem jó,
+ * projekt szinten kell értelmezni"*.
+ *
+ * A dock's identity is a panel id — for the commonest kind, an agent's terminal
+ * label — and that belongs to one project. Held screen-wide, a terminal docked
+ * in one project took the same edge in every other project, where its renderer
+ * could only say *"no running agent with this terminal in <the other
+ * project>"*: the reader lost the panel to an empty band naming a project they
+ * were not looking at. The project was the missing half of the key.
+ */
+export type DockMap = Record<string, DockedView[]>
+
+/**
+ * One project's docking. `null` — no project selected — is no docking, never
+ * "whatever was docked last": a band with no project to belong to is the state
+ * this shape exists to remove.
+ */
+export function docksFor(map: DockMap | null | undefined, project: string | null): DockedView[] {
+  if (!map || !project) return []
+  const list = map[project]
+  return Array.isArray(list) ? list.filter(isDockedView) : []
+}
+
+/**
  * Read the stored docking. A failure is "nothing docked", never an error state —
  * the same rule as the divider positions: a screen that will not render because
  * a preference could not be read is a worse outcome than one at its defaults.
+ *
+ * A server that still answers with a flat list is read as NOTHING docked rather
+ * than as everyone's docking: the list carries no project, so placing it in the
+ * selected one would put a band where nobody put it. The server keeps that list
+ * under `docks_legacy`, so refusing it here loses nothing.
  */
-export async function loadDocks(fetchImpl: typeof fetch = fetch): Promise<DockedView[]> {
+export async function loadDocks(fetchImpl: typeof fetch = fetch): Promise<DockMap> {
   try {
     const res = await fetchImpl('/api/fleet/layout')
-    if (!res.ok) return []
+    if (!res.ok) return {}
     const body = await res.json()
     const raw = body?.docks
-    return Array.isArray(raw) ? raw.filter(isDockedView) : []
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    const out: DockMap = {}
+    for (const [project, entries] of Object.entries(raw as Record<string, unknown>)) {
+      if (!project || !Array.isArray(entries)) continue
+      const docked = entries.filter(isDockedView)
+      if (docked.length) out[project] = docked
+    }
+    return out
   } catch {
-    return []
+    return {}
   }
 }
 
-/** Write the docking. Says whether it landed; never throws at the caller. */
+/**
+ * Write ONE project's docking. Says whether it landed; never throws at the
+ * caller.
+ *
+ * A write with no project is not sent at all. The server refuses it too (400),
+ * and both refusals are deliberate: a docking without a project is the shape
+ * that made docking screen-wide, and a caller that could omit it is how the
+ * shape comes back.
+ */
 export async function saveDocks(
-  docks: readonly DockedView[], fetchImpl: typeof fetch = fetch,
+  project: string | null, docks: readonly DockedView[], fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
+  if (!project) return false
   try {
     const res = await fetchImpl('/api/fleet/layout/docks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docks }),
+      body: JSON.stringify({ project, docks }),
     })
     return res.ok
   } catch {

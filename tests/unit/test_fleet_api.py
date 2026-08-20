@@ -1081,3 +1081,38 @@ def test_a_refusal_is_a_conflict_not_a_bad_request(monkeypatch, tmp_path):
         fleet_api.fleet_install_module("proj", fleet_api.InstallBody(module="beta"))
     assert excinfo.value.status_code == 409
     assert "alpha" in str(excinfo.value.detail)
+
+
+# --------------------------------------------------------------------------- #
+# docking is per project (2026-08-20)
+# --------------------------------------------------------------------------- #
+
+def test_a_docking_write_without_a_project_is_refused_with_400(tmp_path, monkeypatch):
+    """The missing project IS the defect this shape removes.
+
+    Docking used to be stored screen-wide, so a terminal docked in one project
+    took the same edge in every other project — where nothing could render in it
+    and the band could only report that this project has no such agent. A body
+    that may omit the project is how that comes back, so it is refused here as
+    well as in the store.
+    """
+    from set_orch.api.fleet import DocksBody, fleet_put_docks
+
+    path = str(tmp_path / "fleet-layout.json")
+    monkeypatch.setattr(fleet_api.fleet_layout, "default_layout_path", lambda: path)
+    with pytest.raises(HTTPException) as exc:
+        fleet_put_docks(DocksBody(project="   ", docks=[{"kind": "agent", "id": "a", "edge": "right"}]))
+    assert exc.value.status_code == 400
+    assert not os.path.exists(path), "a refused write must not have written anything"
+
+
+def test_a_docking_write_names_the_project_it_stored_for(tmp_path, monkeypatch):
+    from set_orch.api.fleet import DocksBody, fleet_put_docks
+
+    path = str(tmp_path / "fleet-layout.json")
+    monkeypatch.setattr(fleet_api.fleet_layout, "default_layout_path", lambda: path)
+    answer = fleet_put_docks(DocksBody(project="alpha", docks=[{"kind": "agent", "id": "a-1", "edge": "right"}]))
+    assert answer["project"] == "alpha"
+    assert [d["id"] for d in answer["docks"]] == ["a-1"]
+    with open(path, encoding="utf-8") as handle:
+        assert list(json.load(handle)["docks"]) == ["alpha"]
