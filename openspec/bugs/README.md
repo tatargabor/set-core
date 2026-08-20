@@ -656,13 +656,52 @@ consumer's name, path, or content.
   logs `a browser detached` and the owner keeps the pty (task 5.4,
   `lib/set_orch/api/fleet.py:1098-1101`), so the agent runs through it. The screen
   loses the view, never the session.
-- **still open, deliberately:** WHY the owner misses an answer for that long is
-  not measured yet. A probe recording `owner_reachable` and the population split
-  every 2 s is the check that would catch it in the act.
+- **caught in the act, 2026-08-20 12:30–12:37**, and the cause is NOT the owner —
+  the probe (2 s sampling of `owner_reachable` and the population split) recorded
+  `owner=True` on every answered poll. What it recorded instead:
+  - `12:30:38 → 12:36:16` — the endpoint stops answering entirely: four samples at
+    the probe's own 60 s ceiling (`lat=60.10 TimeoutError`). The process was alive;
+    it just did not answer. The machine was under memory pressure at the time
+    (`free -h`: 23 Gi of swap in use, load 5.6), with a 1.5 GB `next-server` and a
+    vitest run on it — an environment fact, not a framework one, but the surface
+    turns it into a blank terminal.
+  - `12:36:17 → 12:37:48` — `systemd`: `Stopping SET Web Dashboard…` then
+    `Started`, **91 s apart**, with `connection refused` throughout. That is
+    `TimeoutStopUSec=1min 30s` exactly, and it is its own defect: see B-31.
+  - `12:37:48` onwards — all five terminals re-attach, 65536 replayed bytes each.
+  So the minute in the report has two producers, and the tile-unmount chain above
+  is what turns either of them into `connecting…` rather than into a message.
 - **fixed when:** the owner missing one poll no longer takes the terminal off the
   tree. Proven by suspending `set-agent-owner` (SIGSTOP) for 60 s with a terminal
   open: the tile keeps its attached socket, the header never returns to
   `connecting…`, and the journal shows no detach/attach pair for that label.
+
+
+### B-31 — stopping set-web takes 91 s, so any restart is a 91 s hole in the dashboard
+
+- **state:** open
+- **reported:** 2026-08-20 by this session, from the journal while measuring B-30
+- **measured:** `systemctl --user show set-web -p TimeoutStopUSec` → `1min 30s`, and
+  two of today's three stops used every second of it:
+  - `10:09:01 Stopping…` → `10:10:32 Stopped` → `Started` — 91 s
+  - `12:36:17 Stopping…` → `12:37:48 Started` — 91 s
+  - `09:29:25 Stopping… / Stopped / Started` — same second
+  91 s is not a slow shutdown, it is the timeout expiring and systemd sending
+  `SIGKILL`. Throughout the hole the port answers `connection refused` (probe log),
+  so every open terminal drops and every poll fails.
+- **not measured, and deliberately not guessed:** WHY the process ignores `SIGTERM`.
+  The obvious candidate — uvicorn's graceful shutdown waiting on open terminal
+  WebSockets — is weakened by the 09:29 stop, which was instant although terminals
+  had been attached seven minutes earlier. The 39-project `watchfiles` watch is a
+  second candidate. Both are cheap to separate: stop the service with terminals
+  open, then with none.
+- **why it is worth its own entry:** it converts a routine `restart` — which
+  agents and the user both do — into a minute of dead dashboard, and B-30's tile
+  chain makes that minute read as `connecting…` rather than as "the server is
+  restarting". A `SIGKILL`ed server also never runs its shutdown path.
+- **fixed when:** `systemctl --user restart set-web` completes in single-digit
+  seconds with terminals open, and the journal shows `Stopped` without the
+  timeout — measured, not assumed, from the `Stopping…`/`Started` timestamps.
 
 
 ## Closed
