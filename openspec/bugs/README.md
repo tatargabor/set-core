@@ -626,6 +626,45 @@ consumer's name, path, or content.
   is one, and no tile is silent about its own state.
 
 
+### B-30 — one unanswered owner poll unmounts the open terminal, which detaches it and costs a 64 KB replay
+
+- **state:** open
+- **reported:** 2026-08-20 by the user — *"időnként megáll a fleet view,
+  connectionget ir és 1 perc mulva all vissza"* — together with the question the
+  entry has to answer first: does anything get reset or suspended while it says
+  that. It does not; see the last bullet.
+- **measured:** the chain is four hops and every one of them is a `file:line`:
+  - `connecting…` is only ever the MOUNT state — `web/src/components/FleetTerminal.tsx:100`
+    sets it as the initial phase and nothing sets it again; a socket that drops
+    while attached renders `closed` instead (`FleetTerminal.tsx:275`). So the word
+    the user reads is proof of a REMOUNT, not of a reconnect.
+  - the terminal is rendered conditionally: `web/src/pages/Fleet.tsx:1481` —
+    `terminalOpen && offer.kind === 'available'`; the docked list filters the same
+    way (`Fleet.tsx:1865`).
+  - `available` requires `population === 'started-here'`
+    (`web/src/lib/fleetTerminal.ts:87`), and the API downgrades EVERY agent to
+    `unknown` when the owner could not be asked — `lib/set_orch/api/fleet.py:63-77`
+    (`_owned_by_pid()` returns `None` on any `OwnerClientError`) and `:108-110`.
+  - that call's read timeout is 30 s (`lib/set_orch/fleet/owner_client.py:36`), so
+    one slow or refused answer covers several 5 s poll cycles — which is the
+    minute the report names.
+  - the journal shows the consequence in pairs, e.g. `12:16:15 detached from
+    wpc-pont-penzugy` / `12:16:26 attached to set-core-fleet (65536 replayed
+    bytes, truncated=True)` — every re-attach re-sends the 64 KB tail.
+- **what is NOT happening, because the question was asked:** nothing is reset and
+  nothing is suspended. The unmount closes the browser socket only; the server
+  logs `a browser detached` and the owner keeps the pty (task 5.4,
+  `lib/set_orch/api/fleet.py:1098-1101`), so the agent runs through it. The screen
+  loses the view, never the session.
+- **still open, deliberately:** WHY the owner misses an answer for that long is
+  not measured yet. A probe recording `owner_reachable` and the population split
+  every 2 s is the check that would catch it in the act.
+- **fixed when:** the owner missing one poll no longer takes the terminal off the
+  tree. Proven by suspending `set-agent-owner` (SIGSTOP) for 60 s with a terminal
+  open: the tile keeps its attached socket, the header never returns to
+  `connecting…`, and the journal shows no detach/attach pair for that label.
+
+
 ## Closed
 
 ### B-29 — the terminal's last row is cut in half, and the last row is the status bar
