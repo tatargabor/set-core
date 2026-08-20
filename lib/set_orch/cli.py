@@ -837,12 +837,37 @@ def cmd_serve(args):
     app = create_app()
     print(f"set-web dashboard running at http://{host}:{port}")
 
+    # B-31 — WITHOUT THIS, A RESTART IS A 91-SECOND HOLE IN THE DASHBOARD.
+    #
+    # uvicorn's default is `None`, which means *wait for every in-flight task,
+    # forever*. Measured 2026-08-20 on the running service: a `Stopping…` at
+    # 12:36:17 and the `Started` of its replacement at 12:37:48 — 91 s, which is
+    # `TimeoutStopUSec=1min 30s` expiring and systemd sending `SIGKILL`. The
+    # journal names the wait in one line: `Waiting for background tasks to
+    # complete`. Every WebSocket had already closed (three `connection closed`,
+    # three detach); what it was waiting on were HTTP request tasks left hanging
+    # by a machine under memory pressure — the same six minutes in which the
+    # endpoint answered nothing at all.
+    #
+    # The direction is what makes it worth a guard rather than a note: a
+    # shutdown that waits forever cannot be distinguished, from the outside,
+    # from one that crashed — the port refuses connections either way, and the
+    # dashboard reports it as every terminal saying `connecting…` (B-30).
+    #
+    # Proven to be the right instrument, not assumed: a minimal app with one
+    # stuck request was still alive 60 s after `SIGTERM` with the default, and
+    # exited in 10.5 s with this set to 10.
+    #
+    # It hides nothing. uvicorn logs `Cancel N running task(s), timeout graceful
+    # shutdown exceeded`, so a request that had to be cut still says so.
+    graceful = float(os.environ.get("SET_WEB_GRACEFUL_TIMEOUT", "10"))
     config = uvicorn.Config(
         app,
         host=host,
         port=port,
         log_level="info",
         access_log=False,
+        timeout_graceful_shutdown=graceful,
     )
     server = uvicorn.Server(config)
 
