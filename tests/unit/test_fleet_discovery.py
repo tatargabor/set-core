@@ -486,3 +486,57 @@ def test_the_marker_would_have_been_found_if_it_had_leaked(tmp_path, caplog):
     with caplog.at_level(logging.DEBUG, logger="set_orch.fleet.discovery"):
         logging.getLogger("set_orch.fleet.discovery").debug("leaking %s on purpose", marker)
     assert [r.getMessage() for r in caplog.records if marker in r.getMessage()]
+
+
+def test_a_directory_under_no_repository_is_the_project_itself(tmp_path):
+    """AC-14, and it is asserted at the PROJECTS level because that is where the
+    fall-back lives.
+
+    `discover_agent` reports `project_name is None` for a directory git knows
+    nothing about — correctly, since there is no repository to name. The
+    requirement is about the inventory, and the inventory must not drop an agent
+    for want of a repository: the working directory becomes the project, its
+    basename becomes the name, and no branch is claimed.
+
+    A branch invented here would be the worse failure of the two. `None` says
+    *there is no branch*; a guessed one says *this is the branch*, and a reader
+    choosing where to send work would believe it.
+    """
+    class _Loose:
+        pid = 4242
+        project_root = None
+        project_name = None
+        cwd = str(tmp_path / "loose-dir")
+        branch = None
+
+    (tmp_path / "loose-dir").mkdir()
+    entries = discovery.discover_projects([_Loose()], registered=[], messaging=[])
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.root == str(tmp_path / "loose-dir")
+    assert entry.name == "loose-dir"
+    assert entry.sources == ["process"]
+    assert entry.agent_pids == [4242]
+
+
+def test_a_loose_directory_does_not_borrow_a_neighbouring_project_s_name(tmp_path):
+    """The other direction, and the one a path-matching implementation fails.
+
+    Two sibling directories under one parent are two projects. An implementation
+    that resolved a project by walking up until something looked familiar would
+    merge them, which is the defect the git-based resolution exists to avoid —
+    stated here at the level where the merge would be visible.
+    """
+    for name in ("alpha", "beta"):
+        (tmp_path / name).mkdir()
+
+    class _A:
+        pid, project_root, project_name, branch = 1, None, None, None
+        cwd = str(tmp_path / "alpha")
+
+    class _B:
+        pid, project_root, project_name, branch = 2, None, None, None
+        cwd = str(tmp_path / "beta")
+
+    entries = discovery.discover_projects([_A(), _B()], registered=[], messaging=[])
+    assert sorted(e.name for e in entries) == ["alpha", "beta"]
