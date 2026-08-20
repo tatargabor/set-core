@@ -600,6 +600,31 @@ consumer's name, path, or content.
   order- or timing-dependent and make THAT fatal, so the check does not depend
   on how the suite happens to be scheduled.
 
+### B-28 — the no-seat sentence is repeated on every tile instead of said once
+
+- **state:** open
+- **reported:** 2026-08-20 by this session, from a screenshot of the running
+  fleet screen
+- **measured:** three agent tiles on one panel, each carrying the identical grey
+  line *"no input: this session has no seat on the messaging bus"* — one row per
+  tile, for one fact about the machine. Most agents on this host have no seat,
+  so the count scales with the fleet.
+- **why it is a defect and not a preference:** this repository already made the
+  same call in the same screen and wrote a test for it —
+  `tests/unit/test_fleet_api.py::test_the_reason_a_terminal_is_unavailable_is_said_once_not_per_row`.
+  The terminal's unavailability is stated once at the top; the seat's absence is
+  stated per row. Two identical situations, two different answers, and the
+  inconsistent one is the one nobody tested.
+- **⚠ what a fix must NOT do:** the sentence exists because task 4.4 requires the
+  producer's reason to stand WHERE THE INPUT WOULD BE — deleting it from the
+  tile and saying nothing would be the false-absence direction, which is what
+  the amber-to-grey change of the same line already had to correct. The shape
+  that works is the terminal's: once at the top, with the tile marking that it
+  is covered by that statement rather than restating it.
+- **fixed when:** a panel of N seatless agents carries the sentence once, every
+  tile still says it cannot be typed into, and a test asserts BOTH — the count
+  is one, and no tile is silent about its own state.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open

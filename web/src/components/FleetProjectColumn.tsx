@@ -1082,7 +1082,13 @@ export default function FleetProjectColumn({
           )}
           {totals.working > 0 && (
             <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 tabular-nums">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />{totals.working} dolgozik
+              {/* English, like every other string on this surface. It read
+                  `dolgozik` until 2026-08-20 — one Hungarian word beside
+                  `unknown` and `waiting for a human`, found by LOOKING at the
+                  screen rather than by any test, because a test asserting the
+                  wrong language passes exactly as well as one asserting the
+                  right one. */}
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />{totals.working} working
             </span>
           )}
         </div>

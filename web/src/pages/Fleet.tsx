@@ -475,8 +475,15 @@ function ErrorStanding({ acts }: { acts: Act[] }) {
  * ⚠ Verbatim consumer-session content, like the excerpt — displayed and never
  * written anywhere: no `localStorage`, no cache, no committed artifact.
  */
-function TileActivity({ pid, onOpenTerminal }: {
-  pid: number
+function TileActivity({ agent, onOpenTerminal }: {
+  /**
+   * The whole agent, not just its pid — because this component now owns the
+   * fallback the excerpt used to be, and that comes from the fleet payload
+   * rather than from the log endpoint. The two sources fail independently: a
+   * log this component cannot read does not take the state pass's excerpt with
+   * it, and that is the case the fallback exists for.
+   */
+  agent: FleetAgent
   /**
    * Clicking the log hands over the LIVE terminal — asked for 2026-08-19:
    * *"ha nem terminál nézet van aktiválva akkor a jsonl-es log nézet mutassa az
@@ -502,7 +509,7 @@ function TileActivity({ pid, onOpenTerminal }: {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      fetch(`/api/fleet/agents/${pid}/log?limit=20`)
+      fetch(`/api/fleet/agents/${agent.pid}/log?limit=20`)
         .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then(d => { if (!cancelled) { setLog(d); setError(null) } })
         .catch(e => { if (!cancelled) setError(String(e.message ?? e)) })
@@ -513,7 +520,7 @@ function TileActivity({ pid, onOpenTerminal }: {
     // watched.
     const t = setInterval(load, 10_000)
     return () => { cancelled = true; clearInterval(t) }
-  }, [pid])
+  }, [agent.pid])
 
   const acts = useMemo(() => buildActs(log?.turns ?? []), [log])
   useEffect(() => {
@@ -521,11 +528,34 @@ function TileActivity({ pid, onOpenTerminal }: {
     if (el && stick.current) el.scrollTop = el.scrollHeight
   })
 
-  // Three absences, three sentences. A blank box would claim the third while it
-  // might be either of the first two.
-  if (error) return <div className="text-xs text-fg-ghost mt-1.5">the log cannot be read: {error}</div>
-  if (!log) return <div className="text-xs text-fg-ghost mt-1.5">reading the log…</div>
-  if (acts.length === 0) return <div className="text-xs text-fg-muted mt-1.5">the log is readable and holds no conversation</div>
+  /*
+    Three absences, three sentences. A blank box would claim the third while it
+    might be either of the first two.
+
+    Each carries the EXCERPT beneath it, which is what the tile used to render
+    above this component unconditionally. Here it is not a second copy: these
+    three branches show no conversation at all, and the excerpt comes from a
+    different source — the fleet payload's state pass — so it still has
+    something to say exactly when this component does not.
+  */
+  if (error) return (
+    <>
+      <div className="text-xs text-fg-ghost mt-1.5">the log cannot be read: {error}</div>
+      <Excerpt agent={agent} lines={1} />
+    </>
+  )
+  if (!log) return (
+    <>
+      <div className="text-xs text-fg-ghost mt-1.5">reading the log…</div>
+      <Excerpt agent={agent} lines={1} />
+    </>
+  )
+  if (acts.length === 0) return (
+    <>
+      <div className="text-xs text-fg-muted mt-1.5">the log is readable and holds no conversation</div>
+      <Excerpt agent={agent} lines={1} />
+    </>
+  )
 
   return (
     <div
@@ -534,7 +564,7 @@ function TileActivity({ pid, onOpenTerminal }: {
         const el = e.currentTarget
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
       }}
-      data-fleet-tile-activity={pid}
+      data-fleet-tile-activity={agent.pid}
       data-fleet-own-surface="activity"
       onClick={onOpenTerminal
         ? () => {
@@ -946,7 +976,12 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
   return (
     <div
       className={`flex gap-1.5 mt-1 min-w-0${grow ? ' flex-1 min-h-0 overflow-hidden' : ''}`}
-      data-fleet-excerpt={agent.excerpt_from ?? 'ismeretlen'}
+      // `unknown`, not `ismeretlen` — English, like the rest of the product.
+      // Found 2026-08-20 by the language checker, not by eye: nothing reads this
+      // value, so it never appeared on screen and never broke a test. A string
+      // nobody renders and nobody asserts is exactly where a rule stops holding
+      // without anyone noticing.
+      data-fleet-excerpt={agent.excerpt_from ?? 'unknown'}
     >
       <span
         className={`text-xs shrink-0 ${tone}`}
@@ -1409,10 +1444,26 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
       {/* ONE line, then an ellipsis — B-11: *"ez a több soros first message az
           agent után értelmetlen. le kell vágni egy sorba aztán ..."*. What fills
           the tile is `TileActivity` below, not this. */}
-      {/* Not while the terminal is up: the excerpt is the last thing said, and
-          the terminal shows it live, three rows lower. A second copy of one
-          fact costs a row on every tile and is the one that goes stale. */}
-      {!terminalOpen && <Excerpt agent={agent} lines={1} />}
+      {/*
+        THE EXCERPT MOVED INSIDE `TileActivity` — 2026-08-20, found by looking at
+        the running screen rather than by any test.
+
+        It used to render here, and its condition was `!terminalOpen &&
+        !logShown` — **character for character the condition below it**. So the
+        excerpt was never on screen without the activity view underneath it, and
+        the activity view's newest `say` row is the same sentence: every open
+        tile carried *"Most újranézem a képernyőt…"* as its excerpt and again,
+        verbatim, two rows below. Two components, one render condition, one
+        fact — the second-copy defect in its purest form, and no structural
+        count could see it because both copies were correct.
+
+        Deleting it outright would have been wrong: `TileActivity` reads the log
+        ENDPOINT, the excerpt comes from the fleet payload's state pass, so on a
+        tile whose log cannot be read the excerpt is the only thing that still
+        has content. That is precisely one component's fallback, which is where
+        it now lives — and one component answering *what does this tile say*
+        cannot disagree with itself.
+      */}
 
       {/* Task 7.7 — the agent's own input, and task 4.4 where there is nothing
           to type into: the producer's reason stands in the input's place.
@@ -1422,7 +1473,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
 
       {!logShown && !terminalOpen && (
         <TileActivity
-          pid={agent.pid}
+          agent={agent}
           onOpenTerminal={offer.kind === 'available' ? () => onTerminal(offer.label) : undefined}
         />
       )}

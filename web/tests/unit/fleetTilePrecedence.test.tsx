@@ -50,7 +50,7 @@ function installFetch(body: Json) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ version: 1, groups: [], parked: [], ungrouped: [], missing: [] }) } as Response)
     }
     if (u.includes('/log')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ turns: [], total_read: 0, truncated: false }) } as Response)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ turns: LOG_TURNS, total_read: 0, truncated: false }) } as Response)
     }
     if (u.includes('/api/fleet')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response)
@@ -59,7 +59,11 @@ function installFetch(body: Json) {
   }))
 }
 
-async function show(body: Json) {
+/** What the log endpoint answers. Set per test; reset in `beforeEach`. */
+let LOG_TURNS: unknown[] = []
+
+async function show(body: Json, log?: { turns: unknown[] }) {
+  LOG_TURNS = log?.turns ?? []
   installFetch(body)
   const view = render(<Fleet />)
   await waitFor(() => expect(view.container.querySelector('[data-fleet-ownership]')).toBeTruthy())
@@ -74,6 +78,7 @@ const termControl = (c: HTMLElement) => c.querySelector('[data-tile-control="ter
 beforeEach(() => {
   vi.useRealTimers()
   try { localStorage.clear() } catch { /* no storage here */ }
+  LOG_TURNS = []
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
@@ -155,14 +160,73 @@ describe('what a tile stops saying while its terminal is up', () => {
     expect(container.querySelector('[data-fleet-instruct="refused"]')).toBeNull()
   })
 
-  /** The excerpt is the last thing said; the terminal says it live. */
+  /**
+   * The excerpt is *the last thing actually said*. The terminal shows it live
+   * and the log's newest act IS it, so on an open tile the line is a second
+   * copy of what sits two rows below.
+   *
+   * TWO agents, deliberately: a lone agent is auto-enlarged and its log opens
+   * by default, so a one-agent fixture starts in the state this test is trying
+   * to reach and would pass without measuring anything.
+   */
+  const withExcerpt = () => fleet([
+    agent(1, 'a1', { excerpt: 'a sentence', excerpt_from: 'agent' }),
+    agent(2, 'a2', { excerpt: 'another', excerpt_from: 'agent' }),
+  ])
+
+  /**
+   * ⚠ FOUND BY LOOKING at the running screen on 2026-08-20, and no structural
+   * count could have seen it: both copies were correct, every element rendered,
+   * 675 tests were green.
+   *
+   * The excerpt used to render on the tile under `!terminalOpen && !logShown`
+   * — character for character the condition `TileActivity` renders under. So it
+   * was never on screen WITHOUT the activity view beneath it, and that view's
+   * newest `say` row is the same sentence. Every open tile said the same thing
+   * twice, two rows apart.
+   *
+   * The fixture answers the log endpoint with a conversation, because that is
+   * the state the duplication happened in. The empty-log case is the next test.
+   */
+  it('says the newest sentence once, not once as an excerpt and again as an act', async () => {
+    const { container } = await show(withExcerpt(), { turns: [
+      { role: 'assistant', timestamp: '2026-08-20T10:00:00Z', text: 'a sentence',
+        thinking: '', tools: [], results: 0, sidechain: false },
+    ] })
+    await waitFor(() => expect(container.querySelector('[data-fleet-tile-activity]')).toBeTruthy())
+    expect(
+      container.querySelectorAll('[data-fleet-excerpt]'),
+      'the excerpt is back beside a conversation that already contains it',
+    ).toHaveLength(0)
+  })
+
+  /**
+   * And it is NOT simply deleted. `TileActivity` reads the log ENDPOINT; the
+   * excerpt comes from the fleet payload's state pass. The two fail
+   * independently, so a tile whose log cannot be read still has something to
+   * say — which is exactly when the fallback must appear.
+   */
+  it('keeps the excerpt where the activity view has no conversation to show', async () => {
+    const { container } = await show(withExcerpt())
+    await waitFor(() => expect(container.querySelectorAll('[data-fleet-excerpt]')).toHaveLength(2))
+  })
+
   it('drops the excerpt the terminal is already showing', async () => {
-    const { container } = await show(fleet([agent(1, 'a1', { excerpt: 'a sentence', excerpt_from: 'agent' })]))
-    await waitFor(() => expect(container.querySelector('[data-fleet-excerpt]')).toBeTruthy())
+    const { container } = await show(withExcerpt())
+    await waitFor(() => expect(container.querySelectorAll('[data-fleet-excerpt]')).toHaveLength(2))
 
     fireEvent.click(termControl(container))
     await waitFor(() => expect(terminal(container)).toBeTruthy())
-    expect(container.querySelector('[data-fleet-excerpt]')).toBeNull()
+    expect(container.querySelectorAll('[data-fleet-excerpt]')).toHaveLength(1)
+  })
+
+  it('drops the excerpt the log panel is already showing', async () => {
+    const { container } = await show(withExcerpt())
+    await waitFor(() => expect(container.querySelectorAll('[data-fleet-excerpt]')).toHaveLength(2))
+
+    fireEvent.click(logControl(container))
+    await waitFor(() => expect(logPanel(container)).toBeTruthy())
+    expect(container.querySelectorAll('[data-fleet-excerpt]')).toHaveLength(1)
   })
 })
 
