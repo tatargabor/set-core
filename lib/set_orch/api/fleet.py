@@ -676,6 +676,9 @@ class LayoutBody(BaseModel):
     #: "delete these". Dividers are normally written through their own route,
     #: which does not bump the version this body's `base_version` guards.
     splits: Optional[Dict[str, Any]] = None
+    #: Which views are docked where, or `None` to leave them as they are — the
+    #: same omission rule as `splits`, and for the same reason.
+    docks: Optional[List[Dict[str, Any]]] = None
     base_version: Optional[int] = None
 
 
@@ -710,7 +713,8 @@ def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
     try:
         saved = fleet_layout.save(
             {"groups": body.groups, "parked": body.parked,
-             "ungrouped_order": body.ungrouped_order, "splits": body.splits},
+             "ungrouped_order": body.ungrouped_order, "splits": body.splits,
+             "docks": body.docks},
             base_version=body.base_version,
         )
     except LayoutConflict as exc:
@@ -1015,6 +1019,33 @@ def fleet_remove_waiter(pid: int) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # The terminal, both directions (tasks 5.3 and 6.4)
 # --------------------------------------------------------------------------- #
+
+class DocksBody(BaseModel):
+    """Which view instances are docked, and to which edge."""
+
+    docks: List[Dict[str, Any]] = []
+
+
+@router.put("/api/fleet/layout/docks")
+def fleet_put_docks(body: DocksBody) -> Dict[str, Any]:
+    """Store the docking of views alone, leaving the arrangement untouched.
+
+    Its own route for the same reason the divider positions have one: the
+    whole-document PUT is guarded by `base_version`, and docking a view is not
+    an edit to the hand-made arrangement that guard protects.
+
+    Note what this route does NOT carry: the SIZE of a docked view. That is a
+    divider position and goes through the divider route, because a docked view's
+    edge is a divider like any other. Two stores for one edge is how a screen
+    ends up rendering a width nobody set.
+    """
+    try:
+        stored = fleet_layout.save_docks(body.docks)
+    except OSError as exc:
+        logger.error("fleet api: cannot write the docking: %s", exc)
+        raise HTTPException(status_code=500, detail=f"cannot write the docking: {exc}") from exc
+    return {"docks": stored}
+
 
 class SplitsBody(BaseModel):
     """Where the draggable dividers sit, in CSS pixels, keyed by divider."""

@@ -87,6 +87,7 @@ def test_a_missing_file_is_an_unarranged_screen_not_an_error(tmp_path):
     """
     assert load(_path(tmp_path)) == {
         "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
+        "docks": [],
     }
 
 
@@ -263,3 +264,84 @@ def test_apply_to_passes_dividers_through_unjoined():
     for it to be missing FROM — it must not travel through the inventory join."""
     joined = apply_to(normalise({"splits": {"projects": 300}}), ["a"])
     assert joined["splits"] == {"projects": 300}
+
+
+# --------------------------------------------------------------------------- #
+# docked views — the screen's arrangement, not a project's
+# --------------------------------------------------------------------------- #
+
+def test_a_docked_view_survives_a_round_trip(tmp_path):
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "changes", "id": "v1", "edge": "right"}], path=p)
+    assert load(p)["docks"] == [{"kind": "changes", "id": "v1", "edge": "right"}]
+
+
+def test_an_unknown_edge_undocks_rather_than_defaulting_to_one(tmp_path):
+    """Placing a view on an edge nobody chose is the false-value class: it
+    renders, it looks deliberate, and it is wrong. Dropping the entry leaves the
+    view undocked, which is a state the user can drag out of."""
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "changes", "id": "v1", "edge": "diagonal"}], path=p)
+    assert load(p)["docks"] == []
+
+
+def test_two_views_can_share_one_edge_and_keep_their_order(tmp_path):
+    """A list rather than a map keyed by edge. A map would either forbid the
+    second view or lose the order the user arranged them in."""
+    p = _path(tmp_path)
+    layout_mod.save_docks([
+        {"kind": "changes", "id": "a", "edge": "right"},
+        {"kind": "changes", "id": "b", "edge": "right"},
+    ], path=p)
+    assert [d["id"] for d in load(p)["docks"]] == ["a", "b"]
+
+
+def test_one_instance_docks_in_one_place(tmp_path):
+    p = _path(tmp_path)
+    layout_mod.save_docks([
+        {"kind": "changes", "id": "a", "edge": "right"},
+        {"kind": "changes", "id": "a", "edge": "left"},
+    ], path=p)
+    assert load(p)["docks"] == [{"kind": "changes", "id": "a", "edge": "right"}]
+
+
+def test_docking_does_not_bump_the_arrangements_version(tmp_path):
+    p = _path(tmp_path)
+    saved = save({"groups": [{"name": "core", "projects": ["a"]}]}, path=p)
+    layout_mod.save_docks([{"kind": "changes", "id": "v1", "edge": "top"}], path=p)
+    assert load(p)["version"] == saved["version"]
+    assert [g["name"] for g in load(p)["groups"]] == ["core"]
+
+
+def test_saving_the_arrangement_does_not_wipe_docking_it_never_mentioned(tmp_path):
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "changes", "id": "v1", "edge": "bottom"}], path=p)
+    save({"groups": []}, path=p)
+    assert len(load(p)["docks"]) == 1
+
+
+def test_an_explicit_empty_dock_list_clears(tmp_path):
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "changes", "id": "v1", "edge": "bottom"}], path=p)
+    save({"groups": [], "docks": []}, path=p)
+    assert load(p)["docks"] == []
+
+
+def test_docking_and_its_size_are_stored_by_DIFFERENT_mechanisms_on_purpose(tmp_path):
+    """A docked view's size is a divider position, and goes through `splits`.
+    Two stores for one edge is how a screen renders a width nobody set — so the
+    dock entry carries no size at all, and this asserts that it stays that way."""
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "changes", "id": "v1", "edge": "right", "size": 400}], path=p)
+    assert load(p)["docks"] == [{"kind": "changes", "id": "v1", "edge": "right"}]
+
+
+def test_an_entry_missing_its_identity_is_dropped(tmp_path):
+    p = _path(tmp_path)
+    layout_mod.save_docks([
+        {"kind": "", "id": "v1", "edge": "right"},
+        {"kind": "changes", "id": "", "edge": "right"},
+        "not-a-dock",
+        {"kind": "changes", "id": "ok", "edge": "right"},
+    ], path=p)
+    assert [d["id"] for d in load(p)["docks"]] == ["ok"]

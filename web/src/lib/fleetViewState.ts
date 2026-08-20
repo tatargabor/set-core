@@ -30,6 +30,17 @@
 
 const KEY = 'set-fleet-view'
 
+/**
+ * The storage key, for tests that need to SEED a memory rather than build one
+ * through the UI.
+ *
+ * Exported instead of duplicated in the test file: a copied literal is a second
+ * definition, and it drifts silently — the test would then seed a key nothing
+ * reads and assert against a screen that saw no memory at all, which passes for
+ * the wrong reason on the negative cases and fails inexplicably on the rest.
+ */
+export const VIEW_KEY_FOR_TESTS = KEY
+
 export interface ProjectView {
   /** `undefined` — no choice yet. `null` — deliberately collapsed. A number — that pid. */
   enlarged?: number | null
@@ -103,6 +114,21 @@ export interface ProjectView {
    * a deliberate choice and outranks it, the same rule as `enlarged`.
    */
   columns?: number
+  /**
+   * Panels of ANY kind this reader has open in this project, each declaring its
+   * kind — see `fleetPanels.ts`.
+   *
+   * `terminals` above is the older, kind-less shape and still means agents; it
+   * is read, never rewritten. Both are resolved together by `resolvePanels`, so
+   * there is one ordered list on screen and not two lanes that can disagree
+   * about order.
+   *
+   * A stored entry naming a kind THIS BUILD does not have is reported as
+   * unrecognised rather than dropped — the same rule the arrangement applies to
+   * a project it can no longer find. Dropping it would tell the reader they had
+   * closed something they never closed.
+   */
+  panels?: { kind: string; id: string }[]
 }
 
 /** Column counts a reader may choose. Two is the default the user asked for. */

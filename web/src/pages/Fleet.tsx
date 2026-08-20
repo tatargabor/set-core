@@ -45,6 +45,7 @@ import { Columns2, Columns3, Columns4, Square } from 'lucide-react'
 import { age } from '../lib/fleetAge'
 import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
+import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { terminalOffer } from '../lib/fleetTerminal'
 import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
@@ -1687,6 +1688,23 @@ export default function Fleet() {
   const activeName = active?.name ?? null
   const remembered = memory.project === activeName ? memory.view : readView(activeName)
   const columns = resolveColumns(remembered)
+  /**
+   * Panels this build cannot render — task 4.2.
+   *
+   * A stored layout outlives the build that wrote it, so a panel may name a kind
+   * this build does not have. It is REPORTED rather than dropped: dropping it
+   * would tell the reader they had closed something they never closed, which is
+   * the false-absence class in the direction where nobody goes looking.
+   *
+   * The agent terminal is one kind among these, not the implicit whole — the
+   * older kind-less memory (`terminals`) is read as agent panels, never
+   * rewritten, so a reader who cannot write to storage does not lose a layout by
+   * reading it.
+   */
+  const unknownPanels = useMemo(
+    () => unrenderablePanels(resolvePanels(remembered)),
+    [remembered],
+  )
   const enlarged = resolveEnlarged(remembered, active?.agents.map(a => a.pid) ?? [])
   const setEnlarged = useCallback((project: string | null, pid: number | null) => {
     writeView(project, { enlarged: pid })
@@ -2049,6 +2067,28 @@ export default function Fleet() {
                   </span>
                 )}
               </div>
+              {/* Task 4.2 — a panel whose KIND this build does not have.
+                  Stated where the reader is standing, above the grid, rather
+                  than only in the place it would have been rendered: the whole
+                  point is that there is no such place. Naming the kind is what
+                  makes it actionable — "something is missing" is not a report. */}
+              {unknownPanels.length > 0 && (
+                <div
+                  data-fleet-unknown-panels={unknownPanels.length}
+                  className="shrink-0 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs text-amber-300 space-y-0.5"
+                >
+                  <div className="font-semibold">
+                    {unknownPanels.length} panel(s) this build cannot render — kept, not closed
+                  </div>
+                  {unknownPanels.map(u => (
+                    <div key={`${u.ref.kind} ${u.ref.id}`} className="text-fg-muted">
+                      <span className="text-amber-300">{u.ref.kind}</span>
+                      <span className="text-fg-ghost"> · {u.ref.id}</span>
+                      <span className="text-fg-ghost"> — {u.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* A selected project with nothing running is not an error and not
                   an empty panel: the arrangement keeps it in the list on
                   purpose, so the right-hand side says what it measured. */}

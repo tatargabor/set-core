@@ -75,23 +75,23 @@ Everything from group 4 onward is unbuilt.
 
 ## 4. A panel has a type
 
-- [ ] 4.1 Introduce a panel-type identifier carried by whatever opens a panel,
+- [x] 4.1 Introduce a panel-type identifier carried by whatever opens a panel,
       and make the agent terminal one type among several rather than the implicit
       whole [REQ: a-panel-declares-its-type]
-- [ ] 4.2 Render an unrecognised type as unrecognised — named, not blank, and not
+- [x] 4.2 Render an unrecognised type as unrecognised — named, not blank, and not
       as the type it resembles [REQ: a-panel-declares-its-type]
-- [ ] 4.3 Test that a stored layout referencing a type this build does not have
+- [x] 4.3 Test that a stored layout referencing a type this build does not have
       is REPORTED rather than silently dropped, the same way a missing project is
       [REQ: a-panel-declares-its-type]
-- [ ] 4.4 Check that no type identifier in the layout layer names a domain
+- [x] 4.4 Check that no type identifier in the layout layer names a domain
       concept — the framework may know "there is a view", never what it lists
       [REQ: a-panel-declares-its-type]
 
 ## 5. Docking to an edge
 
-- [ ] 5.1 A view instance records which edge it is docked to, or none
+- [x] 5.1 A view instance records which edge it is docked to, or none
       [REQ: a-view-instance-can-be-docked-to-an-edge]
-- [ ] 5.2 Persist docking in the same document as the arrangement and the
+- [x] 5.2 Persist docking in the same document as the arrangement and the
       dividers [REQ: a-view-instance-can-be-docked-to-an-edge]
 - [ ] 5.3 A docked view renders as a band along its edge, with the shell
       computing the remaining area [REQ: the-agent-grid-fills-what-docking-leaves]
@@ -103,17 +103,17 @@ Everything from group 4 onward is unbuilt.
       [REQ: the-agent-grid-fills-what-docking-leaves]
 - [ ] 5.7 Undocking or closing returns the space
       [REQ: a-view-instance-can-be-docked-to-an-edge]
-- [ ] 5.8 Each docked view's inner edge uses the SAME divider component and the
+- [x] 5.8 Each docked view's inner edge uses the SAME divider component and the
       same store — no second implementation
       [REQ: a-view-instance-can-be-docked-to-an-edge]
 
 ## 6. Docking must not hide a failure
 
-- [ ] 6.1 A collapsed docked view holding a failed item marks it on its collapsed
+- [x] 6.1 A collapsed docked view holding a failed item marks it on its collapsed
       edge [REQ: docking-must-not-hide-a-failure-silently]
-- [ ] 6.2 A view that cannot determine what it holds reports not-knowing rather
+- [x] 6.2 A view that cannot determine what it holds reports not-knowing rather
       than showing no marker [REQ: docking-must-not-hide-a-failure-silently]
-- [ ] 6.3 Test the marker by MUTATION — remove it and assert the suite fails.
+- [x] 6.3 Test the marker by MUTATION — remove it and assert the suite fails.
       This is the requirement most likely to be quietly skipped, because a screen
       without it looks finished [REQ: docking-must-not-hide-a-failure-silently]
 
@@ -151,12 +151,12 @@ Everything from group 4 onward is unbuilt.
 
 ### fleet-dockable-views
 
-- [ ] AC-18: WHEN an agent session is opened THEN its panel declares the agent type and is laid out as one [REQ: a-panel-declares-its-type, scenario: an-agent-panel-is-one-type-among-several]
-- [ ] AC-19: WHEN a panel declares an unknown type THEN the screen states it is unrecognised rather than rendering it as another [REQ: a-panel-declares-its-type, scenario: an-unrecognised-type-is-reported-not-rendered-as-another]
+- [x] AC-18: WHEN an agent session is opened THEN its panel declares the agent type and is laid out as one [REQ: a-panel-declares-its-type, scenario: an-agent-panel-is-one-type-among-several]
+- [x] AC-19: WHEN a panel declares an unknown type THEN the screen states it is unrecognised rather than rendering it as another [REQ: a-panel-declares-its-type, scenario: an-unrecognised-type-is-reported-not-rendered-as-another]
 - [ ] AC-20: WHEN a person docks a view to an edge THEN it occupies a band along that edge and stays across a reload [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-view-is-sent-to-an-edge]
 - [ ] AC-21: WHEN a docked view is undocked or closed THEN its space returns to the agent grid's area [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: undocking-returns-the-space]
 - [ ] AC-22: WHEN a person drags the divider beside a docked view THEN it resizes and the position is stored by the same mechanism as every other divider [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-docked-views-edge-is-draggable]
 - [ ] AC-23: WHEN a view is docked while the grid has a given column count THEN the grid keeps that count in the smaller area [REQ: the-agent-grid-fills-what-docking-leaves, scenario: the-column-choice-still-means-what-it-said]
 - [ ] AC-24: WHEN views are docked to two different edges THEN the agent grid fills the area left by both [REQ: the-agent-grid-fills-what-docking-leaves, scenario: docking-on-two-edges-at-once]
-- [ ] AC-25: WHEN a docked view is collapsed and holds a failed item THEN its collapsed edge carries a marker [REQ: docking-must-not-hide-a-failure-silently, scenario: a-failure-inside-a-collapsed-view-is-marked-outside-it]
-- [ ] AC-26: WHEN a docked view cannot determine what it holds THEN it reports not-knowing rather than showing no marker [REQ: docking-must-not-hide-a-failure-silently, scenario: a-calm-view-claims-nothing-it-did-not-check]
+- [x] AC-25: WHEN a docked view is collapsed and holds a failed item THEN its collapsed edge carries a marker [REQ: docking-must-not-hide-a-failure-silently, scenario: a-failure-inside-a-collapsed-view-is-marked-outside-it]
+- [x] AC-26: WHEN a docked view cannot determine what it holds THEN it reports not-knowing rather than showing no marker [REQ: docking-must-not-hide-a-failure-silently, scenario: a-calm-view-claims-nothing-it-did-not-check]

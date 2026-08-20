@@ -62,8 +62,14 @@ class LayoutConflict(RuntimeError):
 MIN_SPLIT = 140
 MAX_SPLIT = 1200
 
+#: The edges a view may be docked to. Anything else is not a smaller mistake —
+#: it is a different layout system (floating panels imply z-order, focus,
+#: collision and restore-position, each of which is its own problem).
+DOCK_EDGES = ("left", "right", "top", "bottom")
+
 EMPTY: Dict[str, Any] = {
     "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
+    "docks": [],
 }
 
 
@@ -122,6 +128,49 @@ def _normalise_splits(raw: Any) -> Dict[str, int]:
     return out
 
 
+def _normalise_docks(raw: Any) -> List[Dict[str, str]]:
+    """Which view instances are docked, and to which edge.
+
+    **A list, not a map keyed by edge.** Two views can share an edge, and the
+    order they sit in along it is a thing the user arranged — a map would either
+    forbid the second one or lose the order, and both look like the screen
+    forgetting something.
+
+    **An unknown edge drops the entry rather than defaulting to one.** Placing a
+    view on an edge nobody chose is the false-value class: it renders, it looks
+    deliberate, and it is wrong. Dropping it makes the view undocked, which is
+    the state it can be dragged out of.
+
+    The SIZE of a docked view is deliberately not here — it lives in `splits`
+    under the same divider mechanism every other edge uses. One position store,
+    not two that can disagree about the same edge.
+    """
+    if not isinstance(raw, list):
+        return []
+    out: List[Dict[str, str]] = []
+    seen: set = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "").strip()
+        ident = str(entry.get("id") or "").strip()
+        edge = str(entry.get("edge") or "").strip()
+        if not kind or not ident:
+            continue
+        if edge not in DOCK_EDGES:
+            logger.debug("fleet layout: dock %r/%r names edge %r, which is not one of %s; undocking it",
+                         kind, ident, edge, DOCK_EDGES)
+            continue
+        # One instance, one place. The same id docked twice would render twice
+        # and its position would depend on iteration order.
+        key = (kind, ident)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"kind": kind, "id": ident, "edge": edge})
+    return out
+
+
 def normalise(raw: Any) -> Dict[str, Any]:
     """Coerce whatever was stored or posted into the shape the surface expects.
 
@@ -161,6 +210,9 @@ def normalise(raw: Any) -> Dict[str, Any]:
         # here would survive a read and vanish on the next save — silently, and
         # only for the user who had arranged something.
         "splits": _normalise_splits(raw.get("splits")),
+        # Same rule as `splits`: named explicitly, because this function drops
+        # every key it does not name.
+        "docks": _normalise_docks(raw.get("docks")),
     }
 
 
@@ -204,6 +256,27 @@ def _write_atomically(payload: Dict[str, Any], path: str) -> None:
         except OSError:
             pass
         raise
+
+
+def save_docks(docks: Any, *, path: Optional[str] = None) -> List[Dict[str, str]]:
+    """Store which views are docked where, without touching the arrangement.
+
+    Same two properties as `save_splits`, and for the same reasons: the version
+    guarding the hand-made arrangement does not move, and last-write-wins is
+    accepted because what a race costs is a docking a person redoes in a second.
+
+    Kept as a separate function rather than a flag on one writer: the two write
+    different keys, and a shared writer with a mode parameter is where a caller
+    eventually passes the wrong mode and clears the other key.
+    """
+    path = path or default_layout_path()
+    current = load(path)
+    payload = dict(current)
+    payload["docks"] = _normalise_docks(docks)
+    _write_atomically(payload, path)
+    logger.info("fleet layout: %d docked view(s) stored at version %s (unchanged)",
+                len(payload["docks"]), payload["version"])
+    return payload["docks"]
 
 
 def save_splits(splits: Any, *, path: Optional[str] = None) -> Dict[str, int]:
@@ -261,6 +334,10 @@ def save(new: Dict[str, Any], *, path: Optional[str] = None, base_version: Optio
     # project, silently and only for someone who had arranged both.
     if new.get("splits") is None:
         payload["splits"] = dict(current.get("splits") or {})
+    # And the same for docking, for the same reason and with the same escape:
+    # omission preserves, an explicit empty list clears.
+    if new.get("docks") is None:
+        payload["docks"] = list(current.get("docks") or [])
 
     _write_atomically(payload, path)
     logger.info(
@@ -329,4 +406,6 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
         # Passed through unjoined: a divider belongs to the screen, not to a
         # project, so there is nothing for it to be missing FROM.
         "splits": dict(layout.get("splits") or {}),
+        # Unjoined too: a docked view belongs to the screen, not to a project.
+        "docks": list(layout.get("docks") or []),
     }
