@@ -6,7 +6,7 @@
 ## IN SCOPE
 - Refusing a shell command that would take, publish or move work another session
   in the same checkout is holding
-- Knowing which paths the committing session itself staged, so the refusal fires
+- Measuring which paths the running session itself staged, so the refusal fires
   only on the real hazard
 - Saying, in the refusal, which paths were found and what to run instead
 
@@ -80,25 +80,38 @@ running session did not produce.
 - **THEN** the message states that the other session's `git status` would read clean
   and its work would sit in a stash entry it has no reason to look in
 
-### Requirement: Ownership is recorded, and what cannot be attributed is foreign
-The guard SHALL record which paths each session stages, keyed by that session, and
-SHALL treat a staged path it cannot attribute to the running session as foreign.
+### Requirement: Ownership is measured from the index, not parsed from the command
+The guard SHALL determine which staged paths belong to the running session by measuring
+the change its own staging command made to the index, and SHALL NOT determine it by
+reading the command's arguments. A staged path that entered the index outside any observed
+command of the running session SHALL be treated as foreign.
 
-#### Scenario: The session's staging is remembered across commands
-- **WHEN** a session stages a path and later commits in a separate command
-- **THEN** the guard recognises that path as the session's own
+#### Scenario: A path is attributed however the command happened to name it
+- **WHEN** a session stages a path by any means — an explicit path, a shell glob, a
+  variable, a pipeline into `git add`, or a script acting on its behalf
+- **THEN** that path is recognised as the session's own, because attribution comes from the
+  index changing and not from the text of the command
 
-#### Scenario: A path staged by nobody the guard saw is foreign
-- **WHEN** the index holds a path that no observed command of the running session
-  staged
-- **THEN** it is treated as foreign, because a path whose owner is unknown is exactly
-  the case this guard exists for — an unattributable path SHALL NOT be assumed to be
-  the running session's
+#### Scenario: A path that appeared outside this session's commands is foreign
+- **WHEN** the index holds a path that entered it outside any observed command of the
+  running session
+- **THEN** it is treated as foreign — an unattributable path SHALL NOT be assumed to be the
+  running session's, because that assumption is the defect this guard exists to prevent
 
 #### Scenario: A session that staged nothing does not own a populated index
-- **WHEN** a session that has staged nothing runs a pathspec-less `git commit` and
-  the index is not empty
+- **WHEN** a session that has staged nothing runs a pathspec-less `git commit` and the
+  index is not empty
 - **THEN** the command is refused
+
+#### Scenario: A path the session unstaged stops being its own
+- **WHEN** a session stages a path and later unstages it
+- **THEN** the guard no longer counts that path as the session's own, so a neighbour who
+  stages it afterwards is not mistaken for this session
+
+#### Scenario: Staging and committing in one command is refused, with the composing remedy
+- **WHEN** a single command both stages a path and then runs `git commit` with no pathspec
+- **THEN** it is refused, and the refusal names the rewrite that keeps the command's shape —
+  putting the pathspec on the commit rather than splitting the command
 
 ### Requirement: The guard refuses, and changes nothing itself
 The guard SHALL NOT modify the index, the working tree, or any git state. Its only

@@ -25,8 +25,12 @@ the tree this morning and the loss happened twice the same day.
 
 - **New `set-hook-checkout-guard`**, a `PreToolUse` hook on the `Bash` matcher, joining
   `set-hook-leakscan` in the slot that already exists for binding an agent's shell.
-- It **records which paths each session stages**, keyed by the `session_id` the hook
-  payload carries (measured: `bin/set-hook-memory:50` already reads that field).
+- It **measures which paths each session stages** — snapshotting the index either side of
+  the session's own staging command and taking the difference, keyed by the `session_id` the
+  payload carries (measured: `bin/set-hook-memory:50` already reads that field). It never
+  parses the command's arguments, because a glob, a variable, an `xargs` or a script all
+  defeat parsing, and each defeat would silently turn the guard into "every commit needs a
+  pathspec".
 - It **refuses a `git commit` that names no pathspec while the index holds a path the
   committing session did not stage**, and names the remedy — `git commit -- <paths>` —
   in the refusal.

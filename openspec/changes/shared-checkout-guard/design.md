@@ -53,42 +53,62 @@ carried the eight foreign paths. The index is the shared object; the commit is w
 gets published. *Alternative rejected:* guard only the sweeping forms — it leaves the
 path that actually caused the loss wide open.
 
-### D2 — Ownership is recorded from the session's own commands, keyed by `session_id`
+### D2 — Ownership is MEASURED from the index, never parsed from the command
 
-The hook sees every Bash command the session runs, and the payload carries `session_id`
-(measured: `bin/set-hook-memory:50` already extracts it). On an allowed `git add`, the
-hook records the pathspecs the session named. At commit time it compares the index
-against that record.
+The hook runs on both `PreToolUse` and `PostToolUse` for the `Bash` matcher — the
+`PostToolUse` / `Bash` slot already exists and is occupied by `set-hook-memory`. Around a
+staging command the guard takes two snapshots of `git diff --cached --name-only`: one
+before it runs, one after. **The difference is what that command staged**, and it is
+therefore that session's own.
 
-Matching must handle what `git add` actually accepts: an exact path, a **directory**
-(which stages everything beneath it), and a glob. So an index path counts as the
-session's own if it equals, sits beneath, or fnmatches a recorded pathspec.
+The point is that nothing reads the command's arguments. A pathspec can reach `git add`
+in at least six forms this repository actually uses — a shell glob the hook only sees
+unexpanded, a variable, `xargs git add`, `git -C <dir> add`,
+`--pathspec-from-file`, and a script that stages on the session's behalf. Every one of
+them defeats argument parsing, and each defeat produces an *unattributable* path, which
+the guard must treat as foreign. So the parsing design does not fail loudly: it degrades,
+one command at a time, into "every commit needs a pathspec" — which is the shape that was
+explicitly not chosen.
 
-*Alternative rejected:* diffing index snapshots. Between two of our observations any
-other session may have staged anything, so a snapshot diff cannot attribute the change
-to anybody — it would answer a different question than the one being asked.
+Measuring the effect instead of reading the intent is the same discipline this repository
+already states for checks in general: *the mechanism running is not the result*. Here the
+result — which paths entered the index — is directly observable and costs one command.
 
-### D3 — A path another session recorded is foreign, whatever our own patterns say
+*Alternative rejected:* parsing `git add` pathspecs and matching index paths against them
+by equality, directory prefix and fnmatch. It needs all three rules to approximate what
+git does natively, it over-claims (a session that ran `git add openspec/` would swallow a
+neighbour's file under that directory, which then needed a whole second condition to undo),
+and it still loses to all six forms above.
 
-D2's matching errs toward ownership: a session that ran `git add openspec/` would claim
-a path under `openspec/` that a different session staged. So ownership is
-**two conditions, not one** — the path matches this session's recorded pathspecs *and*
-is not claimed by another session's record. The guard is symmetric: every session's hook
-writes its own record, so the common case is covered by the other side's bookkeeping
-rather than by guessing.
+*Alternative rejected:* snapshot-diffing without pairing the snapshots to one command.
+Between two unpaired observations any session may have staged anything, so the diff cannot
+be attributed to anybody — it answers a different question than the one being asked. The
+pairing to a single tool call is what makes the delta mean something.
+
+### D3 — A staging step and a pathspec-less commit in ONE command are refused, and that is correct
+
+`git add x && git commit` arrives as a single Bash call, so the guard's `PreToolUse` runs
+before the `add` has happened: the session's own path is not in the index yet and the
+commit would be judged against an index it does not yet own. Rather than reach back for
+argument parsing to special-case this, the guard refuses it — and the refusal is
+actionable without changing the shape of the command, because the remedy composes:
+`git add x && git commit -- x`.
+
+*Alternative rejected:* splitting the command and simulating each part. That is parsing
+again, with the extra hazard of the guard modelling a shell.
 
 ### D4 — Fail directions, stated separately because they differ
 
 | situation | direction | why |
 |---|---|---|
-| staged path attributable to nobody observed | **refuse** | an unowned path is exactly the case the guard exists for; assuming it is ours reproduces the bug |
+| a staged path that entered the index outside any observed command of this session | **refuse** | an unowned path is exactly the case the guard exists for; assuming it is ours reproduces the bug |
 | not a git repository | allow | there is nothing to protect, and erroring here would break unrelated commands |
 | command is not a guarded git verb | allow, without reading the index | the hook runs on *every* Bash call; see D5 |
 | the guard itself raises | **allow**, and say so on stderr | a crashing guard that blocks every Bash command is worse than the defect it prevents. This is the one place the guard fails open, and it is deliberate rather than accidental |
 
-### D5 — A cheap regex decides before anything expensive happens
+### D5 — A cheap regex decides before anything expensive happens, on BOTH events
 
-The hook is on the `Bash` matcher, so it runs on every shell command in the session. It
+The hook is on the `Bash` matcher for both events, so it runs twice per shell command. It
 matches a guarded git verb with one compiled regex and exits 0 immediately otherwise —
 no subprocess, no index read. Only a matching command pays for `git diff --cached
 --name-only`.
@@ -103,7 +123,7 @@ reinvented.
 
 ### D7 — Session state lives in `/tmp`, keyed by session id
 
-Following `set-hook-memory`'s `/tmp/set-memory-session-<id>.json`. `/tmp` is the right
+Following `set-hook-memory`'s `/tmp/set-memory-session-<id>.json`. It holds two things: the set of paths this session is known to have staged, and one pending pre-snapshot slot. A single slot is enough because a session's Bash calls are sequential, so at most one staging command is ever in flight. `/tmp` is the right
 store *here* precisely because the state is session-scoped: a session does not survive a
 reboot either, so nothing durable is being entrusted to a volatile place. (This is the
 opposite call from the agent channel's move off `/tmp`, and for the opposite reason —
@@ -114,15 +134,24 @@ that state had to outlive the sessions using it.)
 - **The guard fires on a human staging in a terminal** → their paths are unattributable,
   so an agent's pathspec-less commit is refused. That is the correct answer, and the
   message names `git commit -- <paths>`, which costs one flag.
-- **A session that stages via something the hook cannot parse** (a script, a wrapper)
-  loses attribution for those paths and will be refused → the remedy is the same one
-  flag, and the refusal says which paths it could not attribute rather than guessing.
+- **A race inside one command.** If another session stages between this session's
+  pre-snapshot and post-snapshot, the delta credits that path to the wrong session, and a
+  foreign path is then treated as owned. The window is the duration of one `git add`, which
+  is the narrowest this design can make it — but it is not zero, and it fails in the
+  *permissive* direction. Say so in the code where the delta is computed, rather than
+  leaving a reader to assume the attribution is exact.
+- **A staging step and a commit in one Bash call are refused** (D3) → the remedy composes
+  into the same command (`git add x && git commit -- x`), but it will surprise someone the
+  first time, so the refusal must name that exact rewrite rather than the generic one.
 - **`git commit -- <paths>` commits the working tree content of those paths, not the
   index** → a deliberately staged partial hunk (`git add -p`) would be committed whole.
   Rare for an agent; the refusal message should say so rather than let it surprise
   someone.
-- **The hook runs on every Bash command** → mitigated by D5, but it is real overhead on a
-  hot path and the regex must stay anchored and cheap.
+- **The hook now runs twice per Bash command** (pre and post) → mitigated by D5's
+  regex-first exit, but the hot path just doubled and the regex must stay anchored and cheap.
+- **A session that unstages and a neighbour then stages the same path** → this session's
+  record still claims it. Subtract removals from the record as well as adding arrivals,
+  or the claim outlives the fact.
 - **The guard fails open on its own exception (D4)** → a silently broken guard is
   indistinguishable from a guard with nothing to report. Its stderr note is the only tell,
   so the tests must include one that proves the guard actually refuses, rather than only
