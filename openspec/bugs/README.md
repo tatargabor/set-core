@@ -529,6 +529,14 @@ consumer's name, path, or content.
   loaded into every session's context. An agent asked how to start the app is
   pointed at nothing, and the failure is silent — a missing file reads as
   "nothing to see" rather than as an error.
+- **⚠ WIDER THAN ONE REPOSITORY, measured 2026-08-20.** `set-project init`
+  *writes this sentence into every consumer's `CLAUDE.md`* ("Added Getting
+  Started reference to CLAUDE.md"), and deploys no `START.md` beside it —
+  `find templates modules -name START.md` → 0. Across the registry: **35
+  projects carry the reference and 20 of them have no such file.** So this is
+  not set-core's own oversight; it is a defect the deploy path propagates, and
+  it grows by one with every init. Found while running a first init into a
+  project that had never had one.
 - **how you would know it is fixed:** either `START.md` exists and lists the
   install / dev-server / database / test commands, or the sentence names a file
   that does.
