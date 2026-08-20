@@ -30,24 +30,39 @@ own on-call tool. The framework supplies the envelope and the plumbing that unbl
 
 ## What Changes
 
-- **A versioned question envelope**, domain-free, produced by the framework when a section
-  returns `NEEDS_INPUT`. It carries the identity needed to write the answer back to the
-  right task, the question text, an optional option list with a single/multi flag, and the
-  path the answer is expected at.
-- **A required, framework-uninvented `audience` field.** The question declares who it is
-  for. The framework never guesses it, and an outbound that receives a question without one
-  **refuses to carry it**. Failing closed is the point: a question with no stated audience is
-  a question that could reach the wrong person.
+The shape below is **taken from a working implementation on this machine, read directly**
+rather than negotiated — see *The working model, measured* at the end. Where this change
+departs from it, it says so and why.
+
+- **A versioned question envelope**, domain-free, produced when a section returns
+  `NEEDS_INPUT`. It carries the identity needed to write the answer back, the question text,
+  an option list, an audience, and where the answer is expected.
+- **The option list is structured, never a joined string.** Measured on the working
+  implementation: a display string built by joining options **cannot be split back safely**,
+  because the separator can occur inside an option. Machine input and display are two
+  fields, not one.
+- **`audience` is required and the FRAMEWORK never invents it.** The project may declare a
+  fail-closed default — the working implementation defaults apply-side questions to its
+  *developer* audience and never to its *client* audience, because a night-time outbound
+  would otherwise jump the decision order. What the framework must not do is supply a value
+  of its own, and an outbound that receives no audience refuses to carry the question.
 - **A declared outbound**, resolved the way the status contract already resolves a project's
-  commands: the project says who carries its questions. set-core ships **no outbound of its
-  own** — not a chat client, not a bot. The existing notification module in this repository
-  speaks in one direction only and is not extended here.
-- **Notification over the agent bus**, addressed to the declared outbound, carrying a
-  pointer rather than the question body. The body stays in a file until the outbound's own
-  filter has had a chance to mask it.
-- **A durable answer pickup** that reads the answer file, records it, and clears the `- [?]`
-  so the held groups can run — reusing the answer path the engine already has
-  (`lib/set_workcycle/prompt.py`, `answers`), not a second one beside it.
+  commands. set-core ships **no outbound of its own** — not a chat client, not a bot. The
+  existing notification module in this repository speaks in one direction only and is not
+  extended here.
+- **The outbound is best-effort and can never fail the cycle.** Measured, and stated in the
+  working implementation as a rule: *the outbound is a convenience, not the register.* The
+  question stands in `tasks.md` whether or not anyone carried it anywhere, and a failed
+  hand-off is reported, not raised.
+- **A durable answer pickup.** The answer arrives as a file in a framework-owned directory
+  inside the asking project's tree; the pickup writes it into the task and clears the
+  `- [?]` so the held groups run — reusing `lib/set_workcycle/prompt.py`'s existing
+  `answers` route rather than a second one beside it.
+- **The key is a field, not a filename**, and files whose key the reader does not recognise
+  are **left untouched**. Both measured: the working implementation shares one answer
+  directory between two readers, and its own comment names the failure that rule prevents —
+  *tidying away what is not ours is exactly the silent data loss the mechanism was built
+  against.* Malformed answers are quarantined, not deleted.
 - **Answers are scoped to the run that asked.** `lib/set_workcycle/lock.py` already carries
   the measured lesson: an answer meant for one run once woke a different one.
 
@@ -84,16 +99,56 @@ out and is measurable only there.
   satisfiable without it, because the file is the carrier that does not need a live session.
 - No change to the existing one-way notification module, and no new outbound dependency.
 
-## Open questions — being settled with the existing implementation before anything is built
+## The working model, measured — 2026-08-20
 
-Asked on the agent bus on 2026-08-20; none of the five is a detail, and each changes what
-gets built:
+Read from the two trees that already run this end to end. Every row is code or a comment in
+those trees, not a report of them.
 
-1. **Field names.** set-core is public and English; the existing implementation's fields are
-   mixed-language. Which side carries the mapping?
-2. **The audience value set.** Does the contract fix the values, or only require the field?
-3. **Identity.** `<project>/<change>/<task-id>` is enough on its own to write an answer back.
-   Does it replace the existing implementation's id/key pair, or sit beside it?
-4. **What the bus notification carries** — the whole batch, or a pointer to a file.
-5. **Where the answer lands for an arbitrary project**, so a second outbound can satisfy the
-   same contract without knowing the first one exists.
+| | what it does today |
+|---|---|
+| question raised | the section returns `NEEDS_INPUT`; the open `- [?]` tasks of the change are collected into a question list |
+| identity | `<change>#<task-id>`, deliberately the same shape another cycle in the same project already used, so the outbound needs one reader rather than two |
+| audience | fail-closed on the **project** side: apply-side questions are the developer audience and never the client audience |
+| options | a structured list for the machine, a joined string for display — never the reverse |
+| hand-off | a **direct process call** with the question list on stdin, and an explicit `--seat` |
+| failure of the hand-off | ignored: best-effort, the question is already in `tasks.md` |
+| answer | a file in the asking project's framework-owned directory, overridable by environment variable, with a fallback into the outbound's own tree **that announces itself** |
+| answer key | a field inside the JSON, not the filename |
+| foreign answers | another reader's entries share the directory and are left untouched |
+| bad answers | quarantined into their own directory with a reason, never deleted |
+
+## Open questions
+
+### 1. The bus, and a reason that may have expired — DECIDE THIS FIRST
+
+The user's instruction is that set-core notifies the outbound **over the agent bus**. The
+working model deliberately does **not** do that for the question direction, and its stated
+reason is the outbound's own request: if the question goes on the bus and no session of the
+outbound is running, the entry settles — *and that is exactly the night the chain was built
+to save.* The same argument is why the answer travels as a file.
+
+That reason was recorded on 2026-08-08. It may no longer hold: sending on the bus today
+returns the notice that **the entry waits in the room and is read when that session comes
+back**. If the bus is durable now, the 2026-08-08 objection is stale and the instruction and
+the working model stop contradicting each other.
+
+⚠ **This is a claim by the tool about itself, and it has not been measured here.** Nothing in
+this change may depend on bus durability until somebody sends to a stopped session and shows
+it delivered on return. Until then the design assumes the file is the carrier and the bus is
+the fast path — which is what both sides already do for the answer.
+
+### 2. Still to settle with the existing implementation
+
+Asked on the bus on 2026-08-20; the answers change what gets built.
+
+- **Field names.** set-core is public and English; the working implementation's fields are
+  mixed-language. Which side carries the mapping?
+- **The audience value set.** Does the contract fix the values, or only require the field
+  and leave the vocabulary to the project?
+- **Identity.** The working key has no project segment, because the answer directory sits
+  inside the project. A shared outbound serving several projects needs one. Does the project
+  segment belong in the key, or does the outbound derive it from where the question came
+  from?
+- **Where the answer lands for an arbitrary project**, so a second outbound can satisfy the
+  same contract without knowing the first one exists. Today this is an environment variable
+  and one hard-coded path.
