@@ -304,3 +304,67 @@ def test_the_measured_cure_end_to_end(repo, alice, bob):
     still_staged = subprocess.run(["git", "diff", "--cached", "--name-only"],
                                   cwd=repo, capture_output=True, text=True).stdout.split()
     assert still_staged == ["bob.txt"], still_staged
+
+
+# --- a stash that names no paths is refused while the checkout holds work ------
+
+def test_a_bare_stash_over_uncommitted_work_is_refused(repo, alice):
+    (repo / "someone.txt").write_text("work\n")
+    rc, err = alice.check("git stash")
+    assert rc == REFUSE
+    assert "someone.txt" in err
+
+
+def test_the_refusal_explains_why_this_one_is_worse_than_a_commit(repo, alice):
+    (repo / "someone.txt").write_text("work\n")
+    _, err = alice.check("git stash")
+    assert "reads CLEAN" in err
+    assert "no reason to look in" in err
+
+
+def test_a_bare_stash_is_refused_even_when_the_work_looks_like_the_sessions_own(
+        repo, alice):
+    """The refusal does not depend on attribution, because a working-tree
+    modification cannot be attributed by this mechanism at all."""
+    (repo / "alice.txt").write_text("alice\n")
+    alice.run("git add alice.txt")
+    assert alice.check("git stash")[0] == REFUSE
+
+
+@pytest.mark.parametrize("cmd", [
+    "git stash push -- alice.txt",
+    "git stash push -m note -- alice.txt",
+    "git stash -- alice.txt",
+])
+def test_stashing_named_paths_is_allowed(repo, alice, cmd):
+    (repo / "alice.txt").write_text("alice\n")
+    assert alice.check(cmd)[0] == ALLOW, cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "git stash list",
+    "git stash show",
+    "git stash pop",
+    "git stash drop",
+])
+def test_reading_the_stash_is_not_taking_anything(repo, alice, cmd):
+    (repo / "someone.txt").write_text("work\n")
+    assert alice.check(cmd)[0] == ALLOW, cmd
+
+
+def test_a_clean_checkout_has_nothing_to_take(alice):
+    assert alice.check("git stash") == (ALLOW, "")
+
+
+def test_a_stash_message_is_not_mistaken_for_a_pathspec(repo, alice):
+    """`git stash -m 'note'` still sweeps everything; the message is not a path."""
+    (repo / "someone.txt").write_text("work\n")
+    assert alice.check("git stash -m 'saving my work'")[0] == REFUSE
+
+
+@pytest.mark.parametrize("cmd", ["git stash push", "git stash save", "git stash push -m note"])
+def test_a_bare_push_or_save_sweeps_just_as_much_as_a_bare_stash(repo, alice, cmd):
+    """The subcommand is not a pathspec. Missing this reads `push` as a named path
+    and allows the sweep — the permissive direction, found by mutation."""
+    (repo / "someone.txt").write_text("work\n")
+    assert alice.check(cmd)[0] == REFUSE, cmd

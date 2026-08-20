@@ -165,6 +165,20 @@ def staged_paths(repo):
     return {line for line in out.splitlines() if line}
 
 
+def uncommitted_paths(repo):
+    """Everything a bare `git stash` would sweep: staged, modified, untracked.
+
+    Deliberately NOT filtered by ownership. A working-tree modification cannot be
+    attributed to a session by this mechanism, so filtering here would be a guess
+    dressed as a measurement — and it would guess permissively on the more
+    destructive of the two hazards.
+    """
+    out = run_git(repo, ["status", "--porcelain"])
+    if out is None:
+        return set()
+    return {line[3:] for line in out.splitlines() if line.strip()}
+
+
 def is_repo(repo):
     out = run_git(repo, ["rev-parse", "--is-inside-work-tree"])
     return out is not None and out.strip() == "true"
@@ -263,15 +277,29 @@ def has_pathspec(args, value_opts):
 
 
 def stash_takes_work(args):
-    """True for the forms that sweep the working tree, false for list/show/pop."""
-    sub = None
-    for tok in args:
-        if not tok.startswith("-"):
-            sub = tok
+    """True for the forms that sweep the working tree, false for list/show/pop.
+
+    The subcommand must be found with the same option-aware walk the pathspec
+    check uses, or `git stash -m "note"` reads `note` as a subcommand and
+    `git stash push` reads `push` as a pathspec — both in the permissive
+    direction.
+    """
+    stash_value_opts = {"-m", "--message"}
+    i, sub = 0, None
+    while i < len(args):
+        tok = args[i]
+        if tok == "--":
             break
+        if tok.startswith("-"):
+            opt = tok.split("=", 1)[0]
+            i += 2 if (opt in stash_value_opts and "=" not in tok) else 1
+            continue
+        sub = tok
+        break
     if sub is not None and sub not in STASH_SUBS_THAT_TAKE_WORK:
         return False
-    return not has_pathspec(args, {"-m", "--message"})
+    rest = args[i + 1:] if sub is not None else args
+    return not has_pathspec(rest, stash_value_opts)
 
 
 # --- refusals ----------------------------------------------------------------
@@ -336,20 +364,28 @@ def refuse_sweep(what, remedy):
     ])
 
 
-def refuse_stash(foreign):
+def refuse_stash(dirty):
     body = [
-        "BLOCKED by set-hook-checkout-guard — this stash would take another session's",
-        "work out of the working tree.",
+        "BLOCKED by set-hook-checkout-guard — this stash names no paths, so it would",
+        "take everything uncommitted in this checkout out of the working tree.",
         "",
-        "Staged, but not staged by this session:",
+        "Uncommitted right now:",
     ]
-    body += [f"    {p}" for p in sorted(foreign)]
+    body += [f"    {p}" for p in sorted(dirty)[:20]]
+    if len(dirty) > 20:
+        body += [f"    … and {len(dirty) - 20} more"]
     body += [
         "",
         "This is the worse half of the shared-checkout hazard. A commit at least",
         "leaves the content in a findable commit; a stash removes the other session's",
         "files from the working tree, their `git status` reads CLEAN, and the work",
         "sits in a stash entry they have no reason to look in.",
+        "",
+        "The refusal does not ask whose work this is, because it cannot know: a file",
+        "edit does not arrive as a shell command, so the guard has no way to attribute",
+        "a working-tree modification. Refusing on the shape of the command instead of",
+        "on an attribution it cannot make is the honest direction — the alternative",
+        "would be a guard that claims a distinction it never drew.",
         "",
         "Stash only your own paths:",
         "",
@@ -396,12 +432,9 @@ def handle_pre(payload, cmd, invocations, repo, session_id):
                 return refuse_foreign_commit(foreign, owned, compound=stages_first)
 
         if sub == "stash" and stash_takes_work(args):
-            staged = staged_paths(repo)
-            if staged is None:
-                return 0
-            foreign = staged - owned
-            if foreign:
-                return refuse_stash(foreign)
+            dirty = uncommitted_paths(repo)
+            if dirty:
+                return refuse_stash(dirty)
 
     # Nothing refused: remember the index as it stands, so the PostToolUse pass
     # can measure what THIS command changed.

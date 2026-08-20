@@ -9,7 +9,7 @@
 ## 2. Measuring who staged what
 
 - [x] 2.1 Read `session_id` from the payload the way `bin/set-hook-memory:50` already does; state in a comment what happens when it is absent [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command]
-- [ ] 2.2 Register the hook on `PostToolUse` / `Bash` as well as `PreToolUse`, and branch on the event name inside one script [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command]
+- [x] 2.2 Register the hook on `PostToolUse` / `Bash` as well as `PreToolUse`, and branch on the event name inside one script [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command]
 - [x] 2.3 On `PreToolUse` of a staging command, write the current `git diff --cached --name-only` into a single pending pre-snapshot slot in `/tmp/set-checkout-guard-<session_id>.json`, keyed by repository root [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command]
 - [x] 2.4 On `PostToolUse` of that command, snapshot again; ADD the arrivals to the session's owned set and SUBTRACT the departures, so an unstaged path stops being claimed [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command]
 - [x] 2.5 Nothing anywhere reads the command's arguments to decide ownership — assert this with a test that stages via a shell glob and via a variable, and expects both attributed [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command]
@@ -25,8 +25,8 @@
 - [x] 3.4 Treat `git commit --amend` with no pathspec as the same act, on the same ground [REQ: a-commit-may-not-carry-another-sessions-staged-work]
 - [x] 3.5 Refuse `git add -A`, `git add --all`, `git add .`, and `git add -u` with no pathspec; allow `git add <explicit paths>` [REQ: a-staging-command-may-not-sweep-what-it-was-not-given]
 - [x] 3.6 Refuse `git commit -a` — it stages every tracked modification in the checkout, including another session's [REQ: a-staging-command-may-not-sweep-what-it-was-not-given]
-- [ ] 3.7 Refuse pathspec-less `git stash` when the checkout holds staged or modified paths the session did not produce [REQ: removing-another-sessions-work-from-the-working-tree-is-refused]
-- [ ] 3.8 The stash refusal states the specific consequence: the other session's files leave the WORKING TREE, its `git status` reads clean, and the work sits in a stash entry it has no reason to look in [REQ: removing-another-sessions-work-from-the-working-tree-is-refused]
+- [x] 3.7 Refuse a pathspec-less `git stash` while the checkout holds ANY uncommitted work — unconditional rather than attributed, because a working-tree modification cannot be traced to a session by this mechanism [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work]
+- [x] 3.8 The stash refusal states the specific consequence: the other session's files leave the WORKING TREE, its `git status` reads clean, and the work sits in a stash entry it has no reason to look in [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work]
 - [x] 3.9 Mention in the commit-refusal message that `git commit -- <paths>` commits working-tree content, so a deliberately staged partial hunk would go whole (design risk list) [REQ: a-commit-may-not-carry-another-sessions-staged-work]
 
 ## 4. The guard changes nothing, and fails in the stated direction
@@ -38,7 +38,7 @@
 
 ## 5. Wiring and the rule that was missing its second half
 
-- [ ] 5.1 Register the hook in `.claude/settings.json` under the existing `PreToolUse` / `Bash` matcher, beside `set-hook-leakscan` [REQ: a-commit-may-not-carry-another-sessions-staged-work]
+- [x] 5.1 Register the hook in `.claude/settings.json` under the existing `PreToolUse` / `Bash` matcher, beside `set-hook-leakscan` [REQ: a-commit-may-not-carry-another-sessions-staged-work]
 - [x] 5.2 Amend `.claude/rules/cross-cutting-checklist.md`: the pathspec belongs on the COMMIT in addition to the `add`, not instead of it — and say that `git add <path>` alone was measured insufficient on 2026-08-20 [REQ: a-commit-may-not-carry-another-sessions-staged-work]
 - [x] 5.3 Record in the rule the measured limitation that `git commit -- <path>` fails for a path git does not yet track, so `git add` is still required first [REQ: a-commit-may-not-carry-another-sessions-staged-work]
 
@@ -51,7 +51,7 @@
 
 ## 7. Closing the register entry
 
-- [ ] 7.1 Close **B-32** in `openspec/bugs/README.md` with the commit sha, keeping the entry — the register closes with evidence and never deletes [REQ: a-commit-may-not-carry-another-sessions-staged-work]
+- [x] 7.1 Close **B-32** in `openspec/bugs/README.md` with the commit sha, keeping the entry — the register closes with evidence and never deletes [REQ: a-commit-may-not-carry-another-sessions-staged-work]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -62,15 +62,18 @@
 - [x] AC-5: WHEN a session runs `git add -A` THEN the command is refused and staging explicit paths is named instead [REQ: a-staging-command-may-not-sweep-what-it-was-not-given, scenario: a-sweeping-add-is-refused]
 - [x] AC-6: WHEN a session runs `git add` with explicit paths THEN the command is allowed [REQ: a-staging-command-may-not-sweep-what-it-was-not-given, scenario: an-explicit-add-is-allowed]
 - [x] AC-7: WHEN a session runs `git commit -a` THEN it is refused, because it stages every tracked modification in the checkout [REQ: a-staging-command-may-not-sweep-what-it-was-not-given, scenario: staging-everything-tracked-is-the-same-sweep]
-- [ ] AC-8: WHEN a session runs `git stash` with no pathspec and the checkout holds paths it did not stage or modify THEN the command is refused and the working-tree removal is stated [REQ: removing-another-sessions-work-from-the-working-tree-is-refused, scenario: a-stash-that-would-take-another-sessions-files-is-refused]
-- [ ] AC-9: WHEN a stash is refused on this ground THEN the message states that the other session's `git status` would read clean and its work would sit in a stash entry it has no reason to look in [REQ: removing-another-sessions-work-from-the-working-tree-is-refused, scenario: the-refusal-explains-why-this-one-is-worse-than-a-commit]
-- [x] AC-10: WHEN a session stages a path by an explicit path, a glob, a variable, a pipeline or a script THEN that path is recognised as its own, because attribution comes from the index changing [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-path-is-attributed-however-the-command-happened-to-name-it]
-- [x] AC-11: WHEN the index holds a path that entered it outside any observed command of the running session THEN it is treated as foreign and not assumed to be the session's own [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-path-that-appeared-outside-this-sessions-commands-is-foreign]
-- [x] AC-12: WHEN a session that has staged nothing runs a pathspec-less `git commit` and the index is not empty THEN the command is refused [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-session-that-staged-nothing-does-not-own-a-populated-index]
-- [x] AC-13: WHEN a session stages a path and later unstages it THEN the guard no longer counts it as the session's own [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-path-the-session-unstaged-stops-being-its-own]
-- [x] AC-14: WHEN one command both stages a path and then runs `git commit` with no pathspec THEN it is refused and the composing rewrite is named [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: staging-and-committing-in-one-command-is-refused-with-the-composing-remedy]
-- [x] AC-15: WHEN the guard refuses a command THEN the index, the working tree and the stash list are exactly as they were, and foreign staged entries are untouched [REQ: the-guard-refuses-and-changes-nothing-itself, scenario: a-refusal-leaves-everything-where-it-was]
-- [x] AC-16: WHEN the guard finds a foreign staged path THEN it does not unstage it [REQ: the-guard-refuses-and-changes-nothing-itself, scenario: the-guard-does-not-unstage-on-the-sessions-behalf]
-- [x] AC-17: WHEN an agent in its own git worktree stages its work and commits with no pathspec THEN the command is allowed [REQ: the-guard-is-silent-where-the-hazard-does-not-exist, scenario: a-dedicated-worktree-is-not-policed]
-- [x] AC-18: WHEN the command runs somewhere that is not a git repository THEN the guard allows it rather than erroring [REQ: the-guard-is-silent-where-the-hazard-does-not-exist, scenario: a-command-outside-a-repository-passes-through]
-- [x] AC-19: WHEN a session runs a command that is not a guarded git verb THEN the guard allows it without examining the index [REQ: the-guard-is-silent-where-the-hazard-does-not-exist, scenario: a-non-git-command-is-not-inspected]
+- [x] AC-8: WHEN A bare stash over uncommitted work is refused THEN the guard behaves as the scenario states [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work, scenario: a-bare-stash-over-uncommitted-work-is-refused]
+- [x] AC-9: WHEN a stash is refused on this ground THEN the message states that the other session's `git status` would read clean and its work would sit in a stash entry it has no reason to look in [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work, scenario: the-refusal-explains-why-this-one-is-worse-than-a-commit]
+- [x] AC-10: WHEN Stashing named paths is allowed THEN the guard behaves as the scenario states [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work, scenario: stashing-named-paths-is-allowed]
+- [x] AC-11: WHEN Reading the stash is not taking anything THEN the guard behaves as the scenario states [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work, scenario: reading-the-stash-is-not-taking-anything]
+- [x] AC-12: WHEN A clean checkout has nothing to take THEN the guard behaves as the scenario states [REQ: a-stash-that-names-no-paths-is-refused-while-the-checkout-holds-work, scenario: a-clean-checkout-has-nothing-to-take]
+- [x] AC-13: WHEN a session stages a path by an explicit path, a glob, a variable, a pipeline or a script THEN that path is recognised as its own, because attribution comes from the index changing [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-path-is-attributed-however-the-command-happened-to-name-it]
+- [x] AC-14: WHEN the index holds a path that entered it outside any observed command of the running session THEN it is treated as foreign and not assumed to be the session's own [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-path-that-appeared-outside-this-sessions-commands-is-foreign]
+- [x] AC-15: WHEN a session that has staged nothing runs a pathspec-less `git commit` and the index is not empty THEN the command is refused [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-session-that-staged-nothing-does-not-own-a-populated-index]
+- [x] AC-16: WHEN a session stages a path and later unstages it THEN the guard no longer counts it as the session's own [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: a-path-the-session-unstaged-stops-being-its-own]
+- [x] AC-17: WHEN one command both stages a path and then runs `git commit` with no pathspec THEN it is refused and the composing rewrite is named [REQ: ownership-is-measured-from-the-index-not-parsed-from-the-command, scenario: staging-and-committing-in-one-command-is-refused-with-the-composing-remedy]
+- [x] AC-18: WHEN the guard refuses a command THEN the index, the working tree and the stash list are exactly as they were, and foreign staged entries are untouched [REQ: the-guard-refuses-and-changes-nothing-itself, scenario: a-refusal-leaves-everything-where-it-was]
+- [x] AC-19: WHEN the guard finds a foreign staged path THEN it does not unstage it [REQ: the-guard-refuses-and-changes-nothing-itself, scenario: the-guard-does-not-unstage-on-the-sessions-behalf]
+- [x] AC-20: WHEN an agent in its own git worktree stages its work and commits with no pathspec THEN the command is allowed [REQ: the-guard-is-silent-where-the-hazard-does-not-exist, scenario: a-dedicated-worktree-is-not-policed]
+- [x] AC-21: WHEN the command runs somewhere that is not a git repository THEN the guard allows it rather than erroring [REQ: the-guard-is-silent-where-the-hazard-does-not-exist, scenario: a-command-outside-a-repository-passes-through]
+- [x] AC-22: WHEN a session runs a command that is not a guarded git verb THEN the guard allows it without examining the index [REQ: the-guard-is-silent-where-the-hazard-does-not-exist, scenario: a-non-git-command-is-not-inspected]

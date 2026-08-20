@@ -807,7 +807,8 @@ consumer's name, path, or content.
 
 ### B-32 — two agents that BOTH staged only their own paths still lose a commit to each other, because the index is shared
 
-- **state:** open
+- **state:** closed (`cba66f78` + the wiring commit that follows it) — see the
+  verification at the end of this entry
 - **reported:** 2026-08-20 by this session, after it happened to this session
   while archiving `fleet-panel-layout`.
 - **measured, on the real incident:** this session staged exactly its own 8 paths
@@ -844,6 +845,35 @@ consumer's name, path, or content.
   pathspec-less `git commit`, and sees it refuse with the `--` remedy named; plus
   the same guard refusing `git add -A`. And the refusal must NOT fire when every
   staged path was staged by the committing session.
+- **verified 2026-08-21:** `bin/set-hook-checkout-guard`, registered on both
+  `PreToolUse` and `PostToolUse` for the `Bash` matcher, refuses a pathspec-less
+  commit that would carry a foreign staged path, refuses `git add -A` / `.` /
+  bare `-u` / `git commit -a`, and refuses a bare `git stash` over uncommitted
+  work. 50 tests in `tests/unit/test_checkout_guard.py`, all passing.
+
+  The three checks that make that a measurement rather than a claim:
+
+  | check | result |
+  |---|---|
+  | guard disabled, suite re-run (restore verified byte-for-byte, by copy — not `git stash`) | **15 failed**; with the guard, 50 pass |
+  | mutation rounds, `PYTHONDONTWRITEBYTECODE=1`, each pattern asserted unique | every surviving mutant either equivalent or turned into a new test |
+  | the hook run from `PATH` against this repository | `git add -A` → exit 2 with the remedy; `ls -la` → exit 0, silent |
+
+  Two real gaps were found by the mutation rounds and closed, **both permissive**:
+  `git commit --all` had no test (the `-a` shorthand was caught by a second branch
+  that masked it), and a bare `git stash push` read its own subcommand as a
+  pathspec and was allowed.
+
+  A third was found by the tests themselves: the hook's top-level filter was
+  anchored to the start of a command, so `xargs git add` never entered the guard
+  at all.
+
+  **What this does NOT cover, stated because a completeness claim is a
+  measurement:** a working-tree modification cannot be attributed to a session by
+  this mechanism — file edits do not arrive as shell commands — so the stash
+  refusal is unconditional on the command's shape rather than attributed. And the
+  index-delta attribution has a race the width of one `git add`, which errs
+  permissive; it is commented where it is computed.
 
 ### B-34 — the session record's `sessionId` goes stale, so the fleet measures a dead log with `binding_confirmed: true`
 

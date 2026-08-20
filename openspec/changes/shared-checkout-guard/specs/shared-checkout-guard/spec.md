@@ -5,7 +5,7 @@
 
 ## IN SCOPE
 - Refusing a shell command that would take, publish or move work another session
-  in the same checkout is holding
+  in the same checkout is holding, or that cannot be shown not to
 - Measuring which paths the running session itself staged, so the refusal fires
   only on the real hazard
 - Saying, in the refusal, which paths were found and what to run instead
@@ -65,20 +65,40 @@ pathspec.
 - **THEN** it is refused, because it stages every tracked modification in the
   checkout, including modifications another session is holding
 
-### Requirement: Removing another session's work from the working tree is refused
-The guard SHALL refuse a pathspec-less `git stash` while the checkout holds work the
-running session did not produce.
+### Requirement: A stash that names no paths is refused while the checkout holds work
+The guard SHALL refuse a `git stash` that names no pathspec while the checkout holds
+uncommitted work, and SHALL allow the pathspec-limited form. It SHALL NOT attempt to
+decide whose work the uncommitted changes are.
 
-#### Scenario: A stash that would take another session's files is refused
-- **WHEN** a session runs `git stash` with no pathspec, and the checkout holds staged
-  or modified paths that session did not stage or modify
-- **THEN** the command is refused, and the refusal states that the other session's
-  files would be removed from the working tree
+The refusal is unconditional rather than attributed on purpose. A working-tree
+modification cannot be traced to a session by this mechanism — file edits do not arrive
+as shell commands — so an attributed stash guard would be claiming a distinction it
+cannot make, and would fail in the permissive direction on exactly the more destructive
+of the two hazards.
+
+#### Scenario: A bare stash over uncommitted work is refused
+- **WHEN** a session runs `git stash` with no pathspec and the checkout holds
+  uncommitted work
+- **THEN** the command is refused, whether or not that work can be attributed to
+  another session
 
 #### Scenario: The refusal explains why this one is worse than a commit
 - **WHEN** a stash is refused on this ground
 - **THEN** the message states that the other session's `git status` would read clean
   and its work would sit in a stash entry it has no reason to look in
+
+#### Scenario: Stashing named paths is allowed
+- **WHEN** a session runs `git stash push` with an explicit pathspec
+- **THEN** the command is allowed, because it takes only what it names
+
+#### Scenario: Reading the stash is not taking anything
+- **WHEN** a session runs a stash subcommand that removes nothing from the working
+  tree, such as `list` or `show`
+- **THEN** the command is allowed
+
+#### Scenario: A clean checkout has nothing to take
+- **WHEN** a session runs a bare `git stash` and the checkout holds no uncommitted work
+- **THEN** the command is allowed, because there is nothing for it to remove
 
 ### Requirement: Ownership is measured from the index, not parsed from the command
 The guard SHALL determine which staged paths belong to the running session by measuring

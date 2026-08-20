@@ -57,6 +57,10 @@
             "type": "command",
             "command": "set-hook-leakscan",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "set-hook-checkout-guard PreToolUse"
           }
         ]
       }
@@ -79,6 +83,10 @@
             "type": "command",
             "command": "set-hook-memory PostToolUse",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "set-hook-checkout-guard PostToolUse"
           }
         ]
       }
