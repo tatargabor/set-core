@@ -679,10 +679,28 @@ consumer's name, path, or content.
   - `12:37:48` onwards — all five terminals re-attach, 65536 replayed bytes each.
   So the minute in the report has two producers, and the tile-unmount chain above
   is what turns either of them into `connecting…` rather than into a message.
-- **fixed when:** the owner missing one poll no longer takes the terminal off the
-  tree. Proven by suspending `set-agent-owner` (SIGSTOP) for 60 s with a terminal
-  open: the tile keeps its attached socket, the header never returns to
-  `connecting…`, and the journal shows no detach/attach pair for that label.
+- **fixed** in `8b8f60f5` (client), and the fix is the distinction the API already
+  draws surviving the trip: `resolveTerminals` now takes `null` for *nobody could
+  be asked* and filters nothing on it, while `[]` still means *asked, holds
+  nothing*. Two narrow helpers carry the rest — `rememberTerminalLabels` (pid →
+  last CONFIRMED label, rebuilt on every answer so it cannot go stale) and
+  `offerWithRemembered` (upgrades `unknown` only, and only while the pane is
+  already open, so no unperformable offer is ever made).
+  - **verified by LOOKING, not only by counting:** the running screen with the
+    fleet answer rewritten to `owner_reachable: false` / every agent `unknown` /
+    no label — the terminal **stayed and stayed `attached`**, and the amber
+    header appeared. Before/after: `b30-{1-normal,2-owner-silent}.png`.
+  - 730/730 web unit tests, 6 new, three mutations each caught (null-as-filter →
+    2 failures; `offerWithRemembered` neutered → 2; memory rebuilt without an
+    answer → 1).
+- **⚠ what is NOT fixed by this, and stays open:** the first producer in the
+  measurement above — the six minutes in which the endpoint answered nothing at
+  all under memory pressure. The screen now says what it does not know instead of
+  taking the terminal away, which is the honest failure, not the absence of one.
+- **⚠ the wiring landed in a file another thread is rewriting.** `Fleet.tsx` held
+  457 deletions of parallel work when this was committed, so the helpers and the
+  tests are in `8b8f60f5` and the call sites are not. They are in the working
+  tree and will land with that thread's commit — see B-32.
 
 
 ### B-31 — stopping set-web takes 91 s, so any restart is a 91 s hole in the dashboard
@@ -779,6 +797,48 @@ consumer's name, path, or content.
   pathspec-less `git commit`, and sees it refuse with the `--` remedy named; plus
   the same guard refusing `git add -A`. And the refusal must NOT fire when every
   staged path was staged by the committing session.
+
+### B-33 — PM mode presents an agent it cannot show and cannot address, and then the full screen is empty
+
+- **state:** open
+- **reported:** 2026-08-20 by the user, with a screenshot — *"PM Mode bekapcsolva
+  es nem jon be afelulet"*.
+- **measured, in the browser** (`localhost:7400`, PM mode on, 1516×784 viewport):
+  the overlay renders — header, counts, footer buttons are all there — and the
+  content area is **two lines of text over ~700 px of black**: *"The framework
+  holds no terminal for this agent…"* and *"no input: this session has no seat on
+  the messaging bus"*. `web/src/components/FleetPm.tsx:295` is the branch: when
+  `agent.terminal_label` is null it renders a heading, a warning and `FleetInstruct`
+  — and `FleetInstruct` returns a single grey line when there is no seat
+  (`web/src/components/FleetInstruct.tsx:174`). Nothing else.
+- **measured, that there IS something to show:** for the presented pid the log
+  endpoint returns a full conversation —
+  `curl -s localhost:7400/api/fleet/agents/<pid>/log?limit=8` → 8 turns with text,
+  and the fleet payload carries `excerpt` and `excerpt_from` for the same agent.
+  So the emptiness is the surface's, not the agent's.
+- **measured, how ordinary this is:** `/api/fleet/agents` → **3 of 20** live agents
+  have `terminal_label: null` (`population: foreign` — the framework did not start
+  them), and **2 of the 4** currently queued by PM mode are among them. This is not
+  an edge case; it is half the queue.
+- **the same finding already exists one screen over, and was fixed there:** B-10,
+  *"nem hiszem hogy üres kellene legyen akár egy agent is, már biztosan van róla
+  valami log, info"* — the fix was `TileActivity` (`web/src/pages/Fleet.tsx:501`),
+  which renders the log where the tile would otherwise be blank. PM mode never got
+  it, and PM mode is the surface where the emptiness costs most: it is full screen,
+  so there is nothing else on it.
+- **⚠ a second defect, narrower, NOT fixed by the above:** the queue does not
+  consider whether an item can be answered at all. Measured on the same snapshot:
+  `/api/fleet/pm` presented pid 3202485 (no pty, no bus seat — nothing the reader
+  can do) while the queue also held 113100 (`set-core-bugfix`) and 183020
+  (`itline-web-animtoolok`), both with a terminal. A mode whose promise is
+  *"whichever is waiting on you"* spent the screen on the one item that cannot be
+  answered. Ordering is `lib/set_orch/fleet/attention.py`; changing it is a
+  contract change and is deliberately not folded into the display fix.
+- **fixed when:** with PM mode on and a terminal-less agent presented, the content
+  area shows that agent's conversation (turns from the log endpoint, or the reason
+  the log could not be read — never a blank), verified BY LOOKING at
+  `localhost:7400` in the browser, plus a unit test that renders `FleetPm` with a
+  terminal-less presented agent and asserts the log rows are there.
 
 
 ## Closed
