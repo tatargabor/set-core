@@ -712,6 +712,47 @@ consumer's name, path, or content.
   timeout — measured, not assumed, from the `Stopping…`/`Started` timestamps.
 
 
+### B-32 — two agents that BOTH staged only their own paths still lose a commit to each other, because the index is shared
+
+- **state:** open
+- **reported:** 2026-08-20 by this session, after it happened to this session
+  while archiving `fleet-panel-layout`.
+- **measured, on the real incident:** this session staged exactly its own 8 paths
+  (`git add openspec/changes/fleet-panel-layout openspec/changes/archive/… openspec/specs/fleet-dockable-views openspec/specs/fleet-panel-dividers`),
+  `set-leakscan --staged` confirmed 8 files, and the following `git commit` printed
+  `nothing to commit, working tree clean`. The 8 files are in **`066e6233`**, a
+  third thread's *"plan(fleet-pm-mode)"* commit — 16 files, 1165 insertions — whose
+  message says nothing about any of them. Verified with
+  `git log --oneline -3 -- openspec/specs/fleet-dockable-views/spec.md`.
+- **measured, on the mechanism, in a throwaway repo:** the existing rule does not
+  defend against this. `.claude/rules/cross-cutting-checklist.md` prescribes
+  `git add <path>` instead of `git add -A` — that covers only the sweep of
+  *unstaged* work. Two agents each staged one file of their own, then agent A ran
+  `git commit` with **no pathspec**: the commit carried both files. There is one
+  index per checkout, so a pathspec-less commit publishes whatever anybody staged.
+- **why this is the expensive direction:** the content survives, so nothing errors
+  and no test notices. What is destroyed is the *attribution and the message* — the
+  losing agent's commit message, with its evidence, never exists, and the other
+  side's `git status` reads CLEAN, which is indistinguishable from "my work is gone".
+- **the cure, measured in the same repo:** `git commit -- <paths>` committed only
+  the named path, and the other agent's staged entry **survived in the index,
+  untouched**, and was absent from the commit. One limitation measured: the form
+  fails with `pathspec … did not match any file(s) known to git` for a path git does
+  not yet track, so `git add <own paths>` is still required first — the pathspec
+  belongs on the commit *in addition to*, not instead of, the add.
+- **⚠ what a fix must NOT do:** it must not block every pathspec-less commit
+  unconditionally — a gate that fires daily on nothing gets disabled, and solo work
+  in a private checkout is not the hazard. And it must not try to repair an incident
+  after the fact by amending or rebasing the other thread's commit: that takes back
+  what another agent is holding right now, which this repository already ruled is
+  more expensive than a badly grouped commit.
+- **fixed when:** an agent cannot produce a commit carrying a path another session
+  staged. Demonstrated by a test that stages a foreign path, runs the guard over a
+  pathspec-less `git commit`, and sees it refuse with the `--` remedy named; plus
+  the same guard refusing `git add -A`. And the refusal must NOT fire when every
+  staged path was staged by the committing session.
+
+
 ## Closed
 
 ### B-29 — the terminal's last row is cut in half, and the last row is the status bar
