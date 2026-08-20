@@ -165,6 +165,11 @@ _write_generated_file_patterns() {
     local project_path="$1"
     local patterns_file="$project_path/set/plugins/.generated-file-patterns"
 
+    if [[ "$DRY_RUN" == "true" ]]; then
+        info "  Would write $patterns_file"
+        return 0
+    fi
+
     # set/plugins/ must exist (scaffold_set_directory creates it)
     [[ -d "$project_path/set/plugins" ]] || return 0
 
@@ -380,6 +385,11 @@ _save_project_type() {
     local init_template="${3:-}"
     local init_modules="${4:-}"
     local pt_file="$project_path/set/plugins/project-type.yaml"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        info "  Would set project type '$type_name' in $pt_file"
+        return 0
+    fi
 
     # Validate project type exists
     local pt_info
@@ -778,6 +788,11 @@ _save_template_modules() {
     local pt_file="$project_path/set/plugins/project-type.yaml"
     [[ -f "$pt_file" ]] || return 0
 
+    if [[ "$DRY_RUN" == "true" ]]; then
+        info "  Would record template '$template_name' in $pt_file"
+        return 0
+    fi
+
     # Use Python for safe YAML update (avoids grep -v destroying other arrays)
     local py
     py=$(_set_python)
@@ -1064,8 +1079,24 @@ cmd_init() {
     local api_body
     api_body=$(jq -nc --arg n "$name" --arg p "$git_root" --arg pt "${project_type:-}" \
         '{name: $n, path: $p, project_type: $pt}')
+    if [[ "$DRY_RUN" == "true" ]]; then
+        # A dry run must not POST. This call REGISTERS the project in the
+        # manager's own state, so the "preview" left a side effect behind that
+        # no file-level snapshot could show — the tree was byte-identical and
+        # something had still changed.
+        info "Would register with manager at $manager_url (dry run — not sent)"
+        return 0
+    fi
+
+    # --max-time is load-bearing. The `||` branch below says "manager not
+    # running", which is what a REFUSED connection looks like. A manager that
+    # accepts the connection and then never answers is a third state the code
+    # could not reach, and the deploy hung there indefinitely — measured against
+    # a systemd unit reporting active/running while every request, `GET /`
+    # included, timed out. Registration is a convenience; it may fail, but it
+    # must not be able to stop an install.
     local reg_resp
-    reg_resp=$(curl -sf -X POST "$manager_url/api/projects" \
+    reg_resp=$(curl -sf --connect-timeout 3 --max-time 10 -X POST "$manager_url/api/projects" \
         -H 'Content-Type: application/json' -d "$api_body" 2>/dev/null) && {
         local reg_status
         reg_status=$(echo "$reg_resp" | jq -r '.status // empty' 2>/dev/null)
@@ -1074,7 +1105,7 @@ cmd_init() {
         elif [[ "$reg_status" == "exists" ]]; then
             info "Already registered with manager"
         fi
-    } || info "Manager not running — project will be picked up on next manager start"
+    } || info "Manager did not accept the registration (not running, or not answering) — the project will be picked up on the next manager start"
 
     # Run health audit if set-audit is available
     if command -v set-audit &>/dev/null; then

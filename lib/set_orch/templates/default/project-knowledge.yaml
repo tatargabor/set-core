@@ -1,0 +1,54 @@
+# Project Knowledge — set-core orchestration context
+# version: 1
+#
+# This file gives the orchestrator project-specific knowledge:
+# - cross_cutting_files: files several features touch (merge hazards)
+# - features:            logical features → file scopes, for context injection
+# - verification_rules:  checks triggered by changed file paths
+# - merge_strategies:    file-type-aware merge protection
+#
+# Scaffold via: set-project init-knowledge   —   then edit by hand.
+#
+# STACK-NEUTRAL ON PURPOSE. This is the template for the `base` project type,
+# which makes no assumption about the language, framework or directory layout.
+# The examples below are commented out and deliberately generic; a project type
+# that knows the stack (see `set-project list-types`) ships a template whose
+# examples name real paths.
+
+version: 1
+
+# Files that multiple features touch. The orchestrator uses these for merge
+# hazard detection and for scope-overlap warnings during planning.
+cross_cutting_files:
+  # - path: <a file most features end up editing>
+  #   description: why it is contended — e.g. every feature registers an entry
+  # - path: <a shared configuration or manifest>
+  #   description: what breaks when two changes edit it at once
+
+# Feature registry — logical features mapped to the files they own, used to
+# inject the right context when an agent is dispatched.
+features:
+  # <feature-name>:
+  #   touches:
+  #     - <path or directory the feature owns>
+  #   description: <one line: what this feature is>
+  #   reference_impl: false
+
+# Verification rules — run after tests pass, triggered by changed paths.
+# `error` blocks the merge; `warning` is logged and does not.
+verification_rules:
+  # - name: <short-name>
+  #   trigger: "<glob matched against the diff>"
+  #   check: "<what must hold, in one sentence>"
+  #   severity: error
+
+# Merge strategies — how `set-merge` treats an LLM-resolved conflict per file.
+#   additive               entity counting + conservation check + optional validation
+#   llm_with_conservation  generic conservation check only (the default)
+merge_strategies:
+  # - name: <short-name>
+  #   patterns: ["<glob>"]
+  #   strategy: additive
+  #   entity_pattern: "<regex identifying one entity per match>"
+  #   validate_command: "<command that exits non-zero on a broken file>"
+  #   llm_hint: "<what must never be dropped when resolving>"

@@ -91,7 +91,13 @@ class ProjectType(ABC):
 
     @abstractmethod
     def get_templates(self) -> List[TemplateInfo]:
-        """Return available template variants."""
+        """Return available template variants.
+
+        Returns an empty list rather than None: this method is called through
+        the MRO by `get_template_dir`, so an implicit None from the abstract
+        body is not inert — it reaches an iteration.
+        """
+        return []
 
     def get_template_dir(self, template_id: str) -> Optional[Path]:
         """Return the directory containing template files for a variant.
@@ -105,7 +111,13 @@ class ProjectType(ABC):
         for cls in type(self).__mro__:
             if "get_templates" not in cls.__dict__:
                 continue
-            for tmpl in cls.__dict__["get_templates"](self):
+            # `or []` is load-bearing: the abstract `get_templates` below has a
+            # docstring and no return, so it yields None, and this walk visits
+            # EVERY class in the MRO that defines the name — including that one
+            # whenever the requested id matches nothing earlier. The result was
+            # a TypeError from deep inside a deploy, where the honest answer is
+            # "no such template".
+            for tmpl in (cls.__dict__["get_templates"](self) or []):
                 if tmpl.id == template_id:
                     return Path(inspect.getfile(cls)).parent / tmpl.template_dir
         return None
