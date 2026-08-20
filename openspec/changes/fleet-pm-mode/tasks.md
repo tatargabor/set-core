@@ -1,0 +1,147 @@
+## 1. The structural floor — ships on its own merits
+
+- [ ] 1.1 Declare the question-tool list in one place under `lib/set_orch/fleet/`, holding `AskUserQuestion` and `ExitPlanMode`, with a comment stating why a permission prompt is NOT on it (indistinguishable from a slow `Bash` in the log) [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 1.2 Add a `blocked` state to `AgentState` carrying which declared tool is outstanding and how long it has been [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 1.3 In `read_state`, classify an outstanding declared question tool as `blocked` instead of `working`; a tool not on the list stays `working` [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 1.4 Prove the fix with the stash test: the new unit tests must FAIL with 1.3 reverted, and the check must be recorded with its output [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 1.5 Implement `resumed_since(session_log, point)` returning resumed / not-resumed / unknown, measuring a new assistant utterance or a new outstanding call — never a user entry [REQ: resuming-after-a-blockage-is-measured-and-an-interrupt-is-not-resuming]
+- [ ] 1.6 Add a test built from the MEASURED interrupt shape (`[Request interrupted by user]` as a user message) asserting it does not count as resumption, named so a later "simplification" to a marker list fails instead of looking equivalent [REQ: resuming-after-a-blockage-is-measured-and-an-interrupt-is-not-resuming]
+- [ ] 1.7 Carry `blocked` through **every** site that reads the state value — measured 2026-08-20, five of them and none of them errors on an unknown value: `lib/set_orch/api/fleet.py:389-395` (three equality sums, so `agents` stops equalling their total), `web/src/lib/fleetAttention.ts:109-111` (an `else if` chain with no final bucket), `web/src/pages/Fleet.tsx:123/135/146/166` (four `if` branches, no fallthrough), `web/src/pages/Fleet.tsx:1091` (`TAB_DOT[a.state] ?? 'bg-amber-400'` — renders amber, which already means something else, so it looks deliberate) [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 1.8 Add a test that fails when a state value exists which no bucket counts — assert `working + unknown + waiting + quiet + blocked == agents` on the envelope, so the next new state cannot vanish the same way [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 1.9 Decide and record what `blocked` means at `lib/set_orch/fleet/instruct.py:689` (`if state == agent_state.WORKING`), which chooses the delivery outcome between *at turn end* and *sits unread*. A blocked agent is not working but WILL see the message when it answers its prompt, so today's fallthrough reports it as *sits unread* — a behaviour change this change would otherwise make by accident [REQ: an-outstanding-tool-call-is-what-working-means]
+
+## 2. Candidates and the judgment pass
+
+- [ ] 2.1 Implement the candidate filter: quiet, log changed since last verdict, not already structurally decided [REQ: the-candidate-filter-is-structural-and-it-runs-before-the-model]
+- [ ] 2.2 Record the per-agent watermark the "log changed" test uses, and make an unreadable log exclude the agent with a reason rather than include it silently [REQ: the-candidate-filter-is-structural-and-it-runs-before-the-model]
+- [ ] 2.3 Add a `pm` role to `lib/set_orch/model_config.py` in **three** places, not one — measured: `DIRECTIVE_DEFAULTS["models"]` (without it `resolve_model` raises, which is the loud and safe direction), `_ROLE_KEYS_FLAT` (a 13-entry tuple that feeds `_all_opus_preset`, so omitting it leaves PM on sonnet under `all-opus-*` **silently**), and the `cost-optimized` preset, which lists its roles explicitly. Cross-cutting file: apply `.claude/rules/cross-cutting-checklist.md` [REQ: the-judging-model-is-a-declared-role]
+- [ ] 2.4 Add a test asserting every name in `_ROLE_KEYS_FLAT` resolves under every preset, so a role added to one place and not the others fails instead of degrading quietly [REQ: the-judging-model-is-a-declared-role]
+- [ ] 2.5 Build the single per-cycle invocation carrying every candidate, using the existing `run_claude_logged` path; assert in a test that N candidates produce exactly one invocation [REQ: one-pass-per-cycle-covers-every-candidate]
+- [ ] 2.6 Make the pass carry no state between cycles — no session resume, no accumulated context [REQ: the-pass-is-stateless-and-what-the-queue-remembers-lives-in-code]
+- [ ] 2.7 Declare the verdict classes (blocked on a person / finished without a question / stopped for another reason) and parse the response against them; anything else becomes `unclassified` [REQ: the-classes-are-declared-and-an-unrecognised-one-is-reported]
+- [ ] 2.8 Treat a candidate with no verdict as `unclassified`, never as finished; add the test for the missing-key direction specifically [REQ: the-classes-are-declared-and-an-unrecognised-one-is-reported]
+- [ ] 2.9 Make a structurally measured blockage unoverridable by a verdict, recording the disagreement rather than resolving it [REQ: the-judgment-is-advisory-over-a-structural-floor-it-cannot-override]
+- [ ] 2.10 On a failed, timed-out or skipped pass, report the judgment as unmeasured and keep the previous verdicts standing [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm]
+- [ ] 2.11 Declare a maximum candidates-per-pass and a cycle period as configuration; a pass that would exceed the maximum reports what it did not cover [REQ: one-pass-per-cycle-covers-every-candidate]
+- [ ] 2.12 Audit every log statement on the pass's paths so no session content, question text or verdict prose reaches a log line the FRAMEWORK emits; add a test that runs a pass with distinctive content and asserts it appears in no emitted record. The runtime's own session journal is the one named exception and is not in scope for this audit [REQ: the-framework-persists-nothing-the-pass-reads]
+- [ ] 2.13 Retain verdicts between cycles as class + identity only [REQ: the-framework-persists-nothing-the-pass-reads]
+
+## 3. The queue
+
+- [ ] 3.1 Build the queue from the structural blockages plus the model's blocked-on-a-person verdicts; exclude finished-without-a-question and expose it as a separate idle count [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle]
+- [ ] 3.2 Never queue an agent with an outstanding non-question tool call [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle]
+- [ ] 3.3 Order within a project by blockage recency, newest first, and exhaust a project before entering the next [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [ ] 3.4 Record when each item's blockage began, so ordering does not fall back on when the framework noticed [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [ ] 3.5 Remove an item only on resumption, on the agent disappearing, or on explicit dismissal; report the dismissed count [REQ: nothing-leaves-the-queue-except-by-being-dealt-with]
+- [ ] 3.6 Make a vanished agent's removal distinguishable from an answered item in the state and in the counts [REQ: nothing-leaves-the-queue-except-by-being-dealt-with]
+- [ ] 3.7 Advance only on `resumed_since` from task 1.5 [REQ: only-the-agent-resuming-proves-the-reader-dealt-with-the-item]
+- [ ] 3.8 Demote a presented-but-undealt-with item below unseen items of the same project, and count how many times it has been presented [REQ: a-deferred-item-is-demoted-not-merely-returned]
+- [ ] 3.9 Return a preempted item to the queue ranked below where it was, still counted [REQ: nothing-leaves-the-queue-except-by-being-dealt-with]
+- [ ] 3.10 Keep the presentation history and allow moving back and forward, bounded forward by the queue's current position, with no side effect on dealt-with state [REQ: the-reader-can-step-back-through-what-was-already-presented]
+- [ ] 3.11 Hold the queue in memory only, carrying identity, project, class and timestamps — no excerpt, no question text, nothing on disk [REQ: the-queue-holds-identities-and-verdict-classes-never-session-text]
+- [ ] 3.12 Add a test asserting the queue's serialized state contains none of a candidate's distinctive session text [REQ: the-queue-holds-identities-and-verdict-classes-never-session-text]
+
+## 4. The switching rules
+
+- [ ] 4.1 Declare the typing window (default 20s) and the countdown (default 5s) as named configuration [REQ: typing-suspends-every-switch-unconditionally]
+- [ ] 4.2 Surface the keystroke signal from `FleetTerminal`. Measured: `term.onData` at `web/src/components/FleetTerminal.tsx:283` is a single choke point for every keystroke ✅, but the component's props are `{ label, onClose, full, onToggleFull, onFocusChange }` — nothing exposes it upward. The design said this needed no new plumbing; it needs a prop [REQ: typing-suspends-every-switch-unconditionally]
+- [ ] 4.3 Close the instruct-box hole: an answer typed into the bus input produces no `onData`, so the typing guard would not cover it — and for an agent with no framework-held terminal (2 of 18 measured) the instruct box is the ONLY answer path. Treat input into the presented item's instruct box as typing [REQ: typing-suspends-every-switch-unconditionally]
+- [ ] 4.4 Suppress every switch, countdown and prompt while the typing window is live [REQ: typing-suspends-every-switch-unconditionally]
+- [ ] 4.5 Offer a countdown only when the screen is silent AND a strictly fresher blockage exists [REQ: a-fresher-blockage-may-take-an-idle-screen-after-a-countdown-any-key-cancels]
+- [ ] 4.6 Cancel the countdown on ANY input into the presented terminal and restart the typing window [REQ: a-fresher-blockage-may-take-an-idle-screen-after-a-countdown-any-key-cancels]
+- [ ] 4.7 On explicit dismissal, suppress that same interruption until the presented item changes [REQ: a-fresher-blockage-may-take-an-idle-screen-after-a-countdown-any-key-cancels]
+
+## 5. The API
+
+- [ ] 5.1 Add the PM endpoints to `lib/set_orch/api/fleet.py`: queue head with counts, advance, defer, dismiss, history position [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle]
+- [ ] 5.2 Carry the unmeasured-judgment state through the envelope as its own field, distinct from an empty queue [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm]
+- [ ] 5.3 Carry the idle count and the dismissed count in the same envelope [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle]
+
+## 6. The screen
+
+- [ ] 6.1 Add the PM toggle to the fleet screen; assert in a test that turning it on issues no instruction and touches no agent lifecycle [REQ: pm-mode-is-a-toggle-and-it-changes-nothing-about-the-agents]
+- [ ] 6.2 Restore the reader's previous arrangement when the mode is turned off [REQ: pm-mode-is-a-toggle-and-it-changes-nothing-about-the-agents]
+- [ ] 6.3 Present the queued agent's terminal full screen [REQ: the-presented-agent-fills-the-screen-and-what-is-behind-it-is-counted-where-the-reader-stands]
+- [ ] 6.4 Render the always-visible frame carrying the queued count, the idle count and the unmeasured-judgment marker [REQ: the-presented-agent-fills-the-screen-and-what-is-behind-it-is-counted-where-the-reader-stands]
+- [ ] 6.5 Render an unmeasured judgment distinctly from an empty queue, never as "nothing is waiting" [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm]
+- [ ] 6.6 For a queued agent with no framework-held terminal, present its identity, project and available means of addressing it, stating that no terminal exists [REQ: the-mode-presents-only-agents-it-can-actually-present]
+- [ ] 6.7 Add the back and forward controls, with forward unavailable at the queue's head [REQ: the-reader-can-step-back-and-forward-through-what-was-presented]
+- [ ] 6.8 Render the pending-switch banner naming the destination project and agent plus the remaining time; never render it while the typing window is live [REQ: a-pending-switch-is-announced-before-it-happens-and-any-keystroke-stops-it]
+- [ ] 6.9 Keep every user-visible string in English, and translate any test that asserts on wording in the same commit [REQ: pm-mode-is-a-toggle-and-it-changes-nothing-about-the-agents]
+
+## 7. Verification
+
+- [ ] 7.1 Run the baseline set-diff against a `git worktree` at `HEAD` with all three import roots on `PYTHONPATH` and the session-end leak assertion; record the diff, not the counts [REQ: an-outstanding-tool-call-is-what-working-means]
+- [ ] 7.2 Mutation-test the queue's ordering, the advance condition and the typing-window guard, with `PYTHONDONTWRITEBYTECODE=1`, `__pycache__` cleared per run, a uniqueness assertion on each mutation pattern, and the RESTORE re-checked by grep [REQ: only-the-agent-resuming-proves-the-reader-dealt-with-the-item]
+- [ ] 7.3 Measure the classifier against the live fleet: run one real pass, record how many agents each class received, and compare the blocked set against a hand reading of the same tails [REQ: the-classes-are-declared-and-an-unrecognised-one-is-reported]
+- [ ] 7.4 **LOOK AT IT.** Open the running dashboard in the browser with PM mode on and report what is on the screen — the frame, the counts, the full-screen terminal, the countdown banner. If the browser cannot be reached, this task stays OPEN and the commit says so [REQ: the-presented-agent-fills-the-screen-and-what-is-behind-it-is-counted-where-the-reader-stands]
+- [ ] 7.5 Verify the freeze by hand in the browser: type into the presented terminal while another agent blocks, and confirm nothing switches and no countdown appears [REQ: typing-suspends-every-switch-unconditionally]
+- [ ] 7.6 Verify by hand that pressing Esc in the presented terminal does NOT advance the queue [REQ: only-the-agent-resuming-proves-the-reader-dealt-with-the-item]
+
+## Acceptance Criteria (from spec scenarios)
+
+### agent-fleet-state
+
+- [ ] AC-1: WHEN the log tail holds a tool invocation with no matching result THEN the state is working, naming that tool and how long it has been outstanding [REQ: an-outstanding-tool-call-is-what-working-means, scenario: an-agent-inside-a-tool]
+- [ ] AC-2: WHEN the last log entry is an assistant message and no tool call is outstanding THEN the state is waiting [REQ: an-outstanding-tool-call-is-what-working-means, scenario: an-agent-that-finished-its-turn]
+- [ ] AC-3: WHEN the log tail holds an outstanding invocation of a tool declared to ask a person THEN the state is blocked on a person, naming that tool and how long it has been outstanding, and it is not reported as working [REQ: an-outstanding-tool-call-is-what-working-means, scenario: an-outstanding-question-tool-is-a-blockage-not-work]
+- [ ] AC-4: WHEN such an invocation has a matching result THEN it does not make the agent blocked on a person [REQ: an-outstanding-tool-call-is-what-working-means, scenario: a-question-tool-that-has-been-answered-is-not-a-blockage]
+- [ ] AC-5: WHEN an outstanding tool is not on the declared list THEN the state is working, whatever the tool is named [REQ: an-outstanding-tool-call-is-what-working-means, scenario: an-undeclared-tool-is-work]
+- [ ] AC-6: WHEN the only entry after the given point is an interrupt marker written as a user message THEN the agent is not reported as resumed [REQ: resuming-after-a-blockage-is-measured-and-an-interrupt-is-not-resuming, scenario: an-interrupt-is-not-a-resumption]
+- [ ] AC-7: WHEN an assistant utterance or a new outstanding tool call is recorded after the given point THEN the agent is reported as resumed [REQ: resuming-after-a-blockage-is-measured-and-an-interrupt-is-not-resuming, scenario: a-new-turn-is-a-resumption]
+- [ ] AC-8: WHEN the session log cannot be read THEN resumption is reported as unknown, never as false [REQ: resuming-after-a-blockage-is-measured-and-an-interrupt-is-not-resuming, scenario: an-unreadable-log-does-not-report-resumption]
+
+### agent-fleet-pm-judgment
+
+- [ ] AC-9: WHEN a cycle has more than one candidate THEN exactly one model invocation is made for that cycle [REQ: one-pass-per-cycle-covers-every-candidate, scenario: many-candidates-one-invocation]
+- [ ] AC-10: WHEN a cycle has no candidates THEN no model invocation is made [REQ: one-pass-per-cycle-covers-every-candidate, scenario: no-candidates-no-invocation]
+- [ ] AC-11: WHEN two consecutive cycles run THEN the second invocation carries no state from the first [REQ: the-pass-is-stateless-and-what-the-queue-remembers-lives-in-code, scenario: a-pass-does-not-depend-on-the-previous-one]
+- [ ] AC-12: WHEN an agent has an outstanding tool call that is not a question to a person THEN it is not included in the invocation [REQ: the-candidate-filter-is-structural-and-it-runs-before-the-model, scenario: a-working-agent-is-not-a-candidate]
+- [ ] AC-13: WHEN an agent's session log has not changed since its last verdict THEN it is not included in the invocation, and its previous verdict stands [REQ: the-candidate-filter-is-structural-and-it-runs-before-the-model, scenario: an-unchanged-log-is-not-re-judged]
+- [ ] AC-14: WHEN an agent is measured as blocked on a person by its outstanding tool call THEN it is queued without being included in the invocation [REQ: the-candidate-filter-is-structural-and-it-runs-before-the-model, scenario: a-structurally-certain-blockage-skips-the-model]
+- [ ] AC-15: WHEN the model classifies a structurally blocked agent as not needing a person THEN the agent remains queued as blocked, and the disagreement is recorded [REQ: the-judgment-is-advisory-over-a-structural-floor-it-cannot-override, scenario: a-model-verdict-cannot-unqueue-a-measured-blockage]
+- [ ] AC-16: WHEN a verdict names a class this build does not know THEN the agent is reported as unclassified and is not silently treated as finished [REQ: the-classes-are-declared-and-an-unrecognised-one-is-reported, scenario: an-unrecognised-class-is-surfaced]
+- [ ] AC-17: WHEN a candidate is included in the invocation and no verdict comes back for it THEN that agent is reported as unclassified, never as finished [REQ: the-classes-are-declared-and-an-unrecognised-one-is-reported, scenario: a-missing-verdict-is-not-a-negative-verdict]
+- [ ] AC-18: WHEN the model invocation fails THEN the mode reports the judgment as unmeasured, distinctly from an empty queue [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm, scenario: a-failed-pass-is-visible]
+- [ ] AC-19: WHEN a pass fails and an earlier pass had queued items THEN those items remain queued [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm, scenario: previous-verdicts-survive-a-failed-pass]
+- [ ] AC-20: WHEN the role's model is changed in configuration THEN the next pass uses the configured model with no code change [REQ: the-judging-model-is-a-declared-role, scenario: the-role-is-configurable]
+- [ ] AC-21: WHEN a pass runs, succeeds or fails THEN no log line the framework emits contains session content from any candidate [REQ: the-framework-persists-nothing-the-pass-reads, scenario: the-invocation-body-is-never-in-a-framework-log]
+- [ ] AC-22: WHEN a verdict is retained between cycles THEN what is retained is the class and the identity, not the reasoning text [REQ: the-framework-persists-nothing-the-pass-reads, scenario: verdicts-are-stored-as-classes-not-as-text]
+- [ ] AC-22b: WHEN the pass's input or a verdict's reasoning would be written anywhere other than the runtime's session journal THEN it is not written [REQ: the-framework-persists-nothing-the-pass-reads, scenario: the-exception-does-not-extend-beyond-the-runtimes-own-journal]
+
+### agent-fleet-attention-queue
+
+- [ ] AC-23: WHEN an agent's last turn ended with a report and no request for a person THEN it is not an item in the queue, and it is included in a separate idle count [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle, scenario: a-completion-report-is-not-queued]
+- [ ] AC-24: WHEN an agent's last turn ends with a question, a decision to take, or missing information THEN it is an item in the queue [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle, scenario: a-question-is-queued]
+- [ ] AC-25: WHEN an agent has an outstanding tool call that is not itself a question to a person THEN it is not an item in the queue, whatever any other source says about it [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle, scenario: a-working-agent-is-never-queued]
+- [ ] AC-26: WHEN one agent became blocked two minutes ago and another forty minutes ago THEN the two-minute-old blockage is presented first [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival, scenario: a-fresh-blockage-outranks-an-old-one]
+- [ ] AC-27: WHEN more than one project holds queued items THEN every item of the presented item's project is offered before an item of another project [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival, scenario: a-project-is-exhausted-before-the-next-one-is-entered]
+- [ ] AC-28: WHEN the item on screen is preempted by a fresher blockage THEN it returns to the queue, ranked below where it was, and remains counted [REQ: nothing-leaves-the-queue-except-by-being-dealt-with, scenario: a-preempted-item-returns]
+- [ ] AC-29: WHEN the reader dismisses an item without answering it THEN it leaves the queue and the count of dismissed items is reported [REQ: nothing-leaves-the-queue-except-by-being-dealt-with, scenario: a-dismissed-item-is-not-silently-forgotten]
+- [ ] AC-30: WHEN the agent an item names is no longer running THEN the item leaves the queue, and its removal is not reported as an answer [REQ: nothing-leaves-the-queue-except-by-being-dealt-with, scenario: a-vanished-agent-is-removed]
+- [ ] AC-31: WHEN the reader interrupts the presented agent and types nothing further THEN the item stays on screen and the queue does not advance [REQ: only-the-agent-resuming-proves-the-reader-dealt-with-the-item, scenario: an-interrupt-does-not-advance-the-queue]
+- [ ] AC-32: WHEN the presented agent produces a new utterance or opens a new tool call after the blockage THEN the item is dealt with and the next item is presented [REQ: only-the-agent-resuming-proves-the-reader-dealt-with-the-item, scenario: a-real-answer-advances-the-queue]
+- [ ] AC-33: WHEN a log entry is written that does not cause the agent to resume THEN the item stays on screen [REQ: only-the-agent-resuming-proves-the-reader-dealt-with-the-item, scenario: a-slash-command-that-produces-no-turn-does-not-advance-the-queue]
+- [ ] AC-34: WHEN an agent becomes blocked while the reader is typing into the presented terminal THEN nothing changes on screen and no countdown appears [REQ: typing-suspends-every-switch-unconditionally, scenario: a-fresher-blockage-cannot-interrupt-typing]
+- [ ] AC-35: WHEN the reader stops typing and the declared window elapses with no further input THEN the presented item becomes eligible for preemption [REQ: typing-suspends-every-switch-unconditionally, scenario: the-window-is-measured-from-the-last-keystroke]
+- [ ] AC-36: WHEN the reader has not typed for longer than the window and a fresher blockage exists THEN a countdown is shown naming what would be switched to, and the switch happens when it expires [REQ: a-fresher-blockage-may-take-an-idle-screen-after-a-countdown-any-key-cancels, scenario: a-silent-screen-is-preempted]
+- [ ] AC-37: WHEN the reader types anything into the presented terminal while the countdown is running THEN the countdown is cancelled and the typing window restarts [REQ: a-fresher-blockage-may-take-an-idle-screen-after-a-countdown-any-key-cancels, scenario: typing-during-the-countdown-cancels-it]
+- [ ] AC-38: WHEN the reader dismisses the countdown explicitly THEN that item is not offered again until the presented item changes [REQ: a-fresher-blockage-may-take-an-idle-screen-after-a-countdown-any-key-cancels, scenario: dismissing-the-countdown-does-not-re-offer-the-same-interruption]
+- [ ] AC-39: WHEN an item has been presented and not dealt with, and an unseen item of the same project exists THEN the unseen item is presented first [REQ: a-deferred-item-is-demoted-not-merely-returned, scenario: a-twice-presented-item-ranks-below-an-unseen-one]
+- [ ] AC-40: WHEN the reader steps back THEN the previously presented item is shown, and the queue does not advance [REQ: the-reader-can-step-back-through-what-was-already-presented, scenario: stepping-back-re-presents-an-earlier-item]
+- [ ] AC-41: WHEN the reader steps forward from an earlier item THEN they reach at most the item the queue currently presents [REQ: the-reader-can-step-back-through-what-was-already-presented, scenario: forward-is-bounded-by-the-queues-own-position]
+- [ ] AC-42: WHEN the service restarts THEN the queue is empty until the next cycle rebuilds it from live sources [REQ: the-queue-holds-identities-and-verdict-classes-never-session-text, scenario: restarting-loses-the-queue-and-not-the-work]
+- [ ] AC-43: WHEN the queue's state is inspected THEN it contains no excerpt, question text or other verbatim session content [REQ: the-queue-holds-identities-and-verdict-classes-never-session-text, scenario: no-queue-record-carries-session-content]
+
+### agent-fleet-surface
+
+- [ ] AC-44: WHEN the reader turns PM mode on THEN no agent receives an instruction and no agent's lifecycle changes [REQ: pm-mode-is-a-toggle-and-it-changes-nothing-about-the-agents, scenario: turning-the-mode-on-does-not-act-on-agents]
+- [ ] AC-45: WHEN the reader turns PM mode off THEN the arrangement they had before is shown again [REQ: pm-mode-is-a-toggle-and-it-changes-nothing-about-the-agents, scenario: turning-it-off-restores-the-arrangement]
+- [ ] AC-46: WHEN items are queued behind the presented one THEN their number is shown in the always-visible frame [REQ: the-presented-agent-fills-the-screen-and-what-is-behind-it-is-counted-where-the-reader-stands, scenario: the-pile-behind-the-screen-is-visible]
+- [ ] AC-47: WHEN the judgment pass for the cycle could not run THEN the frame says the judgment is unmeasured, and does not render as "nothing is waiting" [REQ: the-presented-agent-fills-the-screen-and-what-is-behind-it-is-counted-where-the-reader-stands, scenario: an-unmeasured-judgment-is-not-shown-as-an-empty-queue]
+- [ ] AC-48: WHEN agents have finished their turn without asking anything THEN their number is shown as a separate count the reader may open [REQ: the-presented-agent-fills-the-screen-and-what-is-behind-it-is-counted-where-the-reader-stands, scenario: idle-agents-are-counted-not-queued]
+- [ ] AC-49: WHEN a queued agent has no terminal the framework holds THEN it is presented with its identity and the available means of addressing it, and the absence of a terminal is stated [REQ: the-mode-presents-only-agents-it-can-actually-present, scenario: an-agent-with-no-framework-terminal]
+- [ ] AC-50: WHEN the reader activates back THEN the previously presented item is shown and nothing is marked dealt with [REQ: the-reader-can-step-back-and-forward-through-what-was-presented, scenario: back-reaches-the-previous-item]
+- [ ] AC-51: WHEN the reader is looking at the item the queue currently presents THEN the forward control is unavailable [REQ: the-reader-can-step-back-and-forward-through-what-was-presented, scenario: forward-is-unavailable-at-the-queues-head]
+- [ ] AC-52: WHEN a switch is offered THEN the frame names the project and agent it would switch to, and the remaining time [REQ: a-pending-switch-is-announced-before-it-happens-and-any-keystroke-stops-it, scenario: the-countdown-names-its-destination]
+- [ ] AC-53: WHEN the reader has typed into the presented terminal within the declared window THEN no countdown is shown [REQ: a-pending-switch-is-announced-before-it-happens-and-any-keystroke-stops-it, scenario: no-countdown-appears-while-typing]
