@@ -32,6 +32,15 @@ export interface DockedView {
   kind: string
   id: string
   edge: DockEdge
+  /**
+   * Tidied away to a strip, but still there.
+   *
+   * Stored rather than held in the browser, because it is part of the
+   * arrangement: a reader who collapses a band means it to stay collapsed. It
+   * is NOT the same as undocked — a collapsed band still holds its view, still
+   * keeps the size it will reopen at, and still reports a failure inside it.
+   */
+  collapsed?: boolean
 }
 
 /** Whether a stored entry is usable. An unknown edge is not a smaller mistake. */
@@ -138,6 +147,24 @@ export function bandsOn(bands: readonly DockedBand[], edge: DockEdge): DockedBan
 }
 
 /**
+ * Collapse or expand one docked view, leaving everything else about it alone.
+ *
+ * A separate function from `withDock` because collapsing is not a kind of
+ * docking: they answer different questions ("where is it" versus "is it open"),
+ * and one function taking both would let a caller change an edge by accident
+ * while only meaning to tidy.
+ */
+export function withCollapsed(
+  docks: readonly DockedView[],
+  view: Pick<DockedView, 'kind' | 'id'>,
+  collapsed: boolean,
+): DockedView[] {
+  return docks.map(d => (
+    d.kind === view.kind && d.id === view.id ? { ...d, collapsed } : d
+  ))
+}
+
+/**
  * Dock a view to an edge, or undock it when `edge` is null.
  *
  * Returns a new list; the caller persists it. Moving an already-docked view
@@ -153,6 +180,9 @@ export function withDock(
   const at = docks.findIndex(d => d.kind === view.kind && d.id === view.id)
   if (edge === null) return docks.filter((_, i) => i !== at)
   if (at === -1) return [...docks, { kind: view.kind, id: view.id, edge }]
+  // `{ ...d, edge }` — the spread keeps `collapsed`. Moving a band to another
+  // edge must not quietly reopen it; that would be the screen undoing a tidy
+  // the reader did on purpose.
   return docks.map((d, i) => (i === at ? { ...d, edge } : d))
 }
 

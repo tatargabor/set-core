@@ -75,6 +75,35 @@ export function tileClickOpens({ target, card, selection }: TileClick): boolean 
 }
 
 /**
+ * The tile's title bar — the only part of an OPEN tile that closes it again.
+ *
+ * Asked for 2026-08-20: *"ha megint rákattintok, azt kéne, hogy visszamenjen,
+ * mint egy minimize"*. The opposite rule used to be deliberate, and the reason
+ * it gave is still true — *a click that closes what you are reading is a trap* —
+ * so this does not simply drop it. It narrows where the trap can spring.
+ *
+ * The tile's BODY carries what the reader enlarged it to see: the log, the
+ * terminal, the excerpt. A click there is reading, and collapsing under it takes
+ * the thing away mid-sentence. The title bar carries none of that — it is the
+ * name and the controls, which is exactly the surface a window manager gives a
+ * double-click. So opening is click-anywhere, and closing is click-on-the-head:
+ * asymmetric on purpose, because the two acts have different costs when wrong.
+ */
+const TILE_HEAD = '[data-fleet-tile-head]'
+
+/**
+ * Whether this click is a request to collapse an already-open tile.
+ *
+ * Every guard `tileClickOpens` applies holds here too — a control, an own
+ * surface and a text selection all still win — with the head requirement on top.
+ */
+export function tileClickCollapses({ target, card, selection }: TileClick): boolean {
+  if (!tileClickOpens({ target, card, selection })) return false
+  const head = target!.closest(TILE_HEAD)
+  return !!head && card.contains(head)
+}
+
+/**
  * What the browser has selected, as a string.
  *
  * Split out so the decision above stays pure and testable: jsdom's selection

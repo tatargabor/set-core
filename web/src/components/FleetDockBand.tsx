@@ -67,8 +67,14 @@ export interface FleetDockBandProps {
   showTitle?: boolean
 }
 
-/** How thick a collapsed band is — enough for the marker and the reopen control. */
-export const COLLAPSED_SIZE = 28
+/**
+ * How thick a collapsed band is — enough for the marker, the vertical name and
+ * the reopen control.
+ *
+ * Widened from 28 after looking at it: at 28 a collapsed side band was a bare
+ * arrow at the screen edge with nothing saying what had been tidied away.
+ */
+export const COLLAPSED_SIZE = 34
 
 export default function FleetDockBand({
   band, children, collapsed = false, onToggleCollapsed, onUndock,
@@ -118,13 +124,38 @@ export default function FleetDockBand({
       className={`shrink-0 min-w-0 min-h-0 flex ${vertical ? 'flex-col' : 'flex-col'} bg-surface-panel overflow-hidden`}
       style={vertical ? { width: `${size}px` } : { height: `${size}px` }}
     >
-      <div className="shrink-0 flex items-center gap-1.5 px-1.5 py-0.5 border-b border-surface-line min-w-0">
+      <div className={`shrink-0 flex gap-1.5 border-surface-line min-w-0 ${
+        collapsed && vertical
+          ? 'flex-col items-center py-1.5 px-0.5 flex-1 min-h-0'
+          : 'items-center px-1.5 py-0.5 border-b'
+      }`}>
         {/* The marker comes FIRST, before the title, and is rendered whether or
             not the band is collapsed. A marker that only appears when expanded
             would be visible exactly when it is not needed. */}
         {marker}
-        {showTitle && <span className="text-xs text-fg-strong truncate min-w-0">{title}</span>}
-        <span className="ml-auto flex items-center gap-0.5 shrink-0">
+        {/* Collapsed, the name is the ONLY thing identifying this band, so it is
+            shown whatever `showTitle` says — that flag is about not repeating a
+            name the open content already prints. On a side edge there is no
+            horizontal room, so it is set vertically, which is what a collapsed
+            side panel does everywhere. Without this a tidied band is a bare
+            arrow at the screen edge: it does not hide a FAILURE (the marker
+            still renders), but it hides what is there, and a reader cannot
+            choose to reopen something they cannot name. */}
+        {collapsed
+          ? (
+            <span
+              className="text-xs text-fg-strong truncate min-w-0"
+              style={vertical
+                ? { writingMode: 'vertical-rl', transform: 'rotate(180deg)', maxHeight: '14rem' }
+                : undefined}
+            >
+              {title}
+            </span>
+          )
+          : showTitle && <span className="text-xs text-fg-strong truncate min-w-0">{title}</span>}
+        <span className={`flex gap-0.5 shrink-0 ${
+          collapsed && vertical ? 'flex-col mt-auto' : 'ml-auto items-center'
+        }`}>
           {onToggleCollapsed && (
             <IconButton
               icon={Collapse}

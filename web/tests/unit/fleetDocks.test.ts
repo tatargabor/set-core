@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_DOCK_HEIGHT, DEFAULT_DOCK_WIDTH, bandsOn, dockSplitKey, dockedBands, isDockedView,
-  remainingArea, withDock, type DockedView,
+  remainingArea, withCollapsed, withDock, type DockedView,
 } from '../../src/lib/fleetDocks'
 import { SPLIT_PROJECTS } from '../../src/lib/fleetSplits'
 
@@ -156,5 +156,43 @@ describe('two views on one edge', () => {
     expect(remainingArea({ width: 1600, height: 900 }, dockedBands([a, b], splits), splits,
                          { projectColumn: false }).width)
       .toBe(1100)
+  })
+})
+
+describe('collapsing a band', () => {
+  it('is a separate act from docking — it changes nothing about where the band is', () => {
+    // Two different questions ("where is it" versus "is it open"), so two
+    // functions. One taking both would let a caller move a band by accident
+    // while only meaning to tidy it.
+    const out = withCollapsed([right, bottom], right, true)
+    expect(out[0]).toEqual({ ...right, collapsed: true })
+    expect(out[1]).toEqual(bottom)
+  })
+
+  it('opens again', () => {
+    const closed = withCollapsed([right], right, true)
+    expect(withCollapsed(closed, right, false)[0].collapsed).toBe(false)
+  })
+
+  it('leaves a band alone when the view is not docked at all', () => {
+    expect(withCollapsed([bottom], right, true)).toEqual([bottom])
+  })
+
+  it('MOVING a collapsed band to another edge does not reopen it', () => {
+    // The screen undoing a tidy the reader did on purpose. Easy to introduce
+    // by writing `{ kind, id, edge }` instead of spreading, and invisible
+    // until somebody moves a collapsed band.
+    const closed = withCollapsed([right], right, true)
+    const moved = withDock(closed, right, 'bottom')
+    expect(moved[0]).toEqual({ kind: 'changes', id: 'v1', edge: 'bottom', collapsed: true })
+  })
+
+  it('a collapsed band keeps the size it will reopen at', () => {
+    // Collapsed is not "size zero": the stored position must survive, or
+    // reopening would land on a default and throw away what the reader set.
+    const closed = withCollapsed([right], right, true)
+    const splits = { [dockSplitKey(right)]: 420 }
+    expect(dockedBands(closed, splits)[0].size).toBe(420)
+    expect(dockedBands(closed, splits)[0].collapsed).toBe(true)
   })
 })

@@ -345,3 +345,19 @@ def test_an_entry_missing_its_identity_is_dropped(tmp_path):
         {"kind": "changes", "id": "ok", "edge": "right"},
     ], path=p)
     assert [d["id"] for d in load(p)["docks"]] == ["ok"]
+
+
+def test_a_collapsed_band_stays_collapsed(tmp_path):
+    """Collapsed is part of the arrangement, not a browser-local mood: a reader
+    who tidies a band away means it to stay tidied."""
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "agent", "id": "a", "edge": "right", "collapsed": True}], path=p)
+    assert load(p)["docks"] == [{"kind": "agent", "id": "a", "edge": "right", "collapsed": True}]
+
+
+def test_an_uncollapsed_band_carries_no_flag_at_all(tmp_path):
+    """Written only when true. An absent flag is the ordinary case, and a key on
+    every entry saying `false` is noise that later reads as a decision."""
+    p = _path(tmp_path)
+    layout_mod.save_docks([{"kind": "agent", "id": "a", "edge": "right", "collapsed": False}], path=p)
+    assert load(p)["docks"] == [{"kind": "agent", "id": "a", "edge": "right"}]

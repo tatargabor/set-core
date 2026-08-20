@@ -48,7 +48,8 @@ import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
 import {
-  bandsOn, dockSplitKey, dockedBands, loadDocks, remainingArea, saveDocks, withDock,
+  bandsOn, dockSplitKey, dockedBands, loadDocks, remainingArea, saveDocks, withCollapsed,
+  withDock,
   type DockEdge, type DockedView,
 } from '../lib/fleetDocks'
 import { PANEL_AGENT } from '../lib/fleetPanels'
@@ -65,7 +66,7 @@ import FleetInstall from '../components/FleetInstall'
 import TileControls from '../components/TileControls'
 import { plainExcerpt } from '../lib/excerptText'
 import { descendantStanding, parentClaim } from '../lib/fleetLineage'
-import { currentSelection, tileClickOpens } from '../lib/fleetTileClick'
+import { currentSelection, tileClickCollapses, tileClickOpens } from '../lib/fleetTileClick'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 
 interface LogResponse {
@@ -1256,7 +1257,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -1283,6 +1284,14 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
    * now separate and the log opens where the tile already is.
    */
   onEnlarge?: () => void
+  /**
+   * Put this tile back where it came from — the title-bar half of `onOpen`.
+   *
+   * Separate from `onEnlarge` because the two answer different questions: the
+   * control in the corner toggles, this one only ever CLOSES, and it is refused
+   * everywhere except the title bar (see `tileClickCollapses`).
+   */
+  onCollapse?: () => void
   /**
    * The tile's own body is a way in — asked for 2026-08-19.
    *
@@ -1352,13 +1361,21 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
       data-fleet-typing={typing ? agent.pid : undefined}
       title={OWNERSHIP_NOTE[ownership]}
       data-fleet-opens={onOpen ? agent.pid : undefined}
-      onClick={onOpen
+      data-fleet-collapses={onCollapse ? agent.pid : undefined}
+      onClick={onOpen || onCollapse
         ? e => {
-            if (tileClickOpens({
+            const where = {
               target: e.target as Element,
               card: e.currentTarget,
               selection: currentSelection(),
-            })) onOpen()
+            }
+            // Asked in one act, answered in one place. `onOpen` is absent on a
+            // tile that is already open and `onCollapse` on one that is not, so
+            // the two never both apply — but the order is stated rather than
+            // relied upon, because a future caller passing both would otherwise
+            // get whichever branch happened to be written first.
+            if (onCollapse && tileClickCollapses(where)) { onCollapse(); return }
+            if (onOpen && tileClickOpens(where)) onOpen()
           }
         : undefined}
       /* A COLUMN, always — it is what lets the excerpt, the log and the terminal
@@ -1374,7 +1391,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           wrapping row, a long name pushed the icons onto a second line — a
           title bar that moves is not a title bar. The left half wraps; the
           right half never does. */}
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-2" data-fleet-tile-head={agent.pid}>
       <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
         <span className="text-sm text-fg-strong">
           {/* The name the OWNER gave it wins over the one derived from the
@@ -1707,6 +1724,20 @@ export default function Fleet() {
    */
   const dockPanel = useCallback((kind: string, id: string, edge: DockEdge | null) => {
     const next = withDock(docks, { kind, id }, edge)
+    setDocks(next)
+    void saveDocks(next)
+  }, [docks])
+
+  /**
+   * Tidy a band away to a strip, or open it again — task 6.1's other half.
+   *
+   * Without this the collapse behaviour existed in the component and was
+   * unreachable from the screen: the failure marker was written for a state
+   * nobody could enter. A mechanism that cannot be reached is not a feature,
+   * and it is worse than an absent one because it reads as done.
+   */
+  const collapseBand = useCallback((kind: string, id: string, collapsed: boolean) => {
+    const next = withCollapsed(docks, { kind, id }, collapsed)
     setDocks(next)
     void saveDocks(next)
   }, [docks])
@@ -2219,6 +2250,8 @@ export default function Fleet() {
               band={band}
               title={dockTitle(band.kind, band.id)}
               showTitle={band.kind !== PANEL_AGENT}
+              collapsed={band.collapsed === true}
+              onToggleCollapsed={() => collapseBand(band.kind, band.id, band.collapsed !== true)}
               max={maxBandSize(band.edge)}
               failing={dockFailing(band)}
               onResize={px => resizeBand(dockSplitKey(band), px, false)}
@@ -2235,6 +2268,8 @@ export default function Fleet() {
                 band={band}
                 title={dockTitle(band.kind, band.id)}
                 showTitle={band.kind !== PANEL_AGENT}
+                collapsed={band.collapsed === true}
+                onToggleCollapsed={() => collapseBand(band.kind, band.id, band.collapsed !== true)}
                 max={maxBandSize(band.edge)}
                 failing={dockFailing(band)}
                 onResize={px => resizeBand(dockSplitKey(band), px, false)}
@@ -2434,6 +2469,10 @@ export default function Fleet() {
                     : undefined}
                   dockedEdge={dockedEdgeOf(focused.terminal_label)}
                   onFocus={() => setFocus(active.name, null)}
+                  /* The same act on the same surface as in the grid: a click on
+                     the title bar leaves full screen. Without it the two layouts
+                     would answer one gesture differently. */
+                  onCollapse={() => setFocus(active.name, null)}
                   canJumpSeat={canJumpSeat}
                   onJumpSeat={onJumpSeat}
                   canJumpPid={canJumpPid}
@@ -2488,6 +2527,10 @@ export default function Fleet() {
                     /* The tile's body opens the agent, and only while it is not
                        already the enlarged one — see AgentCard's `onOpen`. */
                     onOpen={extra.enlarged ? undefined : () => setEnlarged(active.name, a.pid)}
+                    /* …and the title bar puts it back — asked for 2026-08-20,
+                       *"mint egy minimize"*. Only the head, never the body:
+                       the body is what was enlarged in order to be read. */
+                    onCollapse={extra.enlarged ? () => setEnlarged(active.name, null) : undefined}
                     ownerReachable={data.owner_reachable}
                     terminalOpen={openTerminals.includes(a.terminal_label ?? '')}
                     onTerminal={label => toggleTerminal(active.name, label ?? a.terminal_label ?? null, label !== null)}
@@ -2533,6 +2576,8 @@ export default function Fleet() {
                 band={band}
                 title={dockTitle(band.kind, band.id)}
                 showTitle={band.kind !== PANEL_AGENT}
+                collapsed={band.collapsed === true}
+                onToggleCollapsed={() => collapseBand(band.kind, band.id, band.collapsed !== true)}
                 max={maxBandSize(band.edge)}
                 failing={dockFailing(band)}
                 onResize={px => resizeBand(dockSplitKey(band), px, false)}
@@ -2549,6 +2594,8 @@ export default function Fleet() {
               band={band}
               title={dockTitle(band.kind, band.id)}
               showTitle={band.kind !== PANEL_AGENT}
+              collapsed={band.collapsed === true}
+              onToggleCollapsed={() => collapseBand(band.kind, band.id, band.collapsed !== true)}
               max={maxBandSize(band.edge)}
               failing={dockFailing(band)}
               onResize={px => resizeBand(dockSplitKey(band), px, false)}

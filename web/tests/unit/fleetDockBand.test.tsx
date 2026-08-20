@@ -179,3 +179,22 @@ describe('the controls', () => {
     expect(onUndock).not.toHaveBeenCalled()
   })
 })
+
+describe('a collapsed band can still be identified', () => {
+  it('shows its name even when the open band would not repeat it', () => {
+    // Found by looking at the screen: a tidied side band was a bare arrow at
+    // the edge. It does not hide a FAILURE — the marker still renders — but it
+    // hides WHAT is there, and a reader cannot choose to reopen something they
+    // cannot name. `showTitle: false` is about not duplicating a name the open
+    // content already prints; collapsed, there is no such content.
+    const { container } = show({ collapsed: true, showTitle: false })
+    expect(container.textContent).toContain('changes')
+  })
+
+  it('does not repeat the name when OPEN and the content carries it', () => {
+    // The other direction, so the fix cannot become "always print the name".
+    const { container } = show({ collapsed: false, showTitle: false })
+    const header = container.querySelector('[data-fleet-dock] > div') as HTMLElement
+    expect(header.textContent).not.toContain('changes')
+  })
+})

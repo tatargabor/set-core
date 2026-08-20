@@ -22,7 +22,7 @@ vi.mock('../../src/components/FleetTerminal', () => ({
 }))
 
 import Fleet from '../../src/pages/Fleet'
-import { tileClickOpens } from '../../src/lib/fleetTileClick'
+import { tileClickCollapses, tileClickOpens } from '../../src/lib/fleetTileClick'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
 
@@ -100,6 +100,39 @@ describe('what a click on the tile is allowed to mean', () => {
   })
 })
 
+describe('what a click on an OPEN tile is allowed to mean', () => {
+  /** The same tile, with a title bar around the name. */
+  function headed(): { card: HTMLElement; q: (sel: string) => Element } {
+    const { card, q } = tile()
+    const head = document.createElement('div')
+    head.setAttribute('data-fleet-tile-head', '1')
+    head.append(q('[data-plain]'), q('[data-control]'))
+    card.prepend(head)
+    return { card, q: (sel: string) => card.querySelector(sel)! }
+  }
+
+  it('collapses on the title bar’s own text', () => {
+    const { card, q } = headed()
+    expect(tileClickCollapses({ target: q('[data-plain]'), card })).toBe(true)
+  })
+
+  it('does nothing in the body, which is what was opened to be read', () => {
+    const { card, q } = headed()
+    expect(tileClickOpens({ target: q('[data-in-log]'), card })).toBe(false)
+    expect(tileClickCollapses({ target: q('[data-in-log]'), card })).toBe(false)
+  })
+
+  it('does nothing on a control INSIDE the title bar', () => {
+    const { card, q } = headed()
+    expect(tileClickCollapses({ target: q('[data-control]'), card })).toBe(false)
+  })
+
+  it('does nothing when the click ended a selection', () => {
+    const { card, q } = headed()
+    expect(tileClickCollapses({ target: q('[data-plain]'), card, selection: 'set-core' })).toBe(false)
+  })
+})
+
 type Json = Record<string, unknown>
 
 function agent(pid: number, extra: Json = {}): Json {
@@ -147,14 +180,39 @@ describe('the wiring — the tile actually asks', () => {
   })
 
   /**
-   * One-directional on purpose. A click that closes what you are reading is a
-   * trap, and the control that closes it is two centimetres away in the corner.
+   * Asymmetric on purpose, and the asymmetry is the whole design — asked for
+   * 2026-08-20: *"ha megint rákattintok, azt kéne, hogy visszamenjen, mint egy
+   * minimize"*. Opening is click-anywhere; closing is click-on-the-title-bar,
+   * because the body is what the reader enlarged the tile in order to read.
    */
-  it('the already-open tile does not offer it back', async () => {
+  it('a click on the open tile’s title bar puts it back', async () => {
     const { container } = await show([agent(11), agent(22)])
     fireEvent.click(container.querySelector('[data-fleet-opens="22"] .text-sm.text-fg-strong')!)
     await waitFor(() => expect(enlargedPid(container)).toBe('22'))
-    expect(container.querySelector('[data-fleet-opens="22"]')).toBeNull()
+    // The same element, clicked again: the name in the title bar.
+    fireEvent.click(container.querySelector('[data-fleet-collapses="22"] .text-sm.text-fg-strong')!)
+    await waitFor(() => expect(enlargedPid(container)).toBe(null))
+  })
+
+  /**
+   * The half that keeps the old decision alive. `tileClickOpens` already lets a
+   * click through anywhere in the tile, so if the collapse were wired to the
+   * card instead of the head, this test is the only thing that would notice —
+   * and what it protects is a reader mid-log losing what they were reading.
+   */
+  it('a click in the open tile’s BODY leaves it open', async () => {
+    const { container } = await show([agent(11), agent(22)])
+    fireEvent.click(container.querySelector('[data-fleet-opens="22"] .text-sm.text-fg-strong')!)
+    await waitFor(() => expect(enlargedPid(container)).toBe('22'))
+    const card = container.querySelector('[data-fleet-collapses="22"]')!
+    // A part of the tile that is NOT the head — and asserted to be one a click
+    // would otherwise act on, so a body that happens to refuse every click
+    // cannot make this pass without measuring anything.
+    const body = Array.from(card.children).find(el => !el.hasAttribute('data-fleet-tile-head'))!
+    expect(body).toBeTruthy()
+    expect(tileClickOpens({ target: body, card })).toBe(true)
+    fireEvent.click(body)
+    expect(enlargedPid(container)).toBe('22')
   })
 
   /**

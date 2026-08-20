@@ -128,7 +128,7 @@ def _normalise_splits(raw: Any) -> Dict[str, int]:
     return out
 
 
-def _normalise_docks(raw: Any) -> List[Dict[str, str]]:
+def _normalise_docks(raw: Any) -> List[Dict[str, Any]]:
     """Which view instances are docked, and to which edge.
 
     **A list, not a map keyed by edge.** Two views can share an edge, and the
@@ -147,7 +147,7 @@ def _normalise_docks(raw: Any) -> List[Dict[str, str]]:
     """
     if not isinstance(raw, list):
         return []
-    out: List[Dict[str, str]] = []
+    out: List[Dict[str, Any]] = []
     seen: set = set()
     for entry in raw:
         if not isinstance(entry, dict):
@@ -167,7 +167,14 @@ def _normalise_docks(raw: Any) -> List[Dict[str, str]]:
         if key in seen:
             continue
         seen.add(key)
-        out.append({"kind": kind, "id": ident, "edge": edge})
+        entry_out: Dict[str, Any] = {"kind": kind, "id": ident, "edge": edge}
+        # Collapsed is stored, not held in the browser, because it is part of
+        # the arrangement: a reader who tidies a band away means it to stay
+        # tidied. Only written when TRUE — an absent flag is the ordinary case
+        # and does not need a key in every entry.
+        if bool(entry.get("collapsed")):
+            entry_out["collapsed"] = True
+        out.append(entry_out)
     return out
 
 
@@ -258,7 +265,7 @@ def _write_atomically(payload: Dict[str, Any], path: str) -> None:
         raise
 
 
-def save_docks(docks: Any, *, path: Optional[str] = None) -> List[Dict[str, str]]:
+def save_docks(docks: Any, *, path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Store which views are docked where, without touching the arrangement.
 
     Same two properties as `save_splits`, and for the same reasons: the version

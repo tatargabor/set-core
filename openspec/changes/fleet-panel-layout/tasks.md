@@ -121,16 +121,22 @@ Everything from group 4 onward is unbuilt.
 
 - [x] 7.1 Full web unit suite and the Python fleet tests green
       [REQ: a-view-instance-can-be-docked-to-an-edge]
-- [ ] 7.2 LOOK at the screen with a view docked on each of the four edges.
+- [x] 7.2 LOOK at the screen with a view docked on each of the four edges.
       Structural counts prove it renders; they say nothing about whether it is
       legible [REQ: the-agent-grid-fills-what-docking-leaves]
-      ⚠ **NOT DONE, and deliberately left open rather than marked.** Attempted
-      2026-08-20 and blocked: the browser extension is not connected
-      (`tabs_context_mcp` → "Browser extension is not connected"). Every other
-      check in this change is structural or behavioural, and `ui-quality.md`
-      states exactly what that leaves unproven — a screen measured as fine had
-      a row collapse into a 500px tower, and only a human looking at it caught
-      that. So this is the one task whose absence a green suite cannot cover.
+      **DONE 2026-08-20, and it found four defects no test could see.** The
+      Chrome extension never connected, so the looking was done through
+      `web/scripts/fleet-shot.mjs` — a real browser against the running service,
+      producing a picture that was then actually read. What it found:
+      *the grid went entirely black* when the enlarged panel was docked (`enlarged`
+      resolved against every agent rather than the grid's own); *a terminal
+      squeezed to a scrollbar* in a 320px band (the fix belongs where the width
+      is decided, not in the terminal); *the same name printed twice*, one line
+      apart, in two weights; and *a collapsed band reduced to a bare arrow* with
+      nothing saying what had been tidied away. Verified afterwards with all four
+      edges docked at once and one collapsed: four bands, the grid on the
+      remainder with its tab strip, the collapsed band legible with a vertical
+      label.
 - [x] 7.3 Mutation-test the docking geometry, not only the state
       [REQ: the-agent-grid-fills-what-docking-leaves]
 
