@@ -112,6 +112,67 @@ export function terminalOffer(
 }
 
 /**
+ * pid → the terminal label the OWNER last confirmed for it.
+ *
+ * B-30, second half. When the owner cannot be asked, every agent comes back
+ * `unknown` and its `terminal_label` is `null` — the server has nowhere to get
+ * it from, and inventing one there would be a false value. So the client keeps
+ * the last CONFIRMED pairing instead, and uses it for one purpose only: not
+ * closing a terminal that is already open.
+ *
+ * `ownerAnswered` decides whether this is a measurement or a memory:
+ *
+ *  - **answered** → the map is rebuilt from the answer. A pid the owner did not
+ *    list drops out, because `foreign` and `orphaned` are statements, and a
+ *    statement outranks a memory. This is what stops the memory going stale.
+ *  - **not answered** → the map is returned unchanged. Rebuilding it from an
+ *    answer nobody gave would empty it, which is the very absence this exists
+ *    to refuse.
+ */
+export type LabelMemory = Readonly<Record<number, string>>
+
+export function rememberTerminalLabels(
+  prev: LabelMemory,
+  agents: ReadonlyArray<Pick<FleetAgent, 'pid' | 'population' | 'terminal_label'>>,
+  ownerAnswered: boolean,
+): LabelMemory {
+  if (!ownerAnswered) return prev
+  const next: Record<number, string> = {}
+  for (const a of agents) {
+    if (a.population === 'started-here' && typeof a.terminal_label === 'string' && a.terminal_label) {
+      next[a.pid] = a.terminal_label
+    }
+  }
+  return next
+}
+
+/**
+ * The offer, with an OPEN terminal kept open across an unanswered poll.
+ *
+ * Narrow on purpose, in both directions:
+ *
+ *  - only `unknown` is upgraded. `foreign` and `orphaned` are the owner *saying*
+ *    something, and a memory must never overrule an answer;
+ *  - only while the terminal is already OPEN. Offering to open one from memory
+ *    would be an offer whose action may not be performable — the thing this file
+ *    already refuses to do for `started-here` without a label.
+ *
+ * What makes this honest rather than a guess: the socket is the authority. A
+ * pane kept open is not a claim that the agent is alive; it is a pane whose
+ * WebSocket will say `closed` the moment it is not. The screen also states the
+ * cause where the reader is standing — the header carries *the owner service is
+ * not answering* for exactly this condition.
+ */
+export function offerWithRemembered(
+  offer: TerminalOffer,
+  remembered: string | undefined,
+  open: boolean,
+): TerminalOffer {
+  if (offer.kind !== 'unknown' || !open || !remembered) return offer
+  return { kind: 'available', label: remembered }
+}
+
+/**
  * The websocket address of a terminal.
  *
  * Built from `location` rather than hard-coded, because the dev server proxies

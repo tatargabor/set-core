@@ -208,14 +208,28 @@ export function resolveEnlarged(view: ProjectView, alive: readonly number[]): nu
  * an upgrade shows what they left open rather than an empty panel. An explicit
  * `terminals` — including the empty array, which means *I closed them all* —
  * always outranks it.
+ *
+ * **`alive === null` means NOBODY COULD BE ASKED, and it is not an empty list.**
+ * B-30: when the owner does not answer, every agent comes back `unknown` and no
+ * agent carries a `terminal_label`, so an `alive` computed from that answer is
+ * empty — and an empty list here closes every open terminal, exactly as if the
+ * reader had closed them. The distinction is the same one the API already draws
+ * one layer down (`_owned_by_pid()` returns `None`, never `{}`), and it has to
+ * survive the trip or it was never drawn.
+ *
+ * Direction matters more than the case count: filtering on unknown discards a
+ * terminal that exists, silently, and then re-attaches it with a 64 KB replay
+ * when the answer comes back. Not filtering keeps a pane whose socket is the
+ * authority on whether it still works — and a socket that has died says so.
  */
-export function resolveTerminals(view: ProjectView, alive: readonly string[]): string[] {
+export function resolveTerminals(view: ProjectView, alive: readonly string[] | null): string[] {
   const remembered = Array.isArray(view.terminals)
     ? view.terminals
     : typeof view.terminal === 'string' ? [view.terminal] : []
   const seen = new Set<string>()
   return remembered.filter(l => {
-    if (typeof l !== 'string' || seen.has(l) || !alive.includes(l)) return false
+    if (typeof l !== 'string' || seen.has(l)) return false
+    if (alive !== null && !alive.includes(l)) return false
     seen.add(l)
     return true
   })
