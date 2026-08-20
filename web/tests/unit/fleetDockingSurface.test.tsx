@@ -233,6 +233,44 @@ describe('docking belongs to ONE project', () => {
   })
 })
 
+describe('a docked panel is not also a tab', () => {
+  /**
+   * Asked for on 2026-08-20: *"ha ki van téve layoutba fixen egy view akkor ne
+   * hozza a view tabs listaban az altalanos view sorban"*.
+   *
+   * The tab strip named every agent in the project, so a docked one appeared
+   * both in its band and in the strip — two ways to reach one panel, and
+   * clicking the tab enlarges a tile the grid does not contain. Docking is a
+   * MOVE; the strip lists what the grid holds.
+   */
+  it('drops the docked agent from the tab strip, and says so in the count', async () => {
+    localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { enlarged: 2 } }))
+    installFetch({ docks: { demo: [{ kind: 'agent', id: 't-1', edge: 'right' }] } })
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo')
+    await waitFor(() => {
+      if (!container.querySelector('[data-fleet-dock]')) throw new Error('not docked yet')
+    })
+    // Two agents, one docked, one enlarged: nothing left to tab between, so the
+    // strip is not rendered at all — and the header does not claim one either.
+    expect(container.querySelector('[data-fleet-agent-tab="1"]')).toBeNull()
+    expect(container.textContent).not.toMatch(/as tabs/i)
+  })
+
+  it('still lists the agents that ARE in the grid', async () => {
+    // The other direction, so the fix cannot be "never show tabs".
+    localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { enlarged: 1 } }))
+    installFetch()
+    const { container } = render(<Fleet />)
+    await ready(container)
+    await waitFor(() => {
+      if (!container.querySelector('[data-fleet-agent-tabs]')) throw new Error('no strip')
+    })
+    expect(container.querySelector('[data-fleet-agent-tab="2"]')).not.toBeNull()
+    expect(container.textContent).toMatch(/1 as tabs/i)
+  })
+})
+
 describe('a docked panel whose agent is gone', () => {
   it('says the panel was kept rather than rendering an empty band', async () => {
     // A blank band is indistinguishable from a broken one, and the reader would

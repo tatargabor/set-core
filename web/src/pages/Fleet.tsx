@@ -2189,9 +2189,14 @@ export default function Fleet() {
                     </button>
                   </span>
                 )}
-                {!focused && enlarged !== null && active.agents.length > 1 && (
+                {/* Counted off the SAME list the strip renders. It said
+                    `active.agents.length - 1` while the strip dropped the docked
+                    ones, which is the two-copies-of-one-fact defect in its
+                    cheapest form: the header would claim 3 tabs above a strip
+                    holding 2, and the number is the part a reader believes. */}
+                {!focused && enlarged !== null && gridAgents.length > 1 && (
                   <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
-                    {active.agents.length - 1} as tabs — click one to switch
+                    {gridAgents.length - 1} as tabs — click one to switch
                   </span>
                 )}
               </div>
@@ -2287,9 +2292,21 @@ export default function Fleet() {
                   strip is OUTSIDE the scrolling area so it stays put while the
                   enlarged tile scrolls — a tab bar that scrolls away is a tab
                   bar you have to go looking for. */}
-              {enlarged !== null && active.agents.length > 1 && (
+              {/* `gridAgents` again, for the same reason the grid uses it —
+                  asked for 2026-08-20: *"ha ki van téve layoutba fixen egy view
+                  akkor ne hozza a view tabs listaban az altalanos view sorban"*.
+                  A docked agent has a place of its own on the screen; listing it
+                  here too offers a second way to reach one thing, and clicking
+                  it would enlarge a tile the grid does not contain.
+
+                  This is a MOVE, not a compaction, so `ui-quality.md`'s rule
+                  about hiding a failure is satisfied by the band rather than by
+                  the tab: the docked panel is on screen, with its own failure
+                  marker (`data-fleet-dock-marker`) on its edge. Nothing about it
+                  becomes unreachable or unmarked by leaving the strip. */}
+              {enlarged !== null && gridAgents.length > 1 && (
                 <AgentTabs
-                  agents={active.agents}
+                  agents={gridAgents}
                   selected={enlarged}
                   onSelect={pid => setEnlarged(active.name, pid)}
                 />
