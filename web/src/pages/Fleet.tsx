@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
  */
 
 import FleetProjectColumn from '../components/FleetProjectColumn'
+import FleetPm from '../components/FleetPm'
 import FleetSplitter from '../components/FleetSplitter'
 import {
   MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
@@ -1974,6 +1975,39 @@ export default function Fleet() {
   const [typingLabel, setTypingLabel] = useState<string | null>(null)
 
   /**
+   * PM mode — the fleet chooses what the reader looks at, one item at a time.
+   *
+   * Held here rather than in the component so leaving it returns the reader to
+   * the arrangement they had: the whole grid, the docks and the selection are
+   * still mounted underneath, untouched. A mode that rebuilt the screen on exit
+   * would be a mode people are reluctant to try.
+   */
+  const [pmOn, setPmOn] = useState(false)
+  /**
+   * Every agent, not the selected project's — PM mode crosses projects by
+   * design, so a list scoped to the selection would silently be unable to
+   * present most of what it queues.
+   */
+  const allAgents = useMemo(
+    () => (data?.projects ?? []).flatMap(p => p.agents ?? []),
+    [data],
+  )
+  const togglePm = useCallback(async (on: boolean) => {
+    setPmOn(on)
+    try {
+      await fetch('/api/fleet/pm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: on }),
+      })
+    } catch {
+      // The mode is a way of LOOKING. If the server did not hear the toggle the
+      // panel simply reports what it cannot read; nothing about any agent has
+      // changed either way, so there is nothing here to roll back.
+    }
+  }, [])
+
+  /**
    * Go to an agent, wherever it is — tasks 7.8 and 7.18.
    *
    * Both directions of the lineage need the same act: find that agent on this
@@ -2153,6 +2187,21 @@ export default function Fleet() {
     <div className="h-full flex flex-col" data-fleet-phase={data.agents === 0 ? 'answered-empty' : 'answered'}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
         <span className="text-sm font-semibold text-fg-loud">Fleet</span>
+        {/* The toggle. It starts and stops NOTHING — turning it on does not
+            instruct, start or stop any agent, and turning it off returns the
+            reader to the arrangement underneath, which was never unmounted. */}
+        <button
+          onClick={() => void togglePm(!pmOn)}
+          data-fleet-pm-toggle={pmOn ? 'on' : 'off'}
+          className={`text-xs px-2 py-0.5 rounded border ${
+            pmOn
+              ? 'border-sky-400/60 text-sky-300'
+              : 'border-surface-line text-fg-muted hover:text-fg-strong'
+          }`}
+          title="PM mode presents one agent at a time — whichever is waiting on you. It touches no agent, and leaving it restores this screen."
+        >
+          PM mode {pmOn ? 'on' : 'off'}
+        </button>
         {/*
           ONE count, and it says which projects it is counting — raised
           2026-08-19. The header said `12 agent · 6 projektben` while the column
@@ -2634,6 +2683,9 @@ export default function Fleet() {
         </div>
         </div>
       </div>
+      {/* Rendered LAST and fixed-position, so the arrangement below stays
+          mounted: leaving the mode is a state change, never a rebuild. */}
+      {pmOn && <FleetPm agents={allAgents} onExit={() => void togglePm(false)} />}
     </div>
   )
 }

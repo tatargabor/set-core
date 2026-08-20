@@ -77,6 +77,19 @@ interface Props {
   /** Ask the panel to show this agent alone, or to go back to the grid. */
   onToggleFull?: () => void
   /**
+   * Called on every keystroke the reader sends into this terminal.
+   *
+   * Distinct from `onFocusChange`, and the distinction is the whole point:
+   * focus says the cursor is here, which can be true for fifteen minutes while
+   * nothing happens. PM mode's freeze has to know whether the reader is
+   * ACTING, because a screen somebody is parked on with nothing typed is
+   * exactly the one a fresher blockage may take.
+   *
+   * Fires for pasted and program-generated input too. That is correct rather
+   * than sloppy — all of it is the reader putting something into this session.
+   */
+  onInput?: () => void
+  /**
    * Called when the keyboard enters or leaves this terminal.
    *
    * Asked for on 2026-08-19: *"az aktuális csempe, amin gépelek, lehetne
@@ -95,8 +108,15 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
+  // Held in a ref because the effect below depends on `[label]` alone: the
+  // handler is captured once, so a parent passing a fresh closure each render
+  // would have its FIRST one called forever. That failure is silent — the
+  // callback still fires, it just reports to a stale owner — which is exactly
+  // the kind of thing a passing test suite does not notice.
+  const onInputRef = useRef(onInput)
+  onInputRef.current = onInput
   const [phase, setPhase] = useState<Phase>({ kind: 'connecting' })
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState<string | null>(null)
@@ -281,6 +301,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       }
 
       const typed = term.onData(data => {
+        onInputRef.current?.()
         if (ws.readyState === WebSocket.OPEN) ws.send(encoder.encode(data))
       })
 
