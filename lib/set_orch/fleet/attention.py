@@ -361,11 +361,17 @@ class Queue:
         if presented is None:
             return None
         refused = self._refused.get(presented.pid, set())
+        # An item the reader has already been shown is not an interruption worth
+        # making — they saw it and moved past it. Measured 2026-08-20 in the
+        # browser: deferring the presented item handed the screen to the next
+        # one, and the deferred item then preempted it back four seconds later,
+        # which is exactly the loop deferral exists to break.
         fresher = [
             it for it in self._items.values()
             if it.pid != presented.pid
             and it.blocked_since > presented.blocked_since
             and it.pid not in refused
+            and not it.presented_count
         ]
         if not fresher:
             return None
@@ -459,19 +465,32 @@ def _ordered(items: Iterable[Item], current_project: Optional[str]) -> List[Item
     items = list(items)
     if not items:
         return []
-    # Projects are ranked by their freshest item, so a project is entered as a
-    # whole rather than interleaved with another — the reader's context switch
-    # is the expensive thing here, not the machine's.
+    # Seen-ness outranks the project. Demotion has to be able to LEAVE the
+    # project, or `later` is a dead button: measured 2026-08-20 in the browser
+    # with two queued items in two projects — deferring the presented one put it
+    # straight back on screen, because its own project was ranked first BY IT.
+    # Project exhaustion still holds, one rank down, among items of equal
+    # seen-ness, which is where the reader's context switch actually costs.
+    unseen = [it for it in items if not it.presented_count]
+    # A project is ranked by its freshest UNSEEN item; a project holding only
+    # items the reader already skipped must not keep the lead it earned with
+    # them. Where a project has no unseen item, its freshest item stands in.
+    fresh_unseen: Dict[str, float] = {}
+    for it in unseen:
+        fresh_unseen[it.project] = max(fresh_unseen.get(it.project, float("-inf")), it.blocked_since)
     freshest: Dict[str, float] = {}
     for it in items:
-        freshest[it.project] = max(freshest.get(it.project, float("-inf")), it.blocked_since)
+        if it.project in fresh_unseen:
+            freshest[it.project] = fresh_unseen[it.project]
+        else:
+            freshest[it.project] = max(freshest.get(it.project, float("-inf")), it.blocked_since)
     rank = {p: i for i, p in enumerate(sorted(freshest, key=lambda p: -freshest[p]))}
 
     def key(it: Item) -> Tuple:
         return (
+            1 if it.presented_count else 0,
             0 if it.project == current_project else 1,
             rank[it.project],
-            1 if it.presented_count else 0,
             -it.blocked_since,
         )
 

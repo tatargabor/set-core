@@ -17,44 +17,70 @@ agents would be a control nobody dares press to find out what it does.
 - **WHEN** the reader turns PM mode off
 - **THEN** the arrangement they had before is shown again
 
-### Requirement: The presented agent fills the screen, and what is behind it is counted where the reader stands
+### Requirement: PM mode selects what the fleet screen shows, and never replaces it
 
-While PM mode is on, the fleet SHALL present one agent's terminal full screen. It SHALL show, in
-the frame that is always visible, how many further items are queued, how many agents are idle
-without a question, and whether the judgment for this cycle is unmeasured.
+While PM mode is on, the fleet SHALL put the presented agent into its own agent view — selecting
+that agent's project and opening that agent — and SHALL keep the rest of the screen intact: the
+project list, the agent tabs, the input, the terminal controls and any docked views. The mode SHALL
+NOT render a surface of its own in place of the fleet screen.
 
-Compacting must never hide a failure. A full-screen presentation is the strongest hiding this
-surface does: everything else is off screen, and a queue that silently grows behind it looks
-exactly like a fleet with nothing left to do. The counts are the price of the freeze, not a feature
-beside it.
+It SHALL carry, in a strip that does not scroll away, how many further items are queued, how many
+agents are idle without a question, and whether the judgement for this cycle is unmeasured.
+
+The first build did replace the screen, with a full-screen overlay, and it was rejected on sight:
+*"azt hittem ugyanugy meghagyja a felletet csak az agent view-ba teszi be az aktualis. ehelyett
+full screen hasznalhatatlant csinalt."* The overlay discarded every affordance that makes an agent
+workable in order to show one terminal — and for an agent the framework holds no terminal for, what
+was left was two sentences on a blank page. A mode that chooses what you look at must not also take
+away what you look at it with.
+
+The counts remain the price of the mode rather than a decoration beside it: the reader is being
+steered, so what they are NOT being steered to has to be visible where they are standing.
+
+#### Scenario: The presented agent is put into the agent view
+- **WHEN** the queue presents an agent
+- **THEN** that agent's project is selected and that agent is opened in the fleet's own agent view
+
+#### Scenario: The rest of the screen survives
+- **WHEN** PM mode is on
+- **THEN** the project list, the agent tabs, the input and any docked views are still rendered
+
+#### Scenario: The mode renders no surface of its own in place of the fleet
+- **WHEN** PM mode is on
+- **THEN** it adds a strip and renders no container that covers the fleet screen
 
 #### Scenario: The pile behind the screen is visible
 - **WHEN** items are queued behind the presented one
-- **THEN** their number is shown in the always-visible frame
+- **THEN** their number is shown in the strip
 
 #### Scenario: An unmeasured judgment is not shown as an empty queue
 - **WHEN** the judgment pass for the cycle could not run
-- **THEN** the frame says the judgment is unmeasured, and does not render as "nothing is waiting"
+- **THEN** the strip says the judgment is unmeasured, and does not render as "nothing is waiting"
 
 #### Scenario: Idle agents are counted, not queued
 - **WHEN** agents have finished their turn without asking anything
 - **THEN** their number is shown as a separate count the reader may open
 
-### Requirement: The mode presents only agents it can actually present
+### Requirement: An agent with no terminal is shown through its log, never as an empty panel
 
-PM mode SHALL present an agent full screen only where the framework holds a terminal for it. For a
-queued agent it cannot present that way, it SHALL show what it does have — the agent's identity,
-its project and the means of addressing it that exists — and SHALL say plainly that no terminal is
-available.
+Where the framework holds no terminal for the presented agent, the fleet SHALL open that agent's
+session log in its place, and SHALL still say that no terminal exists. It SHALL NOT present a panel
+whose only content is the absence of one.
 
-Measured 2026-08-20: 16 of 18 agents on this machine had a framework-held terminal, and 2 did not.
-Presenting an empty frame for those two would be the false-absence class: the reader would conclude
-the agent had nothing to show rather than that this surface cannot show it.
+Measured 2026-08-20: **3 of 20** live agents had no pty, and **2 of the 4** items the queue held
+were among them — half the queue, not an edge case. For every one of them the log endpoint had a
+full conversation to give at that moment, so the emptiness was the surface's and not the agent's.
 
-#### Scenario: An agent with no framework terminal
-- **WHEN** a queued agent has no terminal the framework holds
-- **THEN** it is presented with its identity and the available means of addressing it, and the
-  absence of a terminal is stated
+Both directions matter. Saying nothing fills the panel with a warning and blank space; filling it
+without saying anything would suggest the agent can be typed into there.
+
+#### Scenario: The log stands in for the terminal
+- **WHEN** the presented agent has no terminal the framework holds
+- **THEN** its session log is opened in the agent view
+
+#### Scenario: The missing terminal is still stated
+- **WHEN** the log is shown in place of a terminal
+- **THEN** the panel still says that no terminal is available
 
 ### Requirement: The reader can step back and forward through what was presented
 

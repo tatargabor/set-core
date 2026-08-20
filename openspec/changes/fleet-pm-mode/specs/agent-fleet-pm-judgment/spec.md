@@ -48,17 +48,32 @@ model's memory is not.
 
 ### Requirement: The candidate filter is structural, and it runs before the model
 
-A candidate SHALL be an agent that is quiet, whose session log has changed since it was last
-judged, and whose blockage the framework has not already determined structurally. Every other
-agent SHALL be excluded before the invocation is built.
+A candidate SHALL be an agent that is quiet, that does not itself owe the next utterance, whose
+session log has changed since it was last judged, and whose blockage the framework has not already
+determined structurally. Every other agent SHALL be excluded before the invocation is built.
 
-The filter is what makes one pass per cycle affordable, and each of its three tests removes a
-class the model could only agree with: a working agent is not blocked, an unchanged log yields the
-same verdict, and a structurally certain blockage needs no opinion.
+The filter is what makes one pass per cycle affordable, and each of its four tests removes a class
+the model could only agree with: a working agent is not blocked, an agent mid-turn cannot be
+waiting on a person whatever its last words were, an unchanged log yields the same verdict, and a
+structurally certain blockage needs no opinion.
+
+`quiet` means only that no tool call was open at the log's last flush, and that is weaker than it
+sounds: measured 2026-08-20, the runtime writes a `tool_use` together with its `tool_result`, so an
+agent running a command for ten minutes carries no outstanding call and reads as quiet. Whose turn
+it is survives that gap — after a tool result, and after a person's prompt, the next word is the
+agent's.
 
 #### Scenario: A working agent is not a candidate
 - **WHEN** an agent has an outstanding tool call that is not a question to a person
 - **THEN** it is not included in the invocation
+
+#### Scenario: An agent that owes the next utterance is not a candidate
+- **WHEN** an agent's session log ends with a tool result, or with a person's prompt it has not answered
+- **THEN** it is not included in the invocation, whatever its last utterance said
+
+#### Scenario: An agent that spoke last remains a candidate
+- **WHEN** an agent's session log ends with the agent's own utterance
+- **THEN** it is included in the invocation
 
 #### Scenario: An unchanged log is not re-judged
 - **WHEN** an agent's session log has not changed since its last verdict

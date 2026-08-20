@@ -282,6 +282,62 @@ def _epoch(iso_timestamp) -> Optional[float]:
         return None
 
 
+#: Who is expected to speak next, measured from the log's last substantive entry.
+FLOOR_AGENT = "agent"      # the agent owes the next utterance — it is mid-turn
+FLOOR_PERSON = "person"    # the agent spoke last; a person may be the next mover
+FLOOR_UNKNOWN = "unknown"  # unreadable, empty, or a tail that says nothing
+
+
+def who_has_the_floor(session_log: Optional[str]) -> str:
+    """Whose turn it is, from the log alone.
+
+    ## Why this exists, and why the outstanding-call test is not enough
+
+    Measured 2026-08-20 on a live session that the screen showed as
+    `Running 2 shell commands… Razzmatazzing… (10m 9s)`: the log carried NO
+    outstanding tool call, because the runtime writes a `tool_use` and its
+    `tool_result` together rather than at the moment the call starts. So an
+    agent that is visibly working reads as `quiet`, and PM mode put it in front
+    of a person as something waiting on them.
+
+    The floor is measurable even when the outstanding call is not. A
+    `tool_result` is never the end of a turn — the model always speaks after
+    one. A user entry with no reply after it is the same: the agent owes the
+    answer. Only a log whose last substantive entry is the AGENT'S OWN
+    utterance can be waiting on a person at all.
+
+    Measured across 18 live agents the same day: 11 `person`, 5 `agent`
+    (including this session, mid-command), 1 unknown — and the three the mode
+    had wrongly queued were all `agent`.
+    """
+    lines = _tail(session_log) if session_log else None
+    if not lines:
+        return FLOOR_UNKNOWN
+    floor = FLOOR_UNKNOWN
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if entry.get("isSidechain"):
+            continue  # a subagent's turn is not the parent's floor
+        message = entry.get("message") or {}
+        role = message.get("role") or entry.get("type")
+        content = message.get("content")
+        blocks = content if isinstance(content, list) else []
+        if role == "assistant":
+            if any(b.get("type") == "tool_use" for b in blocks):
+                floor = FLOOR_AGENT     # a call was made; its result is owed back
+            elif any(b.get("type") == "text" and (b.get("text") or "").strip() for b in blocks):
+                floor = FLOOR_PERSON
+        elif role == "user":
+            # A tool result and a typed prompt are the same shape here: in both
+            # cases the next word is the agent's.
+            if blocks or isinstance(content, str):
+                floor = FLOOR_AGENT
+    return floor
+
+
 def resumed_since(session_log: Optional[str], since: Optional[str]) -> str:
     """Has this agent taken a new turn since `since`?
 

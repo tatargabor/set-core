@@ -85,11 +85,37 @@ def test_a_project_is_exhausted_before_the_next_one_is_entered():
                   projects={1: "alpha", 2: "beta", 3: "alpha"})
     q.present(1)
     order = [i.pid for i in q.ordered()]
-    # The claim is the GROUPING: both of alpha before beta, even though beta's
-    # item is the freshest of the three. Their order WITHIN alpha is decided by
-    # demotion, which is a different rule and has its own test.
-    assert {order[0], order[1]} == {1, 3}, order
-    assert order[-1] == 2
+    # The claim is the GROUPING of what the reader has NOT seen: alpha's unseen
+    # item comes before beta's, even though beta's is the freshest of the three.
+    # Item 1 is behind both because it was presented and not dealt with —
+    # demotion outranks the project, which is what lets `later` leave it.
+    assert order == [3, 2, 1], order
+
+
+def test_a_deferred_item_does_not_preempt_its_way_back_onto_the_screen():
+    """Measured in the browser 2026-08-20, one fix downstream of the last one.
+
+    `later` handed the screen to the next item, and the deferred item — which is
+    the freshest blockage there is — offered to take it back four seconds later.
+    """
+    q, _ = _queue({1: 60.0, 2: 300.0}, projects={1: "alpha", 2: "beta"})
+    q.present(1)
+    q.defer(1)                       # 2 is now on screen; 1 is fresher than it
+    assert q.preemption(seconds_since_input=None) is None
+
+
+def test_deferral_leaves_the_project_when_the_only_unseen_item_is_elsewhere():
+    """`later` that returns the same item is a dead button.
+
+    Measured in the browser 2026-08-20: two queued items, two projects, and
+    deferring the presented one put it straight back on screen — its project
+    held the top rank BY VIRTUE OF that same item.
+    """
+    q, _ = _queue({1: 60.0, 2: 300.0}, projects={1: "alpha", 2: "beta"})
+    q.present(1)
+    moved = q.defer(1)
+    assert moved is not None and moved.pid == 2, moved
+    assert [i.pid for i in q.ordered()] == [2, 1]
 
 
 def test_a_presented_item_ranks_below_an_unseen_one_of_the_same_project():

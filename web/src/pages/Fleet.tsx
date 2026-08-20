@@ -55,8 +55,9 @@ import {
 } from '../lib/fleetDocks'
 import { PANEL_AGENT } from '../lib/fleetPanels'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
-import { terminalOffer } from '../lib/fleetTerminal'
-import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
+import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../lib/fleetTerminal'
+import type { LabelMemory } from '../lib/fleetTerminal'
+import { buildActs, speakerLabel, speakerOf } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
 import { tally } from '../lib/fleetAttention'
 import { blockUnexpectedFrom, declaredStanding, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
@@ -66,44 +67,12 @@ import FleetWaiters from '../components/FleetWaiters'
 import FleetInstall from '../components/FleetInstall'
 import TileControls from '../components/TileControls'
 import { plainExcerpt } from '../lib/excerptText'
+import FleetAgentLog, { SayRow, WorkRow } from '../components/FleetAgentLog'
+import type { LogResponse } from '../components/FleetAgentLog'
 import { descendantStanding, parentClaim } from '../lib/fleetLineage'
 import { currentSelection, tileClickCollapses, tileClickOpens } from '../lib/fleetTileClick'
-import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
+import type { Speaker } from '../lib/fleetConversation'
 
-interface LogResponse {
-  turns: LogTurn[]
-  total_read?: number
-  truncated?: boolean
-  problem?: string
-  pid?: number
-  name?: string | null
-}
-
-function clock(ts: string | null): string {
-  if (!ts) return ''
-  const d = new Date(ts)
-  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })
-}
-
-/** The calendar day of a turn, or '' when it has no usable timestamp. */
-function dayKey(ts: string | null): string {
-  if (!ts) return ''
-  const d = new Date(ts)
-  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('hu-HU')
-}
-
-function dayLabel(ts: string | null): string {
-  if (!ts) return ''
-  const d = new Date(ts)
-  if (isNaN(d.getTime())) return ''
-  const today = new Date()
-  const y = new Date(today); y.setDate(y.getDate() - 1)
-  // Used only by the log's day divider, which is why it is translated with the
-  // rest of that view (the dashboard is English; only the projects are not).
-  if (d.toDateString() === today.toDateString()) return 'today'
-  if (d.toDateString() === y.toDateString()) return 'yesterday'
-  return d.toLocaleDateString('hu-HU', { month: '2-digit', day: '2-digit' })
-}
 
 /*
   ONE size for every branch — *"quiet main feliratok kulon fontméret?????"*,
@@ -243,240 +212,9 @@ function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolea
   )
 }
 
-/**
- * The tabs of the log view — task 7.12.
- *
- * Design §5.8 chose the raw conversation over the existing activity timeline,
- * on the ground that they answer different questions and the timeline can be
- * added later "without disturbing this". Leaving room for it means this list,
- * not a second component: adding the timeline is one entry with `view` filled
- * in, and the strip below already renders the selection.
- *
- * The timeline entry is rendered as a DISABLED tab that says so in its own
- * label — not a clickable tab that opens onto nothing, and not silence. A
- * control with nothing behind it is the shape task 8.2 forbids for the
- * terminal, and the reason is the same here: the reader must be able to tell
- * "not built" from "nothing to show".
- */
-const LOG_TABS: { id: string; label: string; absent?: string }[] = [
-  { id: 'conversation', label: 'conversation' },
-  {
-    id: 'timeline',
-    label: 'timeline',
-    absent: 'the existing activity timeline will move here; this tab holds its place and has no content yet (7.12)',
-  },
-]
 
-/**
- * How a sentence and a machine action are told apart on screen — task 7.20.
- *
- * `lib/fleetConversation.ts` holds the model and the measurement; this is the
- * weight given to each act. One rule decides every choice below: **the 7.5% of
- * the log that is a sentence must be findable by running an eye down the
- * column**, and the 92.5% that is machinery must stay legible without
- * competing for that eye. So a sentence gets a card, the reading size and a
- * coloured rail; an act gets one dim line at 11px.
- *
- * `te` appears for the person and for nobody else. A runtime-written turn under
- * the `user` role says who wrote it, in its own weight — quieter than a person,
- * louder than a tool line, and never silent, because a hidden entry is one the
- * reader cannot account for.
- */
-const SAY_STYLE: Record<Speaker, { rail: string; label: string; body: string; note?: string }> = {
-  person: {
-    rail: 'border-sky-400 bg-sky-400/[0.06]',
-    label: 'text-sky-300 font-semibold',
-    body: 'text-sm text-fg-normal',
-  },
-  agent: {
-    rail: 'border-surface-edge',
-    label: 'text-fg-muted font-semibold',
-    body: 'text-sm text-fg-normal',
-  },
-  runtime: {
-    rail: 'border-surface-line',
-    label: 'text-fg-ghost',
-    body: 'text-xs text-fg-muted',
-    note: 'written by the runtime under the `user` role — the person did not say this',
-  },
-  other: {
-    rail: 'border-amber-400/60',
-    label: 'text-amber-400',
-    body: 'text-sm text-fg-normal',
-    note: 'unknown role — printed as itself, no meaning is attributed to it',
-  },
-}
 
-const CLIP = 600
 
-function SayRow({ act, showThinking, expanded, onExpand, compact }: {
-  act: SayAct
-  showThinking: boolean
-  expanded: boolean
-  onExpand: () => void
-  /**
-   * On a TILE rather than in the log panel — B-10/B-11.
-   *
-   * The panel's job is to show what was said, in full, with the marks intact;
-   * measured on the tile that is 2340 characters of raw markdown — table pipes,
-   * `##` headings and all — which is the same *"több soros … értelmetlen"* the
-   * excerpt was just cut back for. So the compact row strips the marks (the
-   * producer's words, none of them rendered or interpreted) and stops at two
-   * lines, with no expand control: a tile is where you decide WHICH agent to
-   * open, and the panel is where you read.
-   */
-  compact?: boolean
-}) {
-  const style = SAY_STYLE[act.speaker]
-  const long = act.text.length > CLIP
-  const shown = compact ? plainExcerpt(act.text) : (long && !expanded ? act.text.slice(0, CLIP) : act.text)
-  return (
-    <div
-      data-log-act="say"
-      data-log-speaker={act.speaker}
-      className={`border-l-2 pl-2.5 pr-1 py-1 rounded-r ${style.rail}`}
-    >
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className={`text-xs ${style.label}`} title={style.note}>
-          {speakerLabel(act.speaker, act.role)}
-        </span>
-        <span className="text-xs text-fg-ghost tabular-nums">{clock(act.at)}</span>
-        {style.note && <span className="text-xs text-fg-ghost italic">{style.note}</span>}
-      </div>
-      {showThinking && act.thinking && (
-        <div className="text-xs text-fg-ghost italic whitespace-pre-wrap break-words mt-0.5">
-          {act.thinking.length > CLIP ? act.thinking.slice(0, CLIP) + ' …' : act.thinking}
-        </div>
-      )}
-      {act.text && (compact ? (
-        <div
-          className={`${style.body} leading-relaxed break-words mt-0.5`}
-          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-        >
-          {shown}
-        </div>
-      ) : (
-        <div className={`${style.body} leading-relaxed whitespace-pre-wrap break-words mt-0.5`}>
-          {shown}
-          {long && (
-            <button
-              onClick={onExpand}
-              className="ml-1 text-xs text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline"
-            >
-              {expanded ? 'less' : `… ${act.text.length - CLIP} more characters`}
-            </button>
-          )}
-        </div>
-      ))}
-      {!act.text && !act.thinking && (
-        <div className="text-xs text-fg-ghost italic mt-0.5">
-          thinking, with no text — the runtime did not keep its content
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * A tool call and its result — ONE line, because they are one act.
- *
- * What this line may never do is imply that nothing went wrong. Three separate
- * facts ride on it, and the third is the one the compaction rule is about:
- *
- *  - `↩n` — results that came back.
- *  - *n awaiting a result* — a call with no result in this window. Not a failure:
- *    it is either still running or the tail cut between the two. Amber, which
- *    on this screen means *undetermined*, never *broken*.
- *  - a failed call, in red — **only when the data says so.** When it does not,
- *    this line stays silent and the panel header carries the admission once,
- *    where the reader is standing. Marking every line would be noise; marking
- *    nothing and saying nothing would be the false absence.
- */
-function WorkRow({ act }: { act: WorkAct }) {
-  const failed = act.errors !== null && act.errors > 0
-  return (
-    <div
-      data-log-act="work"
-      data-log-errors={act.errors === null ? 'unknown' : String(act.errors)}
-      className={`flex items-baseline gap-2 pl-2.5 border-l text-xs leading-5 ${
-        failed ? 'border-red-400/70' : 'border-surface-line/60'
-      }`}
-    >
-      <span className="text-fg-ghost tabular-nums shrink-0 w-8">{clock(act.at)}</span>
-      {act.calls > 0 ? (
-        <span className="text-emerald-400/70 min-w-0 truncate" title={act.names.join(', ')}>
-          {toolSummary(act)}
-        </span>
-      ) : (
-        <span className="text-fg-ghost italic min-w-0 truncate">
-          result — its call is outside this window
-        </span>
-      )}
-      {act.results > 0 && (
-        <span className="text-fg-ghost tabular-nums shrink-0" title={`${act.results} result(s) came back`}>
-          ↩{act.results}
-        </span>
-      )}
-      {act.unanswered > 0 && (
-        <span
-          className="text-amber-400/80 shrink-0"
-          title="The call has no result in this window: it is either still running, or the log tail cut between the two. Not a failure — but not finished either."
-        >
-          {act.unanswered} awaiting a result
-        </span>
-      )}
-      {failed && (
-        <span
-          className="text-red-400 font-semibold shrink-0"
-          title="The returned result reported a failure. Joining the call to its result may not hide that — so it is marked here, on the row it happened on."
-        >
-          ⚠ {act.errors} failed
-        </span>
-      )}
-    </div>
-  )
-}
-
-/**
- * What the panel may state about failures, stated once and at the top.
- *
- * The producer sends a COUNT of tool results and drops `is_error` (measured in
- * one live log: 145 of 146 result blocks carry the flag, 4 of them true). So
- * today this renders the admission rather than a number — and it renders it
- * above the scroll container, which is where the reader is standing, not inside
- * it where a scroll can carry it off screen.
- */
-function ErrorStanding({ acts }: { acts: Act[] }) {
-  const standing = errorStanding(acts)
-  if (standing === null) return null
-  if (!standing.known) {
-    return (
-      <span
-        data-log-errors-standing="unknown"
-        className="text-xs text-amber-400"
-        title="Tool results are shown, but which of them failed is not carried by this data: the session log knows (is_error), the log endpoint passes on only the count. So this view does NOT claim that nothing failed."
-      >
-        ⚠ failure state not carried
-      </span>
-    )
-  }
-  if (standing.failed > 0) {
-    return (
-      <span data-log-errors-standing="failed" className="text-xs text-red-400 font-semibold tabular-nums">
-        {standing.failed} failed call(s)
-      </span>
-    )
-  }
-  return (
-    <span
-      data-log-errors-standing="none"
-      className="text-xs text-fg-ghost tabular-nums"
-      title="Measured: no tool call failed in this window."
-    >
-      0 failed calls
-    </span>
-  )
-}
 
 /**
  * What the agent has been doing, on the tile itself — B-10.
@@ -610,175 +348,6 @@ function TileActivity({ agent, onOpenTerminal }: {
   )
 }
 
-function LogPanel({ pid, onClose }: { pid: number; onClose: () => void }) {
-  const [log, setLog] = useState<LogResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [showThinking, setShowThinking] = useState(false)
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
-  const scrollBox = useRef<HTMLDivElement | null>(null)
-  /**
-   * Whether the reader is still at the newest end — B-8.
-   *
-   * A log opens at the LATEST, because the newest turn is what the reader came
-   * for and a box that starts at the top hides it behind the whole history.
-   * But it must not yank the view back while somebody is reading upwards, so
-   * the stickiness is a fact about where they are rather than a mode: at the
-   * bottom (within a line's slack) means follow, anywhere else means leave it.
-   */
-  const stick = useRef(true)
-
-  useEffect(() => {
-    let cancelled = false
-    const load = () => {
-      fetch(`/api/fleet/agents/${pid}/log?limit=40`)
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .then(d => { if (!cancelled) { setLog(d); setError(null) } })
-        .catch(e => { if (!cancelled) setError(String(e.message ?? e)) })
-    }
-    load()
-    const t = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(t) }
-  }, [pid])
-
-  // Follow the newest turn, unless the reader has scrolled away from it. Runs
-  // on every render rather than on a length change: an act can grow (a turn
-  // gains text) without the count moving, and the reader watching the bottom
-  // would then see the new line half off screen.
-  useEffect(() => {
-    const el = scrollBox.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  })
-
-  // Counted from the turns, not from a flag: the toggle below must never
-  // announce a hidden thing that is not there (false absence), nor stay silent
-  // about one that is.
-  const thinkingTurns = log?.turns.filter(t => t.thinking).length ?? 0
-
-  // The turns become acts here (task 7.20). Every count below is taken from the
-  // ACTS, so the header can never disagree with the rows underneath it.
-  const acts = useMemo(() => buildActs(log?.turns ?? []), [log])
-  const sentences = sayCount(acts)
-
-  return (
-    <div
-      className="border-t border-surface-line mt-3 pt-2 flex-1 min-h-0 flex flex-col"
-      data-fleet-own-surface="log"
-    >
-      <div className="flex items-baseline gap-2 mb-1.5 flex-wrap" role="tablist" aria-label="log views">
-        {LOG_TABS.map(tab => (
-          tab.absent ? (
-            <span
-              key={tab.id}
-              role="tab"
-              aria-disabled="true"
-              aria-selected="false"
-              data-log-tab={tab.id}
-              title={tab.absent}
-              className="text-xs text-fg-ghost cursor-not-allowed"
-            >
-              {tab.label} <span className="text-fg-ghost">(not built yet)</span>
-            </span>
-          ) : (
-            <span
-              key={tab.id}
-              role="tab"
-              aria-selected="true"
-              data-log-tab={tab.id}
-              className="text-xs text-fg-strong border-b border-fg-strong"
-            >
-              {tab.label}
-            </span>
-          )
-        ))}
-        {log?.truncated && (
-          <span className="text-xs text-fg-muted tabular-nums">
-            the last {log.turns.length} of {log.total_read}
-          </span>
-        )}
-        {/* Counted from the acts. A log that is all machinery says so out loud:
-            an empty-looking conversation and a conversation of pure tool
-            traffic are two different facts, and the reader must not have to
-            infer which one they are looking at. */}
-        {acts.length > 0 && (
-          <span
-            data-log-sentences={sentences}
-            className="text-xs text-fg-muted tabular-nums"
-            title="How many acts carry an actual sentence. The rest are tool calls and their results — also in the log, just not speech."
-          >
-            {sentences > 0 ? `${sentences} sentence(s)` : 'not one sentence'} / {acts.length} acts
-          </span>
-        )}
-        <ErrorStanding acts={acts} />
-        {thinkingTurns > 0 && (
-          <button
-            onClick={() => setShowThinking(v => !v)}
-            className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline tabular-nums"
-            title="The thinking is in the log; it stays hidden by default so the conversation remains readable."
-          >
-            {showThinking ? 'hide thinking' : `thinking (${thinkingTurns})`}
-          </button>
-        )}
-        <button onClick={onClose} className="ml-auto text-xs text-fg-muted hover:text-fg-strong">close</button>
-      </div>
-      {error && <div className="text-xs text-red-400">cannot be read: {error}</div>}
-      {/* A problem is not an empty conversation, and the two must not look alike. */}
-      {log?.problem && <div className="text-xs text-amber-400">{log.problem}</div>}
-      {log && !log.problem && log.turns.length === 0 && (
-        <div className="text-xs text-fg-muted">the log is readable and holds no conversation</div>
-      )}
-      {!log && !error && <div className="text-xs text-fg-muted">reading the log…</div>}
-      {/* Fills what the card gives it when the tile is enlarged. `55vh` was
-          the same guess as the terminal's `62vh` and wrong for the same
-          reason: the strip above it is not a fixed height. */}
-      <div
-        ref={scrollBox}
-        onScroll={e => {
-          const el = e.currentTarget
-          // One line of slack: a browser's fractional scroll heights mean an
-          // exact comparison reads as "scrolled away" while the reader has not
-          // moved, and following would then stop for no visible reason.
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
-        }}
-        className="flex-1 min-h-[10rem] overflow-y-auto space-y-1 pr-1"
-      >
-        {acts.map((act, i, all) => {
-        // A day divider, because HH:MM alone made a 60-hour gap look like a
-        // minute. Measured 2026-08-18: forty turns of one session spanned three
-        // calendar days, and the clock column rendered 00:04 next to 10:46 with
-        // nothing between them — the reader's honest conclusion from that is a
-        // session that has been busy all morning. Same false-value class as the
-        // rest of this screen, arriving through a field that looked like data.
-        const prevDay = i > 0 ? dayKey(all[i - 1].at) : ''
-        const thisDay = dayKey(act.at)
-        const newDay = thisDay !== '' && thisDay !== prevDay
-        return (
-          <div key={act.kind === 'say' ? `s${act.turn}` : `w${act.turns.join('-')}-${i}`}>
-            {newDay && (
-              <div className="flex items-center gap-2 mt-2 mb-1 first:mt-0">
-                <span className="text-xs text-fg-ghost tabular-nums shrink-0">{dayLabel(act.at)}</span>
-                <span className="flex-1 border-t border-surface-line" />
-              </div>
-            )}
-            {act.kind === 'say' ? (
-              <SayRow
-                act={act}
-                showThinking={showThinking}
-                expanded={expanded.has(act.turn)}
-                onExpand={() => setExpanded(prev => {
-                  const next = new Set(prev)
-                  if (next.has(act.turn)) next.delete(act.turn); else next.add(act.turn)
-                  return next
-                })}
-              />
-            ) : (
-              <WorkRow act={act} />
-            )}
-          </div>
-        )})}
-      </div>
-    </div>
-  )
-}
 
 /**
  * One agent as a single-line row — task 7.4.
@@ -1343,7 +912,18 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   canJumpPid?: (pid: number) => boolean
   onJumpPid?: (pid: number) => void
 }) {
-  const offer = terminalOffer(agent, ownerReachable)
+  /**
+   * B-30 — an OPEN terminal survives a poll the owner did not answer.
+   *
+   * The upgrade is refused for everything except `unknown`, and only while the
+   * pane is already open: `foreign` and `orphaned` are the owner speaking, and a
+   * remembered label must never overrule an answer. See `offerWithRemembered`.
+   */
+  const offer = offerWithRemembered(
+    terminalOffer(agent, ownerReachable),
+    agent.terminal_label ?? undefined,
+    !!terminalOpen,
+  )
   // Ownership decides the tile's edge — see `lib/fleetCardStyle.ts` for why it
   // is the edge's SHAPE and not a colour. The tiles used to be bordered with
   // `surface-line`, which is the same neutral-800 as the surface behind them:
@@ -1521,7 +1101,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           onOpenTerminal={offer.kind === 'available' ? () => onTerminal(offer.label) : undefined}
         />
       )}
-      {logShown && <LogPanel pid={agent.pid} onClose={onToggle} />}
+      {logShown && <FleetAgentLog pid={agent.pid} onClose={onToggle} />}
       {terminalOpen && offer.kind === 'available' && (
         <FleetTerminal
           label={offer.label}
@@ -1820,7 +1400,49 @@ export default function Fleet() {
     return () => clearInterval(t)
   }, [load])
 
-  const projects = useMemo(() => data?.projects ?? [], [data])
+  /**
+   * pid → the label the owner last confirmed — B-30, second half.
+   *
+   * In a ref rather than in state, because it must not drive a render on its
+   * own: it is a fallback consulted while an answer is missing, never a source
+   * the screen reports from. It is rebuilt from every answered poll, so a pid
+   * the owner stops listing loses its entry on that same poll.
+   */
+  const labelMemory = useRef<LabelMemory>({})
+  if (data) {
+    labelMemory.current = rememberTerminalLabels(
+      labelMemory.current,
+      (data.projects ?? []).flatMap(p => p.agents),
+      data.owner_reachable !== false,
+    )
+  }
+  /**
+   * The projects, with one gap filled while the owner is silent — B-30.
+   *
+   * When the owner cannot be asked, the API sends `population: "unknown"` and
+   * `terminal_label: null` for every agent, because it has nowhere to get the
+   * label from and inventing one there would be a false value. Downstream,
+   * though, the label is the IDENTITY of an open pane: which terminal is open,
+   * which one is docked, which one has the keyboard. Losing it for one poll
+   * therefore does not merely hide a tile — it takes the layout apart.
+   *
+   * So the label is restored from the last confirmed pairing, and ONLY the
+   * label. `population` stays `unknown`, so `terminalOffer` still refuses to
+   * offer a terminal that cannot be confirmed, and the header still says the
+   * owner is not answering. Nothing here claims the agent is held; it claims
+   * that the pane already on screen belongs to this agent, which is a fact the
+   * screen itself established.
+   */
+  const projects = useMemo(() => {
+    const raw = data?.projects ?? []
+    if (!data || data.owner_reachable !== false) return raw
+    return raw.map(p => ({
+      ...p,
+      agents: p.agents.map(a => (
+        a.terminal_label ? a : { ...a, terminal_label: labelMemory.current[a.pid] ?? null }
+      )),
+    }))
+  }, [data])
   const populated = useMemo(() => projects.filter(p => p.agents.length > 0), [projects])
   // No fallback to "whatever discovery listed first": the column picks the
   // first project in the ARRANGED order and says so through `onSelect`, so the
@@ -1918,11 +1540,23 @@ export default function Fleet() {
     writeView(project, { terminals: labels })
     setMemory({ project, view: readView(project) })
   }, [])
+  /**
+   * The labels a terminal can be attached to — or `null` when nobody could be
+   * asked (B-30).
+   *
+   * `null` is not `[]`, and the difference is the whole defect: an empty list
+   * means *the owner answered and holds nothing*, which closes every open
+   * terminal; `null` means *the question was not answered*, which must close
+   * nothing. The API draws exactly this distinction one layer down and the
+   * screen used to flatten it on arrival.
+   */
   const attachable = useMemo(
-    () => (active?.agents ?? [])
-      .filter(a => terminalOffer(a, data?.owner_reachable).kind === 'available')
-      .map(a => a.terminal_label)
-      .filter((l): l is string => typeof l === 'string'),
+    () => (data?.owner_reachable === false
+      ? null
+      : (active?.agents ?? [])
+        .filter(a => terminalOffer(a, data?.owner_reachable).kind === 'available')
+        .map(a => a.terminal_label)
+        .filter((l): l is string => typeof l === 'string')),
     [active, data?.owner_reachable],
   )
   const openTerminals = useMemo(
@@ -2001,14 +1635,17 @@ export default function Fleet() {
     return () => { cancelled = true }
   }, [])
   /**
-   * Every agent, not the selected project's — PM mode crosses projects by
-   * design, so a list scoped to the selection would silently be unable to
-   * present most of what it queues.
+   * When the reader last put something into the fleet panel.
+   *
+   * ONE capture handler on the panel rather than a prop threaded through the
+   * terminal and the instruct box, and the widening is deliberate: for an agent
+   * the framework holds no terminal for, the instruct box is the only way to
+   * answer, so a signal that watched only the terminal would protect nothing on
+   * exactly those items. Typing anywhere on this panel means the reader is
+   * engaged, which is the fact the freeze actually needs.
    */
-  const allAgents = useMemo(
-    () => (data?.projects ?? []).flatMap(p => p.agents ?? []),
-    [data],
-  )
+  const [lastInputAt, setLastInputAt] = useState<number | null>(null)
+  const noteInput = useCallback(() => setLastInputAt(Date.now()), [])
   const togglePm = useCallback(async (on: boolean) => {
     setPmOn(on)
     try {
@@ -2056,6 +1693,29 @@ export default function Fleet() {
   const onJumpSeat = useCallback((seat: string) => goTo(a => a.seat === seat), [goTo])
   const canJumpPid = useCallback((pid: number) => findAgent(a => a.pid === pid) !== null, [findAgent])
   const onJumpPid = useCallback((pid: number) => goTo(a => a.pid === pid), [goTo])
+
+  /**
+   * Put the agent PM mode is presenting into the agent view.
+   *
+   * The same jump the lineage links use, plus one thing they do not need: for an
+   * agent the framework holds no terminal for, the LOG is opened.
+   *
+   * That half preserves a finding another session measured as B-33 while this
+   * mode was being built — **3 of 20 live agents have no pty, and 2 of the 4
+   * items the queue held were among them**. Half the queue. Without this the
+   * mode selects an agent whose panel offers a tile and an input box it cannot
+   * send through, when the log endpoint has a whole conversation to give.
+   */
+  const presentAgent = useCallback((pid: number) => {
+    const hit = findAgent(a => a.pid === pid)
+    if (!hit) return
+    setSelected(hit.project)
+    const opening = hit.agent.terminal_label
+      ? { enlarged: pid }
+      : { enlarged: pid, logs: [...readView(hit.project).logs ?? [], pid].filter((v, i, a) => a.indexOf(v) === i) }
+    writeView(hit.project, opening)
+    setMemory({ project: hit.project, view: readView(hit.project) })
+  }, [findAgent])
 
   /**
    * Whose log is open — several at once, and in the grid rather than only on an
@@ -2274,7 +1934,27 @@ export default function Fleet() {
         )}
       </div>
 
-      <div className="flex-1 flex min-h-0" ref={shellRef}>
+      {/* The PM strip — under the header, ABOVE the panel, and it replaces
+          nothing. The queue decides which agent the screen below is showing;
+          the screen below stays the screen. An earlier build made this a
+          full-screen overlay and it threw away the project column, the tabs,
+          the instruct box and the docks in order to show one terminal. */}
+      {pmOn && (
+        <FleetPm
+          onPresent={presentAgent}
+          onExit={() => void togglePm(false)}
+          lastInputAt={lastInputAt}
+        />
+      )}
+
+      <div
+        className="flex-1 flex min-h-0"
+        ref={shellRef}
+        // Capture, so it fires before anything stops the event — xterm's own
+        // hidden textarea and every input on the panel are covered by this one
+        // handler. Only armed in PM mode: nothing else needs it.
+        onKeyDownCapture={pmOn ? noteInput : undefined}
+      >
         {/* Task 7.1 / D-2 — the hand-made arrangement. It renders even when
             nothing is running: a project's position is a statement about the
             project, not about who happens to be in it, so the list must not
@@ -2699,10 +2379,6 @@ export default function Fleet() {
           ))}
         </div>
         </div>
-      </div>
-      {/* Rendered LAST and fixed-position, so the arrangement below stays
-          mounted: leaving the mode is a state change, never a rebuild. */}
-      {pmOn && <FleetPm agents={allAgents} onExit={() => void togglePm(false)} />}
-    </div>
+      </div>    </div>
   )
 }

@@ -224,10 +224,12 @@ def select_candidates(
 ) -> Tuple[List[Subject], Dict[int, str], List[int]]:
     """Who this cycle asks about, who it skips and why, and who did not fit.
 
-    Three tests, and each removes a class the model could only have agreed with:
+    Four tests, and each removes a class the model could only have agreed with:
 
       - not quiet — a working agent is not blocked, and an `asking` one is
         already measured, so neither needs an opinion;
+      - the agent holds the floor — it owes the next utterance, so it cannot be
+        waiting on a person whatever its last words were;
       - the log has not moved since the last verdict — the same input yields
         the same answer, and the previous verdict stands;
       - the log cannot be read — which is *no information*, so the agent is
@@ -245,6 +247,15 @@ def select_candidates(
             continue
         if subject.state != agent_state.QUIET:
             skipped[subject.pid] = f"state is {subject.state}, which is not a blockage on a person"
+            continue
+        floor = agent_state.who_has_the_floor(subject.session_log)
+        if floor == agent_state.FLOOR_AGENT:
+            # `quiet` only means no tool call was open at the last flush. The
+            # runtime writes a `tool_use` together with its result, so an agent
+            # running a command reads as quiet while the screen says it is
+            # working. Whose turn it is survives that: after a tool result, or
+            # after a person's prompt, the next word is the AGENT'S.
+            skipped[subject.pid] = "mid-turn — the agent owes the next utterance"
             continue
         mark = watermark_of(subject.session_log)
         if mark is None:

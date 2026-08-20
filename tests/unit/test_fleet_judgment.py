@@ -322,3 +322,53 @@ def test_a_measured_agent_is_skipped_for_the_RIGHT_reason(tmp_path):
     _, skipped, _ = j.select_candidates([subject], {})
     assert "already measured as asking" in skipped[1]
     assert "not a blockage" not in skipped[1]
+
+
+# --------------------------------------------------------------------------- #
+# the floor filter — an agent that owes the next utterance is not waiting
+# --------------------------------------------------------------------------- #
+
+def _log_ending_with(tmp_path, *entries):
+    p = tmp_path / "s.jsonl"
+    p.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+    return str(p)
+
+
+def _assistant_text(text="Done — I committed it."):
+    return {"type": "assistant", "message": {"role": "assistant",
+            "content": [{"type": "text", "text": text}]}}
+
+
+def _tool_result():
+    return {"type": "user", "message": {"role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]}}
+
+
+def test_an_agent_that_owes_the_next_utterance_is_not_a_candidate(tmp_path):
+    """Measured 2026-08-20: a session the screen showed as `Running 2 shell
+    commands… Razzmatazzing… (10m 9s)` had NO outstanding tool call in its log,
+    because the runtime writes `tool_use` and `tool_result` together. It read as
+    quiet, and the mode put it in front of a person.
+    """
+    log = _log_ending_with(tmp_path, _assistant_text("running it now"), _tool_result())
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET, session_log=log)
+    candidates, skipped, _ = j.select_candidates([subject], {})
+    assert candidates == []
+    assert "mid-turn" in skipped[1]
+
+
+def test_an_agent_that_spoke_last_is_still_a_candidate(tmp_path):
+    """The filter must not swallow the case the whole mode exists for."""
+    log = _log_ending_with(tmp_path, _tool_result(), _assistant_text("Szólj, ha továbbmegyek"))
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET, session_log=log)
+    candidates, skipped, _ = j.select_candidates([subject], {})
+    assert [c.pid for c in candidates] == [1], skipped
+
+
+def test_a_prompt_with_no_reply_after_it_is_mid_turn(tmp_path):
+    """A person typed and the agent has not answered — the agent owes the turn."""
+    log = _log_ending_with(tmp_path, _assistant_text(), {"type": "user",
+        "message": {"role": "user", "content": "csináld meg"}})
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET, session_log=log)
+    candidates, skipped, _ = j.select_candidates([subject], {})
+    assert candidates == [] and "mid-turn" in skipped[1]

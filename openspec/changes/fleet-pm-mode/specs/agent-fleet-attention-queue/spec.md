@@ -55,8 +55,13 @@ The price is starvation, and the next requirement is what pays it.
 - **THEN** the two-minute-old blockage is presented first
 
 #### Scenario: A project is exhausted before the next one is entered
-- **WHEN** more than one project holds queued items
-- **THEN** every item of the presented item's project is offered before an item of another project
+- **WHEN** more than one project holds queued items the reader has not seen yet
+- **THEN** every unseen item of the presented item's project is offered before an unseen item of
+  another project
+
+Project exhaustion ranks the items the reader has NOT seen. It does not rescue an item the reader
+was already shown and did not deal with — that item is demoted past every project, which is what
+makes deferral able to leave the project at all.
 
 ### Requirement: Nothing leaves the queue except by being dealt with
 
@@ -143,6 +148,15 @@ such modes intolerable.
 - **WHEN** the reader dismisses the countdown explicitly
 - **THEN** that item is not offered again until the presented item changes
 
+#### Scenario: An item the reader already saw does not preempt its way back
+- **WHEN** the reader deferred an item and it is the freshest blockage of all
+- **THEN** it is not offered as an interruption of whatever was presented in its place
+
+Preemption exists to surface a blockage the reader has NOT seen. Measured 2026-08-20 in the
+browser: `later` handed the screen on, and the deferred item — freshest by construction, since it
+was presented for being fresh — offered to take it back four seconds later. Deferral that a
+countdown undoes is not deferral.
+
 ### Requirement: A deferred item is demoted, not merely returned
 
 An item the reader was shown and did not deal with SHALL be ranked below items the reader has not
@@ -156,6 +170,15 @@ the loop the freeze rule would otherwise create.
 #### Scenario: A twice-presented item ranks below an unseen one
 - **WHEN** an item has been presented and not dealt with, and an unseen item of the same project exists
 - **THEN** the unseen item is presented first
+
+#### Scenario: Deferral moves on even when the only unseen item is in another project
+- **WHEN** the reader defers the presented item and every remaining unseen item belongs to another project
+- **THEN** an unseen item of that other project is presented, and the deferred item is ranked behind it
+
+Demotion that stops at the project boundary is not demotion. Measured 2026-08-20 in the browser with
+two queued items in two projects: `later` returned the deferred item to the screen immediately,
+because its own project held the top rank by virtue of that same item — a button that visibly does
+nothing.
 
 ### Requirement: The reader can step back through what was already presented
 

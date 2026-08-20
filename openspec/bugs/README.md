@@ -813,6 +813,34 @@ consumer's name, path, or content.
   the same guard refusing `git add -A`. And the refusal must NOT fire when every
   staged path was staged by the committing session.
 
+### B-34 — the session record's `sessionId` goes stale, so the fleet measures a dead log with `binding_confirmed: true`
+
+- **state:** open
+- **reported:** 2026-08-20 by the user, who saw PM mode present an agent whose own
+  screen said it was working (*"akkor is odarakta amikor meg dolgozik"*)
+- **measured:** pid 113100's record `~/.claude/sessions/113100.json` names
+  `sessionId 83de5d69…` with `updatedAt` 12:18:48; the terminal's own status line
+  says `e96872a1…`, and on disk `83de5d69….jsonl` is 97 KB last written 21:17:47
+  while `e96872a1….jsonl` is 4.4 MB last written 21:32:01 — 75 s before the check.
+  The state endpoint reports `binding_confirmed: true` and
+  `last_movement_seconds: 902` for a session that moved 75 s ago.
+- **the direction that costs:** the binding is confidently wrong rather than
+  absent. `_session_log_for()` deliberately has no "newest log in this project"
+  fallback (measured 4 correct of 9), so a missing record is reported as missing —
+  but a STALE record is not missing, and nothing downstream can tell.
+- **why it goes stale:** a session that continues past a compact or a resume opens
+  a new transcript under a new id; the per-pid record keeps the id it was written
+  with. One record per pid, so there is nothing to disambiguate — the newer id is
+  simply never recorded.
+- **fixed when:** for every live agent, `state.session_log`'s basename equals the
+  session id the process is actually writing, checked against the newest transcript
+  that names that pid's cwd — and a record whose named log has not moved while a
+  newer one in the same project has is reported as unconfirmed rather than
+  confirmed.
+- **note:** `fleet-pm-mode` does not depend on this being fixed. Its own filter
+  (`who_has_the_floor()`) excludes an agent that owes the next utterance, and both
+  logs here fail that test — but that is a second, independent reason, not a repair.
+
 ### B-33 — PM mode presents an agent it cannot show and cannot address, and then the full screen is empty
 
 - **state:** open
