@@ -53,9 +53,9 @@
 
 ## 5. The API
 
-- [ ] 5.1 Add the PM endpoints to `lib/set_orch/api/fleet.py`: queue head with counts, advance, defer, dismiss, history position [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle]
-- [ ] 5.2 Carry the unmeasured-judgment state through the envelope as its own field, distinct from an empty queue [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm]
-- [ ] 5.3 Carry the idle count and the dismissed count in the same envelope [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle]
+- [x] 5.1 Add the PM endpoints to `lib/set_orch/api/fleet.py`: queue head with counts, advance, defer, dismiss, history position [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle] **DONE 2026-08-20** — nine routes under `/api/fleet/pm`: the snapshot (GET), the toggle (POST), then advance / defer / dismiss / refuse / present / back / forward. `advanced: false` is an ordinary answer, not an error — it is what an unanswered question, an interrupt and an unreadable log all produce.
+- [x] 5.2 Carry the unmeasured-judgment state through the envelope as its own field, distinct from an empty queue [REQ: a-pass-that-could-not-run-says-so-and-never-renders-as-calm] **DONE 2026-08-20** — `counts.judgment_measured` + `judgment_reason`, distinct from `queued == 0`, plus `last_error` on the envelope. ⚠ The cycle period is enforced SERVER-side: this endpoint is polled by a browser, and a period enforced client-side is one refresh away from not being enforced.
+- [x] 5.3 Carry the idle count and the dismissed count in the same envelope [REQ: the-queue-holds-agents-blocked-on-a-person-never-agents-that-are-merely-idle] **DONE 2026-08-20** — `counts` carries queued / idle / dismissed / not_covered / unclassified in the same payload. `seconds_since_input` is a query parameter because the keystroke is a client-held fact, but the DECISION stays server-side, so a client that forgets to send it cannot disable the guard.
 
 ## 6. The screen
 

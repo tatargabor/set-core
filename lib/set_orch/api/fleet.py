@@ -1273,3 +1273,122 @@ def fleet_install_module(name: str, body: InstallBody) -> Dict[str, Any]:
         "changed_nothing": report.changed_nothing,
         "lines": report.as_lines(),
     }
+
+
+# --------------------------------------------------------------------------- #
+# PM mode — one agent at a time, chosen for the reader
+# --------------------------------------------------------------------------- #
+
+@router.get("/api/fleet/pm")
+def fleet_pm(seconds_since_input: Optional[float] = Query(None)) -> Dict[str, Any]:
+    """What PM mode is presenting, and everything the frame around it shows.
+
+    `seconds_since_input` is supplied by the browser because that is where the
+    fact lives — the keystroke went into a terminal the client holds. It decides
+    only whether a pending switch may be offered; the decision itself is made
+    server-side, so a client that forgets to send it cannot silently disable the
+    guard for everyone.
+
+    Running a cycle here rather than on a timer keeps the cost tied to somebody
+    actually looking: the mode is off by default, and off means no invocation.
+    """
+    from ..fleet.pm import session as pm_session
+
+    pm_session.cycle()
+    return pm_session.snapshot(seconds_since_input=seconds_since_input)
+
+
+class PmToggleBody(BaseModel):
+    enabled: bool
+
+
+@router.post("/api/fleet/pm")
+def fleet_pm_toggle(body: PmToggleBody) -> Dict[str, Any]:
+    """Turn the mode on or off. Touches NO agent either way.
+
+    It is a way of looking at the fleet, not a way of operating it — a toggle
+    that also acted on agents would be one nobody dares press to find out what
+    it does.
+    """
+    from ..fleet.pm import session as pm_session
+
+    if body.enabled:
+        pm_session.enable()
+        pm_session.cycle(force=True)
+    else:
+        pm_session.disable()
+    return pm_session.snapshot()
+
+
+@router.post("/api/fleet/pm/advance")
+def fleet_pm_advance() -> Dict[str, Any]:
+    """Move on IF the presented agent resumed, and report whether it did.
+
+    `advanced: false` is an ordinary answer, not an error: it is what an
+    unanswered question, an interrupt, or an unreadable log all produce, and the
+    screen stays where it is.
+    """
+    from ..fleet.pm import session as pm_session
+
+    advanced = pm_session.advance()
+    payload = pm_session.snapshot()
+    payload["advanced"] = advanced
+    return payload
+
+
+@router.post("/api/fleet/pm/defer")
+def fleet_pm_defer() -> Dict[str, Any]:
+    """Set the presented item aside. It stays queued, demoted, and counted."""
+    from ..fleet.pm import session as pm_session
+
+    pm_session.queue.defer()
+    return pm_session.snapshot()
+
+
+@router.post("/api/fleet/pm/dismiss/{pid}")
+def fleet_pm_dismiss(pid: int) -> Dict[str, Any]:
+    """Drop an item without answering it. Counted, never silently forgotten."""
+    from ..fleet.pm import session as pm_session
+
+    pm_session.queue.dismiss(pid)
+    return pm_session.snapshot()
+
+
+@router.post("/api/fleet/pm/refuse/{pid}")
+def fleet_pm_refuse(pid: int) -> Dict[str, Any]:
+    """Decline THIS interruption while THIS item is on screen.
+
+    Scoped to the presented item on purpose: refusing once must not silence the
+    same offer forever, only while the reader is still on what they were on.
+    """
+    from ..fleet.pm import session as pm_session
+
+    pm_session.queue.refuse(pid)
+    return pm_session.snapshot()
+
+
+@router.post("/api/fleet/pm/present/{pid}")
+def fleet_pm_present(pid: int) -> Dict[str, Any]:
+    """Put a specific queued item on screen — the switch a countdown performs."""
+    from ..fleet.pm import session as pm_session
+
+    pm_session.queue.present(pid)
+    return pm_session.snapshot()
+
+
+@router.post("/api/fleet/pm/back")
+def fleet_pm_back() -> Dict[str, Any]:
+    """One step back through what was presented. Marks nothing dealt with."""
+    from ..fleet.pm import session as pm_session
+
+    pm_session.queue.back()
+    return pm_session.snapshot()
+
+
+@router.post("/api/fleet/pm/forward")
+def fleet_pm_forward() -> Dict[str, Any]:
+    """One step forward, bounded by the queue's own position."""
+    from ..fleet.pm import session as pm_session
+
+    pm_session.queue.forward()
+    return pm_session.snapshot()
