@@ -68,7 +68,7 @@ consumer's name, path, or content.
 ## Open
 
 ### B-35 — the "waiting for a human" count reads its OWN documentation as an open question, on a task that is already done
-- **state:** open
+- **state:** closed (`70fd5577`)
 - **reported:** 2026-08-20 by the user, from the screen — *"3 waiting for a human
   felül de ha rákattintok nem ugrik rá az elsőre, vagy ráugrik de az már nem abban
   a státuszban kellene legyen"*.
@@ -89,9 +89,15 @@ consumer's name, path, or content.
 - **the direction:** it INVENTS work. The header sends the reader to a project
   that is not waiting for anything, which is the fastest way to make a
   legitimate signal ignored — and the count is the first number on the screen.
-- **fixed when:** `open_decisions` over this repo returns `[]` while a fixture
-  with a genuinely open `- [ ] 1.1 … <!-- awaiting: q -->` still returns it, and
-  the fleet header drops from 3 to 2 with wpc-pont's two orphaned changes intact.
+- **fixed when / verified:** `open_decisions` over this repo returns `[]` while a
+  fixture with a genuinely open `- [ ] 1.1 … <!-- awaiting: q -->` still returns
+  it. Measured after: `GET /api/fleet/agents` → `awaiting: 2`, both wpc-pont's
+  (`orphaned: ["returns-and-commissions", "driver-photos-storage"]`), and the
+  header on screen reads `2 waiting for a human`.
+- **the guard:** a test asserts against THIS repository's own
+  `openspec/changes`, because the fixture is written by whoever already
+  understands the bug — and it was proven able to fire (both strippers removed →
+  it fails).
 
 ### B-1 — an agent can only be stopped through an open terminal, and closing that terminal is a detach
 - **state:** open
