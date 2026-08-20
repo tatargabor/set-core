@@ -52,6 +52,19 @@ export interface FleetDockBandProps {
   failing?: number | null
   /** Human name of the view, for the collapsed strip and the controls. */
   title: string
+  /**
+   * Whether the band's own header repeats the name.
+   *
+   * `false` when the content already carries it — an agent card puts its own
+   * label at the top, and the band header printed it again directly above,
+   * which looked exactly like a defect: the same string twice, in two weights,
+   * one line apart. It is the second-copy problem in its most visible form, and
+   * only looking at the screen shows it.
+   *
+   * The name is still on the band element as a tooltip, so nothing is lost for
+   * a reader who needs it.
+   */
+  showTitle?: boolean
 }
 
 /** How thick a collapsed band is — enough for the marker and the reopen control. */
@@ -59,7 +72,7 @@ export const COLLAPSED_SIZE = 28
 
 export default function FleetDockBand({
   band, children, collapsed = false, onToggleCollapsed, onUndock,
-  onResize, onResizeCommit, max, failing, title,
+  onResize, onResizeCommit, max, failing, title, showTitle = true,
 }: FleetDockBandProps) {
   const vertical = band.edge === 'left' || band.edge === 'right'
   // The band sits BEFORE the remaining area on the left and top edges, and
@@ -101,6 +114,7 @@ export default function FleetDockBand({
       data-fleet-dock={band.id}
       data-fleet-dock-edge={band.edge}
       data-fleet-dock-collapsed={collapsed ? 'true' : undefined}
+      title={title}
       className={`shrink-0 min-w-0 min-h-0 flex ${vertical ? 'flex-col' : 'flex-col'} bg-surface-panel overflow-hidden`}
       style={vertical ? { width: `${size}px` } : { height: `${size}px` }}
     >
@@ -109,7 +123,7 @@ export default function FleetDockBand({
             not the band is collapsed. A marker that only appears when expanded
             would be visible exactly when it is not needed. */}
         {marker}
-        {!collapsed && <span className="text-xs text-fg-strong truncate min-w-0">{title}</span>}
+        {showTitle && <span className="text-xs text-fg-strong truncate min-w-0">{title}</span>}
         <span className="ml-auto flex items-center gap-0.5 shrink-0">
           {onToggleCollapsed && (
             <IconButton
@@ -121,7 +135,15 @@ export default function FleetDockBand({
           {onUndock && <IconButton icon={X} label={`undock ${title}`} onClick={onUndock} />}
         </span>
       </div>
-      {!collapsed && <div className="flex-1 min-h-0 min-w-0 overflow-auto">{children}</div>}
+      {/* `[&>*]:flex-1` — the content FILLS the band. Without it the child sizes
+          itself from its own text and the rest of the band is black space, which
+          reads as a panel that failed to load rather than as a short card.
+          Measured by looking at it on 2026-08-20. */}
+      {!collapsed && (
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto flex flex-col [&>*]:flex-1 [&>*]:min-h-0">
+          {children}
+        </div>
+      )}
     </div>
   )
 

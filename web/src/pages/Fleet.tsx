@@ -2218,6 +2218,7 @@ export default function Fleet() {
               key={dockSplitKey(band)}
               band={band}
               title={dockTitle(band.kind, band.id)}
+              showTitle={band.kind !== PANEL_AGENT}
               max={maxBandSize(band.edge)}
               failing={dockFailing(band)}
               onResize={px => resizeBand(dockSplitKey(band), px, false)}
@@ -2233,6 +2234,7 @@ export default function Fleet() {
                 key={dockSplitKey(band)}
                 band={band}
                 title={dockTitle(band.kind, band.id)}
+                showTitle={band.kind !== PANEL_AGENT}
                 max={maxBandSize(band.edge)}
                 failing={dockFailing(band)}
                 onResize={px => resizeBand(dockSplitKey(band), px, false)}
@@ -2530,6 +2532,7 @@ export default function Fleet() {
                 key={dockSplitKey(band)}
                 band={band}
                 title={dockTitle(band.kind, band.id)}
+                showTitle={band.kind !== PANEL_AGENT}
                 max={maxBandSize(band.edge)}
                 failing={dockFailing(band)}
                 onResize={px => resizeBand(dockSplitKey(band), px, false)}
@@ -2545,6 +2548,7 @@ export default function Fleet() {
               key={dockSplitKey(band)}
               band={band}
               title={dockTitle(band.kind, band.id)}
+              showTitle={band.kind !== PANEL_AGENT}
               max={maxBandSize(band.edge)}
               failing={dockFailing(band)}
               onResize={px => resizeBand(dockSplitKey(band), px, false)}
