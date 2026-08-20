@@ -701,6 +701,21 @@ consumer's name, path, or content.
   457 deletions of parallel work when this was committed, so the helpers and the
   tests are in `8b8f60f5` and the call sites are not. They are in the working
   tree and will land with that thread's commit — see B-32.
+  **How a later session checks that they did**, in one command, because "it is in
+  the working tree" stops being true at the next rebase:
+
+  ```bash
+  cd web && npx vitest run tests/unit/fleetTerminalSurvivesUnknown.test.tsx
+  ```
+
+  Green means the call sites arrived. Red — specifically *keeps the pane when
+  every agent comes back `unknown`* failing while the three pure-function tests
+  pass — means the helpers survived and the wiring did not: look for
+  `labelMemory`, the `projects` normalisation, `attachable`'s `null` branch and
+  the `offerWithRemembered` call, with `git log -p -- web/src/pages/Fleet.tsx`.
+  That split is diagnostic: the pure tests import the library directly, the
+  wiring test renders the screen, so which half fails names which half is
+  missing.
 
 
 ### B-31 — stopping set-web takes 91 s, so any restart is a 91 s hole in the dashboard
