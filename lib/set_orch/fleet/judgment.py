@@ -235,12 +235,14 @@ def select_candidates(
 ) -> Tuple[List[Subject], Dict[int, str], List[int]]:
     """Who this cycle asks about, who it skips and why, and who did not fit.
 
-    Five tests, and each removes a class the model could only have agreed with:
+    Six tests, and each removes a class the model could only have agreed with:
 
       - not quiet — a working agent is not blocked, and an `asking` one is
         already measured, so neither needs an opinion;
       - the agent cannot be answered at all — no terminal, no bus seat, so
         queueing it would present something the reader cannot act on;
+      - the log carries no utterance at all — an absent turn is not a quiet
+        one, and the framework concludes that rather than asking;
       - the agent holds the floor — it owes the next utterance, so it cannot be
         waiting on a person whatever its last words were;
       - the log has not moved since the last verdict — the same input yields
@@ -268,7 +270,20 @@ def select_candidates(
             # to deal with — and no action clears it.
             skipped[subject.pid] = "unreachable — no terminal and no seat, so it cannot be answered"
             continue
+        mark = watermark_of(subject.session_log)
+        if mark is None:
+            skipped[subject.pid] = "the session log could not be read"
+            continue
         floor = agent_state.who_has_the_floor(subject.session_log)
+        if floor == agent_state.FLOOR_UNKNOWN:
+            # The tail carries no utterance at all, so there is no turn to judge.
+            # Measured 2026-08-20 across the live fleet: one session's log was
+            # 1201 bytes of `mode` and `system` lines and nothing else — never
+            # spoken in. Sending it costs an excerpt-shaped hole the model has to
+            # say something about, and the direction that hurts is `asking`,
+            # which would put a session that never spoke in front of a person.
+            skipped[subject.pid] = "no readable utterance — nothing to judge"
+            continue
         if floor == agent_state.FLOOR_AGENT:
             # `quiet` only means no tool call was open at the last flush. The
             # runtime writes a `tool_use` together with its result, so an agent
@@ -276,10 +291,6 @@ def select_candidates(
             # working. Whose turn it is survives that: after a tool result, or
             # after a person's prompt, the next word is the AGENT'S.
             skipped[subject.pid] = "mid-turn — the agent owes the next utterance"
-            continue
-        mark = watermark_of(subject.session_log)
-        if mark is None:
-            skipped[subject.pid] = "the session log could not be read"
             continue
         previous = watermarks.get(subject.pid)
         if previous is not None and previous == mark:

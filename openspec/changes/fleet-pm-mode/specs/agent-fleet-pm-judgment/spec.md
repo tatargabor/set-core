@@ -75,6 +75,21 @@ agent's.
 - **WHEN** an agent's session log ends with the agent's own utterance
 - **THEN** it is included in the invocation
 
+#### Scenario: A log carrying no utterance at all is not judged
+- **WHEN** an agent's session log holds no readable utterance from either side
+- **THEN** it is not included in the invocation, and the framework concludes that rather than asking
+
+#### Scenario: An unreadable log and an empty one are distinguished
+- **WHEN** one agent's log cannot be read and another's is readable but holds no utterance
+- **THEN** the two are excluded for their own reasons, and neither is reported as the other
+
+An absent turn is not a quiet one. Measured 2026-08-20 across the live fleet: one session's log was
+1201 bytes of `mode`, `permission-mode` and `system` lines and nothing else — it had never been
+spoken in. Sending it buys an opinion about a hole, and the direction that costs is `asking`, which
+puts a session that never spoke in front of a person. The two exclusions are kept apart because
+"we could not read it" and "we read it and nobody has spoken" lead to different follow-ups; the
+first version of this filter ran the emptiness test first and reported a MISSING file as empty.
+
 #### Scenario: An unchanged log is not re-judged
 - **WHEN** an agent's session log has not changed since its last verdict
 - **THEN** it is not included in the invocation, and its previous verdict stands

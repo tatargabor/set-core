@@ -415,3 +415,52 @@ def test_an_unreachable_agent_does_not_enter_through_the_structural_door():
     reachable = j.Subject(pid=1, project="alpha", state=agent_state.ASKING)
     stranded = j.Subject(pid=2, project="alpha", state=agent_state.ASKING, reachable=False)
     assert sorted(j.structural_verdicts([reachable, stranded])) == [1]
+
+
+def test_a_log_with_no_utterance_at_all_is_not_judged(tmp_path):
+    """Measured across the live fleet 2026-08-20: one session's log held 1201
+    bytes of `mode`, `permission-mode` and `system` lines and nothing else.
+
+    It is not a quiet agent, it is an agent nobody has spoken to. Sending it to
+    the model buys an opinion about a hole, and the expensive direction is
+    `asking` — a session that never spoke, put in front of a person.
+    """
+    p = tmp_path / "s.jsonl"
+    p.write_text("\n".join(json.dumps(e) for e in (
+        {"type": "mode"}, {"type": "permission-mode"}, {"type": "system"},
+    )) + "\n")
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET, session_log=str(p))
+    candidates, skipped, _ = j.select_candidates([subject], {})
+    assert candidates == []
+    assert "no readable utterance" in skipped[1]
+
+
+def test_an_empty_log_and_a_missing_one_are_kept_apart():
+    """Two different facts, and the order of the tests is what keeps them apart.
+
+    "We could not read it" and "we read it and nobody has spoken" lead to
+    different follow-ups, and the first version of this filter ran the emptiness
+    test FIRST, so a missing file reported as empty — a confident statement
+    about a log that was never opened.
+    """
+    missing = j.Subject(pid=1, project="alpha", state=agent_state.QUIET,
+                        session_log="/nonexistent/never.jsonl")
+    _, skipped, _ = j.select_candidates([missing], {})
+    assert "could not be read" in skipped[1]
+
+
+def test_the_floor_filter_must_not_be_applied_to_the_structural_door(tmp_path):
+    """The refuted pattern, held in a test so a tidy-up cannot reintroduce it.
+
+    A structurally measured `asking` agent has an open question tool, and that
+    tool_use IS the last assistant block — so its floor reads `agent`. Applying
+    the candidate filter's floor test to `structural_verdicts` would therefore
+    exclude exactly the agents that are CERTAINLY waiting on a person. Measured
+    live 2026-08-20: `AskUserQuestion` open for 352 s, floor `agent`.
+    """
+    p = tmp_path / "s.jsonl"
+    p.write_text(json.dumps({"type": "assistant", "message": {"role": "assistant",
+        "content": [{"type": "tool_use", "name": "AskUserQuestion", "id": "toolu_1"}]}}) + "\n")
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.ASKING, session_log=str(p))
+    assert agent_state.who_has_the_floor(str(p)) == agent_state.FLOOR_AGENT
+    assert list(j.structural_verdicts([subject])) == [1]
