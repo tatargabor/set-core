@@ -189,3 +189,42 @@ describe('one font size for the state word', () => {
     }
   })
 })
+
+/**
+ * The tab strip is ONE line, whatever the fleet's size — AC-130.
+ *
+ * ⚠ ASSERTED ON THE SOURCE, NOT ON A LAYOUT, and the limit is in the name of
+ * this describe block rather than only in this comment. jsdom performs no
+ * layout: every element is 0×0, so a test that asked *does this wrap* would
+ * measure nothing and pass on a strip that wraps into eight rows. What is
+ * checkable here is the DECLARATION — sideways scrolling, and tabs that refuse
+ * to shrink — which is what makes wrapping impossible.
+ *
+ * The result itself is checkable only by looking, which `ui-quality.md` now
+ * requires of every UI change. This guard exists so that a later edit removing
+ * the declaration fails immediately instead of waiting for somebody to notice a
+ * strip that has quietly become the row list it replaced.
+ */
+describe('the strip declares itself un-wrappable (source-level guard)', () => {
+  it('scrolls sideways and holds its tabs at their own width', async () => {
+    const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2'), agent(3, 'a3')]))
+    fireEvent.click(container.querySelector('[data-tile-controls="1"] [data-tile-control="enlarge"]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-agent-tabs]')).toBeTruthy())
+
+    const strip = container.querySelector('[data-fleet-agent-tabs]') as HTMLElement
+    expect(strip.className).toContain('overflow-x-auto')
+    expect(strip.className, 'a wrapping strip is the row list again').not.toContain('flex-wrap')
+    for (const tab of container.querySelectorAll('[data-fleet-agent-tab]')) {
+      expect((tab as HTMLElement).className).toContain('shrink-0')
+    }
+  })
+
+  /** Every agent is in the strip, including the one that is enlarged. */
+  it('lists the whole project, so the count is the fleet’s and not the fleet minus one', async () => {
+    const { container } = await show(fleet([agent(1, 'a1'), agent(2, 'a2'), agent(3, 'a3')]))
+    fireEvent.click(container.querySelector('[data-tile-controls="1"] [data-tile-control="enlarge"]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-agent-tabs]')).toBeTruthy())
+    expect(container.querySelectorAll('[data-fleet-agent-tab]')).toHaveLength(3)
+    expect(container.querySelector('[data-fleet-agent-tabs]')!.getAttribute('data-fleet-agent-tabs')).toBe('3')
+  })
+})

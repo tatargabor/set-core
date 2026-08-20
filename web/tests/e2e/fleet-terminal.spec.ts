@@ -83,14 +83,29 @@ test.describe('task 9.6 — the negative half', () => {
     const res = await request.get('/api/fleet/agents')
     expect(res.ok()).toBeTruthy()
     const body = await res.json()
+    /*
+      The agent must be foreign AND reachable on the screen, and the second half
+      is not decoration — it is what this test failed on when it was first run
+      against a live machine, 2026-08-20. `foreign[0]` was an agent whose
+      `project` is `null` (a session in a directory no source names), so the
+      selector became `[data-fleet-project="null"]` and the click waited out its
+      timeout. The product was fine; the test had picked a subject it could not
+      navigate to.
+
+      Which is the interesting half: the filter was `population === 'foreign'`,
+      the requirement is about a foreign agent ON A PROJECT'S PANEL, and the two
+      differ exactly where the machine is untidy. A selector built from a field
+      that may be null is a guess about the data, and it fails as a TIMEOUT —
+      the shape that reads as a broken product rather than as a bad fixture.
+    */
     const foreign = body.projects
-      .flatMap((p: any) => p.agents)
-      .filter((a: any) => a.population === 'foreign')
-    test.skip(foreign.length === 0, 'no foreign session is running on this machine')
+      .flatMap((p: any) => (p.agents ?? []).map((a: any) => ({ ...a, panel: p.name })))
+      .filter((a: any) => a.population === 'foreign' && a.panel)
+    test.skip(foreign.length === 0, 'no foreign session sits on a named project on this machine')
 
     const victim = foreign[0]
     await page.goto('/')
-    await page.locator(`[data-fleet-project="${victim.project}"]`).first().click()
+    await page.locator(`[data-fleet-project="${victim.panel}"]`).first().click()
 
     // The card that carries this agent's name. Scoped rather than page-wide,
     // because the project may hold agents the framework DID start and a page-wide

@@ -573,6 +573,33 @@ consumer's name, path, or content.
   ambiguous.
 
 
+### B-27 — one docking test fails about one full-suite run in ten, and passes alone
+
+- **state:** open
+- **reported:** 2026-08-20 by this session, while running the web suite for an
+  unrelated verification pass
+- **measured:** `npx vitest run` over the whole web suite, ten times.
+  **Two runs failed, both on the same test** —
+  `fleetDockingSurface.test.tsx::undocks by pressing the edge it is already on,
+  so the control is never a dead end` — and eight passed 675/675. The same file
+  alone: 12/12. The file together with the suite that was suspected of polluting
+  it (`fleetTilePrecedence`): 21/21, in both orders. At `HEAD` with this
+  session's working-tree changes stashed: 12/12.
+- **what that rules out, and why it is worth writing down:** the first failure
+  arrived immediately after this session added tests, so the obvious reading was
+  *my change broke it*. It did not — the two runs that isolate the pair are the
+  evidence, and without them the next step would have been to "fix" a test that
+  was never wrong. A flake and a break look identical from one run.
+- **whose it is:** the `fleet-panel-layout` thread's, not this one's. Recorded
+  rather than repaired here — the file was committed by another session and is
+  under active work.
+- **fixed when:** the CAUSE is asserted, not the symptom. A count of green runs
+  is what this register already warns against: *a symptom that stops appearing
+  is not a repair*, and a reproducer is a measurement with a timestamp. The
+  useful shape is the one that worked for task 10.3 — find what makes it
+  order- or timing-dependent and make THAT fatal, so the check does not depend
+  on how the suite happens to be scheduled.
+
 ## Closed
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open
