@@ -657,7 +657,7 @@ consumer's name, path, or content.
     one slow or refused answer covers several 5 s poll cycles — which is the
     minute the report names.
   - the journal shows the consequence in pairs, e.g. `12:16:15 detached from
-    wpc-pont-penzugy` / `12:16:26 attached to set-core-fleet (65536 replayed
+    consumer-a-finance` / `12:16:26 attached to set-core-fleet (65536 replayed
     bytes, truncated=True)` — every re-attach re-sends the 64 KB tail.
 - **what is NOT happening, because the question was asked:** nothing is reset and
   nothing is suspended. The unmount closes the browser socket only; the server

@@ -40,7 +40,7 @@ paid for more than once. A model reads it.
   (shown, answered, deferred, history) is held in code, never in the model's context.
 - **A structural "the reader dealt with it" test.** Refuted by measurement: a new `user` entry in
   the log is NOT proof. An `Esc` writes exactly that (`[Request interrupted by user]`, measured on
-  `itline-web/349ee01c…jsonl`), so the naive test would break the freeze the mode exists to
+  `<a consumer project>/349ee01c…jsonl`), so the naive test would break the freeze the mode exists to
   provide. The test is that **the agent resumed** — a new assistant utterance or a new outstanding
   call after the question.
 

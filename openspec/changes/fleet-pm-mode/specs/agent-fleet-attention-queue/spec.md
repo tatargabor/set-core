@@ -85,7 +85,7 @@ The framework SHALL treat an item as dealt with only when the agent it names has
 new assistant utterance, or a new outstanding tool call, recorded after the blockage. The framework
 SHALL NOT treat the appearance of a new user entry in the session log as proof.
 
-Measured on a live log (`itline-web/349ee01c…jsonl`, 2026-08-19): an interrupt writes a `user`
+Measured on a live log (`<a consumer project>/349ee01c…jsonl`, 2026-08-19): an interrupt writes a `user`
 entry whose text is `[Request interrupted by user]`. Under the naive test that reads as an answer,
 so pressing `Esc` would advance the queue — breaking the freeze this mode exists to provide. A
 list of such synthetic markers is a second copy that drifts; measuring the effect does not.
