@@ -117,7 +117,31 @@ describe('the announced switch', () => {
     const { container } = render(<FleetPm onPresent={() => {}} onExit={() => {}} lastInputAt={null} />)
     await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeTruthy())
     expect(screen.getByText('beta')).toBeTruthy()
-    expect(screen.getByText(/type anything to stay/)).toBeTruthy()
+    expect(screen.getByText(/type or click anything to stay/)).toBeTruthy()
+  })
+
+  it('runs a bar down beside the number, off the same clock as the switch', async () => {
+    // Asked for 2026-08-21: *"csak kell bele a csík ami megy vissza"*. The
+    // seconds were already there and a number has to be READ — the reader is
+    // looking at the agent below, not at this strip.
+    //
+    // Asserted through the width the bar actually renders, and asserted to
+    // SHRINK: a bar fixed at 100 % looks exactly like a working one in a
+    // screenshot, and it is the shape a second clock (a CSS animation with its
+    // own duration) would produce when the switch is cancelled.
+    serve(snapshot({ pending_switch: item(2, { project: 'beta', label: 'a2' }) }))
+    const { container } = render(<FleetPm onPresent={() => {}} onExit={() => {}} lastInputAt={null} />)
+    const pct = () => Number(
+      (container.querySelector('[data-fleet-pm-countdown-bar]') as HTMLElement | null)
+        ?.getAttribute('data-fleet-pm-countdown-bar') ?? NaN,
+    )
+    await waitFor(() => expect(pct()).toBe(100))
+    // Real timers on purpose: the bar is driven by the same 250 ms tick the
+    // switch fires on, and a fake clock advanced without React's act() moves
+    // the timer without ever re-rendering the bar — which reads as "the bar
+    // does not move" for a bar that does.
+    await waitFor(() => expect(pct()).toBeLessThan(100), { timeout: 2000 })
+    expect(pct()).toBeGreaterThan(0)
   })
 
   it('is not shown when the server withholds it — the guard is server-side', async () => {

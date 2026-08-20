@@ -93,3 +93,74 @@ describe('PM mode is a toggle and it changes nothing about the agents', () => {
     expect(container.querySelector('[data-fleet-phase]')).toBeTruthy()
   })
 })
+
+describe('what counts as the reader being here', () => {
+  /**
+   * Reported 2026-08-21: *"ha nyomok egy gombot megszakad az átmenet"*.
+   *
+   * The panel watched `keydown` alone, so a reader working the screen with the
+   * mouse — opening a log, switching a tab, pressing a control — was measured
+   * as absent and the countdown ran out under their hand. The signal answers
+   * *is somebody working here*, and a key is one of the two ways to answer it.
+   *
+   * Asserted on what the reader SEES — the announced switch disappearing —
+   * rather than on the next poll's query string. The poll is four seconds away
+   * and the switch is not, so a test that waited for the poll would pass on a
+   * build where the countdown ran to zero first.
+   */
+  function installWithPendingSwitch() {
+    calls = []
+    const snap: Json = {
+      enabled: true,
+      presented: { pid: 1, project: 'p', label: 'a1', source: 'structural', blocked_since: 1, blockage_point: null, presented_count: 1 },
+      queued: [],
+      counts: { queued: 1, idle: 0, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null, counted: true },
+      can_go_back: false, can_go_forward: false,
+      pending_switch: { pid: 2, project: 'q', label: 'a2', source: 'structural', blocked_since: 1, blockage_point: null, presented_count: 0 },
+      last_cycle: 1, last_error: null, cycling: false,
+    }
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      calls.push(`${init?.method ?? 'GET'} ${u}`)
+      if (u.includes('/api/fleet/layout')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          version: 1, groups: [], parked: [], parked_missing: [], parked_order: [], ungrouped: ['p'], missing: [],
+        }) } as Response)
+      }
+      if (u.includes('/log')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ turns: [] }) } as Response)
+      if (u.includes('/api/fleet/owner')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ available: true, held: 0 }) } as Response)
+      if (u.includes('/api/fleet/pm')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(snap) } as Response)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response)
+    }))
+  }
+
+  it('a press on the panel cancels the announced switch', async () => {
+    installWithPendingSwitch()
+    const { container } = render(<Fleet />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeTruthy())
+    fireEvent.pointerDown(container.querySelector('[data-fleet-shell]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeNull())
+  })
+
+  it('a keystroke still cancels it — the press is added, it does not replace', async () => {
+    installWithPendingSwitch()
+    const { container } = render(<Fleet />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeTruthy())
+    fireEvent.keyDown(container.querySelector('[data-fleet-shell]')!, { key: 'a' })
+    await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeNull())
+  })
+
+  it('and the server is told, so its own guard agrees with the screen', async () => {
+    // The client cancelling its countdown is not the guard: the server decides
+    // whether to offer the switch at all, and it can only know from this.
+    installWithPendingSwitch()
+    const { container } = render(<Fleet />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeTruthy())
+    expect(calls.filter(c => c.startsWith('GET /api/fleet/pm')).every(c => !c.includes('seconds_since_input'))).toBe(true)
+    fireEvent.pointerDown(container.querySelector('[data-fleet-shell]')!)
+    await waitFor(
+      () => expect(calls.some(c => c.startsWith('GET /api/fleet/pm') && c.includes('seconds_since_input'))).toBe(true),
+      { timeout: 6000 },
+    )
+  })
+})

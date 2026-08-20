@@ -264,21 +264,63 @@ export default function FleetPm({ onPresent, onExit, lastInputAt }: {
       )}
 
       {pending && countdownLeft !== null && (
-        <div className="flex items-center gap-2 px-4 md:px-6 pb-1.5 text-xs text-sky-300"
-             data-fleet-pm-countdown={pending.pid}>
-          <span>
-            switching to <span className="font-semibold">{pending.project}</span>
-            {' / '}{pending.label ?? pending.pid} in{' '}
-            <span className="tabular-nums">{Math.ceil(countdownLeft / 1000)}s</span>
-          </span>
-          <span className="text-fg-ghost">— type anything to stay</span>
-          <button
-            onClick={() => { countdownFor.current = null; setCountdownLeft(null); void post(`/refuse/${pending.pid}`) }}
-            data-fleet-pm-refuse={pending.pid}
-            className="ml-auto text-fg-muted hover:text-fg-strong"
+        <div data-fleet-pm-countdown={pending.pid}>
+          <div className="flex items-center gap-2 px-4 md:px-6 pb-1 text-xs text-sky-300">
+            <span>
+              switching to <span className="font-semibold">{pending.project}</span>
+              {' / '}{pending.label ?? pending.pid} in{' '}
+              <span className="tabular-nums">{Math.ceil(countdownLeft / 1000)}s</span>
+            </span>
+            <span className="text-fg-ghost">— type or click anything to stay</span>
+            <button
+              onClick={() => { countdownFor.current = null; setCountdownLeft(null); void post(`/refuse/${pending.pid}`) }}
+              data-fleet-pm-refuse={pending.pid}
+              className="ml-auto text-fg-muted hover:text-fg-strong"
+            >
+              stay here
+            </button>
+          </div>
+          {/*
+            The bar that runs out — asked for 2026-08-21: *"csak kell bele a
+            csík ami megy vissza"*.
+
+            The seconds were already there, and a number is not the same signal:
+            it has to be READ, once per second, while the reader is looking at
+            the agent below rather than at this strip. A shrinking bar is
+            peripheral — it says "something is about to take the screen" without
+            being read at all, which is the whole point of a warning you are not
+            looking at.
+
+            It is not a decoration on top of the number: the number stays,
+            because a bar cannot say HOW long, and "about to happen" and "three
+            seconds" are different facts. Same rule as everywhere on this
+            screen — one visual weight per meaning.
+
+            Driven off the SAME `countdownLeft` the switch fires on, so the bar
+            cannot show time the timer does not have. A second source (a CSS
+            animation with its own duration) would be a copy of the deadline,
+            and it would drift exactly when a keystroke cancels the switch —
+            the bar would keep running down toward a switch nobody is going to
+            make.
+          */}
+          <div
+            /* `h-1`, not `h-0.5`. Measured in the browser at 1516 px: the
+               half-height bar rendered 2 CSS px and was invisible in a
+               screenshot of the whole screen — legible only zoomed in, which is
+               the opposite of a signal you are not looking at. */
+            className="mx-4 md:mx-6 mb-1.5 h-1 bg-sky-400/15 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-label="time left before the screen switches"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(COUNTDOWN_MS / 1000)}
+            aria-valuenow={Math.ceil(countdownLeft / 1000)}
+            data-fleet-pm-countdown-bar={Math.max(0, Math.round((countdownLeft / COUNTDOWN_MS) * 100))}
           >
-            stay here
-          </button>
+            <div
+              className="h-full bg-sky-400 transition-[width] duration-200 ease-linear"
+              style={{ width: `${Math.max(0, Math.min(100, (countdownLeft / COUNTDOWN_MS) * 100))}%` }}
+            />
+          </div>
         </div>
       )}
     </div>

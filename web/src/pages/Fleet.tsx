@@ -1670,6 +1670,19 @@ export default function Fleet() {
    * answer, so a signal that watched only the terminal would protect nothing on
    * exactly those items. Typing anywhere on this panel means the reader is
    * engaged, which is the fact the freeze actually needs.
+   *
+   * **A CLICK counts too — 2026-08-21: *"ha nyomok egy gombot megszakad az
+   * átmenet"*.** It watched `keydown` alone, so the reader who was working the
+   * screen with the mouse — opening a log, switching a tab, pressing a control
+   * — was measured as absent, and the countdown ran out under their hand. The
+   * question this signal answers is *is somebody working here*, and a key is
+   * only one of the two ways to answer it; the strip said "type anything to
+   * stay", which was an accurate description of a guard that was too narrow.
+   *
+   * Deliberately NOT wheel or pointer MOVE. A scroll can be an idle nudge and
+   * a moved cursor is not an act, so counting them would make the queue
+   * unable to advance while the pointer merely rests on the panel — the
+   * opposite failure, and a quieter one.
    */
   const [lastInputAt, setLastInputAt] = useState<number | null>(null)
   const noteInput = useCallback(() => setLastInputAt(Date.now()), [])
@@ -1977,10 +1990,18 @@ export default function Fleet() {
       <div
         className="flex-1 flex min-h-0"
         ref={shellRef}
+        // Named so a test can aim at the element the handlers are actually on.
+        // A test that fires at `document` would pass on a build with no handler
+        // here at all, because capture from the root reaches everything.
+        data-fleet-shell
         // Capture, so it fires before anything stops the event — xterm's own
         // hidden textarea and every input on the panel are covered by this one
         // handler. Only armed in PM mode: nothing else needs it.
         onKeyDownCapture={pmOn ? noteInput : undefined}
+        // `pointerdown` rather than `click`: a click is only delivered after
+        // the button comes back up, and a control that stops propagation or
+        // re-renders on press never produces one. The press is the act.
+        onPointerDownCapture={pmOn ? noteInput : undefined}
       >
         {/* Task 7.1 / D-2 — the hand-made arrangement. It renders even when
             nothing is running: a project's position is a statement about the
