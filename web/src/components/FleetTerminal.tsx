@@ -150,6 +150,32 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       const refit = () => {
         try { fit.fit() } catch { return /* zero-sized container; the observer refits */ }
         if (term.cols < MIN_COLS) term.resize(MIN_COLS, term.rows)
+        /*
+          B-29 — AND THEN CHECK THAT IT ACTUALLY FITS.
+
+          `FitAddon` derives the row count from the host's OUTER box, so the 1 px
+          border on each side is never subtracted. At heights that land just
+          under a row multiple it therefore hands back one row MORE than fits,
+          and `overflow-y: hidden` cuts the last one. Measured 2026-08-20: a
+          224 px host has a 222 px client box, 16 rows x 14 px = 224, and the
+          last row showed 12 of its 14 px.
+
+          The row that gets cut is always the last one, which is where every
+          terminal program draws its status line — so this is not "one row
+          short", it is losing the row that says what the agent is waiting for,
+          while everything above it still looks correct.
+
+          The correction is measured against what was RENDERED, not recomputed
+          from the box: the cell height is xterm's, and a second copy of that
+          arithmetic here would be a second place to drift.
+        */
+        const el = host.current
+        const screen = el?.querySelector('.xterm-screen') as HTMLElement | null
+        if (!el || !screen || term.rows < 1) return
+        const cell = screen.offsetHeight / term.rows
+        if (!(cell > 0)) return
+        const fits = Math.floor(el.clientHeight / cell)
+        if (fits >= 1 && fits < term.rows) term.resize(term.cols, fits)
       }
       refit()
 
@@ -472,7 +498,23 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
            header, the waiters and the modules panel, so the only correct height
            is the one that is left. The `ResizeObserver` above refits xterm, so a
            flexible box is not a problem for the terminal itself. */
-        className="flex-1 min-h-[12rem] rounded border border-surface-edge overflow-x-auto overflow-y-hidden bg-[#0b0f14]"
+        /* `flex-[1_1_12rem] min-h-0`, and the two halves are one decision — B-29.
+           12rem used to be a `min-height`, i.e. a floor nothing could take back.
+           In the grid that is right: the card is content-sized and the floor is
+           what gives the terminal its size at all. In the enlarged card it is
+           not: that card is a `flex-1` child of a chain that ends in
+           `overflow: hidden`, so a floor larger than the room left does not make
+           the terminal bigger, it pushes its bottom out of the card — measured
+           2026-08-20 at a 440 px window, last row 4 of 14 px, and at 400 px gone
+           entirely with the page unable to scroll to it.
+
+           As a flex BASIS the same 12rem is a preference: it still contributes
+           192 px to a content-sized card, and it yields when there is less room
+           rather than overflowing. The alternative — letting the card scroll —
+           was rejected: it keeps the floor and puts the status line below a fold
+           the reader has to discover, which is the shape `ui-quality.md`
+           forbids. A short terminal is honest; a truncated one is not. */
+        className="flex-[1_1_12rem] min-h-0 rounded border border-surface-edge overflow-x-auto overflow-y-hidden bg-[#0b0f14]"
       />
     </div>
   )

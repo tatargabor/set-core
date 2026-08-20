@@ -625,7 +625,78 @@ consumer's name, path, or content.
   tile still says it cannot be typed into, and a test asserts BOTH — the count
   is one, and no tile is silent about its own state.
 
+
 ## Closed
+
+### B-29 — the terminal's last row is cut in half, and the last row is the status bar
+
+- **state:** closed (see the verification at the end of this entry)
+- **reported:** 2026-08-20 by the user, with a screenshot of the enlarged agent
+  view — *"a terminal aljan a status rész szétesik"*.
+- **measured:** a Playwright sweep of the viewport height against the live
+  server, one framework-owned terminal open in the enlarged view. TWO
+  independent mechanisms, both of which cut the LAST row and only the last row:
+
+  | viewport | what the measurement says | last row visible |
+  |---|---|---|
+  | 520 px | `.xterm-screen` is **2 px taller than the host's client box** | 12 / 14 px |
+  | 440 px | the card overflows the window by **19 px** | 4 / 14 px |
+  | 400 px and below | overflows by 59–99 px | **0 / 14 px** |
+
+  - **The 2 px** is the host's own border. `FitAddon` derives the row count from
+    the outer box, so `border` (1 px top + 1 px bottom) is not subtracted: a
+    224 px host has a 222 px client box, and 16 rows × 14 px = 224. At heights
+    that land just under a row multiple it hands back one row more than fits.
+  - **The overflow** is `min-h-[12rem]` on the terminal host meeting
+    `overflow: hidden` on the enlarged card. Ancestor walk at 440 px:
+    `[data-fleet-terminal]` `clientHeight 180` vs `scrollHeight 228`, inside
+    `[data-fleet-enlarged]` `clientHeight 289` vs `scrollHeight 321`,
+    `overflow: hidden/hidden`. The page itself cannot scroll to it —
+    `document.scrollHeight == innerHeight` — so the rows are not merely below the
+    fold, they are unreachable.
+
+- **why it is not cosmetic:** a terminal program puts its status line on its last
+  row. Cutting the last row is therefore not "losing a row", it is losing the one
+  row that says what the agent is doing and what it is waiting for. And it fails
+  in the reassuring direction: the terminal above it looks completely normal.
+
+- **⚠ what a fix must NOT do:** it must not resolve the conflict by making the
+  card scroll. That keeps the floor and puts the status bar below a fold the
+  reader has to discover — the exact shape `ui-quality.md` forbids, *compaction
+  must never hide a failure*. A short terminal is honest; a truncated one is not.
+  The floor's own argument does not carry over from `MIN_COLS` either: a narrow
+  terminal destroys a layout the program composed for N columns, while a short
+  one only means fewer rows and a repaint.
+
+- **fixed when:** at every viewport height in the sweep, the last rendered row is
+  fully visible — its full cell height, inside both the host's client box and the
+  window — and an e2e test asserts it by measuring rendered pixels, not by
+  checking that a fit function ran.
+
+- **fixed / verified 2026-08-20:** `web/tests/e2e/fleet-terminal-fits.spec.ts`,
+  against the live server with a framework-owned agent this spec starts and stops
+  itself. Two changes in `web/src/components/FleetTerminal.tsx`, and **each was
+  mutation-tested separately, because either one alone leaves half the defect**:
+
+  | | before | mutate the flex basis back | mutate the fit check out | both in place |
+  |---|---|---|---|---|
+  | 520 px | 12/14 px | 14/14 | **12/14 px** | 14/14 |
+  | 440 px | 4/14 px | **4/14 px** | 14/14 | 14/14 |
+  | 400 px | 0/14 px | **0/14 px** | 14/14 | 14/14 |
+
+  - `refit()` now checks the RESULT of the fit — it measures the rendered
+    `.xterm-screen` against the host's client box and drops a row when the fit
+    handed back one more than fits. Measured against what was rendered rather
+    than recomputed from the box: the cell height is xterm's, and a second copy
+    of that arithmetic would be a second place to drift.
+  - `flex-1 min-h-[12rem]` became `flex-[1_1_12rem] min-h-0`. The same 12 rem is
+    now a *preference* rather than a floor: it still contributes 192 px to a
+    content-sized grid card, and it yields in the enlarged card instead of
+    pushing the terminal's bottom out of a `overflow: hidden` chain.
+
+  The terminal gets short rather than truncated, which is the point — measured at
+  the smallest height in the sweep it still renders 7 rows with the status line
+  fully visible. The restore after each mutation was grep-verified, not assumed.
 
 ### B-7 — the layout control was overruled by whichever panels happened to be open
 - **state:** closed (`038c39e3`)
