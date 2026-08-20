@@ -1159,9 +1159,22 @@ list_project_worktrees_brief() {
         return
     fi
 
-    # Get worktrees from git
+    # Get worktrees from git.
+    #
+    # `|| worktrees=""` is load-bearing under `set -e`. A registered path that
+    # exists but is not a git checkout — an E2E run directory, a scaffold, a
+    # stale entry — makes git exit 128, and a bare command substitution then
+    # aborted the CALLER's loop. Measured 2026-08-20: the registry held 43
+    # projects and `set-project list` printed ONE, stopping at the first
+    # non-repository in sorted order.
+    #
+    # The failure direction is what makes it worth a comment: the command
+    # succeeded (exit 0 from the pipeline it was read through), the header
+    # printed, and the short list looked like the whole registry. Nothing said
+    # "truncated" — the source was complete and everything downstream of the
+    # first failure was silently dropped.
     local worktrees
-    worktrees=$(git -C "$project_path" worktree list --porcelain 2>/dev/null)
+    worktrees=$(git -C "$project_path" worktree list --porcelain 2>/dev/null) || worktrees=""
 
     if [[ -z "$worktrees" ]]; then
         return
