@@ -697,12 +697,24 @@ consumer's name, path, or content.
   91 s is not a slow shutdown, it is the timeout expiring and systemd sending
   `SIGKILL`. Throughout the hole the port answers `connection refused` (probe log),
   so every open terminal drops and every poll fails.
-- **not measured, and deliberately not guessed:** WHY the process ignores `SIGTERM`.
-  The obvious candidate — uvicorn's graceful shutdown waiting on open terminal
-  WebSockets — is weakened by the 09:29 stop, which was instant although terminals
-  had been attached seven minutes earlier. The 39-project `watchfiles` watch is a
-  second candidate. Both are cheap to separate: stop the service with terminals
-  open, then with none.
+- **cause found, and both candidates refuted first.** The journal says it in one
+  line: `INFO: Waiting for background tasks to complete.` uvicorn's
+  `timeout_graceful_shutdown` defaults to `None` — *wait for every running task,
+  with no limit*. Refuted along the way, by measurement rather than by argument:
+  - **not the WebSockets.** All three open terminals closed in the same second as
+    `Stopping…` (`connection closed` ×3, `detached` ×3), and an isolated instance
+    with an open terminal WebSocket exited in **0.5 s**.
+  - **not `watchfiles`.** Same isolated measurement, same 0.5 s.
+  - what held it were unfinished HTTP request tasks — the same six minutes in
+    which the endpoint answered nothing at all (B-30's first producer).
+- **fixed** in `532026d5`: `timeout_graceful_shutdown=10`
+  (`SET_WEB_GRACEFUL_TIMEOUT` overrides), with three tests and two mutations.
+  The instrument was proven before it was adopted: a minimal app with one stuck
+  request was **still alive 60 s** after `SIGTERM` with the default, and exited in
+  **10.5 s** with the timeout set.
+- **⚠ still open until it is seen on the real service.** The running process holds
+  the code it started with; the fix takes effect at the next restart. The closing
+  check is below and has not been run yet.
 - **why it is worth its own entry:** it converts a routine `restart` — which
   agents and the user both do — into a minute of dead dashboard, and B-30's tile
   chain makes that minute read as `connecting…` rather than as "the server is
