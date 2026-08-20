@@ -251,3 +251,86 @@ def test_decisions_are_kept_apart_from_the_other_three_kinds(tmp_path):
     got = awaiting_for("p", data_dir=str(tmp_path / "d"), project_root=root).as_dict()
     assert got["decision"] == ["c#1.1"]
     assert got["manual"] == [] and got["stalled"] == [] and got["orphaned"] == []
+
+
+# --------------------------------------------------------------------------- #
+# B-35 — the scanner reading its own documentation (2026-08-20)
+# --------------------------------------------------------------------------- #
+
+def test_a_task_that_is_DONE_is_not_awaiting_anybody(tmp_path):
+    """Reported by the user from the screen: the header said 3 projects were
+    waiting for a human, and the jump landed on one that was not.
+
+    Measured: set-core's only entry was `fleet-view#9.15`, a task marked `[x]`
+    since 2026-08-19. The checkbox was never read, so `[x]`, `[ ]` and `[~]`
+    counted alike. The direction is what costs: it INVENTS work, and an
+    attention header that sends the reader somewhere calm is one they stop
+    reading.
+    """
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "c",
+                   "- [x] 1.1 Answered long ago <!-- awaiting: which one? -->\n"
+                   "- [ ] 1.2 Still open <!-- awaiting: and this one? -->\n")
+    assert open_decisions(root) == ["c#1.2"]
+
+
+def test_in_progress_and_uncertain_boxes_are_still_open(tmp_path):
+    """The other direction, so the fix cannot be "only `[ ]` counts". `[~]` is in
+    progress and `[?]` is uncertain; a question recorded against either is one
+    somebody is still waiting on."""
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "c",
+                   "- [~] 1.1 x <!-- awaiting: q1 -->\n"
+                   "- [?] 1.2 y <!-- awaiting: q2 -->\n")
+    assert open_decisions(root) == ["c#1.1", "c#1.2"]
+
+
+def test_the_marker_QUOTED_in_prose_is_not_a_marker(tmp_path):
+    """The general form, and the one that would come back without this.
+
+    A task file that documents the mechanism writes the marker between
+    backticks. The scanner matched anywhere on the line, so the file describing
+    the mechanism was inside the corpus the mechanism scans — the same class as
+    a quoted verdict parsed as a verdict.
+    """
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "c",
+                   "- [ ] 1.1 The engine writes `<!-- awaiting: … -->` into the task file\n")
+    assert open_decisions(root) == []
+
+
+def test_a_marker_inside_a_FENCED_block_is_an_example_too(tmp_path):
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "c",
+                   "- [ ] 1.1 Like this:\n"
+                   "```markdown\n"
+                   "- [ ] 9.9 x <!-- awaiting: an example question -->\n"
+                   "```\n")
+    assert open_decisions(root) == []
+
+
+def test_a_real_marker_on_the_same_line_as_quoted_prose_still_counts(tmp_path):
+    """Stripping the code spans must not strip the line. A task can explain the
+    mechanism AND carry a live question; losing that one would be the false
+    absence this module exists against, arriving through the repair."""
+    from set_orch.fleet.awaiting import open_decisions
+    root = _change(tmp_path, "c",
+                   "- [ ] 1.1 We write `<!-- awaiting: … -->` here <!-- awaiting: which format? -->\n")
+    assert open_decisions(root) == ["c#1.1"]
+
+
+def test_this_repository_is_not_waiting_on_its_own_documentation(tmp_path):
+    """The measurement that produced B-35, held as a test.
+
+    set-core's own `openspec/changes` is the corpus that broke the scanner, so it
+    is the corpus the guard is asserted against — a fixture alone would not have
+    noticed, because the fixture is written by whoever already understands the
+    bug.
+    """
+    import os
+    from set_orch.fleet.awaiting import open_decisions
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if not os.path.isdir(os.path.join(repo, "openspec", "changes")):
+        import pytest as _pytest
+        _pytest.skip("not running from a checkout with openspec/changes")
+    assert open_decisions(repo) == []

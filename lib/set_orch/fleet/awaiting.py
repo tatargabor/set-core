@@ -221,6 +221,29 @@ def _classify(data: object) -> Awaiting:
 #: diverge; a comment asking for them to be kept in step would not.
 _AWAITING_MARKER = re.compile(r"<!--\s*awaiting:\s*(?P<question>.*?)\s*-->")
 
+#: Inline code and fenced code, which is where the marker is TALKED ABOUT.
+#:
+#: A task file documenting the mechanism writes the marker between backticks, and
+#: the scanner reads its own documentation as a live question — measured
+#: 2026-08-20 on this repo: `fleet-view#9.15`, a task explaining that
+#: `connector.mark_awaiting` writes `<!-- awaiting: … -->`, was the whole of
+#: set-core's "1 waiting for a human". Same class as a quoted verdict parsed as a
+#: verdict: the file describing the mechanism is inside the corpus the mechanism
+#: scans.
+#:
+#: Stripping is safe in the direction that matters. The marker is written by a
+#: PROGRAM, into a task line, never inside backticks — so nothing real is lost,
+#: while every mention of it in prose stops counting.
+_INLINE_CODE = re.compile(r"`+[^`]*`+")
+_FENCE = re.compile(r"^\s*(```|~~~)")
+
+#: A task whose box is ticked. Nobody is waiting on work that is finished.
+#:
+#: `[~]` and `[?]` are deliberately NOT here: they mean in progress and
+#: uncertain, and a question recorded against either is still open. Only `x`
+#: closes.
+_DONE_TASK = re.compile(r"^\s*[-*]\s*\[[xX]\]")
+
 #: Where a project keeps its changes. Overridable because a project may not use
 #: the default, and guessing would report `0 awaiting` for a project that has
 #: plenty — a zero from looking in the wrong place.
@@ -255,8 +278,25 @@ def open_decisions(project_root: str, *, changes_rel: str = CHANGES_REL) -> List
                 text = fh.read()
         except OSError:
             continue
+        fenced = False
         for line in text.splitlines():
-            if not _AWAITING_MARKER.search(line):
+            # A fenced block is an example, not a record. Toggled rather than
+            # matched, because the opening and closing fences are the same token.
+            if _FENCE.match(line):
+                fenced = not fenced
+                continue
+            if fenced:
+                continue
+            # The marker as DATA, not as prose about the marker — see
+            # `_INLINE_CODE`.
+            if not _AWAITING_MARKER.search(_INLINE_CODE.sub("", line)):
+                continue
+            # A finished task is not waiting for anybody. The box is read, not
+            # assumed: `[x]`, `[ ]` and `[~]` were all treated identically, so a
+            # question answered long ago kept the project on the header's
+            # "waiting for a human" count — work invented rather than reported,
+            # which is the direction that makes a real signal ignored.
+            if _DONE_TASK.match(line):
                 continue
             # The TASK NUMBER, so the key matches what the connector writes an
             # answer under. A marker on a line with no number is still an open
