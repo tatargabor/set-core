@@ -64,6 +64,44 @@ only carrier, and no requirement here depends on a recipient reading within any 
 - **THEN** the task is answered once
 - **AND** the second arrival is recognised as already applied rather than applied again
 
+### Requirement: A question is handed over once, however often the cycle runs
+
+A question that has already been handed to an outbound SHALL NOT be handed over again while
+it is still awaiting an answer. Re-running the cycle, restarting it, or resuming it SHALL NOT
+produce a second copy of the same question.
+
+#### Scenario: The nightly cycle restarts while a question is outstanding
+
+- **WHEN** a cycle runs again and the same task is still awaiting an answer
+- **THEN** the question is not handed to the outbound a second time
+- **AND** the run reports it as already outstanding rather than as newly raised
+
+#### Scenario: A question is deliberately re-raised
+
+- **WHEN** an outstanding question is explicitly reissued, for example because it went
+  unanswered for too long
+- **THEN** the reissue is recorded as such against the same identity
+- **AND** it does not become a second, independently answerable question
+
+### Requirement: A bus notification addresses an identity that outlives a session
+
+Where an agent bus is used to notify an outbound, the notification SHALL address the
+recipient by an identity that survives the end of a session. It SHALL NOT be addressed to a
+single session's identity.
+
+#### Scenario: The recipient's session ends before it reads
+
+- **WHEN** a notification is addressed to the recipient's durable identity and every session
+  of that recipient has since ended
+- **THEN** a later session of the same recipient is still addressed by that entry
+
+#### Scenario: A session identity is used by mistake
+
+- **WHEN** a notification is addressed to one session's identity and that session never
+  returns
+- **THEN** the entry is undeliverable for the lifetime of the room
+- **AND** the contract forbids this form of addressing for questions and answers
+
 ### Requirement: The key is a field, and unrecognised entries are left untouched
 
 An answer SHALL be identified by a key carried inside it, not by its filename. A reader that
