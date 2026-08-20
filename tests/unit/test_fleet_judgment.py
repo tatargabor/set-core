@@ -372,3 +372,46 @@ def test_a_prompt_with_no_reply_after_it_is_mid_turn(tmp_path):
     subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET, session_log=log)
     candidates, skipped, _ = j.select_candidates([subject], {})
     assert candidates == [] and "mid-turn" in skipped[1]
+
+
+# --------------------------------------------------------------------------- #
+# reachability — an agent nobody can answer is not the reader's problem
+# --------------------------------------------------------------------------- #
+
+def test_an_agent_with_no_terminal_and_no_seat_is_not_a_candidate(tmp_path):
+    """The user's rule, on seeing one presented: *"PM mode behozott egy olyan
+    agentet ami felett nincs kontrollunk. ezeket excludeold"*.
+    """
+    log = _log_ending_with(tmp_path, _tool_result(), _assistant_text("mit csináljak?"))
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET,
+                        session_log=log, reachable=False)
+    candidates, skipped, _ = j.select_candidates([subject], {})
+    assert candidates == []
+    assert "unreachable" in skipped[1]
+
+
+def test_reachability_defaults_to_included(tmp_path):
+    """Unmeasured is not absent.
+
+    A caller that cannot ask the owner or the bus must keep every agent: an
+    agent dropped because a service was down disappears with nothing to show
+    that it did, which is the false-absence class. A false inclusion is visible
+    the moment it is presented and the reader can dismiss it.
+    """
+    log = _log_ending_with(tmp_path, _tool_result(), _assistant_text("mit csináljak?"))
+    subject = j.Subject(pid=1, project="alpha", state=agent_state.QUIET, session_log=log)
+    candidates, _, _ = j.select_candidates([subject], {})
+    assert [c.pid for c in candidates] == [1]
+
+
+def test_an_unreachable_agent_does_not_enter_through_the_structural_door():
+    """The queue has TWO doors and the model only guards one of them.
+
+    A structurally measured `asking` agent is queued without any invocation, so
+    a reachability filter that lived only in `select_candidates` would keep out
+    the agent the model would have judged while admitting the one the state
+    layer measured — the same rule failing at whichever door nobody checked.
+    """
+    reachable = j.Subject(pid=1, project="alpha", state=agent_state.ASKING)
+    stranded = j.Subject(pid=2, project="alpha", state=agent_state.ASKING, reachable=False)
+    assert sorted(j.structural_verdicts([reachable, stranded])) == [1]

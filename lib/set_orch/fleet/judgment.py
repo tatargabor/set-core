@@ -129,6 +129,11 @@ class Subject:
     state: str
     session_log: Optional[str] = None
     label: Optional[str] = None
+    #: Whether the reader can ANSWER this agent — a terminal the framework
+    #: holds, or a seat on the messaging bus. Defaults True so a caller that
+    #: does not measure it keeps every agent: an unmeasured channel must not
+    #: read as a missing one.
+    reachable: bool = True
 
 
 @dataclass(frozen=True)
@@ -208,11 +213,17 @@ def structural_verdicts(subjects: Iterable[Subject]) -> Dict[int, Verdict]:
 
     These are queued without an opinion being asked for, and no opinion may
     remove them. They are the floor the model layer sits on.
+
+    Reachability is checked HERE TOO, and that is not a duplicate of the
+    candidate filter — it is the second door into the queue. This path skips the
+    model entirely, so a filter that lived only in `select_candidates` would
+    keep out an unreachable agent the model would have judged while letting
+    through one the state layer measured. Same rule, both doors.
     """
     return {
         s.pid: Verdict(pid=s.pid, verdict=ASKING, source="structural")
         for s in subjects
-        if s.state == agent_state.ASKING
+        if s.state == agent_state.ASKING and s.reachable
     }
 
 
@@ -224,10 +235,12 @@ def select_candidates(
 ) -> Tuple[List[Subject], Dict[int, str], List[int]]:
     """Who this cycle asks about, who it skips and why, and who did not fit.
 
-    Four tests, and each removes a class the model could only have agreed with:
+    Five tests, and each removes a class the model could only have agreed with:
 
       - not quiet — a working agent is not blocked, and an `asking` one is
         already measured, so neither needs an opinion;
+      - the agent cannot be answered at all — no terminal, no bus seat, so
+        queueing it would present something the reader cannot act on;
       - the agent holds the floor — it owes the next utterance, so it cannot be
         waiting on a person whatever its last words were;
       - the log has not moved since the last verdict — the same input yields
@@ -247,6 +260,13 @@ def select_candidates(
             continue
         if subject.state != agent_state.QUIET:
             skipped[subject.pid] = f"state is {subject.state}, which is not a blockage on a person"
+            continue
+        if not subject.reachable:
+            # Nothing on this screen can answer it: no pty the framework holds,
+            # and no seat on the bus. Presenting it costs the reader the one
+            # promise the mode makes — that what is in front of them is theirs
+            # to deal with — and no action clears it.
+            skipped[subject.pid] = "unreachable — no terminal and no seat, so it cannot be answered"
             continue
         floor = agent_state.who_has_the_floor(subject.session_log)
         if floor == agent_state.FLOOR_AGENT:

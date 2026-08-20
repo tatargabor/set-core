@@ -38,6 +38,36 @@ capability's own freeze rule they would sit in front of the questions rather tha
 - **WHEN** an agent has an outstanding tool call that is not itself a question to a person
 - **THEN** it is not an item in the queue, whatever any other source says about it
 
+### Requirement: The queue holds only agents the reader can actually answer
+
+An agent SHALL be queued only when there is a channel through which the reader can reply to it —
+a terminal the framework holds, or a seat on the messaging bus. An agent with neither SHALL NOT be
+queued, whatever its last utterance said.
+
+The mode's whole promise is that what is on screen is something the reader can deal with. An agent
+nobody can reply to has no action that clears it: answering is impossible, and the only remaining
+move is dismissal, which the reader must perform on something they never needed to see.
+
+A log is not a channel. It is a way of LOOKING, and the surface may still show one — the exclusion
+is from the queue, not from the screen.
+
+When the framework cannot MEASURE reachability — the owner cannot be asked, or the bus cannot be
+read — the agent SHALL be treated as reachable. An agent dropped because a service was down leaves
+nothing behind to say that it was dropped; a wrongly included one is visible the moment it is
+presented.
+
+#### Scenario: An agent with no terminal and no seat is not queued
+- **WHEN** the framework holds no terminal for an agent and the bus has no seat for its session
+- **THEN** it is not an item in the queue
+
+#### Scenario: A structurally measured blockage is excluded on the same rule
+- **WHEN** such an agent is measured as blocked on a person by its outstanding question tool
+- **THEN** it is still not an item in the queue
+
+#### Scenario: Unmeasured reachability includes the agent
+- **WHEN** the owner cannot be asked, or the bus cannot be read
+- **THEN** the agent is queued as before, and nothing is silently dropped
+
 ### Requirement: The queue is ordered by freshness of the blockage, not by arrival
 
 Within a project, the queue SHALL order items by how recently the agent became blocked, most

@@ -27,6 +27,8 @@ import time
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
+from . import instruct as fleet_instruct
+from .owner_client import OwnerClient
 from . import judgment
 from .attention import Queue
 from .discovery import discover_agents, discover_projects
@@ -74,6 +76,7 @@ class PmSession:
         states = {a.pid: read_state(a.session_log, record=a.record) for a in agents}
         projects = discover_projects(agents, registered=[], messaging=None)
         project_of = {pid: p.name for p in projects for pid in p.agent_pids}
+        reachable = self._reachable(agents)
         subjects = [
             judgment.Subject(
                 pid=a.pid,
@@ -81,11 +84,55 @@ class PmSession:
                 state=states[a.pid].state,
                 session_log=a.session_log,
                 label=getattr(a, "name", None),
+                reachable=reachable(a),
             )
             for a in agents
         ]
         self._logs = {a.pid: a.session_log for a in agents if a.session_log}
         return subjects, states
+
+    @staticmethod
+    def _reachable(agents):
+        """Can the reader ANSWER this agent at all — a terminal, or a bus seat.
+
+        The user's rule, stated 2026-08-20 on seeing one presented: *"PM mode
+        behozott egy olyan agentet ami felett nincs kontrollunk. ezeket
+        excludeold"*. Presenting an agent nobody can reply to costs the reader
+        the one thing the mode promises — that what is on screen is something
+        they can deal with — and there is no action that clears it.
+
+        Two channels, and either is enough: a pty the framework holds, or a seat
+        on the messaging bus. A log alone is not one; it is a way of LOOKING.
+
+        ## Absent is not the same as unmeasured, and the direction matters
+
+        When the owner cannot be asked or the bus cannot be read, the answer is
+        REACHABLE. An agent excluded on the strength of a service being down
+        disappears from the queue with nothing to show that it did — the false
+        absence this repository keeps finding. A false inclusion, by contrast,
+        is visible the moment it is presented, and the reader can dismiss it.
+        """
+        try:
+            owned = {a["pid"] for a in OwnerClient().list_agents() if a.get("pid")}
+        except Exception as exc:                       # noqa: BLE001 - see docstring
+            logger.debug("fleet pm: the owner could not be asked what it holds: %s", exc)
+            owned = None
+        try:
+            seats = fleet_instruct.seats_cached()
+        except Exception as exc:                       # noqa: BLE001
+            logger.debug("fleet pm: the bus could not be asked who exists: %s", exc)
+            seats = None
+
+        def reachable(agent) -> bool:
+            if owned is None or seats is None:
+                return True                            # unmeasured, not absent
+            if agent.pid in owned:
+                return True                            # a terminal to type into
+            return fleet_instruct.instructability(
+                getattr(agent, "session_id", None), seats,
+            ).instructable
+
+        return reachable
 
     def cycle(self, *, force: bool = False, now: Optional[float] = None) -> bool:
         """Run one judgement cycle if the period has elapsed. Returns whether it ran.
