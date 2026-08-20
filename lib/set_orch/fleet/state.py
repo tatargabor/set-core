@@ -262,8 +262,16 @@ NOT_RESUMED = "not-resumed"
 RESUMPTION_UNKNOWN = "unknown"
 
 
-def _epoch(iso_timestamp: Optional[str]) -> Optional[float]:
-    """An ISO timestamp as epoch seconds, or None when it cannot be parsed."""
+def _epoch(iso_timestamp) -> Optional[float]:
+    """An ISO timestamp as epoch seconds, or None when it cannot be parsed.
+
+    A number passes through unchanged: the attention queue records its
+    blockage points as epochs taken from the log's mtime, and making every
+    caller format one into ISO just to have it parsed back is a conversion
+    that exists only to satisfy a signature.
+    """
+    if isinstance(iso_timestamp, (int, float)) and not isinstance(iso_timestamp, bool):
+        return float(iso_timestamp)
     if not iso_timestamp:
         return None
     try:
