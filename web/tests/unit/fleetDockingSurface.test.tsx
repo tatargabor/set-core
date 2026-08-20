@@ -216,3 +216,56 @@ describe('a docked panel whose agent is gone', () => {
     expect(marker.getAttribute('data-fleet-dock-failing')).toBe('unknown')
   })
 })
+
+describe('docking a panel that the grid was treating specially', () => {
+  /**
+   * The defect found by LOOKING at the screen on 2026-08-20, which every
+   * structural and behavioural check in this change missed.
+   *
+   * `enlarged` named a pid the grid no longer contained, so every remaining
+   * tile took the "somebody else is enlarged, so I am a tab" branch and
+   * rendered nothing. The panel went entirely black under a header still
+   * claiming three agents and two tabs — a screen contradicting itself, with no
+   * error thrown and nothing to count.
+   */
+  it('does not empty the grid when the ENLARGED panel is the one docked', async () => {
+    localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { enlarged: 1 } }))
+    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo')
+    await waitFor(() => {
+      if (!container.querySelector('[data-fleet-dock]')) throw new Error('not docked yet')
+    })
+    // The other agent must still be on screen. Before the fix this was zero.
+    const tiles = container.querySelectorAll('[data-tile-controls]')
+    expect(tiles.length).toBe(2)   // one in the band, one in the grid
+    const grid = container.querySelector('[data-fleet-docked]')
+    expect(grid?.querySelectorAll('[data-tile-controls]').length).toBeGreaterThan(0)
+  })
+
+  it('does not render a FOCUSED panel twice when it is docked', async () => {
+    // The mirror image: focus resolved against every agent would put one agent
+    // in the band and full-screen over the grid at the same time.
+    localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { focus: 1 } }))
+    installFetch({ docks: [{ kind: 'agent', id: 't-1', edge: 'right' }] })
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo')
+    await waitFor(() => {
+      if (!container.querySelector('[data-fleet-dock]')) throw new Error('not docked yet')
+    })
+    expect(container.querySelectorAll('[data-tile-controls="1"]').length).toBe(1)
+  })
+
+  it('an enlarged panel that is NOT docked still gets its layout', async () => {
+    // The other direction, so the fix cannot be "ignore enlarged entirely".
+    localStorage.setItem('set-fleet-view', JSON.stringify({ demo: { enlarged: 1 } }))
+    installFetch()
+    const { container } = render(<Fleet />)
+    await screen.findByText('demo')
+    await waitFor(() => {
+      if (!container.querySelector('[data-tile-controls]')) throw new Error('no tiles')
+    })
+    // Enlarged means one card plus a tab strip — the strip's own hint is on screen.
+    expect(container.textContent).toMatch(/as tabs/i)
+  })
+})

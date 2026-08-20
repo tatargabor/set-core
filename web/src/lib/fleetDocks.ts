@@ -55,8 +55,30 @@ export function dockSplitKey(view: Pick<DockedView, 'kind' | 'id'>): string {
   return `dock:${view.kind}:${view.id}`
 }
 
-/** The default size of a docked band before anybody drags it. */
-export const DEFAULT_DOCK_SIZE = 320
+/**
+ * The default size of a docked band before anybody drags it — per AXIS, because
+ * width and height are not the same question.
+ *
+ * Measured against a real screen on 2026-08-20: one number (320) gave a
+ * left-docked agent panel a terminal squeezed to a horizontal scrollbar. A
+ * terminal is a fixed-grid device that assumes 80 columns, which is roughly
+ * 560px at this font — so 320 was not a smaller terminal, it was a broken one.
+ *
+ * The fix is NOT to make the terminal narrower. This is the nesting case the
+ * evidence rules already record: a sentence at top level gets the page's width,
+ * the same sentence inside a band gets whatever the band left. The width is
+ * decided here, so here is where it is fixed.
+ *
+ * A 560px-tall bottom band, on the other hand, would be absurd — it would take
+ * most of the screen's height for a strip. Hence two numbers.
+ */
+export const DEFAULT_DOCK_WIDTH = 560
+export const DEFAULT_DOCK_HEIGHT = 280
+
+/** The default for one edge. */
+export function defaultDockSize(edge: DockEdge): number {
+  return edge === 'left' || edge === 'right' ? DEFAULT_DOCK_WIDTH : DEFAULT_DOCK_HEIGHT
+}
 
 /** A box in CSS pixels. Only the two dimensions the layout actually divides. */
 export interface Area {
@@ -77,7 +99,7 @@ export function dockedBands(
   const out: DockedBand[] = []
   for (const entry of docks ?? []) {
     if (!isDockedView(entry)) continue
-    out.push({ ...entry, size: positionOf(splits, dockSplitKey(entry), DEFAULT_DOCK_SIZE) })
+    out.push({ ...entry, size: positionOf(splits, dockSplitKey(entry), defaultDockSize(entry.edge)) })
   }
   return out
 }

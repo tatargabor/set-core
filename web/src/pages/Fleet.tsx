@@ -1740,7 +1740,42 @@ export default function Fleet() {
     () => unrenderablePanels(resolvePanels(remembered)),
     [remembered],
   )
-  const enlarged = resolveEnlarged(remembered, active?.agents.map(a => a.pid) ?? [])
+  /** Which edge this panel sits on, or null when it is in the grid. */
+  const dockedEdgeOf = useCallback((label: string | null | undefined): DockEdge | null => (
+    label ? docks.find(d => d.kind === PANEL_AGENT && d.id === label)?.edge ?? null : null
+  ), [docks])
+
+  /**
+   * The agents the GRID lays out — everything not currently docked.
+   *
+   * A docked agent rendered in both places would be two renderings of one
+   * agent, and they drift: the copy nobody is looking at while editing the
+   * other is the one that goes stale. It would also mean docking gave the
+   * reader a second panel rather than moving the one they had.
+   */
+  const gridAgents = useMemo(
+    () => (active?.agents ?? []).filter(a => dockedEdgeOf(a.terminal_label) === null),
+    [active, dockedEdgeOf],
+  )
+
+  /**
+   * ⚠ Resolved against `gridAgents`, NOT against every agent in the project —
+   * and this line is the whole of a defect found by looking at the screen on
+   * 2026-08-20, which 655 green tests could not see.
+   *
+   * `enlarged` and `focus` name a pid that the GRID is supposed to lay out
+   * specially. Resolved against every agent, docking the enlarged one left a
+   * pid that the grid no longer contains: every remaining tile then took the
+   * "somebody else is enlarged, so I am a tab" branch and rendered `null`. The
+   * result was an entirely EMPTY panel, under a header still saying `3 agent`
+   * and `2 as tabs` — a screen contradicting itself, with nothing thrown and
+   * nothing to count.
+   *
+   * Docking a maximised panel therefore returns the grid to its ordinary
+   * layout, which is also the honest reading: the maximised one is no longer
+   * in the grid to be maximised within it.
+   */
+  const enlarged = resolveEnlarged(remembered, gridAgents.map(a => a.pid))
   const setEnlarged = useCallback((project: string | null, pid: number | null) => {
     writeView(project, { enlarged: pid })
     setMemory({ project, view: readView(project) })
@@ -1802,8 +1837,11 @@ export default function Fleet() {
    * make a broken sibling invisible, so the header counts what it covers —
    * see `hiddenTally` below.
    */
-  const focus = resolveFocus(remembered, active?.agents.map(a => a.pid) ?? [])
-  const focused = active?.agents.find(a => a.pid === focus) ?? null
+  // Same rule as `enlarged` above, and the failure here is the mirror image:
+  // resolved against every agent, a docked-and-focused panel would render in the
+  // band AND full-screen over the grid — one agent, two renderings, drifting.
+  const focus = resolveFocus(remembered, gridAgents.map(a => a.pid))
+  const focused = gridAgents.find(a => a.pid === focus) ?? null
   /**
    * What the full screen is COVERING — `ui-quality.md`'s rule about compaction,
    * and this layout hides the most of any on the screen.
@@ -1911,24 +1949,6 @@ export default function Fleet() {
       : (shellRef.current?.clientHeight ?? 0) - 200
     return room > MIN_PANE ? Math.min(MAX_PANE, room) : MAX_PANE
   }, [shellWidth, projectWidth])
-
-  /** Which edge this panel sits on, or null when it is in the grid. */
-  const dockedEdgeOf = useCallback((label: string | null | undefined): DockEdge | null => (
-    label ? docks.find(d => d.kind === PANEL_AGENT && d.id === label)?.edge ?? null : null
-  ), [docks])
-
-  /**
-   * The agents the GRID lays out — everything not currently docked.
-   *
-   * A docked agent rendered in both places would be two renderings of one
-   * agent, and they drift: the copy nobody is looking at while editing the
-   * other is the one that goes stale. It would also mean docking gave the
-   * reader a second panel rather than moving the one they had.
-   */
-  const gridAgents = useMemo(
-    () => (active?.agents ?? []).filter(a => dockedEdgeOf(a.terminal_label) === null),
-    [active, dockedEdgeOf],
-  )
 
   /** What a docked band is called on screen. */
   const dockTitle = useCallback((kind: string, id: string) => (

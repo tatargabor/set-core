@@ -29,6 +29,34 @@ This is the same rule as "a gap is not a zero", applied to layout instead of to 
 tidy screen that reports calm it has not verified is worse than a cluttered one that does
 not, because it is more convincing.
 
+## A UI change is not done until somebody LOOKED at it — stated by the user, 2026-08-20
+
+**Every change that touches the UI carries a visual check, in the browser, as a
+task.** Not optional, not "if the extension happens to be connected". Use Claude
+in Chrome against the running dashboard, open the screen the change touched, and
+look. In planning it is worth naming; **at implementation it is required.**
+
+The user asked for this after a screenshot of a shipped, fully-green change, and
+the screenshot is the argument: the whole right-hand side of the fleet screen was
+**empty black** while its own header said `3 agent` and `2 as tabs — click one to
+switch`, and the docked panel beside it held a terminal squeezed to a horizontal
+scrollbar. 655 web tests and 104 Python tests were passing. Two mutation rounds,
+18 mutants, all caught. None of it was wrong — and none of it could see this,
+because every one of those checks asks *did the mechanism run*, and the defect
+was in the *result*.
+
+**What this rule is NOT.** It is not "add a screenshot test". A stored screenshot
+compares a render against an earlier render, which is the same class of check one
+layer up — it would have gone green on an empty panel that was already empty. The
+requirement is a **person or an agent actually looking at the screen and saying
+what they see.**
+
+**And when the browser cannot be reached, the task stays OPEN.** Do not mark it
+done, do not substitute a structural count for it, and do not let a green suite
+imply it. Say so in the task, in the commit, and to the user — an unverifiable
+screen is a known unknown, and the whole point of this rule is that it is the one
+gap a passing test run cannot cover.
+
 ## Before calling a screen done
 
 Look at it. Structural counts — sections, rows, zero JS errors — prove it *renders*; they

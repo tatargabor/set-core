@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_DOCK_SIZE, bandsOn, dockSplitKey, dockedBands, isDockedView,
+  DEFAULT_DOCK_HEIGHT, DEFAULT_DOCK_WIDTH, bandsOn, dockSplitKey, dockedBands, isDockedView,
   remainingArea, withDock, type DockedView,
 } from '../../src/lib/fleetDocks'
 import { SPLIT_PROJECTS } from '../../src/lib/fleetSplits'
@@ -40,8 +40,20 @@ describe('a docked view keeps the size the user gave it', () => {
     expect(dockSplitKey({ ...right, edge: 'bottom' })).toBe(dockSplitKey(right))
   })
 
-  it('uses the default until somebody drags it', () => {
-    expect(dockedBands([right], {})[0].size).toBe(DEFAULT_DOCK_SIZE)
+  it('uses a default WIDE enough for what a side band usually holds', () => {
+    // Measured on a real screen: 320 gave a left-docked agent panel a terminal
+    // squeezed to a horizontal scrollbar. A terminal assumes 80 columns, which
+    // is not a preference — narrower is broken, not smaller. The fix belongs
+    // where the width is decided, not in the terminal.
+    expect(dockedBands([right], {})[0].size).toBe(DEFAULT_DOCK_WIDTH)
+    expect(DEFAULT_DOCK_WIDTH).toBeGreaterThanOrEqual(560)
+  })
+
+  it('uses a SHORTER default on a top or bottom edge, because height is a different question', () => {
+    // One number for both axes would have to be wrong on one of them: a band as
+    // tall as a side band is wide would take most of the screen for a strip.
+    expect(dockedBands([bottom], {})[0].size).toBe(DEFAULT_DOCK_HEIGHT)
+    expect(DEFAULT_DOCK_HEIGHT).toBeLessThan(DEFAULT_DOCK_WIDTH)
   })
 
   it('uses the stored position once there is one', () => {
