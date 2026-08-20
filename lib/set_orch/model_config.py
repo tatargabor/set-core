@@ -48,6 +48,7 @@ _ROLE_KEYS_FLAT = (
     "review", "review_escalation",
     "spec_verify", "spec_verify_escalation",
     "classifier", "supervisor", "canary",
+    "pm",
 )
 
 _TRIGGER_SUBKEYS = (
@@ -80,6 +81,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "classifier": "haiku",
         "supervisor": "sonnet",
         "canary": "sonnet",
+        "pm": "sonnet",
         "trigger": {
             "integration_failed": "sonnet",
             "non_periodic_checkpoint": "sonnet",

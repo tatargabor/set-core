@@ -54,6 +54,11 @@ _DEFAULT_MODELS: dict[str, Any] = {
     "classifier": "sonnet",
     "supervisor": "sonnet",
     "canary": "sonnet",
+    # The fleet's attention judge — reads quiet agents' last turns and says
+    # which of them are asking a person for something. Sonnet by choice, not
+    # by thrift: the task is one classification over short prose, run for the
+    # whole fleet in a single call per cycle.
+    "pm": "sonnet",
     "trigger": {
         "integration_failed": "opus-4-6",
         "non_periodic_checkpoint": "opus-4-6",

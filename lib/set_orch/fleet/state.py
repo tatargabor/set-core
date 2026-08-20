@@ -144,7 +144,7 @@ def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
 EXCERPT_CHARS = 240
 
 
-def _last_text(lines: List[str]) -> tuple[Optional[str], Optional[str]]:
+def _last_text(lines: List[str], limit: int = EXCERPT_CHARS) -> tuple[Optional[str], Optional[str]]:
     """The last thing actually SAID in this session, and by whom.
 
     Read backwards from the tail the state pass already loaded, so this costs
@@ -189,8 +189,8 @@ def _last_text(lines: List[str]) -> tuple[Optional[str], Optional[str]]:
             text = " ".join(text.split())
             if not text:
                 continue
-            if len(text) > EXCERPT_CHARS:
-                text = text[: EXCERPT_CHARS - 1].rstrip() + "\u2026"
+            if len(text) > limit:
+                text = text[: limit - 1].rstrip() + "\u2026"
             return text, ("agent" if role == "assistant" else "user")
     return None, None
 
