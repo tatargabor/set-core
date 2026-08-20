@@ -119,23 +119,34 @@ those trees, not a report of them.
 
 ## Open questions
 
-### 1. The bus, and a reason that may have expired — DECIDE THIS FIRST
+### 1. The bus — MEASURED 2026-08-20, and the objection was about the wrong thing
 
 The user's instruction is that set-core notifies the outbound **over the agent bus**. The
-working model deliberately does **not** do that for the question direction, and its stated
-reason is the outbound's own request: if the question goes on the bus and no session of the
-outbound is running, the entry settles — *and that is exactly the night the chain was built
-to save.* The same argument is why the answer travels as a file.
+working model deliberately does not, and the outbound's own stated reason (2026-08-08) is
+that if no session of it is running, the entry **settles** — *and that is exactly the night
+the chain was built to save.*
 
-That reason was recorded on 2026-08-08. It may no longer hold: sending on the bus today
-returns the notice that **the entry waits in the room and is read when that session comes
-back**. If the bus is durable now, the 2026-08-08 objection is stale and the instruction and
-the working model stop contradicting each other.
+That objection was tested here rather than believed or dismissed. Two halves, both measured:
 
-⚠ **This is a claim by the tool about itself, and it has not been measured here.** Nothing in
-this change may depend on bus durability until somebody sends to a stopped session and shows
-it delivered on return. Until then the design assumes the file is the carrier and the bus is
-the fast path — which is what both sides already do for the answer.
+| | how it was measured | result |
+|---|---|---|
+| does an entry for a **stopped** seat survive? | opened a two-seat room with a seat last seen two days earlier, sent one entry, then looked at the store | the entry is on disk in an append-only per-writer file; the send reports `wakes: []` — **nobody was woken and it was kept anyway**; the recipient has no read cursor in that room, so the entry sits ahead of it |
+| does a seat that **arrives later** get what was written before it existed? | a seat created today read a room it had never been in | **8 entries handed over, the oldest 11 days old** — all written before this seat existed |
+
+**So the entry is not lost.** The 2026-08-08 objection describes *loss*, and loss is what
+justified rejecting the bus for the question direction. What the measurement leaves standing
+is **latency**: delivery happens when a session of that agent next reads the room, and if
+none runs until morning, the question waits until morning.
+
+That is a materially smaller claim than the one on record, and it changes the decision:
+a bus notification is safe to build against, and the thing that still has to be solved is
+**how soon somebody reads**, not whether the question survives. The direct process call
+remains the low-latency path; it is not the only one that is safe.
+
+⚠ What is still NOT measured: whether a new session of a given agent **automatically** reads
+its rooms. That depends on that project's own session hook and its declared default rooms,
+not on the bus. A contract that assumes it would be assuming something about the recipient's
+configuration.
 
 ### 2. Still to settle with the existing implementation
 
