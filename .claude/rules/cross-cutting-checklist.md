@@ -31,6 +31,14 @@ in-progress `fleetTileClick.ts` (+29) and its test (+68). The content survived,
 but the other thread's `git status` then showed CLEAN — which reads as "my work
 is gone" or "somebody took it", and neither is recoverable from the working tree.
 
+- **`git add <path>` is NOT enough — `git commit` commits the whole INDEX.** Measured
+  2026-08-20, in this repository, minutes after the paragraph above was written: a
+  commit staged with one explicit path still carried a parallel thread's archive
+  (6 renames + 2 new spec files, 193 lines), because that thread had already
+  **staged** its work when the commit ran. Adding the right path does not unstage
+  somebody else's.
+- **Use a pathspec-limited commit**: `git commit <path> <path> -m …`, which ignores
+  the index and commits only those paths. `git add <path>` then `git commit` does not.
 - **List paths explicitly**: `git add <path> <path>` — or `git add -u <path>`.
 - **Read `git status` before committing** and account for every line. A file you
   did not touch is a stop sign, not noise.
