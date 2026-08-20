@@ -76,12 +76,35 @@ export interface AttentionProject {
 export const WAITING = 'waiting'
 export const WORKING = 'working'
 export const UNKNOWN = 'unknown'
+export const QUIET = 'quiet'
+/**
+ * Measured — a question tool is open, so the agent is stopped in front of a
+ * person. Deliberately NOT called `blocked`: the envelope already carries
+ * `declared.blocked`, which is the agent's own CLAIM that something holds it
+ * up. One word for a declaration and a measurement in the same payload is the
+ * ambiguity this file's own comments keep refusing.
+ */
+export const ASKING = 'asking'
 
 export interface Tally {
   agents: number
   working: number
   unknown: number
   waiting: number
+  /** Measured: a question tool is outstanding — see `ASKING`. */
+  asking: number
+  /** The turn ended and nothing is outstanding. Counted, never called idle. */
+  quiet: number
+  /**
+   * Agents holding a state NO bucket above counts.
+   *
+   * The reason this exists rather than a silent fall-through: when `asking`
+   * was added, every counter here was an `else if` chain with no final
+   * branch, so a new state would have made agents vanish from the header
+   * while `agents` still counted them — false absence, failing toward a calm
+   * screen. This number is what makes the next new state visible instead.
+   */
+  unbucketed: number
   /** Agents whose declared state the log refuted — see the header of this file. */
   conflicts: number
   /** Work awaiting a human, with or without an agent — task 7.14. */
@@ -90,10 +113,11 @@ export interface Tally {
   unmeasured: number
 }
 
-export const EMPTY_TALLY: Tally = { agents: 0, working: 0, unknown: 0, waiting: 0, conflicts: 0, awaiting: 0, unmeasured: 0 }
+export const EMPTY_TALLY: Tally = { agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, quiet: 0, unbucketed: 0, conflicts: 0, awaiting: 0, unmeasured: 0 }
 
 export function tally(projects: readonly AttentionProject[]): Tally {
-  let agents = 0, working = 0, unknown = 0, waiting = 0, conflicts = 0, awaiting = 0, unmeasured = 0
+  let agents = 0, working = 0, unknown = 0, waiting = 0, asking = 0, quiet = 0, unbucketed = 0
+  let conflicts = 0, awaiting = 0, unmeasured = 0
   for (const p of projects) {
     // Counted from the DATA, like everything else here: `total` is what the
     // producer computed from its own lists, and `source_missing` is the only
@@ -109,12 +133,17 @@ export function tally(projects: readonly AttentionProject[]): Tally {
       if (a.state === WORKING) working += 1
       else if (a.state === UNKNOWN) unknown += 1
       else if (a.state === WAITING) waiting += 1
+      else if (a.state === ASKING) asking += 1
+      else if (a.state === QUIET) quiet += 1
+      // The branch that did not exist, and whose absence is the defect this
+      // chain shipped with: anything unrecognised was counted nowhere at all.
+      else unbucketed += 1
       // Counted from the DATA, never from a declaration that conflicts exist.
       // An empty string is not a conflict; a missing key is not one either.
       if (typeof a.declaration_ignored === 'string' && a.declaration_ignored !== '') conflicts += 1
     }
   }
-  return { agents, working, unknown, waiting, conflicts, awaiting, unmeasured }
+  return { agents, working, unknown, waiting, asking, quiet, unbucketed, conflicts, awaiting, unmeasured }
 }
 
 export function tallyOf(names: readonly string[], byName: ReadonlyMap<string, AttentionProject>): Tally {

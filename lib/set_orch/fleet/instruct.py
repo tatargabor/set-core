@@ -686,7 +686,19 @@ def _outcome_from(
         return WAKES_NOBODY
     if waiters > 0:
         return ARRIVES_NOW
-    if state == agent_state.WORKING:
+    # `asking` joins `working` here, and the reason is that both are MID-TURN.
+    # An agent stopped at a question has not finished its turn, so the same
+    # thing happens to the message: the turn ends and the agent sees it. Left
+    # to fall through, a state introduced for a different purpose would have
+    # quietly downgraded these to "sits unread" — a behaviour change nobody
+    # decided, in the direction that tells the sender their message is stuck.
+    #
+    # The one asymmetry is real and is deliberately NOT a fifth outcome: a
+    # working agent's turn ends by itself, an asking agent's ends only when a
+    # person answers. The screen already composes that — the same tile carries
+    # `asking you` beside this outcome — and a fifth string would say on the
+    # message what the state says one line above it.
+    if state in (agent_state.WORKING, agent_state.ASKING):
         return AT_TURN_END
     return SITS_UNREAD
 

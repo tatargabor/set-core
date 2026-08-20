@@ -618,3 +618,22 @@ def test_a_malformed_focus_does_not_take_the_roster_down(tmp_path):
     sac, _ = _fake_sac(tmp_path, stdout=json.dumps(_roster("nem objektum")))
     seat = instruct.read_seats(sac_bin=sac)["s-1"]
     assert seat.seat == "proj#aaaa" and seat.phase is None and seat.focus_text is None
+
+
+def test_an_asking_agent_gets_the_message_at_turn_end_not_unread():
+    """`asking` is MID-TURN, so it composes like `working`, not like quiet.
+
+    Found by review before it shipped: `_outcome_from` tested `state ==
+    WORKING` by equality, so introducing any new mid-turn state downgrades it
+    to `sits unread` through the fall-through — a behaviour change nobody
+    decided, telling the sender their message is stuck when it is not.
+    """
+    from set_orch.fleet import instruct
+    from set_orch.fleet import state as agent_state
+
+    assert instruct._outcome_from(True, 0, agent_state.ASKING) == instruct.AT_TURN_END
+    assert instruct._outcome_from(True, 0, agent_state.WORKING) == instruct.AT_TURN_END
+    assert instruct._outcome_from(True, 0, agent_state.QUIET) == instruct.SITS_UNREAD
+    # A live waiter still outranks the state — the composition is unchanged.
+    assert instruct._outcome_from(True, 1, agent_state.ASKING) == instruct.ARRIVES_NOW
+    assert instruct._outcome_from(False, 1, agent_state.ASKING) == instruct.WAKES_NOBODY

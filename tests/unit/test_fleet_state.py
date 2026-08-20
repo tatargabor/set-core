@@ -334,3 +334,154 @@ def test_read_state_carries_the_excerpt_on_a_quiet_agent(tmp_path):
     st = read_state(str(log))
     assert st.state == "quiet"
     assert (st.excerpt, st.excerpt_from) == ("készen vagyok", "agent")
+
+
+# --------------------------------------------------------------------------- #
+# blocked on a person — the structural floor under PM mode
+# --------------------------------------------------------------------------- #
+
+def _text(role: str, text: str, ts: str, sidechain: bool = False) -> dict:
+    return {"type": role, "isSidechain": sidechain, "timestamp": ts,
+            "message": {"role": role, "content": [{"type": "text", "text": text}]}}
+
+
+@pytest.mark.parametrize("tool", sorted(state.QUESTION_TOOLS))
+def test_an_outstanding_question_tool_is_asking_not_work(tmp_path, tool):
+    """The whole finding: this call is outstanding while the PERSON thinks.
+
+    Measured 2026-08-20 on a real log — the `tool_use` lands 8m13s, 9m32s and
+    1m43s before its `tool_result`. Until this test the state was `working`,
+    which is the reassuring direction: the one blockage a reader can clear
+    immediately rendered as the case that needs nothing from them.
+    """
+    log = _log(tmp_path, [_assistant("q1", tool, "2026-08-20T08:00:00.000Z")])
+    st = read_state(log, now=_epoch_of("2026-08-20T08:05:00.000Z"))
+    assert st.state == state.ASKING
+    assert st.state != state.WORKING
+    assert st.tool == tool
+    assert st.tool_elapsed == pytest.approx(300, abs=2)
+
+
+@pytest.mark.parametrize("tool", sorted(state.QUESTION_TOOLS))
+def test_a_question_tool_that_has_been_answered_is_not_a_blockage(tmp_path, tool):
+    log = _log(tmp_path, [
+        _assistant("q1", tool, "2026-08-20T08:00:00.000Z"),
+        _result("q1", "2026-08-20T08:01:00.000Z"),
+    ])
+    assert read_state(log).state == state.QUIET
+
+
+def test_an_undeclared_tool_is_work_whatever_it_is_named(tmp_path):
+    """The list is a list, and nothing is inferred from a name.
+
+    `Bash` is the case that makes it matter: a permission prompt and a slow
+    command are the SAME log entry, so anything that promoted `Bash` by elapsed
+    time would queue every long-running command.
+    """
+    log = _log(tmp_path, [_assistant("t1", "Bash", "2026-08-20T08:00:00.000Z")])
+    assert read_state(log).state == state.WORKING
+
+
+def test_the_question_tool_is_named_even_when_an_older_call_is_open(tmp_path):
+    """Naming the oldest call would describe a fact that is not the reason."""
+    log = _log(tmp_path, [
+        _assistant("t1", "Bash", "2026-08-20T08:00:00.000Z"),
+        _assistant("q1", "AskUserQuestion", "2026-08-20T08:00:30.000Z"),
+    ])
+    st = read_state(log)
+    assert st.state == state.ASKING
+    assert st.tool == "AskUserQuestion"
+    assert "Bash" in st.other_tools
+
+
+def test_a_record_saying_waiting_is_not_a_conflict_with_asking(tmp_path):
+    """`waiting` AGREES with `blocked`; only `working` contradicts it."""
+    log = _log(tmp_path, [_assistant("q1", "AskUserQuestion", "2026-08-20T08:00:00.000Z")])
+    st = read_state(log, record={"status": "waiting"})
+    assert st.state == state.ASKING
+    assert st.declaration_ignored is None
+
+
+# --------------------------------------------------------------------------- #
+# resumed_since — and why a user entry proves nothing
+# --------------------------------------------------------------------------- #
+
+def _epoch_of(iso: str) -> float:
+    from datetime import datetime
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+POINT = "2026-08-20T08:00:00.000Z"
+
+
+def test_an_interrupt_is_not_a_resumption(tmp_path):
+    """MEASURED SHAPE, not an invented one.
+
+    `itline-web/349ee01c…jsonl`, 2026-08-19: interrupting a session writes a
+    `user` entry whose text is exactly this. A reader that treats "a new user
+    entry appeared" as an answer therefore advances the queue on Esc — the
+    freeze this exists to provide, broken by the obvious implementation.
+    """
+    log = _log(tmp_path, [
+        _text("assistant", "Shall I go ahead?", "2026-08-20T07:59:00.000Z"),
+        _text("user", "[Request interrupted by user]", "2026-08-20T08:01:00.000Z"),
+    ])
+    assert state.resumed_since(log, POINT) == state.NOT_RESUMED
+
+
+def test_a_bare_user_entry_check_would_not_have_caught_it(tmp_path):
+    """Holds the REFUTED pattern, so reverting to it fails instead of looking equal.
+
+    Any repair that recognises the runtime's synthetic markers by their text is
+    a second copy of somebody else's format. This asserts the shape that such a
+    repair would get wrong: an ordinary-looking user message, with no marker in
+    it at all, is still not a resumption — because resumption is about the
+    AGENT moving, not about the person speaking.
+    """
+    log = _log(tmp_path, [
+        _text("assistant", "Shall I go ahead?", "2026-08-20T07:59:00.000Z"),
+        _text("user", "yes please", "2026-08-20T08:01:00.000Z"),
+    ])
+    assert state.resumed_since(log, POINT) == state.NOT_RESUMED
+
+
+def test_a_new_assistant_utterance_is_a_resumption(tmp_path):
+    log = _log(tmp_path, [
+        _text("assistant", "Shall I go ahead?", "2026-08-20T07:59:00.000Z"),
+        _text("user", "yes please", "2026-08-20T08:01:00.000Z"),
+        _text("assistant", "Right — starting now.", "2026-08-20T08:01:30.000Z"),
+    ])
+    assert state.resumed_since(log, POINT) == state.RESUMED
+
+
+def test_a_new_tool_call_is_a_resumption(tmp_path):
+    log = _log(tmp_path, [
+        _text("assistant", "Shall I go ahead?", "2026-08-20T07:59:00.000Z"),
+        _assistant("t9", "Bash", "2026-08-20T08:02:00.000Z"),
+    ])
+    assert state.resumed_since(log, POINT) == state.RESUMED
+
+
+def test_an_unreadable_log_does_not_report_resumption(tmp_path):
+    assert state.resumed_since(str(tmp_path / "nope.jsonl"), POINT) == state.RESUMPTION_UNKNOWN
+    assert state.resumed_since(None, POINT) == state.RESUMPTION_UNKNOWN
+
+
+def test_an_unparsable_point_is_unknown_not_negative(tmp_path):
+    log = _log(tmp_path, [_text("assistant", "hi", "2026-08-20T08:01:00.000Z")])
+    assert state.resumed_since(log, None) == state.RESUMPTION_UNKNOWN
+    assert state.resumed_since(log, "not-a-timestamp") == state.RESUMPTION_UNKNOWN
+
+
+def test_a_point_older_than_the_tail_is_unknown_not_not_resumed(tmp_path):
+    """A negative needs the boundary in view; a positive does not."""
+    log = _log(tmp_path, [_text("user", "later", "2026-08-20T09:00:00.000Z")])
+    assert state.resumed_since(log, POINT) == state.RESUMPTION_UNKNOWN
+
+
+def test_a_sub_agent_s_turn_is_not_the_parent_resuming(tmp_path):
+    log = _log(tmp_path, [
+        _text("assistant", "Shall I go ahead?", "2026-08-20T07:59:00.000Z"),
+        _assistant("s1", "Bash", "2026-08-20T08:02:00.000Z", sidechain=True),
+    ])
+    assert state.resumed_since(log, POINT) == state.NOT_RESUMED

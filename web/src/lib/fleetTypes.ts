@@ -290,6 +290,18 @@ export interface FleetResponse {
    * than the value.
    */
   waiting?: number
+  /**
+   * MEASURED that a person is being asked — a question tool is outstanding.
+   * Optional for the same reason as `waiting`: an absent key is an older
+   * server, not a zero.
+   */
+  asking?: number
+  quiet?: number
+  /**
+   * Agents whose state no bucket counted. Zero on a healthy server; carried
+   * rather than merely logged, because the screen is where somebody notices.
+   */
+  unbucketed?: number
   projects: FleetProject[]
   quiet_means: string
   /**

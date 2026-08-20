@@ -39,6 +39,34 @@ WORKING = "working"
 QUIET = "quiet"
 #: Waiting for a PERSON. Not measurable from the log at all — see `read_state`.
 WAITING = "waiting"
+#: Stopped in front of a person by a tool that IS a question — see `QUESTION_TOOLS`.
+#: Structurally certain, unlike WAITING, which is a declaration the record makes.
+#:
+#: ⚠ NOT called `blocked`, and the reason is a collision found while wiring this
+#: up rather than foreseen: the envelope ALREADY carries `declared.blocked` —
+#: the agent's own claim that something is holding it up, which may be a
+#: dependency, a missing credential, anything. Two fields named `blocked` in one
+#: payload, one a declaration and one a measurement, is the ambiguity this
+#: codebase spends its comments warning about. `asking` says what was actually
+#: measured: a question tool is open, so the agent is asking.
+ASKING = "asking"
+
+#: Tools whose outstanding call means the agent is stopped in front of a PERSON.
+#:
+#: Measured 2026-08-20 on a real session log, three instances: the `tool_use`
+#: entry lands 8m13s, 9m32s and 1m43s BEFORE its matching `tool_result`. So the
+#: call sits outstanding for the whole time the person is thinking, and reading
+#: it as `working` — which is what this module did until then — reported the one
+#: blockage a reader could act on immediately as the case needing nothing.
+#:
+#: ⚠ A PERMISSION PROMPT IS DELIBERATELY NOT HERE, and the reason is the whole
+#: point of the list being a list. From the log, an agent waiting for permission
+#: to run `Bash` and an agent running a slow `Bash` are the SAME entry: one
+#: outstanding `tool_use` named `Bash`. Adding it by elapsed time would queue
+#: every long-running command — a false positive on the busiest tool there is.
+#: A tool joins this set when its outstanding call means a person is being
+#: asked, never because its name sounds like it might be.
+QUESTION_TOOLS = frozenset({"AskUserQuestion", "ExitPlanMode"})
 
 
 @dataclass
@@ -53,7 +81,10 @@ class AgentState:
     state: str = UNKNOWN
     #: Seconds since the session log last changed, or None when unmeasurable.
     last_movement_age: Optional[float] = None
-    #: The tool whose call is outstanding, when the state is `working`.
+    #: The tool whose call is outstanding, when the state is `working` or
+    #: `blocked`. For `blocked` it is the QUESTION tool, not the oldest call —
+    #: which one is outstanding is the reason for the state, so naming a
+    #: different one would describe the wrong fact.
     tool: Optional[str] = None
     #: How long that call has been outstanding, in seconds.
     tool_elapsed: Optional[float] = None
@@ -225,6 +256,109 @@ def _age_seconds(iso_timestamp: Optional[str], now: Optional[float] = None) -> O
     return max(0.0, reference - parsed.timestamp())
 
 
+#: `resumed_since` verdicts. Three, not a boolean — see the function.
+RESUMED = "resumed"
+NOT_RESUMED = "not-resumed"
+RESUMPTION_UNKNOWN = "unknown"
+
+
+def _epoch(iso_timestamp: Optional[str]) -> Optional[float]:
+    """An ISO timestamp as epoch seconds, or None when it cannot be parsed."""
+    if not iso_timestamp:
+        return None
+    try:
+        from datetime import datetime
+
+        return datetime.fromisoformat(str(iso_timestamp).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def resumed_since(session_log: Optional[str], since: Optional[str]) -> str:
+    """Has this agent taken a new turn since `since`?
+
+    The question the attention queue asks to decide whether a person dealt with
+    the item on screen. Three answers, and the third is why this is not a bool:
+    an unreadable log, an unparsable point, or a tail that does not reach back
+    far enough are all *no information*, and reporting them as `not-resumed`
+    would freeze the queue on an item nobody can ever clear.
+
+    ## A new USER entry is not resumption, and that is the whole finding
+
+    Measured on a live log 2026-08-19: interrupting a session writes a `user`
+    entry whose text is `[Request interrupted by user]`. So the obvious test —
+    *did the person type something* — reads an abandoned turn as an answered
+    one, and pressing Esc would advance the queue. The alternative repair, a
+    list of the runtime's synthetic markers, is a second copy of somebody else's
+    format and drifts the day they add one.
+
+    What this measures instead is the EFFECT: the agent moved. An assistant
+    utterance, or a fresh tool call, recorded after `since`. Nothing a person
+    types counts, which also makes it indifferent to whatever the runtime
+    invents next.
+
+    ## Why the boundary has to be visible for a negative
+
+    The tail is bounded (`TAIL_BYTES`). If its earliest entry is already newer
+    than `since`, entries between the two were never read — and one of them
+    could be the assistant utterance being looked for. A positive is still safe
+    (finding one is finding one); a negative is not, so it returns unknown.
+    """
+    if session_log is None or not os.path.exists(session_log):
+        return RESUMPTION_UNKNOWN
+    point = _epoch(since)
+    if point is None:
+        return RESUMPTION_UNKNOWN
+    lines = _tail(session_log)
+    if lines is None:
+        return RESUMPTION_UNKNOWN
+
+    earliest: Optional[float] = None
+    for line in lines:
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("isSidechain"):
+            continue
+        stamp = _epoch(entry.get("timestamp"))
+        if stamp is None:
+            continue
+        if earliest is None or stamp < earliest:
+            earliest = stamp
+        if stamp <= point:
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict):
+            continue
+        # Both carriers, because both exist and a fixture may set only one.
+        # Measured on a real log: where both are present they always agree
+        # (231 `user`/`user`, 396 `assistant`/`assistant`), and every entry
+        # kind that carries neither has no `message` at all.
+        if (message.get("role") or entry.get("type")) != "assistant":
+            continue
+        content = message.get("content")
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        if not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                return RESUMED
+            if block.get("type") == "text" and str(block.get("text") or "").strip():
+                return RESUMED
+
+    if earliest is None or earliest > point:
+        # The tail never reached back to the point, so "nothing found" is not
+        # the same as "nothing happened".
+        return RESUMPTION_UNKNOWN
+    return NOT_RESUMED
+
+
 def _apply_declared_wait(state: AgentState, record: Optional[Dict]) -> AgentState:
     """Add *waiting for a person* to a quiet state, from the runtime's record.
 
@@ -332,6 +466,27 @@ def read_state(
         outstanding.values(),
         key=lambda meta: meta.get("timestamp") or "",
     )
+
+    # A tool that IS a question decides the state, whatever else is open, and it
+    # is the one named — see `QUESTION_TOOLS`. Ordering picks the oldest such
+    # call rather than the oldest call overall: the question is the reason for
+    # the state, so naming a Bash that happens to be older would describe a fact
+    # that is not the one the reader needs.
+    asking = [m for m in ordered if m.get("name") in QUESTION_TOOLS]
+    if asking:
+        blocking = asking[0]
+        return AgentState(
+            state=ASKING,
+            last_movement_age=movement,
+            tool=blocking.get("name"),
+            tool_elapsed=_age_seconds(blocking.get("timestamp"), reference),
+            other_tools=[m.get("name") for m in ordered if m is not blocking and m.get("name")],
+            # A record saying `waiting` AGREES with this state, so there is no
+            # contradiction to carry — unlike the working case below.
+            excerpt=excerpt,
+            excerpt_from=excerpt_from,
+        )
+
     first = ordered[0]
     # A record that says `waiting` while a call is outstanding is describing a
     # moment that has passed. The measurement wins; the disagreement is carried

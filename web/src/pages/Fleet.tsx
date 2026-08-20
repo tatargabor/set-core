@@ -163,6 +163,27 @@ function StateLine({ agent }: { agent: FleetAgent }) {
       </span>
     )
   }
+  // MEASURED that a person is being asked — a question tool is outstanding.
+  // Louder than `waiting`, which is the runtime's declaration about itself:
+  // this one needs nobody's word for it, and it is the state a reader can
+  // always clear. Named `asking` rather than `blocked` because the tile also
+  // carries `declared.blocked`, which is the agent's own claim about something
+  // else entirely.
+  if (agent.state === 'asking') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold whitespace-nowrap"
+        title={`This agent has ${agent.tool ?? 'a question tool'} open — it is stopped in front of a person. Measured from the session log, not declared.`}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse shrink-0" />
+        asking you
+        {agent.tool && <span className="text-fg-muted font-normal">{agent.tool}</span>}
+        {agent.tool_elapsed_seconds !== null && (
+          <span className="text-fg-muted tabular-nums font-normal">{age(agent.tool_elapsed_seconds)}</span>
+        )}
+      </span>
+    )
+  }
   if (agent.state === 'quiet') {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap">
@@ -1117,6 +1138,11 @@ function AgentTabs({ agents, selected, onSelect }: {
 const TAB_DOT: Record<string, string> = {
   working: 'bg-emerald-400 animate-pulse',
   waiting: 'bg-sky-300',
+  // Measured that a person is being asked. It must have its own entry: the
+  // fallback below is amber, which already means `unknown` on this strip, so
+  // an unlisted state does not merely look unstyled — it looks like a
+  // different state, deliberately chosen.
+  asking: 'bg-sky-300 animate-pulse',
   quiet: 'bg-surface-line',
   unknown: 'bg-amber-400',
 }

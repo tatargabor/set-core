@@ -308,6 +308,34 @@ def _declared_payload(session_id, seats) -> Dict[str, Any]:
     }
 
 
+#: Every state the envelope counts. A LIST rather than a chain of `elif`s,
+#: because the defect this replaced was structural: the counters were an
+#: if/else-if with no final branch, so a state nobody had thought of was
+#: counted nowhere while `agents` still included it. Adding to this tuple is
+#: how a new state joins; forgetting to shows up as `unbucketed`, not as
+#: silence. `tests/unit/test_fleet_state_tally.py` holds the arithmetic.
+STATE_BUCKETS = ("working", "unknown", "waiting", "asking", "quiet")
+
+
+def _state_tally(states: Dict[Any, Any]) -> Dict[str, int]:
+    """How many agents are in each state, plus how many are in none of them.
+
+    Counted from the DATA. `unbucketed` is the whole reason this is a function:
+    it is the number that makes a missing bucket visible instead of turning an
+    agent into a gap in the header — false absence, failing toward a calm
+    screen, which is the direction this codebase treats as expensive.
+    """
+    counts = {name: 0 for name in STATE_BUCKETS}
+    unbucketed = 0
+    for st in states.values():
+        if st.state in counts:
+            counts[st.state] += 1
+        else:
+            unbucketed += 1
+    counts["unbucketed"] = unbucketed
+    return counts
+
+
 @router.get("/api/fleet/agents")
 def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     """Every live agent session, grouped by project.
@@ -384,20 +412,15 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
                 if project.root else None),
         })
 
-    # Counted from the data, never from a declaration — a "hidden" tally taken
-    # from what we *meant* to filter is the false-absence class.
-    working = sum(1 for s in states.values() if s.state == "working")
-    unknown = sum(1 for s in states.values() if s.state == "unknown")
-    # Counted from the data. Present even when zero, and that is the point:
-    # the KEY is what tells the surface the state is reported at all. Without
-    # it a screen cannot distinguish "nobody is waiting" from "waiting is not
-    # measured here", and it would have to render one as the other.
-    waiting = sum(1 for s in states.values() if s.state == "waiting")
-    # The other half of "where has work stopped", and deliberately a SEPARATE
-    # number rather than folded into `waiting`. That one counts live agents that
-    # asked a question; this one counts work with nobody standing on it. Summing
-    # them would make the total unusable for both, because a reader chasing a
-    # waiting agent and a reader chasing a stalled change do different things.
+    tally = _state_tally(states)
+    working, unknown, waiting = tally["working"], tally["unknown"], tally["waiting"]
+    asking, quiet, unbucketed = tally["asking"], tally["quiet"], tally["unbucketed"]
+    if unbucketed:
+        logger.warning(
+            "fleet: %d agent(s) hold a state no bucket counts: %s",
+            unbucketed, sorted({s.state for s in states.values()} - set(STATE_BUCKETS)),
+        )
+
     awaiting_total = sum(g["awaiting"]["total"] for g in grouped)
     awaiting_unmeasured = sum(1 for g in grouped if g["awaiting"]["source_missing"])
 
@@ -406,6 +429,11 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         "working": working,
         "unknown": unknown,
         "waiting": waiting,
+        "asking": asking,
+        "quiet": quiet,
+        # Zero unless a state exists that no bucket counts. Carried rather than
+        # merely logged, because the screen is where somebody would notice.
+        "unbucketed": unbucketed,
         "awaiting": awaiting_total,
         # How many projects could not be measured at all. A zero `awaiting`
         # next to a non-zero here means "nothing found where we looked", which
