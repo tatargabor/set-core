@@ -18,6 +18,7 @@ import {
   FOREIGN_REASON,
   OWNER_DOWN_REASON,
   parseControl,
+  terminalLinkTarget,
   terminalOffer,
   terminalUrl,
 } from '../../src/lib/fleetTerminal'
@@ -126,5 +127,39 @@ describe('task 5.5 — an agent the framework started but no longer holds', () =
   it('still tells a genuinely foreign session apart', () => {
     const offer = terminalOffer({ population: 'foreign', terminal_label: null, scope: null }, true)
     expect(offer.kind).toBe('foreign')
+  })
+})
+
+
+/**
+ * Which links in the output a click may follow — asked for 2026-08-20:
+ * *"terminal ablakban URL nyitható legyen uj lapon"*.
+ *
+ * Asserted in both directions on purpose. A positive-only check passes on a
+ * build that opens whatever the agent printed — and the terminal's text is
+ * written by whatever the agent ran, so it is data, not an instruction. The
+ * negatives below are the ones a prefix test would let through.
+ */
+describe('a link in the terminal output', () => {
+  it('opens an ordinary http and https address', () => {
+    expect(terminalLinkTarget('http://127.0.0.1:3301/rendelesek.html'))
+      .toBe('http://127.0.0.1:3301/rendelesek.html')
+    expect(terminalLinkTarget('https://example.test/a?b=1#c'))
+      .toBe('https://example.test/a?b=1#c')
+  })
+
+  it('refuses a scheme that would execute something in the dashboard', () => {
+    // eslint-disable-next-line no-script-url
+    expect(terminalLinkTarget('javascript:alert(1)')).toBeNull()
+    expect(terminalLinkTarget('data:text/html,<script>alert(1)</script>')).toBeNull()
+    expect(terminalLinkTarget('file:///etc/passwd')).toBeNull()
+  })
+
+  it('is not fooled by text that merely STARTS with an allowed scheme', () => {
+    // The refuted implementation, held here rather than described: a prefix
+    // test on the raw string. `URL` parses the scheme; a prefix does not.
+    expect(terminalLinkTarget('  javascript:alert(1)')).toBeNull()
+    expect(terminalLinkTarget('httpx://example.test/')).toBeNull()
+    expect(terminalLinkTarget('not a url at all')).toBeNull()
   })
 })

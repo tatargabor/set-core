@@ -184,6 +184,34 @@ export function terminalUrl(label: string, loc: { protocol: string; host: string
   return `${scheme}//${loc.host}/ws/fleet/agents/${encodeURIComponent(label)}/terminal`
 }
 
+/**
+ * The address a link in the terminal output should open, or `null` for one that
+ * must not be opened at all — asked for on 2026-08-20: *"terminal ablakban URL
+ * nyitható legyen uj lapon"*.
+ *
+ * A pure function rather than a closure inside the component, so the one part
+ * that can be wrong without looking wrong — WHICH schemes are followed — is
+ * testable without a browser. The opening itself (a new tab, `noopener`) is the
+ * component's job and is a browser fact.
+ *
+ * **The terminal's text is data, not an instruction.** It is written by whatever
+ * the agent ran, so a scheme that can execute something in the dashboard's own
+ * origin — `javascript:`, `data:`, `file:`, a custom app scheme — is refused.
+ * Only `http` and `https` survive, and the decision is made by parsing the URL
+ * rather than by testing a prefix of a string the agent chose: `http:evil` and
+ * a leading-whitespace `  javascript:` both defeat a prefix test.
+ */
+export function terminalLinkTarget(uri: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(uri)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  return parsed.href
+}
+
 /** The `attached` acknowledgement, and the two ways an open can fail. */
 export interface AttachedEvent {
   event: 'attached'

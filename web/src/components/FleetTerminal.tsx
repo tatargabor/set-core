@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, CircleStop, Eye, Maximize2, Minimize2, Sciss
 import {
   type AttachedEvent,
   parseControl,
+  terminalLinkTarget,
   terminalUrl,
 } from '../lib/fleetTerminal'
 import { IconButton } from './TileControls'
@@ -132,9 +133,10 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     let dispose: (() => void) | null = null
 
     void (async () => {
-      const [{ Terminal }, { FitAddon }] = await Promise.all([
+      const [{ Terminal }, { FitAddon }, { WebLinksAddon }] = await Promise.all([
         import('@xterm/xterm'),
         import('@xterm/addon-fit'),
+        import('@xterm/addon-web-links'),
       ])
       await import('@xterm/xterm/css/xterm.css')
       if (disposed || !host.current) return
@@ -149,6 +151,36 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       })
       const fit = new FitAddon()
       term.loadAddon(fit)
+
+      /**
+       * URLs in the output are openable — asked for on 2026-08-20: *"terminal
+       * ablakban URL nyitható legyen uj lapon"*.
+       *
+       * An agent prints the address of what it built (a mock page, a preview, a
+       * report) and the only way to reach it was to select the text by hand out
+       * of a fixed grid — across a line wrap, in a pane that scrolls
+       * horizontally. That is a link the terminal already renders and the reader
+       * cannot follow.
+       *
+       * **A new tab, never this one.** The dashboard tab holds every open
+       * terminal's socket; navigating it away tears down each attachment and
+       * loses the panel arrangement the reader has built. So the handler is
+       * explicit rather than left to the addon's default, and it is the two
+       * things a target of `_blank` needs to be safe: `noopener` (the opened
+       * page cannot reach back through `window.opener`) and `noreferrer`.
+       *
+       * **Only http(s), and the click is the person's.** The text is written by
+       * whatever the agent ran, so it is data, not an instruction: nothing here
+       * navigates on its own, and a scheme that could execute something —
+       * `javascript:`, `data:`, `file:` — is not opened at all. That decision is
+       * `terminalLinkTarget`, next to the rest of the terminal's rules and
+       * testable without a browser.
+       */
+      term.loadAddon(new WebLinksAddon((event, uri) => {
+        event.preventDefault()
+        const target = terminalLinkTarget(uri)
+        if (target) window.open(target, '_blank', 'noopener,noreferrer')
+      }))
       term.open(host.current)
 
       /**
