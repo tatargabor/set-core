@@ -322,3 +322,42 @@ def test_a_working_agent_is_never_queued_whatever_a_verdict_says(caplog):
              states={1: agent_state.AgentState(state=agent_state.WORKING, tool="Bash")}, now=NOW)
     assert q.ordered() == []
     assert "working" in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_idle_is_a_population_count_not_a_per_pass_one():
+    """Found by WATCHING the live screen, not by a test.
+
+    `idle` fell 12 → 9 → 1 across three cycles while nothing in the fleet
+    changed. The candidate filter skips an agent whose log has not moved, so a
+    count taken from one pass's verdicts shrinks as agents drop out of the pass
+    — and it renders as agents ceasing to be idle. The count is about the
+    population; the pass is about what was looked at this time.
+    """
+    subjects = [_subject(1), _subject(2)]
+    q = Queue()
+    q.update(subjects, _result(_verdicts(**{"1": j.FINISHED, "2": j.FINISHED})),
+             states=_states(ages={1: 5, 2: 5}), now=NOW)
+    assert q.counts.idle == 2
+    # Next cycle: agent 2's log did not move, so it is not in the verdicts.
+    q.update(subjects, _result(_verdicts(**{"1": j.FINISHED})),
+             states=_states(ages={1: 5, 2: 5}), now=NOW + 60)
+    assert q.counts.idle == 2
+
+
+def test_an_agent_that_is_gone_stops_being_counted_idle():
+    subjects = [_subject(1), _subject(2)]
+    q = Queue()
+    q.update(subjects, _result(_verdicts(**{"1": j.FINISHED, "2": j.FINISHED})),
+             states=_states(ages={1: 5, 2: 5}), now=NOW)
+    q.update([_subject(1)], _result(_verdicts(**{"1": j.FINISHED})),
+             states=_states(ages={1: 5}), now=NOW + 60)
+    assert q.counts.idle == 1
+
+
+def test_the_counts_say_whether_anything_has_been_counted_yet():
+    """A zero before the first cycle is a default, not a measurement."""
+    q = Queue()
+    assert q.counts.counted is False
+    q.update([_subject(1)], _result(_verdicts(**{"1": j.FINISHED})),
+             states=_states(ages={1: 5}), now=NOW)
+    assert q.counts.counted is True

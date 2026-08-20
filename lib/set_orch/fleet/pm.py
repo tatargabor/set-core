@@ -47,6 +47,9 @@ class PmSession:
         self._watermarks: Dict[int, judgment.Watermark] = {}
         self._last_cycle: Optional[float] = None
         self._last_error: Optional[str] = None
+        #: True while a cycle is in flight. One at a time, and never on the
+        #: request thread — see `cycle_in_background`.
+        self._running = False
         #: pid → session log, kept so `advance` can ask about the presented
         #: agent without a second discovery pass.
         self._logs: Dict[int, str] = {}
@@ -118,6 +121,42 @@ class PmSession:
         self._last_error = None if result.measured else result.reason
         return True
 
+    def cycle_in_background(self) -> bool:
+        """Start a cycle on its own thread, if one is due and none is running.
+
+        ⚠ The cycle makes a model call, which takes tens of seconds. Running it
+        on the request thread makes the browser's poll hang for that long —
+        measured the first time this was wired up, where a `POST` that should
+        answer instantly did not answer at all. A surface that freezes while
+        deciding what to show is worse than one that shows the previous answer
+        and catches up.
+
+        Returns whether a thread was started. `False` covers both "the mode is
+        off" and "one is already in flight", which need no distinction here: in
+        both cases the caller serves the snapshot it already has.
+        """
+        with self._lock:
+            if not self.enabled or self._running:
+                return False
+            self._running = True
+
+        def _run() -> None:
+            try:
+                self.cycle(force=True)
+            finally:
+                with self._lock:
+                    self._running = False
+
+        threading.Thread(target=_run, name="fleet-pm-cycle", daemon=True).start()
+        return True
+
+    def due(self, *, now: Optional[float] = None) -> bool:
+        """Has the period elapsed since the last cycle?"""
+        reference = now if now is not None else time.time()
+        if self._last_cycle is None:
+            return True
+        return reference - self._last_cycle >= judgment.CYCLE_SECONDS
+
     # ----------------------------------------------------------------- #
 
     def advance(self) -> bool:
@@ -135,6 +174,15 @@ class PmSession:
         it per request keeps the server from having to model a clock it cannot
         see.
         """
+        # Showing it IS presenting it. Found on the live screen, not by a test:
+        # nothing ever called `present()`, so `_presented` stayed None — and
+        # with it the preemption offer (which needs something to preempt), the
+        # presented count that drives demotion, and the history the back and
+        # forward controls walk. The queue rendered a head and every mechanism
+        # hanging off "what is on screen" was dead, silently, while the screen
+        # looked right.
+        if self.queue.head() is not None:
+            self.queue.present()
         head = self.queue.head()
         counts = self.queue.counts
         offer = (
@@ -154,6 +202,9 @@ class PmSession:
             "pending_switch": asdict(offer) if offer else None,
             "last_cycle": self._last_cycle,
             "last_error": self._last_error,
+            # A cycle is in flight. Rendered as "still looking", which is
+            # neither an empty queue nor a failure — the third thing.
+            "cycling": self._running,
         }
 
 

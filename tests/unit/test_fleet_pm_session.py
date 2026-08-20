@@ -116,8 +116,78 @@ def test_the_snapshot_shape_is_stable_and_carries_no_session_text(session):
     snap = s.snapshot(seconds_since_input=999.0)
     assert set(snap) == {
         "enabled", "presented", "queued", "counts", "can_go_back", "can_go_forward",
-        "pending_switch", "last_cycle", "last_error",
+        "pending_switch", "last_cycle", "last_error", "cycling",
     }
     assert set(snap["presented"]) == {
         "pid", "project", "label", "source", "blocked_since", "blockage_point", "presented_count",
     }
+
+
+def test_a_cycle_never_runs_on_the_calling_thread(session):
+    """Measured the first time this was wired up: a POST that runs the model
+    call inline does not answer at all for as long as the model takes. The
+    browser polls this endpoint."""
+    import threading
+
+    s, calls = session
+    s.enable()
+    where = {}
+
+    def slow():
+        where["thread"] = threading.current_thread().name
+        import time as _t
+        _t.sleep(0.05)
+        return True
+
+    s.cycle = lambda **kw: slow()
+    assert s.cycle_in_background() is True
+    for _ in range(100):
+        if "thread" in where:
+            break
+        __import__("time").sleep(0.01)
+    assert where.get("thread") == "fleet-pm-cycle"
+
+
+def test_only_one_cycle_is_in_flight_at_a_time(session):
+    import threading, time as _t
+
+    s, _ = session
+    s.enable()
+    gate = threading.Event()
+    started = []
+    s.cycle = lambda **kw: (started.append(1), gate.wait(2))[0]
+
+    assert s.cycle_in_background() is True
+    for _ in range(100):
+        if started:
+            break
+        _t.sleep(0.01)
+    assert s.cycle_in_background() is False   # one already in flight
+    gate.set()
+
+
+def test_the_snapshot_says_when_a_cycle_is_in_flight(session):
+    s, _ = session
+    assert s.snapshot()["cycling"] is False
+
+
+def test_showing_the_head_marks_it_presented(session):
+    """Found on the live screen: nothing ever called `present()`.
+
+    The snapshot returned a head, so the screen looked right — while the
+    preemption offer, the demotion counter and the history stack all sat on
+    `_presented`, which stayed None. Three mechanisms dead at once, and every
+    unit test still green because each was tested by calling `present()`
+    directly.
+    """
+    s, _ = session
+    s.enable()
+    s.cycle(force=True, now=1.0)
+    snap = s.snapshot(seconds_since_input=999.0)
+    assert snap["presented"] is not None
+    assert snap["presented"]["presented_count"] >= 1
+    # The history now has something in it, which is what back/forward walk.
+    again = s.snapshot(seconds_since_input=999.0)
+    assert again["presented"]["pid"] == snap["presented"]["pid"]
+    # And it is not counted again for merely being looked at twice.
+    assert again["presented"]["presented_count"] == snap["presented"]["presented_count"]

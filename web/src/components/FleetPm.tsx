@@ -40,10 +40,17 @@ import type { FleetAgent } from '../lib/fleetTypes'
 
 const POLL_MS = 4000
 
-function Count({ n, label, tone, title }: { n: number; label: string; tone?: string; title?: string }) {
+function Count({ n, label, tone, title, counted }: {
+  n: number; label: string; tone?: string; title?: string; counted?: boolean
+}) {
+  // Before the first cycle completes there is no measurement, and `0 waiting`
+  // would be a zero nobody produced — the same rule the unmeasured-judgement
+  // banner applies, one step earlier and at a glance.
+  const shown = counted === false ? '—' : n
   return (
-    <span className={`text-xs whitespace-nowrap ${tone ?? 'text-fg-muted'}`} title={title}>
-      <span className="tabular-nums font-semibold">{n}</span> {label}
+    <span className={`text-xs whitespace-nowrap ${tone ?? 'text-fg-muted'}`}
+          title={counted === false ? 'Not counted yet — the first cycle has not finished.' : title}>
+      <span className="tabular-nums font-semibold">{shown}</span> {label}
     </span>
   )
 }
@@ -126,7 +133,12 @@ export default function FleetPm({ agents, onExit }: { agents: FleetAgent[]; onEx
   const counts = snap?.counts
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-surface-page" data-fleet-pm="on">
+    /* z-[60], not z-40 — MEASURED in the browser, not reasoned about. The app
+       shell's sidebar is `z-50`, so at z-40 it sat ON TOP of this overlay and
+       clipped the first ~45px of every terminal line (`r event:` for
+       `for event:`) while also covering the back/forward controls. Full screen
+       has to mean above the shell, or it is not full screen. */
+    <div className="fixed inset-0 z-[60] flex flex-col bg-surface-page" data-fleet-pm="on">
       {/* The always-visible bar. Nothing here may scroll away — it is what
           makes the pile behind a full-screen view countable. */}
       <div className="shrink-0 flex items-center gap-3 flex-wrap px-3 py-2 border-b border-surface-line">
@@ -168,9 +180,9 @@ export default function FleetPm({ agents, onExit }: { agents: FleetAgent[]; onEx
         <span className="ml-auto flex items-center gap-3 flex-wrap">
           {counts && (
             <>
-              <Count n={counts.queued} label="waiting" tone={counts.queued > 0 ? 'text-sky-300' : undefined}
+              <Count n={counts.queued} label="waiting" counted={counts.counted} tone={counts.queued > 0 ? 'text-sky-300' : undefined}
                      title="Agents queued behind this one. They do not go away while this screen is frozen." />
-              <Count n={counts.idle} label="idle"
+              <Count n={counts.idle} label="idle" counted={counts.counted}
                      title="Finished their turn and asked nothing. Counted, never queued." />
               {counts.unclassified > 0 && (
                 <Count n={counts.unclassified} label="unclassified" tone="text-amber-400"
@@ -235,16 +247,31 @@ export default function FleetPm({ agents, onExit }: { agents: FleetAgent[]; onEx
       <div className="flex-1 min-h-0 flex flex-col">
         {presented === null ? (
           <div className="flex-1 grid place-items-center text-sm text-fg-muted" data-fleet-pm-empty>
-            {counts && counts.judgment_measured
-              ? 'Nothing is waiting on you.'
-              : 'Nothing is on the screen, and the judgement is unmeasured — see above.'}
+            {/* FOUR states, not three. Caught by looking at the running
+                screen: before the first response arrives `counts` is
+                undefined, which fell through to the unmeasured branch — so
+                the screen said "the judgement is unmeasured — see above"
+                with nothing above it. Two fields contradicting each other,
+                which is the one thing a passing test suite never notices. */}
+            {snap === null
+              ? 'Reading PM mode…'
+              : snap.cycling
+                ? 'Looking at the fleet…'
+                : counts && counts.judgment_measured
+                  ? 'Nothing is waiting on you.'
+                  : 'Nothing is on the screen, and the judgement is unmeasured — see above.'}
           </div>
         ) : agent?.terminal_label ? (
           <FleetTerminal
             key={agent.terminal_label}
             label={agent.terminal_label}
             full
-            onClose={onExit}
+            /* NOT onExit. `FleetTerminal` calls this after it stops an
+               agent, and stopping one agent must not end the mode — the
+               reader would lose the whole queue as a side effect of an
+               action about a single item. Setting it aside is the honest
+               mapping: the item stays queued and the mode stays on. */
+            onClose={() => void post('/defer')}
             onInput={() => noteInput('terminal')}
           />
         ) : (

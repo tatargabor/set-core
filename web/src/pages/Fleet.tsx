@@ -1984,6 +1984,23 @@ export default function Fleet() {
    */
   const [pmOn, setPmOn] = useState(false)
   /**
+   * The server owns `enabled`, so the button must be told what it already is.
+   *
+   * Found by looking at the running screen: the mode had been turned on
+   * through the API and the button still read "PM mode off". That is not a
+   * cosmetic mismatch — the server keeps running judgement cycles while the
+   * button says nobody asked for them, which is exactly the cost this feature
+   * was designed to avoid.
+   */
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/fleet/pm')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d && typeof d.enabled === 'boolean') setPmOn(d.enabled) })
+      .catch(() => { /* the toggle simply starts off; nothing about an agent changes */ })
+    return () => { cancelled = true }
+  }, [])
+  /**
    * Every agent, not the selected project's — PM mode crosses projects by
    * design, so a list scoped to the selection would silently be unable to
    * present most of what it queues.

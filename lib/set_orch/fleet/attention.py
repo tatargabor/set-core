@@ -114,6 +114,10 @@ class Counts:
     unclassified: int = 0
     judgment_measured: bool = True
     judgment_reason: Optional[str] = None
+    #: Has any cycle completed? Before the first one every number here is a
+    #: default, not a measurement, and rendering `0 waiting` for it would be a
+    #: zero nobody produced.
+    counted: bool = False
 
 
 class Queue:
@@ -136,6 +140,15 @@ class Queue:
         #: same offer forever, only while the screen is unchanged.
         self._refused: Dict[int, set[int]] = {}
         self._counts = Counts()
+        #: The last KNOWN class per agent, carried between cycles.
+        #:
+        #: Found by watching the live screen: `idle` fell 12 → 9 → 1 while
+        #: nothing in the fleet changed. The candidate filter deliberately
+        #: skips an agent whose log has not moved, so a per-pass count of
+        #: `finished` verdicts shrinks every cycle as agents drop out of the
+        #: pass — and it renders as agents becoming un-idle. A count is about
+        #: the POPULATION; a pass is about what was looked at this time.
+        self._classes: Dict[int, str] = {}
 
     # ----------------------------------------------------------------- #
     # building the queue from a cycle's result
@@ -205,14 +218,25 @@ class Queue:
                 # says nothing about it, so the item stands.
                 self._remove(pid, REMOVED_RESUMED)
 
+        # Carried, not recomputed: an agent skipped this cycle keeps the class
+        # it was last given, and one that is gone loses it.
+        for pid, verdict in result.verdicts.items():
+            self._classes[pid] = verdict.verdict
+        for pid in [p for p in self._classes if p not in alive]:
+            del self._classes[pid]
+
         self._counts = Counts(
             queued=len(self._items),
-            idle=sum(1 for v in result.verdicts.values() if v.verdict == judgment.FINISHED),
+            idle=sum(1 for c in self._classes.values() if c == judgment.FINISHED),
             dismissed=len(self._dismissed),
             not_covered=len(result.not_covered),
-            unclassified=sum(1 for v in result.verdicts.values() if v.verdict == judgment.UNCLASSIFIED),
+            unclassified=sum(1 for c in self._classes.values() if c == judgment.UNCLASSIFIED),
             judgment_measured=result.measured,
             judgment_reason=result.reason,
+            #: False until a cycle has completed. Distinguishes a real zero
+            #: from one nobody has measured yet — the same rule this module
+            #: applies to `judgment_measured`, one step earlier.
+            counted=True,
         )
 
     def _remove(self, pid: int, why: str) -> None:

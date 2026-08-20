@@ -27,13 +27,14 @@ const snapshot = (over: Partial<PmSnapshot> = {}): PmSnapshot => ({
   queued: [item(1)],
   counts: {
     queued: 1, idle: 0, dismissed: 0, not_covered: 0, unclassified: 0,
-    judgment_measured: true, judgment_reason: null,
+    judgment_measured: true, judgment_reason: null, counted: true,
   },
   can_go_back: false,
   can_go_forward: false,
   pending_switch: null,
   last_cycle: 1,
   last_error: null,
+  cycling: false,
   ...over,
 })
 
@@ -61,7 +62,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('the frame is the price of the freeze', () => {
   it('counts what is queued behind the presented item', async () => {
-    serve(snapshot({ counts: { queued: 7, idle: 12, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null } }))
+    serve(snapshot({ counts: { queued: 7, idle: 12, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null, counted: true } }))
     render(<FleetPm agents={[agent(1)]} onExit={() => {}} />)
     await waitFor(() => expect(screen.getByText('7')).toBeTruthy())
     // Idle is a SEPARATE number, never summed into the queue: one is work
@@ -73,7 +74,7 @@ describe('the frame is the price of the freeze', () => {
   it('renders an unmeasured judgment as its own fact, not as an empty queue', async () => {
     serve(snapshot({
       presented: null, queued: [],
-      counts: { queued: 0, idle: 0, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: false, judgment_reason: 'the judgment pass failed (RuntimeError)' },
+      counts: { queued: 0, idle: 0, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: false, judgment_reason: 'the judgment pass failed (RuntimeError)', counted: true },
     }))
     const { container } = render(<FleetPm agents={[]} onExit={() => {}} />)
     await waitFor(() => expect(container.querySelector('[data-fleet-pm-unmeasured]')).toBeTruthy())
@@ -87,13 +88,13 @@ describe('the frame is the price of the freeze', () => {
   })
 
   it('says plainly when there is genuinely nothing, and only then', async () => {
-    serve(snapshot({ presented: null, queued: [], counts: { queued: 0, idle: 3, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null } }))
+    serve(snapshot({ presented: null, queued: [], counts: { queued: 0, idle: 3, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null, counted: true } }))
     render(<FleetPm agents={[]} onExit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Nothing is waiting on you.')).toBeTruthy())
   })
 
   it('names what a bounded pass did not cover', async () => {
-    serve(snapshot({ counts: { queued: 1, idle: 0, dismissed: 0, not_covered: 4, unclassified: 2, judgment_measured: true, judgment_reason: null } }))
+    serve(snapshot({ counts: { queued: 1, idle: 0, dismissed: 0, not_covered: 4, unclassified: 2, judgment_measured: true, judgment_reason: null, counted: true } }))
     render(<FleetPm agents={[agent(1)]} onExit={() => {}} />)
     await waitFor(() => expect(screen.getByText('not covered')).toBeTruthy())
     expect(screen.getByText('unclassified')).toBeTruthy()
@@ -160,5 +161,58 @@ describe('leaving', () => {
     fireEvent.click(container.querySelector('[data-fleet-pm-exit]')!)
     expect(exited).toBe(true)
     expect(calls.some(c => /\/stop|\/agents/.test(c))).toBe(false)
+  })
+})
+
+describe('a zero nobody produced', () => {
+  it('shows a dash, not 0, before the first cycle has finished', async () => {
+    // Seen on the running screen: `0 waiting 0 idle` while the first cycle was
+    // still in flight. The centre said "Looking at the fleet…", but the counts
+    // are what a reader takes in at a glance, and those were defaults rendered
+    // as measurements.
+    serve(snapshot({
+      presented: null, queued: [], cycling: true,
+      counts: { queued: 0, idle: 0, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null, counted: false },
+    }))
+    const { container } = render(<FleetPm agents={[]} onExit={() => {}} />)
+    await waitFor(() => expect(container.textContent).toMatch(/waiting/))
+    expect(container.textContent).toMatch(/—\s*waiting/)
+    expect(container.textContent).not.toMatch(/\b0\s*waiting/)
+    expect(screen.getByText('Looking at the fleet…')).toBeTruthy()
+  })
+
+  it('shows a real zero once a cycle has counted', async () => {
+    serve(snapshot({
+      presented: null, queued: [],
+      counts: { queued: 0, idle: 4, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null, counted: true },
+    }))
+    const { container } = render(<FleetPm agents={[]} onExit={() => {}} />)
+    await waitFor(() => expect(container.textContent).toMatch(/waiting/))
+    expect(container.textContent).toMatch(/0\s*waiting/)
+    expect(container.textContent).not.toMatch(/—\s*waiting/)
+  })
+})
+
+describe('not loaded is its own state', () => {
+  it('does not claim the judgement is unmeasured before anything has been read', async () => {
+    // Seen on the running screen: "the judgement is unmeasured — see above"
+    // with nothing above it, because `counts` was undefined on the first
+    // render and fell through to that branch. Two fields contradicting each
+    // other on one screen — the defect a green suite cannot see.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => { /* never resolves */ })))
+    const { container } = render(<FleetPm agents={[]} onExit={() => {}} />)
+    expect(container.textContent).toMatch(/Reading PM mode…/)
+    expect(container.textContent).not.toMatch(/unmeasured/)
+    expect(container.querySelector('[data-fleet-pm-unmeasured]')).toBeNull()
+  })
+
+  it('still says unmeasured when it genuinely is, and shows the banner it points at', async () => {
+    serve(snapshot({
+      presented: null, queued: [],
+      counts: { queued: 0, idle: 0, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: false, judgment_reason: 'the judgment pass failed (RuntimeError)', counted: true },
+    }))
+    const { container } = render(<FleetPm agents={[]} onExit={() => {}} />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-pm-unmeasured]')).toBeTruthy())
+    expect(container.textContent).toMatch(/unmeasured — see above/)
   })
 })

@@ -30,6 +30,11 @@ export interface PmCounts {
    */
   judgment_measured: boolean
   judgment_reason: string | null
+  /**
+   * Has any cycle completed? Before the first one every number here is a
+   * default, and rendering `0 waiting` for it would be a zero nobody produced.
+   */
+  counted: boolean
 }
 
 export interface PmSnapshot {
@@ -43,6 +48,8 @@ export interface PmSnapshot {
   pending_switch: PmItem | null
   last_cycle: number | null
   last_error: string | null
+  /** A cycle is in flight. Neither an empty queue nor a failure — the third thing. */
+  cycling: boolean
   advanced?: boolean
 }
 

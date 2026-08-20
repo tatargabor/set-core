@@ -26,10 +26,15 @@ const body: Json = {
   quiet_means: 'no outstanding tool call',
 }
 
+// `enabled: false` on purpose. The page now READS the server's state on
+// mount — added after the running screen showed "PM mode off" while the
+// server was enabled and quietly running cycles — so a snapshot saying
+// `true` here would start the test with the overlay already open and
+// invert what the click does.
 const pmSnapshot: Json = {
-  enabled: true, presented: null, queued: [],
-  counts: { queued: 0, idle: 1, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null },
-  can_go_back: false, can_go_forward: false, pending_switch: null, last_cycle: 1, last_error: null,
+  enabled: false, presented: null, queued: [],
+  counts: { queued: 0, idle: 1, dismissed: 0, not_covered: 0, unclassified: 0, judgment_measured: true, judgment_reason: null, counted: true },
+  can_go_back: false, can_go_forward: false, pending_switch: null, last_cycle: 1, last_error: null, cycling: false,
 }
 
 let calls: string[] = []

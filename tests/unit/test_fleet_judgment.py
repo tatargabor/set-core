@@ -303,3 +303,22 @@ def test_one_usable_verdict_is_enough_for_the_pass_to_count_as_measured(tmp_path
     assert res.measured is True
     assert res.verdicts[1].verdict == j.ASKING
     assert res.verdicts[2].verdict == j.UNCLASSIFIED
+
+
+def test_a_measured_agent_is_skipped_for_the_RIGHT_reason(tmp_path):
+    """Found by a mutant that was NOT caught, and the finding is about the code.
+
+    Deleting the `state == ASKING` branch changes no behaviour: the next guard
+    (`state != QUIET`) skips the agent anyway. What it changes is the REASON an
+    operator is shown — and the fallback reason is not merely vaguer, it is
+    backwards: it would say that `asking` "is not a blockage on a person", which
+    is the exact opposite of what was measured.
+
+    So the branch earns its place through its message, and this is the test that
+    says so. Without it the mutation reads as an equivalent one, and the honest
+    conclusion would have been to delete a branch that carries real information.
+    """
+    subject = _subject(1, tmp_path, state=agent_state.ASKING)
+    _, skipped, _ = j.select_candidates([subject], {})
+    assert "already measured as asking" in skipped[1]
+    assert "not a blockage" not in skipped[1]

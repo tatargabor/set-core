@@ -1294,7 +1294,12 @@ def fleet_pm(seconds_since_input: Optional[float] = Query(None)) -> Dict[str, An
     """
     from ..fleet.pm import session as pm_session
 
-    pm_session.cycle()
+    # Started, never awaited: a cycle makes a model call and the browser polls
+    # this. The snapshot returned is whatever the last completed cycle left,
+    # and `cycling` says one is in flight — a surface that froze while deciding
+    # what to show would be worse than one that shows the previous answer.
+    if pm_session.due():
+        pm_session.cycle_in_background()
     return pm_session.snapshot(seconds_since_input=seconds_since_input)
 
 
@@ -1314,7 +1319,7 @@ def fleet_pm_toggle(body: PmToggleBody) -> Dict[str, Any]:
 
     if body.enabled:
         pm_session.enable()
-        pm_session.cycle(force=True)
+        pm_session.cycle_in_background()
     else:
         pm_session.disable()
     return pm_session.snapshot()

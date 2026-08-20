@@ -197,7 +197,17 @@ def test_list_role_keys_covers_flat_and_trigger():
     assert "agent" in keys
     assert "trigger.integration_failed" in keys
     assert "trigger.default" in keys
-    assert len(keys) == 13 + 4  # 13 flat roles + 4 trigger sub-keys
+    # A LITERAL on purpose — it is a tripwire, not a derivation. Deriving the
+    # number from the same tuples the function reads would assert nothing at
+    # all; the point is that adding a role makes this fail, so somebody looks.
+    # Updated 2026-08-20 (13 → 14) when the fleet's `pm` judge role was added.
+    #
+    # What it does NOT check is whether a new role reaches the defaults and
+    # every preset — a role can be enumerated here and still leave
+    # `--model-profile all-opus-4-7` silently not covering it. That is
+    # `tests/unit/test_model_role_coverage.py`, which exists because this
+    # assertion looked like it was already guarding it.
+    assert len(keys) == 14 + 4  # 14 flat roles + 4 trigger sub-keys
 
 
 # ─── Legacy directive backwards-compat ──────────────────────────
