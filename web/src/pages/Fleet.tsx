@@ -46,6 +46,12 @@ import { age } from '../lib/fleetAge'
 import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
+import FleetDockBand from '../components/FleetDockBand'
+import {
+  bandsOn, dockSplitKey, dockedBands, loadDocks, remainingArea, saveDocks, withDock,
+  type DockEdge, type DockedView,
+} from '../lib/fleetDocks'
+import { PANEL_AGENT } from '../lib/fleetPanels'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { terminalOffer } from '../lib/fleetTerminal'
 import { buildActs, errorStanding, sayCount, speakerOf, speakerLabel, toolSummary } from '../lib/fleetConversation'
@@ -1215,7 +1221,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -1229,6 +1235,9 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   /** Whether THIS agent's terminal is open. Several may be open at once. */
   terminalOpen: boolean
   onTerminal: (label: string | null) => void
+  /** Send this panel to an edge, or `null` to bring it back into the grid. */
+  onDock?: (edge: DockEdge | null) => void
+  dockedEdge?: DockEdge | null
   /** Ask for this agent alone on the panel, or back to the grid. */
   onFocus?: () => void
   /**
@@ -1385,6 +1394,8 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           onFocus={onFocus}
           terminalOpen={terminalOpen}
           onTerminal={onTerminal}
+          onDock={onDock}
+          dockedEdge={dockedEdge}
         />
       </div>
 
@@ -1622,6 +1633,8 @@ export default function Fleet() {
   const [splits, setSplits] = useState<Splits>({})
   const shellRef = useRef<HTMLDivElement | null>(null)
 
+  const [docks, setDocks] = useState<DockedView[]>([])
+
   useEffect(() => {
     let cancelled = false
     void loadSplits().then(stored => {
@@ -1629,9 +1642,31 @@ export default function Fleet() {
       setSplits(stored)
       setProjectWidth(positionOf(stored, SPLIT_PROJECTS, DEFAULT_PROJECT_WIDTH))
     })
+    void loadDocks().then(stored => { if (!cancelled) setDocks(stored) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /**
+   * Dock a panel to an edge, or undock it — task 5.1 / 5.7.
+   *
+   * The local list changes first and is what the screen renders, so a write that
+   * fails does not snap the layout back: the reader just did this, and undoing a
+   * deliberate act to report an unrelated failure is worse than the failure.
+   */
+  const dockPanel = useCallback((kind: string, id: string, edge: DockEdge | null) => {
+    const next = withDock(docks, { kind, id }, edge)
+    setDocks(next)
+    void saveDocks(next)
+  }, [docks])
+
+  /** Resize one docked band. Same two-callback split as every other divider. */
+  const resizeBand = useCallback((key: string, px: number, commit: boolean) => {
+    const value = clampPane(px, MAX_PANE)
+    const next = { ...splits, [key]: value }
+    setSplits(next)
+    if (commit) void saveSplits(next)
+  }, [splits])
 
   // How far the divider may travel: never so far that the panel beside it has
   // no room left. Measured against the shell rather than the window, because
@@ -1839,6 +1874,136 @@ export default function Fleet() {
     setMemory({ project, view: readView(project) })
   }, [openLogs])
 
+  // ------------------------------------------------------------------ //
+  // Docked views — tasks 5.3-5.7                                        //
+  // ------------------------------------------------------------------ //
+  const bands = useMemo(() => dockedBands(docks, splits), [docks, splits])
+
+  /**
+   * Whether docking has left the agent grid less room than it needs.
+   *
+   * The nesting below does the SUBTRACTION — the browser is better at it than
+   * arithmetic here, and one expression of a fact cannot drift from itself. But
+   * flexbox has no way to SAY it ran out: it just shrinks things, and a squeezed
+   * grid looks like a small grid. So the arithmetic is done here for the one
+   * thing layout cannot report, and for nothing else.
+   */
+  const roomLeft = useMemo(
+    () => remainingArea(
+      { width: shellWidth, height: shellRef.current?.clientHeight ?? 0 },
+      bands, splits,
+    ),
+    [shellWidth, bands, splits],
+  )
+
+  /**
+   * How large one band may become — measured against the shell, not assumed.
+   *
+   * Against the shell's own box rather than the window, because the shell is
+   * what the panes actually share, and against the axis the band divides. A
+   * single constant would be wrong on both counts: it cannot know the window,
+   * and it cannot know which dimension it is limiting.
+   */
+  const maxBandSize = useCallback((edge: DockEdge) => {
+    const horizontal = edge === 'left' || edge === 'right'
+    const room = horizontal
+      ? shellWidth - projectWidth - 360
+      : (shellRef.current?.clientHeight ?? 0) - 200
+    return room > MIN_PANE ? Math.min(MAX_PANE, room) : MAX_PANE
+  }, [shellWidth, projectWidth])
+
+  /** Which edge this panel sits on, or null when it is in the grid. */
+  const dockedEdgeOf = useCallback((label: string | null | undefined): DockEdge | null => (
+    label ? docks.find(d => d.kind === PANEL_AGENT && d.id === label)?.edge ?? null : null
+  ), [docks])
+
+  /**
+   * The agents the GRID lays out — everything not currently docked.
+   *
+   * A docked agent rendered in both places would be two renderings of one
+   * agent, and they drift: the copy nobody is looking at while editing the
+   * other is the one that goes stale. It would also mean docking gave the
+   * reader a second panel rather than moving the one they had.
+   */
+  const gridAgents = useMemo(
+    () => (active?.agents ?? []).filter(a => dockedEdgeOf(a.terminal_label) === null),
+    [active, dockedEdgeOf],
+  )
+
+  /** What a docked band is called on screen. */
+  const dockTitle = useCallback((kind: string, id: string) => (
+    kind === PANEL_AGENT ? id : `${kind} · ${id}`
+  ), [])
+
+  /**
+   * How many items in this band are failing — or `null` for "could not tell".
+   *
+   * The three-way answer matters more than the number. For an agent band the
+   * question is answerable from the live inventory; for a kind this build does
+   * not have, it is NOT, and saying zero there would be a claim of calm nobody
+   * measured. So the fallback is `null`, never 0.
+   */
+  const dockFailing = useCallback((band: { kind: string; id: string }): number | null => {
+    if (band.kind !== PANEL_AGENT) return null
+    const agent = active?.agents.find(a => a.terminal_label === band.id)
+    if (!agent) return null
+    return agent.state === 'unknown' ? 1 : 0
+  }, [active])
+
+  /**
+   * What goes inside a docked band.
+   *
+   * An agent band renders the agent's own card — the same component the grid
+   * uses, not a copy: two renderings of one agent drift, and the docked copy is
+   * the one nobody looks at while editing the other. A kind this build does not
+   * have renders the reason, because a blank band is indistinguishable from a
+   * broken one.
+   */
+  const renderDocked = useCallback((band: { kind: string; id: string }) => {
+    if (band.kind !== PANEL_AGENT) {
+      return (
+        <div className="p-2 text-xs text-amber-300">
+          this build has no panel of kind "{band.kind}"
+        </div>
+      )
+    }
+    const agent = active?.agents.find(a => a.terminal_label === band.id)
+    if (!agent) {
+      return (
+        <div className="p-2 text-xs text-fg-muted">
+          no running agent with this terminal in {active?.name ?? 'this project'} — the panel is kept, not closed
+        </div>
+      )
+    }
+    return (
+      <AgentCard
+        agent={agent}
+        enlarged
+        open={openLogs.includes(agent.pid)}
+        onToggle={() => toggleLog(active?.name ?? null, agent.pid, !openLogs.includes(agent.pid))}
+        ownerReachable={data?.owner_reachable}
+        terminalOpen={openTerminals.includes(agent.terminal_label ?? '')}
+        onTerminal={label => toggleTerminal(active?.name ?? null, label ?? agent.terminal_label ?? null, label !== null)}
+        /* The docked tile keeps its own dock controls, with the current edge
+           shown as active. Without them a docked panel could only be taken out
+           entirely, never moved to another edge — and pressing the edge it is
+           already on is what makes the control a way back rather than a dead
+           end. */
+        onDock={agent.terminal_label
+          ? edge => dockPanel(PANEL_AGENT, agent.terminal_label as string, edge)
+          : undefined}
+        dockedEdge={dockedEdgeOf(agent.terminal_label)}
+        canJumpSeat={canJumpSeat}
+        onJumpSeat={onJumpSeat}
+        canJumpPid={canJumpPid}
+        onJumpPid={onJumpPid}
+        typing={typingLabel !== null && typingLabel === agent.terminal_label}
+        onTyping={on => setTypingLabel(on ? agent.terminal_label ?? null : null)}
+      />
+    )
+  }, [active, data, openLogs, openTerminals, toggleLog, toggleTerminal, canJumpSeat, onJumpSeat,
+      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf])
+
   // Discovery has never answered. An error here is the real thing — there is no
   // measurement to fall back on — so it replaces the screen.
   if (!data) {
@@ -1950,6 +2115,62 @@ export default function Fleet() {
             from its own text and the rest of the screen stayed black. The
             header keeps its natural height; the agent area takes what is left
             and does its own scrolling. */}
+        {/* ------------------------------------------------------------ //
+            Docked views (tasks 5.3-5.7), then whatever space is left.
+
+            The nesting IS the geometry: left/right bands are flex siblings of
+            the remaining area in a row, top/bottom in a column. Expressing it
+            as nesting rather than as computed pixel offsets means the browser
+            does the subtraction, so the band and the gap cannot disagree — the
+            drift that produces a layout which still looks like a layout.
+
+            The agent grid inside is handed a smaller box and is told nothing
+            about what took the rest. That is what keeps the column count
+            meaning what the reader chose: three columns stays three columns,
+            in a narrower area.
+            ------------------------------------------------------------ */}
+        {/* A column wrapper so the overflow notice sits ABOVE the docked row
+            rather than beside it — the shell itself is a row, and an unwrapped
+            notice would become a third column of its own. */}
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+        {shellWidth > 0 && roomLeft.overflowed && (
+          <div
+            data-fleet-dock-overflow
+            className="shrink-0 px-3 py-1 text-xs text-amber-400 border-b border-amber-500/30"
+          >
+            the docked views leave the agent grid less room than it needs — drag an edge back, or undock one
+          </div>
+        )}
+        <div className="flex-1 min-h-0 min-w-0 flex flex-row" data-fleet-docked={bands.length || undefined}>
+          {bandsOn(bands, 'left').map(band => (
+            <FleetDockBand
+              key={dockSplitKey(band)}
+              band={band}
+              title={dockTitle(band.kind, band.id)}
+              max={maxBandSize(band.edge)}
+              failing={dockFailing(band)}
+              onResize={px => resizeBand(dockSplitKey(band), px, false)}
+              onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
+              onUndock={() => dockPanel(band.kind, band.id, null)}
+            >
+              {renderDocked(band)}
+            </FleetDockBand>
+          ))}
+          <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+            {bandsOn(bands, 'top').map(band => (
+              <FleetDockBand
+                key={dockSplitKey(band)}
+                band={band}
+                title={dockTitle(band.kind, band.id)}
+                max={maxBandSize(band.edge)}
+                failing={dockFailing(band)}
+                onResize={px => resizeBand(dockSplitKey(band), px, false)}
+                onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
+                onUndock={() => dockPanel(band.kind, band.id, null)}
+              >
+                {renderDocked(band)}
+              </FleetDockBand>
+            ))}
         <div className="flex-1 min-h-0 p-3 min-w-0 flex flex-col gap-2">
           {data.agents === 0 ? (
             <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
@@ -2135,6 +2356,10 @@ export default function Fleet() {
                   ownerReachable={data.owner_reachable}
                   terminalOpen={openTerminals.includes(focused.terminal_label ?? '')}
                   onTerminal={label => toggleTerminal(active.name, label ?? focused.terminal_label ?? null, label !== null)}
+                  onDock={focused.terminal_label
+                    ? edge => dockPanel(PANEL_AGENT, focused.terminal_label as string, edge)
+                    : undefined}
+                  dockedEdge={dockedEdgeOf(focused.terminal_label)}
                   onFocus={() => setFocus(active.name, null)}
                   canJumpSeat={canJumpSeat}
                   onJumpSeat={onJumpSeat}
@@ -2158,7 +2383,12 @@ export default function Fleet() {
                   onSelect={pid => setEnlarged(active.name, pid)}
                 />
               )}
-              {active.agents.map(a => {
+              {/* `gridAgents`, not `active.agents`: a docked agent has MOVED to
+                  its edge, not been duplicated there. Rendering it in both
+                  places would give the reader a second panel where they asked
+                  for the same one somewhere else — and two renderings of one
+                  agent drift, with the unwatched copy going stale. */}
+              {gridAgents.map(a => {
                 const card = (extra: { enlarged?: boolean; open: boolean; onToggle: () => void }) => (
                   <AgentCard
                     key={a.pid}
@@ -2188,6 +2418,10 @@ export default function Fleet() {
                     ownerReachable={data.owner_reachable}
                     terminalOpen={openTerminals.includes(a.terminal_label ?? '')}
                     onTerminal={label => toggleTerminal(active.name, label ?? a.terminal_label ?? null, label !== null)}
+                    onDock={a.terminal_label
+                      ? edge => dockPanel(PANEL_AGENT, a.terminal_label as string, edge)
+                      : undefined}
+                    dockedEdge={dockedEdgeOf(a.terminal_label)}
                     onFocus={() => setFocus(active.name, a.pid)}
                     canJumpSeat={canJumpSeat}
                     onJumpSeat={onJumpSeat}
@@ -2219,6 +2453,37 @@ export default function Fleet() {
               There are running agents, but none could be bound to a known project.
             </div>
           )}
+        </div>
+            {bandsOn(bands, 'bottom').map(band => (
+              <FleetDockBand
+                key={dockSplitKey(band)}
+                band={band}
+                title={dockTitle(band.kind, band.id)}
+                max={maxBandSize(band.edge)}
+                failing={dockFailing(band)}
+                onResize={px => resizeBand(dockSplitKey(band), px, false)}
+                onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
+                onUndock={() => dockPanel(band.kind, band.id, null)}
+              >
+                {renderDocked(band)}
+              </FleetDockBand>
+            ))}
+          </div>
+          {bandsOn(bands, 'right').map(band => (
+            <FleetDockBand
+              key={dockSplitKey(band)}
+              band={band}
+              title={dockTitle(band.kind, band.id)}
+              max={maxBandSize(band.edge)}
+              failing={dockFailing(band)}
+              onResize={px => resizeBand(dockSplitKey(band), px, false)}
+              onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
+              onUndock={() => dockPanel(band.kind, band.id, null)}
+            >
+              {renderDocked(band)}
+            </FleetDockBand>
+          ))}
+        </div>
         </div>
       </div>
     </div>

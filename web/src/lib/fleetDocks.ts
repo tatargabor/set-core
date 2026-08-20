@@ -133,3 +133,36 @@ export function withDock(
   if (at === -1) return [...docks, { kind: view.kind, id: view.id, edge }]
   return docks.map((d, i) => (i === at ? { ...d, edge } : d))
 }
+
+/**
+ * Read the stored docking. A failure is "nothing docked", never an error state —
+ * the same rule as the divider positions: a screen that will not render because
+ * a preference could not be read is a worse outcome than one at its defaults.
+ */
+export async function loadDocks(fetchImpl: typeof fetch = fetch): Promise<DockedView[]> {
+  try {
+    const res = await fetchImpl('/api/fleet/layout')
+    if (!res.ok) return []
+    const body = await res.json()
+    const raw = body?.docks
+    return Array.isArray(raw) ? raw.filter(isDockedView) : []
+  } catch {
+    return []
+  }
+}
+
+/** Write the docking. Says whether it landed; never throws at the caller. */
+export async function saveDocks(
+  docks: readonly DockedView[], fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  try {
+    const res = await fetchImpl('/api/fleet/layout/docks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docks }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}

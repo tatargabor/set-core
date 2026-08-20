@@ -93,15 +93,15 @@ Everything from group 4 onward is unbuilt.
       [REQ: a-view-instance-can-be-docked-to-an-edge]
 - [x] 5.2 Persist docking in the same document as the arrangement and the
       dividers [REQ: a-view-instance-can-be-docked-to-an-edge]
-- [ ] 5.3 A docked view renders as a band along its edge, with the shell
+- [x] 5.3 A docked view renders as a band along its edge, with the shell
       computing the remaining area [REQ: the-agent-grid-fills-what-docking-leaves]
-- [ ] 5.4 The agent grid lays out inside the remaining area and is told nothing
+- [x] 5.4 The agent grid lays out inside the remaining area and is told nothing
       about what is docked [REQ: the-agent-grid-fills-what-docking-leaves]
-- [ ] 5.5 The chosen column count survives docking — three columns stays three
+- [x] 5.5 The chosen column count survives docking — three columns stays three
       columns in a narrower area [REQ: the-agent-grid-fills-what-docking-leaves]
-- [ ] 5.6 Two edges docked at once leaves the grid the intersection of both
+- [x] 5.6 Two edges docked at once leaves the grid the intersection of both
       [REQ: the-agent-grid-fills-what-docking-leaves]
-- [ ] 5.7 Undocking or closing returns the space
+- [x] 5.7 Undocking or closing returns the space
       [REQ: a-view-instance-can-be-docked-to-an-edge]
 - [x] 5.8 Each docked view's inner edge uses the SAME divider component and the
       same store — no second implementation
@@ -119,12 +119,19 @@ Everything from group 4 onward is unbuilt.
 
 ## 7. Verification
 
-- [ ] 7.1 Full web unit suite and the Python fleet tests green
+- [x] 7.1 Full web unit suite and the Python fleet tests green
       [REQ: a-view-instance-can-be-docked-to-an-edge]
 - [ ] 7.2 LOOK at the screen with a view docked on each of the four edges.
       Structural counts prove it renders; they say nothing about whether it is
       legible [REQ: the-agent-grid-fills-what-docking-leaves]
-- [ ] 7.3 Mutation-test the docking geometry, not only the state
+      ⚠ **NOT DONE, and deliberately left open rather than marked.** Attempted
+      2026-08-20 and blocked: the browser extension is not connected
+      (`tabs_context_mcp` → "Browser extension is not connected"). Every other
+      check in this change is structural or behavioural, and `ui-quality.md`
+      states exactly what that leaves unproven — a screen measured as fine had
+      a row collapse into a 500px tower, and only a human looking at it caught
+      that. So this is the one task whose absence a green suite cannot cover.
+- [x] 7.3 Mutation-test the docking geometry, not only the state
       [REQ: the-agent-grid-fills-what-docking-leaves]
 
 ## Acceptance Criteria (from spec scenarios)
@@ -153,10 +160,10 @@ Everything from group 4 onward is unbuilt.
 
 - [x] AC-18: WHEN an agent session is opened THEN its panel declares the agent type and is laid out as one [REQ: a-panel-declares-its-type, scenario: an-agent-panel-is-one-type-among-several]
 - [x] AC-19: WHEN a panel declares an unknown type THEN the screen states it is unrecognised rather than rendering it as another [REQ: a-panel-declares-its-type, scenario: an-unrecognised-type-is-reported-not-rendered-as-another]
-- [ ] AC-20: WHEN a person docks a view to an edge THEN it occupies a band along that edge and stays across a reload [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-view-is-sent-to-an-edge]
-- [ ] AC-21: WHEN a docked view is undocked or closed THEN its space returns to the agent grid's area [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: undocking-returns-the-space]
-- [ ] AC-22: WHEN a person drags the divider beside a docked view THEN it resizes and the position is stored by the same mechanism as every other divider [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-docked-views-edge-is-draggable]
-- [ ] AC-23: WHEN a view is docked while the grid has a given column count THEN the grid keeps that count in the smaller area [REQ: the-agent-grid-fills-what-docking-leaves, scenario: the-column-choice-still-means-what-it-said]
-- [ ] AC-24: WHEN views are docked to two different edges THEN the agent grid fills the area left by both [REQ: the-agent-grid-fills-what-docking-leaves, scenario: docking-on-two-edges-at-once]
+- [x] AC-20: WHEN a person docks a view to an edge THEN it occupies a band along that edge and stays across a reload [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-view-is-sent-to-an-edge]
+- [x] AC-21: WHEN a docked view is undocked or closed THEN its space returns to the agent grid's area [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: undocking-returns-the-space]
+- [x] AC-22: WHEN a person drags the divider beside a docked view THEN it resizes and the position is stored by the same mechanism as every other divider [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-docked-views-edge-is-draggable]
+- [x] AC-23: WHEN a view is docked while the grid has a given column count THEN the grid keeps that count in the smaller area [REQ: the-agent-grid-fills-what-docking-leaves, scenario: the-column-choice-still-means-what-it-said]
+- [x] AC-24: WHEN views are docked to two different edges THEN the agent grid fills the area left by both [REQ: the-agent-grid-fills-what-docking-leaves, scenario: docking-on-two-edges-at-once]
 - [x] AC-25: WHEN a docked view is collapsed and holds a failed item THEN its collapsed edge carries a marker [REQ: docking-must-not-hide-a-failure-silently, scenario: a-failure-inside-a-collapsed-view-is-marked-outside-it]
 - [x] AC-26: WHEN a docked view cannot determine what it holds THEN it reports not-knowing rather than showing no marker [REQ: docking-must-not-hide-a-failure-silently, scenario: a-calm-view-claims-nothing-it-did-not-check]

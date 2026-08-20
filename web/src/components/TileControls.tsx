@@ -1,5 +1,24 @@
 import type { LucideIcon } from 'lucide-react'
-import { Expand, Maximize2, Minimize2, ScrollText, Shrink, SquareTerminal } from 'lucide-react'
+import {
+  Expand, Maximize2, Minimize2, PanelBottom, PanelLeft, PanelRight, PanelTop,
+  ScrollText, Shrink, SquareTerminal,
+} from 'lucide-react'
+import type { DockEdge } from '../lib/fleetDocks'
+
+/**
+ * The four docking controls, in reading order.
+ *
+ * A table rather than four hand-written buttons: four copies of one control is
+ * where the accessible name, the active state or the undock branch gets left
+ * out of exactly one of them, and it is always the one nobody clicks while
+ * testing.
+ */
+const DOCK_CONTROLS: { edge: DockEdge; icon: LucideIcon; where: string }[] = [
+  { edge: 'left', icon: PanelLeft, where: 'on the left' },
+  { edge: 'right', icon: PanelRight, where: 'on the right' },
+  { edge: 'top', icon: PanelTop, where: 'along the top' },
+  { edge: 'bottom', icon: PanelBottom, where: 'along the bottom' },
+]
 
 import type { FleetAgent } from '../lib/fleetTypes'
 import { terminalOffer } from '../lib/fleetTerminal'
@@ -73,6 +92,7 @@ export function IconButton({ icon: Icon, label, active, tone, onClick, testId, m
 
 export default function TileControls({
   agent, ownerReachable, logOpen, onLog, enlarged, onEnlarge, focused, onFocus, terminalOpen, onTerminal,
+  onDock, dockedEdge,
 }: {
   agent: FleetAgent
   ownerReachable?: boolean
@@ -84,8 +104,20 @@ export default function TileControls({
   onFocus?: () => void
   terminalOpen: boolean
   onTerminal: (label: string | null) => void
+  /**
+   * Send this panel to an edge, or `null` to bring it back into the grid.
+   *
+   * Offered only where the panel HAS an identity a docking can be stored
+   * against — the terminal label, here. A control that looked available and did
+   * nothing would be worse than an absent one: the reader would conclude that
+   * docking is broken rather than that this panel cannot be docked.
+   */
+  onDock?: (edge: DockEdge | null) => void
+  /** Which edge it is on now, if any — so the control can say where it went. */
+  dockedEdge?: DockEdge | null
 }) {
   const offer = terminalOffer(agent, ownerReachable)
+  const dockable = onDock && agent.terminal_label
   return (
     <span className="ml-auto flex items-center gap-0.5 shrink-0" data-tile-controls={agent.pid}>
       <IconButton
@@ -95,6 +127,26 @@ export default function TileControls({
         label={logOpen ? 'close the log' : 'open the log — the conversation opens on this tile'}
         onClick={onLog}
       />
+      {dockable && (
+        /* Four edges, one control each. A single "dock" button would have to
+           pick an edge for the reader, and the point of the feature is that
+           they pick. The one it is already on becomes the way back — pressing
+           it again undocks, so the control never becomes a dead end. */
+        <span className="flex items-center" data-tile-dock={agent.terminal_label}>
+          {DOCK_CONTROLS.map(({ edge, icon, where }) => (
+            <IconButton
+              key={edge}
+              icon={icon}
+              testId={`dock-${edge}`}
+              active={dockedEdge === edge}
+              label={dockedEdge === edge
+                ? `bring this panel back into the grid from the ${where}`
+                : `put this panel ${where} — it takes its space out of the grid`}
+              onClick={() => onDock?.(dockedEdge === edge ? null : edge)}
+            />
+          ))}
+        </span>
+      )}
       {onEnlarge && !focused && (
         <IconButton
           icon={enlarged ? Minimize2 : Maximize2}

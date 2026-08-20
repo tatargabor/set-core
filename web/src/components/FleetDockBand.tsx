@@ -73,7 +73,7 @@ export default function FleetDockBand({
     <span
       data-fleet-dock-marker={band.id}
       data-fleet-dock-failing={failing === null || failing === undefined ? 'unknown' : String(failing)}
-      className={`text-[11px] tabular-nums font-semibold ${
+      className={`text-xs tabular-nums font-semibold ${
         failing === null || failing === undefined
           ? 'text-amber-400'
           : failing > 0 ? 'text-rose-400' : 'text-fg-ghost'
@@ -101,7 +101,7 @@ export default function FleetDockBand({
       data-fleet-dock={band.id}
       data-fleet-dock-edge={band.edge}
       data-fleet-dock-collapsed={collapsed ? 'true' : undefined}
-      className={`shrink-0 min-w-0 min-h-0 flex ${vertical ? 'flex-col' : 'flex-col'} bg-surface-sunken overflow-hidden`}
+      className={`shrink-0 min-w-0 min-h-0 flex ${vertical ? 'flex-col' : 'flex-col'} bg-surface-panel overflow-hidden`}
       style={vertical ? { width: `${size}px` } : { height: `${size}px` }}
     >
       <div className="shrink-0 flex items-center gap-1.5 px-1.5 py-0.5 border-b border-surface-line min-w-0">
