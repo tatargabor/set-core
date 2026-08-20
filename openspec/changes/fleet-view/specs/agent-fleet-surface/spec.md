@@ -214,13 +214,21 @@ screen the user themselves arranged to look calm.
 
 ### Requirement: View state is remembered per project
 
-The surface SHALL remember, per project, which tile is enlarged, the grid density, and any composed
-but unsent text, and SHALL restore them when that project is selected again. A remembered view SHALL
-never determine state: if the remembered agent no longer exists, the surface falls back to the grid.
+The surface SHALL remember, per project, which tile is enlarged and the grid density, and SHALL
+restore them when that project is selected again. A remembered view SHALL never determine state: if
+the remembered agent no longer exists, the surface falls back to the grid.
 
 Switching between projects is the motion this screen replaces window-switching with, and a view that
-resets on every switch reintroduces the cost it removed. Unsent text is included because losing a
-half-written answer is the most expensive small failure a surface like this has.
+resets on every switch reintroduces the cost it removed.
+
+**Composed but unsent text is deliberately NOT remembered, and this reverses what this requirement
+first said.** It was included because losing a half-written answer is the most expensive small
+failure a surface like this has — which is true, and it is outranked. An instruction being typed can
+carry a consumer's own words; one live `declared.focus` on this machine named a partner company and
+an unpaid invoice. The standing rule is that such content may be displayed and must never reach
+`localStorage`, a log or a cache, and a remembered draft would put exactly that into the browser's
+store, keyed by project, surviving every reload. The `draft` field stays in the stored shape,
+unwritten, so that reopening this question is a deliberate act rather than an accident.
 
 #### Scenario: Returning to a project restores its view
 - **WHEN** a project is selected, a tile enlarged, another project visited, and the first selected again
@@ -230,9 +238,10 @@ half-written answer is the most expensive small failure a surface like this has.
 - **WHEN** the remembered enlarged agent is no longer running
 - **THEN** the grid is shown, and no empty enlarged tile
 
-#### Scenario: An unsent draft survives a project switch
-- **WHEN** text is typed into an agent's input and another project is visited
-- **THEN** returning to that project restores the text, unsent
+#### Scenario: An unsent draft is not written to the browser's store
+- **WHEN** text is typed into an agent's input and the reader moves around the screen
+- **THEN** nothing of what was typed reaches `localStorage`, and the loss of an unsent draft on a
+  project switch is accepted as the price
 
 #### Scenario: A project holding one agent opens enlarged
 - **WHEN** a project with exactly one agent is opened for the first time

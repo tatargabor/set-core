@@ -25,7 +25,7 @@
  * with the order reversed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 
 /** Every call to the emulator, in order — the order IS the subject here. */
 const calls: string[] = []
@@ -183,5 +183,67 @@ describe('the replay renders at the geometry it was drawn at', () => {
     socket.replay(20)
     await waitFor(() => expect(resizes()).toHaveLength(1))
     expect(calls.filter(c => c.startsWith('resize:'))).toHaveLength(0)
+  })
+})
+
+/**
+ * Requirement 5.4 on the SURFACE — AC-93.
+ *
+ * The server half is proven in `test_fleet_ownerd.py::test_a_viewer_detaching_
+ * leaves_the_agent_held_and_running`: a detach never stops the agent. That test
+ * says nothing about the screen, and the screen is where the mistake gets made
+ * — a single ✕ doing both would make every reader who wanted to stop watching
+ * kill the thing they were watching.
+ *
+ * So: two controls, never one, and the destructive one takes two clicks.
+ */
+describe('closing the view is not stopping the agent', () => {
+  it('offers a stop and a close as two separate controls', async () => {
+    await mounted()
+    socket.attach({ replayed_bytes: 0 })
+    await waitFor(() => expect(resizes()).toHaveLength(1))
+
+    const stop = document.querySelector('[data-fleet-terminal-stop]')
+    const close = document.querySelector('[data-fleet-terminal-close]')
+    expect(stop, 'no stop control').toBeTruthy()
+    expect(close, 'no close control').toBeTruthy()
+    expect(stop).not.toBe(close)
+  })
+
+  it('closes without asking the server to stop anything', async () => {
+    const closed = vi.fn()
+    render(<FleetTerminal label="t-1" onClose={closed} />)
+    await waitFor(() => expect(socket).toBeTruthy())
+    await waitFor(() => expect(calls).toContain('open'))
+    socket.attach({ replayed_bytes: 0 })
+
+    const fetched = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response))
+    vi.stubGlobal('fetch', fetched)
+    fireEvent.click(document.querySelector('[data-fleet-terminal-close]')!)
+
+    expect(closed).toHaveBeenCalled()
+    expect(fetched, 'closing the view reached the stop endpoint').not.toHaveBeenCalled()
+  })
+
+  /**
+   * And the stop does not fire on the first click. An icon that stops a running
+   * agent the instant it is touched is the same hazard as one control doing
+   * both — the confirm step is what an icon alone could not carry, which is why
+   * it survived the change to icons.
+   */
+  it('does not stop the agent on the first click', async () => {
+    await mounted()
+    socket.attach({ replayed_bytes: 0 })
+
+    const fetched = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response))
+    vi.stubGlobal('fetch', fetched)
+    fireEvent.click(document.querySelector('[data-fleet-terminal-stop]')!)
+    expect(fetched, 'one click stopped a running agent').not.toHaveBeenCalled()
+
+    // Armed, and now it is a different control.
+    await waitFor(() => expect(document.querySelector('[data-fleet-terminal-stop-confirm]')).toBeTruthy())
+    fireEvent.click(document.querySelector('[data-fleet-terminal-stop-confirm]')!)
+    await waitFor(() => expect(fetched).toHaveBeenCalled())
+    expect(String(fetched.mock.calls[0][0])).toContain('/stop')
   })
 })
