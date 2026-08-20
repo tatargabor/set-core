@@ -222,7 +222,15 @@ def owned_paths(state, repo):
 # --- what the command is asking for ------------------------------------------
 
 def sweeping_add(args):
-    """`git add` with no pathspec of its own: -A / --all / . / bare -u."""
+    """`git add` with no pathspec of its own: -A / --all / . / bare -u.
+
+    A dry run is not a sweep: it stages nothing, so it cannot take anyone's work.
+    Refusing it would be a gate firing on nothing, which is how gates get turned
+    off. Found by probing whether this hook was live at all — the probe was
+    chosen to be harmless, and got refused.
+    """
+    if any(a in ("-n", "--dry-run") for a in args):
+        return False
     if "--pathspec-from-file" in " ".join(args):
         return False
     positional, saw_all, saw_update = [], False, False

@@ -368,3 +368,11 @@ def test_a_bare_push_or_save_sweeps_just_as_much_as_a_bare_stash(repo, alice, cm
     and allows the sweep — the permissive direction, found by mutation."""
     (repo / "someone.txt").write_text("work\n")
     assert alice.check(cmd)[0] == REFUSE, cmd
+
+
+@pytest.mark.parametrize("cmd", ["git add -A --dry-run", "git add -A -n"])
+def test_a_dry_run_stages_nothing_so_it_is_not_a_sweep(alice, cmd):
+    """A gate that fires on a command which changes nothing is a gate people turn
+    off. Found by probing whether the hook was live: the probe was chosen to be
+    harmless and was refused anyway."""
+    assert alice.check(cmd)[0] == ALLOW, cmd
