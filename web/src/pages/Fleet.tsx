@@ -66,6 +66,7 @@ import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
 import FleetInstall from '../components/FleetInstall'
+import FleetRename from '../components/FleetRename'
 import TileControls from '../components/TileControls'
 import { plainExcerpt } from '../lib/excerptText'
 import FleetAgentLog, { SayRow, WorkRow } from '../components/FleetAgentLog'
@@ -854,7 +855,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -912,6 +913,17 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   onJumpSeat?: (seat: string) => void
   canJumpPid?: (pid: number) => boolean
   onJumpPid?: (pid: number) => void
+  /**
+   * The agent was renamed, from one label to another.
+   *
+   * The screen holds the label in three places besides the payload — which
+   * terminals are open, which panel is docked, and the remembered label that
+   * keeps an open terminal alive across an unanswered poll. All three are keyed
+   * on the name, so the parent moves them rather than waiting for the next
+   * listing: a terminal that closes itself because the name changed underneath
+   * it is the opposite of the invisibility a rename promises.
+   */
+  onRenamed?: (from: string, to: string) => void
 }) {
   /**
    * B-30 — an OPEN terminal survives a poll the owner did not answer.
@@ -1007,7 +1019,14 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
               an agent the owner holds as `set-core-0906`, so matching a tile
               against `sac`/journal output meant translating between two names
               for one thing — the second-place defect, inside one screen. */}
-          {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
+          {/* The name is rendered INSIDE the rename control, so that editing
+              replaces it rather than sitting beside it. For an agent this
+              framework does not hold, the control renders its children and
+              nothing else — there is no name of ours to change, and an
+              offered-then-failing control is worse than an absent one. */}
+          <FleetRename agent={agent} onRenamed={onRenamed}>
+            {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
+          </FleetRename>
           {/* No guessing path exists today, so this marker should never appear —
               which is exactly why it is rendered rather than assumed away. */}
           {!agent.binding_confirmed && (
@@ -1607,6 +1626,35 @@ export default function Fleet() {
   }, [openTerminals, setTerminals])
 
   /**
+   * An agent was renamed. Carry the three places this screen keys on its name.
+   *
+   * The server has already written the durable half — the record and the layout
+   * document — so this does NOT save the docks again: it moves the local copies
+   * so the screen is right immediately rather than at the next poll. A terminal
+   * that closes itself, or a docked panel that empties, because the name changed
+   * underneath it would be the opposite of what a rename promises.
+   *
+   * `labelMemory` moves too, and it is the one nobody would think of: it keeps
+   * an open terminal alive across a poll the owner did not answer, and it is
+   * keyed by pid but HOLDS the label. Left behind, it would re-assert the old
+   * name the first time the owner went quiet.
+   */
+  const onAgentRenamed = useCallback((from: string, to: string) => {
+    setTerminals(selected, openTerminals.map(l => (l === from ? to : l)))
+    setDockMap(prev => {
+      const next: Record<string, DockedView[]> = {}
+      for (const [project, entries] of Object.entries(prev)) {
+        next[project] = entries.map(e =>
+          e.kind === PANEL_AGENT && e.id === from ? { ...e, id: to } : e)
+      }
+      return next
+    })
+    labelMemory.current = Object.fromEntries(
+      Object.entries(labelMemory.current).map(([pid, label]) => [pid, label === from ? to : label]),
+    )
+  }, [openTerminals, selected, setTerminals])
+
+  /**
    * The agent shown ALONE — the full screen asked for on 2026-08-19.
    *
    * Kept as its own state rather than folded into `enlarged`, because they
@@ -1880,6 +1928,7 @@ export default function Fleet() {
           ? edge => dockPanel(PANEL_AGENT, agent.terminal_label as string, edge)
           : undefined}
         dockedEdge={dockedEdgeOf(agent.terminal_label)}
+        onRenamed={onAgentRenamed}
         canJumpSeat={canJumpSeat}
         onJumpSeat={onJumpSeat}
         canJumpPid={canJumpPid}
@@ -2305,6 +2354,7 @@ export default function Fleet() {
                     ? edge => dockPanel(PANEL_AGENT, focused.terminal_label as string, edge)
                     : undefined}
                   dockedEdge={dockedEdgeOf(focused.terminal_label)}
+                  onRenamed={onAgentRenamed}
                   onFocus={() => setFocus(active.name, null)}
                   /* The same act on the same surface as in the grid: a click on
                      the title bar leaves full screen. Without it the two layouts
@@ -2387,6 +2437,7 @@ export default function Fleet() {
                       ? edge => dockPanel(PANEL_AGENT, a.terminal_label as string, edge)
                       : undefined}
                     dockedEdge={dockedEdgeOf(a.terminal_label)}
+                    onRenamed={onAgentRenamed}
                     onFocus={() => setFocus(active.name, a.pid)}
                     canJumpSeat={canJumpSeat}
                     onJumpSeat={onJumpSeat}

@@ -138,7 +138,26 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
     )
     return {
         "pid": agent.pid,
-        "name": agent.name,
+        # ONE identity per agent, and which one depends on who named it.
+        #
+        # For an agent the framework holds, that is the framework's label — the
+        # name a person chose and the name every control on this screen keys on:
+        # the terminal socket, the stop and rename routes, the dock, the record.
+        # `agent.name` is the runtime's own `nameSource: "derived"` string, which
+        # is regenerated on every resume, and showing it here is how one agent's
+        # displayed name came to be another agent's terminal label on 2026-08-21.
+        #
+        # For an agent the framework does NOT hold, the runtime's name is the
+        # only name there is, and it is the right one to show.
+        #
+        # `unknown` — the owner could not be asked — keeps the runtime's name
+        # rather than blanking: not knowing who holds an agent is not a reason to
+        # stop being able to refer to it.
+        "name": terminal_label or agent.name,
+        # Kept, and deliberately under a name that says whose it is. It is what
+        # the runtime calls the session, which is worth having in a diagnosis and
+        # is never what a held agent is called.
+        "runtime_name": agent.name,
         "project": agent.project_name,
         "project_root": agent.project_root,
         "cwd": agent.cwd,
@@ -339,6 +358,22 @@ def _state_tally(states: Dict[Any, Any]) -> Dict[str, int]:
     return counts
 
 
+def _disambiguate(payload: Dict[str, Any], held_labels: set) -> Dict[str, Any]:
+    """One agent, one name — checked against the rest of the fleet.
+
+    Only a name this framework did NOT choose can collide this way: a held
+    agent's name IS its label, and the owner refuses a duplicate label. So the
+    one that moves is the runtime's, and it moves by carrying its pid rather
+    than by being hidden — an agent with no name at all is worse than one with
+    an awkward name.
+    """
+    if payload.get("terminal_label") or payload.get("name") not in held_labels:
+        return payload
+    payload["name_collides"] = True
+    payload["name"] = f'{payload["name"]} (pid {payload["pid"]})'
+    return payload
+
+
 def _record_roster(agents, owned: Optional[Dict[int, Dict[str, Any]]]) -> None:
     """Write what discovery just saw into the durable roster.
 
@@ -411,6 +446,17 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     # boundary — which is not where lineage stops.
     descendants = _descendants_index(agents, owned)
 
+    # A collision is a property of the SET, so it cannot be settled inside a
+    # per-agent payload. Measured 2026-08-21: pid 54272 was NAMED `set-core-33`
+    # by the runtime while pid 43704's terminal LABEL was `set-core-33` — two
+    # agents, one string, and every control on this screen keys on the label. A
+    # person clicking the name they can see would act on the other agent.
+    #
+    # The framework cannot stop the runtime from deriving a name; it can refuse
+    # to present two agents under one. So a name that belongs to another agent's
+    # terminal is shown WITH the pid, which is the one thing that cannot collide.
+    held_labels = {str(a["label"]) for a in (owned or {}).values() if a.get("label")}
+
     grouped: List[Dict[str, Any]] = []
     for project in projects:
         members = [by_pid[pid] for pid in project.agent_pids if pid in by_pid]
@@ -430,7 +476,9 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "root": project.root,
             "sources": project.sources,
             "archived": project.archived,
-            "agents": [_agent_payload(a, states[a.pid], owned, seats, purposes, descendants)
+            "agents": [_disambiguate(
+                           _agent_payload(a, states[a.pid], owned, seats, purposes, descendants),
+                           held_labels)
                        for a in members],
             # Task 7.14. What is waiting for a HUMAN here, independent of who is
             # running — the case an agent-centric screen gets wrong by

@@ -1284,3 +1284,62 @@ def test_an_unreachable_owner_is_not_flattened_into_holding_nothing(monkeypatch)
                         lambda agents, *, labels=None, **kw: seen.update(labels=labels))
     fleet_api._record_roster([], None)
     assert seen["labels"] is None
+
+
+# --------------------------------------------------------------------------- #
+# one identity per agent — AC-11's precondition, and the collision measured on
+# 2026-08-21
+# --------------------------------------------------------------------------- #
+
+class _Discovered:
+    def __init__(self, pid, name, session_id=None):
+        self.pid, self.name, self.session_id = pid, name, session_id
+        self.project_name = self.project_root = self.cwd = "/p"
+        self.branch = self.session_log = self.record = None
+        self.binding_confirmed, self.sources, self.kind = True, [], "interactive"
+        self.sources_missing = []
+
+
+def test_a_held_agent_is_called_what_the_framework_calls_it():
+    payload = fleet_api._agent_payload(
+        _Discovered(11, "proj-c6"), _State(), {11: {"label": "the-name-a-person-chose"}},
+    )
+    assert payload["name"] == "the-name-a-person-chose"
+    assert payload["terminal_label"] == "the-name-a-person-chose"
+    assert payload["runtime_name"] == "proj-c6", "the runtime's name is kept, under a name that says whose it is"
+
+
+def test_an_agent_the_framework_does_not_hold_keeps_the_runtime_name(monkeypatch):
+    monkeypatch.setattr(fleet_api.fleet_scopes, "scope_of", lambda pid: None)
+    payload = fleet_api._agent_payload(_Discovered(12, "proj-ab"), _State(), {})
+    assert payload["population"] == "foreign"
+    assert payload["name"] == "proj-ab", "it is the only name there is"
+
+
+def test_an_unaskable_owner_does_not_leave_an_agent_nameless(monkeypatch):
+    payload = fleet_api._agent_payload(_Discovered(13, "proj-de"), _State(), None)
+    assert payload["population"] == "unknown"
+    assert payload["name"] == "proj-de"
+
+
+def test_no_agents_displayed_name_can_be_another_agents_terminal_label(monkeypatch):
+    """The collision measured 2026-08-21: pid 54272 was NAMED `set-core-33`
+    while pid 43704's terminal LABEL was `set-core-33`. Two agents, one string,
+    and every control keys on the label — so a person clicking the name they can
+    see acts on the other agent.
+    """
+    monkeypatch.setattr(fleet_api.fleet_scopes, "scope_of", lambda pid: None)
+    owned = {43704: {"label": "set-core-33"}}
+    payloads = [
+        fleet_api._agent_payload(_Discovered(43704, "set-core-30"), _State(), owned),
+        fleet_api._agent_payload(_Discovered(54272, "set-core-33"), _State(), owned),
+    ]
+    labels = {p["terminal_label"] for p in payloads if p["terminal_label"]}
+    payloads = [fleet_api._disambiguate(p, labels) for p in payloads]
+    clashing = [p["pid"] for p in payloads if p["name"] in labels and p["terminal_label"] != p["name"]]
+    assert clashing == [], f"agents {clashing} are displayed under another agent's terminal label"
+    # Moved, not hidden: an agent with no name is worse than one with an awkward
+    # name, and the pid is the one thing that cannot collide.
+    foreign = next(p for p in payloads if p["pid"] == 54272)
+    assert foreign["name"] == "set-core-33 (pid 54272)" and foreign["name_collides"] is True
+    assert next(p for p in payloads if p["pid"] == 43704)["name"] == "set-core-33"

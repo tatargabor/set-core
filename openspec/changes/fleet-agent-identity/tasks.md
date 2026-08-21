@@ -37,11 +37,11 @@
 
 ## 6. One identity on screen, and the rename control
 
-- [ ] 6.1 `_agent_payload` presents one name: the framework's label for a held agent, the runtime's name for a foreign one [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
-- [ ] 6.2 Test that no agent's displayed name can equal another agent's terminal label — the collision measured on 2026-08-21 [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
-- [ ] 6.3 A rename control on the tile of a held agent, starting from the current name; not offered at all for a foreign one [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
-- [ ] 6.4 A refusal is shown on the tile with its reason, and the displayed name does not change [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
-- [ ] 6.5 A docked panel follows a rename with no reload, and the "no running agent with this terminal" state is left intact for a genuinely absent agent [REQ: a-view-instance-can-be-docked-to-an-edge]
+- [x] 6.1 `_agent_payload` presents one name: the framework's label for a held agent, the runtime's name for a foreign one [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
+- [x] 6.2 Test that no agent's displayed name can equal another agent's terminal label — the collision measured on 2026-08-21 [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
+- [x] 6.3 A rename control on the tile of a held agent, starting from the current name; not offered at all for a foreign one [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
+- [x] 6.4 A refusal is shown on the tile with its reason, and the displayed name does not change [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
+- [x] 6.5 A docked panel follows a rename with no reload, and the "no running agent with this terminal" state is left intact for a genuinely absent agent [REQ: a-view-instance-can-be-docked-to-an-edge]
 - [ ] 6.6 **LOOK at it in the browser** — rename a live agent from the screen and watch: the terminal keeps its history, the tab strip renames, the docked panel follows. A UI change is not done until somebody looked (`.claude/rules/ui-quality.md`); if the browser cannot be reached, this task stays open and says so [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
 
 ## 7. Close the register, and put the lost names back by hand
@@ -61,8 +61,8 @@
 - [x] AC-8: WHEN an agent is renamed from `L` to `N` THEN the terminal relay and the stop action for `N` reach that agent, and requests under `L` do not [REQ: a-rename-carries-into-everything-that-addresses-the-agent-by-name, scenario: the-terminal-and-the-stop-action-follow-the-new-name]
 - [ ] AC-9: WHEN an agent docked to an edge is renamed THEN the panel is still docked to the same edge for the same agent, and does not report a missing agent [REQ: a-rename-carries-into-everything-that-addresses-the-agent-by-name, scenario: a-docked-panel-follows-its-agents-rename]
 - [x] AC-10: WHEN an agent is renamed and the record is written again THEN the entry for that session carries the new label, so a later restore brings it back under that name [REQ: a-rename-carries-into-everything-that-addresses-the-agent-by-name, scenario: the-durable-record-carries-the-new-name]
-- [ ] AC-11: WHEN an agent's tile is shown and its population is `started-here` THEN a rename control is available on that tile [REQ: the-surface-offers-rename-where-the-agents-name-is-shown, scenario: a-held-agent-offers-rename]
-- [ ] AC-12: WHEN a rename is refused because the name is taken THEN the tile shows the refusal and the reason, and the displayed name is unchanged [REQ: the-surface-offers-rename-where-the-agents-name-is-shown, scenario: a-refusal-is-shown-on-the-tile-not-swallowed]
+- [x] AC-11: WHEN an agent's tile is shown and its population is `started-here` THEN a rename control is available on that tile [REQ: the-surface-offers-rename-where-the-agents-name-is-shown, scenario: a-held-agent-offers-rename]
+- [x] AC-12: WHEN a rename is refused because the name is taken THEN the tile shows the refusal and the reason, and the displayed name is unchanged [REQ: the-surface-offers-rename-where-the-agents-name-is-shown, scenario: a-refusal-is-shown-on-the-tile-not-swallowed]
 - [x] AC-13: WHEN discovery reports an interactive agent with session id `S` and cwd `C`, and the framework holds it under label `L` while the runtime's derived name for it is `D` THEN the record contains an entry keyed `S` carrying `L`, and it does not carry `D` [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: a-discovered-agent-is-recorded]
 - [x] AC-14: WHEN discovery reports an interactive agent the framework holds no label for THEN the entry states its label is unknown, and the derived name is not recorded in its place [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: an-agent-the-framework-does-not-hold-is-recorded-with-no-label]
 - [x] AC-15: WHEN the service that holds agent labels cannot be reached while the record is written THEN an existing entry keeps its label, and a new entry states its label is unknown [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: the-label-cannot-be-asked-for-and-a-recorded-label-is-not-overwritten-by-a-guess]
