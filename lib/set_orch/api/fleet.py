@@ -50,6 +50,7 @@ from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet import roster
+from ..fleet import restore as fleet_restore
 from ..fleet.layout import LayoutConflict
 from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
@@ -780,6 +781,71 @@ def fleet_put_layout(body: LayoutBody) -> Dict[str, Any]:
                                                registered=_safe_registry(),
                                                messaging=_safe_messaging())]
     return fleet_layout.apply_to(saved, names)
+
+
+# --------------------------------------------------------------------------- #
+# the roster — what was here before the machine went down
+# --------------------------------------------------------------------------- #
+
+@router.get("/api/fleet/roster")
+def fleet_roster_projects() -> Dict[str, Any]:
+    """Every project with a recorded list, newest first.
+
+    Its own route rather than a field on the agent listing, because this is what
+    the EMPTY screen needs: after a reboot no project holds an agent, so the
+    column offers nothing to click and a per-project read would need a name
+    nobody can supply.
+    """
+    return {"projects": roster.projects()}
+
+
+@router.get("/api/fleet/roster/{project}")
+def fleet_roster(project: str) -> Dict[str, Any]:
+    """One project's recorded list, with resumability measured NOW.
+
+    `record_exists` is carried rather than inferred from an empty list: "never
+    recorded" and "recorded and empty" are different states, and the screen says
+    different things about them.
+    """
+    return roster.read(project)
+
+
+@router.post("/api/fleet/roster/{project}/restore")
+def fleet_roster_restore(project: str) -> Dict[str, Any]:
+    """Bring back the whole recorded list for one project.
+
+    **No body, and that is the design.** No `argv`, for the reason already
+    recorded on `StartAgentBody` — an HTTP route running an arbitrary command
+    list is a different thing from a button that starts an agent. And no
+    per-entry selection: the act asked for is *the list back*, and a subset
+    restore is a different act that can be added without changing this one.
+
+    The known-roots guard is passed in from here rather than resolved in the
+    fleet layer, which is domain-free and must not read the project registry.
+    Passing it is not optional: `POST /api/fleet/agents` refuses a cwd outside
+    that set, and a second route that admits what the first refuses is the guard
+    being deleted one caller at a time.
+    """
+    try:
+        return fleet_restore.restore(project, known_roots=_known_roots())
+    except OwnerUnavailable as exc:
+        # Nothing was attempted, so this is one answer about the request rather
+        # than N answers about N entries.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.delete("/api/fleet/roster/{project}/{key:path}")
+def fleet_roster_forget(project: str, key: str) -> Dict[str, Any]:
+    """Drop one entry from a project's record.
+
+    A `key:path` because an entry with no session id is keyed on a synthetic
+    name containing a slash, and a route that could not address it would leave
+    exactly the entries a user most wants gone — the ones the runtime never
+    named — unremovable.
+    """
+    if not roster.forget(project, key):
+        raise HTTPException(status_code=404, detail=f"no entry {key} recorded for {project}")
+    return {"project": project, "forgotten": key}
 
 
 @router.get("/api/fleet/agents/{pid}/state")

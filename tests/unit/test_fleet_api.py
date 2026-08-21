@@ -33,7 +33,14 @@ def test_every_fleet_route_is_registered_before_the_project_wildcards():
 
     paths = [(i, r.path) for i, r in enumerate(router.routes)]
     fleet = [i for i, p in paths if p.startswith("/api/fleet")]
-    wildcards = [i for i, p in paths if "{project" in p]
+    # NOT merely `"{project" in p` — 2026-08-21, when `/api/fleet/roster/{project}`
+    # was added and this test failed on it. A fleet route that happens to take a
+    # project NAME is not a project wildcard; the thing being guarded against is
+    # the `/api/{project}/...` family, which would answer `/api/fleet/...` as a
+    # project called "fleet". A substring test cannot tell those apart, and it
+    # failed in the direction that reports a collision where there is none —
+    # which invites moving a route to fix nothing.
+    wildcards = [i for i, p in paths if "{project" in p and not p.startswith("/api/fleet")]
 
     assert fleet, "the fleet router is not mounted at all"
     assert wildcards, "no project wildcard found — this test would pass vacuously"
@@ -1116,3 +1123,22 @@ def test_a_docking_write_names_the_project_it_stored_for(tmp_path, monkeypatch):
     assert [d["id"] for d in answer["docks"]] == ["a-1"]
     with open(path, encoding="utf-8") as handle:
         assert list(json.load(handle)["docks"]) == ["alpha"]
+
+
+def test_a_bare_substring_check_would_have_misread_a_fleet_route_as_a_wildcard():
+    """Holds the pattern that was WRONG, so a later "simplification" back to it
+    fails instead of looking identical and quietly guarding the wrong thing.
+
+    The corrected figure is the cheap half of that finding; the refuted pattern
+    is the durable half.
+    """
+    from set_orch.api import router
+
+    paths = [r.path for r in router.routes]
+    naive = [p for p in paths if "{project" in p]
+    assert any(p.startswith("/api/fleet") for p in naive), (
+        "no fleet route takes a {project} parameter any more — this test is now "
+        "vacuous and should be re-aimed rather than deleted"
+    )
+    real = [p for p in naive if not p.startswith("/api/fleet")]
+    assert len(real) < len(naive), "the narrowing removed nothing, so it is not a narrowing"

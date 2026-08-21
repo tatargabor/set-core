@@ -29,24 +29,24 @@
 
 ## 5. The restore module — per-entry decisions, outside the owner service
 
-- [ ] 5.1 Create `lib/set_orch/fleet/restore.py`; `owner.py` and `ownerd.py` are NOT modified (design D5 — the owner's lifetime is the agents' lifetime, and every restart of it kills them all) [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 5.2 `restore(project)` iterating the recorded list in order, producing one outcome per entry and attempting every entry even after one fails [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list]
-- [ ] 5.3 For a resumable, non-live entry: call `OwnerClient.recover(unit=…, session_id=…, cwd=…, label=…)` passing NO `resume_argv`, so the owner's own default argv is used and cannot drift from the interactive one [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 5.4 Measure the owner's actual refusal behaviour on a label already held, then settle design D5's open question: derive a fresh label and report it in the outcome (preferred), or skip with a reason. Record the measurement in the change [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 5.5 A live session is `skipped` with a reason naming it — never resumed, never stopped; reuse the question `owner._refuse_if_the_session_is_running()` asks rather than re-implementing liveness [REQ: a-live-session-is-skipped-never-resumed]
-- [ ] 5.6 Indeterminate liveness is treated as LIVE and skipped, with the reason stating it was indeterminate — the fail direction that cannot fork a conversation [REQ: a-live-session-is-skipped-never-resumed]
-- [ ] 5.7 An entry with no transcript is `skipped` (not `failed`) with a reason naming the missing transcript, and appears in the result [REQ: an-unresumable-entry-is-skipped-with-its-reason]
-- [ ] 5.8 An entry whose `cwd` no longer exists is `skipped` with a reason naming the missing directory [REQ: an-unresumable-entry-is-skipped-with-its-reason]
-- [ ] 5.9 An empty record attempts nothing and reports zero attempted — no agent started [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list]
-- [ ] 5.10 Restore is never triggered by discovery, by a page load, or by the framework starting — assert no call site other than the route [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list]
+- [x] 5.1 Create `lib/set_orch/fleet/restore.py`; `owner.py` and `ownerd.py` are NOT modified (design D5 — the owner's lifetime is the agents' lifetime, and every restart of it kills them all) [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 5.2 `restore(project)` iterating the recorded list in order, producing one outcome per entry and attempting every entry even after one fails [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list]
+- [x] 5.3 For a resumable, non-live entry: call `OwnerClient.recover(unit=…, session_id=…, cwd=…, label=…)` passing NO `resume_argv`, so the owner's own default argv is used and cannot drift from the interactive one [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 5.4 Measure the owner's actual refusal behaviour on a label already held, then settle design D5's open question: derive a fresh label and report it in the outcome (preferred), or skip with a reason. Record the measurement in the change [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 5.5 A live session is `skipped` with a reason naming it — never resumed, never stopped; reuse the question `owner._refuse_if_the_session_is_running()` asks rather than re-implementing liveness [REQ: a-live-session-is-skipped-never-resumed]
+- [x] 5.6 Indeterminate liveness is treated as LIVE and skipped, with the reason stating it was indeterminate — the fail direction that cannot fork a conversation [REQ: a-live-session-is-skipped-never-resumed]
+- [x] 5.7 An entry with no transcript is `skipped` (not `failed`) with a reason naming the missing transcript, and appears in the result [REQ: an-unresumable-entry-is-skipped-with-its-reason]
+- [x] 5.8 An entry whose `cwd` no longer exists is `skipped` with a reason naming the missing directory [REQ: an-unresumable-entry-is-skipped-with-its-reason]
+- [x] 5.9 An empty record attempts nothing and reports zero attempted — no agent started [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list]
+- [x] 5.10 Restore is never triggered by discovery, by a page load, or by the framework starting — assert no call site other than the route [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list]
 
 ## 6. The routes
 
-- [ ] 6.1 `GET /api/fleet/roster/{project}` returning the entries with `resumable`, its reason, `label`, `cwd`, `kind`, `first_seen`, `last_seen`, plus the "no record exists" flag [REQ: each-entry-states-whether-it-is-resumable-right-now]
-- [ ] 6.2 `POST /api/fleet/roster/{project}/restore` returning `{attempted, started[], skipped[], failed[]}` with a reason on every non-started entry and counts of all three classes [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial]
-- [ ] 6.3 The route takes no `argv` and no per-entry selection — narrower than the owner socket on purpose, matching the reasoning already recorded on `StartAgentBody` [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 6.4 Owner unavailable → explicit 503, with no entry reported as started [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 6.5 `DELETE /api/fleet/roster/{project}/{key}` for forgetting one entry [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded]
+- [x] 6.1 `GET /api/fleet/roster/{project}` returning the entries with `resumable`, its reason, `label`, `cwd`, `kind`, `first_seen`, `last_seen`, plus the "no record exists" flag [REQ: each-entry-states-whether-it-is-resumable-right-now]
+- [x] 6.2 `POST /api/fleet/roster/{project}/restore` returning `{attempted, started[], skipped[], failed[]}` with a reason on every non-started entry and counts of all three classes [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial]
+- [x] 6.3 The route takes no `argv` and no per-entry selection — narrower than the owner socket on purpose, matching the reasoning already recorded on `StartAgentBody` [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 6.4 Owner unavailable → explicit 503, with no entry reported as started [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 6.5 `DELETE /api/fleet/roster/{project}/{key}` for forgetting one entry [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded]
 
 ## 7. The screen
 
@@ -90,15 +90,15 @@
 
 ### agent-fleet-restore
 
-- [ ] AC-14: WHEN restore is requested for a project whose record holds N entries THEN the result carries exactly N per-entry outcomes [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list, scenario: restoring-a-project-attempts-every-recorded-entry]
-- [ ] AC-15: WHEN restore is requested for a project whose record is empty THEN no agent is started and the result reports zero entries attempted [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list, scenario: restoring-a-project-with-an-empty-record-changes-nothing]
-- [ ] AC-16: WHEN an entry is resumable, its session is not live, and restore runs THEN an agent is started in the entry's cwd resuming that session id, and the outcome is started carrying the new label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-resumable-entry-comes-back-as-a-resumed-session]
-- [ ] AC-17: WHEN restore runs and the owner service cannot be reached THEN the request fails with an explicit unavailable answer and no entry is reported as started [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: the-owner-service-being-unavailable-is-reported-not-swallowed]
-- [ ] AC-18: WHEN an entry's session is bound to a live process THEN that entry is skipped with a reason naming the live session, no resume is attempted, and the running agent is not stopped [REQ: a-live-session-is-skipped-never-resumed, scenario: an-already-running-session-is-skipped]
-- [ ] AC-19: WHEN it cannot be determined whether an entry's session is live THEN the entry is skipped rather than resumed, with the reason stating liveness was indeterminate [REQ: a-live-session-is-skipped-never-resumed, scenario: an-indeterminate-liveness-is-treated-as-live]
-- [ ] AC-20: WHEN an entry has no transcript and restore runs THEN its outcome is skipped with a reason naming the missing transcript, and it appears in the result [REQ: an-unresumable-entry-is-skipped-with-its-reason, scenario: an-entry-with-no-transcript-is-skipped-and-named]
-- [ ] AC-21: WHEN restore runs over 9 entries of which 3 start, 4 are skipped and 2 fail THEN the result reports 3 started, 4 skipped, 2 failed, with a reason on each of the 6 that did not start [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-mixed-restore-reports-its-parts]
-- [ ] AC-22: WHEN an entry fails to start THEN the remaining entries are still attempted and the failure is reported against that entry alone [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: one-entry-failing-does-not-abandon-the-rest]
+- [x] AC-14: WHEN restore is requested for a project whose record holds N entries THEN the result carries exactly N per-entry outcomes [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list, scenario: restoring-a-project-attempts-every-recorded-entry]
+- [x] AC-15: WHEN restore is requested for a project whose record is empty THEN no agent is started and the result reports zero entries attempted [REQ: restore-is-a-per-project-act-over-the-whole-recorded-list, scenario: restoring-a-project-with-an-empty-record-changes-nothing]
+- [x] AC-16: WHEN an entry is resumable, its session is not live, and restore runs THEN an agent is started in the entry's cwd resuming that session id, and the outcome is started carrying the new label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-resumable-entry-comes-back-as-a-resumed-session]
+- [x] AC-17: WHEN restore runs and the owner service cannot be reached THEN the request fails with an explicit unavailable answer and no entry is reported as started [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: the-owner-service-being-unavailable-is-reported-not-swallowed]
+- [x] AC-18: WHEN an entry's session is bound to a live process THEN that entry is skipped with a reason naming the live session, no resume is attempted, and the running agent is not stopped [REQ: a-live-session-is-skipped-never-resumed, scenario: an-already-running-session-is-skipped]
+- [x] AC-19: WHEN it cannot be determined whether an entry's session is live THEN the entry is skipped rather than resumed, with the reason stating liveness was indeterminate [REQ: a-live-session-is-skipped-never-resumed, scenario: an-indeterminate-liveness-is-treated-as-live]
+- [x] AC-20: WHEN an entry has no transcript and restore runs THEN its outcome is skipped with a reason naming the missing transcript, and it appears in the result [REQ: an-unresumable-entry-is-skipped-with-its-reason, scenario: an-entry-with-no-transcript-is-skipped-and-named]
+- [x] AC-21: WHEN restore runs over 9 entries of which 3 start, 4 are skipped and 2 fail THEN the result reports 3 started, 4 skipped, 2 failed, with a reason on each of the 6 that did not start [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-mixed-restore-reports-its-parts]
+- [x] AC-22: WHEN an entry fails to start THEN the remaining entries are still attempted and the failure is reported against that entry alone [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: one-entry-failing-does-not-abandon-the-rest]
 - [ ] AC-23: WHEN a project's record holds entries and its screen is opened THEN a restore control is offered stating how many entries would be attempted [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-project-with-a-record-offers-restore-and-names-the-count]
 - [ ] AC-24: WHEN restore completes with entries that were skipped or failed THEN the screen shows each of those entries with its reason, rather than a single success or failure message [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-outcome-of-every-entry-is-visible-after-restoring]
 - [ ] AC-25: WHEN a project has no recorded entries THEN no restore control is offered for it [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: an-empty-record-offers-no-restore-control]

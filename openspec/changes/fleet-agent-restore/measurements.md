@@ -90,3 +90,55 @@ byte-identical in size). The pattern count was asserted `== 1` per mutation
 rather than using `replace(..., 1)`, and the restore was re-checked by grepping
 the original string back — `git checkout` cannot restore an untracked file, and
 `|| true` would have hidden that.
+
+## M4 — the owner's label behaviour, measured rather than assumed (task 5.4)
+
+`OwnerClient().health()` and `list` against the running owner, 2026-08-21:
+
+```
+health: {'ok': True, 'pid': 4084305, 'uptime_seconds': 219559.8, 'held': 24}
+list:   24 agents, every one 'population': 'started-here', 'resumed_session': None
+```
+
+Two things settle the open question in design D5. The owner refuses a label it
+already holds (`owner.py:150`, `"{label} is already owned here"`) **and** a unit
+whose scope is still running. And `list` returns the labels it holds — so the
+collision is avoided **proactively**, by asking, rather than by matching the text
+of an error message. Restore therefore derives `<label>-r2`, `-r3` (bounded at 3)
+and reports `renamed: true` with the label actually used. A rename is visible;
+the alternative — skipping the entry — loses a conversation to protect a name.
+
+Also worth recording: `resumed_session: None` on all 24, so nothing on this
+machine has ever been resumed through this path. The first real restore will be
+the first exercise of `owner.recover()` outside tests.
+
+## M5 — an existing guard test misread the new routes (2026-08-21)
+
+`test_every_fleet_route_is_registered_before_the_project_wildcards` failed the
+moment `/api/fleet/roster/{project}` existed. It classified wildcards with
+`"{project" in p`, and the new route matches that substring while being a fleet
+route, not a member of the `/api/{project}/...` family the test guards against.
+
+Direction: it reported a collision where there was none — which invites moving a
+route to fix nothing. Narrowed to `"{project" in p and not
+p.startswith("/api/fleet")`, and the refuted pattern is now held in
+`test_a_bare_substring_check_would_have_misread_a_fleet_route_as_a_wildcard`, so
+a later simplification back to it fails instead of quietly guarding the wrong
+thing.
+
+## M6 — mutation round on restore.py (7 mutants, all caught)
+
+| mutant | result |
+|---|---|
+| treat indeterminate liveness as "nothing running" | CAUGHT (1 failed) |
+| resume a live session anyway | CAUGHT (3 failed) |
+| abandon the rest after a failure | CAUGHT (2 failed) |
+| call it complete whenever anything started | CAUGHT (3 failed) |
+| drop the known-roots guard | CAUGHT (1 failed) |
+| report an unresumable entry as failed instead of skipped | CAUGHT (2 failed) |
+| ignore held labels — let the owner collide | CAUGHT (1 failed) |
+
+The two that matter most are the first two: both are the silent fork, and both
+are caught by a test that asserts the owner was **never asked** about a live
+session — not that it refused. A test that let the call through and checked the
+error would pass on code that forks the conversation and reports it tidily.
