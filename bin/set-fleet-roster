@@ -1,0 +1,20 @@
+#!/bin/bash
+# set-fleet-roster — what the fleet has seen, and whether it survived a reboot.
+#
+# `verify` is the check to run AFTER AN ACTUAL REBOOT. A simulation can remove
+# what a boot removes, and one was run — but only a real boot answers whether
+# the runtime's transcripts are still where this expects them, and whether the
+# roster file survived an unclean shutdown with its last write intact.
+#
+# Same Python-resolution shape as `set-agent-owner`, and `-m` rather than a file
+# path because the module uses package-relative imports.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+exec env PYTHONPATH="$SET_TOOLS_ROOT/lib:$SET_TOOLS_ROOT/modules/web${PYTHONPATH:+:$PYTHONPATH}" \
+     "$PYTHON" -m set_orch.fleet.roster_cli "$@"

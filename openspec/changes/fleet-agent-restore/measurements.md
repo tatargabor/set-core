@@ -142,3 +142,20 @@ The two that matter most are the first two: both are the silent fork, and both
 are caught by a test that asserts the owner was **never asked** about a live
 session — not that it refused. A test that let the call through and checked the
 error would pass on code that forks the conversation and reports it tidily.
+
+## M7 — `set-fleet-roster verify`, run both ways (task 8.8)
+
+The same command, on the same file, outside and inside the simulated boot:
+
+```
+outside:  25 entries, 25 resumable now, 25 already running
+inside:   25 entries, 25 resumable now,  0 already running
+```
+
+That second line is what a real reboot will print, and it is the line to check
+after one. The `running` column is what makes it readable at a glance: restore
+skips a session that is already live, so `running` is the count restore will
+*leave alone* and `resumable - running` is the count it will bring back.
+
+`running` prints `?` and a NOTE when liveness could not be determined, never a
+zero — a gap is not a zero, and zero is the number a reader would act on.
