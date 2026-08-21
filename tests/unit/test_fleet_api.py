@@ -1257,3 +1257,30 @@ def test_an_agent_with_no_session_id_renames_and_says_the_record_kept_the_old_na
 
     answer = fleet_api.fleet_rename_agent("old", fleet_api.RenameAgentBody(new_label="new"))
     assert answer["carried"]["record"] == 0
+
+
+def test_the_listing_records_the_labels_it_already_fetched(monkeypatch):
+    """AC-13 at the wiring level, and the ordering that makes it possible: the
+    record cannot be written before the owner has been asked what it holds.
+    """
+    seen = {}
+
+    def _fake_record(agents, *, labels=None, **kw):
+        seen["labels"] = labels
+        return {"added": 0, "updated": 0, "skipped": 0, "pruned": 0}
+
+    monkeypatch.setattr(fleet_api.roster, "record", _fake_record)
+    fleet_api._record_roster([], {11: {"label": "chosen", "pid": 11}, 12: {"pid": 12}})
+    assert seen["labels"] == {11: "chosen"}, "an owned agent with no label contributes none"
+
+
+def test_an_unreachable_owner_is_not_flattened_into_holding_nothing(monkeypatch):
+    """`None` and `{}` are different facts, and only one of them means an agent
+    has no framework name. Flattening would let one dead socket erase every
+    recorded label on the next poll.
+    """
+    seen = {}
+    monkeypatch.setattr(fleet_api.roster, "record",
+                        lambda agents, *, labels=None, **kw: seen.update(labels=labels))
+    fleet_api._record_roster([], None)
+    assert seen["labels"] is None

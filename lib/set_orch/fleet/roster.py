@@ -101,8 +101,23 @@ def _no_session_key(agent: Any) -> str:
     return f"{NO_SESSION_KEY_PREFIX}{project}/{label}"
 
 
-def _entry_from(agent: Any, *, now: float) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """One roster entry from one discovered agent, or None if it must not be recorded."""
+def _entry_from(agent: Any, *, now: float,
+                labels: Optional[Dict[int, str]] = None) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """One roster entry from one discovered agent, or None if it must not be recorded.
+
+    **The label comes from `labels` — what the FRAMEWORK holds — and never from
+    `agent.name`.** Measured 2026-08-21, after the first real reboot: the
+    runtime's name carries `nameSource: "derived"`, is regenerated on every
+    resume, and recording it gave back `set-core-34` for an agent its user had
+    named `set-core-bugfix`. The name a person chose is the one every control
+    addresses; the runtime's is a generated string that a restore would hand back
+    as though somebody had chosen it.
+
+    `labels is None` means the holder could not be asked, and an empty mapping
+    means it was asked and holds nothing. Both produce an entry with no label,
+    which the upsert treats as "learned nothing" — so neither can overwrite a
+    label already recorded.
+    """
     kind = str(getattr(agent, "kind", "interactive") or "interactive")
     if kind != "interactive":
         # CB-8: `-p` subprocesses are the framework's own short-lived children,
@@ -111,9 +126,10 @@ def _entry_from(agent: Any, *, now: float) -> Optional[Tuple[str, Dict[str, Any]
         return None
     session_id = getattr(agent, "session_id", None)
     key = str(session_id) if session_id else _no_session_key(agent)
+    held = (labels or {}).get(getattr(agent, "pid", None))
     return key, {
         "session_id": str(session_id) if session_id else None,
-        "label": str(getattr(agent, "name", None) or "") or None,
+        "label": str(held) if held else None,
         "cwd": str(getattr(agent, "cwd", "") or ""),
         "project": str(getattr(agent, "project_name", None) or "") or None,
         "kind": kind,
@@ -217,11 +233,17 @@ def _prune(document: Dict[str, Any], *, now: float, retention: float) -> int:
 def record(
     agents: Iterable[Any],
     *,
+    labels: Optional[Dict[int, str]] = None,
     path: Optional[str] = None,
     now: Optional[float] = None,
     retention: float = RETENTION_SECONDS,
 ) -> Dict[str, int]:
     """Upsert one entry per interactive agent. Returns what it did.
+
+    `labels` maps pid -> the label the framework holds that agent under, and it
+    is passed IN rather than resolved here: this module is a document, and a
+    document that opens a socket to the agent owner would make every write
+    depend on a service being up. `None` means the holder could not be asked.
 
     Raises on a write failure — the CALLER decides that discovery's answer
     survives it. Swallowing here would put the decision in the wrong place: a
@@ -238,7 +260,7 @@ def record(
 
     added = updated = skipped = 0
     for agent in agents:
-        built = _entry_from(agent, now=now)
+        built = _entry_from(agent, now=now, labels=labels)
         if built is None:
             skipped += 1
             continue

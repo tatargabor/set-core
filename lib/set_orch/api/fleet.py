@@ -339,7 +339,7 @@ def _state_tally(states: Dict[Any, Any]) -> Dict[str, int]:
     return counts
 
 
-def _record_roster(agents) -> None:
+def _record_roster(agents, owned: Optional[Dict[int, Dict[str, Any]]]) -> None:
     """Write what discovery just saw into the durable roster.
 
     **Here rather than inside `discovery`,** which is a read of process state:
@@ -353,8 +353,19 @@ def _record_roster(agents) -> None:
     lost to protect the first. `roster.record` raises on purpose so this
     decision lives at the call site rather than being made for every caller.
     """
+    labels = (
+        None if owned is None
+        else {pid: str(a["label"]) for pid, a in owned.items() if a.get("label")}
+    )
+    if labels is None:
+        # NOT flattened to an empty mapping. "The holder could not be asked" and
+        # "the holder holds nothing" are different facts, and only the second one
+        # means an agent has no framework name. Flattening them would let one
+        # unreachable socket erase every recorded label — the names this record
+        # exists to keep.
+        logger.warning("fleet api: recording the roster without labels; the owner could not be asked")
     try:
-        roster.record(agents)
+        roster.record(agents, labels=labels)
     except Exception as exc:
         logger.warning("fleet api: roster not recorded (%s); the agent list is unaffected", exc)
 
@@ -377,13 +388,16 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     agents = discover_agents(include_oneshot=include_oneshot)
     projects = discover_projects(agents, registered=registered,
                                  messaging=_safe_messaging())
-    _record_roster(agents)
 
     states = {agent.pid: read_state(agent.session_log, record=agent.record) for agent in agents}
     by_pid = {agent.pid: agent for agent in agents}
     # Asked once for the whole listing, not once per agent: it is one socket
     # round trip and the answer is the same for every row.
     owned = _owned_by_pid()
+    # After `owned`, and deliberately: the record stores the name the FRAMEWORK
+    # holds, so it cannot be written before the framework has been asked what it
+    # holds. The same answer serves both, rather than a second round trip.
+    _record_roster(agents, owned)
     # Asked once for the whole listing, like `owned`, and reused for a few
     # seconds beyond that — `sac agents --json` starts a node process, measured
     # at 0.07 s against 0.098 s for this whole listing, and this endpoint is

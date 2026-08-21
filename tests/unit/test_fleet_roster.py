@@ -69,12 +69,17 @@ def test_a_discovered_agent_is_recorded_under_its_session_id(tmp_path):
     """
     roster.record(
         [FakeAgent(pid=42, cwd="/home/x/proj", session_id="S1", name="proj-1", project_name="proj")],
+        labels={42: "the-name-a-person-chose"},
         path=_path(tmp_path), now=1000.0,
     )
     stored = json.loads(Path(_path(tmp_path)).read_text())
     assert list(stored["projects"]["proj"]) == ["S1"]
     entry = stored["projects"]["proj"]["S1"]
-    assert entry["label"] == "proj-1"
+    # The FRAMEWORK's label, never the runtime's derived `name` — measured
+    # 2026-08-21: recording `name` gave back a generated string for an agent its
+    # user had named, and a resume regenerates it again.
+    assert entry["label"] == "the-name-a-person-chose"
+    assert "proj-1" not in Path(_path(tmp_path)).read_text()
     assert entry["cwd"] == "/home/x/proj"
     assert entry["first_seen"] == 1000.0 and entry["last_seen"] == 1000.0
     assert "42" not in json.dumps(list(stored["projects"]["proj"]))
@@ -428,3 +433,53 @@ def test_relabelling_a_missing_record_does_not_create_one(tmp_path):
     p = _path(tmp_path)
     assert roster.relabel("sid-1", "new", path=p) == 0
     assert not Path(p).exists()
+
+
+# --------------------------------------------------------------------------- #
+# whose name gets recorded — AC-13 … AC-16
+# --------------------------------------------------------------------------- #
+
+def test_an_agent_the_framework_does_not_hold_is_recorded_with_no_label(tmp_path):
+    """AC-14. An invented label renders exactly like a chosen one, and a restore
+    would hand it back as though somebody had named it.
+    """
+    p = _path(tmp_path)
+    roster.record(
+        [FakeAgent(pid=7, cwd="/home/x/proj", session_id="S1", name="proj-ab", project_name="proj")],
+        labels={}, path=p, now=1000.0,
+    )
+    entry = json.loads(Path(p).read_text())["projects"]["proj"]["S1"]
+    assert entry["label"] is None
+    assert "proj-ab" not in Path(p).read_text(), "the runtime's derived name must not stand in for a label"
+
+
+def test_an_unreachable_holder_cannot_overwrite_a_label_already_recorded(tmp_path):
+    """AC-15, and the direction is the whole point: one unreachable socket must
+    not erase the names this record exists to keep.
+    """
+    p = _path(tmp_path)
+    a = FakeAgent(pid=7, cwd="/home/x/proj", session_id="S1", name="proj-ab", project_name="proj")
+    roster.record([a], labels={7: "chosen"}, path=p, now=1000.0)
+    roster.record([a], labels=None, path=p, now=2000.0)          # could not ask
+    entry = json.loads(Path(p).read_text())["projects"]["proj"]["S1"]
+    assert entry["label"] == "chosen"
+    assert entry["last_seen"] == 2000.0, "the sighting is still recorded; only the label is untouched"
+
+
+def test_a_renamed_agent_is_recorded_under_its_new_label(tmp_path):
+    """AC-16. The recording pass agrees with the rename rather than undoing it."""
+    p = _path(tmp_path)
+    a = FakeAgent(pid=7, cwd="/home/x/proj", session_id="S1", name="proj-ab", project_name="proj")
+    roster.record([a], labels={7: "before"}, path=p, now=1000.0)
+    roster.record([a], labels={7: "after"}, path=p, now=2000.0)
+    assert json.loads(Path(p).read_text())["projects"]["proj"]["S1"]["label"] == "after"
+
+
+def test_the_roster_never_asks_the_owner_itself(tmp_path):
+    """The label is passed IN. A document that opened a socket would make every
+    write depend on a service being up — and this write is the one that has to
+    survive the service dying.
+    """
+    import inspect
+    source = inspect.getsource(roster)
+    assert "OwnerClient" not in source and "owner_client" not in source
