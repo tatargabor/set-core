@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 
 import pytest
 
@@ -433,3 +434,80 @@ def test_the_join_hands_the_client_a_map_it_can_pick_its_own_project_out_of(tmp_
     joined = apply_to(normalise({"docks": {"alpha": [{"kind": "agent", "id": "a-1", "edge": "right"}]}}), ["alpha"])
     assert joined["docks"] == {"alpha": [{"kind": "agent", "id": "a-1", "edge": "right"}]}
     assert joined["docks_legacy"] == []
+
+
+# --------------------------------------------------------------------------- #
+# relabel_dock — a dock names an agent, and an agent's name can change
+# --------------------------------------------------------------------------- #
+
+def _laid_out(tmp_path, *, docks, splits) -> str:
+    p = str(tmp_path / "fleet-layout.json")
+    pathlib.Path(p).write_text(json.dumps({
+        "version": 5, "groups": [], "parked": [], "ungrouped_order": [],
+        "splits": splits, "docks": docks, "docks_legacy": [],
+    }))
+    return p
+
+
+def test_a_dock_and_its_width_both_follow_the_new_name(tmp_path):
+    p = _laid_out(
+        tmp_path,
+        docks={"proj": [{"kind": "agent", "id": "old", "edge": "right"}]},
+        splits={"dock:agent:old": 520, "projects": 300},
+    )
+    assert layout_mod.relabel_dock("agent", "old", "new", path=p) == {"docked": 1, "splits": 1}
+    stored = json.loads(pathlib.Path(p).read_text())
+    assert stored["docks"]["proj"] == [{"kind": "agent", "id": "new", "edge": "right"}]
+    assert stored["splits"] == {"dock:agent:new": 520, "projects": 300}
+    assert stored["version"] == 6
+
+
+def test_a_dock_with_no_stored_width_is_carried_and_is_not_a_failure(tmp_path):
+    """The ordinary case: nobody dragged the divider. A zero here must read as
+    "there was no width", never as "the move failed".
+    """
+    p = _laid_out(tmp_path, docks={"proj": [{"kind": "agent", "id": "old", "edge": "left"}]}, splits={})
+    assert layout_mod.relabel_dock("agent", "old", "new", path=p) == {"docked": 1, "splits": 0}
+    assert json.loads(pathlib.Path(p).read_text())["docks"]["proj"][0]["id"] == "new"
+
+
+def test_a_name_nothing_is_docked_to_writes_nothing_at_all(tmp_path):
+    """Most renames touch no dock. Bumping the version for them would make every
+    open screen believe the arrangement changed under it.
+    """
+    p = _laid_out(tmp_path, docks={"proj": [{"kind": "agent", "id": "other", "edge": "right"}]}, splits={})
+    before = pathlib.Path(p).read_text()
+    assert layout_mod.relabel_dock("agent", "old", "new", path=p) == {"docked": 0, "splits": 0}
+    assert pathlib.Path(p).read_text() == before
+
+
+def test_a_dock_of_another_kind_with_the_same_id_is_left_alone(tmp_path):
+    """`id` is only unique within a kind — a panel called `old` that is not an
+    agent is a different thing that happens to share a name.
+    """
+    p = _laid_out(
+        tmp_path,
+        docks={"proj": [{"kind": "agent", "id": "old", "edge": "right"},
+                        {"kind": "changes", "id": "old", "edge": "bottom"}]},
+        splits={"dock:changes:old": 200},
+    )
+    assert layout_mod.relabel_dock("agent", "old", "new", path=p) == {"docked": 1, "splits": 0}
+    stored = json.loads(pathlib.Path(p).read_text())
+    assert [e["id"] for e in stored["docks"]["proj"]] == ["new", "old"]
+    assert stored["splits"] == {"dock:changes:old": 200}
+
+
+def test_the_legacy_dock_list_survives_a_relabel(tmp_path):
+    """It is preserved and never rendered. A write that dropped it would delete
+    the only evidence that those docks were ever made.
+    """
+    p = str(tmp_path / "fleet-layout.json")
+    pathlib.Path(p).write_text(json.dumps({
+        "version": 1, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
+        "docks": {"proj": [{"kind": "agent", "id": "old", "edge": "right"}]},
+        "docks_legacy": [{"kind": "agent", "id": "from-before", "edge": "right"}],
+    }))
+    layout_mod.relabel_dock("agent", "old", "new", path=p)
+    assert json.loads(pathlib.Path(p).read_text())["docks_legacy"] == [
+        {"kind": "agent", "id": "from-before", "edge": "right"}
+    ]

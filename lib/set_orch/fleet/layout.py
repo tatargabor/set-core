@@ -496,3 +496,46 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
         # per-project. Preserved, never rendered — see `_normalise_dock_legacy`.
         "docks_legacy": list(layout.get("docks_legacy") or []),
     }
+
+
+def relabel_dock(kind: str, old_id: str, new_id: str, *,
+                 path: Optional[str] = None) -> Dict[str, int]:
+    """Carry a docked view's placement AND its width to a new identity.
+
+    Both, because both are keyed on the identity: the dock entry names it, and
+    the divider key is `dock:<kind>:<id>` — derived from identity on purpose, so
+    that dragging a panel to another edge keeps the size the user gave it. That
+    same derivation makes a rename orphan the width unless it is carried here,
+    and a panel that moves but silently resizes reads as the screen deciding.
+
+    Returns what changed, per store, rather than a boolean: a dock moved with no
+    stored width is the ordinary case, and it must not look like a failure.
+    """
+    path = path or default_layout_path()
+    current = load(path)
+    docks = {p: [dict(e) for e in entries] for p, entries in (current.get("docks") or {}).items()}
+    moved = 0
+    for entries in docks.values():
+        for entry in entries:
+            if entry.get("kind") == kind and entry.get("id") == old_id:
+                entry["id"] = new_id
+                moved += 1
+
+    splits = dict(current.get("splits") or {})
+    old_key = f"dock:{kind}:{old_id}"
+    resized = 0
+    if old_key in splits:
+        splits[f"dock:{kind}:{new_id}"] = splits.pop(old_key)
+        resized = 1
+
+    if not moved and not resized:
+        return {"docked": 0, "splits": 0}
+
+    payload = dict(current)
+    payload["docks"] = docks
+    payload["splits"] = splits
+    payload["version"] = int(current["version"]) + 1
+    _write_atomically(payload, path)
+    logger.info("fleet layout: %s %r -> %r (%d dock(s), %d divider(s))",
+                kind, old_id, new_id, moved, resized)
+    return {"docked": moved, "splits": resized}

@@ -1142,3 +1142,118 @@ def test_a_bare_substring_check_would_have_misread_a_fleet_route_as_a_wildcard()
     )
     real = [p for p in naive if not p.startswith("/api/fleet")]
     assert len(real) < len(naive), "the narrowing removed nothing, so it is not a narrowing"
+
+
+# --------------------------------------------------------------------------- #
+# rename — the route, and the two documents that name an agent by its label
+# --------------------------------------------------------------------------- #
+
+class _RenamingOwner:
+    def __init__(self, pid=4242):
+        self.asked = []
+        self._pid = pid
+
+    def rename(self, label, new_label):
+        self.asked.append((label, new_label))
+        return {"label": new_label, "pid": self._pid, "unit": f"set-agent-{label}.scope"}
+
+
+class _RenamedIdentity:
+    def __init__(self, session_id="sid-1", project_name="proj"):
+        self.session_id, self.project_name = session_id, project_name
+
+
+def test_a_rename_carries_the_record_and_the_layout(monkeypatch, tmp_path):
+    """The rename is three writes, and the two after the owner are corrections to
+    documents that would otherwise name something nothing holds.
+    """
+    owner = _RenamingOwner()
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: owner)
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid: _RenamedIdentity())
+
+    roster_path = tmp_path / "roster.json"
+    roster_path.write_text(json.dumps({"version": 1, "projects": {"proj": {"sid-1": {
+        "session_id": "sid-1", "label": "old", "cwd": "/tmp", "project": "proj",
+        "kind": "interactive", "first_seen": 1.0, "last_seen": 2.0}}}}))
+    layout_path = tmp_path / "layout.json"
+    layout_path.write_text(json.dumps({
+        "version": 3, "groups": [], "parked": [], "ungrouped_order": [],
+        "splits": {"dock:agent:old": 480},
+        "docks": {"proj": [{"kind": "agent", "id": "old", "edge": "right"}]},
+        "docks_legacy": []}))
+    monkeypatch.setattr(fleet_api.roster, "default_roster_path", lambda: str(roster_path))
+    monkeypatch.setattr(fleet_api.fleet_layout, "default_layout_path", lambda: str(layout_path))
+
+    answer = fleet_api.fleet_rename_agent("old", fleet_api.RenameAgentBody(new_label="new"))
+
+    assert owner.asked == [("old", "new")]
+    assert answer["renamed_from"] == "old" and answer["agent"]["label"] == "new"
+    assert answer["carried"] == {"record": 1, "docked": 1, "splits": 1}
+
+    stored = json.loads(roster_path.read_text())
+    assert stored["projects"]["proj"]["sid-1"]["label"] == "new"
+    laid = json.loads(layout_path.read_text())
+    assert laid["docks"]["proj"] == [{"kind": "agent", "id": "new", "edge": "right"}]
+    assert laid["splits"] == {"dock:agent:new": 480}, (
+        "the width is keyed on the label too; a panel that moves but silently "
+        "resizes reads as the screen deciding"
+    )
+
+
+def test_a_rename_the_owner_refuses_is_a_409_and_writes_nothing(monkeypatch, tmp_path):
+    class _Refusing:
+        def rename(self, label, new_label):
+            raise OwnerClientError("new is already held here (pid 9)")
+
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: _Refusing())
+    monkeypatch.setattr(fleet_api, "discover_agent",
+                        lambda pid: pytest.fail("a refused rename must resolve nothing"))
+    monkeypatch.setattr(fleet_api.roster, "relabel",
+                        lambda *a, **k: pytest.fail("a refused rename must not write the record"))
+    monkeypatch.setattr(fleet_api.fleet_layout, "relabel_dock",
+                        lambda *a, **k: pytest.fail("a refused rename must not write the layout"))
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_rename_agent("one", fleet_api.RenameAgentBody(new_label="new"))
+    assert excinfo.value.status_code == 409
+    assert "already held" in str(excinfo.value.detail)
+
+
+def test_an_unreachable_owner_is_503_rather_than_a_rename_that_did_not_happen(monkeypatch):
+    class _Down:
+        def rename(self, label, new_label):
+            raise OwnerUnavailable("the agent owner is not running")
+
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: _Down())
+    with pytest.raises(HTTPException) as excinfo:
+        fleet_api.fleet_rename_agent("one", fleet_api.RenameAgentBody(new_label="new"))
+    assert excinfo.value.status_code == 503
+
+
+def test_a_rename_that_happened_is_not_reported_as_a_failure_by_a_later_write(monkeypatch):
+    """The agent HAS been renamed by then. Answering with an error would tell the
+    reader the opposite of what is true, and invite a retry of a done act.
+    """
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: _RenamingOwner())
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid: _RenamedIdentity())
+    monkeypatch.setattr(fleet_api.roster, "relabel",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("read-only file system")))
+    monkeypatch.setattr(fleet_api.fleet_layout, "relabel_dock",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("read-only file system")))
+
+    answer = fleet_api.fleet_rename_agent("old", fleet_api.RenameAgentBody(new_label="new"))
+
+    assert answer["agent"]["label"] == "new"
+    assert answer["carried"] == {"record": 0, "docked": 0, "splits": 0}, (
+        "what did NOT get carried must be visible, not implied by silence"
+    )
+
+
+def test_an_agent_with_no_session_id_renames_and_says_the_record_kept_the_old_name(monkeypatch):
+    monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: _RenamingOwner())
+    monkeypatch.setattr(fleet_api, "discover_agent", lambda pid: _RenamedIdentity(session_id=None))
+    monkeypatch.setattr(fleet_api.roster, "relabel",
+                        lambda *a, **k: pytest.fail("there is no session to relabel"))
+    monkeypatch.setattr(fleet_api.fleet_layout, "relabel_dock", lambda *a, **k: {"docked": 0, "splits": 0})
+
+    answer = fleet_api.fleet_rename_agent("old", fleet_api.RenameAgentBody(new_label="new"))
+    assert answer["carried"]["record"] == 0

@@ -358,3 +358,46 @@ def forget(project: str, key: str, *, path: Optional[str] = None) -> bool:
     _write_atomically(document, path)
     logger.info("fleet roster: forgot %s from %s", key, project)
     return True
+
+
+def relabel(key: str, new_label: str, *, project: Optional[str] = None,
+            path: Optional[str] = None) -> int:
+    """Give the recorded entry for one session a different label.
+
+    Written at the moment of the rename rather than left to the next recording
+    pass. The pass would get there — it runs on every listing — but "it will be
+    correct shortly" is a claim about a race, and the entry is the thing a reboot
+    reads. A rename that survives only if nothing crashes in the next few seconds
+    is not a rename that survives a reboot.
+
+    `project` narrows the search when the caller knows it. Without it every
+    project is searched, because a session id identifies an entry on its own and
+    a caller that knows the session but not the project is an ordinary case —
+    the pid is what the API holds, and the project comes from the same lookup
+    that could have failed.
+
+    Returns how many entries were changed, so a caller can tell "nothing to do"
+    from "did nothing" — they look identical from a bare boolean.
+    """
+    path = path or default_roster_path()
+    try:
+        document, existed = _load(path)
+    except RosterUnreadable:
+        logger.warning("fleet roster: cannot relabel %s; the record is unreadable", key)
+        return 0
+    if not existed:
+        return 0
+    changed = 0
+    for name, entries in document.get("projects", {}).items():
+        if project is not None and name != project:
+            continue
+        entry = entries.get(key)
+        if entry is None or entry.get("label") == new_label:
+            continue
+        logger.info("fleet roster: %s in %s relabelled %r -> %r",
+                    key, name, entry.get("label"), new_label)
+        entry["label"] = new_label
+        changed += 1
+    if changed:
+        _write_atomically(document, path)
+    return changed

@@ -378,3 +378,53 @@ def test_projects_lists_every_project_with_a_record_newest_first(tmp_path):
 
 def test_projects_is_empty_when_nothing_was_ever_recorded(tmp_path):
     assert roster.projects(path=_path(tmp_path)) == []
+
+
+# --------------------------------------------------------------------------- #
+# relabel — the record is what a reboot reads, so a rename is written NOW
+# --------------------------------------------------------------------------- #
+
+def _seed(tmp_path, project="proj", key="sid-1", label="old"):
+    p = _path(tmp_path)
+    roster.record(
+        [FakeAgent(pid=1, cwd="/tmp", session_id=key, name=label, project_name=project)],
+        path=p, now=1000.0,
+    )
+    return p
+
+
+def test_relabelling_writes_the_new_name_into_the_record(tmp_path):
+    p = _seed(tmp_path)
+    assert roster.relabel("sid-1", "new", path=p) == 1
+    stored = json.loads(Path(p).read_text())
+    assert stored["projects"]["proj"]["sid-1"]["label"] == "new"
+
+
+def test_relabelling_finds_the_entry_without_being_told_the_project(tmp_path):
+    """A caller holding a pid knows the session before it knows the project —
+    and the lookup that would give it the project is the one that can fail.
+    """
+    p = _seed(tmp_path)
+    assert roster.relabel("sid-1", "new", path=p) == 1
+    assert roster.relabel("sid-1", "newer", project="proj", path=p) == 1
+    assert roster.relabel("sid-1", "newest", project="a-different-project", path=p) == 0
+    assert json.loads(Path(p).read_text())["projects"]["proj"]["sid-1"]["label"] == "newer"
+
+
+def test_relabelling_an_unknown_session_changes_nothing_and_says_so(tmp_path):
+    """A count, not a boolean: "nothing to do" and "did nothing" look identical
+    from a bare `False`, and only one of them is a defect.
+    """
+    p = _seed(tmp_path)
+    before = Path(p).read_text()
+    assert roster.relabel("no-such-session", "new", path=p) == 0
+    assert Path(p).read_text() == before
+
+
+def test_relabelling_a_missing_record_does_not_create_one(tmp_path):
+    """A rename must not invent a record. An entry that appears without the agent
+    ever having been seen would be restored later as though it had been.
+    """
+    p = _path(tmp_path)
+    assert roster.relabel("sid-1", "new", path=p) == 0
+    assert not Path(p).exists()

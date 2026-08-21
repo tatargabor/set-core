@@ -737,6 +737,76 @@ class LayoutBody(BaseModel):
     base_version: Optional[int] = None
 
 
+class RenameAgentBody(BaseModel):
+    """The new name, and nothing else.
+
+    Deliberately not a general "update the agent" body: a rename is the only
+    property of a held agent this framework may change from outside, and a route
+    that took a bag of fields would be a different thing wearing this one's name.
+    """
+
+    new_label: str
+
+
+@router.post("/api/fleet/agents/{label}/rename")
+def fleet_rename_agent(label: str, body: RenameAgentBody) -> Dict[str, Any]:
+    """Give a running agent a different name. It keeps running.
+
+    Addressed by label like `stop`, for the same reason: a pid is reused, a label
+    is what the framework named.
+
+    Three writes, and the order is what makes a half-done rename harmless. The
+    owner's map first — it is the only one that can refuse, and until it succeeds
+    nothing has happened. Then the durable record and the layout, both of which
+    are corrections to documents that would otherwise name something that no
+    longer exists. Neither of the two is allowed to fail the request: the agent
+    HAS been renamed at that point, and answering with an error would tell the
+    reader the opposite of what is true. They are reported instead.
+    """
+    try:
+        agent = OwnerClient().rename(label, body.new_label)
+    except OwnerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OwnerClientError as exc:
+        # A refusal — not held, name taken, nameless. 409, like every other
+        # owner refusal on this surface; the message is the owner's own.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    new_label = str(agent.get("label") or body.new_label)
+    carried: Dict[str, Any] = {"record": 0, "docked": 0, "splits": 0}
+    session_id, project = None, None
+    try:
+        pid = agent.get("pid")
+        found = discover_agent(int(pid)) if pid else None
+        if found is not None:
+            session_id, project = found.session_id, found.project_name
+    except Exception as exc:                       # never fail a done rename
+        logger.warning("fleet api: rename %s -> %s: cannot resolve the session (%s)",
+                       label, new_label, type(exc).__name__)
+
+    if session_id:
+        try:
+            carried["record"] = roster.relabel(str(session_id), new_label, project=project)
+        except Exception as exc:
+            logger.warning("fleet api: rename %s -> %s: the record was not updated (%s)",
+                           label, new_label, type(exc).__name__)
+    else:
+        logger.warning(
+            "fleet api: rename %s -> %s: no session id, so the record keeps the old name "
+            "and a restore would bring it back under it", label, new_label,
+        )
+
+    try:
+        carried.update(fleet_layout.relabel_dock("agent", label, new_label))
+    except Exception as exc:
+        logger.warning("fleet api: rename %s -> %s: the layout was not updated (%s)",
+                       label, new_label, type(exc).__name__)
+
+    logger.info("fleet api: renamed agent %s to %s (pid %s); carried %s",
+                label, new_label, agent.get("pid"), carried)
+    return {"agent": agent, "renamed_from": label, "carried": carried}
+
+
 @router.get("/api/fleet/layout")
 def fleet_get_layout() -> Dict[str, Any]:
     """The stored arrangement, JOINED to what discovery actually found.
