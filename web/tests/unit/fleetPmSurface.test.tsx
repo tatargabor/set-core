@@ -117,6 +117,11 @@ describe('the announced switch', () => {
     const { container } = render(<FleetPm onPresent={() => {}} onExit={() => {}} lastInputAt={null} />)
     await waitFor(() => expect(container.querySelector('[data-fleet-pm-countdown]')).toBeTruthy())
     expect(screen.getByText('beta')).toBeTruthy()
+    // BOTH names. The project answers *where* and the label answers *which
+    // one* — and the label is the identity the tab, the dock and the terminal
+    // are all keyed by, so a card naming only the project sends the reader to
+    // a project to go looking.
+    expect(screen.getByText('a2')).toBeTruthy()
     expect(screen.getByText(/type or click anything to stay/)).toBeTruthy()
   })
 

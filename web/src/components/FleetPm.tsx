@@ -263,63 +263,114 @@ export default function FleetPm({ onPresent, onExit, lastInputAt }: {
         </div>
       )}
 
+      {/*
+        The announced switch, IN THE MIDDLE OF THE SCREEN — moved there
+        2026-08-21: *"a csík a képernyő közepén kellene legyen, én nem láttam
+        még"*.
+
+        It lived in this strip, at the top of the window, as one line of small
+        text and a 4 px bar. That is where the PM controls are, so it looked
+        like the right place — and it is the wrong one for the same reason the
+        bar exists at all: the reader is looking at the AGENT, in the middle of
+        the screen, and a warning at the edge of the field of view is a warning
+        nobody sees. The user had never once seen it.
+
+        So it is placed over what is being looked at, and only while it is
+        running: it appears for the announced seconds and leaves. Nothing about
+        the screen underneath changes, and `pointer-events-none` on the backdrop
+        means a click aimed past it lands where it was aimed — which is also
+        what cancels the switch, since the panel counts a press as the reader
+        being here.
+
+        ⚠ It COVERS things while it is up, which `ui-quality.md` says a compact
+        layout may never do to a failure. The reason it is allowed: this is not
+        compaction, it is a five-second announcement of something that will
+        take the whole screen anyway, and the thing it covers is exactly what
+        the reader is about to lose. It is also the only element on this screen
+        that gets to sit in the middle — if a second one is ever added, this
+        argument stops working for both.
+      */}
       {pending && countdownLeft !== null && (
-        <div data-fleet-pm-countdown={pending.pid}>
-          <div className="flex items-center gap-2 px-4 md:px-6 pb-1 text-xs text-sky-300">
-            <span>
-              switching to <span className="font-semibold">{pending.project}</span>
-              {' / '}{pending.label ?? pending.pid} in{' '}
-              <span className="tabular-nums">{Math.ceil(countdownLeft / 1000)}s</span>
-            </span>
-            <span className="text-fg-ghost">— type or click anything to stay</span>
-            <button
-              onClick={() => { countdownFor.current = null; setCountdownLeft(null); void post(`/refuse/${pending.pid}`) }}
-              data-fleet-pm-refuse={pending.pid}
-              className="ml-auto text-fg-muted hover:text-fg-strong"
-            >
-              stay here
-            </button>
-          </div>
-          {/*
-            The bar that runs out — asked for 2026-08-21: *"csak kell bele a
-            csík ami megy vissza"*.
-
-            The seconds were already there, and a number is not the same signal:
-            it has to be READ, once per second, while the reader is looking at
-            the agent below rather than at this strip. A shrinking bar is
-            peripheral — it says "something is about to take the screen" without
-            being read at all, which is the whole point of a warning you are not
-            looking at.
-
-            It is not a decoration on top of the number: the number stays,
-            because a bar cannot say HOW long, and "about to happen" and "three
-            seconds" are different facts. Same rule as everywhere on this
-            screen — one visual weight per meaning.
-
-            Driven off the SAME `countdownLeft` the switch fires on, so the bar
-            cannot show time the timer does not have. A second source (a CSS
-            animation with its own duration) would be a copy of the deadline,
-            and it would drift exactly when a keystroke cancels the switch —
-            the bar would keep running down toward a switch nobody is going to
-            make.
-          */}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+          data-fleet-pm-countdown={pending.pid}
+        >
           <div
-            /* `h-1`, not `h-0.5`. Measured in the browser at 1516 px: the
-               half-height bar rendered 2 CSS px and was invisible in a
-               screenshot of the whole screen — legible only zoomed in, which is
-               the opposite of a signal you are not looking at. */
-            className="mx-4 md:mx-6 mb-1.5 h-1 bg-sky-400/15 rounded-full overflow-hidden"
-            role="progressbar"
-            aria-label="time left before the screen switches"
-            aria-valuemin={0}
-            aria-valuemax={Math.round(COUNTDOWN_MS / 1000)}
-            aria-valuenow={Math.ceil(countdownLeft / 1000)}
-            data-fleet-pm-countdown-bar={Math.max(0, Math.round((countdownLeft / COUNTDOWN_MS) * 100))}
+            /* The card itself takes the pointer, so the "stay here" button is
+               clickable — and a press anywhere on it means the same thing as a
+               press anywhere else on the panel: the reader is here. */
+            className="pointer-events-auto rounded-lg border border-sky-400/50 bg-surface-raised/95 shadow-xl px-5 py-4 w-[22rem] max-w-[90vw] backdrop-blur-sm"
+            onPointerDown={() => { countdownFor.current = null; setCountdownLeft(null); void post(`/refuse/${pending.pid}`) }}
           >
-            <div
-              className="h-full bg-sky-400 transition-[width] duration-200 ease-linear"
-              style={{ width: `${Math.max(0, Math.min(100, (countdownLeft / COUNTDOWN_MS) * 100))}%` }}
-            />
+            {/*
+              BOTH names, and the agent's is the loud one — asked for
+              2026-08-21: *"ne csak a projektet írja ki hova vált hanem az agent
+              nevét is"*.
+
+              The agent's label was already here and it was `text-xs
+              text-fg-muted` under a semibold project, so it read as a caption
+              on the project rather than as the thing being switched to — the
+              reader saw a project name and nothing else. The project answers
+              *where*, the label answers *which one*, and the second is the
+              identity everything else on this screen is keyed by (the tab, the
+              dock, the terminal). It gets the weight.
+
+              `label ?? pid` because an agent the framework holds no terminal
+              for has no label, and a blank line where a name belongs reads as
+              a missing agent rather than as an unnamed one.
+            */}
+            <div className="text-xs text-fg-muted">
+              switching to <span className="text-fg-strong">{pending.project}</span>
+            </div>
+            <div className="text-base font-semibold text-sky-300 truncate" title={String(pending.label ?? pending.pid)}>
+              {pending.label ?? `pid ${pending.pid}`}
+            </div>
+            <div className="mt-3 flex items-end gap-3">
+              {/* The number stays with the bar, and it is the big thing now:
+                  a bar says "soon", only a number says HOW soon. One visual
+                  weight per meaning — the seconds are the fact, the bar is
+                  the movement. */}
+              <span className="text-3xl leading-none tabular-nums text-sky-300">
+                {Math.ceil(countdownLeft / 1000)}<span className="text-base">s</span>
+              </span>
+              <div className="flex-1 pb-1">
+                {/*
+                  The bar that runs out — asked for 2026-08-21: *"csak kell bele
+                  a csík ami megy vissza"*.
+
+                  Driven off the SAME `countdownLeft` the switch fires on, so it
+                  cannot show time the timer does not have. A second source (a
+                  CSS animation with its own duration) would be a copy of the
+                  deadline, and it would drift exactly when a keystroke cancels
+                  the switch — the bar would keep running down toward a switch
+                  nobody is going to make.
+                */}
+                <div
+                  className="h-1.5 bg-sky-400/20 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-label="time left before the screen switches"
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round(COUNTDOWN_MS / 1000)}
+                  aria-valuenow={Math.ceil(countdownLeft / 1000)}
+                  data-fleet-pm-countdown-bar={Math.max(0, Math.round((countdownLeft / COUNTDOWN_MS) * 100))}
+                >
+                  <div
+                    className="h-full bg-sky-400 transition-[width] duration-200 ease-linear"
+                    style={{ width: `${Math.max(0, Math.min(100, (countdownLeft / COUNTDOWN_MS) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-fg-ghost">type or click anything to stay</span>
+              <button
+                onClick={() => { countdownFor.current = null; setCountdownLeft(null); void post(`/refuse/${pending.pid}`) }}
+                data-fleet-pm-refuse={pending.pid}
+                className="ml-auto text-xs text-fg-muted hover:text-fg-strong border border-surface-line rounded px-2 py-1"
+              >
+                stay here
+              </button>
+            </div>
           </div>
         </div>
       )}
