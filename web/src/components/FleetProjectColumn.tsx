@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
-import { Archive, Bot, Clock, TriangleAlert } from 'lucide-react'
+import { Archive, Bot, Clock, History, TriangleAlert } from 'lucide-react'
 
 import { age, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
@@ -427,6 +427,30 @@ function ProjectFacts({ project }: { project: FleetProject | undefined }) {
 // One project
 // --------------------------------------------------------------------------- //
 
+/**
+ * How many agents each project has RECORDED but is not running — task 7.1c.
+ *
+ * A context rather than a prop because `ProjectRow` has three call sites and
+ * this is one fact for the whole column; threading it through each would make
+ * three copies of one lookup, and the copy nobody maintains is the one that
+ * drifts.
+ *
+ * It is an INDICATOR, never a control. The row already carries a name, counts,
+ * an agent count, a conflict marker, an archived marker, a `⋯` menu and
+ * `ProjectFacts`; a seventh control there breaks the density rule the whole
+ * screen is held to. Clicking the row still selects the project, and the act
+ * itself lives in the project header and on the empty screen.
+ *
+ * And deliberately NOT in the `⋯` menu: that menu is about ARRANGEMENT — group,
+ * park — and a menu that has only ever rearranged things must not start
+ * processes.
+ */
+const RosterCounts = createContext<Map<string, number>>(new Map())
+
+function useRosterCount(project: string): number {
+  return useContext(RosterCounts).get(project) ?? 0
+}
+
 interface RowProps {
   name: string
   project: FleetProject | undefined
@@ -446,6 +470,27 @@ interface RowProps {
   currentGroupId: string | null
   parked: boolean
   onAssign: (target: Target) => void
+}
+
+/**
+ * "There is more recorded here than is running." A count and nothing else.
+ *
+ * Shown only when the roster holds MORE than are running, because that gap is
+ * the whole information: with everything already up there is nothing to bring
+ * back, and a badge saying so would be noise on every row.
+ */
+function RosterMark({ project, running }: { project: string; running: number }) {
+  const recorded = useRosterCount(project)
+  if (recorded <= running) return null
+  return (
+    <span
+      data-fleet-roster-recorded={recorded}
+      className="inline-flex items-center gap-1 text-fg-ghost text-xs tabular-nums"
+      title={`${recorded} agent(s) recorded here, ${running} running. Open the project to restore them.`}
+    >
+      <History size={11} strokeWidth={1.75} />{recorded}
+    </span>
+  )
 }
 
 function ProjectRow(p: RowProps) {
@@ -527,6 +572,7 @@ function ProjectRow(p: RowProps) {
                 <TriangleAlert size={11} strokeWidth={1.75} />{t.conflicts}
               </span>
             )}
+            <RosterMark project={p.name} running={t.agents} />
             {p.project?.archived && (
               <span className="inline-flex items-center gap-1 text-fg-ghost text-xs" title="archived project">
                 <Archive size={11} strokeWidth={1.75} />archived
@@ -814,6 +860,30 @@ export default function FleetProjectColumn({
   useEffect(() => { void loadLayout() }, [loadLayout])
 
   /**
+   * How many agents each project has RECORDED — asked once for the column.
+   *
+   * Failure is an empty map, not an error banner: a roster that cannot be read
+   * costs an indicator, and an indicator is not worth breaking the column the
+   * user arranges. The absence shows as no badge, which is the same thing a
+   * project with nothing recorded shows — acceptable here precisely because
+   * this is an indicator and not a claim about state.
+   */
+  const [rosterCounts, setRosterCounts] = useState<Map<string, number>>(() => new Map())
+  useEffect(() => {
+    let live = true
+    Promise.resolve()
+      .then(() => fetch('/api/fleet/roster'))
+      .then(r => (r && r.ok ? r.json() : null))
+      .then(body => {
+        if (!live || !body?.projects) return
+        setRosterCounts(new Map(body.projects.map(
+          (p: { project: string; entries: number }) => [p.project, p.entries])))
+      })
+      .catch(() => { /* an indicator is not worth a banner */ })
+    return () => { live = false }
+  }, [data.agents])
+
+  /**
    * Save the whole arrangement, optimistically, and REFUSE to swallow a 409.
    *
    * Two open dashboard tabs are ordinary, and the loser of a silent race would
@@ -974,6 +1044,7 @@ export default function FleetProjectColumn({
   const parkedFound = useMemo(() => new Set(view.parked), [view.parked])
 
   return (
+    <RosterCounts.Provider value={rosterCounts}>
     <div
       className="shrink-0 border-r border-surface-line flex flex-col min-h-0"
       // `w-72` was the fixed width before the divider existed; it survives as
@@ -1373,5 +1444,6 @@ export default function FleetProjectColumn({
         )}
       </div>
     </div>
+    </RosterCounts.Provider>
   )
 }

@@ -51,6 +51,7 @@ from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
 from ..fleet import roster
 from ..fleet import restore as fleet_restore
+from ..fleet.discovery import live_session_ids as fleet_live_session_ids
 from ..fleet.layout import LayoutConflict
 from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
@@ -796,7 +797,15 @@ def fleet_roster_projects() -> Dict[str, Any]:
     column offers nothing to click and a per-project read would need a name
     nobody can supply.
     """
-    return {"projects": roster.projects()}
+    live = fleet_live_session_ids()
+    listed = roster.projects()
+    for item in listed:
+        if live is None:
+            item["running"] = None
+            continue
+        entries = roster.read(item["project"])["entries"]
+        item["running"] = sum(1 for e in entries if e.get("session_id") in live)
+    return {"projects": listed, "liveness_known": live is not None}
 
 
 @router.get("/api/fleet/roster/{project}")
@@ -806,8 +815,25 @@ def fleet_roster(project: str) -> Dict[str, Any]:
     `record_exists` is carried rather than inferred from an empty list: "never
     recorded" and "recorded and empty" are different states, and the screen says
     different things about them.
+
+    **`running` is added HERE and not in `roster.read()`**, which deliberately
+    consults nothing a reboot destroys — that is the property the whole module
+    exists for. This layer may ask, and must: found by looking at the running
+    screen 2026-08-21, the control read "Restore 7 agents" for a project whose
+    seven sessions were all alive, so it promised an act that would have skipped
+    every one of them. Resumable is about the transcript; restorable is about
+    the transcript AND nobody being on it.
+
+    `liveness_known` is false when it could not be asked, and then `running` is
+    `None` on every entry rather than `False` — a gap is not a zero, and a zero
+    here is the number the surface would subtract.
     """
-    return roster.read(project)
+    answer = roster.read(project)
+    live = fleet_live_session_ids()
+    for entry in answer["entries"]:
+        entry["running"] = None if live is None else (entry.get("session_id") in live)
+    answer["liveness_known"] = live is not None
+    return answer
 
 
 @router.post("/api/fleet/roster/{project}/restore")

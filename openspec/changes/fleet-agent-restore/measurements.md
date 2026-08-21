@@ -159,3 +159,73 @@ skips a session that is already live, so `running` is the count restore will
 
 `running` prints `?` and a NOTE when liveness could not be determined, never a
 zero — a gap is not a zero, and zero is the number a reader would act on.
+
+## M8 — the defect the browser found, and no test could have (task 8.5)
+
+**The control read `Restore 7 agents` for a project whose seven sessions were all
+alive.** Restore skips a live session — that is the guard the whole module is
+built around — so the button promised an act that would have skipped every one
+of them. 772 web tests and the full Python suite were green.
+
+Nothing in the mechanism was wrong. `resumable` is about the TRANSCRIPT, and all
+seven had one. What the button needed is a different question: *is there a
+transcript AND is nobody on it*. The two coincide on a rebooted machine, which is
+the only state the tests simulated, and diverge on every other.
+
+Fixed at the source. `roster.read()` still consults nothing a reboot destroys —
+that property is the point of the module — so `running` is added in the ROUTE,
+which may ask. `null` when liveness could not be determined, never `false`,
+because that count is SUBTRACTED from what the button offers and an unmeasured
+zero would overstate the act.
+
+The screen now says, verbatim from the running dashboard:
+
+```
+All 7 already running                                    (text, no button)
+Restore 4 of 7 — 2 already running, 1 cannot be resumed  (button, active)
+```
+
+## M9 — a LIVE restore against 7 running sessions (2026-08-21)
+
+Clicked for real, on the running dashboard, against the real owner. Seven live
+sessions — including this conversation's own,
+`0b7772e4-1db9-4065-a951-0b21eeece85b`:
+
+```
+None of the 7 started — see the reason on each.
+set-core-34 — skipped — session 039178b5-… is bound to a live process; left
+              alone — a resume against a live session forks its conversation silently
+… (7 of these)
+```
+
+Server log: `fleet restore: set-core — 0 started, 7 skipped, 0 failed of 7 attempted`.
+After the click: **26 claude processes, owner holding 25, uptime 61.4 h unchanged.**
+Nothing was started, nothing was stopped, no conversation was forked.
+
+The result marker in the DOM is `partial`, not `complete`, and the unfinished
+count is `7`. This is the property the whole surface is built to hold: a restore
+where nothing started must not render as a success.
+
+## M10 — regression, against a properly isolated baseline
+
+`git worktree add --detach`, `PYTHONPATH` at all three source roots, and the
+session-end leak assertion from CLAUDE.md:
+
+| | failure entries | leaks |
+|---|---|---|
+| baseline (`/tmp/wbase`, HEAD) | 108 | 0 |
+| working tree | 107 | 0 |
+
+The single difference is a baseline-only failure (`test_paths.py::
+TestResolveProjectName::test_resolve_with_explicit_path`, cwd-sensitive and run
+from `/tmp/wbase`). **No new failure.** Web: baseline 741 passed, working tree
+**785 passed**, zero failed.
+
+⚠ **And the first attempt at this measurement was itself wrong**, which is the
+half worth keeping. The background task's captured output held only the `tail -3`
+my own command printed, so `grep '^FAILED'` found 2 lines in each file, the diff
+of two 0-line sets came back empty, and it printed **"IDENTIKUS HALMAZ"** — a
+clean bill of health derived from comparing nothing with nothing. The tell was
+that the summary line said 83 failures while the extraction found 2. Same class
+as the zero with an empty breakdown: when a count and its own listing disagree,
+the SHAPE of the input is what to inspect, not the conclusion.

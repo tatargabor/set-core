@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
  */
 
 import FleetProjectColumn from '../components/FleetProjectColumn'
+import { RestoreFromEmpty, RestoreForProject } from '../components/FleetRestore'
 import FleetPm from '../components/FleetPm'
 import FleetSplitter from '../components/FleetSplitter'
 import {
@@ -1274,6 +1275,13 @@ function AnsweredEmpty({ at, projects }: { at: number | null; projects: number }
         Measured at {at ? new Date(at).toLocaleTimeString() : '—'}, over {projects} known projects.
         This is a result, not a screen still loading.
       </p>
+      {/* The PRIMARY placement of restore, and deliberately not the obvious one.
+          After a reboot no project holds an agent, so the column offers nothing
+          to click — a per-project control alone would be unreachable in exactly
+          the state this feature exists for. It renders nothing when the roster
+          is empty, so a machine that has never recorded anything sees the panel
+          it saw before. */}
+      <RestoreFromEmpty />
     </div>
   )
 }
@@ -2112,6 +2120,10 @@ export default function Fleet() {
                   project={active}
                   onStarted={label => { toggleTerminal(active.name, label, true); load() }}
                 />
+                {/* The per-project act, beside the one that starts a NEW agent —
+                    two different things, so two controls rather than a mode on
+                    one. It renders nothing when this project has no record. */}
+                <RestoreForProject project={active.name} onRestored={load} />
                 {/* Task 7.13 — the orphaned waiters live next to the offer that
                     would otherwise add to the pile: an instruction reporting
                     `waiters_here: 0` invites installing one. Only orphans are
