@@ -1,31 +1,31 @@
 ## 1. The roster module — a durable record keyed on session identity
 
-- [ ] 1.1 Create `lib/set_orch/fleet/roster.py` with `default_roster_path()` resolving `$XDG_DATA_HOME/set-core/fleet-roster.json` (fallback `~/.local/share`), mirroring `layout.default_layout_path()`, and module logging per the code-quality rule [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
-- [ ] 1.2 Define the document shape — project → session id → `{label, cwd, kind, first_seen, last_seen}` — and an `EMPTY` constant, with a normaliser that survives an unknown or malformed entry rather than raising [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
-- [ ] 1.3 `record(agents, path=…)`: upsert one entry per interactive agent, keyed on **session id**, advancing `last_seen` and leaving `first_seen` alone on a repeat sighting; never write two entries for one session id [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
-- [ ] 1.4 Record an agent that has no session id as an entry whose session id is explicitly absent (a stated absence, not a dropped row), and give it a stable synthetic key that cannot collide with a real session id [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
-- [ ] 1.5 Skip `kind == "oneshot"` entirely — CB-8: those are the framework's own `-p` subprocesses, not sessions anyone is sitting at [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
-- [ ] 1.6 Write atomically (`tempfile` + `os.replace` in the same directory), as `layout.py` does; no conflict/version guard (design D9) [REQ: the-record-survives-the-loss-of-every-live-process]
-- [ ] 1.7 Assert the record carries identity only: no transcript content, no message text, no tool output — enumerated fields, and anything else dropped by the normaliser rather than passed through [REQ: the-record-carries-identity-only]
+- [x] 1.1 Create `lib/set_orch/fleet/roster.py` with `default_roster_path()` resolving `$XDG_DATA_HOME/set-core/fleet-roster.json` (fallback `~/.local/share`), mirroring `layout.default_layout_path()`, and module logging per the code-quality rule [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
+- [x] 1.2 Define the document shape — project → session id → `{label, cwd, kind, first_seen, last_seen}` — and an `EMPTY` constant, with a normaliser that survives an unknown or malformed entry rather than raising [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
+- [x] 1.3 `record(agents, path=…)`: upsert one entry per interactive agent, keyed on **session id**, advancing `last_seen` and leaving `first_seen` alone on a repeat sighting; never write two entries for one session id [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
+- [x] 1.4 Record an agent that has no session id as an entry whose session id is explicitly absent (a stated absence, not a dropped row), and give it a stable synthetic key that cannot collide with a real session id [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
+- [x] 1.5 Skip `kind == "oneshot"` entirely — CB-8: those are the framework's own `-p` subprocesses, not sessions anyone is sitting at [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
+- [x] 1.6 Write atomically (`tempfile` + `os.replace` in the same directory), as `layout.py` does; no conflict/version guard (design D9) [REQ: the-record-survives-the-loss-of-every-live-process]
+- [x] 1.7 Assert the record carries identity only: no transcript content, no message text, no tool output — enumerated fields, and anything else dropped by the normaliser rather than passed through [REQ: the-record-carries-identity-only]
 
 ## 2. Reading the roster back — the reboot case
 
-- [ ] 2.1 `read(project, path=…)` returning every stored entry, consulting NO live state: not `/proc`, not `~/.claude/sessions`, nothing a reboot destroys [REQ: the-record-survives-the-loss-of-every-live-process]
-- [ ] 2.2 A project with no record returns an empty entry list plus an explicit "no record exists" flag — an absent key is not an empty value [REQ: the-record-survives-the-loss-of-every-live-process]
-- [ ] 2.3 Compute `resumable` **at read time** via `discovery._session_log_for()` (design D4) — never store the boolean, and reuse that resolver rather than writing a second transcript lookup [REQ: each-entry-states-whether-it-is-resumable-right-now]
-- [ ] 2.4 Return an unresumable entry with `resumable: false` and a reason naming the missing transcript — it must NOT be filtered out (false-absence class) [REQ: each-entry-states-whether-it-is-resumable-right-now]
-- [ ] 2.5 An unparseable record file reports "unreadable" and is replaced on the next write, rather than raising [REQ: recording-never-breaks-discovery]
+- [x] 2.1 `read(project, path=…)` returning every stored entry, consulting NO live state: not `/proc`, not `~/.claude/sessions`, nothing a reboot destroys [REQ: the-record-survives-the-loss-of-every-live-process]
+- [x] 2.2 A project with no record returns an empty entry list plus an explicit "no record exists" flag — an absent key is not an empty value [REQ: the-record-survives-the-loss-of-every-live-process]
+- [x] 2.3 Compute `resumable` **at read time** via `discovery._session_log_for()` (design D4) — never store the boolean, and reuse that resolver rather than writing a second transcript lookup [REQ: each-entry-states-whether-it-is-resumable-right-now]
+- [x] 2.4 Return an unresumable entry with `resumable: false` and a reason naming the missing transcript — it must NOT be filtered out (false-absence class) [REQ: each-entry-states-whether-it-is-resumable-right-now]
+- [x] 2.5 An unparseable record file reports "unreadable" and is replaced on the next write, rather than raising [REQ: recording-never-breaks-discovery]
 
 ## 3. Forgetting and retention
 
-- [ ] 3.1 `forget(project, key)` removing one named entry and leaving the rest untouched [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded]
-- [ ] 3.2 Prune on write any entry whose `last_seen` is older than the retention bound (one named constant, default 30 days), logging session id and age — pruning is reported, never silent [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded]
+- [x] 3.1 `forget(project, key)` removing one named entry and leaving the rest untouched [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded]
+- [x] 3.2 Prune on write any entry whose `last_seen` is older than the retention bound (one named constant, default 30 days), logging session id and age — pruning is reported, never silent [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded]
 
 ## 4. Wiring the write into discovery's caller — without giving a query a side effect
 
-- [ ] 4.1 Call `roster.record()` from the API call site that already holds a full discovery answer (`api/fleet.py`), NOT from inside `discovery.py`; discovery's signature and return value stay unchanged (design D2) [REQ: recording-never-breaks-discovery]
-- [ ] 4.2 Swallow a write failure with respect to discovery's answer: log at WARNING with the failure named, return the normal agent list [REQ: recording-never-breaks-discovery]
-- [ ] 4.3 Test: with the store unwritable, `GET /api/fleet/agents` returns exactly what it returns with a writable store — assert equality of the answers, not merely a 200 [REQ: recording-never-breaks-discovery]
+- [x] 4.1 Call `roster.record()` from the API call site that already holds a full discovery answer (`api/fleet.py`), NOT from inside `discovery.py`; discovery's signature and return value stay unchanged (design D2) [REQ: recording-never-breaks-discovery]
+- [x] 4.2 Swallow a write failure with respect to discovery's answer: log at WARNING with the failure named, return the normal agent list [REQ: recording-never-breaks-discovery]
+- [x] 4.3 Test: with the store unwritable, `GET /api/fleet/agents` returns exactly what it returns with a writable store — assert equality of the answers, not merely a 200 [REQ: recording-never-breaks-discovery]
 
 ## 5. The restore module — per-entry decisions, outside the owner service
 
@@ -66,25 +66,27 @@
 - [ ] 8.3 Test the reboot case with no live state at all: a roster on disk, nothing in `/proc`, no session records — the read must still return every entry [REQ: the-record-survives-the-loss-of-every-live-process]
 - [ ] 8.4 Confidentiality test: record an entry for a session whose transcript contains message text, then grep the stored file for that text — it must not appear [REQ: the-record-carries-identity-only]
 - [ ] 8.5 **Look at the screen in a browser** (Claude in Chrome against the running dashboard): open a project with a roster, read what the restore control says, take the act on a snapshot with at least one unresumable entry, and report what is actually visible. If the browser cannot be reached, this task stays OPEN and is stated as open in the commit and to the user [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 8.7 **Reboot-faithful verification against this machine's REAL roster**, not a fixture: record the live agents, then read the roster back in a process that can see neither `/proc` nor the runtime's session-record directory, and compare the entry set to what was recorded. A synthetic fixture cannot catch a field that only real discovery produces [REQ: the-record-survives-the-loss-of-every-live-process]
+- [ ] 8.8 **A check to run after an ACTUAL reboot** — `set-fleet-roster --verify` (or equivalent) printing, per project, how many entries the roster holds, how many are resumable right now, and the newest `last_seen`. This is the only evidence that survives the one event nobody can arrange to be present for; a simulation is a model of a reboot, not a reboot [REQ: the-record-survives-the-loss-of-every-live-process]
 - [ ] 8.6 Regression check against a properly isolated baseline (`git worktree add --detach`, `PYTHONPATH` at the worktree's three source roots, session-end leak assertion) — a set diff of failures, never a count comparison [REQ: recording-never-breaks-discovery]
 
 ## Acceptance Criteria (from spec scenarios)
 
 ### agent-fleet-snapshot
 
-- [ ] AC-1: WHEN discovery reports an interactive agent with session id S, label L and cwd C THEN the project's record contains an entry keyed S carrying L, C, its kind, a first-seen time and a last-seen time [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: a-discovered-agent-is-recorded]
-- [ ] AC-2: WHEN discovery reports session id S again later, possibly under a different pid THEN last-seen advances, first-seen is unchanged, and exactly one entry for S exists [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: seeing-the-same-session-again-updates-last-seen-and-never-duplicates]
-- [ ] AC-3: WHEN discovery reports an interactive agent with no session id THEN an entry exists whose session id is explicitly absent, and it is not silently dropped [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: an-agent-without-a-session-id-is-recorded-as-such]
-- [ ] AC-4: WHEN discovery reports an agent whose kind is oneshot THEN no entry is written for it [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: one-shot-subprocesses-are-not-recorded]
-- [ ] AC-5: WHEN the record holds entries and none of the recorded pids or session records exist any more THEN reading the project's record returns every entry it held, unchanged [REQ: the-record-survives-the-loss-of-every-live-process, scenario: the-record-is-readable-after-every-process-is-gone]
-- [ ] AC-6: WHEN a project has no record file THEN reading it returns an empty entry list and reports that no record exists, rather than raising [REQ: the-record-survives-the-loss-of-every-live-process, scenario: a-project-never-seen-has-an-empty-record-not-an-error]
-- [ ] AC-7: WHEN an entry's session has a transcript on disk THEN the entry is reported with resumable true [REQ: each-entry-states-whether-it-is-resumable-right-now, scenario: a-resumable-entry-is-reported-as-resumable]
-- [ ] AC-8: WHEN an entry's session has no transcript on disk THEN the entry is still returned, with resumable false and a reason naming the missing transcript [REQ: each-entry-states-whether-it-is-resumable-right-now, scenario: an-entry-whose-transcript-is-gone-is-kept-and-marked]
-- [ ] AC-9: WHEN an entry is written for a session whose transcript contains message text THEN the stored entry contains none of that text, and its fields are limited to identity and timestamps [REQ: the-record-carries-identity-only, scenario: no-content-is-written]
-- [ ] AC-10: WHEN the record cannot be written THEN discovery returns its normal answer and a warning naming the failure is logged [REQ: recording-never-breaks-discovery, scenario: an-unwritable-store-leaves-discovery-intact]
-- [ ] AC-11: WHEN the existing record file cannot be parsed THEN reading reports it unreadable and writing replaces it rather than raising [REQ: recording-never-breaks-discovery, scenario: a-corrupt-record-file-is-not-fatal]
-- [ ] AC-12: WHEN removal is requested for session id S on a project THEN S is absent afterwards and the remaining entries are unchanged [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded, scenario: a-named-entry-is-removed]
-- [ ] AC-13: WHEN the record is written and an entry's last-seen is older than the retention bound THEN that entry is removed and the removal is logged with the session id and its age [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded, scenario: an-entry-unseen-beyond-the-retention-bound-is-pruned]
+- [x] AC-1: WHEN discovery reports an interactive agent with session id S, label L and cwd C THEN the project's record contains an entry keyed S carrying L, C, its kind, a first-seen time and a last-seen time [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: a-discovered-agent-is-recorded]
+- [x] AC-2: WHEN discovery reports session id S again later, possibly under a different pid THEN last-seen advances, first-seen is unchanged, and exactly one entry for S exists [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: seeing-the-same-session-again-updates-last-seen-and-never-duplicates]
+- [x] AC-3: WHEN discovery reports an interactive agent with no session id THEN an entry exists whose session id is explicitly absent, and it is not silently dropped [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: an-agent-without-a-session-id-is-recorded-as-such]
+- [x] AC-4: WHEN discovery reports an agent whose kind is oneshot THEN no entry is written for it [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: one-shot-subprocesses-are-not-recorded]
+- [x] AC-5: WHEN the record holds entries and none of the recorded pids or session records exist any more THEN reading the project's record returns every entry it held, unchanged [REQ: the-record-survives-the-loss-of-every-live-process, scenario: the-record-is-readable-after-every-process-is-gone]
+- [x] AC-6: WHEN a project has no record file THEN reading it returns an empty entry list and reports that no record exists, rather than raising [REQ: the-record-survives-the-loss-of-every-live-process, scenario: a-project-never-seen-has-an-empty-record-not-an-error]
+- [x] AC-7: WHEN an entry's session has a transcript on disk THEN the entry is reported with resumable true [REQ: each-entry-states-whether-it-is-resumable-right-now, scenario: a-resumable-entry-is-reported-as-resumable]
+- [x] AC-8: WHEN an entry's session has no transcript on disk THEN the entry is still returned, with resumable false and a reason naming the missing transcript [REQ: each-entry-states-whether-it-is-resumable-right-now, scenario: an-entry-whose-transcript-is-gone-is-kept-and-marked]
+- [x] AC-9: WHEN an entry is written for a session whose transcript contains message text THEN the stored entry contains none of that text, and its fields are limited to identity and timestamps [REQ: the-record-carries-identity-only, scenario: no-content-is-written]
+- [x] AC-10: WHEN the record cannot be written THEN discovery returns its normal answer and a warning naming the failure is logged [REQ: recording-never-breaks-discovery, scenario: an-unwritable-store-leaves-discovery-intact]
+- [x] AC-11: WHEN the existing record file cannot be parsed THEN reading reports it unreadable and writing replaces it rather than raising [REQ: recording-never-breaks-discovery, scenario: a-corrupt-record-file-is-not-fatal]
+- [x] AC-12: WHEN removal is requested for session id S on a project THEN S is absent afterwards and the remaining entries are unchanged [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded, scenario: a-named-entry-is-removed]
+- [x] AC-13: WHEN the record is written and an entry's last-seen is older than the retention bound THEN that entry is removed and the removal is logged with the session id and its age [REQ: an-entry-can-be-forgotten-and-stale-entries-are-bounded, scenario: an-entry-unseen-beyond-the-retention-bound-is-pruned]
 
 ### agent-fleet-restore
 

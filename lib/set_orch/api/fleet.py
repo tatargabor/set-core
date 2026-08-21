@@ -49,6 +49,7 @@ from ..fleet import purpose as fleet_purpose
 from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet import layout as fleet_layout
+from ..fleet import roster
 from ..fleet.layout import LayoutConflict
 from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
@@ -336,6 +337,26 @@ def _state_tally(states: Dict[Any, Any]) -> Dict[str, int]:
     return counts
 
 
+def _record_roster(agents) -> None:
+    """Write what discovery just saw into the durable roster.
+
+    **Here rather than inside `discovery`,** which is a read of process state:
+    making it write to disk would give a query a side effect and fire on every
+    internal call, tests included. This route is the one place a full discovery
+    answer already exists per request.
+
+    **And the failure is swallowed with respect to discovery's answer.** The
+    screen must not go blank because a record could not be saved — a roster is
+    for the next boot, the agent list is for now, and the second must not be
+    lost to protect the first. `roster.record` raises on purpose so this
+    decision lives at the call site rather than being made for every caller.
+    """
+    try:
+        roster.record(agents)
+    except Exception as exc:
+        logger.warning("fleet api: roster not recorded (%s); the agent list is unaffected", exc)
+
+
 @router.get("/api/fleet/agents")
 def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     """Every live agent session, grouped by project.
@@ -354,6 +375,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     agents = discover_agents(include_oneshot=include_oneshot)
     projects = discover_projects(agents, registered=registered,
                                  messaging=_safe_messaging())
+    _record_roster(agents)
 
     states = {agent.pid: read_state(agent.session_log, record=agent.record) for agent in agents}
     by_pid = {agent.pid: agent for agent in agents}
