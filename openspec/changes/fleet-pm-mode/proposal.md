@@ -46,7 +46,7 @@ paid for more than once. A model reads it.
 
 **Not in this change:** any notification outside the fleet screen; answering an agent the fleet
 holds no terminal for beyond the existing instruct box (2 of 18 today); the work-cycle engine's
-`NEEDS_INPUT` questions, which have their own contract in `work-cycle-question-contract` and can
+`NEEDS_INPUT` questions, which have their own contract in `work-cycle-question-outbound` and can
 join this queue as a later feed; work awaiting a human with no agent on it (`awaiting`), which
 cannot be answered in a terminal and stays a separate entry point.
 

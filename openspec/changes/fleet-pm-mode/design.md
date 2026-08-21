@@ -37,7 +37,7 @@ The last row is the finding that reorders the work: a question tool sitting outs
 - Any new way of answering an agent. The existing terminal and instruct box are what exist.
 - Queueing work that has no agent on it (`awaiting`, measured at 3 with 46 projects unmeasured).
 - Consuming the work-cycle engine's `NEEDS_INPUT` envelope. It is a natural third feed and it has
-  its own change (`work-cycle-question-contract`); wiring it here would couple two unfinished things.
+  its own change (`work-cycle-question-outbound`); wiring it here would couple two unfinished things.
 
 ## Decisions
 
