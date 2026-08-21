@@ -19,6 +19,7 @@
 - [ ] 3.2 The old label stops resolving: terminal relay and stop under the old name no longer reach the agent [REQ: a-rename-carries-into-everything-that-addresses-the-agent-by-name]
 - [ ] 3.3 The rename updates the durable record's entry for that session, so a later restore brings it back under the new name [REQ: a-rename-carries-into-everything-that-addresses-the-agent-by-name]
 - [ ] 3.4 The rename updates `fleet-layout.json` docks that name the old label, under the same conflict-safe write the layout already uses [REQ: a-view-instance-can-be-docked-to-an-edge]
+- [ ] 3.4b The dock's stored WIDTH follows too: the divider key is `dock:<kind>:<label>` (`web/src/lib/fleetDocks.ts:63`), so a label change orphans the size as well as the placement. A rename that moves the panel but resets its width reads as the screen deciding — the exact thing that key was derived from identity to avoid. (Measured 2026-08-21: `splits` is currently empty, so nothing is lost today — which is why this would ship untested unless it is named.) [REQ: a-view-instance-can-be-docked-to-an-edge]
 - [ ] 3.5 Test the guard suite's route classification still holds for the new wildcard route (`{label}`), the way the roster route needed narrowing [REQ: a-rename-carries-into-everything-that-addresses-the-agent-by-name]
 
 ## 4. The record stores the name the framework holds
