@@ -268,6 +268,24 @@ class OwnerDaemon:
             self._subscribers.pop(label, None)
         logger.info("fleet owner: a viewer detached from %s (%d left)", label, len(watchers))
 
+    #: Every per-label store this daemon keeps. Named ONCE, so that a rename and
+    #: a forget cannot disagree about what "everything about this label" is —
+    #: and so that a store added later is a one-line change here rather than a
+    #: silent omission in two places. `_rekey` and the rename test both read it.
+    LABEL_KEYED = ("_tails", "_dropped", "_drained", "_subscribers")
+
+    def _rekey(self, label: str, new_label: str) -> None:
+        """Carry every per-label store from one name to the other.
+
+        The viewers move rather than being dropped: a rename must be invisible to
+        the process, and a browser whose terminal went silent because the name
+        changed underneath it would be exactly the opposite of invisible.
+        """
+        for name in self.LABEL_KEYED:
+            store = getattr(self, name)
+            if label in store:
+                store[new_label] = store.pop(label)
+
     def _forget(self, label: str) -> None:
         self._tails.pop(label, None)
         self._dropped.pop(label, None)
@@ -374,6 +392,23 @@ class OwnerDaemon:
         result = await asyncio.to_thread(self.owner.stop, label)
         self._forget(label)
         return result
+
+    async def _do_rename(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Rename a held agent. Nothing is stopped, started or resumed.
+
+        Not run on a thread: this touches dictionaries only, and the owner's map
+        must not be mutated from a thread while the loop reads it.
+        """
+        label = params["label"]
+        new_label = params["new_label"]
+        agent = self.owner.rename(label, new_label)
+        if agent.label != label:
+            self._rekey(label, agent.label)
+        return _agent_payload(
+            agent,
+            tail_len=len(self._tails.get(agent.label, b"")),
+            dropped=self._dropped.get(agent.label, False),
+        )
 
     async def _do_recover(self, params: Dict[str, Any]) -> Dict[str, Any]:
         agent = await asyncio.to_thread(

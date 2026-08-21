@@ -133,6 +133,10 @@ class OwnerClient:
     def stop(self, label: str) -> Dict[str, Any]:
         return self.request("stop", {"label": label})
 
+    def rename(self, label: str, new_label: str) -> Dict[str, Any]:
+        """Give a held agent another name. The agent keeps running."""
+        return self.request("rename", {"label": label, "new_label": new_label})
+
     def recover(
         self,
         *,

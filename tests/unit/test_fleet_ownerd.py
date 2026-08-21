@@ -794,3 +794,57 @@ def test_this_files_loop_runner_does_not_abandon_pending_tasks():
     _run(scenario())
     assert seen["task"].done(), "_run() closed the loop with a task still pending"
     assert seen.get("cancelled"), "the pending task was destroyed rather than cancelled"
+
+
+# --------------------------------------------------------------------------- #
+# rename — every per-label store moves, or the terminal goes silent
+# --------------------------------------------------------------------------- #
+
+class _RenamingOwner(_FakeOwner):
+    def rename(self, label, new_label):
+        agent = next(a for a in self.agents if a.label == label)
+        agent.label = new_label
+        return agent
+
+
+def test_a_rename_leaves_no_per_label_state_behind(tmp_path):
+    """Asserted against the THING, not against a list somebody maintains.
+
+    The daemon keeps four dictionaries keyed by label, and `LABEL_KEYED` names
+    them — which makes it a second copy that drifts the moment a fifth is added.
+    So this test does not read that tuple: it finds every dict on the daemon that
+    holds the old label, renames, and requires that none of them still does.
+    A store added later and forgotten in `_rekey` fails here.
+    """
+    agent = OwnedAgent(label="before", unit="set-agent-before.scope", pid=7, cwd="/tmp", master_fd=-1)
+    daemon = _daemon(tmp_path, owner=_RenamingOwner())
+    daemon.owner.agents.append(agent)
+    daemon._tails["before"] = bytearray(b"scrollback")
+    daemon._dropped["before"] = True
+    daemon._drained["before"] = 10
+    daemon._subscribers["before"] = ["a-viewer"]
+
+    before = [n for n, v in vars(daemon).items() if isinstance(v, dict) and "before" in v]
+    assert len(before) >= 4, f"the fixture must seed every per-label store; seeded {before}"
+
+    result = asyncio.run(daemon._do_rename({"label": "before", "new_label": "after"}))
+
+    assert result["label"] == "after"
+    left = [n for n, v in vars(daemon).items() if isinstance(v, dict) and "before" in v]
+    assert left == [], f"per-label state stranded under the old name: {left}"
+    assert bytes(daemon._tails["after"]) == b"scrollback", "the scrollback must survive a rename"
+    assert daemon._subscribers["after"] == ["a-viewer"], "a viewer must not be dropped by a rename"
+    assert daemon._drained["after"] == 10
+
+
+def test_a_rename_the_owner_refuses_comes_back_as_an_error_and_moves_nothing(tmp_path):
+    class _Refusing(_FakeOwner):
+        def rename(self, label, new_label):
+            raise OwnerError("taken")
+
+    daemon = _daemon(tmp_path, owner=_Refusing())
+    daemon._tails["before"] = bytearray(b"x")
+    response = asyncio.run(daemon.dispatch(Request(id=1, method="rename",
+                                                   params={"label": "before", "new_label": "after"})))
+    assert response.error is not None and "taken" in response.error
+    assert "before" in daemon._tails and "after" not in daemon._tails

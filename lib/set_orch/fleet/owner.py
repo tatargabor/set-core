@@ -234,7 +234,22 @@ class AgentOwner:
           route answers 404 rather than reporting a stop that stopped nothing.
         """
         agent = self._agents.get(label)
-        unit = agent.unit if agent else scopes.unit_name(label)
+        if agent is not None:
+            unit = agent.unit
+        else:
+            # Deriving is right for an ORPHAN — a scope this owner does not hold,
+            # whose unit was named from its label by whoever started it. It is
+            # wrong for a label that was RENAMED: the derived unit is then a live
+            # agent's unit, held here under a different name, and stopping it
+            # through the old name would make the old label addressable again
+            # through a back door the map has already closed.
+            unit = scopes.unit_name(label)
+            held = self._held_by_unit(unit)
+            if held is not None:
+                raise OwnerError(
+                    f"nothing is held under {label}; {unit} belongs to {held.label}. "
+                    "A renamed agent is reachable under its current name only"
+                )
 
         if agent is None and scopes.is_gone(unit):
             logger.info("fleet owner: nothing named %s is running; not reporting a stop", label)
@@ -249,6 +264,57 @@ class AgentOwner:
             "fleet owner: stopped %s (unit %s, %s, gone=%s)", label, unit, population, gone
         )
         return {"label": label, "unit": unit, "found": True, "gone": gone, "population": population}
+
+    def _held_by_unit(self, unit: str) -> Optional[OwnedAgent]:
+        """The agent this owner holds in `unit`, or None.
+
+        The map is keyed by LABEL, and after a rename a label no longer predicts
+        a unit — which is the whole point of storing the unit. So the question
+        "is this unit one of mine" has to be asked of the units themselves.
+        """
+        return next((a for a in self._agents.values() if a.unit == unit), None)
+
+    def rename(self, label: str, new_label: str) -> OwnedAgent:
+        """Give a held agent a different name, and change nothing else.
+
+        The process, its pty, its scope and its session are untouched: this
+        re-keys a dictionary. That is possible only because the unit is a stored
+        fact — a unit name cannot be changed once systemd knows it, so an
+        implementation that re-derived the unit from the label would have to
+        destroy and re-create the agent to rename it, taking the in-flight turn
+        and the terminal history with it.
+
+        **A taken name is refused, never derived around.** Restore derives a free
+        variant because the alternative there is losing an agent while nobody is
+        watching; a rename is a deliberate act by someone looking at the screen,
+        and a name they did not choose appearing instead is a false value they
+        have no reason to question.
+        """
+        agent = self._agents.get(label)
+        if agent is None:
+            raise OwnerError(
+                f"this owner does not hold {label}; only an agent whose terminal "
+                "the framework holds can be renamed — a name the runtime derived "
+                "belongs to the runtime"
+            )
+        wanted = str(new_label).strip()
+        if not wanted:
+            raise OwnerError("a new name is required; an agent cannot be nameless")
+        if wanted == label:
+            return agent
+        holder = self._agents.get(wanted)
+        if holder is not None:
+            raise OwnerError(
+                f"{wanted} is already held here (pid {holder.pid}); "
+                "choose another name or rename that agent first"
+            )
+        self._agents[wanted] = self._agents.pop(label)
+        agent.label = wanted
+        logger.info(
+            "fleet owner: renamed %s to %s (unit %s, pid %s — unchanged)",
+            label, wanted, agent.unit, agent.pid,
+        )
+        return agent
 
     def _close(self, agent: OwnedAgent) -> None:
         try:

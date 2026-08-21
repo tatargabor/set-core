@@ -38,7 +38,7 @@ from typing import Any, Dict, Optional
 #: entry is a passthrough to `AgentOwner` rather than a behaviour of its own.
 SUPPORTED_METHODS = frozenset({
     # lifecycle
-    "start", "stop", "recover",
+    "start", "stop", "recover", "rename",
     # what this owner can say about the world
     "health", "list", "orphans",
     # the relay

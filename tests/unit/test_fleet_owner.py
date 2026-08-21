@@ -556,3 +556,108 @@ def test_the_refusal_is_what_keeps_the_transcript_single_threaded(tmp_path, monk
     assert _tail_uuid(transcript) == "original-4", (
         "the original's own turn is missing; the fixture proved nothing"
     )
+
+
+# --------------------------------------------------------------------------- #
+# rename — the name is an identity that can change, and nothing else may
+# --------------------------------------------------------------------------- #
+
+def test_a_rename_moves_the_name_and_touches_nothing_else(monkeypatch):
+    """The property, stated as the absence of every destructive act.
+
+    A test that asserted only "the agent is now held under N" passes on an
+    implementation that stops the scope and resumes the session — which is
+    exactly the implementation this design exists to avoid, because it takes the
+    in-flight turn and the terminal history with it. So the systemd surface is
+    replaced with a fail-on-call, and the assertion is that it was never reached.
+    """
+    o = _owner_with("before")
+    agent = o._agents["before"]
+    unit_before, pid_before, fd_before = agent.unit, agent.pid, agent.master_fd
+    monkeypatch.setattr(scopes_mod, "_systemctl", lambda *a, **k: pytest.fail("a rename must not touch systemd"))
+    monkeypatch.setattr(scopes_mod, "start", lambda *a, **k: pytest.fail("a rename must not start a scope"))
+
+    returned = o.rename("before", "after")
+
+    assert returned.label == "after"
+    assert set(o._agents) == {"after"}
+    assert (returned.unit, returned.pid, returned.master_fd) == (unit_before, pid_before, fd_before)
+    assert returned.resumed_session is None, "a rename must not resume anything"
+
+
+def test_a_renamed_agent_is_still_stopped_by_its_original_unit(monkeypatch):
+    """The reason the unit is stored rather than derived.
+
+    `unit_name("after")` is `set-agent-after.scope`, which does not exist. If any
+    path re-derived, the stop would act on a unit systemd does not know — and
+    that reads, on screen, as the agent being gone.
+    """
+    stopped = []
+    o = _owner_with("before")
+    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **k: stopped.append(unit) or True)
+    monkeypatch.setattr(scopes_mod, "is_gone", lambda unit: False)
+    o.rename("before", "after")
+
+    result = o.stop("after")
+
+    assert stopped == ["set-agent-before.scope"], stopped
+    assert result["unit"] == "set-agent-before.scope"
+    assert result["found"] is True and result["population"] == STARTED_HERE
+
+
+def test_the_old_name_stops_resolving_and_does_not_reach_the_agent(monkeypatch):
+    """The old label must not stay addressable through a derived unit.
+
+    Without the guard this is not a harmless 404: `unit_name("before")` names the
+    unit the RUNNING agent is in, so a stop under the old name would kill it and
+    report it as a foreign orphan — the agent stopped under a name nothing holds.
+    """
+    o = _owner_with("before")
+    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **k: pytest.fail("the old name must not stop anything"))
+    monkeypatch.setattr(scopes_mod, "is_gone", lambda unit: False)
+    o.rename("before", "after")
+
+    with pytest.raises(OwnerError) as excinfo:
+        o.stop("before")
+    assert "after" in str(excinfo.value)
+
+    with pytest.raises(OwnerError):
+        o.write("before", b"hello\n")
+
+
+def test_a_rename_onto_a_held_name_is_refused_with_the_holder_named():
+    """Refused, never derived around — the asymmetry with restore is deliberate.
+
+    A person is looking at the screen here; a name they did not choose appearing
+    instead is a false value they have no reason to question.
+    """
+    o = _owner_with("one")
+    o._agents["two"] = owner_mod.OwnedAgent(
+        label="two", unit=scopes_mod.unit_name("two"), pid=222, cwd="/tmp", master_fd=-1,
+    )
+    with pytest.raises(OwnerError) as excinfo:
+        o.rename("one", "two")
+    assert "222" in str(excinfo.value), "the refusal must name what holds it"
+    assert set(o._agents) == {"one", "two"}
+    assert o._agents["one"].label == "one"
+
+
+def test_renaming_to_the_current_name_changes_nothing_and_is_not_an_error():
+    o = _owner_with("same")
+    assert o.rename("same", "same").label == "same"
+    assert set(o._agents) == {"same"}
+
+
+def test_an_agent_this_owner_does_not_hold_cannot_be_renamed():
+    o = _owner_with("mine")
+    with pytest.raises(OwnerError) as excinfo:
+        o.rename("someone-elses", "new")
+    assert "runtime" in str(excinfo.value), "the reason must say whose name it is"
+
+
+def test_a_nameless_rename_is_refused():
+    o = _owner_with("mine")
+    for empty in ("", "   "):
+        with pytest.raises(OwnerError):
+            o.rename("mine", empty)
+    assert o._agents["mine"].label == "mine"
