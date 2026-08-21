@@ -67,6 +67,57 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-53 — the frustration detector inverts delight into anger, and the false label is then injected into later sessions
+- **state:** open
+- **reported:** 2026-08-21 by the user — *"feltételezem, hogy lehet ártott is valahol"* — and measured the same hour.
+- **measured:** `set-memory recall "frustrated" --tags frustration` returns, verbatim:
+
+  ```
+  ⚠️ User frustrated (moderate): szuper!!! akkor inditsunk egy futast? ...
+  ⚠️ User frustrated (moderate): pont igy akartam!!! akkor viszont ne reseteljunk ...
+  ```
+
+  Both are the user being **pleased**. The detector fires on exclamation marks, so
+  enthusiasm is stored as anger (`_save_frustration_memory`,
+  `lib/set_hooks/events.py:149,502`). It does not stop at storage: over 21 days of
+  transcripts (4958 files under `~/.claude/projects`), 187 memory lines were injected
+  into sessions and **168 of them (89.8 %) were these frustration records**. Their
+  payloads are not knowledge at all — they are raw `<task-notification>` blocks,
+  `<cross-session-message>` bodies, agent system prompts, and meeting-transcript
+  fragments captured verbatim from whatever prompt was in flight.
+  Exactly **one** line in 187 was a reusable project fact.
+- **fixed when:** no memory is written with a sentiment label the prompt does not
+  support, and no injected memory's body is a harness artifact. Note the harm
+  direction: injecting `⚠️ User frustrated` into a fresh, unrelated session tells the
+  model the user is angry when they were delighted, and hands it an out-of-context
+  instruction as if it were remembered truth. This is worse than an empty injection.
+- **also:** the same path persists meeting-transcript content — personal names,
+  spoken business detail — into the memory store. That is the carrier
+  [External Project Confidentiality](../../CLAUDE.md) names explicitly
+  ("session-end extraction saves insights automatically"), and it is not hypothetical
+  any more.
+
+### B-54 — the useful citations all trace to the NATIVE file memory, none to shodh
+- **state:** open (evidence entry — it decides B-49..B-53's disposition)
+- **reported:** 2026-08-21 by this session, after the user asked whether any read-back
+  had ever been useful.
+- **measured:** in one project's transcripts the agent cited remembered facts and acted
+  on them — a named alert channel, a *fetch-before-allocating-an-id* rule, a pending
+  deploy item. Each traces to a hand-written file in that project's native memory
+  directory (`project_alerts-channel.md`, `feedback_bug-id-fetch-before-allocate.md`,
+  `project_mcp-prod-deploy-pending.md`). Grepping the same three facts across the
+  **120 shodh injection blocks** in that project's transcripts returns `0`, `0`, `0`.
+  So the two systems ran side by side on the same project, and only one of them
+  delivered anything a session used.
+- **fixed when:** not a code fix — this entry closes when the decision it supports is
+  taken and recorded: the native file memory becomes the framework's memory layer, and
+  the shodh hooks stop writing.
+- **caution on the method:** the first sweep of this measurement counted `From memory:`
+  and reported 13 files. That string is in `CLAUDE.md`, hence in every transcript — the
+  measurement was inside the corpus it measured. `rg` also reported `0` for a pattern
+  `grep -a` found, because it treats these transcripts as binary. Both wrong answers
+  came back clean and confident.
+
 ### B-49 — the ONLY memory-injection path in the default hook mode returns nothing, for every query
 - **state:** open
 - **reported:** 2026-08-21 by this session, while auditing whether shodh-memory still earns its place.
