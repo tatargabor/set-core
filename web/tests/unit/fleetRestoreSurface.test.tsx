@@ -106,6 +106,31 @@ describe('the result', () => {
     expect(container.querySelector('[data-fleet-restore-unfinished="1"]')).toBeTruthy()
   })
 
+  it('says which agents came back under a name nobody chose', async () => {
+    // They started, so they are not in the unfinished list and carry no alarm.
+    // But a name the framework invented looks exactly like one the reader gave,
+    // and the name is the handle they navigate by.
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterAnswer([entry('A'), entry('B')]),
+      'POST /api/fleet/roster/proj/restore': {
+        project: 'proj', attempted: 2, complete: true, record_exists: true,
+        started: [
+          { ...outcome('started', null, 'A'), name_source: 'restored', label_used: 'kept' },
+          { ...outcome('started', null, 'B'), name_source: 'derived', label_used: 'proj-restored' },
+        ],
+        skipped: [], failed: [],
+      },
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    const button = await screen.findByRole('button')
+    await act(async () => { fireEvent.click(button) })
+    await waitFor(() =>
+      expect(container.querySelector('[data-fleet-restore-unnamed="1"]')).toBeTruthy())
+    expect(screen.getByText(/no name was recorded for it/)).toBeTruthy()
+    expect(container.querySelector('[data-fleet-restore-unfinished]')).toBeNull()
+    expect(container.querySelector('[data-fleet-restore-result="complete"]')).toBeTruthy()
+  })
+
   it('a clean restore is allowed to read as clean', async () => {
     // The negative control: without this, a component that ALWAYS rendered
     // "partial" would satisfy every test above.

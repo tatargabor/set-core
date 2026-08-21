@@ -31,9 +31,9 @@
 
 ## 5. Restore gives the name back, and says which name it gave
 
-- [ ] 5.1 Restore starts each entry under its recorded label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 5.2 The outcome distinguishes three cases that all read as `started` today: restored under its own name, renamed because the name was held, derived because none was recorded [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 5.3 The restore surface shows which of the three each entry got — a derived name presented as a restored one is the false value this change exists against [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 5.1 Restore starts each entry under its recorded label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 5.2 The outcome distinguishes three cases that all read as `started` today: restored under its own name, renamed because the name was held, derived because none was recorded [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 5.3 The restore surface shows which of the three each entry got — a derived name presented as a restored one is the false value this change exists against [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
 
 ## 6. One identity on screen, and the rename control
 
@@ -67,8 +67,8 @@
 - [x] AC-14: WHEN discovery reports an interactive agent the framework holds no label for THEN the entry states its label is unknown, and the derived name is not recorded in its place [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: an-agent-the-framework-does-not-hold-is-recorded-with-no-label]
 - [x] AC-15: WHEN the service that holds agent labels cannot be reached while the record is written THEN an existing entry keeps its label, and a new entry states its label is unknown [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: the-label-cannot-be-asked-for-and-a-recorded-label-is-not-overwritten-by-a-guess]
 - [x] AC-16: WHEN an agent held under `L` is renamed to `N` and the record is written again THEN the entry for its session carries `N` [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity, scenario: a-renamed-agent-is-recorded-under-its-new-label]
-- [ ] AC-17: WHEN an entry recorded under label `L` is resumable, its session is not live, and restore runs THEN an agent is started resuming that session id under label `L`, and the outcome is `started` naming `L` [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-resumable-entry-comes-back-as-a-resumed-session]
-- [ ] AC-18: WHEN an entry whose label is unknown is restored THEN the agent starts under a derived label and the outcome states the name was derived, not restored [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: an-entry-with-no-recorded-label-says-its-name-was-derived]
-- [ ] AC-19: WHEN an entry's recorded label is already held by another agent and the entry is restored THEN the agent starts under a free variant and the outcome reports both the wanted and the used label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-collision-renames-and-reports-it]
+- [x] AC-17: WHEN an entry recorded under label `L` is resumable, its session is not live, and restore runs THEN an agent is started resuming that session id under label `L`, and the outcome is `started` naming `L` [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-resumable-entry-comes-back-as-a-resumed-session]
+- [x] AC-18: WHEN an entry whose label is unknown is restored THEN the agent starts under a derived label and the outcome states the name was derived, not restored [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: an-entry-with-no-recorded-label-says-its-name-was-derived]
+- [x] AC-19: WHEN an entry's recorded label is already held by another agent and the entry is restored THEN the agent starts under a free variant and the outcome reports both the wanted and the used label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-collision-renames-and-reports-it]
 - [ ] AC-20: WHEN an agent docked to an edge is lost to a reboot and then restored under its recorded label THEN the docked view holds that agent again, on the same edge [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-dock-follows-its-agent-across-a-restore]
 - [ ] AC-21: WHEN a docked agent is not running and has not been renamed or restored THEN the panel is kept and states that no running agent has that terminal [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-dock-whose-agent-is-genuinely-absent-is-kept-and-says-so]

@@ -56,8 +56,8 @@ class FakeOwner:
 
 
 class _A:
-    def __init__(self, cwd, session_id, name, kind="interactive"):
-        self.pid, self.cwd, self.session_id = 1, cwd, session_id
+    def __init__(self, cwd, session_id, name, kind="interactive", pid=1):
+        self.pid, self.cwd, self.session_id = pid, cwd, session_id
         self.name, self.project_name, self.kind = name, os.path.basename(cwd), kind
 
 
@@ -66,8 +66,13 @@ def _seed(tmp_path, sessions, *, with_logs=True, project="proj"):
     cwd = tmp_path / project
     cwd.mkdir(exist_ok=True)
     path = str(tmp_path / "store" / "fleet-roster.json")
-    roster.record([_A(str(cwd), s, f"{project}-{s.lower()}") for s in sessions],
-                  path=path, now=1000.0)
+    # One pid per session, and a LABEL for each: since 2026-08-21 the record
+    # stores the label the framework holds, so a fixture that only sets the
+    # runtime's `name` seeds entries with no label at all — which is a real
+    # state (an agent the framework never held) and not the one most of these
+    # tests are about.
+    agents = [_A(str(cwd), s, f"{project}-{s.lower()}", pid=i) for i, s in enumerate(sessions, 1)]
+    roster.record(agents, labels={a.pid: a.name for a in agents}, path=path, now=1000.0)
     logs = tmp_path / "projects"
     if with_logs:
         d = logs / f"-{project}"
@@ -387,3 +392,52 @@ def test_the_route_passes_the_known_roots_through(monkeypatch):
                         lambda project, **kw: seen.update(kw) or {"attempted": 0})
     fleet_api.fleet_roster_restore("proj")
     assert seen.get("known_roots") == {"/a", "/b"}
+
+
+# --------------------------------------------------------------------------- #
+# which name came back — AC-17 … AC-19
+# --------------------------------------------------------------------------- #
+
+def test_a_restored_entry_says_the_name_survived_the_reboot(tmp_path):
+    """AC-17. `started` alone cannot answer the question a person actually has
+    when they look at a restored fleet: is this the name I gave it?
+    """
+    path, logs, cwd = _seed(tmp_path, ["S1"])
+    out = restore_mod.restore("proj", client=FakeOwner(), roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    started = out["started"][0]
+    assert started["name_source"] == restore_mod.RESTORED
+    assert started["label_used"] == "proj-s1" and started["wanted_label"] == "proj-s1"
+
+
+def test_an_entry_with_no_recorded_label_says_its_name_was_derived(tmp_path):
+    """AC-18. The framework never held this agent, so nobody named it. A derived
+    name presented as a restored one is the false value this change exists
+    against — in the one place a person looks to recognise their own work.
+    """
+    cwd = tmp_path / "proj"
+    cwd.mkdir()
+    path = str(tmp_path / "store" / "fleet-roster.json")
+    roster.record([_A(str(cwd), "S1", "proj-ab")], labels={}, path=path, now=1000.0)
+    d = tmp_path / "projects" / "-proj"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "S1.jsonl").write_text("{}\n")
+
+    out = restore_mod.restore("proj", client=FakeOwner(), roster_path=path,
+                              known_roots={os.path.realpath(str(cwd))})
+    started = out["started"][0]
+    assert started["name_source"] == restore_mod.DERIVED
+    assert started["label_used"] == "proj-restored"
+    assert "proj-ab" not in json.dumps(out), "the runtime's derived name is not a name anybody chose"
+
+
+def test_a_collision_reports_both_the_wanted_and_the_used_name(tmp_path):
+    """AC-19. Restore derives where a rename refuses — the asymmetry is
+    deliberate: here the alternative is losing the agent, with nobody watching.
+    """
+    path, logs, cwd = _seed(tmp_path, ["S1"])
+    out = restore_mod.restore("proj", client=FakeOwner(held=["proj-s1"]), roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    started = out["started"][0]
+    assert started["name_source"] == restore_mod.RENAMED
+    assert (started["wanted_label"], started["label_used"]) == ("proj-s1", "proj-s1-r2")

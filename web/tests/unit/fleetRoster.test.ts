@@ -231,3 +231,29 @@ describe('the offer never promises what the act would skip', () => {
     expect(offer.label).toBe('Restore 1 agent')
   })
 })
+
+describe('a restored agent says WHICH name came back', () => {
+  const named = (name_source: string, over: Record<string, unknown> = {}) => ({
+    ...outcome('started'), name_source, label_used: 'l', ...over,
+  })
+
+  it('separates the agents nobody named from the ones that did not start', () => {
+    const s = summarise(result({
+      attempted: 3, complete: true,
+      started: [named('restored'),
+                named('renamed', { key: 'K2', wanted_label: 'wanted', label_used: 'wanted-r2' }),
+                named('derived', { key: 'K3', label_used: 'proj-restored' })] as any,
+    }))
+    // They started. They are not failures and must not be marked as ones.
+    expect(s.unfinished).toHaveLength(0)
+    expect(s.unnamed.map(o => o.key)).toEqual(['K2', 'K3'])
+    expect(s.headline).toContain('All 3 restored')
+  })
+
+  it('treats a missing name_source as unknown, never as derived', () => {
+    // An older server says nothing about where the name came from. Claiming it
+    // invented one would put a warning on the screen with nothing behind it.
+    const s = summarise(result({ attempted: 1, complete: true, started: [outcome('started')] as any }))
+    expect(s.unnamed).toHaveLength(0)
+  })
+})

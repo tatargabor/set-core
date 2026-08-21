@@ -53,6 +53,19 @@ STARTED = "started"
 SKIPPED = "skipped"
 FAILED = "failed"
 
+#: Where a restored agent's NAME came from. Carried as a fact per entry rather
+#: than left to the reader's arithmetic on two label fields, because the three
+#: are different answers to the question a person actually has.
+#: The recorded label was free and was used — the name survived the reboot.
+RESTORED = "restored"
+#: A label was recorded but something else holds it, so a free variant was
+#: derived. Restore derives where a rename refuses: the alternative here is
+#: losing the agent, and nobody is watching at that moment.
+RENAMED = "renamed"
+#: Nothing was recorded, so the name is invented. Stated so it is never read as
+#: a name somebody chose.
+DERIVED = "derived"
+
 #: How many alternative labels to try when the recorded one is held. Bounded
 #: because an unbounded search would turn one stuck entry into a long stall,
 #: and because a third collision means something is wrong that renaming will
@@ -174,8 +187,19 @@ def restore(
                 f"{cwd} is not a project this screen knows; register it first"))
             continue
 
-        wanted = entry.get("label") or f"{project}-restored"
-        label = _free_label(str(wanted), held)
+        # Three cases that used to read alike, and the difference is what the
+        # reader is actually asking about when they look at a restored fleet:
+        # is this the name I gave it? A derived name presented as a restored one
+        # is the false-value class, in the one place a person looks to recognise
+        # their own work.
+        recorded = entry.get("label")
+        wanted = str(recorded) if recorded else f"{project}-restored"
+        label = _free_label(wanted, held)
+        name_source = (
+            RESTORED if recorded and label == wanted
+            else RENAMED if recorded
+            else DERIVED
+        )
         try:
             agent = client.recover(
                 unit=scopes.unit_name(label),
@@ -196,7 +220,8 @@ def restore(
         held.add(label)
         started.append(_outcome(entry, STARTED, None, label_used=label,
                                 pid=agent.get("pid"), unit=agent.get("unit"),
-                                renamed=label != wanted))
+                                renamed=label != wanted, wanted_label=wanted,
+                                name_source=name_source))
         logger.info("fleet restore: %s resumed session %s as %s (pid %s)",
                     project, session_id, label, agent.get("pid"))
 

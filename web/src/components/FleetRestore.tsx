@@ -80,6 +80,30 @@ function OutcomeList({ summary }: { summary: RestoreSummary }) {
   )
 }
 
+/**
+ * The agents that came back under a name nobody chose.
+ *
+ * Not an alarm — they are running, which is what was asked for. But the name is
+ * the handle a person navigates by, and a name the framework invented looks
+ * exactly like one they chose. So it is said plainly, next to the agent it is
+ * about, with what was wanted where there was something to want.
+ */
+function NameList({ summary }: { summary: RestoreSummary }) {
+  if (!summary.unnamed.length) return null
+  return (
+    <ul className="mt-1.5 space-y-1" data-fleet-restore-unnamed={summary.unnamed.length}>
+      {summary.unnamed.map(o => (
+        <li key={o.key} className="text-xs text-fg-muted">
+          <span className="text-fg-strong">{o.label_used}</span>
+          {o.name_source === 'renamed'
+            ? <> — came back as this because <span className="text-fg-strong">{o.wanted_label}</span> was taken</>
+            : <> — the framework named this one; no name was recorded for it</>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function Result({ summary }: { summary: RestoreSummary }) {
   return (
     <div
@@ -90,6 +114,7 @@ function Result({ summary }: { summary: RestoreSummary }) {
         {summary.headline}
       </span>
       <OutcomeList summary={summary} />
+      <NameList summary={summary} />
     </div>
   )
 }

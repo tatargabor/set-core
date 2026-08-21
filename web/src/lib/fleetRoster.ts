@@ -67,6 +67,18 @@ export interface RestoreOutcome {
   reason: string | null
   label_used?: string
   renamed?: boolean
+  /**
+   * Where the name came from — `restored` (the recorded one was free),
+   * `renamed` (it was taken, so a variant was derived) or `derived` (nothing
+   * was recorded, so the framework invented it).
+   *
+   * Read as three, never collapsed into "started": the question a person has
+   * when they look at a restored fleet is whether these are the names they
+   * gave, and a derived name shown as a restored one is a false value in the
+   * one place they look to recognise their own work.
+   */
+  name_source?: 'restored' | 'renamed' | 'derived'
+  wanted_label?: string
   pid?: number
 }
 
@@ -91,6 +103,15 @@ export interface RestoreSummary {
   unfinished: RestoreOutcome[]
   /** One line for a person. Never says "restored" unless everything came back. */
   headline: string
+  /**
+   * The agents that came back under a name nobody chose — renamed around a
+   * collision, or invented because none was recorded.
+   *
+   * Separate from `unfinished`: these DID start, so they are not a failure and
+   * must not be marked as one. They are the entries whose name is not the
+   * answer to "is this the one I called X".
+   */
+  unnamed: RestoreOutcome[]
 }
 
 export function summarise(result: RestoreResult): RestoreSummary {
@@ -115,8 +136,12 @@ export function summarise(result: RestoreResult): RestoreSummary {
   } else {
     headline = `${started} of ${attempted} restored; ${unfinished.length} did not start.`
   }
+  // An outcome from an older server carries no `name_source` at all. Absent is
+  // not `derived`: claiming a name was invented when the server never said so
+  // would put a warning on a screen with nothing behind it.
+  const unnamed = startedList.filter(o => o.name_source === 'renamed' || o.name_source === 'derived')
   return { attempted, started, skipped, failed,
-           complete: result.complete === true, unfinished, headline }
+           complete: result.complete === true, unfinished, headline, unnamed }
 }
 
 /**
