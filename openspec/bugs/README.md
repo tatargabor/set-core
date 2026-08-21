@@ -950,7 +950,7 @@ consumer's name, path, or content.
 
 - **state:** open
 - **reported:** 2026-08-21, by an adversarial review of
-  `work-cycle-question-contract`, and **reproduced independently** before entry.
+  `work-cycle-question-outbound`, and **reproduced independently** before entry.
 - **measured:** `open_engine(tree, change="")` leaves `tasks_path` as `None`, so
   `_awaiting_keys` returns an empty set (`lib/set_workcycle/cli.py:82-85`). In
   `connector.intake` the guard is `if awaiting_keys and key not in awaiting_keys`
@@ -1022,7 +1022,119 @@ consumer's name, path, or content.
   refused rather than pasted; and a test asserts that an answer containing
   instruction-shaped text does not change what the unit is told to do.
 - **belongs to:** the code shipped by `work-cycle-engine-apply-first`; it is a
-  precondition for `work-cycle-question-contract`, not a task inside it.
+  precondition for `work-cycle-question-outbound`, not a task inside it.
+
+
+### B-39 — `mark_awaiting` silently fails on the ordinary file shape, and its failure empties the register
+
+- **state:** open · **⚠ severity: this is the most serious entry in this file**
+- **reported:** 2026-08-21 by an adversarial review, **reproduced independently** before entry.
+- **measured:** `_task_line_re` (`lib/set_workcycle/connector.py:347`) opens with
+  `(?P<indent>\s*)`, and `\s` matches a newline. When a blank line precedes the task —
+  **the shape of every `tasks.md` in this repository** — the match starts on that
+  newline and the rewrite lands on the wrong line. Reproduced:
+
+  | file | `mark_awaiting` returned | `awaiting_tasks` |
+  |---|---|---|
+  | blank line before the task | `True` | `[]` |
+  | no blank line | `True` | `[('1.1', 'plain question')]` |
+
+  In the first case the comment is written onto the heading line, the blank line is
+  eaten, and the task is never marked.
+
+- **why it is the worst one here:** the failure does not stop at the register. With no
+  awaiting task, `_awaiting_keys` returns an empty set, and `intake`'s guard is
+  `if awaiting_keys and key not in awaiting_keys` — falsy, so **every pending answer for
+  any change is applied and stamped consumed**, while `clear_awaiting` fails and nothing
+  is recorded. The answer's text is destroyed. This is B-36 reached by a second route,
+  and the cycle prints `marked 1.1 as awaiting a person` and then `applied …` while
+  neither happened. Reassuring direction, twice.
+- **fixed when:** marking a task with a blank line before it produces `- [?]` on that
+  task and leaves the blank line alone; `awaiting_tasks` finds it; and a test uses a
+  file with a blank line, because the file shape IS the reproducer.
+
+### B-40 — an intake pass that found an already-consumed document reports that it found nothing
+
+- **state:** open
+- **reported / reproduced:** 2026-08-21.
+- **measured:** `IntakeResult.as_lines()` (`connector.py:187-196`) renders applied,
+  unmatched, superseded, deferred and quarantined — `already_consumed` is collected at
+  `connector.py:268` and **never rendered**, so the list falls through to its
+  `["no answers were pending"]` default. Reproduced: second pass returns
+  `already_consumed: ['chat--…json']` and `lines: ['no answers were pending']`.
+- **why it matters:** `intake_lines` is the only thing `EngineView` carries out, so this
+  is what an operator sees. The dataclass docstring says *"Every category is reported;
+  none is silent"* — the comment is false, which is the shape the rules name: a comment
+  is a claim, not a measurement.
+- **fixed when:** a pass that saw an already-consumed document says so, and a test
+  asserts the second pass does not say "no answers were pending".
+
+### B-41 — a superseded answer is applied on the next pass
+
+- **state:** open
+- **reported / reproduced:** 2026-08-21.
+- **measured:** `intake` stamps only the newest answer as consumed
+  (`connector.py:315-325`); the superseded ones are left unconsumed and in place.
+  Reproduced: pass 1 → `applied ['MASODIK'] superseded ['ELSO']`; pass 2 →
+  `applied ['ELSO']`.
+- **why it matters:** the same task asked a second question later becomes awaiting again,
+  and the stale answer silently releases it and reaches the next unit's prompt as the
+  person's decision. `retained` was meant to mean *kept, not acted on*.
+- **fixed when:** a superseded answer is retained and never applied on a later pass, and
+  a test runs intake twice.
+
+### B-42 — answer ordering is decided by a field the answer's own author chooses
+
+- **state:** open
+- **reported / reproduced:** 2026-08-21.
+- **measured:** `connector.py:316` sorts by `(written_at, filename)` and `written_at` is
+  read straight off the document (`connector.py:306`). Reproduced: an answer stamped
+  `9999-01-01` beat a real one and the real one was reported as
+  `superseded — retained, a newer answer won`.
+- **why it matters now:** while only somebody at this machine can write an answer this is
+  a footgun. `work-cycle-question-outbound` is the change that extends the write surface
+  to whoever can post in a chat channel, where "post first with a future date" wins every
+  race against the person the question was put to — and the log line states the opposite.
+- **fixed when:** ordering uses a time the receiving side observed, or the document's own
+  time is bounded to a sane window and the log says which was used.
+
+### B-43 — the question text can write new task lines into the project's task file
+
+- **state:** open
+- **reported / reproduced:** 2026-08-21.
+- **measured:** the question comes from a unit's verdict, is `.strip()`ed and nothing else
+  (`verdict.py:158`), and is embedded in a single-line HTML comment
+  (`connector.py:370`). Reproduced with a question containing `-->` and a newline:
+
+  ```
+  - [?] 1.1 real <!-- awaiting: ok -->
+  - [ ] 9.9 INJEKTALT TASZK -->
+  - [ ] 1.2 other
+  ```
+
+  `9.9` is now a real, parsed task in that group.
+- **why it matters:** the awaiting task is the register every other mechanism derives
+  from. A register the unit can forge makes the derivation worthless — and the question
+  is also what an outbound would carry to a person, in the unit's words.
+- **fixed when:** a question containing a newline or a comment terminator cannot add,
+  alter or remove a line, and a test uses exactly those two characters.
+
+### B-44 — `change` and `task` reach a filesystem path unvalidated
+
+- **state:** open
+- **reported / reproduced:** 2026-08-21.
+- **measured:** `record_answer` interpolates `change` into
+  `set/runtime/work-cycle/{change}/answers.jsonl` (`connector.py:421,427`) and
+  `open_engine` builds `base / change / "tasks.md"` (`cli.py:112`). Reproduced:
+  `record_answer(tree, "../../../ESCAPED", …)` wrote to
+  `…/set/runtime/work-cycle/../../../ESCAPED/answers.jsonl`. Both values arrive from
+  `--change` / `--task` on `cmd_answer` (`cli.py:563-567`), which is the entry point an
+  answer bridge would drive from message text.
+- **why the enumeration missed it:** the rule that covers these fields is scoped to log
+  lines. The right instrument was aimed at the wrong surface — the question is not only
+  *does this field reach a diagnostic* but *where does this field land*.
+- **fixed when:** a path built from either field is refused unless it resolves inside the
+  tree, and a test passes a traversal in each.
 
 
 ## Closed
