@@ -67,6 +67,76 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-48 — a tile whose pty THIS framework holds says "no input", because the only way in it offers is the messaging bus
+- **state:** open
+- **reported:** 2026-08-21 by the user, after the restore — *"nem tudok a
+  sessionökbe írni, mintha nem én nyitottam volna őket set- alól, hanem külső
+  agent"*.
+- **measured:** LOOKED at, 2026-08-21, tile `set-core-bb`: the header says
+  `set-core-bb · waiting for an answer`, and where the input belongs it reads
+  *"no input: this session has no seat on the messaging bus"*
+  (`web/src/components/FleetInstruct.tsx:200`, reached when `instructable:false`
+  and the terminal pane is closed). Yet `GET /api/fleet/agents` reports that same
+  agent `population: "started-here", terminal_label: "set-core-bb"` — the
+  framework holds its pty. Writing into it works: typed a character into
+  `set-core-34`'s terminal from the browser and it arrived at the prompt. So the
+  sentence is true about the bus and reads as a statement about the agent.
+  6 of the 8 restored sessions have no seat (`sac agents --json` → only
+  `set-core#039178b5` and `set-core#115270d4`, both re-enrolled at the restore
+  minute), which is why it is the common case rather than an edge one.
+- **fixed when:** a tile with a `terminal_label` never renders "no input". It
+  names the way in that exists — open the terminal — and, per CLAUDE.md, offers
+  ENROLMENT for the bus rather than staying silent about it. A tile with neither
+  a seat nor a terminal keeps today's sentence.
+
+### B-45 — the roster records the runtime's DERIVED name, so restore gives back the process and loses the name the user chose
+- **state:** open
+- **reported:** 2026-08-21 by the user, after the first real reboot — *"a nevek nem álltak vissza"*.
+- **measured:** the owner's log before the reboot names hand-chosen labels —
+  `journalctl --user -u set-agent-owner` → `a viewer attached to set-core-bugfix`,
+  `set-core-restart`, `wpc-pont-eszkozok`. After restore the same log names
+  `started set-core-34 … resumed session 039178b5…`. The roster entry for that
+  session carries `label: set-core-c6`, which is the runtime's own
+  `nameSource: "derived"` name from `~/.claude/sessions/<pid>.json`, not the
+  owner's terminal label: `roster._entry_from` (`lib/set_orch/fleet/roster.py:112`)
+  reads `agent.name`, and `discovery` fills `name` from `record.get("name")`
+  (`lib/set_orch/fleet/discovery.py:311`). The chosen label exists only in
+  `OwnerClient().list_agents()[].label`, which the roster never asks.
+- **fixed when:** with an agent started under a hand-typed label, the roster entry
+  for its session carries THAT label, and after a restore the tab strip shows it.
+  Direction that must not be taken: a label the owner does not hold must not be
+  invented — an entry whose label is unknown states so rather than filling in a
+  derived name.
+
+### B-46 — the displayed name and the terminal label diverge after a resume, and the screen shows one while the framework holds the other
+- **state:** open
+- **reported:** 2026-08-21 by the user, same report as B-45.
+- **measured:** `GET /api/fleet/agents` right after the restore —
+  `pid=43271 name=set-core-c6 terminal_label=set-core-34`, and seven more like it.
+  A resumed session keeps its session id and gets a NEW derived name from the
+  runtime, so the roster (which stores `name`) and the owner (which holds `label`)
+  answer differently about the same agent from the moment of the resume. Already
+  visible as a collision: pid 54272 is *named* `set-core-33` while pid 43704's
+  *terminal label* is `set-core-33`.
+- **fixed when:** one identity is displayed and it is the one every control keys
+  on. `GET /api/fleet/agents` shows no agent whose displayed name is another
+  agent's `terminal_label`.
+
+### B-47 — a docked panel survives a reboot by LABEL, and restore recreates no label, so the pane comes back empty
+- **state:** open
+- **reported:** 2026-08-21 by the user — *"a jobb oldali agent sem állt be jobb
+  oldalra layout szerint (gondolom a neve miatt)"*. Their guess is correct.
+- **measured:** `~/.local/share/set-core/fleet-layout.json` →
+  `docks: {"set-core": [{"kind":"agent","id":"set-core-bugfix","edge":"right"}]}`,
+  while no live agent carries that label (`GET /api/fleet/agents` lists
+  `set-core-34/-bb/-e2/-42/-4f/-5c/-33/-2225`). LOOKED at, 2026-08-21: the right
+  pane reads *"no running agent with this terminal in set-core — the panel is
+  kept, not closed"*. The dock is keyed on `terminal_label`
+  (`web/src/pages/Fleet.tsx:1880`), which B-45 does not restore.
+- **fixed when:** after a restore of an agent that was docked before, its panel is
+  on the same edge. The empty-pane message stays correct for a genuinely absent
+  agent — it is the honest half of this, and must not be removed to hide B-45.
+
 ### B-35 — the "waiting for a human" count reads its OWN documentation as an open question, on a task that is already done
 - **state:** closed (`70fd5577`)
 - **reported:** 2026-08-20 by the user, from the screen — *"3 waiting for a human
