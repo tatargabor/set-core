@@ -252,6 +252,28 @@ performing one the user can perform?* If not, the green is about the API, not th
 so the mutant is not supposed to trip it. A test that fails in both directions would be
 measuring nothing; one that fails in neither is the defect above.)
 
+**Two defects on opposite sides of a seam can hide each other, and fixing one is the only
+way the other ever appears.** Measured across an agent channel 2026-08-21. A recorder never
+emitted a region's accessible name unless a heading happened to sit inside it; the consumer's
+parser cut every line at the first `#`, in a format where `#` is BOTH a comment marker and a
+test-id prefix — so it would have cut the name off any line that carried one. While the first
+defect held, the second had nothing to cut, and it was **unreachable by any test either side
+could write**. The consumer's first measurement after the recorder was fixed still reported the
+name as missing.
+
+Three things follow, and the third is the one that changes behaviour:
+
+- **A green measurement on one side of a seam proves nothing about the seam** while a
+  known defect upstream is suppressing the input. The absence of a class of input is not
+  evidence that the code handles it.
+- **After a fix lands, the first measurement downstream is the SECOND defect's debut** —
+  expect it, and do not read it as the fix having failed. Here the obvious reading was
+  "the recorder fix did not work", and the second-obvious one was "our plan is wrong".
+- **A delimiter with two meanings is where this shape lives.** `#` as comment and as
+  identifier, `:` as separator and as namespace, a marker that is also ordinary text. The
+  parser that resolves the ambiguity by position (`split(x)[0]`, first match, last match)
+  is a silent tie-break — the same class as `replace(a, b, 1)` above.
+
 ## Fail direction outranks bug count
 
 When a guard is wrong, ask which way it is wrong before asking how often. A gate that
