@@ -274,6 +274,26 @@ Three things follow, and the third is the one that changes behaviour:
   parser that resolves the ambiguity by position (`split(x)[0]`, first match, last match)
   is a silent tie-break — the same class as `replace(a, b, 1)` above.
 
+**Extending a configurable protection can WEAKEN it, and only the output says so.**
+Measured on both sides of an agent channel 2026-08-21. A redaction layer took a list of
+consumer-supplied patterns alongside its built-in rules; a consumer added one more pattern,
+on the obvious belief that more patterns mean more redaction. Their committed documents then
+*gained* a customer name. The pattern branch returned as soon as any pattern matched, so the
+built-in rule never ran on what was left: with no patterns the label collapsed entirely, with
+them it printed the record around the redacted fragment.
+
+- **The intent is unreviewable.** "I added a rule to the protection" reads as strictly safer
+  to every reader, including the one who wrote it. Nothing in the diff looks wrong. The only
+  thing that shows it is running both configurations and comparing the OUTPUT.
+- **A shorter output can be the safer one.** Here the better-redacted page was 1587 tokens
+  against 1603 — the size difference *was* the leak, and it looked like noise.
+- **State the invariant, not the case:** an added rule may only ADD redaction, never remove
+  it. Written that way the code has one thing to enforce, and the test says what it is.
+
+Same shape wherever a built-in policy meets user-supplied additions — a filter chain, an
+allowlist that turns into the whole list once non-empty, a validator that stops at the first
+custom check. Ask which branch the extension *takes over*, not which one it adds to.
+
 ## Fail direction outranks bug count
 
 When a guard is wrong, ask which way it is wrong before asking how often. A gate that
