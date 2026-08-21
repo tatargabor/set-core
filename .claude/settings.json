@@ -1,27 +1,5 @@
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SessionStart",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SessionStart",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -30,11 +8,6 @@
             "type": "command",
             "command": "set-hook-skill",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "set-hook-memory UserPromptSubmit",
-            "timeout": 15
           }
         ]
       }
@@ -67,62 +40,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory PostToolUse",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory PostToolUse",
-            "timeout": 5
-          },
           {
             "type": "command",
             "command": "set-hook-checkout-guard PostToolUse"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory PostToolUseFailure",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SubagentStart",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SubagentStop",
-            "timeout": 5
           }
         ]
       }
@@ -135,11 +57,6 @@
             "type": "command",
             "command": "set-hook-stop",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "set-hook-memory Stop",
-            "timeout": 30
           }
         ]
       }
