@@ -67,6 +67,81 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-49 — the ONLY memory-injection path in the default hook mode returns nothing, for every query
+- **state:** open
+- **reported:** 2026-08-21 by this session, while auditing whether shodh-memory still earns its place.
+- **measured:** `HOOK_MODE` defaults to `lite` (`lib/set_hooks/util.py:157`), and in
+  `lite` every PostToolUse/Subagent handler bails at `if HOOK_MODE != "full"`
+  (`lib/set_hooks/events.py:210,265,296,318`). That leaves `handle_user_prompt`
+  (`events.py:118`) as the one path that can inject, and it feeds
+  `proactive_context(query, limit=3)`. Measured on five unrelated queries:
+
+  ```
+  proactive=0 recall=3  <- 'fleet rename'
+  proactive=0 recall=3  <- 'worktree merge gates'
+  proactive=0 recall=3  <- 'e2e playwright gate'
+  proactive=0 recall=3  <- 'consumer integration contract'
+  proactive=0 recall=3  <- 'memory hook'
+  ```
+
+  `set-memory recall` returns relevant hits on the same store and the same words;
+  `set-memory proactive` returns `count: 0` with `semantic_threshold: 0.45`. So the
+  store is fine and the retrieval used for injection is not. The system's own meter
+  agrees — `set-memory metrics` over 7 days: **empty injections 98.6 % (3718 of 3769)**,
+  usage rate 0.0 %, 2 explicit citations, 8465 tokens injected across 328 sessions.
+- **fixed when:** `set-memory proactive "<any query that recall answers>"` returns a
+  non-zero count, and `set-memory metrics` shows the empty-injection rate falling below
+  the recall path's. Note the fail direction: an empty injection is indistinguishable
+  from "no relevant memory", so nothing has ever reported this.
+
+### B-50 — `set-memory export` prints a valid EMPTY export and exits 0 when it fails
+- **state:** open
+- **reported:** 2026-08-21 by this session.
+- **measured:** `set-memory export --output <f>` on a store whose own stats say
+  `total_memories: 7864` produced
+  `{"version":1,"format":"set-memory-export","count":0,"records":[]}`.
+  The cause is the fallback on `lib/memory/core.sh:810` —
+  `) || { echo '{...count:0,"records":[]}'; return 0; }` — which converts any failure
+  into a well-formed empty backup. The failure itself is in
+  `~/.local/share/set-core/memory/set-core/set-memory.log`:
+  `RuntimeError: Failed to create memory system: Failed to open storage at ".../set-core"`,
+  i.e. the export path opens RocksDB directly and loses the single-writer lock to the
+  running daemon, so it can never succeed while the daemon is up.
+- **fixed when:** export goes through the daemon like `list`/`recall` do, a failure exits
+  non-zero instead of printing an empty document, and
+  `set-memory export | jq .count` equals `set-memory stats | jq .total_memories`.
+  This is the reassuring-empty class: the backup path cannot fail loudly, so a
+  zero-record backup has looked like a successful one for an unknown length of time.
+
+### B-51 — `set-memory list --limit N` silently returns `[]` for N ≥ 58
+- **state:** open
+- **reported:** 2026-08-21 by this session.
+- **measured:** bisected on the live store —
+  `limit=56 -> 56`, `limit=57 -> 57`, `limit=58 -> 0`, `limit=59 -> 0`,
+  `limit=100 -> 0`, `limit=8000 -> 0`. Output at 57 is 135 839 bytes and at 56 is
+  131 738, so the boundary tracks response SIZE, not count. Exit status is 0 and the
+  body is a well-formed `[]`.
+- **fixed when:** `set-memory list --limit 8000 | jq length` returns the store's real
+  count. Consequence while open: the store cannot be enumerated or audited at all
+  beyond 57 records, and the GUI browse dialog reads the same call.
+
+### B-52 — the knowledge graph has been empty through 56 → 7864 memories, so two documented recall modes are placebo
+- **state:** open
+- **reported:** 2026-08-21 by this session; first recorded 2026-02-16 in
+  `docs/research/shodh-memory-audit.md` and unchanged since.
+- **measured:** `set-memory graph-stats` today →
+  `{"node_count": 0, "edge_count": 0, "avg_strength": 0.0, "potentiated_count": 0}`,
+  with `set-memory stats` → `total_memories: 7864`. The February audit measured the
+  same zeros at 56 memories, so 7808 further writes produced no node and no edge.
+  `entities: []` on every record sampled (57 of 57), which is why: NER never runs on
+  the CLI write path. Consequence: `--mode causal` and `--mode associative`, which the
+  explore and apply skills pass, cannot differ from `--mode semantic` — the audit
+  measured all five modes returning identical ids in identical order.
+- **fixed when:** `graph-stats` reports a non-zero `node_count` after a `remember`, and
+  the five modes stop returning identical result sets for the same query. Until then
+  the honest repair is to stop passing the two modes rather than to keep documenting
+  them.
+
 ### B-48 — a tile whose pty THIS framework holds says "no input", because the only way in it offers is the messaging bus
 - **state:** open
 - **reported:** 2026-08-21 by the user, after the restore — *"nem tudok a
