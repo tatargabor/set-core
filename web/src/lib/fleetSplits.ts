@@ -40,13 +40,37 @@ export const SPLIT_PROJECTS = 'projects'
 export const MIN_PANE = 180
 export const MAX_PANE = 900
 
+/**
+ * The ceiling for a DOCKED BAND, which is a different question from the drag
+ * ceiling above.
+ *
+ * `MAX_PANE` stops a reader shoving a divider until the pane beside it is
+ * unusable — a sensible limit for dragging. It is the wrong limit for a band
+ * that was deliberately MAXIMISED: reported 2026-08-22 (*"a teljes képernyőt
+ * ahol csak lehet view kell elfoglalnia"*), a maximise wrote 1214 and the read
+ * clamped it straight back to 900, so the control looked broken while the value
+ * it stored was correct.
+ *
+ * Raising the READ ceiling is safe because the geometry is bounded elsewhere and
+ * honestly: `remainingArea` floors the grid's box and REPORTS the overflow, so a
+ * band that asks for more than the screen has produces a stated "the docked
+ * views leave the agent grid less room than it needs" rather than a grid that
+ * silently renders nothing.
+ */
+export const MAX_BAND = 4000
+
 export type Splits = Record<string, number>
 
 /** The stored size of one divider's pane, or `fallback` when it has none. */
-export function positionOf(splits: Splits | null | undefined, key: string, fallback: number): number {
+export function positionOf(
+  splits: Splits | null | undefined,
+  key: string,
+  fallback: number,
+  max: number = MAX_PANE,
+): number {
   const raw = splits?.[key]
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback
-  return clampPane(raw)
+  return clampPane(raw, max)
 }
 
 /** Keep a pane inside what the surface can actually render and grab back. */

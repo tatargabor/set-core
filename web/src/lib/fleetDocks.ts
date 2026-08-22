@@ -23,7 +23,7 @@
  * because a docked view's inner edge IS a divider. Two stores for one edge is
  * how a screen ends up rendering a width nobody set.
  */
-import { SPLIT_PROJECTS, positionOf, type Splits } from './fleetSplits'
+import { MAX_BAND, SPLIT_PROJECTS, positionOf, type Splits } from './fleetSplits'
 
 export const DOCK_EDGES = ['left', 'right', 'top', 'bottom'] as const
 export type DockEdge = (typeof DOCK_EDGES)[number]
@@ -108,7 +108,12 @@ export function dockedBands(
   const out: DockedBand[] = []
   for (const entry of docks ?? []) {
     if (!isDockedView(entry)) continue
-    out.push({ ...entry, size: positionOf(splits, dockSplitKey(entry), defaultDockSize(entry.edge)) })
+    // `MAX_BAND`, not the drag ceiling: a band the reader maximised is allowed
+    // to be larger than a band they dragged. See `fleetSplits.MAX_BAND`.
+    out.push({
+      ...entry,
+      size: positionOf(splits, dockSplitKey(entry), defaultDockSize(entry.edge), MAX_BAND),
+    })
   }
   return out
 }

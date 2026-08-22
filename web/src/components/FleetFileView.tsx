@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, File as FileIcon, Maximize2, Minimize2, Refr
 
 import { buildTree, languageOf, type TreeNode } from '../lib/fleetFiles'
 import { DOCK_CONTROLS, IconButton } from './TileControls'
+import FleetSplitter from './FleetSplitter'
 import type { DockEdge } from '../lib/fleetDocks'
 
 /**
@@ -87,10 +88,15 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
    * Whether this panel currently fills the agent panel — the same act an agent
    * tile calls enlarging, asked for 2026-08-22 (*"files maximize mar van?"*).
    *
-   * Offered only where it MEANS something: in the grid. A docked band already
-   * has the whole of its edge and is sized by its divider, so a maximise control
-   * there would be a control with nothing to do — which this screen's own rule
-   * calls worse than an absent one.
+   * Offered in BOTH placements, and it means a different act in each — which is
+   * why the label says which. In the grid it fills the agent panel and the
+   * agents move to the strip. On an edge it resizes the band to the largest the
+   * arrangement allows, remembering the size it had so the control is a toggle
+   * and not a one-way loss of the width the reader chose.
+   *
+   * The first build withheld it from a docked band on the reasoning that the
+   * band already owns its edge. The reader disagreed, and they were right: an
+   * edge is not a size, and 320 px of edge is not *"a teljes képernyő"*.
    */
   maximised?: boolean
   onMaximise?: () => void
@@ -141,6 +147,22 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
     who is looking at one file.
   */
   const [reloads, setReloads] = useState(0)
+  /*
+    The structure's width — asked for 2026-08-22: *"kellene a file nézet és a
+    file lista közötti savot is tudnk húzogatni"*.
+
+    The SAME `FleetSplitter` the project list and the docked bands use, so there
+    is one answer to what a divider looks like and how it behaves (drag, arrow
+    keys, Home/End). A second implementation would drift from those the first
+    time either is touched.
+
+    Held in the component rather than in the stored arrangement: a panel that can
+    sit in the grid or on any of four edges has a different sensible width in
+    each, and one remembered number would be wrong in three of them. Stated
+    rather than silent — if it turns out to want remembering, that is a decision
+    with a place to store it, not an oversight.
+  */
+  const [treeWidth, setTreeWidth] = useState(256)
   useEffect(() => {
     let dead = false
     setListing(null)
@@ -281,8 +303,8 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
               active={maximised}
               mark={{ 'data-fleet-file-maximised': maximised ? 'on' : 'off' }}
               label={maximised
-                ? 'back to the grid — the agents come back as tiles'
-                : 'fill the panel with the files — the agents are counted in the strip above, not dropped'}
+                ? 'back to the size it had — the agents get their room back'
+                : 'as large as this placement allows — in the grid the agents move to the strip above; on an edge the band takes the room the layout can spare, never all of it'}
               onClick={onMaximise}
             />
           )}
@@ -349,7 +371,8 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
       )}
 
       <div className="flex-1 min-h-0 flex">
-        <div className="w-64 shrink-0 overflow-auto border-r border-surface-line p-1"
+        <div className="shrink-0 overflow-auto p-1"
+             style={{ width: `${treeWidth}px` }}
              data-fleet-file-tree>
           {listError && <div className="text-xs text-red-400 p-1">the files could not be listed: {listError}</div>}
           {!listError && !listing && <div className="text-xs text-fg-ghost p-1">listing…</div>}
@@ -369,6 +392,17 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
                   })} onOpen={openFile} />
           ))}
         </div>
+
+        <FleetSplitter
+          axis="x"
+          size={treeWidth}
+          grows="before"
+          min={120}
+          max={640}
+          label="file list width"
+          onDrag={setTreeWidth}
+          onCommit={setTreeWidth}
+        />
 
         <div className="flex-1 min-w-0 min-h-0" data-fleet-file-content>
           {opened.kind === 'none' && (

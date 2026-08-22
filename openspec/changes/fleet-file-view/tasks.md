@@ -61,9 +61,9 @@
 
 - [x] 9.1 `fileReference(token, projectRoot)` in `web/src/lib/` — a pure function returning the path and optional line, or `null`; unit-tested on the shapes this repo's own tools print [REQ: a-file-reference-in-terminal-output-is-recognised]
 - [x] 9.2 Register a link provider on the terminal using it; a path that does not resolve inside the agent's project root stays ordinary text [REQ: a-file-reference-in-terminal-output-is-recognised]
-- [ ] 9.3 Activation opens the file view at the line; nothing opens without a person's act [REQ: activating-a-reference-opens-it-in-the-file-view]
-- [ ] 9.4 **MEASURE, on a live agent with `enable-mouse-events` on, whether a click reaches the linkifier at all, and with which modifier.** Write the result — command, what was clicked, what happened — into the change before wiring any control to it [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
-- [ ] 9.5 Wire the route the measurement supports and state the modifier on screen; if no mouse route reaches the terminal, offer none and say the file list is the way [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
+- [x] 9.3 Activation opens the file view at the line; nothing opens without a person's act [REQ: activating-a-reference-opens-it-in-the-file-view]
+- [x] 9.4 **MEASURE, on a live agent with `enable-mouse-events` on, whether a click reaches the linkifier at all, and with which modifier.** Write the result — command, what was clicked, what happened — into the change before wiring any control to it [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
+- [x] 9.5 Wire the route the measurement supports and state the modifier on screen; if no mouse route reaches the terminal, offer none and say the file list is the way [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
 - [ ] 9.6 A regression test that the URL path is untouched: an http address still opens in a new tab, a `javascript:` address still opens nowhere [REQ: an-external-url-keeps-its-existing-behaviour]
 
 ## 9b. Found by LOOKING, and added to the change rather than absorbed silently
@@ -81,6 +81,10 @@
 - [x] 9c.5 *"kell a layout határokhoz allitható húzható méret"* — measured: both dividers were ALREADY draggable (`role="separator"`, project list at x=344, the band's inner edge at x=1353). What was missing is the affordance: a 1 px line in the same neutral as the surface behind it. It now carries a grip [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
 
 - [x] 9c.6 *"files maximize mar van?"* — nem volt; most van. A fájlnézet kitölti a panelt, az agentek a tab-csíkba mennek, és a kettő KIZÁRJA egymást: egy dolog lehet nagy. Mérve: `max=on`, 0 agent-csempe, 10 tab [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+
+- [x] 9c.7 **The open risk closed by the USER's own measurement, 2026-08-22:** *"ctrl-click mérés mukodott"*. So a Ctrl+click on a path in a live agent's terminal does reach the emulator and open the file. What is theirs and not mine is stated as theirs: this was measured by the reader on the running screen, not by a check in this repository [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
+- [x] 9c.8 *"kellene a file nézet és a file lista közötti savot is tudnk húzogatni"* — the same `FleetSplitter` the project list and the bands use, so there is one answer to what a divider is. Held in the component, because a panel that can sit in the grid or on any of four edges wants a different width in each [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 9c.9 *"a teljes képernyő kell akkor is ha ki van téve 4 iranybol valahova"* — maximising works from a docked band too, and it took THREE measurements to actually work: the write clamped to the drag ceiling (900), then the read clamped it back, and finally `fullBandSize` computed from stale state while subtracting a column that is not inside the shell. Measured after: docked 900 → maximised 1503 → restored 900, in a 1919 px window [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
 
 ## 10. Looking at it, and closing
 
@@ -118,9 +122,9 @@
 - [x] AC-27: WHEN the output contains a project-relative path with a colon and a number THEN it is a reference to that file at that line [REQ: a-file-reference-in-terminal-output-is-recognised, scenario: a-relative-path-with-a-line-number]
 - [x] AC-28: WHEN the output contains an absolute path inside the project root THEN it is a reference to that file [REQ: a-file-reference-in-terminal-output-is-recognised, scenario: an-absolute-path-inside-the-project]
 - [x] AC-29: WHEN the output contains a path outside the project root THEN it stays ordinary text [REQ: a-file-reference-in-terminal-output-is-recognised, scenario: a-path-outside-the-project-is-not-a-link]
-- [ ] AC-30: WHEN a person activates a recognised reference THEN the file view opens it at the named line [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: the-reader-activates-a-reference]
-- [ ] AC-31: WHEN an agent prints a file reference THEN nothing opens until a person acts [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: output-alone-opens-nothing]
-- [ ] AC-32: WHEN mouse activation reaches the terminal in the running system THEN that route is offered and its modifier is stated on screen [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse, scenario: mouse-activation-is-available]
+- [x] AC-30: WHEN a person activates a recognised reference THEN the file view opens it at the named line [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: the-reader-activates-a-reference]
+- [x] AC-31: WHEN an agent prints a file reference THEN nothing opens until a person acts [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: output-alone-opens-nothing]
+- [x] AC-32: WHEN mouse activation reaches the terminal in the running system THEN that route is offered and its modifier is stated on screen [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse, scenario: mouse-activation-is-available]
 - [ ] AC-33: WHEN the agent's program consumes the click THEN the file is still reachable without the mouse and the screen states that route [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse, scenario: mouse-activation-does-not-reach-the-terminal]
 - [ ] AC-34: WHEN the output contains an http or https address THEN it still opens in a new tab and not in the file view [REQ: an-external-url-keeps-its-existing-behaviour, scenario: a-url-in-the-output]
 - [ ] AC-35: WHEN the output contains a scheme that could run code THEN it is not opened at all [REQ: an-external-url-keeps-its-existing-behaviour, scenario: a-scheme-that-could-execute-something]

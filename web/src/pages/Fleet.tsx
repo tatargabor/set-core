@@ -50,8 +50,8 @@ import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
 import {
-  bandsOn, dockSplitKey, dockedBands, docksFor, loadDocks, remainingArea, saveDocks, withCollapsed,
-  withDock,
+  bandsOn, defaultDockSize, dockSplitKey, dockedBands, docksFor, loadDocks, remainingArea, saveDocks,
+  withCollapsed, withDock,
   type DockEdge, type DockedView, type DockMap,
 } from '../lib/fleetDocks'
 import { PANEL_AGENT, PANEL_FILES } from '../lib/fleetPanels'
@@ -1519,8 +1519,23 @@ export default function Fleet() {
   }, [docks, writeDocks])
 
   /** Resize one docked band. Same two-callback split as every other divider. */
-  const resizeBand = useCallback((key: string, px: number, commit: boolean) => {
-    const value = clampPane(px, MAX_PANE)
+  /**
+   * `cap` exists for ONE caller: maximising.
+   *
+   * `MAX_PANE` is a DRAG limit — it stops a reader shoving a divider until the
+   * panel beside it is unusable, and 900 px is a sensible ceiling for that.
+   * It is the wrong ceiling for a maximise, which is a deliberate act meaning
+   * *as large as this can go*: capping it there left the band at 900 of 1919 and
+   * the control read as broken. Measured 2026-08-22, and reported as
+   * *"a teljes képernyőt ahol csak lehet view kell elfoglalnia"*.
+   *
+   * What does NOT change is the room kept for whatever sits beside the band —
+   * `maxBandSize` still subtracts it. A band that swallowed the screen would
+   * leave the agents nowhere to be, and this screen does not hide things to make
+   * one of them bigger.
+   */
+  const resizeBand = useCallback((key: string, px: number, commit: boolean, cap: number = MAX_PANE) => {
+    const value = clampPane(px, cap)
     const next = { ...splits, [key]: value }
     setSplits(next)
     if (commit) void saveSplits(next)
@@ -1758,6 +1773,17 @@ export default function Fleet() {
     writeView(project, { enlarged: pid })
     setMemory({ project, view: readView(project) })
   }, [])
+
+  /**
+   * A DOCKED band's size before it was maximised, so it can be put back.
+   *
+   * Asked for 2026-08-22: *"a teljes képernyő kell akkor is ha ki van téve 4
+   * iranybol valahova"*. A docked panel is sized by its divider, so maximising
+   * one is a resize to the largest the arrangement allows — and a resize that
+   * cannot be undone is not a maximise, it is losing the width the reader chose.
+   * Hence the remembered value, keyed by the same split key the divider uses.
+   */
+  const [bandRestore, setBandRestore] = useState<Record<string, number>>({})
 
   /** Maximise the file view, or put it back — the other half of the rule above. */
   const toggleFilesMax = useCallback((project: string | null, root: string) => {
@@ -2141,6 +2167,56 @@ export default function Fleet() {
     return room > MIN_PANE ? Math.min(MAX_PANE, room) : MAX_PANE
   }, [shellWidth, projectWidth])
 
+  /**
+   * The largest a band may become when MAXIMISED — the room, without the drag
+   * ceiling. See `resizeBand`'s `cap` for why the two differ.
+   */
+  const fullBandSize = useCallback((edge: DockEdge) => {
+    /*
+      MEASURED AT THE MOMENT OF THE CLICK, from the shell itself.
+
+      Two reasons, both found by watching this return 900 while the arithmetic
+      said 1025. `shellWidth` is state and can be a render behind; and the
+      project column is NOT inside the shell — measured 2026-08-22, shell 1620 px
+      in a 1919 px window with the column and the rail taking the difference — so
+      subtracting `projectWidth` from it takes the same strip away twice.
+
+      Asking the element is one fact instead of two that have to agree.
+    */
+    const el = shellRef.current
+    const horizontal = edge === 'left' || edge === 'right'
+    const room = horizontal
+      ? (el?.clientWidth ?? 0) - 360
+      : (el?.clientHeight ?? 0) - 200
+    return room > MIN_PANE ? room : MAX_PANE
+  }, [])
+
+  /**
+   * Make a docked band as large as the arrangement allows, or put it back.
+   *
+   * "As large as allowed" and not "the whole window": `maxBandSize` already
+   * keeps a strip for the grid beside it, because a band that swallowed the
+   * screen would leave the agents with nowhere to be — and this screen's rule is
+   * that compacting must never hide something. The control says so in its label
+   * rather than promising a full screen it will not deliver.
+   */
+  const toggleBandMax = useCallback((key: string, edge: DockEdge) => {
+    const now = splits[key]
+    const restore = bandRestore[key]
+    if (restore !== undefined) {
+      setBandRestore(prev => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+      resizeBand(key, restore, true)
+      return
+    }
+    setBandRestore(prev => ({ ...prev, [key]: now ?? defaultDockSize(edge) }))
+    const full = fullBandSize(edge)
+    resizeBand(key, full, true, full)
+  }, [splits, bandRestore, resizeBand, fullBandSize])
+
   /** What a docked band is called on screen. */
   const dockTitle = useCallback((kind: string, id: string) => (
     kind === PANEL_AGENT ? id : `${kind} · ${id}`
@@ -2183,6 +2259,7 @@ export default function Fleet() {
           </div>
         )
       }
+      const bandEdge = docks.find(d => d.kind === PANEL_FILES && d.id === band.id)?.edge ?? null
       return (
         <FleetFileView
           root={project.root}
@@ -2191,7 +2268,15 @@ export default function Fleet() {
           onRequestHandled={() => setFileRequest(null)}
           onClose={() => closeFiles(band.id)}
           onDock={edge => dockPanel(PANEL_FILES, band.id, edge)}
-          dockedEdge={docks.find(d => d.kind === PANEL_FILES && d.id === band.id)?.edge ?? null}
+          dockedEdge={bandEdge}
+          /* Maximising a DOCKED panel is a resize to the largest the
+             arrangement allows — asked for 2026-08-22, and the reason the
+             control is offered here at all now: *"a teljes képernyő kell akkor
+             is ha ki van téve 4 iranybol valahova"*. */
+          maximised={bandRestore[dockSplitKey({ kind: PANEL_FILES, id: band.id })] !== undefined}
+          onMaximise={bandEdge
+            ? () => toggleBandMax(dockSplitKey({ kind: PANEL_FILES, id: band.id }), bandEdge)
+            : undefined}
         />
       )
     }
@@ -2241,7 +2326,8 @@ export default function Fleet() {
       />
     )
   }, [active, data, openLogs, openTerminals, toggleLog, toggleTerminal, canJumpSeat, onJumpSeat,
-      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest, docks, closeFiles])
+      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest, docks, closeFiles,
+      bandRestore, toggleBandMax])
 
   // Discovery has never answered. An error here is the real thing — there is no
   // measurement to fall back on — so it replaces the screen.
