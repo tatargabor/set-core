@@ -66,15 +66,10 @@ map_skill_to_dir() {
 if [[ -n "$CLAUDE_PID" ]]; then
     mkdir -p .set/agents
 
-    # Remove old .memory marker before writing new skill
+    # Sweep any stale .memory marker left by the removed memory subsystem. Nothing
+    # writes one any more; this line only cleans up after the old behaviour.
     rm -f ".set/agents/${CLAUDE_PID}.memory"
 
     echo "${SKILL_NAME}|${TIMESTAMP}|fresh" > ".set/agents/${CLAUDE_PID}.skill"
 
-    # Check if the new skill has set-memory hooks in its SKILL.md
-    local_skill_dir=$(map_skill_to_dir "$SKILL_NAME")
-    skill_md=".claude/skills/${local_skill_dir}/SKILL.md"
-    if [[ -f "$skill_md" ]] && grep -q "set-memory" "$skill_md" 2>/dev/null; then
-        echo "$SKILL_NAME" > ".set/agents/${CLAUDE_PID}.memory"
-    fi
 fi

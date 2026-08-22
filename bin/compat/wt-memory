@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-echo "WARNING: wt-memory is renamed to set-memory. Update your scripts/aliases." >&2
-exec set-memory "$@"

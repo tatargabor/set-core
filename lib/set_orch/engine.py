@@ -427,7 +427,6 @@ def cleanup_orchestrator(state_file: str, directives: Directives | None = None) 
         # Generate final report
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
-        _persist_run_learnings(state_file)
 
     except Exception:
         logger.error("cleanup_orchestrator failed", exc_info=True)
@@ -1164,7 +1163,6 @@ def monitor_loop(
             _send_terminal_notifications(state_file, "time_limit", event_bus)
             _generate_report_safe(state_file)
             _generate_review_findings_summary_safe(state_file)
-            _persist_run_learnings(state_file)
             break
 
         # Check external stop
@@ -1172,7 +1170,6 @@ def monitor_loop(
         if state.status in ("stopped", "done"):
             _generate_report_safe(state_file)
             _generate_review_findings_summary_safe(state_file)
-            _persist_run_learnings(state_file)
             break
         if state.status == "paused":
             continue
@@ -1330,10 +1327,6 @@ def monitor_loop(
 
         # Generate report
         _generate_report_safe(state_file)
-
-        # Periodic memory operations (every ~10 polls ≈ 2.5 minutes)
-        if poll_count % 10 == 0:
-            _periodic_memory_ops_safe(state_file)
 
         # Issue diagnosed-timeout watchdog (every ~10 polls ≈ 2.5 minutes).
         # Non-blocking: failure logs a warning and continues.
@@ -1624,22 +1617,6 @@ def _apply_token_runaway_check(
                 change_name, delta, change.token_runaway_baseline, cur_in,
                 pct, threshold, cur_fp,
             )
-            try:
-                # Best-effort memory entry. Failure is non-blocking.
-                import subprocess
-                subprocess.run(
-                    [
-                        "set-memory", "remember",
-                        f"Token pressure on {change_name}: {delta} delta ({pct}% of {threshold} threshold) "
-                        f"at fingerprint {cur_fp}. Pre-warning fired before token_runaway breaker.",
-                        "--type", "Learning",
-                        "--tags", f"token-pressure,{change_name},source:framework",
-                    ],
-                    timeout=10,
-                    capture_output=True,
-                )
-            except Exception:
-                logger.debug("token-pressure memory entry failed (non-blocking)", exc_info=True)
             if event_bus:
                 event_bus.emit(
                     "TOKEN_PRESSURE",
@@ -3324,7 +3301,6 @@ def _check_completion(
         _send_terminal_notifications(state_file, "total_failure", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
-        _persist_run_learnings(state_file)
         return True
 
     # Phase-end E2E
@@ -3347,7 +3323,6 @@ def _check_completion(
     _send_terminal_notifications(state_file, "done", event_bus)
     _generate_report_safe(state_file)
     _generate_review_findings_summary_safe(state_file)
-    _persist_run_learnings(state_file)
     return True
 
 
@@ -3372,7 +3347,6 @@ def _handle_auto_replan(
         _send_terminal_notifications(state_file, "replan_limit", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
-        _persist_run_learnings(state_file)
         return True
 
     replan_attempt = state.extras.get("replan_attempt", 0)
@@ -3401,7 +3375,6 @@ def _handle_auto_replan(
         _send_terminal_notifications(state_file, "done", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
-        _persist_run_learnings(state_file)
         return True
 
     # Replan failed — retry with limit
@@ -3416,7 +3389,6 @@ def _handle_auto_replan(
         _send_terminal_notifications(state_file, "replan_exhausted", event_bus)
         _generate_report_safe(state_file)
         _generate_review_findings_summary_safe(state_file)
-        _persist_run_learnings(state_file)
         return True
 
     logger.warning("Replan failed (cycle %d, attempt %d) — will retry", cycle, replan_attempt)
@@ -4832,21 +4804,6 @@ def _send_terminal_notifications(
         logger.debug("Terminal notification failed (non-critical)", exc_info=True)
 
 
-def _periodic_memory_ops_safe(state_file: str) -> None:
-    """Run periodic memory operations (exception-safe)."""
-    try:
-        from .orch_memory import orch_memory_stats, orch_gate_stats, orch_memory_audit
-
-        orch_memory_stats()
-
-        state = load_state(state_file)
-        orch_gate_stats(state.to_dict() if hasattr(state, 'to_dict') else {"changes": []})
-
-        orch_memory_audit()
-    except Exception:
-        logger.debug("Periodic memory ops failed (non-critical)", exc_info=True)
-
-
 def _generate_report_safe(state_file: str) -> None:
     """Generate HTML report (exception-safe)."""
     try:
@@ -4881,92 +4838,6 @@ def _generate_review_findings_summary_safe(state_file: str) -> None:
             logger.info("Review findings summary: %s", result)
     except Exception as _e:
         logger.debug("Review findings summary failed: %s", _e)
-
-
-def _persist_run_learnings(state_file: str) -> None:
-    """Persist gate stats and review patterns to memory at run end (exception-safe)."""
-    try:
-        from .orch_memory import orch_remember, orch_gate_stats
-        from .state import load_state
-
-        state = load_state(state_file)
-        state_dict = state.to_dict() if hasattr(state, "to_dict") else {}
-
-        # Gate stats summary
-        gate_stats = orch_gate_stats(state_dict)
-        if gate_stats and gate_stats.get("changes_with_gate", 0) > 0:
-            summary = (
-                f"Gate stats: {gate_stats['changes_with_gate']} changes, "
-                f"total {gate_stats.get('total_gate_secs', 0)}s gate time "
-                f"({gate_stats.get('gate_pct', 0)}% of run), "
-                f"{gate_stats.get('total_retry_count', 0)} retries"
-            )
-            orch_remember(summary, mem_type="Context", tags="source:orchestrator,type:gate-stats")
-            logger.info("Persisted gate stats to memory")
-
-        # Recurring review patterns — try JSONL first, fall back to state review_output
-        import re as _re
-        pattern_counts: dict[str, set[str]] = {}
-
-        from .paths import LineagePaths as _LP_pr
-        _project_dir = os.path.dirname(state_file)
-        _lp_pr = _LP_pr.from_state_file(state_file, project_path=_project_dir)
-        findings_path = _lp_pr.review_findings
-        if os.path.isfile(findings_path):
-            with open(findings_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    change = entry.get("change", "")
-                    for issue in entry.get("issues", []):
-                        norm = _re.sub(r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*", "", issue.get("summary", ""))[:80]
-                        if norm:
-                            pattern_counts.setdefault(norm, set()).add(change)
-
-        # Fallback: extract from state review_output (always available)
-        if not pattern_counts:
-            changes_list = state_dict.get("changes", [])
-            for c in changes_list:
-                review_out = c.get("review_output", "")
-                if not review_out:
-                    continue
-                change_name = c.get("name", "")
-                for match in _re.finditer(r"\[(?:CRITICAL|HIGH)\]\s*(.+?)(?:\n|$)", review_out):
-                    norm = match.group(1).strip()[:80]
-                    if norm:
-                        pattern_counts.setdefault(norm, set()).add(change_name)
-
-        # Also cluster by keywords for fuzzy matching across variations
-        from .review_clusters import REVIEW_PATTERN_CLUSTERS
-        _CLUSTERS = REVIEW_PATTERN_CLUSTERS
-        cluster_counts: dict[str, set[str]] = {}
-        for norm, changes_set in pattern_counts.items():
-            norm_lower = norm.lower()
-            for cid, keywords in _CLUSTERS.items():
-                if any(kw in norm_lower for kw in keywords):
-                    cluster_counts.setdefault(cid, set()).update(changes_set)
-                    break
-
-        # Merge keyword clusters into pattern_counts
-        for cid, changes_set in cluster_counts.items():
-            if len(changes_set) >= 2:
-                pattern_counts[f"[cluster:{cid}]"] = changes_set
-
-        recurring = {k: v for k, v in pattern_counts.items() if len(v) >= 2}
-        if recurring:
-            lines = ["Recurring review patterns across changes:"]
-            for pattern, changes in sorted(recurring.items(), key=lambda x: -len(x[1])):
-                lines.append(f"- \"{pattern}\" in {len(changes)} changes: {', '.join(sorted(changes))}")
-            orch_remember("\n".join(lines), mem_type="Learning", tags="source:orchestrator,type:review-patterns")
-            logger.info("Persisted %d recurring review patterns to memory", len(recurring))
-
-    except Exception:
-        logger.debug("Failed to persist run learnings", exc_info=True)
 
 
 def _clear_checkpoint_state(state_file: str) -> None:

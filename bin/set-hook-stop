@@ -54,11 +54,6 @@ while [[ "$dir" != "/" ]]; do
                 fi
             fi
 
-            # Memory reminder: if this skill has memory hooks, remind the agent
-            pid_memory="$dir/.set/agents/${claude_pid}.memory"
-            if [[ -f "$pid_memory" ]]; then
-                echo "[MEMORY REMINDER] Active skill has set-memory hooks. Run your recall/remember steps before finishing."
-            fi
         fi
         exit 0
     fi

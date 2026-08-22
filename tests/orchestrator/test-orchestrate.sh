@@ -727,32 +727,6 @@ assert_equals "api" "$pmval2"
 rm -rf "$TMPDIR_DIRECTIVE2"
 
 # ============================================================
-# Test: plan_memory_hygiene runs without error when set-memory unavailable
-# ============================================================
-
-test_start "plan_memory_hygiene succeeds when set-memory not in PATH"
-(
-    PATH="/usr/bin:/bin"
-    plan_memory_hygiene 2>/dev/null
-)
-rc=$?
-assert_equals "0" "$rc"
-
-# ============================================================
-# Test: orch_recall phase tag filtering passes tags through
-# ============================================================
-
-test_start "orch_recall passes tags parameter (verified by log output)"
-# We can't test actual recall without set-memory, but verify the function
-# accepts phase tags without error
-(
-    PATH="/usr/bin:/bin"  # set-memory unavailable
-    result=$(orch_recall "test query" 3 "phase:planning" 2>/dev/null)
-    # Should return empty string gracefully
-    [[ -z "$result" ]]
-) && test_pass || test_fail "empty result" "error"
-
-# ============================================================
 # Test: cascade_failed_deps (#16)
 # ============================================================
 

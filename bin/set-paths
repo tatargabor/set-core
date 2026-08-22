@@ -9,10 +9,10 @@
 #   source "$(dirname "$0")/set-paths"
 #   # Now $WT_STATE_FILE etc. are available
 #
-# Project name resolution matches set-memory and WtRuntime (Python).
+# Project name resolution matches WtRuntime (Python).
 
 # --- Project name resolution ---
-# Matches bin/set-memory::resolve_project() and lib/set_orch/paths.py::resolve_project_name()
+# Matches lib/set_orch/paths.py::resolve_project_name()
 _wt_resolve_project() {
     local toplevel
     toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || true

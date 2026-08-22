@@ -175,10 +175,6 @@ cmd_run() {
     # Gather context for banner
     local git_branch
     git_branch=$(git -C "$wt_path" branch --show-current 2>/dev/null || echo "unknown")
-    local memory_status="inactive"
-    if command -v set-memory &>/dev/null && set-memory health &>/dev/null; then
-        memory_status="active"
-    fi
     local title_suffix=""
     if [[ -n "$label" ]]; then
         title_suffix=" ($label)"
@@ -203,7 +199,7 @@ cmd_run() {
     echo "║  Mode: $permission_mode | Model: ${claude_model:-default} | Max: $max_iter | Stall: $stall_threshold | Idle: $max_idle_iters | Timeout: ${iteration_timeout_min}m"
     local team_display="off"
     if [[ "$team_mode" == "true" ]]; then team_display="enabled"; fi
-    echo "║  Memory: $memory_status | Budget: $budget_display | Team: $team_display"
+    echo "║  Budget: $budget_display | Team: $team_display"
     echo "║  Started: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
@@ -532,52 +528,13 @@ cmd_run() {
                 should_save=false
             fi
 
+            # The reflection used to be saved into the memory subsystem here, gated on
+            # $should_save. That subsystem was removed (openspec/changes/remove-shodh-memory).
+            # The reflection file is still written above and still read by whatever consumes
+            # it; only the memory write is gone. $should_save is kept because the quality
+            # filters that compute it are the useful half and a later sink can reuse them.
             if $should_save; then
-                if command -v set-memory &>/dev/null && set-memory health &>/dev/null 2>&1; then
-                    # Extract change name from last commit for tagging
-                    local change_tag=""
-                    local last_msg
-                    last_msg=$(cd "$wt_path" && git log -1 --format='%s' 2>/dev/null || echo "")
-                    if [[ "$last_msg" == *:* ]]; then
-                        local commit_change_name="${last_msg%%:*}"
-                        # Validate: change name should be kebab-case, not too long
-                        if [[ "$commit_change_name" =~ ^[a-z][a-z0-9-]+$ && ${#commit_change_name} -lt 40 ]]; then
-                            change_tag="change:$commit_change_name,"
-                        fi
-                    fi
-
-                    # Content dedup: check if similar memory already exists
-                    local prefix="${reflection_content:0:80}"
-                    local is_dupe=false
-                    local existing
-                    existing=$(set-memory recall "$prefix" --limit 1 --mode semantic 2>/dev/null | \
-                        python3 -c "
-import sys, json
-try:
-    memories = json.load(sys.stdin)
-    if memories and len(memories) > 0:
-        existing = memories[0].get('content', '')[:80]
-        new = sys.argv[1][:80]
-        # Check if first 80 chars are >70% similar (simple overlap check)
-        overlap = sum(1 for a, b in zip(existing, new) if a == b)
-        threshold = int(min(len(existing), len(new)) * 0.7)
-        print('dupe' if overlap > threshold and threshold > 30 else 'ok')
-    else:
-        print('ok')
-except:
-    print('ok')
-" "$prefix" 2>/dev/null)
-                    [[ "$existing" == "dupe" ]] && is_dupe=true
-
-                    if ! $is_dupe; then
-                        echo "$reflection_content" | set-memory remember \
-                            --type Learning \
-                            --tags "${change_tag}source:agent,reflection" \
-                            2>/dev/null && echo "💭 Reflection saved to memory" || true
-                    else
-                        echo "💭 Reflection skipped (duplicate)"
-                    fi
-                fi
+                :
             fi
             rm -f "$reflection_file"
         fi

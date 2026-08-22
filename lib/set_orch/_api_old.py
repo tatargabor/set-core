@@ -1772,55 +1772,6 @@ def get_project_settings(project: str):
     return result
 
 
-# ─── Memory endpoints ────────────────────────────────────────────────
-
-
-def _run_wt_memory(project_path: Path, args: list[str], timeout: int = 10) -> dict | str:
-    """Run set-memory CLI with project-scoped CWD, return parsed JSON or raw string."""
-    try:
-        result = subprocess.run(
-            ["set-memory"] + args,
-            capture_output=True, text=True, timeout=timeout,
-            cwd=str(project_path),
-        )
-        out = result.stdout.strip()
-        if result.returncode != 0:
-            return {"error": result.stderr.strip() or "set-memory failed"}
-        try:
-            return json.loads(out)
-        except (json.JSONDecodeError, TypeError):
-            return out
-    except FileNotFoundError:
-        return {"error": "set-memory not found"}
-    except subprocess.TimeoutExpired:
-        return {"error": f"timeout after {timeout}s"}
-
-
-@router.get("/api/{project}/memory")
-def get_memory_overview(project: str):
-    """Aggregate memory stats, health, and sync status in a single call."""
-    project_path = _resolve_project(project)
-
-    # Run all three set-memory commands in parallel (was sequential → 3-5s+ first load)
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        f_health = pool.submit(_run_wt_memory, project_path, ["health"])
-        f_stats = pool.submit(_run_wt_memory, project_path, ["stats", "--json"])
-        f_sync = pool.submit(_run_wt_memory, project_path, ["sync", "status"])
-
-        health = f_health.result()
-        stats = f_stats.result()
-        sync = f_sync.result()
-
-    return {
-        "health": health if isinstance(health, str) else health,
-        "stats": stats if isinstance(stats, dict) else {},
-        "sync": sync if isinstance(sync, str) else str(sync),
-    }
-
-
-# ─── WRITE endpoints ─────────────────────────────────────────────────
-
-
 @router.post("/api/{project}/approve")
 def approve_checkpoint(project: str):
     """Approve the latest checkpoint."""

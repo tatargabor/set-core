@@ -21,11 +21,11 @@
 
 ## 4. Remove the CLI, the daemon and the libraries
 
-- [ ] 4.1 Delete `bin/set-memory`, `bin/set-memoryd`, `bin/set-memory-hooks` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 4.2 Delete `bin/set-hook-memory` and the five legacy `set-hook-memory-{warmstart,recall,pretool,posttool,save}` scripts [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 4.3 Delete `lib/set_memoryd/`, `lib/memory/`, `lib/set_hooks/`, `lib/frustration.py` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 4.4 Remove the memory entries from `install.sh` and the `set-*` symlink/PATH setup [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 4.5 Sweep `lib/ bin/ modules/ mcp-server/ templates/ .claude/` for surviving `set-memory` / `shodh` / `set_memoryd` / `set_hooks` references and remove each; the sweep is over the whole tree, not over the files this change happened to touch [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 4.1 Delete `bin/set-memory`, `bin/set-memoryd`, `bin/set-memory-hooks` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 4.2 Delete `bin/set-hook-memory` and the five legacy `set-hook-memory-{warmstart,recall,pretool,posttool,save}` scripts [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 4.3 Delete `lib/set_memoryd/`, `lib/memory/`, `lib/set_hooks/`, `lib/frustration.py` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 4.4 Remove the memory entries from `install.sh` and the `set-*` symlink/PATH setup [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 4.5 Sweep `lib/ bin/ modules/ mcp-server/ templates/ .claude/` for surviving `set-memory` / `shodh` / `set_memoryd` / `set_hooks` references and remove each; the sweep is over the whole tree, not over the files this change happened to touch [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 
 ## 5. Rewrite the rule book, because a wrong instruction outlives wrong code
 
@@ -51,7 +51,7 @@
 
 ## 8. Tests
 
-- [ ] 8.1 Delete the 17 test files that exercise the removed code [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 8.1 Delete the 17 test files that exercise the removed code [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [ ] 8.2 Add a test asserting `bin/` contains no executable named `set-memory*` or `set-hook-memory*` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [ ] 8.3 Add a test asserting no module under `lib/` and no script under `bin/` imports `shodh_memory`, `set_memoryd` or `set_hooks` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [ ] 8.4 Add a test asserting a `set-deploy-hooks` run produces a settings.json with zero `set-hook-memory` commands [REQ: no-memory-hook-is-deployed]

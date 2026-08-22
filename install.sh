@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
 
-# Source set-common.sh for shared functions (find_python, save_shodh_python, etc.)
+# Source set-common.sh for shared functions (find_python, etc.)
 source "$SCRIPT_DIR/bin/set-common.sh"
 
 # Override color helpers with installer-style prefixes (set-common.sh defines simpler versions)
@@ -308,7 +308,7 @@ install_scripts() {
 
     mkdir -p "$INSTALL_DIR"
 
-    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-memory set-hook-memory-save set-hook-memory-recall set-hook-memory-warmstart set-hook-memory-pretool set-hook-memory-posttool set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-memory set-memoryd set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner)
+    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner)
 
     for script in "${scripts[@]}"; do
         local src="$SCRIPT_DIR/bin/$script"
@@ -419,74 +419,6 @@ install_zed() {
         success "Zed editor installed"
     else
         warn "Zed installation may require manual steps"
-    fi
-}
-
-# Install Shodh-Memory (optional — developer memory for OpenSpec workflow)
-install_shodh_memory() {
-    info "Checking Shodh-Memory..."
-
-    # Use find_python() to locate the target Python (shared from set-common.sh)
-    local PYTHON=""
-    if ! PYTHON=$(find_python); then
-        warn "No python3 found. Skipping Shodh-Memory."
-        return 0
-    fi
-
-    # Read version pin from pyproject.toml (single source of truth)
-    local shodh_pkg=""
-    local pyproject="$SCRIPT_DIR/pyproject.toml"
-    if [[ -f "$pyproject" ]]; then
-        shodh_pkg=$(grep 'shodh-memory' "$pyproject" | head -1 | sed 's/.*"\(shodh-memory[^"]*\)".*/\1/')
-    fi
-    if [[ -z "$shodh_pkg" ]]; then
-        shodh_pkg='shodh-memory>=0.1.81'  # fallback
-    fi
-
-    # Already installed? Check if version satisfies the pin.
-    if "$PYTHON" -c "import sys; sys._shodh_star_shown = True; from shodh_memory import Memory" 2>/dev/null; then
-        save_shodh_python "$PYTHON"
-        # Try upgrade to satisfy the pin (pip handles "already satisfied" cheaply)
-        if "$PYTHON" -m pip install "$shodh_pkg" >/dev/null 2>&1; then
-            success "Shodh-Memory up to date ($(basename "$PYTHON"))"
-        else
-            success "Shodh-Memory already installed ($(basename "$PYTHON"))"
-        fi
-        return 0
-    fi
-
-    echo ""
-    echo "  Shodh-Memory provides local cognitive memory for the OpenSpec workflow."
-    echo "  It's optional — without it, all memory operations are silently skipped."
-    echo ""
-    read -p "Install Shodh-Memory? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        info "Skipping Shodh-Memory (set-memory will work in no-op mode)"
-        return 0
-    fi
-
-    info "Installing Shodh-Memory into $PYTHON..."
-    # Use $PYTHON -m pip to guarantee pip matches the target Python
-    if "$PYTHON" -m pip install "$shodh_pkg" >/dev/null 2>&1; then
-        :
-    elif "$PYTHON" -m pip install --user "$shodh_pkg" >/dev/null 2>&1; then
-        :
-    elif "$PYTHON" -m pip install --break-system-packages "$shodh_pkg" 2>&1; then
-        :
-    else
-        warn "Shodh-Memory installation failed. Install manually: $PYTHON -m pip install '$shodh_pkg'"
-        return 0
-    fi
-
-    # Verify and persist
-    if "$PYTHON" -c "import sys; sys._shodh_star_shown = True; from shodh_memory import Memory" 2>/dev/null; then
-        save_shodh_python "$PYTHON"
-        success "Shodh-Memory installed"
-        echo "  Python: $PYTHON"
-        echo "  Check status with: set-memory status"
-    else
-        warn "Shodh-Memory installed but import verification failed"
     fi
 }
 
@@ -1267,7 +1199,6 @@ main() {
     install_gui_dependencies
     echo ""
 
-    install_shodh_memory
     echo ""
 
     install_set_core_python

@@ -558,57 +558,6 @@ find_python() {
     return 1
 }
 
-# Write the resolved shodh-memory Python path to config
-save_shodh_python() {
-    local python_path="$1"
-    mkdir -p "$CONFIG_DIR"
-    echo "$python_path" > "$CONFIG_DIR/shodh-python"
-}
-
-# Find a python3 that can import shodh_memory.
-# Resolution order:
-#   1. Saved config ($CONFIG_DIR/shodh-python) — validated
-#   2. python3 in PATH
-#   3. Well-known locations
-# On success: saves path to config (if not already saved) and prints it.
-# Returns: absolute path (stdout), exit 1 if not found
-find_shodh_python() {
-    local saved_python=""
-
-    # 1. Check saved config
-    if [[ -f "$CONFIG_DIR/shodh-python" ]]; then
-        saved_python=$(cat "$CONFIG_DIR/shodh-python" 2>/dev/null)
-        if [[ -n "$saved_python" && -x "$saved_python" ]] && \
-           "$saved_python" -c "import sys; sys._shodh_star_shown = True; from shodh_memory import Memory" 2>/dev/null; then
-            echo "$saved_python"
-            return 0
-        fi
-        # Stale config — fall through to probing
-    fi
-
-    # 2. Try python3 in PATH
-    local path_python=""
-    if command -v python3 &>/dev/null; then
-        path_python=$(command -v python3)
-        if "$path_python" -c "import sys; sys._shodh_star_shown = True; from shodh_memory import Memory" 2>/dev/null; then
-            save_shodh_python "$path_python"
-            echo "$path_python"
-            return 0
-        fi
-    fi
-
-    # 3. Probe well-known locations
-    for p in "${_PYTHON_PROBE_PATHS[@]}"; do
-        if [[ -x "$p" ]] && "$p" -c "import sys; sys._shodh_star_shown = True; from shodh_memory import Memory" 2>/dev/null; then
-            save_shodh_python "$p"
-            echo "$p"
-            return 0
-        fi
-    done
-
-    return 1
-}
-
 # =============================================================================
 # Lineage-aware path helpers (mirror lib/set_orch/paths.py::LineagePaths)
 # =============================================================================

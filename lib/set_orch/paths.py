@@ -4,7 +4,7 @@ Two-tier architecture:
 - Shared runtime: ~/.local/share/set-core/<project>/  (orchestration, sentinel, logs, cache)
 - Per-agent ephemeral: <worktree>/.set/  (loop-state, activity, PID files)
 
-Project name resolution matches the memory system (set_memoryd/lifecycle.py).
+Project name resolution follows the convention the removed memory system also used.
 
 Lineage-aware resolution (`LineagePaths`) layers on top of `SetRuntime` to
 provide per-lineage views of the orchestration history while keeping the
@@ -46,8 +46,8 @@ _LEGACY_AGENT_DIR = ".wt"
 def resolve_project_name(project_path: str | None = None) -> str:
     """Resolve git project name, handling worktrees.
 
-    Matches the logic in bin/set-memory::resolve_project() and
-    lib/set_memoryd/lifecycle.py::resolve_project().
+    This is now the only implementation; it used to be mirrored in the memory
+    subsystem's own resolver, which was removed.
 
     For worktrees, resolves to the main repo name so all worktrees
     share the same runtime directory.

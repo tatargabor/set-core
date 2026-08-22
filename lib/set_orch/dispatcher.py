@@ -2856,20 +2856,6 @@ def _build_sibling_context(state: OrchestratorState) -> str:
     return "## Active Sibling Changes (avoid conflicts)\n" + "\n".join(siblings) + "\n"
 
 
-def _recall_dispatch_memory(scope: str) -> str:
-    """Recall change-specific memories for dispatch.
-
-    Migrated from: dispatcher.sh dispatch_change() L331-333
-    """
-    r = run_command(
-        ["set-memory", "recall", scope, "--limit", "3", "--tags", "phase:execution"],
-        timeout=5,
-    )
-    if r.exit_code == 0 and r.stdout.strip():
-        return r.stdout.strip()[:1000]
-    return ""
-
-
 def dispatch_change(
     state_path: str,
     change_name: str,
@@ -3257,7 +3243,11 @@ def dispatch_change(
 
     # Gather enrichment context
     ctx = DispatchContext(
-        memory_ctx=_recall_dispatch_memory(scope),
+        # memory_ctx stays as a plumbed-through slot: cli.py reads it from input_data,
+        # so an external caller can still supply project context. Nothing fills it from
+        # inside the framework any more — the recall that did was removed with the memory
+        # subsystem (openspec/changes/remove-shodh-memory).
+        memory_ctx="",
         pk_context=_build_pk_context(scope, project_path),
         sibling_context=_build_sibling_context(state),
         review_learnings=review_learnings,

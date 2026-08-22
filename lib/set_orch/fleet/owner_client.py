@@ -3,7 +3,7 @@
 Synchronous, because the caller is a FastAPI route and the requests are short.
 
 **This client deliberately does NOT auto-start the owner, and that is the one
-place it departs from `set_memoryd.client`, which does.** The departure is the
+place it departs from the removed memory daemon's client, which did.** The departure is the
 whole reason the split exists. A daemon started from inside the web service
 becomes a child of `set-web.service` and joins its control group; the unit runs
 with `KillMode=control-group`, so the next deploy or crash-restart would take the

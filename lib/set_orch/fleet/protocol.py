@@ -6,19 +6,19 @@
 
 One newline-terminated JSON object per message, over an `AF_UNIX` stream.
 
-**This is deliberately the same shape as `set_memoryd.protocol`** — task 5.8 says
-extend the daemon shape this repository already has rather than invent a second
-one. It is *copied* rather than imported, and the reason is measured rather than
-stylistic: `set_memoryd` is not a packaged module (`pyproject.toml`'s
-`packages.find` include list names `set_tools*`, `set_orch*`, `set_workcycle*`
-and `gui*` only, and `import set_memoryd` fails in the installed environment).
-Importing it would make the owner service — which systemd starts — depend on a
-module that only resolves when `PYTHONPATH` happens to carry `lib/`.
+**This envelope shape was copied from the memory daemon's protocol**, which no
+longer exists — the memory subsystem was removed in
+`openspec/changes/remove-shodh-memory`. It is recorded here because the shape was
+adopted deliberately rather than invented, and because the reason for *copying*
+rather than importing was measured: that module was not packaged
+(`pyproject.toml`'s `packages.find` include list names `set_tools*`, `set_orch*`,
+`set_workcycle*` and `gui*` only), so importing it would have made the owner
+service — which systemd starts — depend on a module that only resolved when
+`PYTHONPATH` happened to carry `lib/`.
 
-A second copy drifts, so the bound on the drift is stated here: the two daemons'
-method sets are disjoint and neither imports the other's, and what is shared is
-forty lines of envelope. If a third daemon appears, this is the point at which
-the envelope should become a packaged module instead of a third copy.
+This is now the only copy, so the drift this note used to bound cannot happen.
+If a second daemon appears, the envelope becomes a packaged module rather than a
+second copy.
 
 **Bytes travel base64-encoded, never as text.** Keystrokes and terminal output
 are arbitrary bytes — a partial UTF-8 sequence split across two reads is normal

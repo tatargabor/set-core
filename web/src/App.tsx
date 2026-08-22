@@ -4,7 +4,6 @@ import { TuiStatus } from './components/tui'
 import Dashboard from './pages/Dashboard'
 import Worktrees from './pages/Worktrees'
 import Settings from './pages/Settings'
-import Memory from './pages/Memory'
 import Manager from './pages/Manager'
 import ProjectStatus from './pages/ProjectStatus'
 import ManagerIssues from './pages/ManagerIssues'
@@ -157,11 +156,6 @@ function IssuesPage() {
   return <ManagerIssues project={name || null} />
 }
 
-function MemoryPage() {
-  const { name } = useParams<{ name: string }>()
-  return <Memory project={name || null} />
-}
-
 function SettingsPage() {
   const { name } = useParams<{ name: string }>()
   return <Settings project={name || null} />
@@ -190,7 +184,6 @@ function LegacySetRedirect() {
   const { project, '*': rest } = useParams()
   const tabMap: Record<string, string> = {
     'worktrees': 'orch/worktrees',
-    'memory': 'memory',
     'settings': 'settings',
   }
   const mapped = rest && tabMap[rest] ? tabMap[rest] : 'status'
@@ -252,8 +245,6 @@ export default function App() {
           <Route path="status" element={<ProjectStatusPage />} />
           {/* Issues */}
           <Route path="issues" element={<IssuesPage />} />
-          {/* Memory */}
-          <Route path="memory" element={<MemoryPage />} />
           {/* Settings */}
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/mutes" element={<MutesPage />} />

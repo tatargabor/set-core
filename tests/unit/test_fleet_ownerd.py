@@ -329,7 +329,7 @@ def test_a_file_presence_check_would_not_have_told_the_two_apart(tmp_path):
 # --------------------------------------------------------------------------- #
 
 def test_the_client_does_not_start_the_owner_and_says_which_command_does(tmp_path):
-    """The one place this client departs from `set_memoryd.client`, which
+    """The one place this client departs from the removed memory daemon's client, which
     auto-starts its daemon. An owner started from inside the web service joins
     its control group and dies with it (CB-1) — the exact defect the second
     service exists to remove. Convenience here would rebuild it silently.
