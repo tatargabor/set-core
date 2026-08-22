@@ -1,7 +1,4 @@
-## ADDED Requirements
-
-<!--
-IN SCOPE:
+## IN SCOPE
 - Listing the files of a registered project over HTTP.
 - Reading the text content of one file of a registered project.
 - Writing new content back to one file of a registered project.
@@ -11,7 +8,7 @@ IN SCOPE:
 - The conflict answer when the file changed underneath the caller between read and write.
 - The confidentiality rule: the framework persists nothing it read.
 
-OUT OF SCOPE:
+## OUT OF SCOPE
 - Any UI. What a panel shows and how it behaves belongs to `fleet-file-view`.
 - Git history, blame, diff against a ref, or staging — reading and writing the working
   tree only.
@@ -20,14 +17,25 @@ OUT OF SCOPE:
   worktree of another project, anything under a home directory).
 - Concurrent-edit merging. A changed file is refused, never merged.
 - Authentication and who may call the API — the dashboard's existing binding decides that.
--->
+
+## ADDED Requirements
 
 ### Requirement: A project's files can be listed
 
-The framework SHALL provide an endpoint that lists the files of a registered project,
-identified by the project name the rest of the fleet API already uses. The listing SHALL
-exclude what the project's own ignore rules exclude, and SHALL include files that exist but
-are not yet tracked — a file an agent just wrote is exactly the file a reader wants to open.
+The framework SHALL provide an endpoint that lists the files of a project the fleet screen
+knows, identified the same way the fleet API's other guarded endpoints identify one — by its
+root, checked against the set the screen itself is built from.
+
+*Measured 2026-08-22, which is why it is the root and not the registry name:* of the projects
+on the screen, `set-core` and `wpc-pont` are in `~/.config/set-core/projects.json` and two
+others are not — they reach the screen through process discovery and the messaging registry.
+Resolving by registry name would therefore refuse a project the reader is looking at, which is
+the divergence `fleet.py:660-673` already warns about in its own words: the rule is *what the
+screen shows*, so the guard follows that list rather than deciding on its own what ought to be
+in it.
+
+The listing SHALL exclude what the project's own ignore rules exclude, and SHALL include
+files that exist but are not yet tracked — a file an agent just wrote is exactly the file a reader wants to open.
 
 #### Scenario: The listing follows the project's own ignore rules
 
@@ -41,11 +49,11 @@ are not yet tracked — a file an agent just wrote is exactly the file a reader 
 - **THEN** the answer carries both the returned entries and the fact that it was cut, with
   the cap and the true count, so no caller can read a short list as a complete one
 
-#### Scenario: An unknown project is refused
+#### Scenario: A root the screen does not know is refused
 
-- **WHEN** the listing is asked for a name no registered project has
-- **THEN** the endpoint refuses with a not-found, and says nothing about what does exist on
-  the machine
+- **WHEN** the listing is asked for a root that is not one of the roots the fleet screen is
+  built from
+- **THEN** the endpoint refuses, and says nothing about what does exist on the machine
 
 ### Requirement: One file's content can be read
 

@@ -1,20 +1,18 @@
-## ADDED Requirements
-
-<!--
-IN SCOPE:
+## IN SCOPE
 - Recognising a file reference in an agent's terminal output, with an optional line number.
 - Opening that file in the file view when a person activates the reference.
 - A route to the same file that does not depend on the mouse reaching the terminal, because
   an agent's own program can be holding the mouse.
 - What must not be treated as a link.
 
-OUT OF SCOPE:
+## OUT OF SCOPE
 - External URLs in terminal output — already shipped, opening in a new tab, and untouched.
 - What the file view does once the file is open (`fleet-file-view`).
 - The endpoints (`project-file-access`).
 - Rewriting, filtering or annotating the agent's output.
 - References to files of a project other than the one the terminal's agent belongs to.
--->
+
+## ADDED Requirements
 
 ### Requirement: A file reference in terminal output is recognised
 

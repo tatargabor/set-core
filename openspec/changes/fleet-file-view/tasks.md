@@ -1,36 +1,36 @@
 ## 1. The server side — listing
 
-- [ ] 1.1 New router `lib/set_orch/api/files.py` following the `api/orchestration.py:386` shape (module-level `APIRouter`, `_resolve_project` from `.helpers`, `HTTPException` for every refusal), registered in `api/__init__.py` **after** `fleet_router` so `/api/fleet/...` keeps its precedence (CB-16) [REQ: a-projects-files-can-be-listed]
-- [ ] 1.2 `GET /api/{project}/files` — `git ls-files --cached --others --exclude-standard` in the project root, returning the paths [REQ: a-projects-files-can-be-listed]
-- [ ] 1.3 The bounded-walk fallback for a project that is not a git repository, and a field in the answer saying WHICH source produced the list [REQ: a-projects-files-can-be-listed]
-- [ ] 1.4 The cap, and the answer carrying `truncated`, the cap and the true count — never a short list that reads as complete [REQ: a-projects-files-can-be-listed]
-- [ ] 1.5 An unknown project name answers 404 and says nothing about what else exists [REQ: a-projects-files-can-be-listed]
+- [x] 1.1 New router `lib/set_orch/api/files.py` following the `api/orchestration.py:386` shape (module-level `APIRouter`, `HTTPException` for every refusal), registered in `api/__init__.py` **after** `fleet_router` so `/api/fleet/...` keeps its precedence (CB-16) [REQ: a-projects-files-can-be-listed]
+- [x] 1.2 `GET /api/fleet/files?root=` — `git ls-files --cached --others --exclude-standard` in the project root, returning the paths. Root-based and guarded by `_known_roots()`, NOT `_resolve_project()`: measured 2026-08-22, two of the projects on the screen are absent from the registry, so a name lookup would refuse a project the reader is looking at [REQ: a-projects-files-can-be-listed]
+- [x] 1.3 The bounded-walk fallback for a project that is not a git repository, and a field in the answer saying WHICH source produced the list [REQ: a-projects-files-can-be-listed]
+- [x] 1.4 The cap, and the answer carrying `truncated`, the cap and the true count — never a short list that reads as complete [REQ: a-projects-files-can-be-listed]
+- [x] 1.5 A root the screen does not know is refused, and says nothing about what else exists [REQ: a-projects-files-can-be-listed]
 
 ## 2. The server side — reading one file
 
-- [ ] 2.1 `GET /api/{project}/files/content?path=` returning the text and a sha256 of the exact bytes served [REQ: one-files-content-can-be-read]
-- [ ] 2.2 The size cap, refusing with the file's size and the cap rather than a truncated prefix [REQ: one-files-content-can-be-read]
-- [ ] 2.3 Binary refusal — undecodable bytes produce a reason and no partial content [REQ: one-files-content-can-be-read]
+- [x] 2.1 `GET /api/fleet/files/content?root=&path=` returning the text and a sha256 of the exact bytes served [REQ: one-files-content-can-be-read]
+- [x] 2.2 The size cap, refusing with the file's size and the cap rather than a truncated prefix [REQ: one-files-content-can-be-read]
+- [x] 2.3 Binary refusal — undecodable bytes produce a reason and no partial content [REQ: one-files-content-can-be-read]
 
 ## 3. The guard, before anything is read or written
 
-- [ ] 3.1 `_confine(project_root, rel_path)` — resolve with symlinks followed, then require `is_relative_to` a registered root, copying the `media.py:238-262` + `fleet.py:667 _known_roots()` shapes [REQ: every-path-is-confined-to-a-known-project-root]
-- [ ] 3.2 The refusal is byte-identical for a path that exists and one that does not, so the endpoint cannot probe the filesystem [REQ: every-path-is-confined-to-a-known-project-root]
-- [ ] 3.3 Unit tests against a real temporary tree: `..` traversal, a symlink whose target is outside, a symlinked parent directory, and an absolute path in another project [REQ: every-path-is-confined-to-a-known-project-root]
-- [ ] 3.4 **Prove the guard is a guard**: mutate `_confine` to check the unresolved path and confirm the symlink test goes red; restore and grep-verify the restore [REQ: every-path-is-confined-to-a-known-project-root]
+- [x] 3.1 `_confine(project_root, rel_path)` — resolve with symlinks followed, then require `is_relative_to` a registered root, copying the `media.py:238-262` + `fleet.py:667 _known_roots()` shapes [REQ: every-path-is-confined-to-a-known-project-root]
+- [x] 3.2 The refusal is byte-identical for a path that exists and one that does not, so the endpoint cannot probe the filesystem [REQ: every-path-is-confined-to-a-known-project-root]
+- [x] 3.3 Unit tests against a real temporary tree: `..` traversal, a symlink whose target is outside, a symlinked parent directory, and an absolute path in another project [REQ: every-path-is-confined-to-a-known-project-root]
+- [x] 3.4 **Prove the guard is a guard**: mutate `_confine` to check the unresolved path and confirm the symlink test goes red; restore and grep-verify the restore [REQ: every-path-is-confined-to-a-known-project-root]
 
 ## 4. The server side — writing
 
-- [ ] 4.1 `PUT /api/{project}/files/content` taking the content and the identity the caller last read; write only on a match, and answer with the identity of what was written [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
-- [ ] 4.2 A mismatched identity is refused with 409, the file untouched, the answer saying the file changed [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
-- [ ] 4.3 A write to a path that no longer exists is refused rather than re-creating the file [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
-- [ ] 4.4 Write atomically (temp file in the same directory, then replace) so a failure cannot leave a half-written file [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
-- [ ] 4.5 An accepted write logs project, path and byte count at INFO — and a test asserts no log record carries file content [REQ: the-framework-persists-nothing-it-read]
+- [x] 4.1 `PUT /api/fleet/files/content` taking the content and the identity the caller last read; write only on a match, and answer with the identity of what was written [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
+- [x] 4.2 A mismatched identity is refused with 409, the file untouched, the answer saying the file changed [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
+- [x] 4.3 A write to a path that no longer exists is refused rather than re-creating the file [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
+- [x] 4.4 Write atomically (temp file in the same directory, then replace) so a failure cannot leave a half-written file [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath]
+- [x] 4.5 An accepted write logs project, path and byte count at INFO — and a test asserts no log record carries file content [REQ: the-framework-persists-nothing-it-read]
 
 ## 5. Confidentiality on the server
 
-- [ ] 5.1 No caching layer between the endpoint and disk; a test reads the same file twice after changing it and gets the new bytes [REQ: the-framework-persists-nothing-it-read]
-- [ ] 5.2 Every failure path logs the reason and the path shape only; a test with distinctive content asserts that content appears in no emitted log record [REQ: the-framework-persists-nothing-it-read]
+- [x] 5.1 No caching layer between the endpoint and disk; a test reads the same file twice after changing it and gets the new bytes [REQ: the-framework-persists-nothing-it-read]
+- [x] 5.2 Every failure path logs the reason and the path shape only; a test with distinctive content asserts that content appears in no emitted log record [REQ: the-framework-persists-nothing-it-read]
 
 ## 6. Monaco enters the dashboard
 
@@ -73,20 +73,20 @@
 
 ## Acceptance Criteria (from spec scenarios)
 
-- [ ] AC-1: WHEN a project's files are listed and the project ignores a directory of build output THEN no file from it appears and an uncommitted file does [REQ: a-projects-files-can-be-listed, scenario: the-listing-follows-the-projects-own-ignore-rules]
-- [ ] AC-2: WHEN a project holds more files than the cap THEN the answer carries the entries, the cap and the true count [REQ: a-projects-files-can-be-listed, scenario: a-truncated-listing-says-it-is-truncated]
-- [ ] AC-3: WHEN the listing is asked for an unknown project THEN it refuses with not-found and says nothing about what exists [REQ: a-projects-files-can-be-listed, scenario: an-unknown-project-is-refused]
-- [ ] AC-4: WHEN a readable text file is requested THEN its content and a content identity are returned [REQ: one-files-content-can-be-read, scenario: a-text-file-is-returned-with-its-identity]
-- [ ] AC-5: WHEN the file is larger than the cap THEN the refusal states the size and the cap [REQ: one-files-content-can-be-read, scenario: a-file-too-large-to-serve-is-refused-with-its-size]
-- [ ] AC-6: WHEN the file is not decodable text THEN it is refused with a reason and no partial content [REQ: one-files-content-can-be-read, scenario: a-binary-file-is-refused-rather-than-mangled]
-- [ ] AC-7: WHEN a write carries the identity that still matches disk THEN it is written and the new identity returned [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath, scenario: the-file-is-unchanged-since-it-was-read]
-- [ ] AC-8: WHEN a write carries a stale identity THEN it is refused, the file keeps the other writer's content, and the answer says it changed [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath, scenario: an-agent-changed-the-file-while-it-was-open]
-- [ ] AC-9: WHEN a write names a path that no longer exists THEN it is refused rather than re-creating it [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath, scenario: a-write-to-a-file-that-has-since-been-deleted]
-- [ ] AC-10: WHEN a request climbs out of the project root THEN it is refused and nothing is read or written [REQ: every-path-is-confined-to-a-known-project-root, scenario: a-traversal-out-of-the-project-is-refused]
-- [ ] AC-11: WHEN the path is or lies under a link resolving outside every known root THEN it is refused on the RESOLVED path [REQ: every-path-is-confined-to-a-known-project-root, scenario: a-symbolic-link-pointing-outside-the-project-is-refused]
-- [ ] AC-12: WHEN a path outside every known root is requested THEN the answer is the same whether or not it exists [REQ: every-path-is-confined-to-a-known-project-root, scenario: the-refusal-does-not-answer-whether-the-file-exists]
-- [ ] AC-13: WHEN a read or write fails and is logged THEN the record carries project and reason and no line of the file [REQ: the-framework-persists-nothing-it-read, scenario: a-failure-is-logged-without-the-content]
-- [ ] AC-14: WHEN the same file is read twice THEN the second answer comes from disk and no copy is held [REQ: the-framework-persists-nothing-it-read, scenario: nothing-is-cached-between-requests]
+- [x] AC-1: WHEN a project's files are listed and the project ignores a directory of build output THEN no file from it appears and an uncommitted file does [REQ: a-projects-files-can-be-listed, scenario: the-listing-follows-the-projects-own-ignore-rules]
+- [x] AC-2: WHEN a project holds more files than the cap THEN the answer carries the entries, the cap and the true count [REQ: a-projects-files-can-be-listed, scenario: a-truncated-listing-says-it-is-truncated]
+- [x] AC-3: WHEN the listing is asked for a root the screen does not know THEN it refuses and says nothing about what exists [REQ: a-projects-files-can-be-listed, scenario: a-root-the-screen-does-not-know-is-refused]
+- [x] AC-4: WHEN a readable text file is requested THEN its content and a content identity are returned [REQ: one-files-content-can-be-read, scenario: a-text-file-is-returned-with-its-identity]
+- [x] AC-5: WHEN the file is larger than the cap THEN the refusal states the size and the cap [REQ: one-files-content-can-be-read, scenario: a-file-too-large-to-serve-is-refused-with-its-size]
+- [x] AC-6: WHEN the file is not decodable text THEN it is refused with a reason and no partial content [REQ: one-files-content-can-be-read, scenario: a-binary-file-is-refused-rather-than-mangled]
+- [x] AC-7: WHEN a write carries the identity that still matches disk THEN it is written and the new identity returned [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath, scenario: the-file-is-unchanged-since-it-was-read]
+- [x] AC-8: WHEN a write carries a stale identity THEN it is refused, the file keeps the other writer's content, and the answer says it changed [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath, scenario: an-agent-changed-the-file-while-it-was-open]
+- [x] AC-9: WHEN a write names a path that no longer exists THEN it is refused rather than re-creating it [REQ: a-file-is-written-back-only-if-it-has-not-changed-underneath, scenario: a-write-to-a-file-that-has-since-been-deleted]
+- [x] AC-10: WHEN a request climbs out of the project root THEN it is refused and nothing is read or written [REQ: every-path-is-confined-to-a-known-project-root, scenario: a-traversal-out-of-the-project-is-refused]
+- [x] AC-11: WHEN the path is or lies under a link resolving outside every known root THEN it is refused on the RESOLVED path [REQ: every-path-is-confined-to-a-known-project-root, scenario: a-symbolic-link-pointing-outside-the-project-is-refused]
+- [x] AC-12: WHEN a path outside every known root is requested THEN the answer is the same whether or not it exists [REQ: every-path-is-confined-to-a-known-project-root, scenario: the-refusal-does-not-answer-whether-the-file-exists]
+- [x] AC-13: WHEN a read or write fails and is logged THEN the record carries project and reason and no line of the file [REQ: the-framework-persists-nothing-it-read, scenario: a-failure-is-logged-without-the-content]
+- [x] AC-14: WHEN the same file is read twice THEN the second answer comes from disk and no copy is held [REQ: the-framework-persists-nothing-it-read, scenario: nothing-is-cached-between-requests]
 - [ ] AC-15: WHEN the reader picks a file from the structure THEN it appears highlighted and the structure marks it open [REQ: the-panel-shows-a-projects-structure-and-one-opened-file, scenario: a-file-is-opened-from-the-structure]
 - [ ] AC-16: WHEN the file's type has no highlighting THEN it renders as plain text [REQ: the-panel-shows-a-projects-structure-and-one-opened-file, scenario: a-type-with-no-highlighting-still-renders]
 - [ ] AC-17: WHEN a file is opened with a line number THEN that line is scrolled into view and marked [REQ: the-panel-opens-at-a-named-line-and-marks-it, scenario: opening-at-a-line-inside-the-file]

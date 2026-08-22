@@ -1,7 +1,4 @@
-## ADDED Requirements
-
-<!--
-IN SCOPE:
+## IN SCOPE
 - A file view panel on the fleet screen: the project's structure on one side, one opened
   file on the other.
 - Syntax highlighting of the opened file.
@@ -10,7 +7,7 @@ IN SCOPE:
 - What the panel must SAY when a file cannot be shown, or a save is refused.
 - What the panel must never keep in the browser.
 
-OUT OF SCOPE:
+## OUT OF SCOPE
 - The endpoints themselves — `project-file-access` owns listing, reading, writing and the
   path guard.
 - How a file reference gets here from a terminal — `terminal-file-links` owns that.
@@ -19,7 +16,8 @@ OUT OF SCOPE:
 - Creating, renaming or deleting files; multi-file search; find-and-replace across files.
 - Diffing against git, blame, or history.
 - More than one file open at a time.
--->
+
+## ADDED Requirements
 
 ### Requirement: The panel shows a project's structure and one opened file
 
