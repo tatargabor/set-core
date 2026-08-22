@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, File as FileIcon, RefreshCw, Save, X } from 'lucide-react'
 
 import { buildTree, languageOf, type TreeNode } from '../lib/fleetFiles'
-import { IconButton } from './TileControls'
+import { DOCK_CONTROLS, IconButton } from './TileControls'
+import type { DockEdge } from '../lib/fleetDocks'
 
 /**
  * The file view — a project's structure on the left, one file on the right.
@@ -62,7 +63,7 @@ export interface FileRequest {
   line?: number
 }
 
-export default function FleetFileView({ root, projectName, request, onClose, onRequestHandled }: {
+export default function FleetFileView({ root, projectName, request, onClose, onRequestHandled, onDock, dockedEdge }: {
   /** The project's root — how every endpoint here identifies the project. */
   root: string
   projectName: string
@@ -71,6 +72,17 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
   onClose: () => void
   /** Called once a request has been taken up, so it is not re-opened forever. */
   onRequestHandled?: () => void
+  /**
+   * Put this panel on an edge, or `null` to bring it back into the grid.
+   *
+   * The same four controls an agent tile carries, from the same list — asked for
+   * 2026-08-22: *"nem csak jobb oldalt akarom tartani, hanem ugyanúgy rendezni
+   * mint agentek nézetét"*. Before this the panel could only be on the right,
+   * and its only other state was closed.
+   */
+  onDock?: (edge: DockEdge | null) => void
+  /** Which edge it is on now, or `null` when it sits in the grid. */
+  dockedEdge?: DockEdge | null
 }) {
   const [listing, setListing] = useState<Listing | null>(null)
   const [listError, setListError] = useState<string | null>(null)
@@ -232,6 +244,25 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
           </span>
         )}
         <span className="ml-auto flex items-center gap-0.5 shrink-0">
+          {onDock && (
+            /* Four edges, one control each, and the one it is already on is the
+               way back into the grid — the same shape the agent tiles use, so a
+               control never becomes a dead end. */
+            <span className="flex items-center" data-fleet-file-dock={dockedEdge ?? 'grid'}>
+              {DOCK_CONTROLS.map(({ edge, icon, where }) => (
+                <IconButton
+                  key={edge}
+                  icon={icon}
+                  testId={`file-dock-${edge}`}
+                  active={dockedEdge === edge}
+                  label={dockedEdge === edge
+                    ? `bring the files back into the grid from the ${where}`
+                    : `put the files ${where} — the panel takes its space out of the grid`}
+                  onClick={() => onDock(dockedEdge === edge ? null : edge)}
+                />
+              ))}
+            </span>
+          )}
           <IconButton
             icon={RefreshCw}
             testId="file-refresh"

@@ -144,16 +144,41 @@ export default function FleetSplitter({
       // the pointer needs to hit. Hence a thin visible child inside a thicker
       // hit area, rather than a thick visible bar.
       className={`group relative shrink-0 z-10 ${
-        horizontal ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'
+        horizontal ? 'w-2 cursor-col-resize' : 'h-2 cursor-row-resize'
       } focus:outline-none`}
       title={`${label} — drag, or focus and use the arrow keys`}
     >
       <div
         aria-hidden
-        className={`absolute bg-surface-line transition-colors group-hover:bg-sky-500/60 group-focus:bg-sky-400 ${
+        className={`absolute bg-surface-edge transition-colors group-hover:bg-sky-500/60 group-focus:bg-sky-400 ${
           dragging ? '!bg-sky-400' : ''
         } ${horizontal ? 'inset-y-0 left-1/2 -translate-x-1/2 w-px' : 'inset-x-0 top-1/2 -translate-y-1/2 h-px'}`}
       />
+      {/*
+        A GRIP, because the mechanism was there and nobody could see it.
+
+        Reported 2026-08-22 as a missing feature — *"kell a layout határokhoz
+        allitható húzható méret"* — while both dividers were already draggable
+        and measured as such (`role="separator"`, 6 px hit area). What was
+        missing is the affordance: a 1 px line in the same neutral as the surface
+        behind it says nothing about being grabbable, so a working control read
+        as an absent one.
+
+        Three dots at the middle, dim at rest and lit on hover: enough to say
+        *this edge moves* without drawing a bar across the screen, which is what
+        `ui-quality.md` means by density being a decision.
+      */}
+      <div
+        aria-hidden
+        className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex ${
+          horizontal ? 'flex-col' : 'flex-row'
+        } gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity`}
+      >
+        {[0, 1, 2].map(i => (
+          <span key={i} className={`block w-0.5 h-0.5 rounded-full ${
+            dragging ? 'bg-sky-300' : 'bg-fg-ghost group-hover:bg-sky-300'}`} />
+        ))}
+      </div>
     </div>
   )
 }

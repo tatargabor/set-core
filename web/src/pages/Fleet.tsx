@@ -1655,10 +1655,46 @@ export default function Fleet() {
    * adding a band is a second way for the stored layout to disagree with the
    * screen.
    */
+  /*
+    A DOCKED FILE VIEW IS AN OPEN ONE — found by clicking, 2026-08-22.
+
+    The arrangement is stored, so a panel comes back docked on the next load
+    without anybody calling `openFile`, and `filesOpen` knew nothing about it.
+    Pressing the edge it was on then undocked it into a grid that had no reason
+    to draw it, and the panel simply vanished — a control that reads as "move
+    this" doing "delete this".
+
+    So the two facts are reconciled in one direction only: a dock entry implies
+    openness. The reverse is deliberately NOT true — an open panel with no entry
+    is exactly the grid case.
+  */
+  useEffect(() => {
+    const docked = docks.filter(d => d.kind === PANEL_FILES).map(d => d.id)
+    if (docked.length === 0) return
+    setFilesOpen(prev => (docked.every(id => prev.has(id))
+      ? prev
+      : new Set([...prev, ...docked])))
+  }, [docks])
+
   const openFile = useCallback((root: string, file: FileRequest) => {
     setFileRequest({ root, file })
-    if (!docks.some(d => d.kind === PANEL_FILES && d.id === root)) {
-      dockPanel(PANEL_FILES, root, 'right')
+    setFilesOpen(prev => (prev.has(root) ? prev : new Set([...prev, root])))
+    // A band tidied away to its strip is OPEN and not visible, which is the
+    // state that made the control look broken. Asking for a file un-tidies it;
+    // it does not move the panel, because where it sits is the reader's arrangement.
+    const band = docks.find(d => d.kind === PANEL_FILES && d.id === root)
+    if (band?.collapsed) collapseBand(PANEL_FILES, root, false)
+  }, [docks, collapseBand])
+
+  /** Close it: the panel stops existing, wherever it was. */
+  const closeFiles = useCallback((root: string) => {
+    setFilesOpen(prev => {
+      const next = new Set(prev)
+      next.delete(root)
+      return next
+    })
+    if (docks.some(d => d.kind === PANEL_FILES && d.id === root)) {
+      dockPanel(PANEL_FILES, root, null)
     }
   }, [docks, dockPanel])
 
@@ -1868,6 +1904,20 @@ export default function Fleet() {
     file over the reader's later navigation.
   */
   const [fileRequest, setFileRequest] = useState<{ root: string; file: FileRequest } | null>(null)
+  /*
+    WHETHER THE FILE VIEW EXISTS, kept apart from WHERE IT IS.
+
+    Two facts, and merging them is what broke it. The first build tracked only
+    the dock entry, so "closed" and "not docked" were the same state: the panel
+    could only live on the right, undocking WAS closing, and — reported
+    2026-08-22, *"becsuktam jobbra és nem tudom kinyitni"* — a band tidied away
+    to its strip counted as already open, so the control that should have brought
+    it back did nothing at all.
+
+    Now openness is this set, and placement is the dock map exactly as it is for
+    an agent: an entry means an edge, no entry means the grid.
+  */
+  const [filesOpen, setFilesOpen] = useState<ReadonlySet<string>>(new Set())
 
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.
@@ -2091,7 +2141,9 @@ export default function Fleet() {
           projectName={project.name}
           request={fileRequest?.root === project.root ? fileRequest.file : null}
           onRequestHandled={() => setFileRequest(null)}
-          onClose={() => dockPanel(PANEL_FILES, band.id, null)}
+          onClose={() => closeFiles(band.id)}
+          onDock={edge => dockPanel(PANEL_FILES, band.id, edge)}
+          dockedEdge={docks.find(d => d.kind === PANEL_FILES && d.id === band.id)?.edge ?? null}
         />
       )
     }
@@ -2141,7 +2193,7 @@ export default function Fleet() {
       />
     )
   }, [active, data, openLogs, openTerminals, toggleLog, toggleTerminal, canJumpSeat, onJumpSeat,
-      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest])
+      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest, docks, closeFiles])
 
   // Discovery has never answered. An error here is the real thing — there is no
   // measurement to fall back on — so it replaces the screen.
@@ -2618,6 +2670,35 @@ export default function Fleet() {
                   places would give the reader a second panel where they asked
                   for the same one somewhere else — and two renderings of one
                   agent drift, with the unwatched copy going stale. */}
+              {/*
+                THE FILE VIEW AS A TILE — asked for 2026-08-22: *"nem csak jobb
+                oldalt akarom tartani, hanem ugyanúgy rendezni mint agentek
+                nézetét"*.
+
+                Open and not docked means here, in the same grid, under the same
+                column choice and the same uniform row height as every agent.
+                Docked, it is drawn by `renderDocked` and this renders nothing —
+                the panel MOVED to its edge, and drawing it in both places would
+                give the reader two of one thing, with the unwatched copy going
+                stale. That is the same rule `gridAgents` already follows.
+              */}
+              {active.root && filesOpen.has(active.root)
+                && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root) && (
+                <div
+                  className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden`}
+                  data-fleet-file-tile={active.root}
+                >
+                  <FleetFileView
+                    root={active.root}
+                    projectName={active.name}
+                    request={fileRequest?.root === active.root ? fileRequest.file : null}
+                    onRequestHandled={() => setFileRequest(null)}
+                    onClose={() => closeFiles(active.root)}
+                    onDock={edge => dockPanel(PANEL_FILES, active.root, edge)}
+                    dockedEdge={null}
+                  />
+                </div>
+              )}
               {gridAgents.map(a => {
                 const card = (extra: { enlarged?: boolean; open: boolean; onToggle: () => void }) => (
                   <AgentCard

@@ -72,6 +72,14 @@
 - [x] 9b.2 The link provider was registered inside the socket effect, which depends on `label` alone — so it would have been registered once, with an empty file set, and never again: file links would silently never appear. Moved to its own effect over a ref to the emulator, so no re-attach and no replay [REQ: a-file-reference-in-terminal-output-is-recognised]
 - [x] 9b.3 Activation requires Ctrl/Cmd. A plain click in a terminal is how a reader focuses it, places a cursor or selects; opening a file on every one would take the screen somewhere nobody asked to go [REQ: activating-a-reference-opens-it-in-the-file-view]
 
+## 9c. Reported by the user after LOOKING at it, 2026-08-22
+
+- [x] 9c.1 *"becsuktam jobbra és nem tudom kinyitni"* — openness and placement were ONE fact, so a band tidied to its strip counted as open and the control did nothing. They are two now: an open set, and the dock map that says where [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 9c.2 *"nincs rajta ugyanolyan layout gombok mint az agenteken"* — the panel carries the same four edge controls, from the SAME list `TileControls` uses, so there is one answer to where a panel may go [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 9c.3 *"nem csak jobb oldalt akarom tartani, hanem ugyanúgy rendezni mint agentek nézetét"* — open and undocked now renders as a TILE in the agent grid, under the same column choice and row height. Measured by clicking: grid → left → grid → top → right [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 9c.4 A stored arrangement brought the panel back docked without anybody opening it, so pressing its edge undocked it into a grid that had no reason to draw it and the panel VANISHED — a control reading "move this" doing "delete this". A dock entry now implies openness [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 9c.5 *"kell a layout határokhoz allitható húzható méret"* — measured: both dividers were ALREADY draggable (`role="separator"`, project list at x=344, the band's inner edge at x=1353). What was missing is the affordance: a 1 px line in the same neutral as the surface behind it. It now carries a grip [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+
 ## 10. Looking at it, and closing
 
 - [ ] 10.1 LOOK at the panel in the browser on a real project — open a file, jump to a line, edit, save, and force a conflict by changing the file on disk mid-edit. A UI change is not done until somebody looked [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]

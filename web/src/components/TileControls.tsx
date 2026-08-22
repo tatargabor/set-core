@@ -13,7 +13,14 @@ import type { DockEdge } from '../lib/fleetDocks'
  * out of exactly one of them, and it is always the one nobody clicks while
  * testing.
  */
-const DOCK_CONTROLS: { edge: DockEdge; icon: LucideIcon; where: string }[] = [
+/**
+ * The four edges, as one list.
+ *
+ * Exported because the file view draws the same four controls: two lists would
+ * be two answers to *where can a panel go*, and the second one drifts the day an
+ * edge is added or a wording is fixed.
+ */
+export const DOCK_CONTROLS: { edge: DockEdge; icon: LucideIcon; where: string }[] = [
   { edge: 'left', icon: PanelLeft, where: 'on the left' },
   { edge: 'right', icon: PanelRight, where: 'on the right' },
   { edge: 'top', icon: PanelTop, where: 'along the top' },
