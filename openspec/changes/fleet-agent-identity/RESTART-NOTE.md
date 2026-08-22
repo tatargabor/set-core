@@ -76,7 +76,7 @@ being the thing that holds the terminals.
 - **Do not mark 6.6, AC-9, AC-20 or B-47 done from the unit tests.** They are covered by
   tests and by mutation, and that is exactly the gap this repo keeps paying for: those checks
   ask whether the mechanism ran, and the open question is what the screen does.
-- **Do not push before B-49 is scrubbed.** A committed runtime roster carrying consumer
+- **Do not push before B-57 is scrubbed.** A committed runtime roster carrying consumer
   project names is still in local history. `set-leakscan` blocks the push, which is the
   reason it is a defect and not an incident — do not reach past it.
 

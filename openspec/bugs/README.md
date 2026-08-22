@@ -104,7 +104,7 @@ consumer's name, path, or content.
   `started`. The check: restore a large session, and without opening any panel,
   the screen says it needs an answer.
 
-### B-49 — a runtime roster was committed, and it carries consumer project names and home paths into a PUBLIC repo
+### B-57 — a runtime roster was committed, and it carries consumer project names and home paths into a PUBLIC repo
 - **state:** open — the file is out of the working tree and gitignored (this
   commit), but **it is still in local history** and must be scrubbed before the
   next push.
