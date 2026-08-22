@@ -52,10 +52,10 @@
 ## 8. Tests
 
 - [x] 8.1 Delete the 17 test files that exercise the removed code [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 8.2 Add a test asserting `bin/` contains no executable named `set-memory*` or `set-hook-memory*` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 8.3 Add a test asserting no module under `lib/` and no script under `bin/` imports `shodh_memory`, `set_memoryd` or `set_hooks` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 8.4 Add a test asserting a `set-deploy-hooks` run produces a settings.json with zero `set-hook-memory` commands [REQ: no-memory-hook-is-deployed]
-- [ ] 8.5 Prove each new test is a real test: stash the removal and confirm it FAILS, then unstash. A test that passes either way proves nothing and looks like proof forever [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 8.2 Add a test asserting `bin/` contains no executable named `set-memory*` or `set-hook-memory*` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 8.3 Add a test asserting no module under `lib/` and no script under `bin/` imports `shodh_memory`, `set_memoryd` or `set_hooks` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 8.4 Add a test asserting a `set-deploy-hooks` run produces a settings.json with zero `set-hook-memory` commands [REQ: no-memory-hook-is-deployed]
+- [x] 8.5 Prove each new test is a real test: stash the removal and confirm it FAILS, then unstash. A test that passes either way proves nothing and looks like proof forever [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 
 ## 9. Uninstall the package
 
@@ -69,6 +69,30 @@
 - [ ] 10.3 Prove the leak detector can fire before believing its zero: run it once WITHOUT the import isolation and confirm a non-zero leak count [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [ ] 10.4 Invoke `set-hook-leakscan` and `set-hook-checkout-guard` and confirm each still fires — assert the behaviour, not the presence of a line in the config [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [ ] 10.5 Close B-49, B-50, B-51, B-52, B-53 and B-54 in `openspec/bugs/README.md` with this change's commit shas; entries stay, they are never deleted [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+
+## 11. Post-session distillation — the one capability worth rebuilding (user, 2026-08-22)
+
+The removed system's automatic session-end extraction is the ONLY one of the seven lost
+capabilities the user has asked for back, and they asked for it in a different shape:
+distillation, not capture. The distinction is the whole finding — the old hook captured
+whatever prompt was in flight (89.8 % of its output was a raw task notification labelled
+as the user's anger); a distillation reads the finished session and writes what was
+*learned*. Scoped here, built as its own change.
+
+- [ ] 11.1 Write down what distillation must produce, and what disqualifies an entry: a fact learned, never a claim about the user's state, never a harness artifact verbatim [REQ: a-memory-records-a-fact-never-a-claim-about-the-users-state]
+- [ ] 11.2 Decide where it writes — the native memory directory, one file per fact, plus one index line — and that it may not create a second store [REQ: a-second-store-is-not-introduced]
+- [ ] 11.3 Decide the trigger and who runs it. A Stop hook was the old carrier and it is what made the capture indiscriminate; state the choice and the reason rather than inheriting it [REQ: the-native-memory-directory-is-the-memory-layer]
+- [ ] 11.4 Respect the index limit: a distillation that appends unboundedly pushes the index past the 200-line / 25 KB cut, where it loads for nobody and nothing warns [REQ: the-index-size-limit-is-stated-because-it-silently-truncates]
+- [ ] 11.5 Confidentiality is a gate, not a review step: a consumer name, a partner name or a personal name must be unable to reach a memory file [REQ: confidentiality-survives-the-removal]
+- [ ] 11.6 Open it as its own OpenSpec change; this group is the scoping note, not the implementation [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+
+## 12. The scripts, everywhere — including the machines this one cannot see (user, 2026-08-22)
+
+- [ ] 12.1 Audit EVERY script under `bin/` and `lib/` by reading it, not by grepping for the names already known — the sweep that scoped this change missed a whole dashboard page because the frontend called an endpoint rather than a command [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [ ] 12.2 Sweep the consumer trees for scripts of THEIR own that invoke the removed commands: `~/code2` and `~/code`, outside `.claude/settings.json`. Report before changing anything — a consumer's own script is theirs, not the framework's [REQ: no-memory-package-is-imported]
+- [ ] 12.3 `install.sh` must REMOVE a stale memory script it finds on the target machine, not merely stop shipping new ones. A machine that installed before today still has all nine executables on its PATH, and they will keep resolving [REQ: no-memory-command-is-installed]
+- [ ] 12.4 The removal must survive an install of an OLDER checkout: state what happens when a machine pulls a version that predates this change, and whether the uninstall is idempotent in both directions [REQ: no-memory-command-is-installed]
+- [ ] 12.5 Test it on the second machine (amc): install from this checkout, then verify no `set-memory*` or `set-hook-memory*` remains on PATH and no project there carries the nine hooks [REQ: no-memory-hook-is-deployed]
 
 ## Acceptance Criteria (from spec scenarios)
 
