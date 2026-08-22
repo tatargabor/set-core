@@ -47,12 +47,6 @@ The memory system ensures agents learn from previous sessions. Each project has 
 
 | Tool | Function |
 |------|----------|
-| `set-memory` | Memory CLI: remember, recall, forget, search, sync |
-| `set-hook-memory` | Automatic memory injection (SessionStart, PostTool) |
-| `set-hook-memory-warmstart` | Session start: load relevant memories |
-| `set-hook-memory-recall` | Per-prompt topic-based memory recall |
-| `set-hook-memory-posttool` | Post-tool-use context augmentation |
-| `set-hook-memory-save` | Session-end memory save and extraction |
 
 ### Project Management
 
@@ -136,8 +130,8 @@ These plugins would build on `CoreProfile` and add project-specific configuratio
 │  Worktree    │ Orchestration│  Memory & Context         │
 │  lifecycle   │ & supervision│                           │
 │              │              │                           │
-│  set-new      │ set-orchestr. │  set-memory               │
-│  set-list     │ /set:sentinel │  set-hook-memory-*        │
+│  set-new      │ set-orchestr. │  set-project              │
+│  set-list     │ /set:sentinel │  set-hook-skill/stop      │
 │  set-status   │ set-manual    │                           │
 │  set-merge    │ set-e2e-rep.  │                           │
 │  set-close    │              │                           │

@@ -1,102 +1,71 @@
-[< Back to Guides](README.md)
+# Memory
 
-# Persistent Memory
+set-core ships **no memory subsystem**. Durable, cross-session knowledge lives in Claude
+Code's own per-repository memory directory, and the framework's job is to stay out of its
+way.
 
-set-core includes a persistent memory system (shodh-memory) that gives agents cross-session recall — decisions, learnings, and context survive across conversations and are shared between agents.
+## Where it lives
 
-## How It Works
-
-Memory operates through **hooks** that fire automatically during Claude Code sessions:
-
-| Hook | When | What |
-|------|------|------|
-| **Warmstart** | Session start | Loads relevant memories as context |
-| **Pre-tool** | Before each tool call | Injects topic-based recall |
-| **Post-tool** | After Read/Bash | Surfaces past experience for the file/command |
-| **Save** | Session end | Extracts and saves new insights |
-
-Agents don't need to explicitly save — the infrastructure handles it.
-
-## CLI Commands
-
-```bash
-set-memory health          # check memory system status
-set-memory stats           # memory statistics
-set-memory recall "query"  # semantic search
-set-memory list             # list all memories
-set-memory forget <id>     # remove a memory
+```
+~/.claude/projects/<project-slug>/memory/
+├── MEMORY.md              # the index — one line per memory
+├── user_*.md              # who the user is, how they work
+├── feedback_*.md          # guidance they have given, and why
+├── project_*.md           # ongoing work and constraints
+└── reference_*.md         # pointers to dashboards, tickets, URLs
 ```
 
-![Memory health](../images/auto/cli/set-memory-health.png)
+`/memory` browses and edits it. `/context` shows what actually loaded this session.
 
-![Memory stats](../images/auto/cli/set-memory-stats.png)
+## The limit that decides how you write the index
 
-## Web Dashboard
+**Only the first 200 lines, or 25 KB, of `MEMORY.md` load at session start.** Content past
+that cut reaches nobody, and **nothing warns you** — the absence looks exactly like having
+no memories on that topic. Keep the index to one line per memory, and prune at 150 lines or
+20 KB rather than at the limit.
 
-The memory page shows health status, type breakdown, and retrieval statistics:
+The topic files are **not** loaded at startup. The index is a table of contents; the agent
+opens the file it points at, with ordinary file tools, when the entry looks relevant.
 
-![Memory dashboard](../images/auto/web/page-memory.png)
+## What this does not do
 
-## MCP Tools
+No semantic search. No tags. No temporal queries. No full-text search. No cross-device sync.
+No version history. No automatic extraction at session end.
 
-The memory system is also available as MCP tools for programmatic access:
+Searching means reading the index and opening the file it names.
 
-| Tool | Purpose |
-|------|---------|
-| `remember` | Save a memory with type and tags |
-| `recall` | Semantic search |
-| `brain` | 3-tier memory visualization |
-| `context_summary` | Condensed summary by category |
-| `proactive_context` | Topic-aware context injection |
-| `forget` | Remove a memory |
-| `list_memories` | List with filters |
-| `memory_stats` | Health and metrics |
+That list is not an oversight, and it is worth the number it cost to learn: the subsystem
+this replaced had **all seven** of those capabilities, and over 21 days it injected 187
+memory lines into sessions of which **exactly one** was a reusable fact. The other 186 were
+false `User frustrated` records — its detector fired on exclamation marks — carrying raw
+task notifications and other agents' prompts as their payload. Seven capabilities delivering
+one useful line is not a trade worth restoring by reflex. If you need one of them, that is a
+change of its own, measured against this layer rather than against a vacuum.
 
-## Installation
+The full account is in
+[`openspec/changes/remove-shodh-memory/proposal.md`](../../openspec/changes/remove-shodh-memory/proposal.md);
+the original 2026-02 audit that first found the subsystem's knowledge graph empty is in
+[`docs/research/shodh-memory-audit.md`](../research/shodh-memory-audit.md).
 
-```bash
-pip install 'shodh-memory>=0.1.81'
-set-memory health   # verify
-```
+## Writing a memory
 
-Memory degrades gracefully — if not installed, all memory commands silently no-op. Agents work fine without it, they just don't have cross-session recall.
+One fact per file. Frontmatter carries a `name` (kebab-case slug), a one-line `description`
+used to judge relevance, and a `type` of `user` / `feedback` / `project` / `reference`. Link
+related memories with `[[their-name]]`. Then add one line to `MEMORY.md`.
 
-## Memory Types
+**Two rules on content, both learned expensively:**
 
-Memories are categorized by type, which affects retrieval priority and display:
+- **A memory records a fact, never a claim about the user's state.** No inferred emotion, no
+  sentiment label the source text does not support. And never store a harness artifact
+  verbatim — a task notification, a cross-session message, another agent's system prompt, a
+  transcript fragment. Those were 89.8 % of what the removed system injected.
+- **Nothing derived from a consumer's data.** No consumer project name, partner name, or
+  personal name. Generalise before saving; a memory naming a real entity is a defect to
+  correct, not harmless content. See
+  [External Project Confidentiality](../../CLAUDE.md).
 
-| Type | Purpose | Example |
-|------|---------|---------|
-| **Decision** | Architectural or design choices | "Chose eager merge policy for this project" |
-| **Learning** | Patterns discovered during development | "vitest needs --passWithNoTests flag" |
-| **Context** | Project state and configuration | "Project uses Prisma with PostgreSQL" |
-| **Bug** | Known issues and their fixes | "Playwright flaky on CI without --retries=2" |
-| **Feedback** | User preferences and corrections | "Never modify consumer project code" |
+## Verifying against a memory
 
-## Emphasis and Forgetting
-
-Most memories are saved automatically by the session-end hook. For important insights you want to ensure are captured with high priority:
-
-```bash
-echo "Always use --project-type web for web projects" | set-memory remember --type Decision --tags source:user,init
-```
-
-To correct a wrong memory or suppress a false positive:
-
-```bash
-set-memory forget <memory-id>
-```
-
-## Cross-Agent Sharing
-
-Memories are shared across all agents in the same project. When agent A discovers that a test requires a specific flag, agent B will receive that context in its next session through the warmstart hook. This eliminates redundant investigation across parallel worktrees.
-
-## Key Insight
-
-> Agents do not save memories voluntarily -- across 15+ sessions in benchmarks, zero voluntary saves were observed. The hook-driven infrastructure is essential for building useful cross-session recall.
-
----
-
-*Next: [Dashboard](dashboard.md) | [Team Sync](team-sync.md) | [Worktrees](worktrees.md)*
-
-<!-- specs: developer-memory-docs, ambient-memory, hook-driven-memory, memory-cli, mcp-memory-tools -->
+A memory is a hypothesis, not a verdict. It records what was true when it was written, and
+it is not branch- or worktree-aware. During `/opsx:verify`, check the filesystem — never
+skip a check because a memory says "known false positive" or "same pattern".

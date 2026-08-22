@@ -59,15 +59,13 @@ The orchestrator uses team sync automatically:
 
 ## Cross-Machine Sync
 
-If you run agents on multiple machines (e.g., one developer machine and one cloud instance), team sync works through the memory layer's sync capability:
+**There is none.** Team sync used to ride on the memory layer's own sync, and that layer was
+removed (`openspec/changes/remove-shodh-memory`). Claude Code's native memory is strictly
+machine-local: it does not sync to another machine, and it does not sync to claude.ai.
 
-```bash
-set-memory sync push    # push local state to remote
-set-memory sync pull    # pull remote state to local
-set-memory sync status  # check sync health and lag
-```
-
-This keeps memories, messages, and team status consistent across machines. The sync is eventual -- there may be a few seconds of lag, but it is sufficient for coordination at the pace agents operate.
+If you run agents on two machines, they do not share memories, messages or team status.
+Anything that must cross a machine boundary belongs in a repository, where it is versioned
+and reviewable — which is where it belonged anyway.
 
 ## Practical Tips
 

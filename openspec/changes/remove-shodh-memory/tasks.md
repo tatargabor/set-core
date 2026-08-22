@@ -44,10 +44,10 @@
 
 ## 7. Specs and documentation
 
-- [ ] 7.1 Delete the 45 capability spec directories named in the proposal's Removed Capabilities list [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 7.2 Correct the incidental `set-memory` mentions in the ten specs that keep every requirement [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 7.3 Retarget the 70 documentation files; KEEP `docs/research/shodh-memory-audit.md` as the record of a finding that sat unactioned for six months [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
-- [ ] 7.4 Update `README.md` and `docs/guide/memory.md` to describe the native layer [REQ: the-native-memory-directory-is-the-memory-layer]
+- [x] 7.1 Delete the 45 capability spec directories named in the proposal's Removed Capabilities list [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 7.2 Correct the incidental `set-memory` mentions in the ten specs that keep every requirement [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 7.3 Retarget the 70 documentation files; KEEP `docs/research/shodh-memory-audit.md` as the record of a finding that sat unactioned for six months [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+- [x] 7.4 Update `README.md` and `docs/guide/memory.md` to describe the native layer [REQ: the-native-memory-directory-is-the-memory-layer]
 
 ## 8. Tests
 

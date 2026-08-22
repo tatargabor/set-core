@@ -348,7 +348,7 @@ See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete 
 | **Isolation** | Git worktrees — real branches, real merges |
 | **Engine** | Python, FastAPI, uvicorn |
 | **Dashboard** | React, TypeScript, Tailwind CSS |
-| **Memory** | shodh-memory (RocksDB + vector embeddings) |
+| **Memory** | Claude Code's native per-repository Markdown memory (no framework subsystem) |
 | **Design bridge** | v0.app export → `set-design-import` → manifest + per-change design slice → agent context, with design-fidelity gate at merge |
 
 **Tooling ecosystem:**

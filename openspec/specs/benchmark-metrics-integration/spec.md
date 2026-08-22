@@ -35,5 +35,5 @@ The run-guide "Current Status" section must reflect that test fixes are implemen
 The with-memory.md must include stronger guidance about verifying recalled information against current code state.
 
 #### Scenario: Agent recalls implementation details
-- **WHEN** Run B agent uses `set-memory recall` and receives results about file locations or implementations
+- **WHEN** Run B agent reads the project's memory index and receives results about file locations or implementations
 - **THEN** the CLAUDE.md instructs it to verify the recalled information against current code before acting on it

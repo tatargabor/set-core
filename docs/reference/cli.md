@@ -95,53 +95,6 @@ The sentinel is launched via the web UI or the `/set:sentinel` skill. These help
 | `set-control-chat send <to> <msg>` | Send encrypted message |
 | `set-control-chat read` | Read received messages |
 
-## Developer Memory
-
-| Command | Description |
-|---------|-------------|
-| `set-memory health` | Check if shodh-memory is available |
-| `set-memory remember --type TYPE` | Save a memory (reads content from stdin) |
-| `set-memory recall "query"` | Semantic search (`--mode MODE`, `--tags t1,t2`) |
-| `set-memory list [--type TYPE] [--limit N]` | List memories with optional filters |
-| `set-memory forget <id>` | Delete a single memory by ID |
-| `set-memory forget --all --confirm` | Delete all memories |
-| `set-memory forget --older-than <days>` | Delete memories older than N days |
-| `set-memory forget --tags <t1,t2>` | Delete memories matching tags |
-| `set-memory context [topic]` | Condensed summary by category |
-| `set-memory brain` | 3-tier memory visualization |
-| `set-memory get <id>` | Get a single memory by ID |
-| `set-memory export [--output FILE]` | Export all memories to JSON |
-| `set-memory import FILE [--dry-run]` | Import memories from JSON |
-| `set-memory sync` | Push + pull memories via git remote |
-| `set-memory sync push` | Push memories to shared team branch |
-| `set-memory sync pull` | Pull memories from shared team branch |
-| `set-memory sync status` | Show sync status (local vs remote counts) |
-| `set-memory proactive` | Generate proactive context for current session |
-| `set-memory stats` | Show memory statistics |
-| `set-memory cleanup` | Delete low-importance and noisy memories |
-| `set-memory migrate` | Run pending memory storage migrations |
-| `set-memory repair` | Repair index integrity |
-| `set-memory audit [--threshold N]` | Report duplicate clusters |
-| `set-memory dedup [--threshold N]` | Remove duplicate memories |
-| `set-memory status [--json]` | Show memory config, health, and count |
-| `set-memory projects` | List all projects with memory counts |
-| `set-memory metrics [--since Nd]` | Injection quality report |
-| `set-memory dashboard [--since Nd]` | Generate HTML dashboard |
-| `set-memory rules add --topics "t1,t2" "content"` | Add a deterministic rule |
-| `set-memory rules list` | List rules |
-| `set-memory rules remove <id>` | Remove a rule |
-
-![set-memory-stats output](../images/auto/cli/set-memory-stats.png)
-
-### Examples
-
-```bash
-echo "Always use pnpm, not npm" | set-memory remember --type Decision --tags "source:user,tooling"
-set-memory recall "test command" --mode precise
-set-memory forget --older-than 30
-set-memory sync push
-```
-
 ## OpenSpec
 
 | Command | Description |
@@ -191,17 +144,10 @@ These are called by other tools or by Claude Code hooks -- not for direct use:
 - `set-common.sh` -- shared shell functions
 - `set-hook-skill` -- UserPromptSubmit hook (skill tracking)
 - `set-hook-stop` -- Stop hook (timestamp refresh + memory reminder)
-- `set-hook-memory-recall` -- automatic memory recall on prompts
-- `set-hook-memory-save` -- automatic memory save on session end
-- `set-hook-memory-warmstart` -- session start memory warmup
-- `set-hook-memory-pretool` -- pre-tool hot-topic recall
-- `set-hook-memory-posttool` -- post-tool error recall
 - `set-hook-activity` -- activity tracking hook
 - `set-skill-start` -- register active skill for status display
 - `set-control-gui` -- GUI launcher (called by `set-control`)
 - `set-completions.bash` / `set-completions.zsh` -- shell completions
-- `set-memory-hooks check/remove` -- legacy inline hook management
-- `set-memoryd` -- memory daemon
 - `set-manual` -- manual page viewer
 
 ---
@@ -210,7 +156,6 @@ These are called by other tools or by Claude Code hooks -- not for direct use:
   - openspec/specs/worktree-management.md (set-new, set-work, set-close, set-merge)
   - openspec/specs/orchestration-engine.md (set-orchestrate)
   - openspec/specs/ralph-loop.md (set-loop)
-  - openspec/specs/developer-memory.md (set-memory)
   - openspec/specs/team-sync.md (set-control)
 -->
 

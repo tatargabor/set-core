@@ -455,41 +455,54 @@ Remaining divergence is stylistic (variable naming, CSS order), not structural. 
 
 ### How does persistent memory work?
 
-SET uses a hook-driven memory system (shodh-memory) that captures and injects context automatically — agents don't need to explicitly save anything.
+Through Claude Code's own per-repository memory: Markdown files under
+`~/.claude/projects/<project>/memory/`, indexed by `MEMORY.md`. Only the **first 200 lines
+(25 KB)** of that index load at session start; the topic files are read on demand. `/memory`
+browses and edits it, `/context` shows what actually loaded.
 
-| Hook | When | What |
-|---|---|---|
-| **Warmstart** | Session start | Loads relevant memories as context |
-| **Pre-tool** | Before each tool call | Injects topic-based recall |
-| **Post-tool** | After Read/Bash | Surfaces past experience with similar files/errors |
-| **Save** | Session end | Extracts and saves new insights from conversation |
+SET adds no memory layer of its own. Writing a memory is deliberate — there is no automatic
+capture.
 
-Memory types: Decision (architectural choices), Learning (discovered patterns), Context (project state), Bug (known issues + fixes), Feedback (user preferences).
+### SET used to have its own memory system. What happened to it?
 
-### How is this different from Claude Code's auto-memory?
+It was removed on 2026-08-22, and the reason is worth stating plainly because the obvious
+assumption is the wrong one.
 
-Claude Code has native auto-memory since v2.1.59: Claude saves notes to `~/.claude/projects/<project>/memory/MEMORY.md` and topic files. The first 200 lines are loaded at session start. Shared across worktrees of the same repo.
+It was not removed for being redundant. It was removed for being **wrong in a way nothing
+reported**. Over 21 days and 4958 session transcripts, it injected 187 memory lines into
+sessions. **168 of them (89.8 %) were `User frustrated` records** — its sentiment detector
+fired on exclamation marks, so a user writing *"exactly what I wanted!!!"* was recorded, and
+later replayed into an unrelated session, as anger. Their payloads were not knowledge at all:
+raw task notifications, other agents' system prompts, meeting-transcript fragments captured
+verbatim from whatever prompt was in flight. **Exactly one line in 187 was a reusable fact.**
 
-SET's shodh-memory goes further:
-- **Semantic recall** — topic-based queries, not just flat file loading. "What do we know about Prisma migrations?" returns relevant memories, not everything.
-- **Lifecycle injection** — memory is injected at 4 points (warmstart, pre-tool, post-tool, save), not just at session start.
-- **Automatic extraction** — session-end hooks extract decisions, learnings, and bugs from the conversation without explicit save.
-- **Memory graph** — tags, relationships, deduplication, consolidation. Not just a flat list.
-- **MCP tools** — programmatic memory operations (remember, recall, forget, brain, context_summary) available as tools during sessions.
+Three supporting measurements, each of which had been true for months without anyone
+noticing, because all three fail toward a reassuring empty:
 
-Claude Code's auto-memory is a notebook. SET's memory is a queryable knowledge base.
+- Its knowledge graph held **0 nodes and 0 edges** from 56 memories through 7864, so the
+  `causal` and `associative` recall modes were aliases of plain semantic search.
+- `export` returned `count: 0` and exited 0 whenever the daemon held the database lock —
+  there had never been a working backup, and an empty backup looks like a successful one.
+- `list --limit N` returned `[]` for N ≥ 58, so the store could not be enumerated past 57
+  records.
 
-### Why does memory matter for orchestration?
+And the comparison that settled it: in one project both systems ran side by side. Every
+remembered fact a session actually **acted on** traced to a hand-written file in the native
+memory. The same facts appeared **zero times** in that project's 120 injection blocks from
+the framework's own system.
 
-Without memory, every agent rediscovers the same conventions, makes the same mistakes, and wastes tokens on the same investigations. Measured results:
+### So what was lost?
 
-- **+34% convention compliance** in CraftBazaar benchmark (agents follow established patterns instead of inventing new ones)
-- **Reduced token waste** — memory avoids re-discovery of project conventions, though exact savings vary by run
-- **Zero voluntary saves** across 15+ sessions — agents don't save on their own. The hook infrastructure is essential.
+Genuinely: semantic recall, tag filtering, temporal queries, full-text search, cross-device
+sync, version history, and automatic session-end extraction. The removed system had **all
+seven** — and produced one useful line in 187 injections.
 
-Learnings from failed runs convert to rules, which are enforced in the next run. The system improves with every orchestration.
+That is the point worth carrying away. A memory layer's value is not the number of
+capabilities it advertises; it is what reaches the model and gets used. Searching now means
+reading the index and opening the file it names, and if one of the seven turns out to be
+genuinely needed, it comes back as its own change — measured against the native layer rather
+than against a vacuum.
 
----
 
 ## Architecture & Extensibility
 

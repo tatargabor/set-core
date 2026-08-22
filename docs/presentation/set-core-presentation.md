@@ -1125,7 +1125,7 @@ checking via the quality gates.
 | Isolation | Git worktrees |
 | Engine | Python + FastAPI + uvicorn |
 | Dashboard | Next.js + React + Tailwind CSS |
-| Memory | shodh-memory (RocksDB + vector embeddings) |
+| Memory | Claude Code native per-repository Markdown |
 | CLI tools | Bash (zero dependencies) |
 | State | JSON files + git (no database) |
 

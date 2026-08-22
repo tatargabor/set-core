@@ -1,3 +1,11 @@
+> **⚠ The subject of this benchmark no longer exists.** The memory subsystem it measures
+> was removed on 2026-08-22 (`openspec/changes/remove-shodh-memory`) after it was found
+> injecting a false claim about the user into unrelated sessions — 168 of 187 injections
+> over 21 days were `User frustrated` records produced by a detector that fires on
+> exclamation marks. **The scripts here cannot run.** The directory is kept, not deleted,
+> because the results in it are a measurement with a date, and deleting a record of what
+> was measured is how a finding stops being checkable. Read it as history.
+
 # shodh-memory Benchmark Protocol
 
 A reproducible benchmark for measuring the impact of persistent developer memory (shodh-memory) on AI agent effectiveness across independent sessions.

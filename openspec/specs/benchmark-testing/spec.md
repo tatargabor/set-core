@@ -77,7 +77,7 @@ The `02-shopping-cart.md` change definition SHALL include an acceptance criterio
 - **THEN** it SHALL check for a link containing "checkout" (href to /checkout)
 
 ### Requirement: Memory Database Isolation
-Benchmark init scripts SHALL use distinct project names for Run A and Run B to ensure physically separate shodh-memory databases.
+Benchmark init scripts SHALL use distinct project names for Run A and Run B to ensure physically separate per-project state.
 
 #### Scenario: Run A project name
 - **WHEN** `init-baseline.sh` initializes the project

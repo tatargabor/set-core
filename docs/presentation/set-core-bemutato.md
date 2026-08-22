@@ -1150,7 +1150,7 @@ automatikus ellenőrzése a quality gate-eken keresztül.
 | Izoláció | Git worktree-k |
 | Engine | Python + FastAPI + uvicorn |
 | Dashboard | Next.js + React + Tailwind CSS |
-| Memória | shodh-memory (RocksDB + vector embeddings) |
+| Memória | Claude Code natív, repónkénti Markdown |
 | CLI eszközök | Bash (zero dependency) |
 | State | JSON fájlok + git (nincs adatbázis) |
 

@@ -25,17 +25,11 @@ The `set-loop run` command SHALL display an expanded banner at startup with full
   - Full task description (not truncated)
   - A separator line
   - Loop parameters: permission mode, max iterations, stall threshold, iteration timeout
-  - Memory status: "active" if `set-memory health` succeeds, "inactive" otherwise
   - Start timestamp in `YYYY-MM-DD HH:MM:SS` format
 
 #### Scenario: Banner content without label
 - **WHEN** Ralph loop starts without a label
 - **THEN** the banner SHALL include all lines except the Label line
-
-#### Scenario: Memory status detection
-- **WHEN** the banner is rendered
-- **THEN** the system SHALL run `set-memory health` once
-- **AND** display "active" if exit code is 0, "inactive" otherwise
 
 ### Requirement: Label in terminal title
 The terminal title SHALL include the label when set.

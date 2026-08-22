@@ -133,7 +133,7 @@ When the web e2e gate detects a `MODULE_NOT_FOUND` crash for a package declared 
 | State | JSON files + git | No database needed |
 | Team sync | Git branch (`set-control`) | No server -- push/pull via git |
 | Encryption | NaCl Box (libsodium) | E2E encrypted team chat |
-| Memory | RocksDB (via shodh-memory) | Per-project semantic search |
+| Memory | Claude Code native per-repository Markdown | Index-driven; no semantic search |
 
 ## Nested Agent Collaboration
 

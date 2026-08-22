@@ -47,12 +47,6 @@ A memória rendszer biztosítja, hogy az ágensek tanuljanak a korábbi session-
 
 | Eszköz | Funkció |
 |--------|---------|
-| `set-memory` | Memória CLI: remember, recall, forget, search, sync |
-| `set-hook-memory` | Automatikus memória injekció (SessionStart, PostTool) |
-| `set-hook-memory-warmstart` | Session indítás: releváns memóriák betöltése |
-| `set-hook-memory-recall` | Prompt-szintű téma-alapú memória visszahívás |
-| `set-hook-memory-posttool` | Eszköz-használat utáni kontextus kiegészítés |
-| `set-hook-memory-save` | Session végi memória mentés és extrakció |
 
 ### Projekt menedzsment
 
@@ -136,8 +130,8 @@ Ezek a plugin-ek a `CoreProfile`-ra épülnének, és a projekt-specifikus konfi
 │  Worktree    │  Orchestráció │  Memória & Kontextus     │
 │  lifecycle   │  & felügyelet │                          │
 │              │              │                           │
-│  set-new      │  set-orchestr.│  set-memory               │
-│  set-list     │ /set:sentinel │  set-hook-memory-*        │
+│  set-new      │  set-orchestr.│  set-project              │
+│  set-list     │ /set:sentinel │  set-hook-skill/stop      │
 │  set-status   │  set-manual   │                          │
 │  set-merge    │  set-e2e-rep. │                          │
 │  set-close    │              │                          │

@@ -188,31 +188,11 @@ Common `.env` variables used by set-core and consumer projects:
 | `SET_CORE_DEBUG` | Enable debug logging |
 | `CLAUDE_MODEL` | Override default model |
 
-## Memory Rules
-
-`<project>/.claude/rules.yaml` — deterministic rules matched by keyword:
-
-```yaml
-rules:
-  - id: sql-customer-login
-    topics: [customer, sql]
-    content: |
-      Use customer_ro / XYZ123 for customer table queries.
-```
-
-Manage via CLI:
-
-```bash
-set-memory rules add --topics "customer,sql" "Use customer_ro for queries"
-set-memory rules list
-set-memory rules remove <id>
-```
-
 ## CLAUDE.md
 
 Project-level instructions read by Claude Code on every session. Typical sections:
 
-- **Persistent Memory** — automatic memory injection setup
+- **Memory** — what the native per-repository memory layer is, and what it does not do
 - **Help and Documentation** — where to find skill/CLI docs
 - **Getting Started** — install, dev, test commands
 - **E2E Run Setup** — how to scaffold and start E2E runs

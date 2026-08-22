@@ -412,12 +412,12 @@ The README CLI Reference SHALL include `set-openspec` as a user-facing command w
 - **THEN** they SHALL see `set-openspec init`, `set-openspec status`, and `set-openspec update` in the Project Management or a dedicated OpenSpec category
 
 ### Requirement: readme-guide.md CLI rules include new commands
-The `docs/readme-guide.md` CLI Documentation Rules SHALL include `set-openspec` in the user-facing commands list and `set-hook-memory-recall`, `set-hook-memory-save` in the internal/hook scripts list.
+The `docs/readme-guide.md` CLI Documentation Rules SHALL include `set-openspec` in the user-facing commands list and `set-hook-skill`, `set-hook-stop` in the internal/hook scripts list.
 
 #### Scenario: Guide lists all user-facing commands
 - **WHEN** a documentation author reads the CLI Documentation Rules in readme-guide.md
 - **THEN** `set-openspec` SHALL be listed among user-facing commands
-- **AND** `set-hook-memory-recall` and `set-hook-memory-save` SHALL be listed among internal/hook scripts
+- **AND** `set-hook-skill` and `set-hook-stop` SHALL be listed among internal/hook scripts
 
 ### Requirement: find_existing_worktree resolves ambiguity deterministically
 

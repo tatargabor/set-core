@@ -123,7 +123,7 @@ Now that you have seen the full loop, explore these guides to go deeper:
 - **[Worktrees](worktrees.md)** -- Manual worktree commands (`set-new`, `set-work`, `set-merge`, `set-close`)
 - **[OpenSpec](openspec.md)** -- Writing specs, the change lifecycle, and `/opsx:` skills
 - **[Dashboard](dashboard.md)** -- Every tab of the web monitoring UI
-- **[Memory](memory.md)** -- Cross-session agent recall with `set-memory`
+- **[Memory](memory.md)** -- Cross-session knowledge in the native per-repository memory
 - **[Configuration](../reference/configuration.md)** -- `orchestration.yaml`, profiles, and project-type plugins
 
 ---

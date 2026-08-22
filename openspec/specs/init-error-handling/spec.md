@@ -25,7 +25,7 @@ When `claude mcp add` fails during `_register_mcp_server`, the function SHALL pr
 When removing a previously registered MCP server (`claude mcp remove`), stderr SHALL be suppressed because the server may not exist. This is expected and not an error.
 
 #### Scenario: removing non-existent server
-- **WHEN** `claude mcp remove set-memory` is called and the server doesn't exist
+- **WHEN** `claude mcp remove set-core` is called and the server doesn't exist
 - **THEN** stderr is suppressed and no error is shown (existing behavior, preserved)
 
 ### Requirement: deploy_set_tools tracks step failures

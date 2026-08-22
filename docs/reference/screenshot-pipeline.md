@@ -60,8 +60,6 @@ docs/images/auto/
 │   ├── set-config-editor-list.png # Config editor listing
 │   ├── set-usage.png             # Usage / pricing snapshot
 │   ├── openspec-list.png         # OpenSpec changes (conditional)
-│   ├── set-memory-stats.png      # Memory statistics
-│   ├── set-memory-health.png     # Memory health summary
 │   ├── set-audit-scan.png        # Project health audit
 │   ├── set-sentinel-finding-list.png # Sentinel findings listing
 │   ├── spec-preview.png          # First lines of the active spec (for docs)

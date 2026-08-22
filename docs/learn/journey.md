@@ -42,7 +42,7 @@ This was the most intense burst of development — the GUI went from nothing to 
 
 ### Phase 3: Memory Integration (Feb 11--17)
 
-Integrated [shodh-memory](https://github.com/nicholasgasior/shodh) across the entire workflow. The GUI gained a memory browser with search and tagging. OpenSpec lifecycle hooks saved context at every stage — when a change was created, when artifacts were generated, when verification passed or failed. Proactive mid-flow recall injected relevant past experience into agent sessions.
+Integrated [shodh-memory](https://github.com/nicholasgasior/shodh) across the entire workflow. The GUI gained a memory browser with search and tagging. OpenSpec lifecycle hooks saved context at every stage — when a change was created, when artifacts were generated, when verification passed or failed. Proactive mid-flow recall injected relevant past experience into agent sessions. *(Removed on 2026-08-22: measured over 21 days, 168 of its 187 injections were false `User frustrated` records and exactly one was a reusable fact — see `openspec/changes/remove-shodh-memory`.)*
 
 The hardest bug: RocksDB lock contention causing silent data loss when multiple agents wrote memories simultaneously. Fixed with a write queue and retry logic.
 
