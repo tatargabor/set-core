@@ -25,6 +25,7 @@ import asyncio
 import base64
 import os
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -105,6 +106,34 @@ def test_this_file_leaves_the_ambient_event_loop_alone():
     finally:
         asyncio.set_event_loop(previous)
         marker.close()
+
+
+def test_no_test_in_this_file_calls_asyncio_run():
+    """The guard above proves `_run` is safe. It does NOT prove anybody used it.
+
+    Measured 2026-08-22, four days after that guard was written: two new tests
+    in this file called `asyncio.run` directly, the guard stayed green, and
+    **eleven tests in two unrelated files went red** — visible only in a
+    full-suite run, and looking exactly like a regression in streaming code.
+
+    That is the mechanism-versus-result split: the first test verifies the
+    helper works, this one verifies it is what the file actually calls. Parsed
+    rather than grepped, because `asyncio.run` appears in the prose above and a
+    substring check would fail on the documentation warning against it.
+    """
+    import ast
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    offenders = [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run" and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "asyncio"
+    ]
+    assert offenders == [], (
+        f"asyncio.run() called at line(s) {offenders}; use _run() — it leaves the "
+        "thread's ambient event loop alone, and the tests that pay for this are "
+        "in other files"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -827,7 +856,7 @@ def test_a_rename_leaves_no_per_label_state_behind(tmp_path):
     before = [n for n, v in vars(daemon).items() if isinstance(v, dict) and "before" in v]
     assert len(before) >= 4, f"the fixture must seed every per-label store; seeded {before}"
 
-    result = asyncio.run(daemon._do_rename({"label": "before", "new_label": "after"}))
+    result = _run(daemon._do_rename({"label": "before", "new_label": "after"}))
 
     assert result["label"] == "after"
     left = [n for n, v in vars(daemon).items() if isinstance(v, dict) and "before" in v]
@@ -844,7 +873,7 @@ def test_a_rename_the_owner_refuses_comes_back_as_an_error_and_moves_nothing(tmp
 
     daemon = _daemon(tmp_path, owner=_Refusing())
     daemon._tails["before"] = bytearray(b"x")
-    response = asyncio.run(daemon.dispatch(Request(id=1, method="rename",
+    response = _run(daemon.dispatch(Request(id=1, method="rename",
                                                    params={"label": "before", "new_label": "after"})))
     assert response.error is not None and "taken" in response.error
     assert "before" in daemon._tails and "after" not in daemon._tails
