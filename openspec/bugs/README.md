@@ -108,7 +108,9 @@ consumer's name, path, or content.
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
 
 ### B-61 — an agent tile's header eats 5-6 rows and leaves almost nothing for the content
-- **state:** open
+- **state:** closed 2026-08-22 — LOOKED at on the same three agents (see *state after
+  the fix* below: 38 px of header, 333 px of terminal). The entry stays here with its
+  evidence; a deleted entry and one that was never written look the same.
 - **reported:** 2026-08-22 by the user, with a screenshot — *"a wpc-pont 3
   agentjénél alig marad hely a terminal tartalmának mert tul sok helyet elvisz
   felette a heder … sztem 2 sor kellene egy layout/agent fejlécnek összesen"*.
