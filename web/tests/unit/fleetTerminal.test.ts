@@ -19,6 +19,7 @@ import {
   copySelection,
   isAmbiguousCopyKey,
   isCopyRequest,
+  pastedImage,
   isPasteRequest,
   mouseIsTakenByAgent,
   OWNER_DOWN_REASON,
@@ -255,6 +256,35 @@ describe('copying out of a terminal', () => {
     // repo keeps paying for — so the caller looks at the selection instead.
     expect(isAmbiguousCopyKey(key({ ctrlKey: true, key: 'v' }))).toBe(false)
     expect(isAmbiguousCopyKey(key({ key: 'c' }))).toBe(false)
+  })
+
+  /*
+    The decision half of the image paste. The wiring is asserted in
+    `fleetTerminalImagePaste.test.tsx`; what matters here is that TEXT WINS —
+    a rich-text copy carries a bitmap of itself far more often than a reader
+    intends, and uploading on those would send content nobody chose to send.
+  */
+  const clip = (types: string[], text = '', image: Blob | null = null) =>
+    ({
+      types,
+      items: image ? [{ kind: 'file', type: image.type, getAsFile: () => image }] : [],
+      getData: (t: string) => (t === 'text/plain' ? text : ''),
+    }) as unknown as DataTransfer
+
+  it('takes the image only when the paste carries no text', () => {
+    const img = new Blob(['x'], { type: 'image/png' })
+    expect(pastedImage(clip(['image/png'], '', img))).toBe(img)
+    expect(pastedImage(clip(['text/plain', 'image/png'], 'a paragraph', img))).toBeNull()
+    expect(pastedImage(clip(['text/plain'], 'a paragraph'))).toBeNull()
+    expect(pastedImage(null)).toBeNull()
+  })
+
+  it('ignores a text/plain entry that is empty, because that is not text', () => {
+    // Some sources advertise text/plain and hand back nothing. Treating the
+    // ADVERTISEMENT as text would make an image paste do nothing at all — the
+    // false-absence shape, one layer down.
+    const img = new Blob(['x'], { type: 'image/png' })
+    expect(pastedImage(clip(['text/plain', 'image/png'], '', img))).toBe(img)
   })
 
   it('reads whose mouse it is from the emulator, not from a guess', () => {

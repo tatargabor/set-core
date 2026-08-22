@@ -7,6 +7,9 @@ import {
   type CopyOutcome,
   copySelection,
   isAmbiguousCopyKey,
+  type PasteOutcome,
+  pastedImage,
+  uploadPastedImage,
   isCopyRequest,
   isPasteRequest,
   mouseIsTakenByAgent,
@@ -206,6 +209,13 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   */
   const [mouseTaken, setMouseTaken] = useState(false)
   const [copied, setCopied] = useState<CopyOutcome>(null)
+  /*
+    `pasted` is deliberately silent on SUCCESS — the reader's decision, and the
+    typed path is its own receipt. It speaks while an upload is in flight and
+    when one fails, because those are the two states a reader cannot see from
+    the terminal itself.
+  */
+  const [pasted, setPasted] = useState<PasteOutcome>(null)
   /**
    * The live emulator, for the ONE thing that must not wait for a re-attach.
    *
@@ -222,6 +232,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   const termRef = useRef<TerminalLike | null>(null)
   /** The copy act itself, installed by the effect once the emulator exists. */
   const copyRef = useRef<(() => void) | null>(null)
+  const pasteNoticeTimer = useRef<number | undefined>(undefined)
   /** The notice's own timer, so a second copy does not inherit the first's. */
   const copyNoticeTimer = useRef<number | undefined>(undefined)
 
@@ -527,9 +538,47 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       el.addEventListener('focusin', gained)
       el.addEventListener('focusout', lost)
 
+      /*
+        A clipboard IMAGE, which no key can carry on its own.
+
+        Measured 2026-08-22: even the working paste key delivers `text/plain`
+        only, and xterm's paste handler reads that and nothing else. The bytes
+        live in the browser and the agent lives behind a pty on the server, so
+        the panel is the only thing that can move them.
+
+        Capture phase, and `preventDefault` + `stopPropagation` on OUR case
+        only: xterm listens on the same subtree, so letting an image paste
+        through as well would put the browser's own text rendering of it into
+        the pty beside the path.
+      */
+      const onPaste = (ev: ClipboardEvent) => {
+        const image = pastedImage(ev.clipboardData)
+        if (!image) return
+        ev.preventDefault()
+        ev.stopPropagation()
+        setPasted({ kind: 'sending' })
+        void uploadPastedImage(image).then(result => {
+          if (!result.ok) {
+            setPasted({ kind: 'failed', reason: result.reason })
+            window.clearTimeout(pasteNoticeTimer.current)
+            pasteNoticeTimer.current = window.setTimeout(() => setPasted(null), 6000)
+            return
+          }
+          setPasted(null)
+          // One binary frame, the same shape `onData` sends. A trailing space and
+          // NO newline: the reader decides what to write beside it and when to send.
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(new TextEncoder().encode(result.path + ' '))
+          }
+        })
+      }
+      el.addEventListener('paste', onPaste, true)
+
       dispose = () => {
         if (settleTimer !== undefined) window.clearTimeout(settleTimer)
         window.clearTimeout(copyNoticeTimer.current)
+        window.clearTimeout(pasteNoticeTimer.current)
+        el.removeEventListener('paste', onPaste, true)
         classWatch.disconnect()
         termRef.current = null
         copyRef.current = null
@@ -751,6 +800,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
             data-fleet-terminal-copied={copied.ok ? 'yes' : 'no'}
           >
             {copied.ok ? `copied ${copied.chars} chars` : `not copied: ${copied.reason}`}
+          </span>
+        )}
+        {/*
+          The paste notice exists for the two states the terminal itself cannot
+          show: an upload on its way, and one that failed. Success says nothing —
+          the path appearing in the prompt is the receipt, and the header is
+          already too tall (B-61).
+        */}
+        {pasted && (
+          <span
+            className={`text-xs shrink-0 ${pasted.kind === 'sending' ? 'text-slate-400' : 'text-amber-400'}`}
+            data-fleet-terminal-pasted={pasted.kind}
+          >
+            {pasted.kind === 'sending'
+              ? 'sending the image…'
+              : `image not sent: ${pasted.reason}`}
           </span>
         )}
 

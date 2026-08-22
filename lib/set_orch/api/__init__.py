@@ -22,6 +22,7 @@ from fastapi import APIRouter
 
 from .fleet import router as fleet_router
 from .files import router as files_router
+from .paste import router as paste_router
 from .projects import router as projects_router
 from .orchestration import router as orchestration_router
 from .sessions import router as sessions_router
@@ -44,6 +45,7 @@ router.include_router(fleet_router)
 # Also a `/api/fleet/...` family, and therefore also BEFORE the `/api/{project}/...`
 # routers below, for the same reason (CB-16).
 router.include_router(files_router)
+router.include_router(paste_router)
 router.include_router(projects_router)
 router.include_router(orchestration_router)
 router.include_router(sessions_router)

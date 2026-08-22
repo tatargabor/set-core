@@ -285,6 +285,96 @@ export function isCopyRequest(e: Pick<KeyboardEvent, 'type' | 'ctrlKey' | 'shift
   return !e.shiftKey && e.key === 'Insert'
 }
 
+/** What a paste attempt did. `null` is "nothing to say", not a failure. */
+export type PasteOutcome =
+  | { kind: 'sending' }
+  | { kind: 'failed'; reason: string }
+  | null
+
+/** How long an upload may take before the panel calls it a failure. */
+export const PASTE_TIMEOUT_MS = 15000
+
+/**
+ * The image to upload from a paste, or `null` when this paste is not ours.
+ *
+ * **Text wins, and that is the load-bearing decision.** A rich-text copy out of a
+ * browser or a document routinely carries a bitmap of itself alongside the text,
+ * so uploading whenever an `image/*` entry exists would send content nobody chose
+ * to send — a consumer's screen, to a store, without a decision. Reading
+ * `text/plain` first also means the repaired text path (B-62) is untouched in the
+ * common case rather than merely re-implemented here.
+ *
+ * Measured 2026-08-22 on the live terminal: a working text paste arrives with
+ * `types: ["text/plain"]` and xterm's own listener handles it. This function
+ * therefore has to say `null` for exactly that shape.
+ */
+export function pastedImage(data: DataTransfer | null | undefined): Blob | null {
+  if (!data) return null
+  const types = Array.from(data.types ?? [])
+  if (types.includes('text/plain') && data.getData('text/plain')) return null
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) return file
+  }
+  return null
+}
+
+/**
+ * Send the image to the framework and answer with the path, or say why not.
+ *
+ * The failure is RETURNED rather than swallowed, for the reason the copy path
+ * already states one function below: a paste that silently does nothing leaves
+ * the reader believing the agent has a picture it does not have — the
+ * false-absence shape, and the one this repository keeps paying for.
+ *
+ * The timeout exists because a request that never answers and a request that
+ * failed are indistinguishable to a reader watching a spinner, and the first one
+ * never resolves into anything they can act on.
+ */
+export async function uploadPastedImage(
+  image: Blob,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = PASTE_TIMEOUT_MS,
+): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), timeoutMs)
+  try {
+    const res = await fetchImpl('/api/fleet/paste', {
+      method: 'POST',
+      headers: { 'Content-Type': image.type || 'application/octet-stream' },
+      body: image,
+      signal: abort.signal,
+    })
+    if (!res.ok) {
+      // The framework names the rule that refused it; showing our own wording
+      // instead would hide which bound was hit, which is the only actionable
+      // part of a refusal.
+      let reason = `refused (${res.status})`
+      try {
+        const body = await res.json()
+        if (body && typeof body.detail === 'string') reason = body.detail
+      } catch {
+        /* a refusal without a body is still a refusal */
+      }
+      return { ok: false, reason }
+    }
+    const body = await res.json()
+    if (!body || typeof body.path !== 'string' || !body.path) {
+      return { ok: false, reason: 'the framework answered without a path' }
+    }
+    return { ok: true, path: body.path }
+  } catch (err) {
+    const aborted = (err as { name?: string })?.name === 'AbortError'
+    return {
+      ok: false,
+      reason: aborted ? 'the upload did not answer in time' : 'the upload failed',
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Whether this keystroke is `Ctrl+C` asking to COPY rather than to interrupt.
  *
