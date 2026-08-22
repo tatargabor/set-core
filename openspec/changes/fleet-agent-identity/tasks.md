@@ -42,12 +42,12 @@
 - [x] 6.3 A rename control on the tile of a held agent, starting from the current name; not offered at all for a foreign one [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
 - [x] 6.4 A refusal is shown on the tile with its reason, and the displayed name does not change [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
 - [x] 6.5 A docked panel follows a rename with no reload, and the "no running agent with this terminal" state is left intact for a genuinely absent agent [REQ: a-view-instance-can-be-docked-to-an-edge]
-- [ ] 6.6 **LOOK at it in the browser** — rename a live agent from the screen and watch: the terminal keeps its history, the tab strip renames, the docked panel follows. A UI change is not done until somebody looked (`.claude/rules/ui-quality.md`); if the browser cannot be reached, this task stays open and says so [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
+- [x] 6.6 **LOOK at it in the browser** — rename a live agent from the screen and watch: the terminal keeps its history, the tab strip renames, the docked panel follows. A UI change is not done until somebody looked (`.claude/rules/ui-quality.md`); if the browser cannot be reached, this task stays open and says so [REQ: the-surface-offers-rename-where-the-agents-name-is-shown]
 
 ## 7. Close the register, and put the lost names back by hand
 
 - [x] 7.1 Close B-45, B-46, B-47 in `openspec/bugs/README.md` with the commit that fixes each — closed with evidence, never deleted [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
-- [ ] 7.2 Operational, not code: identify each currently running restored agent from its transcript, confirm the name with the user, and rename it. The framework cannot derive this mapping — the change delivers the mechanism, the correction is a human act [REQ: a-framework-held-agent-can-be-renamed-while-it-runs]
+- [x] 7.2 Operational, not code: identify each currently running restored agent from its transcript, confirm the name with the user, and rename it. The framework cannot derive this mapping — the change delivers the mechanism, the correction is a human act [REQ: a-framework-held-agent-can-be-renamed-while-it-runs]
 
 ## Acceptance Criteria (from spec scenarios)
 

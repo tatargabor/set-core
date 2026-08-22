@@ -67,6 +67,30 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-59 — in a three-column grid the terminal wraps to a few characters per line and stops being readable
+- **state:** open
+- **reported:** 2026-08-22 by this session, while looking at the fleet screen to
+  confirm a rename — not what was being checked, which is why it is worth writing
+  down rather than remembering.
+- **measured:** LOOKED at, 1568 px viewport, three-column layout. Two tiles render
+  their terminal one WORD per line: `gy / ulón / opsx:ff / hange, / s / zólj, / ogy
+  / zt / egyem-e`. The prompt line beneath it is legible, so the pane is alive and
+  relaying — it is the width that is wrong. A terminal is a fixed-grid device that
+  assumes ~80 columns, which is roughly 560 px at this font; a third of 1568 px
+  minus the chrome is well under half of that.
+- **the shape, which this repo has already paid for once:** the same finding is
+  recorded in `fleetDocks.defaultDockSize` — 320 px "was not a smaller terminal, it
+  was a broken one". The docked case was fixed by measuring; the GRID case was not,
+  so the defect came back through the other door. A per-axis default fixed one
+  caller rather than the rule.
+- **not caused by the rename work**, and it does not block it: the names, the
+  pencil and the state lines all render correctly in the same screenshot.
+- **fixed when:** a terminal pane never renders below the width its own emulator
+  needs — either the column count refuses to squeeze a tile that holds an open
+  terminal, or the terminal says it cannot be shown at this width instead of
+  showing a column of syllables. The check is the screenshot: open a terminal in
+  the three-column layout and read a line of it.
+
 ### B-58 — the durable stores fsync the FILE and not its directory, so a write can vanish in a reboot
 - **state:** open
 - **reported:** 2026-08-22 by this session, after a hand-made arrangement disappeared.

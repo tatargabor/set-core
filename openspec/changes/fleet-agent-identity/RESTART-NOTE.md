@@ -43,15 +43,24 @@ being the thing that holds the terminals.
    `bugfix`. What the transcripts' last requests suggest, offered to the user and awaiting
    two answers:
 
-   | current | last request in it | proposed |
+   **DONE 2026-08-22, and by measurement rather than by content alone.** The pre-reboot
+   owner journal shows exactly TWO terminals open at any moment — the docked one and the
+   tab the user had selected — so intersecting the attach/detach intervals with the
+   timestamps of typed messages in each transcript names the tab that was being typed into:
+
+   | session | evidence | name given back |
    |---|---|---|
-   | `set-core-33` | "PM mode ON: váltott magától…" | `set-core-pm` |
-   | `set-core-4f` | "akkor most újraindítom a gépet és megnézzük" | `set-core-restart` |
-   | `set-core-42` | `sac`; its declared focus is serving the other project's questions | `set-core-wpc` |
-   | `set-core-5c` | a discussion of an alternative agent harness | `set-core-beszelgetes` |
-   | `set-core-bb` | "PM mode behozott egy agentet ami felett nincs kontrollunk, excludeold" | `set-core-fleet` |
-   | `set-core-34` | "újraalapozzuk / tisztább utat csinálj" | **unanswered** |
-   | `set-core-e2` | "átgondoljuk a change-et? / apply" | **unanswered** |
+   | `0b7772e4` | typed 21:32:25 and 22:10:09 while {bugfix, **restart**} were the open pair; the 22:10 message is "akkor most újraindítom a gépet" | `set-core-restart` |
+   | `2ace4ce5` | typed 21:52:59 and 21:54:16 while {bugfix, **compare**} were open; content is a comparison of agent harnesses | `set-core-compare` |
+   | `868c03c0` | typed 21:18:05 while {bugfix, **fleet**} were open; content is the fleet screen's PM strip | `set-core-fleet` |
+   | `115270d4` | its `sac` seat's declared focus is serving the other project's questions | `set-core-wpc` |
+   | `7dee9992` | content: PM mode brought in an agent nobody controls, exclude it | `set-core-pm` |
+   | `13da096d` | content: the gate is live, 56/56 tasks, four commits — the fixing thread | `set-core-bugfix` |
+   | `039178b5` | content: took a handoff, "újraalapozzuk", the thread that talks to the copilot | `set-core-beszelgetes` |
+
+   The last three are content-only inference and the user can correct any of them with the
+   pencil — which is the whole point of the capability. The first four rest on a measurement
+   that does not depend on reading the conversation at all.
 
    The full list of names that existed before the reboot, from the owner's journal:
    `set-core-restart`, `set-core-bugfix`, `set-core-wpc`, `set-core-fleet`, `set-core-pm`,
