@@ -59,15 +59,15 @@
 
 ## 9. Uninstall the package
 
-- [ ] 9.1 Sweep `~/code2` and `~/code` for `set-memory` invocations OUTSIDE `.claude/settings.json` — a project's own script may shell out to it — and report what is found before uninstalling [REQ: no-memory-package-is-imported]
-- [ ] 9.2 `pip uninstall shodh-memory` from the miniconda interpreter (0.1.81) and the linuxbrew interpreter (0.1.90); verify neither resolves it afterwards [REQ: no-memory-package-is-imported]
+- [x] 9.1 Sweep `~/code2` and `~/code` for `set-memory` invocations OUTSIDE `.claude/settings.json` — a project's own script may shell out to it — and report what is found before uninstalling [REQ: no-memory-package-is-imported]
+- [x] 9.2 `pip uninstall shodh-memory` from the miniconda interpreter (0.1.81) and the linuxbrew interpreter (0.1.90); verify neither resolves it afterwards [REQ: no-memory-package-is-imported]
 
 ## 10. Prove the removal
 
-- [ ] 10.1 Re-run the machine-wide sweep: zero `set-hook-memory` in any `.claude/settings.json` under `~/code2` and `~/code` [REQ: no-memory-hook-is-deployed]
+- [x] 10.1 Re-run the machine-wide sweep: zero `set-hook-memory` in any `.claude/settings.json` under `~/code2` and `~/code` [REQ: no-memory-hook-is-deployed]
 - [ ] 10.2 Run the unit suite against a baseline worktree by SET DIFF, with `PYTHONPATH` pointed at the worktree's own source roots and the session-end leak assertion — this repo is installed editable, so `cd` into a worktree is a proxy for running its code [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 10.3 Prove the leak detector can fire before believing its zero: run it once WITHOUT the import isolation and confirm a non-zero leak count [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 10.4 Invoke `set-hook-leakscan` and `set-hook-checkout-guard` and confirm each still fires — assert the behaviour, not the presence of a line in the config [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 10.3 Prove the leak detector can fire before believing its zero: run it once WITHOUT the import isolation and confirm a non-zero leak count [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 10.4 Invoke `set-hook-leakscan` and `set-hook-checkout-guard` and confirm each still fires — assert the behaviour, not the presence of a line in the config [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [ ] 10.5 Close B-49, B-50, B-51, B-52, B-53 and B-54 in `openspec/bugs/README.md` with this change's commit shas; entries stay, they are never deleted [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
 
 ## 11. Post-session distillation — the one capability worth rebuilding (user, 2026-08-22)
@@ -88,9 +88,9 @@ as the user's anger); a distillation reads the finished session and writes what 
 
 ## 12. The scripts, everywhere — including the machines this one cannot see (user, 2026-08-22)
 
-- [ ] 12.1 Audit EVERY script under `bin/` and `lib/` by reading it, not by grepping for the names already known — the sweep that scoped this change missed a whole dashboard page because the frontend called an endpoint rather than a command [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 12.2 Sweep the consumer trees for scripts of THEIR own that invoke the removed commands: `~/code2` and `~/code`, outside `.claude/settings.json`. Report before changing anything — a consumer's own script is theirs, not the framework's [REQ: no-memory-package-is-imported]
-- [ ] 12.3 `install.sh` must REMOVE a stale memory script it finds on the target machine, not merely stop shipping new ones. A machine that installed before today still has all nine executables on its PATH, and they will keep resolving [REQ: no-memory-command-is-installed]
+- [x] 12.1 Audit EVERY script under `bin/` and `lib/` by reading it, not by grepping for the names already known — the sweep that scoped this change missed a whole dashboard page because the frontend called an endpoint rather than a command [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 12.2 Sweep the consumer trees for scripts of THEIR own that invoke the removed commands: `~/code2` and `~/code`, outside `.claude/settings.json`. Report before changing anything — a consumer's own script is theirs, not the framework's [REQ: no-memory-package-is-imported]
+- [x] 12.3 `install.sh` must REMOVE a stale memory script it finds on the target machine, not merely stop shipping new ones. A machine that installed before today still has all nine executables on its PATH, and they will keep resolving [REQ: no-memory-command-is-installed]
 - [ ] 12.4 The removal must survive an install of an OLDER checkout: state what happens when a machine pulls a version that predates this change, and whether the uninstall is idempotent in both directions [REQ: no-memory-command-is-installed]
 - [ ] 12.5 Test it on the second machine (amc): install from this checkout, then verify no `set-memory*` or `set-hook-memory*` remains on PATH and no project there carries the nine hooks [REQ: no-memory-hook-is-deployed]
 

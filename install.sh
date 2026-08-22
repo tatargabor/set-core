@@ -310,6 +310,44 @@ install_scripts() {
 
     local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner)
 
+    # ── Retire the removed memory subsystem ────────────────────────────────
+    # Stopping the SHIPPING of a script does not remove one already on the target's
+    # PATH. A machine that installed before 2026-08-22 still has all nine memory
+    # executables, and they still resolve — a stale symlink into a checkout that has
+    # since deleted its target fails loudly, but a stale COPY, or a symlink into an
+    # older checkout, keeps running the removed subsystem. So the installer removes
+    # them, on every run, rather than merely omitting them.
+    #
+    # Only entries this installer could have created are touched: a symlink pointing
+    # into any set-core checkout, or a file the installer wrote. A same-named script
+    # belonging to somebody else is left alone and reported.
+    local _retired=(set-memory set-memoryd set-memory-hooks set-hook-memory
+                    set-hook-memory-warmstart set-hook-memory-recall
+                    set-hook-memory-pretool set-hook-memory-posttool
+                    set-hook-memory-save)
+    local _removed=0 _foreign=0
+    for stale in "${_retired[@]}"; do
+        local victim="$INSTALL_DIR/$stale"
+        [[ -e "$victim" || -L "$victim" ]] || continue
+        if [[ -L "$victim" ]]; then
+            local target
+            target=$(readlink -f "$victim" 2>/dev/null || readlink "$victim")
+            if [[ "$target" == */set-core/bin/* || ! -e "$target" ]]; then
+                rm -f "$victim"; _removed=$((_removed + 1))
+            else
+                warn "  Left alone (not ours): $victim -> $target"; _foreign=$((_foreign + 1))
+            fi
+        else
+            rm -f "$victim"; _removed=$((_removed + 1))
+        fi
+    done
+    if [[ $_removed -gt 0 ]]; then
+        success "  Retired $_removed removed memory script(s) from $INSTALL_DIR"
+    fi
+    if [[ $_foreign -gt 0 ]]; then
+        warn "  $_foreign same-named script(s) were NOT removed — they are not ours"
+    fi
+
     for script in "${scripts[@]}"; do
         local src="$SCRIPT_DIR/bin/$script"
         local dst="$INSTALL_DIR/$script"
