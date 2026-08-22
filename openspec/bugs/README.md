@@ -67,6 +67,35 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-58 — the durable stores fsync the FILE and not its directory, so a write can vanish in a reboot
+- **state:** open
+- **reported:** 2026-08-22 by this session, after a hand-made arrangement disappeared.
+- **measured:** at 09:52 today `~/.local/share/set-core/fleet-layout.json` contained
+  `docks: {"set-core": [{"kind": "agent", "id": "set-core-bugfix", "edge": "right"}]}`
+  — read and quoted at the time. It now contains `docks: {}` and its mtime is
+  **2026-08-21 23:30:12**, i.e. older than the reading. `last -x reboot` shows two
+  further boots today at 10:52 and 10:53. So the version that carried the dock was
+  written after 23:30 and is gone, along with its mtime — the shape of a lost
+  rename rather than of an overwrite.
+- **the mechanism, and it is in both stores:** `layout._write_atomically` and
+  `roster._write_atomically` write a temp file, `fsync` the FILE, then `os.replace`.
+  The rename itself is a directory operation, and the directory is never fsynced
+  (`grep -n "fsync\|os.replace" lib/set_orch/fleet/{layout,roster}.py` → four lines,
+  no `O_DIRECTORY` open anywhere). `os.replace` is atomic with respect to readers;
+  it is NOT durable across an unclean shutdown until the parent directory's entry
+  is flushed.
+- **why it matters more than it looks:** these two files exist precisely to survive a
+  reboot. The roster is what a restore reads, and it now carries the names a person
+  put back by hand — the thing this whole change was for. A write that is atomic but
+  not durable is the reassuring kind of wrong: every check passes, the file is
+  complete and parsable, and the loss is invisible until someone remembers what was
+  there.
+- **fixed when:** both writers open the parent directory and `fsync` it after the
+  replace. The check: write, then `debugfs`-free but sufficient — kill the machine
+  with `echo b > /proc/sysrq-trigger` on a scratch copy of the flow, or at minimum a
+  unit test asserting the directory fd is fsynced (the mutation: remove the dir
+  fsync and the test fails).
+
 ### B-56 — restore reports `started` for a session that has not resumed: it is sitting on a dialog nobody can see
 - **state:** open
 - **reported:** 2026-08-22 by the user, on two separate fleets — *"van ami
