@@ -1026,6 +1026,20 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
     terminal's own status row is the honest arithmetic here.
   */
   const [instructOpen, setInstructOpen] = useState(false)
+  /*
+    WHERE THE TERMINAL'S STATUS ROW LANDS — asked for 2026-08-22: *"egy sorba
+    kerüljön a csempe ikonja és a layout ikon"*.
+
+    The tile carried two icon rows for one agent: its own title bar, and the
+    terminal's row directly beneath it. This is the slot the second one is drawn
+    into, so there is one row instead of two.
+
+    Held in STATE rather than a ref: a ref does not re-render, so the terminal
+    would receive `null` on the pass that creates the element and never hear that
+    it now exists — the row would simply be missing, silently, which is the
+    failure shape this screen keeps meeting.
+  */
+  const [termSlot, setTermSlot] = useState<HTMLSpanElement | null>(null)
   const showLog = () => {
     if (!terminalOpen) { onToggle(); return }
     onTerminal(null)
@@ -1070,8 +1084,25 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           title bar that moves is not a title bar. The left half wraps; the
           right half never does. */}
       <div className="flex items-start gap-2" data-fleet-tile-head={agent.pid}>
-      <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
-        <span className="text-sm text-fg-strong">
+      {/*
+        NO WRAP once the terminal's row shares this line — found by LOOKING,
+        2026-08-22, on the three-agent screen the merge was asked for: with the
+        status row beside it the left half ran out of room and dropped `4m ·
+        2657090` onto a line of its own, so a merge made to save a row gave the
+        row back on exactly the tiles it was meant to help.
+
+        Wrapping was the right behaviour while this half had the whole line: a
+        long name pushed the icons onto a second row, and a title bar that moves
+        is not a title bar. Now the icons are held by their own siblings, so the
+        left half can truncate instead — the name keeps its `title`, and nothing
+        here is a fact that disappears rather than shortens.
+
+        Keyed on `terminalOpen`, which is STATE. The slot element's child count
+        says the same thing and says it one render too late: the portal fills
+        after this pass, and nothing would re-run to notice.
+      */}
+      <div className={`flex-1 min-w-0 flex items-baseline gap-2 ${terminalOpen ? 'flex-nowrap overflow-hidden' : 'flex-wrap'}`}>
+        <span className="text-sm text-fg-strong min-w-0 truncate">
           {/* The name the OWNER gave it wins over the one derived from the
               session id. Measured 2026-08-19: the tile said `set-core-9a` for
               an agent the owner holds as `set-core-0906`, so matching a tile
@@ -1116,6 +1147,11 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           {age(agent.last_movement_seconds)} · {agent.pid}
         </span>
       </div>
+        {/* The terminal's own row, drawn HERE — see `termSlot` above. It sits
+            left of the tile's controls, so the reader's eye goes name → what the
+            terminal is doing → what can be done to the tile. Empty and
+            zero-width when no terminal is open. */}
+        <span ref={setTermSlot} className="flex items-center gap-1.5 min-w-0 shrink" data-fleet-terminal-slot={agent.pid} />
         {/* Window controls, top right — asked for 2026-08-19. They used to be
             four sentences in a row under the excerpt, which is a paragraph
             where a title bar belongs. Every sentence survives in the tooltip
@@ -1198,6 +1234,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           full={focused}
           onToggleFull={onFocus}
           onFocusChange={onTyping}
+          headerSlot={termSlot}
         />
       )}
     </div>

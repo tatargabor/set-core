@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
 import {
   type AttachedEvent,
@@ -105,6 +106,25 @@ interface Props {
    * latter is a proxy, and it would say "here" while the keys went elsewhere.
    */
   onFocusChange?: (focused: boolean) => void
+  /**
+   * Where this terminal's status row should be DRAWN — asked for 2026-08-22:
+   * *"egy sorba kerüljön a csempe ikonja és a layout ikon"*.
+   *
+   * The row itself did not change; only where it lands. It used to open a line
+   * of its own directly under the tile's title bar — two icon rows, one above
+   * the other, for one agent — which is what B-61 is about.
+   *
+   * A PORTAL rather than lifting the state up, and the reason is the defect it
+   * avoids: phase, the attach acknowledgement and the copy outcome all live in
+   * this component, and handing them to the tile would put a second copy of
+   * every one of them in a place that can disagree with the socket. The portal
+   * moves the DOM and leaves the ownership alone.
+   *
+   * `null` or absent — a docked panel, a test — and the row renders in place,
+   * exactly as before. A surface that only works when someone remembers to pass
+   * a slot is a surface that will one day be silently headerless.
+   */
+  headerSlot?: HTMLElement | null
 }
 
 type Phase =
@@ -113,7 +133,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   // Held in a ref because the effect below depends on `[label]` alone: the
   // handler is captured once, so a parent passing a fresh closure each render
@@ -477,13 +497,19 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     }
   }, [label, onClose])
 
-  return (
-    <div
-      className="border-t border-surface-line mt-3 pt-2 flex-1 min-h-0 flex flex-col"
-      data-fleet-terminal={label}
-      data-fleet-own-surface="terminal"
-    >
-      {/*
+  /*
+    THE STATUS ROW, WRITTEN ONCE AND PLACED TWICE.
+
+    `merged` changes three things and no more: the word *terminal* goes (the
+    tile's title bar already names the agent, and the row is beside its name),
+    the right-hand group stops pushing itself to the far edge, and the row loses
+    the margin it needed as a line of its own. Everything that has to be SAID —
+    the phase, the cut replay, a second viewer, the copy outcome — is identical
+    in both placements, deliberately: a compacted row that could say less would
+    be a second answer to *what is this terminal doing*.
+  */
+  const merged = !!headerSlot
+  /*
         ONE row, and it does NOT wrap — asked for 2026-08-19: *"latszik hogy sok
         helyet elfoglal az agent felső menüsora még a terminal nezet előtt, ezt
         kompaktálni kell. 1 sor elég kellene legyen ikonokkal"*. It used to be
@@ -504,9 +530,13 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           tooltip is not an alarm; it is something you have to already suspect.
         - Only the plain numbers move behind the toggle: the label and the byte
           count. Neither is wrong when unseen.
-      */}
-      <div className="flex items-center gap-1.5 mb-1.5 min-w-0">
-        <span className="text-xs text-fg-strong shrink-0">terminal</span>
+  */
+  const header = (
+      <div
+        className={`flex items-center gap-1.5 min-w-0${merged ? '' : ' mb-1.5'}`}
+        data-fleet-terminal-header={merged ? 'merged' : 'own-row'}
+      >
+        {!merged && <span className="text-xs text-fg-strong shrink-0">terminal</span>}
 
         {phase.kind === 'connecting' && (
           <span className="text-xs text-sky-400 shrink-0" data-fleet-terminal-phase="connecting">connecting…</span>
@@ -590,7 +620,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           onClick={() => setDetails(d => !d)}
         />
 
-        <span className="ml-auto flex items-center gap-0.5 shrink-0">
+        <span className={`flex items-center gap-0.5 shrink-0${merged ? '' : ' ml-auto'}`}>
           {/* Two controls, never one. Requirement 5.4: closing the view is not a
               stop, so the stop has to be its own act — and it still says so, in
               the accessible name that replaced the sentence. The confirm step is
@@ -636,6 +666,16 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           />
         </span>
       </div>
+  )
+
+  return (
+    <div
+      className={`flex-1 min-h-0 flex flex-col${
+        merged ? ' mt-1.5' : ' border-t border-surface-line mt-3 pt-2'}`}
+      data-fleet-terminal={label}
+      data-fleet-own-surface="terminal"
+    >
+      {headerSlot ? createPortal(header, headerSlot) : header}
 
       {details && (
         <div className="text-xs text-fg-ghost mb-1.5 flex items-baseline gap-2 flex-wrap" data-fleet-terminal-details>

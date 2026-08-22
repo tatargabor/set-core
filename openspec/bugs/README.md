@@ -137,11 +137,30 @@ consumer's name, path, or content.
   open. It reads well, and it is wrong: the declared focus comes from the
   messaging bus, the log does not carry it, so that row is the only place the fact
   exists. A unit test caught it, not the screen.
-- **still open:** *"agent ikonjai miért nem épülnek be a layout ikonjai alá
-  közvetlen"* — with the header down to two rows the tile's icons already sit at
-  the tile's own right edge, under the project header's layout icons in a
-  two-column layout. Whether that is what was asked for needs the user; it is not
-  guessed at here.
+- **the icon question, asked and answered:** *"agent ikonjai miért nem épülnek be
+  a layout ikonjai alá közvetlen"* was ambiguous, so it was put to the user with
+  the two readings drawn out rather than guessed at. The answer — *"igen, egy
+  sorba kerüljön a csempe ikonja és a layout ikon"*, resolved to: **the
+  terminal's status row moves into the tile's title bar.** The tile had two icon
+  rows for one agent, one directly under the other.
+  - done with a **portal**, not by lifting state: phase, the attach
+    acknowledgement and the copy outcome live in the terminal, and handing them
+    to the tile would put a second copy of each somewhere that can disagree with
+    the socket. Absent a slot the row still renders in place — a component that
+    only draws its header when someone remembers to pass a slot would one day
+    render headerless and say nothing.
+  - **a defect the LOOKING found, and only the looking:** with the status row
+    beside it the title bar's left half ran out of room and dropped `4m ·
+    2657090` onto a line of its own — a merge made to save a row gave the row
+    back, on exactly the narrow tiles it was meant to help. Fixed by letting that
+    half truncate instead of wrap while a terminal shares the line.
+  - **measured after, same three agents, three columns, 1517 px:** head 22 px +
+    `says:` 16 px = **38 px**, a terminal row of its own measures **0**, and the
+    terminal itself is **376 px** (333 before the merge). The cost, stated: the
+    name and the branch truncate on a narrow tile — `wpc-pont-atne…`, `quiet d…`
+    — with the full text in the tooltip.
+  - the portal is held by a test that fails without it (measured: removing
+    `createPortal` turns it red; the restore was grep-verified).
 
 ### B-59 — in a three-column grid the terminal wraps to a few characters per line and stops being readable
 - **state:** open

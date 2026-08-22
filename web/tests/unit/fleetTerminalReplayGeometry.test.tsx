@@ -252,3 +252,40 @@ describe('closing the view is not stopping the agent', () => {
     expect(String(fetched.mock.calls[0][0])).toContain('/stop')
   })
 })
+
+/**
+ * WHERE the status row is drawn — asked for 2026-08-22: *"egy sorba kerüljön a
+ * csempe ikonja és a layout ikon"*.
+ *
+ * The tile carried two icon rows for one agent, one directly under the other.
+ * The row now moves into the tile's title bar through a portal, and the portal
+ * is what this measures: the same row, the same owner of the state, a different
+ * parent. Asserted in BOTH directions, because a component that only draws its
+ * header when someone remembers to pass a slot is a component that will one day
+ * render headerless and say nothing about it.
+ */
+describe('the terminal status row lands where the tile puts it', () => {
+  it('draws into the given slot, and inside itself when there is none', async () => {
+    const slot = document.createElement('span')
+    document.body.appendChild(slot)
+    const { unmount } = render(<FleetTerminal label="t-1" onClose={() => {}} headerSlot={slot} />)
+    await waitFor(() => expect(socket).toBeTruthy())
+    socket.attach({ replayed_bytes: 0 })
+
+    await waitFor(() => expect(slot.querySelector('[data-fleet-terminal-header]')).toBeTruthy())
+    expect(slot.querySelector('[data-fleet-terminal-header]')!.getAttribute('data-fleet-terminal-header')).toBe('merged')
+    // The controls go WITH it — a merged row that left the close button behind
+    // would be a row that says what is happening and cannot be acted on.
+    expect(slot.querySelector('[data-fleet-terminal-close]')).toBeTruthy()
+    // And the terminal's own body no longer holds a header of its own.
+    const body = document.querySelector('[data-fleet-terminal="t-1"]')!
+    expect(body.querySelector('[data-fleet-terminal-header]')).toBeNull()
+    unmount()
+    slot.remove()
+
+    render(<FleetTerminal label="t-2" onClose={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-fleet-terminal="t-2"] [data-fleet-terminal-header]')).toBeTruthy())
+    expect(document.querySelector('[data-fleet-terminal="t-2"] [data-fleet-terminal-header]')!
+      .getAttribute('data-fleet-terminal-header')).toBe('own-row')
+  })
+})
