@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, CircleStop, Eye, Maximize2, Minimize2, Scissors, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
 import {
   type AttachedEvent,
+  type CopyOutcome,
+  copySelection,
+  isCopyRequest,
+  mouseIsTakenByAgent,
   parseControl,
   terminalLinkTarget,
   terminalUrl,
@@ -126,6 +130,26 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   // wrong for lack of — the label is already in the tile's title, and the byte
   // count is a measurement of the replay, not of the agent.
   const [details, setDetails] = useState(false)
+  /*
+    THE TWO FACTS THE COPY PATH NEEDS ON SCREEN — B-60.
+
+    `mouseTaken` is xterm's own `enable-mouse-events` state, read from its class
+    rather than tracked here. While it is on, a plain drag goes to the AGENT and
+    selects nothing, which is exactly what was reported as "copy does not work".
+    The terminal therefore says so where the reader is standing, instead of
+    leaving them to discover Shift.
+
+    `copied` is the outcome of the last copy attempt. A clipboard write can be
+    refused — an unfocused document, a browser policy — and a copy that silently
+    did nothing is the false-absence shape: the reader pastes the PREVIOUS
+    clipboard content somewhere and finds out much later.
+  */
+  const [mouseTaken, setMouseTaken] = useState(false)
+  const [copied, setCopied] = useState<CopyOutcome>(null)
+  /** The copy act itself, installed by the effect once the emulator exists. */
+  const copyRef = useRef<(() => void) | null>(null)
+  /** The notice's own timer, so a second copy does not inherit the first's. */
+  const copyNoticeTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     let disposed = false
@@ -182,6 +206,57 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         if (target) window.open(target, '_blank', 'noopener,noreferrer')
       }))
       term.open(host.current)
+
+      /*
+        COPY — B-60, reported 2026-08-22 as *"copy-pase mintha nem mene a
+        terminal ablakokban most"*.
+
+        Measured on a live agent: selection itself was never broken. What was
+        missing is the route into it and out of it, and both halves have the same
+        cause — the agent's TUI turns on mouse tracking, so the mouse belongs to
+        the program and every keystroke belongs to the pty.
+
+        `Ctrl+C` is deliberately NOT the copy key. In a terminal it is `SIGINT`,
+        and these are long-running sessions where an accidental interrupt costs
+        real work — so the key is the one Linux terminal emulators already use,
+        and it is intercepted BEFORE the emulator, because xterm's own `copy`
+        listener never fires: the core swallows the keystroke into the pty first.
+
+        Returning `false` means the keystroke does not reach the agent at all,
+        which is the point: a copy must not also be an input.
+      */
+      const announce = (outcome: CopyOutcome) => {
+        if (outcome === null) return
+        setCopied(outcome)
+        window.clearTimeout(copyNoticeTimer.current)
+        copyNoticeTimer.current = window.setTimeout(() => setCopied(null), 2500)
+      }
+      term.attachCustomKeyEventHandler(e => {
+        if (!isCopyRequest(e)) return true
+        void copySelection(term.getSelection()).then(announce)
+        return false
+      })
+      copyRef.current = () => {
+        const text = term.getSelection()
+        if (!text) {
+          setCopied({ ok: false, reason: 'nothing is selected — hold Shift and drag over the text first' })
+          window.clearTimeout(copyNoticeTimer.current)
+          copyNoticeTimer.current = window.setTimeout(() => setCopied(null), 2500)
+          return
+        }
+        void copySelection(text).then(announce)
+      }
+
+      /*
+        Whose mouse it is, read from the emulator rather than guessed. xterm sets
+        this class exactly while an application mouse protocol is active, so the
+        hint appears and disappears with the agent's own mode — a second copy of
+        that state here would drift the moment the agent changed it.
+      */
+      const xtermEl = host.current.querySelector('.xterm')
+      setMouseTaken(mouseIsTakenByAgent(xtermEl))
+      const classWatch = new MutationObserver(() => setMouseTaken(mouseIsTakenByAgent(xtermEl)))
+      if (xtermEl) classWatch.observe(xtermEl, { attributes: true, attributeFilter: ['class'] })
 
       /**
        * Fit to the box, but never below a usable width — B-13.
@@ -354,6 +429,9 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
 
       dispose = () => {
         if (settleTimer !== undefined) window.clearTimeout(settleTimer)
+        window.clearTimeout(copyNoticeTimer.current)
+        classWatch.disconnect()
+        copyRef.current = null
         observer.disconnect()
         el.removeEventListener('focusin', gained)
         el.removeEventListener('focusout', lost)
@@ -467,6 +545,40 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         )}
         {phase.kind === 'closed' && (
           <span className="text-xs text-amber-400 truncate" data-fleet-terminal-phase="closed">{phase.reason}</span>
+        )}
+
+        {/*
+          COPY, and the caveat that goes with it — B-60.
+
+          Both are icons in the row that already exists rather than a new line:
+          the header is already too tall (B-61), and `ui-quality.md` asks for
+          compaction that hides nothing. What must not be hidden here is the
+          Shift caveat, so it is a coloured icon while the agent holds the mouse
+          and absent when it does not — the state itself, taken from xterm.
+        */}
+        <IconButton
+          icon={Copy}
+          testId="copy"
+          mark={{ 'data-fleet-terminal-copy': 'yes' }}
+          label="copy the selection (Ctrl+Shift+C) — Ctrl+C is left alone, it interrupts the agent"
+          onClick={() => copyRef.current?.()}
+        />
+        {mouseTaken && (
+          <IconButton
+            icon={MousePointerClick}
+            tone="amber"
+            testId="mouse-taken"
+            mark={{ 'data-fleet-terminal-mouse-taken': 'yes' }}
+            label="the agent is reading the mouse — hold Shift while dragging to select text"
+          />
+        )}
+        {copied && (
+          <span
+            className={`text-xs shrink-0 ${copied.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+            data-fleet-terminal-copied={copied.ok ? 'yes' : 'no'}
+          >
+            {copied.ok ? `copied ${copied.chars} chars` : `not copied: ${copied.reason}`}
+          </span>
         )}
 
         {/* The details, on request — *"esetleg lenyitható részletekkel"*. */}

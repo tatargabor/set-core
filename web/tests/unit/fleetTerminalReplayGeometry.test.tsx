@@ -51,6 +51,11 @@ vi.mock('@xterm/xterm', () => ({
     }
     write(data: Uint8Array) { calls.push(`write:${data.length}`) }
     onData() { return { dispose() { /* no listener to release */ } } }
+    /* B-60's two surfaces. Neither is this file's subject — the geometry is —
+       but a mock that lacks them makes the component throw before the order
+       under test is ever recorded, which would read as a geometry failure. */
+    attachCustomKeyEventHandler() { /* the copy key, not exercised here */ }
+    getSelection() { return '' }
   },
 }))
 

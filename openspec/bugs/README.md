@@ -67,6 +67,61 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-60 — nothing can be copied out of a terminal: there is no clipboard path, and mouse tracking eats the selection
+- **state:** open
+- **reported:** 2026-08-22 by the user — *"copy-pase mintha nem mene a terminal
+  ablakokban most"*.
+- **measured:** live fleet screen, the `set-core-bugfix2` terminal, in the browser:
+  - the xterm element's class list is `terminal xterm xterm-dom-renderer-owner-1
+    **enable-mouse-events** focus` — the agent's TUI turned mouse tracking on, so a
+    plain drag goes to the agent instead of selecting. After a plain drag
+    `.xterm-selection` has 0 children and `window.getSelection()` is empty.
+  - with **Shift** the selection does happen: after a shift+triple-click the helper
+    textarea holds the line and reports `selectionStart=0 selectionEnd=90`, and the
+    highlight is visible on screen. So selection is not broken — the ROUTE into and
+    out of it is missing.
+  - no clipboard addon is installed: `web/package.json` carries `@xterm/addon-fit`
+    and `@xterm/addon-web-links` only.
+  - `FleetTerminal.tsx` attaches no `attachCustomKeyEventHandler`, so Ctrl+C goes
+    through the core — `evaluateKeyboardEvent` → `triggerDataEvent` →
+    `preventDefault` — which means it **sends SIGINT and does not copy**. And every
+    keystroke clears the selection anyway: in the bundle,
+    `this._coreService.onUserInput((()=>{this.hasSelection&&this.clearSelection()}))`.
+- **the half that was never broken:** PASTE works and always did. Measured the
+  same day by delivering a `paste` event into the live terminal — the marker text
+  arrived in the agent's own prompt, and `Ctrl+U` cleared it again. So the report
+  named two things and only one of them was a defect; saying so is what stops the
+  next session from "fixing" the working half.
+- **fixed when:** after a selection, one documented key (Ctrl+Shift+C) or the
+  header's copy control puts the selected text on the clipboard with nothing
+  reaching the pty, and the screen SAYS that selecting needs Shift while the agent
+  has mouse tracking on.
+- **shipped, and what is verified — `9d24f0b`, partial:** the copy control, the
+  Ctrl+Shift+C key, the amber "the agent is reading the mouse" icon and the
+  outcome notice are all on screen (LOOKED at, 1517 px), and the control reports
+  honestly with nothing selected — `not copied: nothing is selected — hold Shift
+  and drag over the text first`. What is **NOT** verified is the copy of a REAL
+  selection: browser automation cannot make one. Measured — a synthetic
+  shift+drag leaves `.xterm-selection` empty (`had:0` immediately after the drag),
+  while a hand-drag paints a highlight. The harness has different powers than the
+  hand here, so the last step needs a person: select with Shift held, press
+  Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
+
+### B-61 — an agent tile's header eats 5-6 rows and leaves almost nothing for the content
+- **state:** open
+- **reported:** 2026-08-22 by the user, with a screenshot — *"a wpc-pont 3
+  agentjénél alig marad hely a terminal tartalmának mert tul sok helyet elvisz
+  felette a heder … sztem 2 sor kellene egy layout/agent fejlécnek összesen"*.
+- **measured:** three agent tiles in the screenshot, each carrying above its
+  terminal: a title + icon row, a `says:` block of 2-3 lines, an `N file(s):` line,
+  an **always-open** `send an instruction …` input row, and then a separate
+  `terminal live ✂ >` row — 5-6 rows before the content, while the terminal itself
+  gets about 10.
+- **fixed when:** the tile header is at most 2 rows; the instruction box is CLOSED
+  by default and opens on a control; the agent's own icons sit in the layout icon
+  row rather than on a line of their own. Evidence: LOOKING at the same three
+  agents, plus the header's measured height in rows.
+
 ### B-59 — in a three-column grid the terminal wraps to a few characters per line and stops being readable
 - **state:** open
 - **reported:** 2026-08-22 by this session, while looking at the fleet screen to

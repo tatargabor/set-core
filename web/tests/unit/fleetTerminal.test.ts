@@ -16,6 +16,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   FOREIGN_REASON,
+  copySelection,
+  isCopyRequest,
+  mouseIsTakenByAgent,
   OWNER_DOWN_REASON,
   parseControl,
   terminalLinkTarget,
@@ -161,5 +164,75 @@ describe('a link in the terminal output', () => {
     expect(terminalLinkTarget('  javascript:alert(1)')).toBeNull()
     expect(terminalLinkTarget('httpx://example.test/')).toBeNull()
     expect(terminalLinkTarget('not a url at all')).toBeNull()
+  })
+})
+
+/**
+ * The copy path — B-60, reported 2026-08-22 as *"copy-pase mintha nem mene a
+ * terminal ablakokban most"*.
+ *
+ * The measured cause is two-sided and both sides are asserted here, because
+ * fixing either one alone leaves the reader with a terminal that still cannot be
+ * copied out of: the agent's TUI owns the mouse (so a plain drag selects
+ * nothing), and the emulator swallows `Ctrl+C` into the pty before any browser
+ * copy can happen.
+ */
+describe('copying out of a terminal', () => {
+  const key = (over: Partial<KeyboardEvent>) =>
+    ({ type: 'keydown', ctrlKey: false, shiftKey: false, metaKey: false, key: 'a', ...over }) as KeyboardEvent
+
+  it('takes Ctrl+Shift+C and Ctrl+Insert as the copy key', () => {
+    expect(isCopyRequest(key({ ctrlKey: true, shiftKey: true, key: 'C' }))).toBe(true)
+    expect(isCopyRequest(key({ ctrlKey: true, shiftKey: true, key: 'c' }))).toBe(true)
+    expect(isCopyRequest(key({ ctrlKey: true, key: 'Insert' }))).toBe(true)
+  })
+
+  it('leaves Ctrl+C alone, because in a terminal it is SIGINT', () => {
+    // The whole reason the copy key is not the obvious one: these agents are
+    // long-running sessions, and an accidental interrupt costs real work. A
+    // handler that claimed Ctrl+C would look friendlier and cost more.
+    expect(isCopyRequest(key({ ctrlKey: true, key: 'c' }))).toBe(false)
+    expect(isCopyRequest(key({ ctrlKey: true, key: 'C' }))).toBe(false)
+    // ...and it is a keydown, not a keyup — otherwise one press copies twice.
+    expect(isCopyRequest(key({ type: 'keyup', ctrlKey: true, shiftKey: true, key: 'C' }))).toBe(false)
+  })
+
+  it('reads whose mouse it is from the emulator, not from a guess', () => {
+    const on = document.createElement('div')
+    on.className = 'terminal xterm enable-mouse-events focus'
+    const off = document.createElement('div')
+    off.className = 'terminal xterm focus'
+    expect(mouseIsTakenByAgent(on)).toBe(true)
+    expect(mouseIsTakenByAgent(off)).toBe(false)
+    // An absent element is not a claim that the mouse is free.
+    expect(mouseIsTakenByAgent(null)).toBe(false)
+  })
+
+  it('says when the clipboard REFUSED the write, instead of reporting a copy', () => {
+    // The false-absence shape this guards: a silent failure leaves the previous
+    // clipboard content in place, and the reader pastes it somewhere else and
+    // finds out much later.
+    return Promise.all([
+      copySelection('two lines\nof output', async () => {}).then(o =>
+        expect(o).toEqual({ ok: true, chars: 19 })),
+      copySelection('x', async () => { throw new Error('document is not focused') }).then(o =>
+        expect(o).toEqual({ ok: false, reason: 'document is not focused' })),
+      // Nothing selected is not a failure and must not be announced as one.
+      copySelection('', async () => {}).then(o => expect(o).toBeNull()),
+    ])
+  })
+
+  it('turns a clipboard that never answers into an answer', async () => {
+    // Measured 2026-08-22, which is why this is a test and not a precaution: a
+    // `writeText` from a context the browser did not consider focused hung for
+    // 45 s and settled never. An unsettled promise announces NOTHING, so the
+    // screen would sit silent while the reader believed the copy happened.
+    const outcome = await copySelection(
+      'never lands',
+      () => new Promise<void>(() => { /* the hang, reproduced */ }),
+      5,
+      (fn, ms) => setTimeout(fn, ms),
+    )
+    expect(outcome).toEqual({ ok: false, reason: 'the clipboard did not answer' })
   })
 })

@@ -259,3 +259,84 @@ export function parseControl(text: string): TerminalEvent | null {
   }
   return null
 }
+
+/**
+ * Whether a keystroke is asking for the SELECTION to be copied.
+ *
+ * `Ctrl+C` is deliberately not it, and that is the decision rather than an
+ * omission: in a terminal `Ctrl+C` is `SIGINT`, and the agents on this screen are
+ * long-running sessions for which an accidental interrupt costs real work. So the
+ * copy key is the one every Linux terminal emulator already uses for it —
+ * `Ctrl+Shift+C` — plus `Ctrl+Insert`, which is the same act on a keyboard that
+ * has the key.
+ *
+ * Measured 2026-08-22, and it is why this exists at all: nothing in the terminal
+ * copied. xterm's own `copy` listener needs a browser-initiated copy, and the core
+ * swallows `Ctrl+C` into the pty before the browser ever gets there
+ * (`evaluateKeyboardEvent` → `triggerDataEvent` → `preventDefault`). So the
+ * keystroke has to be intercepted ahead of the emulator, which is what
+ * `attachCustomKeyEventHandler` is for.
+ */
+export function isCopyRequest(e: Pick<KeyboardEvent, 'type' | 'ctrlKey' | 'shiftKey' | 'metaKey' | 'key'>): boolean {
+  if (e.type !== 'keydown') return false
+  const mod = e.ctrlKey || e.metaKey
+  if (!mod) return false
+  if (e.shiftKey && (e.key === 'C' || e.key === 'c')) return true
+  return !e.shiftKey && e.key === 'Insert'
+}
+
+/**
+ * Whether the agent's program has taken the mouse — and therefore whether the
+ * reader has to hold Shift to select anything.
+ *
+ * Read from xterm's OWN class rather than tracked here: the emulator sets
+ * `enable-mouse-events` on its root element exactly while an application-level
+ * mouse protocol is active, so this is the state itself and not a second copy of
+ * it. Measured on a live agent 2026-08-22 — the class was present, a plain drag
+ * selected nothing (`.xterm-selection` empty), and a shift+triple-click selected
+ * the line. Without the hint that reads as a broken terminal, which is what was
+ * reported.
+ */
+export const MOUSE_TRACKING_CLASS = 'enable-mouse-events'
+
+export function mouseIsTakenByAgent(el: Element | null | undefined): boolean {
+  return !!el?.classList.contains(MOUSE_TRACKING_CLASS)
+}
+
+/** What a copy attempt did. `null` is "nothing was selected", not a failure. */
+export type CopyOutcome = { ok: true; chars: number } | { ok: false; reason: string } | null
+
+/**
+ * Put the selection on the clipboard, and SAY what happened.
+ *
+ * The outcome is returned rather than swallowed because a clipboard write can be
+ * refused — an unfocused document, a browser policy — and a copy that silently
+ * did nothing is the false-absence shape: the reader pastes the PREVIOUS
+ * clipboard content somewhere and finds out much later.
+ */
+export async function copySelection(
+  text: string,
+  write: (t: string) => Promise<void> = t => navigator.clipboard.writeText(t),
+  timeoutMs = CLIPBOARD_TIMEOUT_MS,
+  later: (fn: () => void, ms: number) => unknown = (fn, ms) => setTimeout(fn, ms),
+): Promise<CopyOutcome> {
+  if (!text) return null
+  try {
+    // A clipboard write that NEVER SETTLES is the worst of the three outcomes,
+    // and it is not hypothetical: measured 2026-08-22, `writeText` called from a
+    // context the browser did not consider focused hung for 45 s and returned
+    // nothing at all. An unsettled promise announces nothing, so the screen would
+    // sit silent — which is exactly the false absence this function exists to
+    // refuse. A race turns "no answer" into an answer.
+    await Promise.race([
+      write(text),
+      new Promise<never>((_, reject) => later(() => reject(new Error('the clipboard did not answer')), timeoutMs)),
+    ])
+    return { ok: true, chars: text.length }
+  } catch (e) {
+    return { ok: false, reason: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Long enough for a real write, short enough that the reader is not left waiting. */
+export const CLIPBOARD_TIMEOUT_MS = 2000
