@@ -3,25 +3,26 @@
 #
 # Usage: set-deploy-hooks [--quiet] [--no-memory] <target-dir>
 #
-# Deploys 7 hook events to <target-dir>/.claude/settings.json:
-#   - SessionStart: unified memory handler (timeout: 10s)
-#   - UserPromptSubmit: skill detection + unified memory handler (timeout: 15s)
-#   - PreToolUse[Skill]: activity tracking only (timeout: 5s)
-#   - PostToolUse[Read,Bash]: unified memory handler (timeout: 5s)
-#   - PostToolUseFailure[Bash]: unified memory handler (timeout: 5s)
-#   - SubagentStart: unified memory handler (timeout: 10s)
-#   - SubagentStop: unified memory handler (timeout: 5s)
-#   - Stop: stop hook + unified memory handler (timeout: 30s)
+# Deploys 3 hook events to <target-dir>/.claude/settings.json:
+#   - UserPromptSubmit: skill detection (timeout: 5s)
+#   - PreToolUse[Skill]: activity tracking (timeout: 5s)
+#   - Stop: stop hook (timeout: 5s)
 #
-# Use --no-memory to deploy only base hooks (for benchmark baseline).
-# Idempotent: skips if all hooks are already present.
-# Upgrades existing configs: detects old individual scripts and replaces with unified handler.
+# It also REMOVES, on every run and without a flag, every `set-hook-memory` command it
+# finds in any event array, plus the legacy individual memory scripts. The memory
+# subsystem was removed after it was measured injecting a false "user frustrated" label
+# into unrelated sessions; this is the path by which a project still carrying those hooks
+# is cleaned. A project's own hooks match neither filter and survive in their order.
+#
+# --no-memory is accepted and does nothing: its behaviour is now the only behaviour, and
+# rejecting a flag existing callers still pass would break unrelated tooling.
+# Idempotent: skips if the base hooks are present and no memory hook remains.
 # Creates backup before modifying existing settings.
 
 set -e
 
 QUIET=false
-NO_MEMORY=false
+NO_MEMORY=false   # accepted, unused — see the header
 TARGET_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -58,32 +59,17 @@ settings_file="$TARGET_DIR/.claude/settings.json"
 
 mkdir -p "$TARGET_DIR/.claude"
 
-# Full hook config (unified handler for all memory events)
+# The framework's hook config. It carries NO memory hooks: the memory subsystem was
+# removed after it was measured injecting a false "user frustrated" label into unrelated
+# sessions (168 of 187 injections over 21 days). See openspec/changes/remove-shodh-memory.
+#
+# This file is also the ROOT CAUSE fix. It does not merely stop emitting those hooks —
+# every deploy STRIPS any it finds, so a project cleaned by hand, restored from a backup,
+# or created from an old branch converges on the next `set-project init` without anybody
+# visiting it.
 hook_json=$(cat << 'HOOKJSON'
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SessionStart",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SessionStart",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -92,11 +78,6 @@ hook_json=$(cat << 'HOOKJSON'
             "type": "command",
             "command": "set-hook-skill",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "set-hook-memory UserPromptSubmit",
-            "timeout": 15
           }
         ]
       }
@@ -113,102 +94,6 @@ hook_json=$(cat << 'HOOKJSON'
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory PostToolUse",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory PostToolUse",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory PostToolUseFailure",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SubagentStart",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-memory SubagentStop",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-stop",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "set-hook-memory Stop",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
-}
-HOOKJSON
-)
-
-# Base-only hook config (no memory hooks)
-hook_json_no_memory=$(cat << 'HOOKJSON'
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "set-hook-skill",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "matcher": "",
@@ -226,12 +111,10 @@ hook_json_no_memory=$(cat << 'HOOKJSON'
 HOOKJSON
 )
 
-# Select which config to deploy
-if $NO_MEMORY; then
-    deploy_json="$hook_json_no_memory"
-else
-    deploy_json="$hook_json"
-fi
+# --no-memory is accepted and does nothing. Its behaviour is now the only behaviour, and
+# rejecting a flag that existing callers still pass would turn a removal into a breakage
+# in unrelated tooling.
+deploy_json="$hook_json"
 
 # Additive per-event merge of set-core's hooks into an existing settings.json.
 #
@@ -315,9 +198,8 @@ _merge_hooks_additively() {
 if [[ -f "$settings_file" ]]; then
     # Detect current hook state
     has_base=false
-    has_unified=false
-    has_old_individual=false
-    has_stale=false
+    has_memory=false
+    has_old_activity=false
 
     # Base hooks present?
     if jq -e '.hooks.Stop[0].hooks[] | select(.command == "set-hook-stop")' "$settings_file" &>/dev/null \
@@ -325,53 +207,32 @@ if [[ -f "$settings_file" ]]; then
         has_base=true
     fi
 
-    # Unified handler already deployed?
-    if jq -e '.hooks.SessionStart[0].hooks[] | select(.command == "set-hook-memory SessionStart")' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.PostToolUse' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.SubagentStart' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.SubagentStop' "$settings_file" &>/dev/null; then
-        has_unified=true
-    fi
-
-    # Old individual scripts present?
-    # `.value[]` yields each {matcher, hooks} entry. The previous `.value[][]` iterated
-    # an ENTRY'S OWN VALUES (a matcher string and an array), so the following `.hooks[]`
-    # always errored and jq -e always reported false — the upgrade branch could not fire
-    # at all, and legacy memory scripts were never retired.
-    if jq -e '.hooks | to_entries[] | .value[]? | .hooks[]? | select((.command // "") | test("set-hook-memory-(warmstart|recall|pretool|posttool|save)"))' "$settings_file" &>/dev/null; then
-        has_old_individual=true
-    fi
-
-    # Stale set-hook-memory entries? (PreToolUse memory hooks or PostToolUse with unknown matchers)
-    if ! $NO_MEMORY; then
-        # Stale PreToolUse: any entry with set-hook-memory PreToolUse command
-        stale_pre=$(jq '[.hooks.PreToolUse // [] | .[] | select(.hooks[]?.command == "set-hook-memory PreToolUse")] | length' "$settings_file" 2>/dev/null || echo 0)
-        # Stale PostToolUse: set-hook-memory PostToolUse entries whose matcher is NOT Read or Bash (Write/Edit removed)
-        stale_post=$(jq '[.hooks.PostToolUse // [] | .[] | select(.hooks[]?.command == "set-hook-memory PostToolUse") | select(.matcher != "Read" and .matcher != "Bash")] | length' "$settings_file" 2>/dev/null || echo 0)
-        if [[ "$stale_pre" -gt 0 ]] || [[ "$stale_post" -gt 0 ]]; then
-            has_stale=true
-        fi
-    fi
+    # ANY memory hook, in ANY event array, with ANY matcher. There is no longer a canonical
+    # memory hook, so `Read` and `Bash` are not exempt and neither are the legacy individual
+    # scripts. `.value[]` yields each {matcher, hooks} entry — `.value[][]` would iterate an
+    # entry's own values (a matcher string and an array), which is the bug that kept the old
+    # upgrade branch from ever firing.
+    mem_count=$(jq '[.hooks | to_entries[] | .value[]? | .hooks[]? |
+                     select((.command // "") | startswith("set-hook-memory"))] | length' \
+                "$settings_file" 2>/dev/null || echo 0)
+    [[ "$mem_count" -gt 0 ]] && has_memory=true
 
     # Old activity-track.sh path? (pre-PATH migration)
-    has_old_activity=false
     if jq -e '.hooks.PreToolUse[]? | .hooks[]? | select(.command == ".claude/hooks/activity-track.sh")' "$settings_file" &>/dev/null; then
         has_old_activity=true
     fi
 
-    # Already canonical? (unified + base + no stale entries + no old activity path)
-    if $has_unified && $has_base && ! $has_stale && ! $has_old_activity && ! $NO_MEMORY; then
-        return 0 2>/dev/null || exit 0
-    fi
-    if $has_base && $NO_MEMORY && ! $has_old_individual && ! $has_unified; then
+    # Already canonical? Base hooks present, no memory hook anywhere, no stale activity path.
+    if $has_base && ! $has_memory && ! $has_old_activity; then
         return 0 2>/dev/null || exit 0
     fi
 
     # Backup before modification
     cp "$settings_file" "$settings_file.bak"
 
-    if $has_old_activity && $has_unified && ! $has_stale; then
-        # Migrate old activity-track.sh path to set-hook-activity
+    if $has_old_activity; then
+        # Migrate old activity-track.sh path to set-hook-activity, then fall through to the
+        # merge so the memory strip still runs on the same file.
         jq '
             .hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] |
                 if (.hooks[]?.command == ".claude/hooks/activity-track.sh")
@@ -380,34 +241,15 @@ if [[ -f "$settings_file" ]]; then
             ]
         ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
         _success "Migrated: $settings_file (activity-track.sh → set-hook-activity)"
-    elif $has_stale && $has_unified; then
-        # Downgrade path: remove stale set-hook-memory entries, preserve everything else
-        jq '
-            # Remove stale PreToolUse: any entry whose hooks contain "set-hook-memory PreToolUse"
-            .hooks.PreToolUse = [.hooks.PreToolUse // [] | .[] | select((.hooks[]?.command == "set-hook-memory PreToolUse") | not)]
-            # Remove stale PostToolUse: set-hook-memory PostToolUse entries where matcher is NOT Read or Bash
-            | .hooks.PostToolUse = [.hooks.PostToolUse // [] | .[] | select(
-                ((.hooks[]?.command == "set-hook-memory PostToolUse") and (.matcher != "Read" and .matcher != "Bash")) | not
-            )]
-            # Ensure Skill/set-hook-activity is present in PreToolUse
-            | if ([.hooks.PreToolUse[]? | select(.matcher == "Skill")] | length) == 0
-              then .hooks.PreToolUse += [{"matcher": "Skill", "hooks": [{"type": "command", "command": "set-hook-activity", "timeout": 5}]}]
-              else . end
-        ' "$settings_file" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
-        _success "Downgraded: $settings_file (removed $stale_pre stale PreToolUse, $stale_post stale PostToolUse)"
-    elif $has_old_individual && ! $NO_MEMORY; then
-        # Upgrade path: retire the old individual memory scripts, add the unified
-        # handler. Additive, so a project hook sharing an event array survives.
-        _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" true false
-        _success "Upgraded: $settings_file (retired old individual memory hooks; project hooks preserved)"
+    fi
+
+    # One merge, always with BOTH removals on: the legacy individual scripts and every
+    # set-hook-memory command. A project's own hooks match neither filter and survive in
+    # their order.
+    _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" true true
+    if $has_memory; then
+        _success "Updated: $settings_file (removed $mem_count memory hook(s); project hooks preserved)"
     else
-        # Fresh merge: add set-core's hooks alongside whatever is already configured.
-        # Under --no-memory the memory hooks set-core owns are stripped as well.
-        if $NO_MEMORY; then
-            _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" false true
-        else
-            _merge_hooks_additively "$settings_file" "$(echo "$deploy_json" | jq '.hooks')" false false
-        fi
         _success "Updated: $settings_file (hooks merged; project hooks preserved)"
     fi
 else

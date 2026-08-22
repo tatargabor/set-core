@@ -1,11 +1,11 @@
 ## 1. Close the reinstall path first
 
-- [ ] 1.1 Delete the nine memory hook entries from the desired-hooks object in `bin/set-deploy-hooks` so no deploy emits them [REQ: reusable-hook-deployment-script]
-- [ ] 1.2 Make the `$strip_memory` branch in `_merge_hooks_additively` unconditional, so every deploy removes any `set-hook-memory` entry it finds in any event array [REQ: remove-only-set-hook-memory-stale-entries]
-- [ ] 1.3 Widen the stale detection to every `set-hook-memory` command in PreToolUse regardless of matcher [REQ: detect-stale-set-hook-memory-entries-in-pretooluse]
-- [ ] 1.4 Widen the stale detection in PostToolUse: `Read` and `Bash` stop being canonical matchers [REQ: detect-stale-set-hook-memory-entries-in-posttooluse]
-- [ ] 1.5 Keep `--no-memory` as an accepted no-op flag so existing callers do not break [REQ: reusable-hook-deployment-script]
-- [ ] 1.6 Prove 1.1–1.5 on a COPY of a project settings.json carrying nine memory hooks and 25 of its own: memory goes to 0, the project's own count and order are unchanged [REQ: reusable-hook-deployment-script]
+- [x] 1.1 Delete the nine memory hook entries from the desired-hooks object in `bin/set-deploy-hooks` so no deploy emits them [REQ: reusable-hook-deployment-script]
+- [x] 1.2 Make the `$strip_memory` branch in `_merge_hooks_additively` unconditional, so every deploy removes any `set-hook-memory` entry it finds in any event array [REQ: remove-only-set-hook-memory-stale-entries]
+- [x] 1.3 Widen the stale detection to every `set-hook-memory` command in PreToolUse regardless of matcher [REQ: detect-stale-set-hook-memory-entries-in-pretooluse]
+- [x] 1.4 Widen the stale detection in PostToolUse: `Read` and `Bash` stop being canonical matchers [REQ: detect-stale-set-hook-memory-entries-in-posttooluse]
+- [x] 1.5 Keep `--no-memory` as an accepted no-op flag so existing callers do not break [REQ: reusable-hook-deployment-script]
+- [x] 1.6 Prove 1.1–1.5 on a COPY of a project settings.json carrying nine memory hooks and 25 of its own: memory goes to 0, the project's own count and order are unchanged [REQ: reusable-hook-deployment-script]
 
 ## 2. Invert the audit before the fleet is checked
 
