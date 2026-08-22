@@ -10,7 +10,7 @@
 
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { LayoutDashboard, TriangleAlert, BrainCircuit, Settings, SquareStack, Activity, Radar } from 'lucide-react'
+import { LayoutDashboard, TriangleAlert, Settings, SquareStack, Activity, Radar } from 'lucide-react'
 
 export interface SidebarSubItem {
   id: string
@@ -186,16 +186,6 @@ registerApp({
   order: 30,
   defaultRoute: '/p/:name/issues',
   matchPatterns: ['/p/:name/issues'],
-  children: [],
-})
-
-registerApp({
-  id: 'memory',
-  label: 'Memory',
-  icon: BrainCircuit,
-  order: 40,
-  defaultRoute: '/p/:name/memory',
-  matchPatterns: ['/p/:name/memory'],
   children: [],
 })
 
