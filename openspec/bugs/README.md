@@ -67,6 +67,31 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-49 — a runtime roster was committed, and it carries consumer project names and home paths into a PUBLIC repo
+- **state:** open — the file is out of the working tree and gitignored (this
+  commit), but **it is still in local history** and must be scrubbed before the
+  next push.
+- **reported:** 2026-08-22 by this session, while writing a handoff — noticed
+  because the same mistake was about to be repeated with a second snapshot.
+- **measured:** `openspec/changes/archive/2026-08-21-fleet-agent-restore/.roster-before-reboot.json`
+  was added in `a7e5b5de` and re-touched by `7a6330a9`. Its `projects` keys are
+  five consumer project names plus `/home/tg`, and 15 lines carry absolute home
+  paths. `set-leakscan` classifies it `home-path (15) [BLOCKS]` and refuses the
+  push, and `git branch -r --contains a7e5b5de` returns EMPTY — so nothing is
+  published and the gate is doing its job. That is the only reason this is a
+  defect and not an incident.
+- **why it happened, which is the reusable half:** the artifact was deliberate
+  and its intent was right — a snapshot of the roster taken before the reboot,
+  as evidence. What was wrong is that the evidence was RAW RUNTIME DATA. The
+  rule this repo already states is that set-core may read a consumer's data and
+  must persist nothing derived from it; an evidence file is persistence, and it
+  is the shape that feels exempt because it is "just a measurement".
+- **fixed when:** `set-leakscan --tree` is clean, and `git log --all -- '*roster-before-reboot.json'`
+  returns nothing. The scrub is a history rewrite (`git filter-branch --index-filter`)
+  over the 95 unpushed commits — cheap while unpushed, and deliberately NOT done
+  in the same breath as this entry: two other sessions are committing in this
+  tree right now, and rewriting refs under them is how their work disappears.
+
 ### B-55 — eleven commit SHAs cited in the rule book and this register do not exist
 - **state:** open
 - **reported:** 2026-08-22 by this session, while closing B-49..B-54 — the SHA it had just

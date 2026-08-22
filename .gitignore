@@ -87,3 +87,8 @@ docs/integration/local/
 # kind of content that must never reach a public repository, and `git add -A` is the
 # command that would do it.
 .set/
+
+# Runtime rosters hold consumer project names and absolute home paths.
+# The document belongs in ~/.local/share/set-core/, never in this repo.
+.roster-before-reboot.json
+**/.roster-before-reboot.json
