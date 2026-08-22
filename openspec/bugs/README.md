@@ -157,6 +157,15 @@ consumer's name, path, or content.
      `{defaultPrevented: true, paste: 0}` to `{defaultPrevented: false, paste: 1}`;
   2. and the header says which keys do what, so the Ctrl+C decision is legible
      where the reader is standing rather than only in this file.
+- **shipped, and what is verified — `b4d7aa87`, PARTIAL:** the text half is done and
+  measured end to end. The custom key handler now declines `Ctrl+V` and
+  `Shift+Insert`, which is the whole repair, because xterm consults it before it
+  cancels. On the same live terminal after the fix: `Ctrl+V` →
+  `defaultPrevented: **false**`, **1** paste event, 17 chars, and the text appeared
+  in the agent's prompt. Mutation-checked: removing the one line turns
+  `fleetTerminalPasteKey.test.tsx` red, and the restore was grep-verified.
+  **The entry stays OPEN for the image half** — that is a capability nobody has
+  built, not a line to delete.
 
 ### B-61 — an agent tile's header eats 5-6 rows and leaves almost nothing for the content
 - **state:** closed 2026-08-22 — LOOKED at on the same three agents (see *state after
