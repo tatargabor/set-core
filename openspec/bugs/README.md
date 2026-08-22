@@ -87,11 +87,15 @@ consumer's name, path, or content.
     `preventDefault` — which means it **sends SIGINT and does not copy**. And every
     keystroke clears the selection anyway: in the bundle,
     `this._coreService.onUserInput((()=>{this.hasSelection&&this.clearSelection()}))`.
-- **the half that was never broken:** PASTE works and always did. Measured the
-  same day by delivering a `paste` event into the live terminal — the marker text
-  arrived in the agent's own prompt, and `Ctrl+U` cleared it again. So the report
-  named two things and only one of them was a defect; saying so is what stops the
-  next session from "fixing" the working half.
+- ~~**the half that was never broken:** PASTE works and always did.~~ **WRONG, and
+  corrected 2026-08-22 the same evening — see B-62.** That measurement delivered a
+  synthetic `paste` event, which is a power the harness has and the reader does not.
+  A real `Ctrl+V` never pastes: the core sends `\x16` to the pty and calls
+  `preventDefault`, so the browser's own paste never starts. Measured with a page
+  `keydown`+`paste` probe: `Ctrl+V` → `defaultPrevented: true`, **zero** paste
+  events. The half declared safe was the half that was broken, and the wrong claim
+  is kept here rather than erased because the DEFECT CLASS is the durable part:
+  driving a thing with an API the user does not have measures a different system.
 - **fixed when:** after a selection, one documented key (Ctrl+Shift+C) or the
   header's copy control puts the selected text on the clipboard with nothing
   reaching the pty, and the screen SAYS that selecting needs Shift while the agent
@@ -106,6 +110,53 @@ consumer's name, path, or content.
   while a hand-drag paints a highlight. The harness has different powers than the
   hand here, so the last step needs a person: select with Shift held, press
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
+
+### B-62 — Ctrl+V does not paste into an agent terminal, and a clipboard IMAGE has no path at all
+- **state:** open
+- **reported:** 2026-08-22 by the user — *"ctrl-c és ctrl-v nem mukodik most agent
+  terminalban. kepet sem tudo vagolaprol betenni. korabban mind mukodott"*. The
+  "previously" is a native terminal emulator, not this panel: the panel has never
+  had either path (see the correction on B-60).
+- **measured:** live fleet screen, the `set-core-bugfix2` terminal, with a
+  capture-phase `keydown` + `paste` probe installed on the document:
+
+  | key | `keydown.defaultPrevented` | `paste` events |
+  |---|---|---|
+  | `Ctrl+V` | **true** | **0** |
+  | `Ctrl+Shift+V` | false | 1 — `types: ["text/plain"]`, the text reaches the pty |
+
+  The cause is in the emulator, not in this repo's code:
+  `@xterm/xterm` 6.0.0, `lib/xterm.js` — `evaluateKeyboardEvent` maps a plain
+  `Ctrl`+letter to `String.fromCharCode(keyCode-64)`, so `Ctrl+V` becomes `\x16`
+  (SYN); `_keyDown` then runs `triggerDataEvent(key)` followed by
+  `this.cancel(e,!0)` → `preventDefault()`. The browser's native paste is
+  cancelled before it starts. `Ctrl+Shift+V` falls through with no `key`, so
+  nothing is cancelled and xterm's own `paste` listener on the helper textarea
+  does the work — which is why exactly one of the two works today.
+- **the image half is a separate absence, not the same bug:** even the working
+  `Ctrl+Shift+V` delivered `types: ["text/plain"]` only, and xterm's paste handler
+  reads `clipboardData.getData("text/plain")` and nothing else. A clipboard image
+  therefore cannot reach the pty by any key. The agent runs behind a pty on the
+  server and has no access to the reader's browser clipboard, so this is a
+  capability to be BUILT (accept `image/*` from the paste event, put the bytes
+  where the agent can read them, type that path), not a regression to be undone.
+  It is a new capability → OpenSpec, not a direct fix.
+- **Ctrl+C is deliberate and stays deliberate:** it goes to the pty as SIGINT
+  (B-60), copy is `Ctrl+Shift+C`. What the report shows is that the DECISION is
+  invisible at the keyboard — the reader presses the key their other terminal
+  uses and gets nothing they can see.
+- **NOT measured, and it needs a human:** whether `Ctrl+Shift+C` actually reaches
+  the clipboard for the reader. `navigator.clipboard.writeText` timed out at 3 s
+  from this session — but the tab's `document.visibilityState` was `hidden`
+  (`hasFocus: true`, `clipboard-write: granted`), which is a documented reason for
+  Chrome to stall it. That is a fact about the measuring tab, not about the
+  product, and it must not be written down as one.
+- **fixed when:**
+  1. `Ctrl+V` on a focused terminal fires exactly one `paste` event and the text
+     appears in the agent's prompt — the same probe above going from
+     `{defaultPrevented: true, paste: 0}` to `{defaultPrevented: false, paste: 1}`;
+  2. and the header says which keys do what, so the Ctrl+C decision is legible
+     where the reader is standing rather than only in this file.
 
 ### B-61 — an agent tile's header eats 5-6 rows and leaves almost nothing for the content
 - **state:** closed 2026-08-22 — LOOKED at on the same three agents (see *state after

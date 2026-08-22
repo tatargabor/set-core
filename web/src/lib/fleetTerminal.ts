@@ -286,6 +286,43 @@ export function isCopyRequest(e: Pick<KeyboardEvent, 'type' | 'ctrlKey' | 'shift
 }
 
 /**
+ * Whether this keystroke is the reader asking to PASTE — and therefore whether the
+ * emulator has to be stopped from eating it.
+ *
+ * `Ctrl+V`, plus `Shift+Insert`, which is the same act on X11.
+ *
+ * Measured 2026-08-22 (B-62), with a capture-phase probe on the live terminal:
+ * `Ctrl+V` arrived with `defaultPrevented: true` and **zero** `paste` events,
+ * while `Ctrl+Shift+V` arrived uncancelled and produced one. The asymmetry is
+ * xterm's, not ours: `evaluateKeyboardEvent` maps a plain `Ctrl`+letter to
+ * `String.fromCharCode(keyCode - 64)`, so `Ctrl+V` becomes `\x16` (SYN), and
+ * `_keyDown` then sends it to the pty and calls `preventDefault()` — which
+ * cancels the browser's own paste before it starts. `Ctrl+Shift+V` produces no
+ * key at all, so nothing is cancelled and xterm's `paste` listener does the work.
+ *
+ * So this handler returns `false` for these keys and does NOTHING else. That is
+ * the whole fix: the custom handler runs BEFORE the cancel, so declining the
+ * keystroke leaves the browser's native paste intact, and xterm's own listener on
+ * the helper textarea delivers the text. Reading the clipboard here ourselves
+ * would need a permission the reader does not have to grant for paste to work.
+ *
+ * `Cmd+V` is deliberately NOT matched: on macOS xterm never cancels it, so it
+ * already works, and intercepting it would be a second copy of that behaviour.
+ *
+ * The cost, stated rather than discovered later: `Ctrl+V` no longer reaches the
+ * pty as `\x16`, so a program's quoted-insert is unavailable through this panel.
+ * These are agent sessions; pasting is the act that happens, quoted-insert is not.
+ */
+export function isPasteRequest(
+  e: Pick<KeyboardEvent, 'type' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'key'>,
+): boolean {
+  if (e.type !== 'keydown') return false
+  if (e.altKey || e.metaKey) return false
+  if (e.ctrlKey && !e.shiftKey && (e.key === 'v' || e.key === 'V')) return true
+  return !e.ctrlKey && e.shiftKey && e.key === 'Insert'
+}
+
+/**
  * Whether the agent's program has taken the mouse — and therefore whether the
  * reader has to hold Shift to select anything.
  *

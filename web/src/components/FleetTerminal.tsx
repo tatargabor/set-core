@@ -7,6 +7,7 @@ import {
   type CopyOutcome,
   copySelection,
   isCopyRequest,
+  isPasteRequest,
   mouseIsTakenByAgent,
   parseControl,
   terminalLinkTarget,
@@ -305,6 +306,14 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         copyNoticeTimer.current = window.setTimeout(() => setCopied(null), 2500)
       }
       term.attachCustomKeyEventHandler(e => {
+        /*
+          Declining the keystroke is the ENTIRE paste fix — see `isPasteRequest`.
+          xterm consults this handler before it cancels the event, so returning
+          `false` leaves the browser's native paste running, and xterm's own
+          listener on the helper textarea delivers the text. Doing nothing here
+          is deliberate: anything else would be a second clipboard path.
+        */
+        if (isPasteRequest(e)) return false
         if (!isCopyRequest(e)) return true
         void copySelection(term.getSelection()).then(announce)
         return false
@@ -706,7 +715,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           icon={Copy}
           testId="copy"
           mark={{ 'data-fleet-terminal-copy': 'yes' }}
-          label="copy the selection (Ctrl+Shift+C) — Ctrl+C is left alone, it interrupts the agent"
+          label="copy the selection (Ctrl+Shift+C) · paste with Ctrl+V — Ctrl+C is left alone, it interrupts the agent"
           onClick={() => copyRef.current?.()}
         />
         {mouseTaken && (

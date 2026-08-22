@@ -18,6 +18,7 @@ import {
   FOREIGN_REASON,
   copySelection,
   isCopyRequest,
+  isPasteRequest,
   mouseIsTakenByAgent,
   OWNER_DOWN_REASON,
   parseControl,
@@ -180,7 +181,15 @@ describe('a link in the terminal output', () => {
  */
 describe('copying out of a terminal', () => {
   const key = (over: Partial<KeyboardEvent>) =>
-    ({ type: 'keydown', ctrlKey: false, shiftKey: false, metaKey: false, key: 'a', ...over }) as KeyboardEvent
+    ({
+      type: 'keydown',
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+      key: 'a',
+      ...over,
+    }) as KeyboardEvent
 
   it('takes Ctrl+Shift+C and Ctrl+Insert as the copy key', () => {
     expect(isCopyRequest(key({ ctrlKey: true, shiftKey: true, key: 'C' }))).toBe(true)
@@ -196,6 +205,31 @@ describe('copying out of a terminal', () => {
     expect(isCopyRequest(key({ ctrlKey: true, key: 'C' }))).toBe(false)
     // ...and it is a keydown, not a keyup — otherwise one press copies twice.
     expect(isCopyRequest(key({ type: 'keyup', ctrlKey: true, shiftKey: true, key: 'C' }))).toBe(false)
+  })
+
+  /*
+    B-62. The pair below is the point: the reader's Ctrl+V has to be DECLINED so
+    that the browser can paste, while Ctrl+Shift+V must NOT be declined, because
+    xterm already leaves that one uncancelled and taking it would change nothing
+    except adding a second path to maintain.
+  */
+  it('declines Ctrl+V and Shift+Insert, the keys the emulator would swallow', () => {
+    expect(isPasteRequest(key({ ctrlKey: true, key: 'v' }))).toBe(true)
+    expect(isPasteRequest(key({ ctrlKey: true, key: 'V' }))).toBe(true)
+    expect(isPasteRequest(key({ shiftKey: true, key: 'Insert' }))).toBe(true)
+    expect(isPasteRequest(key({ type: 'keyup', ctrlKey: true, key: 'v' }))).toBe(false)
+  })
+
+  it('leaves alone every paste key that already works', () => {
+    // Measured: Ctrl+Shift+V arrives uncancelled and produces a paste event, and
+    // on macOS xterm never cancels Cmd+V. Intercepting either would be a second
+    // copy of behaviour the emulator already has.
+    expect(isPasteRequest(key({ ctrlKey: true, shiftKey: true, key: 'V' }))).toBe(false)
+    expect(isPasteRequest(key({ metaKey: true, key: 'v' }))).toBe(false)
+    expect(isPasteRequest(key({ ctrlKey: true, altKey: true, key: 'v' }))).toBe(false)
+    // Ctrl+Insert is the COPY key — a paste handler claiming it would copy nothing
+    // and paste instead, which is the worst available outcome.
+    expect(isPasteRequest(key({ ctrlKey: true, key: 'Insert' }))).toBe(false)
   })
 
   it('reads whose mouse it is from the emulator, not from a guess', () => {
