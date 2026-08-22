@@ -216,7 +216,12 @@ consumer's name, path, or content.
   a seat nor a terminal keeps today's sentence.
 
 ### B-45 — the roster records the runtime's DERIVED name, so restore gives back the process and loses the name the user chose
-- **state:** open
+- **state:** closed (`ad08ed86`, change `fleet-agent-identity`). Verified on the
+  live record after the service picked up the code: every set-core entry in
+  `~/.local/share/set-core/fleet-roster.json` now carries the framework's label
+  (`set-core-34`, `set-core-bb`, …) and none carries a runtime-derived name.
+  An agent the framework does not hold is recorded with `label: null` rather
+  than with the derived name.
 - **reported:** 2026-08-21 by the user, after the first real reboot — *"a nevek nem álltak vissza"*.
 - **measured:** the owner's log before the reboot names hand-chosen labels —
   `journalctl --user -u set-agent-owner` → `a viewer attached to set-core-bugfix`,
@@ -235,7 +240,13 @@ consumer's name, path, or content.
   derived name.
 
 ### B-46 — the displayed name and the terminal label diverge after a resume, and the screen shows one while the framework holds the other
-- **state:** open
+- **state:** closed (`ec614fcb`, change `fleet-agent-identity`). Measured on the
+  live endpoint afterwards: every held agent's `name` equals its
+  `terminal_label`, the runtime's string moved to `runtime_name`, and the one
+  live collision (pid 54272 named `set-core-33` while pid 43704 holds that
+  label) no longer reaches the screen — 54272 is now shown as `set-core-2225`,
+  its own label. A foreign agent whose runtime name collides with a held label
+  is shown with its pid rather than under the other agent's name.
 - **reported:** 2026-08-21 by the user, same report as B-45.
 - **measured:** `GET /api/fleet/agents` right after the restore —
   `pid=43271 name=set-core-c6 terminal_label=set-core-34`, and seven more like it.
@@ -249,7 +260,13 @@ consumer's name, path, or content.
   agent's `terminal_label`.
 
 ### B-47 — a docked panel survives a reboot by LABEL, and restore recreates no label, so the pane comes back empty
-- **state:** open
+- **state:** open — the mechanism is shipped (`b29e5240`: a rename carries the
+  dock AND its stored width; `753021a7`: restore brings an agent back under its
+  recorded label), and the unit tests cover both. It stays OPEN because the
+  LIVE half is unproven: the owner service still runs pre-rename code, so no
+  rename has yet completed on the running fleet, and the existing dock still
+  names `set-core-bugfix` — a label lost before any of this existed. It closes
+  when a docked agent has been renamed on screen and the panel followed.
 - **reported:** 2026-08-21 by the user — *"a jobb oldali agent sem állt be jobb
   oldalra layout szerint (gondolom a neve miatt)"*. Their guess is correct.
 - **measured:** `~/.local/share/set-core/fleet-layout.json` →

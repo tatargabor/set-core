@@ -46,7 +46,7 @@
 
 ## 7. Close the register, and put the lost names back by hand
 
-- [ ] 7.1 Close B-45, B-46, B-47 in `openspec/bugs/README.md` with the commit that fixes each — closed with evidence, never deleted [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
+- [x] 7.1 Close B-45, B-46, B-47 in `openspec/bugs/README.md` with the commit that fixes each — closed with evidence, never deleted [REQ: the-framework-records-each-discovered-agent-durably-keyed-on-session-identity]
 - [ ] 7.2 Operational, not code: identify each currently running restored agent from its transcript, confirm the name with the user, and rename it. The framework cannot derive this mapping — the change delivers the mechanism, the correction is a human act [REQ: a-framework-held-agent-can-be-renamed-while-it-runs]
 
 ## Acceptance Criteria (from spec scenarios)
@@ -71,4 +71,4 @@
 - [x] AC-18: WHEN an entry whose label is unknown is restored THEN the agent starts under a derived label and the outcome states the name was derived, not restored [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: an-entry-with-no-recorded-label-says-its-name-was-derived]
 - [x] AC-19: WHEN an entry's recorded label is already held by another agent and the entry is restored THEN the agent starts under a free variant and the outcome reports both the wanted and the used label [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session, scenario: a-collision-renames-and-reports-it]
 - [ ] AC-20: WHEN an agent docked to an edge is lost to a reboot and then restored under its recorded label THEN the docked view holds that agent again, on the same edge [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-dock-follows-its-agent-across-a-restore]
-- [ ] AC-21: WHEN a docked agent is not running and has not been renamed or restored THEN the panel is kept and states that no running agent has that terminal [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-dock-whose-agent-is-genuinely-absent-is-kept-and-says-so]
+- [x] AC-21: WHEN a docked agent is not running and has not been renamed or restored THEN the panel is kept and states that no running agent has that terminal [REQ: a-view-instance-can-be-docked-to-an-edge, scenario: a-dock-whose-agent-is-genuinely-absent-is-kept-and-says-so]
