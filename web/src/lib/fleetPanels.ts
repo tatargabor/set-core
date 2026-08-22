@@ -35,6 +35,16 @@
 export const PANEL_AGENT = 'agent'
 
 /**
+ * The file view — a project's own files, not an agent's.
+ *
+ * Its instance id is the project's ROOT rather than a label, because that is
+ * what the endpoints behind it are keyed on and what makes "open this file from
+ * that agent's terminal" land somewhere predictable: one file view per project,
+ * whichever agent asked.
+ */
+export const PANEL_FILES = 'files'
+
+/**
  * Every panel kind this build can render.
  *
  * A registry rather than a union type alone, because the question asked at
@@ -43,7 +53,7 @@ export const PANEL_AGENT = 'agent'
  * are built; nothing here may name a domain concept, because the framework layer
  * knows that a view exists and never what it lists.
  */
-export const KNOWN_PANEL_KINDS: readonly string[] = [PANEL_AGENT]
+export const KNOWN_PANEL_KINDS: readonly string[] = [PANEL_AGENT, PANEL_FILES]
 
 /** One panel: what kind it is, and which instance of that kind. */
 export interface PanelRef {

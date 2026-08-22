@@ -1,0 +1,148 @@
+/**
+ * The decisions behind the file view, kept out of the component so they can be
+ * measured without a browser.
+ *
+ * Three of them are here, and each is a place where being *nearly* right is
+ * indistinguishable from being right until it matters:
+ *
+ *  - what a flat list of paths becomes on screen (`buildTree`),
+ *  - what a path is called in Monaco's language (`languageOf`),
+ *  - and what counts as a file reference in an agent's terminal output
+ *    (`fileReference`) — the one fed by text somebody else wrote.
+ */
+
+/** One node of the structure. A directory holds children; a file does not. */
+export interface TreeNode {
+  name: string
+  path: string
+  dir: boolean
+  children?: TreeNode[]
+}
+
+/**
+ * A flat list of paths, as the endpoint returns it, becomes the tree on screen.
+ *
+ * Built here rather than on the server on purpose: one request instead of one
+ * per expanded directory, no server-side memory of what is open, and the cap
+ * stays a single number in a single place.
+ *
+ * Directories sort before files and both sort by name — a listing whose order
+ * changes between renders is a listing nobody can find anything in twice.
+ */
+export function buildTree(paths: readonly string[]): TreeNode[] {
+  const root: TreeNode = { name: '', path: '', dir: true, children: [] }
+  for (const p of paths) {
+    const parts = p.split('/').filter(Boolean)
+    let node = root
+    parts.forEach((part, i) => {
+      const last = i === parts.length - 1
+      const path = parts.slice(0, i + 1).join('/')
+      let next = node.children?.find(c => c.name === part && c.dir === !last)
+      if (!next) {
+        next = { name: part, path, dir: !last, ...(last ? {} : { children: [] }) }
+        node.children!.push(next)
+      }
+      node = next
+    })
+  }
+  const sort = (n: TreeNode): TreeNode => {
+    if (!n.children) return n
+    n.children.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1))
+    n.children.forEach(sort)
+    return n
+  }
+  return sort(root).children ?? []
+}
+
+/**
+ * Monaco's name for a file's language, or `undefined` for "no colours".
+ *
+ * `undefined` is a real answer and not a failure: an unknown extension gets a
+ * plain-text file, never a file that refuses to open. That is the difference
+ * between compacting and hiding, applied to syntax.
+ *
+ * The map is deliberately short. A long one is a second copy of Monaco's own
+ * registry, and it drifts the day Monaco learns a language.
+ */
+const LANGUAGES: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
+  js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  py: 'python', rb: 'ruby', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin',
+  php: 'php', cs: 'csharp', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp',
+  css: 'css', scss: 'scss', less: 'less', html: 'html', xml: 'xml', svg: 'xml',
+  json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'ini', ini: 'ini',
+  md: 'markdown', sh: 'shell', bash: 'shell', zsh: 'shell', sql: 'sql',
+  dockerfile: 'dockerfile', prisma: 'prisma', graphql: 'graphql',
+}
+
+export function languageOf(path: string): string | undefined {
+  const name = path.split('/').pop() ?? ''
+  if (name.toLowerCase() === 'dockerfile') return 'dockerfile'
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
+  return LANGUAGES[ext]
+}
+
+/** A reference found in terminal output: which file, and optionally which line. */
+export interface FileRef {
+  path: string
+  line?: number
+}
+
+/**
+ * Whether a token from an agent's terminal is a reference to a file of THIS
+ * project — and if so, which file and which line.
+ *
+ * ## The text is data, not an instruction
+ *
+ * Everything in a terminal was written by whatever the agent ran, so this
+ * function is the boundary: it decides what the dashboard is willing to treat as
+ * a path at all. Two rules follow, and both are refusals:
+ *
+ *  - **an absolute path is a reference only if it is inside this project's
+ *    root.** `/etc/shadow` printed by an agent is text.
+ *  - **a relative path must be one the project actually has.** The caller passes
+ *    the set of known paths — the listing it already fetched — so a sentence
+ *    containing `a.b` or `12:30` cannot become a link to something that does not
+ *    exist. Guessing would produce links that 404 on click, and a control that
+ *    fails on click is worse than no control.
+ *
+ * The `path:line` shape is the one this repository's own tools print, and the
+ * colon is the ambiguity worth naming: it separates a line number here and is
+ * ordinary text elsewhere (`http://`, `12:30:05`). Resolved by requiring digits
+ * to the end of the token, and by checking the path part against the known set
+ * BEFORE the split is believed.
+ */
+export function fileReference(
+  token: string,
+  root: string,
+  known: ReadonlySet<string>,
+): FileRef | null {
+  let text = token.trim()
+  if (!text) return null
+  // The punctuation a sentence leaves around a path. Leading first, then
+  // trailing — and a trailing `:<digits>` is NOT punctuation, it is the line
+  // number, which is the whole reason this is a callback and not a plain strip.
+  text = text.replace(/^[([<'"`]+/, '')
+  text = text.replace(/[)\]>,.;:'"`]+$/, m => (/^:\d+$/.test(m) ? m : ''))
+
+  const withLine = /^(.*?):(\d+)(?::\d+)?$/.exec(text)
+  const candidates: Array<{ path: string; line?: number }> = []
+  if (withLine) candidates.push({ path: withLine[1], line: Number(withLine[2]) })
+  candidates.push({ path: text })
+
+  const normalisedRoot = root.replace(/\/+$/, '')
+  for (const c of candidates) {
+    let rel = c.path
+    if (!rel) continue
+    if (rel.startsWith('/')) {
+      // Absolute: only inside this project, and compared on a path boundary so
+      // that `/home/x/proj-other` is not read as inside `/home/x/proj`.
+      if (rel !== normalisedRoot && !rel.startsWith(normalisedRoot + '/')) continue
+      rel = rel.slice(normalisedRoot.length + 1)
+    }
+    rel = rel.replace(/^\.\//, '')
+    if (!rel || !known.has(rel)) continue
+    return c.line === undefined ? { path: rel } : { path: rel, line: c.line }
+  }
+  return null
+}

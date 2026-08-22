@@ -138,7 +138,12 @@ describe('the registry stays domain-free — task 4.4', () => {
     // the whole point. No string test can tell "changes" (a framework word from
     // the consumer contract) from an order number or a partner name — a person
     // has to look. Failing here is the prompt to look.
-    expect([...KNOWN_PANEL_KINDS]).toEqual(['agent'])
+    //
+    // LOOKED AT on 2026-08-22, adding `files`: a file is a framework concept the
+    // same way an agent is. It names nothing about any consumer's business — the
+    // panel LISTS a project's paths, and those never come near this list. That
+    // is the distinction this test exists to make a person make, and it holds.
+    expect([...KNOWN_PANEL_KINDS]).toEqual(['agent', 'files'])
   })
 
   it('an unknown kind is carried as data, never executed or interpolated anywhere but a message', () => {

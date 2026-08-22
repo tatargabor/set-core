@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
+import { fileReference, type FileRef } from '../lib/fleetFiles'
 import {
   type AttachedEvent,
   type CopyOutcome,
@@ -125,6 +126,43 @@ interface Props {
    * a slot is a surface that will one day be silently headerless.
    */
   headerSlot?: HTMLElement | null
+  /**
+   * The project this agent belongs to, and the files it actually has.
+   *
+   * Both are needed before a token in the output may be offered as a link, and
+   * the second is the load-bearing one: without the known set, `12:30` and a
+   * sentence containing a dotted word become links to files that do not exist,
+   * and a control that fails when clicked is worse than an absent one. See
+   * `fileReference`.
+   *
+   * Absent — a docked panel with no project context, a test — and no file link
+   * is offered at all. Nothing degrades to guessing.
+   */
+  projectRoot?: string
+  knownFiles?: ReadonlySet<string>
+  /** Open a file the reader activated in this terminal. */
+  onOpenFile?: (file: FileRef) => void
+}
+
+/** One link the emulator may draw and activate. xterm's `ILink`, structurally. */
+interface TerminalLink {
+  range: { start: { x: number; y: number }; end: { x: number; y: number } }
+  text: string
+  activate: (event: MouseEvent) => void
+}
+
+/**
+ * The little of the emulator the link effect needs.
+ *
+ * Structural rather than xterm's own `Terminal`, so this module's public shape
+ * does not drag a 300 KB type import into every file that mentions it — and so
+ * a test can hand it a stub without constructing an emulator.
+ */
+interface TerminalLike {
+  buffer: { active: { getLine(y: number): { translateToString(trim?: boolean): string } | undefined } }
+  registerLinkProvider(provider: {
+    provideLinks(lineNumber: number, callback: (links: TerminalLink[] | undefined) => void): void
+  }): { dispose(): void }
 }
 
 type Phase =
@@ -133,7 +171,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, onOpenFile }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   // Held in a ref because the effect below depends on `[label]` alone: the
   // handler is captured once, so a parent passing a fresh closure each render
@@ -166,6 +204,20 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   */
   const [mouseTaken, setMouseTaken] = useState(false)
   const [copied, setCopied] = useState<CopyOutcome>(null)
+  /**
+   * The live emulator, for the ONE thing that must not wait for a re-attach.
+   *
+   * The socket effect depends on `label` alone, deliberately — re-running it
+   * costs a teardown and a replay. But the file listing arrives AFTER the
+   * terminal opens (it is fetched once per project, and the terminal is already
+   * on screen), so a link provider registered inside that effect would be
+   * registered with an empty set and never again: file links would silently
+   * never appear. Measured 2026-08-22 while trying to click one.
+   *
+   * So the provider gets its own effect, and this ref is how it reaches the
+   * emulator without owning it.
+   */
+  const termRef = useRef<TerminalLike | null>(null)
   /** The copy act itself, installed by the effect once the emulator exists. */
   const copyRef = useRef<(() => void) | null>(null)
   /** The notice's own timer, so a second copy does not inherit the first's. */
@@ -226,6 +278,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         if (target) window.open(target, '_blank', 'noopener,noreferrer')
       }))
       term.open(host.current)
+      termRef.current = term as unknown as TerminalLike
 
       /*
         COPY — B-60, reported 2026-08-22 as *"copy-pase mintha nem mene a
@@ -451,6 +504,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         if (settleTimer !== undefined) window.clearTimeout(settleTimer)
         window.clearTimeout(copyNoticeTimer.current)
         classWatch.disconnect()
+        termRef.current = null
         copyRef.current = null
         observer.disconnect()
         el.removeEventListener('focusin', gained)
@@ -472,11 +526,73 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       // not a stop, so nothing here touches the agent's lifetime.
       socket?.close()
     }
-    // `label` only. Adding the callbacks here would tear down the socket and
+    // `label` only — and that now includes the file-link inputs, deliberately.
+    // A terminal re-attaching because a file listing arrived would cost a replay
+    // and a flicker for a link decoration; the provider is registered with
+    // whatever was known when the terminal opened, and a listing that lands
+    // later applies to the next one. Stated rather than silent, because the
+    // symptom would be "some terminals have file links and some do not".
+    //
+    // Adding the callbacks here would tear down the socket and
     // re-attach every time the parent re-renders with a new closure — a reattach
     // storm that looks like a flickering terminal and costs a replay each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label])
+
+  /*
+    FILE REFERENCES — the second kind of link in this output.
+
+    A URL opens in a tab (registered with the emulator above); a path opens in
+    the file view. What counts as a path is `fileReference` in the lib, because
+    it is fed by text whatever the agent ran produced: it refuses an absolute
+    path outside this project, and refuses a relative one the project does not
+    have. A link the framework may not read, or that 404s when clicked, is worse
+    than plain text.
+
+    Its own effect, and that is the fix rather than the tidy-up: the listing
+    arrives after the terminal is already open, so registering this inside the
+    socket effect would register it once, with nothing, and never again.
+  */
+  useEffect(() => {
+    const term = termRef.current
+    if (!term || !projectRoot || !knownFiles || knownFiles.size === 0 || !onOpenFile) return
+    const open = onOpenFile
+    const registration = term.registerLinkProvider({
+      provideLinks(lineNumber, callback) {
+        const row = term.buffer.active.getLine(lineNumber - 1)
+        if (!row) { callback(undefined); return }
+        const text = row.translateToString(true)
+        const links: TerminalLink[] = []
+        // Whitespace-separated tokens, with the column kept, so the underline
+        // sits on the path and not on the sentence around it.
+        const re = /\S+/g
+        let m: RegExpExecArray | null
+        while ((m = re.exec(text)) !== null) {
+          const ref = fileReference(m[0], projectRoot, knownFiles)
+          if (!ref) continue
+          links.push({
+            range: {
+              start: { x: m.index + 1, y: lineNumber },
+              end: { x: m.index + m[0].length, y: lineNumber },
+            },
+            text: m[0],
+            /*
+              CTRL (or CMD), and a plain click deliberately does nothing here.
+
+              A path in this output is ordinary text most of the time, and the
+              reader clicks in a terminal to focus it, to place a cursor, to
+              select. Opening a file on every such click would take the screen
+              somewhere nobody asked to go. The modifier is also what the reader
+              was asked for, and what every editor uses for the same act.
+            */
+            activate: (event: MouseEvent) => { if (event.ctrlKey || event.metaKey) open(ref) },
+          })
+        }
+        callback(links.length ? links : undefined)
+      },
+    })
+    return () => registration.dispose()
+  }, [projectRoot, knownFiles, onOpenFile, phase.kind])
 
   const stop = useCallback(async () => {
     setStopping(true)

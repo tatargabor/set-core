@@ -54,7 +54,8 @@ import {
   withDock,
   type DockEdge, type DockedView, type DockMap,
 } from '../lib/fleetDocks'
-import { PANEL_AGENT } from '../lib/fleetPanels'
+import { PANEL_AGENT, PANEL_FILES } from '../lib/fleetPanels'
+import FleetFileView, { type FileRequest } from '../components/FleetFileView'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../lib/fleetTerminal'
 import type { LabelMemory } from '../lib/fleetTerminal'
@@ -885,7 +886,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed, projectRoot, knownFiles, onOpenFile }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -954,6 +955,11 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
    * it is the opposite of the invisibility a rename promises.
    */
   onRenamed?: (from: string, to: string) => void
+  /** The project's root, so a file reference in the terminal can be resolved. */
+  projectRoot?: string
+  /** The files that project has — see `FleetTerminal`'s prop of the same name. */
+  knownFiles?: ReadonlySet<string>
+  onOpenFile?: (file: { path: string; line?: number }) => void
 }) {
   /**
    * B-30 — an OPEN terminal survives a poll the owner did not answer.
@@ -1235,6 +1241,9 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           onToggleFull={onFocus}
           onFocusChange={onTyping}
           headerSlot={termSlot}
+          projectRoot={projectRoot}
+          knownFiles={knownFiles}
+          onOpenFile={onOpenFile}
         />
       )}
     </div>
@@ -1632,6 +1641,27 @@ export default function Fleet() {
     [remembered],
   )
   /** Which edge this panel sits on, or null when it is in the grid. */
+  /**
+   * Open one file of one project in the file view, docking the view if needed.
+   *
+   * The default edge is the right one and it IS a default, not a rule: the band
+   * carries its own dock controls, so the reader moves it wherever they want and
+   * the arrangement remembers. Opening it docked rather than into the grid keeps
+   * the agent grid what it is — a grid of agents — and costs the reader one drag
+   * if they disagree.
+   *
+   * Docking through `dockPanel` rather than by writing the list here, because
+   * that is the one path that also persists the arrangement. A second way of
+   * adding a band is a second way for the stored layout to disagree with the
+   * screen.
+   */
+  const openFile = useCallback((root: string, file: FileRequest) => {
+    setFileRequest({ root, file })
+    if (!docks.some(d => d.kind === PANEL_FILES && d.id === root)) {
+      dockPanel(PANEL_FILES, root, 'right')
+    }
+  }, [docks, dockPanel])
+
   const dockedEdgeOf = useCallback((label: string | null | undefined): DockEdge | null => (
     label ? docks.find(d => d.kind === PANEL_AGENT && d.id === label)?.edge ?? null : null
   ), [docks])
@@ -1723,6 +1753,38 @@ export default function Fleet() {
     () => resolveTerminals(remembered, attachable),
     [remembered, attachable],
   )
+  /*
+    WHICH FILES THIS PROJECT HAS — the set a terminal needs before it may offer
+    a path as a link.
+
+    Fetched once per project and only while a terminal is actually open: a
+    reader looking at tiles has no use for it, and the endpoint runs `git
+    ls-files` on a real tree. The file view fetches its own listing rather than
+    sharing this one, because it also needs the cap and the truncation flag, and
+    a set stripped of those would be the same data with the caveat removed.
+  */
+  const [knownFiles, setKnownFiles] = useState<Record<string, ReadonlySet<string>>>({})
+
+  /* The listing arrives once per project, and only once a terminal is open. */
+  useEffect(() => {
+    const root = active?.root
+    if (!root || openTerminals.length === 0 || knownFiles[root]) return
+    let dead = false
+    void fetch(`/api/fleet/files?root=${encodeURIComponent(root)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(body => {
+        if (dead || !body) return
+        setKnownFiles(prev => ({ ...prev, [root]: new Set<string>(body.files ?? []) }))
+      })
+      .catch(() => {
+        // A listing that cannot be fetched means no file links in this
+        // terminal, which is the correct degradation: `fileReference` refuses
+        // everything without a known set, so nothing is offered that cannot be
+        // opened. Silent on purpose — the terminal itself is unaffected.
+      })
+    return () => { dead = true }
+  }, [active?.root, openTerminals.length, knownFiles])
+
   const toggleTerminal = useCallback((project: string | null, label: string | null, on: boolean) => {
     if (!label) { return }
     const next = on
@@ -1796,6 +1858,16 @@ export default function Fleet() {
    * claim about a keyboard that is somewhere else.
    */
   const [typingLabel, setTypingLabel] = useState<string | null>(null)
+  /*
+    A FILE SOMEBODY ASKED FOR, and which project's view should take it.
+
+    Held here rather than inside the panel because the asker is somewhere else
+    entirely — a terminal, several tiles away — and the panel may not even be
+    open yet. `openFile` docks the view if it has to, then hands the request
+    down; the panel clears it once taken, so a re-render cannot re-open the same
+    file over the reader's later navigation.
+  */
+  const [fileRequest, setFileRequest] = useState<{ root: string; file: FileRequest } | null>(null)
 
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.
@@ -2001,6 +2073,28 @@ export default function Fleet() {
    * broken one.
    */
   const renderDocked = useCallback((band: { kind: string; id: string }) => {
+    if (band.kind === PANEL_FILES) {
+      /* Keyed on the project ROOT — one file view per project, whichever agent
+         asked for the file. The band survives a project switch the way every
+         other docked band does; it simply lists the project it was opened for. */
+      const project = data?.projects.find(p => p.root === band.id)
+      if (!project) {
+        return (
+          <div className="p-2 text-xs text-fg-muted">
+            no project with this root is on the screen — the panel is kept, not closed
+          </div>
+        )
+      }
+      return (
+        <FleetFileView
+          root={project.root}
+          projectName={project.name}
+          request={fileRequest?.root === project.root ? fileRequest.file : null}
+          onRequestHandled={() => setFileRequest(null)}
+          onClose={() => dockPanel(PANEL_FILES, band.id, null)}
+        />
+      )
+    }
     if (band.kind !== PANEL_AGENT) {
       return (
         <div className="p-2 text-xs text-amber-300">
@@ -2019,6 +2113,9 @@ export default function Fleet() {
     return (
       <AgentCard
         agent={agent}
+        projectRoot={active?.root}
+        knownFiles={active?.root ? knownFiles[active.root] : undefined}
+        onOpenFile={active?.root ? (f => openFile(active.root as string, f)) : undefined}
         enlarged
         open={openLogs.includes(agent.pid)}
         onToggle={() => toggleLog(active?.name ?? null, agent.pid, !openLogs.includes(agent.pid))}
@@ -2044,7 +2141,7 @@ export default function Fleet() {
       />
     )
   }, [active, data, openLogs, openTerminals, toggleLog, toggleTerminal, canJumpSeat, onJumpSeat,
-      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf])
+      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest])
 
   // Discovery has never answered. An error here is the real thing — there is no
   // measurement to fall back on — so it replaces the screen.
@@ -2271,6 +2368,19 @@ export default function Fleet() {
                 <span className="text-sm text-fg-loud">{active.name}</span>
                 <span className="text-xs text-fg-muted tabular-nums">{active.agents.length} agent</span>
                 <span className="text-xs text-fg-ghost truncate">{active.root}</span>
+                {/* The file view, reachable without a terminal — and that is the
+                    point rather than a convenience: whether a click in a
+                    terminal reaches the emulator at all depends on whether the
+                    agent's own program has taken the mouse, so the route that
+                    always works must not be behind the one that might not. */}
+                <button
+                  data-fleet-files-open={active.root}
+                  className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline shrink-0"
+                  title="Open this project's files beside the agents — the panel docks to an edge and can be moved."
+                  onClick={() => openFile(active.root, { path: '' })}
+                >
+                  files
+                </button>
                 <StartAgent
                   project={active}
                   onStarted={label => { toggleTerminal(active.name, label, true); load() }}
@@ -2449,6 +2559,9 @@ export default function Fleet() {
                 <AgentCard
                   key={focused.pid}
                   agent={focused}
+                  projectRoot={active.root}
+                  knownFiles={knownFiles[active.root]}
+                  onOpenFile={f => openFile(active.root, f)}
                   enlarged
                   focused
                   open={openLogs.includes(focused.pid)}
@@ -2510,6 +2623,9 @@ export default function Fleet() {
                   <AgentCard
                     key={a.pid}
                     agent={a}
+                    projectRoot={active.root}
+                    knownFiles={knownFiles[active.root]}
+                    onOpenFile={f => openFile(active.root, f)}
                     /*
                       No `wide` any more, and the reason it existed is now fixed
                       at its source. A tile that had opened something used to
