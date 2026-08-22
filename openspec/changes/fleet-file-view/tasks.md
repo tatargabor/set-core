@@ -80,6 +80,8 @@
 - [x] 9c.4 A stored arrangement brought the panel back docked without anybody opening it, so pressing its edge undocked it into a grid that had no reason to draw it and the panel VANISHED — a control reading "move this" doing "delete this". A dock entry now implies openness [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
 - [x] 9c.5 *"kell a layout határokhoz allitható húzható méret"* — measured: both dividers were ALREADY draggable (`role="separator"`, project list at x=344, the band's inner edge at x=1353). What was missing is the affordance: a 1 px line in the same neutral as the surface behind it. It now carries a grip [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
 
+- [x] 9c.6 *"files maximize mar van?"* — nem volt; most van. A fájlnézet kitölti a panelt, az agentek a tab-csíkba mennek, és a kettő KIZÁRJA egymást: egy dolog lehet nagy. Mérve: `max=on`, 0 agent-csempe, 10 tab [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+
 ## 10. Looking at it, and closing
 
 - [ ] 10.1 LOOK at the panel in the browser on a real project — open a file, jump to a line, edit, save, and force a conflict by changing the file on disk mid-edit. A UI change is not done until somebody looked [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, File as FileIcon, RefreshCw, Save, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, File as FileIcon, Maximize2, Minimize2, RefreshCw, Save, X } from 'lucide-react'
 
 import { buildTree, languageOf, type TreeNode } from '../lib/fleetFiles'
 import { DOCK_CONTROLS, IconButton } from './TileControls'
@@ -63,7 +63,7 @@ export interface FileRequest {
   line?: number
 }
 
-export default function FleetFileView({ root, projectName, request, onClose, onRequestHandled, onDock, dockedEdge }: {
+export default function FleetFileView({ root, projectName, request, onClose, onRequestHandled, onDock, dockedEdge, maximised, onMaximise }: {
   /** The project's root — how every endpoint here identifies the project. */
   root: string
   projectName: string
@@ -83,6 +83,17 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
   onDock?: (edge: DockEdge | null) => void
   /** Which edge it is on now, or `null` when it sits in the grid. */
   dockedEdge?: DockEdge | null
+  /**
+   * Whether this panel currently fills the agent panel — the same act an agent
+   * tile calls enlarging, asked for 2026-08-22 (*"files maximize mar van?"*).
+   *
+   * Offered only where it MEANS something: in the grid. A docked band already
+   * has the whole of its edge and is sized by its divider, so a maximise control
+   * there would be a control with nothing to do — which this screen's own rule
+   * calls worse than an absent one.
+   */
+  maximised?: boolean
+  onMaximise?: () => void
 }) {
   const [listing, setListing] = useState<Listing | null>(null)
   const [listError, setListError] = useState<string | null>(null)
@@ -262,6 +273,18 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
                 />
               ))}
             </span>
+          )}
+          {onMaximise && (
+            <IconButton
+              icon={maximised ? Minimize2 : Maximize2}
+              testId="file-max"
+              active={maximised}
+              mark={{ 'data-fleet-file-maximised': maximised ? 'on' : 'off' }}
+              label={maximised
+                ? 'back to the grid — the agents come back as tiles'
+                : 'fill the panel with the files — the agents are counted in the strip above, not dropped'}
+              onClick={onMaximise}
+            />
           )}
           <IconButton
             icon={RefreshCw}

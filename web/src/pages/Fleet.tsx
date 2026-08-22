@@ -1733,9 +1733,42 @@ export default function Fleet() {
    * in the grid to be maximised within it.
    */
   const enlarged = resolveEnlarged(remembered, gridAgents.map(a => a.pid))
+  /*
+    WHICH FILE VIEW IS MAXIMISED — the panel's answer to the agents' `enlarged`.
+
+    A separate value rather than widening `enlarged`, which is a pid in the
+    stored view (`fleetViewState`): squeezing a non-agent into a number would
+    mean a sentinel that is not a pid, and a false value in a stored field is a
+    defect this repository has paid for before.
+
+    The two are kept EXCLUSIVE at their setters, so the screen never has two
+    things claiming to be the big one. That exclusivity is the whole reason this
+    is not simply a boolean somewhere in the panel.
+
+    Not remembered across a reload, unlike the agents' choice — stated rather
+    than hidden: `filesOpen` is not stored either, so a reload starts with no
+    file view unless the arrangement docked one.
+  */
+  const [filesMax, setFilesMax] = useState<string | null>(null)
+
   const setEnlarged = useCallback((project: string | null, pid: number | null) => {
+    // One big thing at a time. Enlarging an agent puts a maximised file view
+    // back into the grid rather than leaving two panels both claiming the space.
+    if (pid !== null) setFilesMax(null)
     writeView(project, { enlarged: pid })
     setMemory({ project, view: readView(project) })
+  }, [])
+
+  /** Maximise the file view, or put it back — the other half of the rule above. */
+  const toggleFilesMax = useCallback((project: string | null, root: string) => {
+    setFilesMax(prev => {
+      const next = prev === root ? null : root
+      if (next !== null) {
+        writeView(project, { enlarged: null })
+        setMemory({ project, view: readView(project) })
+      }
+      return next
+    })
   }, [])
   /**
    * Which terminal is open — task 8.3's reattach half.
@@ -1918,6 +1951,21 @@ export default function Fleet() {
     an agent: an entry means an edge, no entry means the grid.
   */
   const [filesOpen, setFilesOpen] = useState<ReadonlySet<string>>(new Set())
+
+  /*
+    Is the FILE view the big one right now — ONE derived answer, asked by every
+    branch that lays the panel out.
+
+    Derived rather than read straight from `filesMax`, because a panel that is
+    docked, closed, or belongs to another project is not the big one HERE: the
+    grid would otherwise collapse into a column for something it is not drawing.
+    The layout, the tab strip and the tile all consult this single value, so they
+    cannot disagree about what is maximised.
+  */
+  const filesBig = filesMax !== null
+    && filesMax === active?.root
+    && filesOpen.has(filesMax)
+    && !docks.some(d => d.kind === PANEL_FILES && d.id === filesMax)
 
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.
@@ -2639,7 +2687,7 @@ export default function Fleet() {
                   onTyping={on => setTypingLabel(on ? focused.terminal_label ?? null : null)}
                 />
               ) : (
-              <div className={enlarged === null
+              <div className={enlarged === null && !filesBig
                 ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[columns] ?? GRID_COLS[2]}`
                 : 'flex-1 min-h-0 flex flex-col'}>
               {/* One enlarged tile: the others are a tab strip, not rows. The
@@ -2658,7 +2706,18 @@ export default function Fleet() {
                   the tab: the docked panel is on screen, with its own failure
                   marker (`data-fleet-dock-marker`) on its edge. Nothing about it
                   becomes unreachable or unmarked by leaving the strip. */}
-              {enlarged !== null && gridAgents.length > 1 && (
+              {/* Also when the FILE view is the big one: the agents are then all
+                  in the strip, and a strip is how they stay reachable. Without
+                  this, maximising the files would hide every agent with nothing
+                  saying where they went — the false-absence shape, in the
+                  direction where the reader stops looking. */}
+              {/* Two conditions, and they differ by one agent for a reason. With
+                  an agent enlarged, a single agent needs no strip — there is
+                  nothing to switch TO, and rendering it would show the same
+                  agent twice (which is exactly what a test caught). With the
+                  FILE view big, every agent is off screen, so even one of them
+                  needs the strip to stay reachable. */}
+              {((enlarged !== null && gridAgents.length > 1) || (filesBig && gridAgents.length > 0)) && (
                 <AgentTabs
                   agents={gridAgents}
                   selected={enlarged}
@@ -2685,8 +2744,10 @@ export default function Fleet() {
               {active.root && filesOpen.has(active.root)
                 && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root) && (
                 <div
-                  className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden`}
+                  className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden${
+                    filesBig ? ' flex-1' : ''}`}
                   data-fleet-file-tile={active.root}
+                  data-fleet-file-max={filesBig ? 'on' : 'off'}
                 >
                   <FleetFileView
                     root={active.root}
@@ -2696,6 +2757,8 @@ export default function Fleet() {
                     onClose={() => closeFiles(active.root)}
                     onDock={edge => dockPanel(PANEL_FILES, active.root, edge)}
                     dockedEdge={null}
+                    maximised={filesBig}
+                    onMaximise={() => toggleFilesMax(active.name, active.root)}
                   />
                 </div>
               )}
@@ -2752,9 +2815,9 @@ export default function Fleet() {
                 )
                 const open = openLogs.includes(a.pid)
                 const toggle = () => toggleLog(active.name, a.pid, !open)
-                return a.pid === enlarged
+                return a.pid === enlarged && !filesBig
                   ? card({ enlarged: true, open, onToggle: toggle })
-                  : enlarged !== null
+                  : enlarged !== null || filesBig
                     /* The unselected agents are in the tab strip above. They
                        used to be `AgentRow`s here — one line each, with an
                        input — and `AgentRow` is DELETED rather than left
