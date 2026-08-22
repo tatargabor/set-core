@@ -9,9 +9,9 @@
 
 ## 2. Invert the audit before the fleet is checked
 
-- [ ] 2.1 Invert the memory-hook check in `set-audit`: presence is ❌ with the count, absence is ✅ [REQ: claude-code-config-dimension]
-- [ ] 2.2 Remove the guidance that tells a project to run `set-deploy-hooks` in order to INSTALL memory hooks; the guidance now says the same command removes them [REQ: claude-code-config-dimension]
-- [ ] 2.3 Run `set-audit scan` against a project known to be clean and one seeded with the nine hooks, and check both verdicts by reading the output [REQ: claude-code-config-dimension]
+- [x] 2.1 Invert the memory-hook check in `set-audit`: presence is ❌ with the count, absence is ✅ [REQ: claude-code-config-dimension]
+- [x] 2.2 Remove the guidance that tells a project to run `set-deploy-hooks` in order to INSTALL memory hooks; the guidance now says the same command removes them [REQ: claude-code-config-dimension]
+- [x] 2.3 Run `set-audit scan` against a project known to be clean and one seeded with the nine hooks, and check both verdicts by reading the output [REQ: claude-code-config-dimension]
 
 ## 3. Remove the MCP surface
 

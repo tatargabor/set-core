@@ -32,14 +32,24 @@ check_claude_config() {
     fi
 
     # ── Memory hooks ─────────────────────────────────────────────────────
+    # The polarity here is INVERTED, and deliberately so. Until 2026-08-21 this check
+    # reported a defect when memory hooks were ABSENT and told the project to run
+    # set-deploy-hooks to install them. The memory subsystem has since been removed —
+    # it was measured injecting a false "user frustrated" label into unrelated sessions,
+    # 168 of 187 injections over 21 days — so leaving the check as it was would have
+    # instructed every project to reinstall exactly what was taken out.
+    #
+    # The check is inverted rather than deleted because deletion is silent about the
+    # case that motivates it: a project restored from a backup, a worktree cut from an
+    # old branch, or a machine that missed the sweep still carries the nine.
     if [[ -f "$settings" ]]; then
         if file_contains "$settings" "set-hook-memory"; then
             local hook_events
             hook_events=$(grep -c "set-hook-memory" "$settings" 2>/dev/null || echo 0)
-            add_check "$dim" "memory_hooks" "pass" "Memory hooks deployed (${hook_events} events)"
+            add_check "$dim" "memory_hooks" "fail" "Removed memory hooks still present (${hook_events} found)"
+            add_guidance "$dim" "Run set-deploy-hooks — it removes them; see openspec/changes/remove-shodh-memory" ""
         else
-            add_check "$dim" "memory_hooks" "fail" "No set-hook-memory hooks found"
-            add_guidance "$dim" "Run set-deploy-hooks to install memory hooks" ""
+            add_check "$dim" "memory_hooks" "pass" "No memory hooks (the subsystem was removed)"
         fi
     fi
 
