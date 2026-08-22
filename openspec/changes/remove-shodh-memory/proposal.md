@@ -44,8 +44,9 @@ drop-in and is not addressed by a command.
 - **BREAKING** Remove `lib/set_memoryd/`, `lib/memory/`, `lib/set_hooks/`,
   `lib/frustration.py`.
 - **BREAKING** Remove the **27** memory MCP tools from `mcp-server/set_mcp_server.py`,
-  leaving 8: `run_command`, `list_worktrees`, `get_ralph_status`, `get_worktree_tasks`,
-  `get_team_status`, `get_activity`, `send_message`, `get_inbox`. The 27 are `remember`,
+  leaving **7**: `list_worktrees`, `get_ralph_status`, `get_worktree_tasks`,
+  `get_team_status`, `get_activity`, `send_message`, `get_inbox`. (`run_command` is an
+  internal helper, not a registered tool — an earlier draft counted it as an eighth.) The 27 are `remember`,
   `recall`, `recall_by_date`, `proactive_context`, `forget`, `forget_by_tags`,
   `list_memories`, `get_memory`, `context_summary`, `brain`, `memory_stats`,
   `memory_health`, `audit`, `cleanup`, `dedup`, `verify_index`, `consolidation_report`,
@@ -91,7 +92,7 @@ entries, plus a 7885-record JSON export and the one open todo, at
   deployer strips any it finds. This is the requirement change that keeps the other 35
   projects clean.
 - `hook-config-downgrade`: the downgrade path loses its memory-hook branches.
-- `mcp-consolidation`: the MCP tool surface loses 27 of its 35 tools; the consolidation contract must
+- `mcp-consolidation`: the MCP tool surface loses 27 of its 34 tools; the consolidation contract must
   state the smaller surface rather than describe tools that no longer exist.
 - `help-command`: `/set:help` no longer advertises memory or todo commands.
 - `project-health-scan`: **the polarity inverts.** Today `set-audit` reports ❌ when

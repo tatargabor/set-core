@@ -2,7 +2,7 @@
 
 ### Requirement: Unified MCP server serves both worktree and memory tools
 **Reason**: The memory subsystem this requirement consolidated is removed. Twenty-seven of
-the server's thirty-five tools shelled out to `set-memory`, a command the framework no
+the server's thirty-four tools shelled out to `set-memory`, a command the framework no
 longer installs; keeping them registered would expose tools that fail on every call.
 
 **Migration**: None. There is no replacement tool. Durable knowledge lives in the runtime's

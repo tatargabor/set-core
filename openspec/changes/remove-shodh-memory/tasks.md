@@ -15,9 +15,9 @@
 
 ## 3. Remove the MCP surface
 
-- [ ] 3.1 Delete the 27 memory tools from `mcp-server/set_mcp_server.py`, leaving the 8 worktree/team tools [REQ: the-mcp-server-exposes-worktree-and-team-tools-only]
-- [ ] 3.2 Delete every subprocess invocation of `set-memory` and `set-memoryd` from the MCP server [REQ: the-mcp-server-exposes-worktree-and-team-tools-only]
-- [ ] 3.3 Start the server and enumerate its registered tool names; assert the list equals the 8 and contains none of the 27 [REQ: the-mcp-server-exposes-worktree-and-team-tools-only]
+- [x] 3.1 Delete the 27 memory tools from `mcp-server/set_mcp_server.py`, leaving the 7 worktree/team tools [REQ: the-mcp-server-exposes-worktree-and-team-tools-only]
+- [x] 3.2 Delete every subprocess invocation of `set-memory` and `set-memoryd` from the MCP server [REQ: the-mcp-server-exposes-worktree-and-team-tools-only]
+- [x] 3.3 Start the server and enumerate its registered tool names; assert the list equals the 7 and contains none of the 27 [REQ: the-mcp-server-exposes-worktree-and-team-tools-only]
 
 ## 4. Remove the CLI, the daemon and the libraries
 
@@ -124,7 +124,7 @@
 
 ### the-mcp-server-exposes-worktree-and-team-tools-only
 
-- [ ] AC-27: WHEN the MCP server starts THEN it registers exactly `run_command`, `list_worktrees`, `get_ralph_status`, `get_worktree_tasks`, `get_team_status`, `get_activity`, `send_message`, `get_inbox` [REQ: the-mcp-server-exposes-worktree-and-team-tools-only, scenario: server-exposes-exactly-the-surviving-tools]
+- [ ] AC-27: WHEN the MCP server starts THEN it registers exactly the seven: `list_worktrees`, `get_ralph_status`, `get_worktree_tasks`, `get_team_status`, `get_activity`, `send_message`, `get_inbox` [REQ: the-mcp-server-exposes-worktree-and-team-tools-only, scenario: server-exposes-exactly-the-surviving-tools]
 - [ ] AC-28: WHEN the registered tool names are enumerated THEN none is among the 27 memory tools [REQ: the-mcp-server-exposes-worktree-and-team-tools-only, scenario: no-memory-tool-is-registered]
 - [ ] AC-29: WHEN the server source is scanned for subprocess invocations THEN no tool invokes `set-memory` or `set-memoryd` [REQ: the-mcp-server-exposes-worktree-and-team-tools-only, scenario: no-tool-shells-out-to-a-removed-command]
 - [ ] AC-30: WHEN a worktree or team tool is invoked THEN it uses `projects.json` and does not depend on `CLAUDE_PROJECT_DIR` [REQ: the-mcp-server-exposes-worktree-and-team-tools-only, scenario: worktree-tools-unaffected]
