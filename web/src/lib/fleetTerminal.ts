@@ -286,6 +286,34 @@ export function isCopyRequest(e: Pick<KeyboardEvent, 'type' | 'ctrlKey' | 'shift
 }
 
 /**
+ * Whether this keystroke is `Ctrl+C` asking to COPY rather than to interrupt.
+ *
+ * It cannot answer that alone: the discriminator is whether anything is selected, which
+ * lives on the terminal. So this reports "the reader pressed the ambiguous key", and the
+ * caller decides by looking at the selection.
+ *
+ * Why the ambiguous key at all — B-63, and the reason is the reader's, not a preference.
+ * `Ctrl+Shift+C` was chosen (B-60) precisely BECAUSE it is not `Ctrl+C`, and measured
+ * 2026-08-23 in the browser the reader uses: **it opens Chrome's DevTools inspector**.
+ * Chrome handles that combination before the page sees it, so `attachCustomKeyEventHandler`
+ * never runs and the copy control is unreachable from the keyboard. A shortcut the browser
+ * has already claimed is not a shortcut.
+ *
+ * So copy moves onto `Ctrl+C`, the way Windows Terminal and VS Code resolve the same
+ * conflict: **with a selection it copies, without one it interrupts.** The interrupt is not
+ * lost — it is one keystroke away, because copying clears the selection, so a second
+ * `Ctrl+C` always interrupts. That property is what makes this safe on long-lived agent
+ * sessions, and it is the part to keep if this is ever rewritten.
+ */
+export function isAmbiguousCopyKey(
+  e: Pick<KeyboardEvent, 'type' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'key'>,
+): boolean {
+  if (e.type !== 'keydown') return false
+  if (e.shiftKey || e.altKey || e.metaKey) return false
+  return e.ctrlKey && (e.key === 'c' || e.key === 'C')
+}
+
+/**
  * Whether this keystroke is the reader asking to PASTE — and therefore whether the
  * emulator has to be stopped from eating it.
  *

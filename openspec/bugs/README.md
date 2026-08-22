@@ -111,6 +111,29 @@ consumer's name, path, or content.
   hand here, so the last step needs a person: select with Shift held, press
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
 
+### B-63 — the shipped copy key cannot be pressed in Chrome: Ctrl+Shift+C is the browser's own DevTools shortcut
+- **state:** open
+- **reported:** 2026-08-23 by the user, testing the B-62 fix — *"beillesztes szoveg ment,
+  copy terminalrol nem"* and, decisively, *"ctrl shift c pedig elohozza a debug windowt"*.
+- **measured:** the reader's own observation is the measurement, and it is the one this
+  session could not have made: `Ctrl+Shift+C` opens Chrome's DevTools element inspector.
+  That shortcut is handled by the browser BEFORE the page sees the keystroke, so
+  `attachCustomKeyEventHandler` — which is what B-60 relied on — never runs. The handler is
+  correct; the key is unreachable.
+- **what this says about B-60, and it is the durable half:** the copy path was verified by
+  asserting that the DECISION function returns `true` for `Ctrl+Shift+C`, and by clicking the
+  header's copy control. Both passed, and both were about the mechanism. Nothing in either
+  check could see that the reader's finger never reaches the handler — the same class as
+  driving a thing with an API the user does not have. **A keyboard shortcut is not verified
+  until somebody presses it in the browser the reader uses.**
+- **the paste half is CONFIRMED working** by the same round: *"beillesztes szoveg ment"*.
+  B-62's text half is therefore verified by the reader, not only by this session.
+- **the image half is absent as designed**, not regressed — see B-62 and the
+  `terminal-image-paste` change.
+- **fixed when:** the reader can copy a selection out of an agent terminal with a key Chrome
+  does not claim, pressed in Chrome, with the copied text pasted somewhere else to prove it —
+  and the interrupt is still reachable.
+
 ### B-62 — Ctrl+V does not paste into an agent terminal, and a clipboard IMAGE has no path at all
 - **state:** open
 - **reported:** 2026-08-22 by the user — *"ctrl-c és ctrl-v nem mukodik most agent

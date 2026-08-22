@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FOREIGN_REASON,
   copySelection,
+  isAmbiguousCopyKey,
   isCopyRequest,
   isPasteRequest,
   mouseIsTakenByAgent,
@@ -230,6 +231,30 @@ describe('copying out of a terminal', () => {
     // Ctrl+Insert is the COPY key — a paste handler claiming it would copy nothing
     // and paste instead, which is the worst available outcome.
     expect(isPasteRequest(key({ ctrlKey: true, key: 'Insert' }))).toBe(false)
+  })
+
+  /*
+    B-63. Ctrl+Shift+C was chosen BECAUSE it is not Ctrl+C — and Chrome claims it for the
+    DevTools inspector, so the reader's finger never reaches the handler. The key had to
+    move onto the ambiguous one, and the ambiguity is resolved by the SELECTION, not here.
+  */
+  it('recognises the ambiguous Ctrl+C, and only the bare one', () => {
+    expect(isAmbiguousCopyKey(key({ ctrlKey: true, key: 'c' }))).toBe(true)
+    expect(isAmbiguousCopyKey(key({ ctrlKey: true, key: 'C' }))).toBe(true)
+    // Shift, Alt and Meta variants are somebody else's key — Ctrl+Shift+C is Chrome's.
+    expect(isAmbiguousCopyKey(key({ ctrlKey: true, shiftKey: true, key: 'C' }))).toBe(false)
+    expect(isAmbiguousCopyKey(key({ metaKey: true, key: 'c' }))).toBe(false)
+    expect(isAmbiguousCopyKey(key({ ctrlKey: true, altKey: true, key: 'c' }))).toBe(false)
+    // ...and a keyup would copy a second time on one press.
+    expect(isAmbiguousCopyKey(key({ type: 'keyup', ctrlKey: true, key: 'c' }))).toBe(false)
+  })
+
+  it('does not answer the interrupt question, because it cannot', () => {
+    // The predicate knows the keystroke and nothing about the selection. Deciding here
+    // would mean keeping a second copy of the terminal's state, which is the drift this
+    // repo keeps paying for — so the caller looks at the selection instead.
+    expect(isAmbiguousCopyKey(key({ ctrlKey: true, key: 'v' }))).toBe(false)
+    expect(isAmbiguousCopyKey(key({ key: 'c' }))).toBe(false)
   })
 
   it('reads whose mouse it is from the emulator, not from a guess', () => {

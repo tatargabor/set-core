@@ -6,6 +6,7 @@ import {
   type AttachedEvent,
   type CopyOutcome,
   copySelection,
+  isAmbiguousCopyKey,
   isCopyRequest,
   isPasteRequest,
   mouseIsTakenByAgent,
@@ -314,9 +315,26 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           is deliberate: anything else would be a second clipboard path.
         */
         if (isPasteRequest(e)) return false
-        if (!isCopyRequest(e)) return true
-        void copySelection(term.getSelection()).then(announce)
-        return false
+        if (isCopyRequest(e)) {
+          void copySelection(term.getSelection()).then(announce)
+          return false
+        }
+        /*
+          B-63: Ctrl+C is ambiguous, and the SELECTION resolves it — copy when there is
+          one, interrupt when there is not. Chrome claims Ctrl+Shift+C for its own
+          inspector, so the key B-60 chose never reaches this handler at all.
+
+          `clearSelection()` is not tidying: it is what keeps the interrupt one keystroke
+          away. Copy, selection gone, and the next Ctrl+C is a plain SIGINT again.
+        */
+        if (isAmbiguousCopyKey(e)) {
+          const text = term.getSelection()
+          if (!text) return true
+          void copySelection(text).then(announce)
+          term.clearSelection()
+          return false
+        }
+        return true
       })
       copyRef.current = () => {
         const text = term.getSelection()
@@ -715,7 +733,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           icon={Copy}
           testId="copy"
           mark={{ 'data-fleet-terminal-copy': 'yes' }}
-          label="copy the selection (Ctrl+Shift+C) · paste with Ctrl+V — Ctrl+C is left alone, it interrupts the agent"
+          label="copy the selection (Ctrl+C while text is selected, or Ctrl+Insert) · paste with Ctrl+V — with nothing selected Ctrl+C still interrupts the agent"
           onClick={() => copyRef.current?.()}
         />
         {mouseTaken && (

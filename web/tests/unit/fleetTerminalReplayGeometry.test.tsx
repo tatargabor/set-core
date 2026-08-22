@@ -55,7 +55,8 @@ vi.mock('@xterm/xterm', () => ({
        but a mock that lacks them makes the component throw before the order
        under test is ever recorded, which would read as a geometry failure. */
     attachCustomKeyEventHandler() { /* the copy key, not exercised here */ }
-    getSelection() { return '' }
+    getSelection() { return this._sel ?? '' }
+    clearSelection() { this._sel = '' }
   },
 }))
 

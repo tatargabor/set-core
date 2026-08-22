@@ -26,6 +26,7 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 
 /** The handler the component hands to the emulator — the subject of this file. */
 let handler: ((e: KeyboardEvent) => boolean) | null = null
+let term: any = null
 const opened: string[] = []
 
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
@@ -41,8 +42,10 @@ vi.mock('@xterm/xterm', () => ({
     resize() { /* geometry is measured in fleetTerminalReplayGeometry */ }
     write() { /* no bytes in this file */ }
     onData() { return { dispose() { /* no listener */ } } }
+    constructor() { term = this }
     attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { handler = fn }
-    getSelection() { return '' }
+    getSelection() { return this._sel ?? '' }
+    clearSelection() { this._sel = '' }
   },
 }))
 
@@ -72,6 +75,7 @@ const key = (over: Partial<KeyboardEvent>) =>
 
 beforeEach(async () => {
   handler = null
+  term = null
   opened.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
   vi.stubGlobal('ResizeObserver', class {
@@ -107,5 +111,40 @@ describe('the paste keystroke the emulator would otherwise swallow', () => {
     // would look identical here — so the copy key is asserted alongside, to
     // keep this file from being read as "declining everything is fine".
     expect(handler!(key({ ctrlKey: true, shiftKey: true, key: 'C' }))).toBe(false)
+  })
+})
+
+/**
+ * B-63 — the selection is the discriminator, and the interrupt stays one keystroke away.
+ *
+ * Reported by the reader on 2026-08-23, in the browser this session cannot press keys in:
+ * `Ctrl+Shift+C` opens Chrome's DevTools inspector. Chrome takes that combination before
+ * the page does, so the handler B-60 installed never runs — the copy control was correct
+ * and unreachable. That is why copy moved onto the ambiguous key.
+ *
+ * The property this file exists to protect is not "Ctrl+C copies". It is that a reader who
+ * needs to INTERRUPT a running agent can always do so: copying clears the selection, so the
+ * very next Ctrl+C is a plain SIGINT. Without that, a stale selection could swallow an
+ * interrupt indefinitely — on sessions where an accidental interrupt costs real work, and a
+ * missed one costs more.
+ */
+describe('Ctrl+C, resolved by the selection', () => {
+  it('interrupts when nothing is selected', () => {
+    term._sel = ''
+    // `true` means the keystroke reaches the emulator, which sends it to the pty as SIGINT.
+    expect(handler!(key({ ctrlKey: true, key: 'c' }))).toBe(true)
+  })
+
+  it('copies when there is a selection, and does NOT also interrupt', () => {
+    term._sel = 'a selected line'
+    expect(handler!(key({ ctrlKey: true, key: 'c' }))).toBe(false)
+  })
+
+  it('leaves the interrupt one keystroke away — the selection is cleared by copying', () => {
+    term._sel = 'a selected line'
+    handler!(key({ ctrlKey: true, key: 'c' }))
+    expect(term.getSelection()).toBe('')
+    // ...so the second press interrupts, which is the whole safety argument.
+    expect(handler!(key({ ctrlKey: true, key: 'c' }))).toBe(true)
   })
 })
