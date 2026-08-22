@@ -79,12 +79,48 @@ whatever prompt was in flight (89.8 % of its output was a raw task notification 
 as the user's anger); a distillation reads the finished session and writes what was
 *learned*. Scoped here, built as its own change.
 
-- [ ] 11.1 Write down what distillation must produce, and what disqualifies an entry: a fact learned, never a claim about the user's state, never a harness artifact verbatim [REQ: a-memory-records-a-fact-never-a-claim-about-the-users-state]
-- [ ] 11.2 Decide where it writes — the native memory directory, one file per fact, plus one index line — and that it may not create a second store [REQ: a-second-store-is-not-introduced]
-- [ ] 11.3 Decide the trigger and who runs it. A Stop hook was the old carrier and it is what made the capture indiscriminate; state the choice and the reason rather than inheriting it [REQ: the-native-memory-directory-is-the-memory-layer]
-- [ ] 11.4 Respect the index limit: a distillation that appends unboundedly pushes the index past the 200-line / 25 KB cut, where it loads for nobody and nothing warns [REQ: the-index-size-limit-is-stated-because-it-silently-truncates]
-- [ ] 11.5 Confidentiality is a gate, not a review step: a consumer name, a partner name or a personal name must be unable to reach a memory file [REQ: confidentiality-survives-the-removal]
+- [x] 11.1 Write down what distillation must produce, and what disqualifies an entry: a fact learned, never a claim about the user's state, never a harness artifact verbatim [REQ: a-memory-records-a-fact-never-a-claim-about-the-users-state]
+- [x] 11.2 Decide where it writes — the native memory directory, one file per fact, plus one index line — and that it may not create a second store [REQ: a-second-store-is-not-introduced]
+- [x] 11.3 Decide the trigger and who runs it. A Stop hook was the old carrier and it is what made the capture indiscriminate; state the choice and the reason rather than inheriting it [REQ: the-native-memory-directory-is-the-memory-layer]
+- [x] 11.4 Respect the index limit: a distillation that appends unboundedly pushes the index past the 200-line / 25 KB cut, where it loads for nobody and nothing warns [REQ: the-index-size-limit-is-stated-because-it-silently-truncates]
+- [x] 11.5 Confidentiality is a gate, not a review step: a consumer name, a partner name or a personal name must be unable to reach a memory file [REQ: confidentiality-survives-the-removal]
 - [ ] 11.6 Open it as its own OpenSpec change; this group is the scoping note, not the implementation [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+
+**Scoping decisions — taken 2026-08-22, each naming the evidence it rests on.**
+
+- **11.1 · What it produces, and what disqualifies an entry.** One durable fact per file, in
+  the native frontmatter shape (`type: user | feedback | project | reference`). Disqualified,
+  and this is a gate rather than a style note: any claim about the user's *state* (an inferred
+  emotion, a sentiment label the source text does not support); any harness artifact stored
+  verbatim (a task notification, a cross-session message, another agent's system prompt, a
+  transcript fragment); anything the repository already records; anything that only mattered
+  inside the session. Measured reason: of 187 memory lines the removed system injected,
+  **168 (89.8 %) were `User frustrated` records** and exactly one was a reusable fact.
+- **11.2 · Where it writes.** `~/.claude/projects/<slug>/memory/`, one file per fact, plus
+  exactly one line in `MEMORY.md`. It may not create a second store — the framework ships no
+  memory subsystem, and a new store would re-open what `remove-shodh-memory` closed.
+- **11.3 · Trigger: `SessionEnd`, and it only ENQUEUES.** Three reasons, and the first is why
+  the old carrier is not inherited: `Stop` fires at the end of **every assistant turn**, so it
+  captured whatever prompt was in flight — that indiscriminacy *is* the 89.8 % above. Second,
+  `SessionEnd` exists in this Claude Code and fires once, after the transcript is complete
+  (measured: the official `plugin-dev` hook reference lists it; this machine's `settings.json`
+  currently registers only `Stop`). Third, a model call inside an exit hook is a bad place to
+  do the work — it is time-bounded and its output reaches nobody — so the hook writes one queue
+  entry (transcript path, project slug, timestamp) and the distiller runs out of band. The
+  distiller is judged on the **file it wrote**, never on its own report: a subagent's "done" is
+  not evidence that anything happened.
+- **11.4 · The index limit is a refusal, not a hope.** Only the first **200 lines / 25 KB** of
+  `MEMORY.md` are injected, and nothing warns past the cut. Measured 2026-08-22: this project
+  **50 lines / 8 204 bytes**; the largest index on this machine **123 lines / 20 550 bytes** —
+  already 82 % of the byte cut. So the distiller writes one index line per fact and **refuses
+  to append** once the index would pass 150 lines or 20 KB, reporting instead. An unbounded
+  appender silently disables memory for every later session in that project.
+- **11.5 · Confidentiality is a pre-write gate.** Reuse `bin/set-leakscan`'s runtime-resolved
+  slug list (`private_slugs()`, registry `~/.config/set-core/projects.json`, exceptions in
+  `~/.config/set-core/leakscan-allow.txt`) as a library — never a pattern list committed to the
+  repository, which would itself be the leak. A candidate memory that matches is **refused**,
+  not flagged for a later review, and the matched value is never echoed into the refusal.
+- **11.6 · It ships as its own OpenSpec change** — this group is the scoping note.
 
 ## 12. The scripts, everywhere — including the machines this one cannot see (user, 2026-08-22)
 
