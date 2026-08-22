@@ -121,6 +121,27 @@ consumer's name, path, or content.
   by default and opens on a control; the agent's own icons sit in the layout icon
   row rather than on a line of their own. Evidence: LOOKING at the same three
   agents, plus the header's measured height in rows.
+- **state after the fix:** closed for the header itself — LOOKED at on the SAME
+  three agents, 1517 px, two columns. The tile header is now **22 px of title row
+  + 16 px of `says:` row = 38 px**, the instruction row measures **0**, and the
+  terminal gets **333 px** on every one of the three. What made the rows:
+  - the instruction box opens from a control in the title bar. Where an agent
+    cannot be instructed at all there is no control and its one-line reason still
+    stands where the box would be — otherwise the seat's absence would go unsaid
+    and `↳ ?` elsewhere on the tile would be the only trace of it;
+  - the focus takes ONE line with the whole sentence in its tooltip, and the file
+    NAMES fold into a count on the same row (names in the tooltip). Enlarged, the
+    names come back.
+- **what was tried and REVERSED, because it crossed from compacting into
+  hiding:** standing the whole `says:` block down while the terminal or the log is
+  open. It reads well, and it is wrong: the declared focus comes from the
+  messaging bus, the log does not carry it, so that row is the only place the fact
+  exists. A unit test caught it, not the screen.
+- **still open:** *"agent ikonjai miért nem épülnek be a layout ikonjai alá
+  közvetlen"* — with the header down to two rows the tile's icons already sit at
+  the tile's own right edge, under the project header's layout icons in a
+  two-column layout. Whether that is what was asked for needs the user; it is not
+  guessed at here.
 
 ### B-59 — in a three-column grid the terminal wraps to a few characters per line and stops being readable
 - **state:** open

@@ -61,7 +61,7 @@ import type { LabelMemory } from '../lib/fleetTerminal'
 import { buildActs, speakerLabel, speakerOf } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
 import { tally } from '../lib/fleetAttention'
-import { blockUnexpectedFrom, declaredStanding, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
+import { blockUnexpectedFrom, declaredStanding, instructability, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
@@ -736,9 +736,19 @@ const TAB_DOT: Record<string, string> = {
  * focus named a partner company and an unpaid invoice. They are shown and never
  * written anywhere: no `localStorage`, no log, no cache.
  */
-function Declared({ standing, full, blockShown }: {
+function Declared({ standing, full, blockShown, contentShown }: {
   standing: DeclaredStanding
   full?: boolean
+  /**
+   * Whether the tile is already showing the terminal or the log — B-61.
+   *
+   * With content on the tile this block stands down, because it is then a
+   * second and staler copy of what the reader is looking at. The exception is
+   * the one absence that is a fact about the FRAMEWORK rather than about the
+   * agent: *we could not ask*. That is a failure, and `ui-quality.md` does not
+   * let a compaction hide one.
+   */
+  contentShown?: boolean
   /**
    * Whether the header is already carrying the block. The phase is dropped only
    * when it would repeat a marker the reader can see — never when the marker is
@@ -755,6 +765,9 @@ function Declared({ standing, full, blockShown }: {
     )
   }
   if (standing.kind === 'silent') {
+    // An agent that says nothing, on a tile that is already showing something:
+    // there is no absence worth a row here.
+    if (contentShown) return null
     // Stated only where there is room for it. Seen on the live screen: with
     // most agents declaring nothing, this line appeared on every tile in the
     // grid — a sentence that says there is nothing to say, repeated thirteen
@@ -770,7 +783,7 @@ function Declared({ standing, full, blockShown }: {
     )
   }
   return (
-    <div className="text-xs mt-1 space-y-0.5" data-fleet-declared="declared">
+    <div className="text-xs mt-1" data-fleet-declared="declared">
       <div className="flex items-baseline gap-2 flex-wrap">
         <span className="text-fg-ghost shrink-0">says:</span>
         {standing.phase && !phaseRepeatsBlock(standing.phase, !!blockShown) && (
@@ -783,9 +796,20 @@ function Declared({ standing, full, blockShown }: {
             a narrow tile gets a full-width sentence rather than a column of
             three characters. */}
         {standing.focus && (
-          <span className="text-fg-normal flex-1 min-w-[14rem]" style={full ? undefined : {
-            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          }}>{standing.focus}</span>
+          /* ONE line on a closed tile — B-61. Two lines was already a
+             compromise; with the header down to two rows the focus gets one of
+             them, and the whole sentence stays in the tooltip rather than in
+             the layout. An enlarged tile has the room, so it keeps the lot. */
+          <span className="text-fg-normal flex-1 min-w-[14rem] truncate" title={standing.focus}>{standing.focus}</span>
+        )}
+        {/* The file COUNT stays on the row even when the names do not — B-61
+            compacts the layout, and dropping the fact would be hiding rather
+            than compacting. The names are in the tooltip, one per line. */}
+        {standing.files.length > 0 && !full && (
+          <span className="text-fg-ghost shrink-0 tabular-nums" title={standing.files.join('\n')}
+                data-fleet-declared-files={standing.files.length}>
+            {standing.files.length} file(s)
+          </span>
         )}
         {/* A declaration does not expire on its own, so its AGE is what lets a
             reader weigh it. Deliberately not turned into a staleness verdict:
@@ -797,12 +821,18 @@ function Declared({ standing, full, blockShown }: {
           </span>
         )}
       </div>
-      {standing.files.length > 0 && (
-        <div className="text-fg-ghost truncate" title={standing.files.join('\n')}>
-          {standing.files.length} file(s): {standing.files.slice(0, full ? 8 : 3).join(', ')}
-          {standing.files.length > (full ? 8 : 3) && ' …'}
-        </div>
-      )}
+      {/* The files ride ON the same row on a closed tile — a count and a
+          tooltip, because the names themselves were a row of their own for a
+          fact the reader almost never needs spelled out. Enlarged, there is
+          room to name them. */}
+      {standing.files.length > 0 && (full
+        ? (
+          <div className="text-fg-ghost truncate mt-0.5" title={standing.files.join('\n')}>
+            {standing.files.length} file(s): {standing.files.slice(0, 8).join(', ')}
+            {standing.files.length > 8 && ' …'}
+          </div>
+        )
+        : null)}
     </div>
   )
 }
@@ -968,6 +998,34 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
     the terminal and shows the log.
   */
   const logShown = open && !terminalOpen
+  /*
+    B-61 — WHAT THE HEADER COSTS, AND WHEN.
+
+    Reported 2026-08-22 with a picture of three agents: *"alig marad hely a
+    terminal tartalmának mert tul sok helyet elvisz felette a heder … sztem 2 sor
+    kellene egy layout/agent fejlécnek összesen"*. Measured on that screenshot,
+    per tile, above the terminal: a title row, a two-to-three-line `says:` block,
+    a `N file(s):` line, an always-open instruction box, and then the terminal's
+    own row — five to six rows of chrome for about ten rows of content.
+
+    Two decisions get it to two, and neither of them HIDES anything the reader
+    was relying on:
+
+    - the instruction box opens from a control (see `TileControls`), because a
+      box nobody has typed into is not information;
+    - the `says:` block becomes ONE row: the focus takes a single line with the
+      whole sentence in its tooltip, and the file NAMES — a row of their own —
+      become a count on the same line, names in the tooltip. Enlarged, where
+      there is room, the names come back.
+
+    What was tried and taken back out, because it crossed from compacting into
+    hiding: standing the `says:` block down entirely while the terminal or the
+    log is open. It reads well — the terminal is the better answer — but the
+    declared focus comes from the messaging bus and the log does NOT carry it, so
+    the row is the only place that fact exists. Two rows of header plus the
+    terminal's own status row is the honest arithmetic here.
+  */
+  const [instructOpen, setInstructOpen] = useState(false)
   const showLog = () => {
     if (!terminalOpen) { onToggle(); return }
     onTerminal(null)
@@ -1075,11 +1133,22 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           onTerminal={onTerminal}
           onDock={onDock}
           dockedEdge={dockedEdge}
+          instructOpen={instructOpen}
+          /* Offered only where there is a box to open. An agent with no seat
+             gets no control and keeps its one-line reason where the box would
+             be — a control that opened a sentence would be a control that does
+             nothing, which this screen's own rule calls worse than none. */
+          onInstruct={instructability(agent).kind !== 'no' ? () => setInstructOpen(o => !o) : undefined}
         />
       </div>
 
       <Purpose agent={agent} />
-      <Declared standing={standing} full={enlarged || focused} blockShown={blockUnexpectedFrom(agent.state, standing)} />
+      <Declared
+        standing={standing}
+        full={enlarged || focused}
+        blockShown={blockUnexpectedFrom(agent.state, standing)}
+        contentShown={terminalOpen || logShown}
+      />
       {/* More of the conversation on an unopened tile — asked for 2026-08-19:
           *"egy projektben fő agent 6-8 lesz … még jobb bele info akkor is ha
           nincs nyitva a terminál"*. A tile that shows two lines makes the
@@ -1113,7 +1182,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           to type into: the producer's reason stands in the input's place.
           `terminalOpen` is passed so that reason cannot be stated over a live
           terminal — see `FleetInstruct`. */}
-      <FleetInstruct agent={agent} terminalOpen={terminalOpen} />
+      <FleetInstruct agent={agent} terminalOpen={terminalOpen} boxOpen={instructOpen} />
 
       {!logShown && !terminalOpen && (
         <TileActivity

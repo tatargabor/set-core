@@ -249,6 +249,11 @@ describe('the wiring — the tile actually asks', () => {
   it('typing into the instruction box does not move the tile', async () => {
     const { container } = await show([agent(11, { instructable: true, seat: 'demo#a' }), agent(22)])
     expect(enlargedPid(container)).toBe(null)
+    // The box opens from a control now — B-61. Opening it is itself a click on
+    // the tile, so this also covers the case the test is about one step earlier:
+    // neither the control nor the box may enlarge the tile.
+    fireEvent.click(container.querySelector('[data-tile-controls="11"] [data-tile-control="instruct"]')!)
+    expect(enlargedPid(container)).toBe(null)
     const box = container.querySelector('[data-fleet-own-surface="instruct"] textarea')!
     fireEvent.click(box)
     expect(enlargedPid(container)).toBe(null)

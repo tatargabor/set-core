@@ -153,6 +153,9 @@ describe('what a tile stops saying while its terminal is up', () => {
    */
   it('does not say there is no input while a terminal takes keystrokes', async () => {
     const { container } = await show(fleet([agent(1, 'a1', { instructable: false })]))
+    // B-61 collapsed the instruction BOX behind a control, and deliberately not
+    // this: an agent with no seat has no box to open, so its reason still stands
+    // where the box would be. That is what keeps the subject below measurable.
     await waitFor(() => expect(container.querySelector('[data-fleet-instruct="refused"]')).toBeTruthy())
 
     fireEvent.click(termControl(container))

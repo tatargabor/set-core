@@ -64,8 +64,27 @@ const TONE: Record<string, string> = {
   unknown: 'text-amber-400',
 }
 
-export default function FleetInstruct({ agent, compact, terminalOpen }: {
+export default function FleetInstruct({ agent, compact, terminalOpen, boxOpen = true }: {
   agent: FleetAgent
+  /**
+   * Whether the box is showing — B-61, and the default is the reason it is a
+   * prop rather than internal state.
+   *
+   * Reported 2026-08-22: *"send mesage tök feleslegesen van ott kinyitva, majd
+   * kuldko üzenetet akkor nyiljon le"*. On the tile the box now opens from a
+   * control in the title bar; everywhere else it is still simply there, which is
+   * why `true` is the default — a caller that knows nothing about opening should
+   * keep the behaviour it had.
+   *
+   * **Closing hides the BOX, never an outcome.** A send whose result is still
+   * open — held, undelivered, failed — is a failure in the `ui-quality` sense,
+   * and a layout that hides one is the thing that rule forbids. So a closed
+   * instruct still renders its report; only the empty input goes away.
+   *
+   * Named `boxOpen` rather than `open` because this file already has an `open`,
+   * and it means something else entirely: an outcome that is not settled yet.
+   */
+  boxOpen?: boolean
   /**
    * Rendered on a ROW rather than inside a card — task 7.3.
    *
@@ -186,6 +205,13 @@ export default function FleetInstruct({ agent, compact, terminalOpen }: {
       needs at that moment.
     */
     if (terminalOpen) return null
+    // NOT hidden behind the box's control, and this is the half of B-61 that
+    // was tried the other way first. Where instructing is impossible there is no
+    // box to open, so the reason is not a thing waiting behind a control — it is
+    // the whole content, and it is what stops `↳ ?` from being the only marker
+    // of a missing seat elsewhere on the tile. The tile simply offers no
+    // control here (see `AgentCard`), which is why this costs no row it did not
+    // already cost.
     return (
       <div className={compact ? 'min-w-0' : 'mt-2 border-t border-surface-line pt-2'} data-fleet-instruct="refused">
         {/*
@@ -205,7 +231,13 @@ export default function FleetInstruct({ agent, compact, terminalOpen }: {
   const meaning = report ? meaningOf(report.outcome) : null
 
   return (
-    <div className={compact ? 'min-w-0' : 'mt-2 border-t border-surface-line pt-2'} data-fleet-instruct={can.kind} data-fleet-own-surface="instruct">
+    <div
+      className={compact ? 'min-w-0' : (boxOpen || report || failure ? 'mt-2 border-t border-surface-line pt-2' : '')}
+      data-fleet-instruct={can.kind}
+      data-fleet-instruct-open={boxOpen ? 'yes' : 'no'}
+      data-fleet-own-surface="instruct"
+    >
+      {boxOpen && (
       <div className="flex items-end gap-2">
         <textarea
           ref={box}
@@ -238,10 +270,11 @@ export default function FleetInstruct({ agent, compact, terminalOpen }: {
           {sending ? 'sending…' : 'send'}
         </button>
       </div>
+      )}
 
       {/* What is being heard right now — outside the box on purpose, so a
           sentence that never finalises cannot be sent as if it had been. */}
-      {heard.trim() && (
+      {boxOpen && heard.trim() && (
         <div className="mt-1 text-xs text-fg-ghost italic" data-fleet-instruct-heard={agent.pid}>
           hearing: {heard}
         </div>

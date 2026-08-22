@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  Expand, Maximize2, Minimize2, PanelBottom, PanelLeft, PanelRight, PanelTop,
+  Expand, Maximize2, Minimize2, MessageSquare, PanelBottom, PanelLeft, PanelRight, PanelTop,
   ScrollText, Shrink, SquareTerminal,
 } from 'lucide-react'
 import type { DockEdge } from '../lib/fleetDocks'
@@ -92,7 +92,7 @@ export function IconButton({ icon: Icon, label, active, tone, onClick, testId, m
 
 export default function TileControls({
   agent, ownerReachable, logOpen, onLog, enlarged, onEnlarge, focused, onFocus, terminalOpen, onTerminal,
-  onDock, dockedEdge,
+  onDock, dockedEdge, instructOpen, onInstruct,
 }: {
   agent: FleetAgent
   ownerReachable?: boolean
@@ -115,11 +115,34 @@ export default function TileControls({
   onDock?: (edge: DockEdge | null) => void
   /** Which edge it is on now, if any — so the control can say where it went. */
   dockedEdge?: DockEdge | null
+  /**
+   * Whether the instruction box is open — B-61.
+   *
+   * It used to be open on every tile, always, costing a row per agent before a
+   * word had been typed into it. Reported 2026-08-22: *"send mesage tök
+   * feleslegesen van ott kinyitva, majd kuldko üzenetet akkor nyiljon le"*. So
+   * it became a control, and the control lives HERE rather than as a row of its
+   * own — a row that exists to open a row is the thing being removed.
+   */
+  instructOpen?: boolean
+  onInstruct?: () => void
 }) {
   const offer = terminalOffer(agent, ownerReachable)
   const dockable = onDock && agent.terminal_label
   return (
     <span className="ml-auto flex items-center gap-0.5 shrink-0" data-tile-controls={agent.pid}>
+      {onInstruct && (
+        <IconButton
+          icon={MessageSquare}
+          testId="instruct"
+          active={instructOpen}
+          mark={{ 'data-tile-instruct-open': instructOpen ? 'yes' : 'no' }}
+          label={instructOpen
+            ? 'close the instruction box — nothing typed into it is sent by closing'
+            : 'send an instruction to this agent'}
+          onClick={onInstruct}
+        />
+      )}
       <IconButton
         icon={ScrollText}
         testId="log"
