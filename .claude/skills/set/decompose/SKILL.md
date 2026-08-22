@@ -34,11 +34,13 @@ Decompose a specification document into an orchestration execution plan.
    - Identify shared files that multiple changes would touch (merge hazard)
    - Run multiple Explore agents in parallel for different spec sections
 
-4. **Recall relevant memories**
+4. **Read the project's memory index**
    ```bash
-   set-memory recall "<spec topic>" --tags "phase:planning" --limit 3 --mode hybrid
+   cat ~/.claude/projects/<project-slug>/memory/MEMORY.md
    ```
-   Use the recall MCP tool with `phase:planning` tag. Look for past decomposition learnings, known pitfalls.
+   One line per memory. Open the topic files that look relevant to this spec — past
+   decomposition learnings, known pitfalls. There is no semantic search; the index is the
+   search, and only its first 200 lines (25 KB) load automatically.
 
 5. **Check existing work**
    ```bash

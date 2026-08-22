@@ -29,18 +29,18 @@
 
 ## 5. Rewrite the rule book, because a wrong instruction outlives wrong code
 
-- [ ] 5.1 Replace CLAUDE.md's **Persistent Memory** section: it currently tells every session, on every prompt, to scan for a `PROJECT MEMORY` block that no component emits [REQ: the-native-memory-directory-is-the-memory-layer]
-- [ ] 5.2 State the 200-line / 25 KB startup limit wherever the memory index is described, and that content past the cut loads for nobody [REQ: the-index-size-limit-is-stated-because-it-silently-truncates]
-- [ ] 5.3 Carry the confidentiality rule forward onto whatever writes memory now — no consumer name, no personal name, no harness artifact stored verbatim [REQ: confidentiality-survives-the-removal]
-- [ ] 5.4 Write down the seven capabilities deliberately not replaced, with the measurement attached (187 injections, 1 reusable line, 21 days) [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
-- [ ] 5.5 Record that no component may inject a claim about the user's emotional state [REQ: a-memory-records-a-fact-never-a-claim-about-the-users-state]
+- [x] 5.1 Replace CLAUDE.md's **Persistent Memory** section: it currently tells every session, on every prompt, to scan for a `PROJECT MEMORY` block that no component emits [REQ: the-native-memory-directory-is-the-memory-layer]
+- [x] 5.2 State the 200-line / 25 KB startup limit wherever the memory index is described, and that content past the cut loads for nobody [REQ: the-index-size-limit-is-stated-because-it-silently-truncates]
+- [x] 5.3 Carry the confidentiality rule forward onto whatever writes memory now — no consumer name, no personal name, no harness artifact stored verbatim [REQ: confidentiality-survives-the-removal]
+- [x] 5.4 Write down the seven capabilities deliberately not replaced, with the measurement attached (187 injections, 1 reusable line, 21 days) [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+- [x] 5.5 Record that no component may inject a claim about the user's emotional state [REQ: a-memory-records-a-fact-never-a-claim-about-the-users-state]
 
 ## 6. Remove the commands, skills and rules that address the subsystem
 
-- [ ] 6.1 Delete `.claude/commands/set/memory.md` and `.claude/commands/set/todo.md` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 6.2 Update `.claude/commands/set/help.md`: drop `set-memory` from the CLI list and replace the memory MCP section with the registered tools [REQ: help-command-covers-cli-tools]
-- [ ] 6.3 Update `.claude/skills/set/decompose/SKILL.md` and `.claude/rules/capability-guide.md` to stop naming memory commands and MCP tools [REQ: help-command-covers-the-registered-mcp-tools]
-- [ ] 6.4 Remove the `--mode causal` / `--mode associative` recall call sites from the explore and apply skills; confirm no skill BRANCHES on a recall result rather than merely quoting it [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 6.1 Delete `.claude/commands/set/memory.md` and `.claude/commands/set/todo.md` [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 6.2 Update `.claude/commands/set/help.md`: drop `set-memory` from the CLI list and replace the memory MCP section with the registered tools [REQ: help-command-covers-cli-tools]
+- [x] 6.3 Update `.claude/skills/set/decompose/SKILL.md` and `.claude/rules/capability-guide.md` to stop naming memory commands and MCP tools [REQ: help-command-covers-the-registered-mcp-tools]
+- [x] 6.4 Remove the `--mode causal` / `--mode associative` recall call sites from the explore and apply skills; confirm no skill BRANCHES on a recall result rather than merely quoting it [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 
 ## 7. Specs and documentation
 

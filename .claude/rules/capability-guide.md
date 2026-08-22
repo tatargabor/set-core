@@ -29,8 +29,6 @@ This project is **set-core** — an orchestration framework for Claude Code that
 | Send message to agent | `/set:msg` | Cross-agent communication |
 | Check inbox | `/set:inbox` | Read messages from other agents |
 | Broadcast status | `/set:broadcast` | Tell team what you're doing |
-| Remember something | `/set:memory` | Persistent memory operations |
-| Quick todo | `/set:todo` | Capture idea for later |
 | Push branch | `/set:push` | Push to remote |
 | Start agent loop | `/set:loop` | Autonomous Ralph loop |
 | Onboarding walkthrough | `/opsx:onboard` | First time? Start here |
@@ -69,7 +67,6 @@ Read run logs → fix set-core bugs → `set-project init` to redeploy
 | `set-sentinel-finding` | Log sentinel findings |
 | `set-sentinel-status` | Sentinel status registration |
 | `set-project init` | Deploy set-core to a project |
-| `set-memory` | Memory CLI (remember/recall/forget) |
 | `set-status` | Show orchestration status |
 | `set-audit scan` | Project health scan |
 | `set-run-logs <run-id>` | Forensic analysis of a completed orchestration run |
@@ -77,13 +74,9 @@ Read run logs → fix set-core bugs → `set-project init` to redeploy
 
 ## MCP Tools (programmatic)
 
-**Memory:** `remember`, `recall`, `proactive_context`, `brain`, `context_summary`, `forget`, `list_memories`, `memory_stats`
-
 **Team:** `send_message`, `get_inbox`, `get_team_status`, `get_activity`
 
 **Worktree:** `list_worktrees`, `get_worktree_tasks`, `get_ralph_status`
-
-**Todo:** `add_todo`, `list_todos`, `complete_todo`
 
 ## Project Structure
 

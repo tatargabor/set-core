@@ -11,7 +11,6 @@ When the user asks about set-core features, use this quick reference to answer. 
 | `set-merge <change-id>` | Merge a worktree's branch into a target branch |
 | `set-status` | Display worktree and Claude agent status |
 | `set-loop <command>` | Run autonomous agent loop in a worktree |
-| `set-memory <command>` | Per-project cognitive memory (shodh-memory). Details: `docs/developer-memory.md` |
 | `set-control` | Launch the Control Center GUI |
 | `set-project <command>` | Project management (init, deploy) |
 | `set-openspec <command>` | OpenSpec CLI wrapper (status, init, update) |
@@ -54,33 +53,10 @@ When the user asks about set-core features, use this quick reference to answer. 
 | `/set:broadcast` | Broadcast what you're working on to other agents |
 | `/set:msg` | Send a directed message to another agent |
 | `/set:inbox` | Read incoming messages |
-| `/set:memory` | Interact with project memory system |
 | `/set:forensics` | Post-run debugging — error triage on a completed orchestration run |
 | `/set:help` | This quick reference |
 
 ## MCP Tools
-
-### Memory (`set-memory`)
-
-| Tool | Description |
-|------|-------------|
-| `remember(content, type, tags)` | Save a memory (types: Decision, Learning, Context) |
-| `recall(query, mode, tags)` | Semantic search for memories |
-| `proactive_context(context)` | Context-aware memory retrieval with relevance scores |
-| `forget(id)` | Delete a memory |
-| `forget_by_tags(tags)` | Bulk delete by tags |
-| `list_memories(type)` | List memories, optionally filtered by type |
-| `get_memory(id)` | Get full details of a single memory |
-| `context_summary(topic)` | Condensed summary by category |
-| `brain()` | 3-tier memory visualization (core/active/peripheral) |
-| `audit(threshold)` | Duplicate detection report |
-| `cleanup(threshold, dry_run)` | Remove low-value memories |
-| `dedup(threshold, dry_run)` | Remove duplicate memories |
-| `add_todo(content, tags)` | Save a todo for later |
-| `list_todos()` | List open todos |
-| `complete_todo(id)` | Mark a todo as done |
-| `sync()` | Push + pull memory sync (git-based) |
-| `export_memories()` | Export all memories to JSON |
 
 ### Worktree & Team (`set-core`)
 
@@ -112,7 +88,6 @@ When the user asks about set-core features, use this quick reference to answer. 
 
 | Topic | File |
 |-------|------|
-| Memory system | `docs/developer-memory.md` |
 | Agent messaging | `docs/agent-messaging.md` |
 | Configuration | `docs/config.md` |
 | README guide | `docs/readme-guide.md` |
