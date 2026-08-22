@@ -96,7 +96,7 @@ consumer's name, path, or content.
   header's copy control puts the selected text on the clipboard with nothing
   reaching the pty, and the screen SAYS that selecting needs Shift while the agent
   has mouse tracking on.
-- **shipped, and what is verified — `9d24f0b`, partial:** the copy control, the
+- **shipped, and what is verified — `76f95def`, partial:** the copy control, the
   Ctrl+Shift+C key, the amber "the agent is reading the mouse" icon and the
   outcome notice are all on screen (LOOKED at, 1517 px), and the control reports
   honestly with nothing selected — `not copied: nothing is selected — hold Shift
