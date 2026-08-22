@@ -67,8 +67,32 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-53 — the frustration detector inverts delight into anger, and the false label is then injected into later sessions
+### B-55 — eleven commit SHAs cited in the rule book and this register do not exist
 - **state:** open
+- **reported:** 2026-08-22 by this session, while closing B-49..B-54 — the SHA it had just
+  written was checked before being believed, and that check found the others.
+- **measured:** every backtick-quoted short SHA in `openspec/bugs/README.md` was resolved
+  with `git cat-file -e`. Eleven fail: `038c39e3`, `0b211f2f`, `28ef5ce7`, `387ba8c2`,
+  `a2006254`, `ae9706bb`, `bf33e28e`, `c4f4842f`, `e2eb3dab`, `e52ccdc4`, `f64c7554`.
+  `ae9706bb` is also cited in `CLAUDE.md`'s shipped-safety-track list. The commit it names
+  exists — `git log --all` finds *"separate scaffold from knowledge with `once: true`"*
+  dated 2026-07-24 — but under **two** different SHAs (`8e853fba`, `67bdabf2`), neither of
+  them the cited one. Same subject, same timestamp, different hash: history was rewritten
+  at least once before today and the references were never updated.
+- **fixed when:** every SHA cited in the register and in CLAUDE.md resolves. Better: a check
+  that fails when one does not, because this class is invisible — a dead SHA reads exactly
+  like a live one until somebody types it.
+- **⚠ what this session cannot rule out.** While repairing its own leak (a commit message
+  carrying three consumer names, rewritten before anything was pushed), this session ran
+  `git reflog expire --expire-unreachable=now --all` and `git gc --prune=now --aggressive`.
+  That destroys unreachable objects. The duplicate-SHA evidence above says these references
+  were stale well before today — but if any of the eleven were unreachable-yet-still-in-the-
+  reflog this morning, that gc removed the last handle to them, and **there is now no way to
+  measure which**. Recorded as an unknown rather than argued away: the honest state is that
+  the references are dead, the cause is probably an older rewrite, and the proof is gone.
+
+### B-53 — the frustration detector inverts delight into anger, and the false label is then injected into later sessions
+- **state:** closed (`259ab007` stopped the injection the same hour it was reported; `9f02e096` removed the detector)
 - **reported:** 2026-08-21 by the user — *"feltételezem, hogy lehet ártott is valahol"* — and measured the same hour.
 - **measured:** `set-memory recall "frustrated" --tags frustration` returns, verbatim:
 
@@ -98,7 +122,7 @@ consumer's name, path, or content.
   any more.
 
 ### B-54 — the useful citations all trace to the NATIVE file memory, none to shodh
-- **state:** open (evidence entry — it decides B-49..B-53's disposition)
+- **state:** closed (the decision it supports is taken and recorded: openspec/changes/remove-shodh-memory, shipped) (evidence entry — it decides B-49..B-53's disposition)
 - **reported:** 2026-08-21 by this session, after the user asked whether any read-back
   had ever been useful.
 - **measured:** in one project's transcripts the agent cited remembered facts and acted
@@ -119,7 +143,7 @@ consumer's name, path, or content.
   came back clean and confident.
 
 ### B-49 — the ONLY memory-injection path in the default hook mode returns nothing, for every query
-- **state:** open
+- **state:** closed (`259ab007` unbound the hooks; `9f02e096`+ removed the code — the proactive path no longer exists)
 - **reported:** 2026-08-21 by this session, while auditing whether shodh-memory still earns its place.
 - **measured:** `HOOK_MODE` defaults to `lite` (`lib/set_hooks/util.py:157`), and in
   `lite` every PostToolUse/Subagent handler bails at `if HOOK_MODE != "full"`
@@ -146,7 +170,7 @@ consumer's name, path, or content.
   from "no relevant memory", so nothing has ever reported this.
 
 ### B-50 — `set-memory export` prints a valid EMPTY export and exits 0 when it fails
-- **state:** open
+- **state:** closed (`9f02e096` — export is gone with the CLI; the defect was proven in both directions first: with the daemon stopped the same command returned 7885 records where it had returned 0)
 - **reported:** 2026-08-21 by this session.
 - **measured:** `set-memory export --output <f>` on a store whose own stats say
   `total_memories: 7864` produced
@@ -165,7 +189,7 @@ consumer's name, path, or content.
   zero-record backup has looked like a successful one for an unknown length of time.
 
 ### B-51 — `set-memory list --limit N` silently returns `[]` for N ≥ 58
-- **state:** open
+- **state:** closed (`9f02e096` — list is gone with the CLI)
 - **reported:** 2026-08-21 by this session.
 - **measured:** bisected on the live store —
   `limit=56 -> 56`, `limit=57 -> 57`, `limit=58 -> 0`, `limit=59 -> 0`,
@@ -177,7 +201,7 @@ consumer's name, path, or content.
   beyond 57 records, and the GUI browse dialog reads the same call.
 
 ### B-52 — the knowledge graph has been empty through 56 → 7864 memories, so two documented recall modes are placebo
-- **state:** open
+- **state:** closed (`9f02e096` — the graph is gone with the store)
 - **reported:** 2026-08-21 by this session; first recorded 2026-02-16 in
   `docs/research/shodh-memory-audit.md` and unchanged since.
 - **measured:** `set-memory graph-stats` today →

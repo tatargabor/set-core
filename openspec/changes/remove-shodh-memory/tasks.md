@@ -65,10 +65,10 @@
 ## 10. Prove the removal
 
 - [x] 10.1 Re-run the machine-wide sweep: zero `set-hook-memory` in any `.claude/settings.json` under `~/code2` and `~/code` [REQ: no-memory-hook-is-deployed]
-- [ ] 10.2 Run the unit suite against a baseline worktree by SET DIFF, with `PYTHONPATH` pointed at the worktree's own source roots and the session-end leak assertion — this repo is installed editable, so `cd` into a worktree is a proxy for running its code [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [x] 10.2 Run the unit suite against a baseline worktree by SET DIFF, with `PYTHONPATH` pointed at the worktree's own source roots and the session-end leak assertion — this repo is installed editable, so `cd` into a worktree is a proxy for running its code [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [x] 10.3 Prove the leak detector can fire before believing its zero: run it once WITHOUT the import isolation and confirm a non-zero leak count [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [x] 10.4 Invoke `set-hook-leakscan` and `set-hook-checkout-guard` and confirm each still fires — assert the behaviour, not the presence of a line in the config [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
-- [ ] 10.5 Close B-49, B-50, B-51, B-52, B-53 and B-54 in `openspec/bugs/README.md` with this change's commit shas; entries stay, they are never deleted [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+- [x] 10.5 Close B-49, B-50, B-51, B-52, B-53 and B-54 in `openspec/bugs/README.md` with this change's commit shas; entries stay, they are never deleted [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
 
 ## 11. Post-session distillation — the one capability worth rebuilding (user, 2026-08-22)
 
@@ -91,8 +91,20 @@ as the user's anger); a distillation reads the finished session and writes what 
 - [x] 12.1 Audit EVERY script under `bin/` and `lib/` by reading it, not by grepping for the names already known — the sweep that scoped this change missed a whole dashboard page because the frontend called an endpoint rather than a command [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
 - [x] 12.2 Sweep the consumer trees for scripts of THEIR own that invoke the removed commands: `~/code2` and `~/code`, outside `.claude/settings.json`. Report before changing anything — a consumer's own script is theirs, not the framework's [REQ: no-memory-package-is-imported]
 - [x] 12.3 `install.sh` must REMOVE a stale memory script it finds on the target machine, not merely stop shipping new ones. A machine that installed before today still has all nine executables on its PATH, and they will keep resolving [REQ: no-memory-command-is-installed]
-- [ ] 12.4 The removal must survive an install of an OLDER checkout: state what happens when a machine pulls a version that predates this change, and whether the uninstall is idempotent in both directions [REQ: no-memory-command-is-installed]
+- [x] 12.4 The removal must survive an install of an OLDER checkout: state what happens when a machine pulls a version that predates this change, and whether the uninstall is idempotent in both directions [REQ: no-memory-command-is-installed]
 - [ ] 12.5 Test it on the second machine (amc): install from this checkout, then verify no `set-memory*` or `set-hook-memory*` remains on PATH and no project there carries the nine hooks [REQ: no-memory-hook-is-deployed]
+
+## 13. Hermes — re-examine on a clean slate (user, 2026-08-22)
+
+The user asked for this the moment the removal landed, and the reason is the sequencing:
+whatever Hermes was doing was doing it *alongside* a memory subsystem that turned out to be
+injecting false claims into every session it touched. Any earlier reading of Hermes was
+taken against that background. With the background gone, the reading is worth taking again.
+
+- [ ] 13.1 **Establish what Hermes IS here, before measuring anything.** This session could not: no systemd unit, no running process, and the only match in the tree is a transitive dependency in `web/package-lock.json` (the JS engine of that name), which is almost certainly not the subject. Ask, or find it — do not measure the package-lock match and call it Hermes [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [ ] 13.2 Examine it **after a restart**, per the user's instruction. A long-lived service holds the code it started with, so anything running from before today is still running against the old world — check `systemd ExecMainStartTimestamp` or the equivalent rather than the shipped commit [REQ: the-framework-ships-no-memory-subsystem-of-its-own]
+- [ ] 13.3 Check whether it touched the removed subsystem at all: a `set-memory` call, a memory hook, an import, or the store directory. If it did, its behaviour changed today and the change is unannounced [REQ: no-memory-package-is-imported]
+- [ ] 13.4 Record the finding where it survives the session — the bug register if it is a defect, the living record if it is a decision. A clean-slate reading that lives only in a conversation is the loss this whole exercise was about [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
 
 ## Acceptance Criteria (from spec scenarios)
 
