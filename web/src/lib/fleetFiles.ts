@@ -146,3 +146,28 @@ export function fileReference(
   }
   return null
 }
+
+/**
+ * Which file the panel should open when somebody opens the panel.
+ *
+ * Asked for 2026-08-22 — *"files ha bezarom akkor mentse el hol volt hogy ha
+ * ujra kinyitom akkor ott legyen"* — and it is one line of policy that decides
+ * two very different behaviours, so it lives here where it can be measured
+ * rather than inline in a click handler.
+ *
+ * The rule and the reason it is asymmetric:
+ *
+ *  - **an empty path means "just open the panel"** — the control in the project
+ *    header, which names no file. That is the ONLY case the remembered file
+ *    answers.
+ *  - **a named file always wins.** Somebody who ctrl-clicked a path asked for
+ *    that path; restoring where they were instead would silently ignore the
+ *    click, which is the failure that reads as a broken link.
+ *
+ * With nothing remembered the request comes back unchanged, so the panel opens
+ * on its structure exactly as it did before anything was remembered.
+ */
+export function fileToOpen(requested: FileRef, remembered?: FileRef | null): FileRef {
+  if (requested.path) return requested
+  return remembered ?? requested
+}

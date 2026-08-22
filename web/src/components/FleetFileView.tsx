@@ -64,15 +64,39 @@ export interface FileRequest {
   line?: number
 }
 
-export default function FleetFileView({ root, projectName, request, onClose, onRequestHandled, onDock, dockedEdge, maximised, onMaximise }: {
+export default function FleetFileView({ root, projectName, request, initial, onClose, onRequestHandled, onOpened, onDock, dockedEdge, maximised, onMaximise }: {
   /** The project's root — how every endpoint here identifies the project. */
   root: string
   projectName: string
   /** A file somebody asked for: the terminal, or a click in another panel. */
   request?: FileRequest | null
+  /**
+   * Where this project's reader was last time — opened once, when the panel
+   * appears, and never again.
+   *
+   * The panel is torn down and rebuilt for reasons that have nothing to do with
+   * the reader: closing it, moving it to an edge, another panel being enlarged.
+   * Every one of those looked like "the file view forgot what I was reading",
+   * which is what was reported 2026-08-22. A live `request` cannot do this job —
+   * it fires whenever it changes, so it would re-open the remembered file over
+   * the reader's later navigation.
+   */
+  initial?: FileRequest | null
   onClose: () => void
   /** Called once a request has been taken up, so it is not re-opened forever. */
   onRequestHandled?: () => void
+  /**
+   * Which file is on screen now — reported up so that closing and re-opening the
+   * panel comes back to it, asked for 2026-08-22: *"files ha bezarom akkor mentse
+   * el hol volt hogy ha ujra kinyitom akkor ott legyen"*.
+   *
+   * Reported rather than remembered here, because the panel stops existing when
+   * it is closed and that is exactly when the answer is needed. The caller holds
+   * it IN MEMORY — a path is a consumer's own domain, so it may be displayed for
+   * as long as this screen is open and persisted nowhere (External Project
+   * Confidentiality).
+   */
+  onOpened?: (file: FileRequest) => void
   /**
    * Put this panel on an edge, or `null` to bring it back into the grid.
    *
@@ -109,7 +133,13 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
   const [save, setSave] = useState<SaveState>({ kind: 'idle' })
   const [ask, setAsk] = useState<FileRequest | null>(null)
   const [ready, setReady] = useState(false)
-  const editorRef = useRef<{ revealLineInCenter(l: number): void; setPosition(p: { lineNumber: number; column: number }): void } | null>(null)
+  interface EditorHandle {
+    revealLineInCenter(l: number): void
+    setPosition(p: { lineNumber: number; column: number }): void
+    createDecorationsCollection?(d: unknown[]): { set(d: unknown[]): void; clear(): void }
+  }
+  const editorRef = useRef<EditorHandle | null>(null)
+  const markRef = useRef<{ set(d: unknown[]): void; clear(): void } | null>(null)
   const MonacoRef = useRef<React.ComponentType<Record<string, unknown>> | null>(null)
   const [, forceRender] = useState(0)
 
@@ -203,10 +233,11 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
         lineBeyondEnd: beyond,
       })
       setText(content)
+      onOpened?.(line === undefined ? { path } : { path, line })
     } catch (e) {
       setOpened({ kind: 'refused', path, reason: String((e as Error)?.message ?? e) })
     }
-  }, [root])
+  }, [root, onOpened])
 
   /* Somebody asked for a file — from the terminal, usually. An unsaved edit
      turns the request into a question rather than an action. */
@@ -223,12 +254,73 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request])
 
+  /**
+   * Go to a line, and MARK it.
+   *
+   * Both halves, because the scroll alone is not the requirement: a reader who
+   * asked for `fleetFiles.ts:120` arrives at a screenful of code with nothing
+   * saying which line was meant, and picks the wrong one — the reference was
+   * precise and the arrival is not.
+   *
+   * Revealed twice on purpose. The first call runs while the editor is being
+   * mounted, when its height is not yet what it will be, so *centred* comes out
+   * as *near the top* — measured 2026-08-22 in the browser: the target line
+   * landed under Monaco's sticky-scroll header, which is the one place on the
+   * screen it cannot be read. The second call, one frame later, centres it
+   * against the real height.
+   */
+  const goToLine = useCallback((line: number) => {
+    const ed = editorRef.current
+    if (!ed) return
+    ed.revealLineInCenter(line)
+    ed.setPosition({ lineNumber: line, column: 1 })
+    const decoration = [{
+      range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
+      options: { isWholeLine: true, className: 'fleet-file-line' },
+    }]
+    if (markRef.current) markRef.current.set(decoration)
+    else markRef.current = ed.createDecorationsCollection?.(decoration) ?? null
+    /*
+      And again once the editor has its real size.
+
+      Measured in the browser 2026-08-22, twice: at mount and one frame later the
+      editor is still the height it was given before the panel's flex layout
+      settled, so *centred* lands the target line just above the viewport — with
+      Monaco's sticky-scroll header sitting exactly where it would have been. The
+      mark was in the DOM and off screen, which is the worst of both: a highlight
+      nobody can see.
+
+      A second, later pass is the cheap fix and it is idempotent — revealing a
+      line already centred does nothing.
+    */
+    requestAnimationFrame(() => editorRef.current?.revealLineInCenter(line))
+    setTimeout(() => editorRef.current?.revealLineInCenter(line), 250)
+  }, [])
+
+  /*
+    ON APPEARING, go back to where this project's reader was.
+
+    Guarded by a ref rather than by an empty dependency list, because the effect
+    must not fire a second time when the panel re-renders — and must not fire at
+    all when the panel is appearing *because* somebody asked for a specific file.
+  */
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    if (request?.path || !initial?.path) return
+    void load(initial.path, initial.line)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   /* Jump to the line once the editor exists. */
   useEffect(() => {
-    if (opened.kind !== 'open' || opened.line === undefined || !editorRef.current) return
-    editorRef.current.revealLineInCenter(opened.line)
-    editorRef.current.setPosition({ lineNumber: opened.line, column: 1 })
-  }, [opened])
+    if (opened.kind !== 'open' || !editorRef.current) return
+    // No line asked for: clear the mark, so a previous file's highlight does not
+    // sit on an unrelated line of this one.
+    if (opened.line === undefined) { markRef.current?.clear(); return }
+    goToLine(opened.line)
+  }, [opened, goToLine])
 
   const openFile = useCallback((path: string) => {
     if (dirty) { setAsk({ path }); return }
@@ -449,13 +541,31 @@ export default function FleetFileView({ root, projectName, request, onClose, onR
                   value={text}
                   onChange={(v: string | undefined) => setText(v ?? '')}
                   onMount={(editor: unknown) => {
-                    editorRef.current = editor as typeof editorRef.current
-                    if (opened.line !== undefined) {
-                      editorRef.current?.revealLineInCenter(opened.line)
-                      editorRef.current?.setPosition({ lineNumber: opened.line, column: 1 })
-                    }
+                    editorRef.current = editor as EditorHandle
+                    markRef.current = null
+                    if (opened.line !== undefined) goToLine(opened.line)
                   }}
-                  options={{ minimap: { enabled: false }, fontSize: 12, scrollBeyondLastLine: false }}
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 12,
+                    scrollBeyondLastLine: false,
+                    /*
+                      WITHOUT THIS, Monaco keeps the size it had at mount.
+
+                      Measured in the browser 2026-08-22: the DOM node was 688 px
+                      tall while the editor still believed it was the height it
+                      was created at, so `revealLineInCenter` centred the target
+                      inside a viewport nobody could see — the line landed at the
+                      very top of the visible box, under the sticky-scroll header.
+                      It reads as "the jump goes to the wrong place", and it is
+                      really "the editor does not know how big it is".
+
+                      Every panel here is resizable — docked to four edges,
+                      enlarged, and dragged by two splitters — so a layout that is
+                      measured once is a layout that is wrong most of the time.
+                    */
+                    automaticLayout: true,
+                  }}
                 />
               ) : (
                 <div className="p-2 text-xs text-fg-ghost">loading the editor…</div>

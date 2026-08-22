@@ -122,3 +122,25 @@ screen.
 
 - **WHEN** the dashboard is reloaded after a file was opened
 - **THEN** no file content and no path from the previous session is recovered from storage
+
+### Requirement: Closing the panel keeps where the reader was, for this screen only
+
+The panel SHALL come back to the file the reader last had open in that project when it is
+opened again with no file named, and SHALL open the named file instead whenever one is
+named. What it remembers SHALL live in memory for as long as the screen is open, and SHALL
+NOT be written to browser storage — a path belongs to the consumer's domain.
+
+#### Scenario: The panel is closed and opened again
+
+- **WHEN** the reader closes the file view and opens it again from the project header
+- **THEN** the file they were reading is open again, at the line it was opened at
+
+#### Scenario: A file is named while another is remembered
+
+- **WHEN** a reference names a file and another file is remembered
+- **THEN** the named file opens, and the remembered one does not
+
+#### Scenario: The dashboard is reloaded
+
+- **WHEN** the dashboard is reloaded
+- **THEN** nothing about the previously open file is recovered, because none of it was stored

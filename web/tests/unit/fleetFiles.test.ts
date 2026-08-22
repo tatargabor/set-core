@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildTree, fileReference, languageOf } from '../../src/lib/fleetFiles'
+import { buildTree, fileReference, languageOf, fileToOpen } from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
   it('nests directories and keeps a stable order', () => {
@@ -120,5 +120,30 @@ describe('a file reference in terminal output', () => {
   it('says nothing about an empty or blank token', () => {
     expect(fileReference('', root, known)).toBeNull()
     expect(fileReference('   ', root, known)).toBeNull()
+  })
+})
+
+/**
+ * WHERE THE READER WAS — the panel is closed and re-opened.
+ *
+ * Asked for 2026-08-22. The interesting half is the refusal: a control that
+ * restores the last file MUST NOT do so when a file was actually named, or every
+ * ctrl-click after the first one opens the wrong file — and it would do it
+ * quietly, which is the shape that gets reported as "the links stopped working".
+ */
+describe('which file opening the panel opens', () => {
+  it('restores where the reader was when no file is named', () => {
+    expect(fileToOpen({ path: '' }, { path: 'src/a.ts', line: 12 }))
+      .toEqual({ path: 'src/a.ts', line: 12 })
+  })
+
+  it('opens the file that WAS named, ignoring where the reader was', () => {
+    expect(fileToOpen({ path: 'src/b.ts' }, { path: 'src/a.ts', line: 12 }))
+      .toEqual({ path: 'src/b.ts' })
+  })
+
+  it('changes nothing when there is nothing remembered', () => {
+    expect(fileToOpen({ path: '' }, null)).toEqual({ path: '' })
+    expect(fileToOpen({ path: '' })).toEqual({ path: '' })
   })
 })

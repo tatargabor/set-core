@@ -175,3 +175,16 @@ thead th {
   z-index: 1;
   background: var(--color-neutral-900);
 }
+
+/*
+  The line a reference named — marked, not merely scrolled to.
+
+  Amber because that is this dashboard's colour for "look here", and a whole-line
+  wash rather than a border so it is findable without reading: the reader arrived
+  from a `path:line` in a terminal and needs to know which of forty visible lines
+  was meant.
+*/
+.fleet-file-line {
+  background: rgba(251, 191, 36, 0.16);
+  border-left: 2px solid rgba(251, 191, 36, 0.8);
+}

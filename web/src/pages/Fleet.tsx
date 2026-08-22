@@ -56,6 +56,7 @@ import {
 } from '../lib/fleetDocks'
 import { PANEL_AGENT, PANEL_FILES } from '../lib/fleetPanels'
 import FleetFileView, { type FileRequest } from '../components/FleetFileView'
+import { fileToOpen } from '../lib/fleetFiles'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../lib/fleetTerminal'
 import type { LabelMemory } from '../lib/fleetTerminal'
@@ -1691,15 +1692,37 @@ export default function Fleet() {
       : new Set([...prev, ...docked])))
   }, [docks])
 
+  /*
+    WHERE THE READER WAS, per project — asked for 2026-08-22: *"files ha bezarom
+    akkor mentse el hol volt hogy ha ujra kinyitom akkor ott legyen"*.
+
+    IN MEMORY, and deliberately not in the stored arrangement: a path belongs to
+    the consumer's domain, and this dashboard persists nothing derived from it
+    (External Project Confidentiality). So it survives closing and re-opening the
+    panel — which is what was asked — and not a reload of the page.
+
+    Keyed by project root, because two projects' panels remember different files.
+  */
+  const [lastFile, setLastFile] = useState<Record<string, FileRequest>>({})
+  const rememberFile = useCallback((root: string, file: FileRequest) => {
+    setLastFile(prev => (prev[root]?.path === file.path && prev[root]?.line === file.line
+      ? prev
+      : { ...prev, [root]: file }))
+  }, [])
+
   const openFile = useCallback((root: string, file: FileRequest) => {
-    setFileRequest({ root, file })
+    // An empty path means "just open the panel" — and that is the one case where
+    // the remembered file is the answer. A named file always wins: somebody who
+    // ctrl-clicked a path asked for THAT file, not for where they were before.
+    const wanted = fileToOpen(file, lastFile[root])
+    setFileRequest({ root, file: wanted })
     setFilesOpen(prev => (prev.has(root) ? prev : new Set([...prev, root])))
     // A band tidied away to its strip is OPEN and not visible, which is the
     // state that made the control look broken. Asking for a file un-tidies it;
     // it does not move the panel, because where it sits is the reader's arrangement.
     const band = docks.find(d => d.kind === PANEL_FILES && d.id === root)
     if (band?.collapsed) collapseBand(PANEL_FILES, root, false)
-  }, [docks, collapseBand])
+  }, [docks, collapseBand, lastFile])
 
   /** Close it: the panel stops existing, wherever it was. */
   const closeFiles = useCallback((root: string) => {
@@ -2275,6 +2298,8 @@ export default function Fleet() {
           root={project.root}
           projectName={project.name}
           request={fileRequest?.root === project.root ? fileRequest.file : null}
+          initial={lastFile[project.root] ?? null}
+          onOpened={f => rememberFile(project.root, f)}
           onRequestHandled={() => setFileRequest(null)}
           onClose={() => closeFiles(band.id)}
           onDock={edge => dockPanel(PANEL_FILES, band.id, edge)}
@@ -2336,7 +2361,7 @@ export default function Fleet() {
       />
     )
   }, [active, data, openLogs, openTerminals, toggleLog, toggleTerminal, canJumpSeat, onJumpSeat,
-      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest, docks, closeFiles,
+      canJumpPid, onJumpPid, typingLabel, dockPanel, dockedEdgeOf, fileRequest, docks, closeFiles, rememberFile, lastFile,
       bandRestore, toggleBandMax])
 
   // Discovery has never answered. An error here is the real thing — there is no
@@ -2869,6 +2894,8 @@ export default function Fleet() {
                     root={active.root}
                     projectName={active.name}
                     request={fileRequest?.root === active.root ? fileRequest.file : null}
+                    initial={lastFile[active.root] ?? null}
+                    onOpened={f => rememberFile(active.root as string, f)}
                     onRequestHandled={() => setFileRequest(null)}
                     onClose={() => closeFiles(active.root)}
                     onDock={edge => dockPanel(PANEL_FILES, active.root, edge)}

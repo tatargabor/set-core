@@ -25,6 +25,7 @@ import {
   terminalOffer,
   terminalUrl,
 } from '../../src/lib/fleetTerminal'
+import { fileReference } from '../../src/lib/fleetFiles'
 
 describe('a terminal is offered only where one can exist', () => {
   it('offers one for an agent the framework started, addressed by its label', () => {
@@ -234,5 +235,51 @@ describe('copying out of a terminal', () => {
       (fn, ms) => setTimeout(fn, ms),
     )
     expect(outcome).toEqual({ ok: false, reason: 'the clipboard did not answer' })
+  })
+})
+
+/**
+ * THE URL PATH IS UNTOUCHED — the regression the file links could have caused.
+ *
+ * Two link providers now sit on the same terminal: the addon that opens an
+ * address in a new tab, and the one that opens a project file in the panel. The
+ * hazard is not that either is wrong on its own corpus; it is that the file one
+ * is hungrier. It splits on `:` to find a line number, and every URL contains a
+ * `:` — so a build where the file provider answered first would turn
+ * `http://host/a.ts:12` into a file open, and `javascript:alert(1)` into a token
+ * it is at least willing to CONSIDER.
+ *
+ * So the two verdicts are asserted together, on one corpus: whatever the URL
+ * path takes, the file path must refuse.
+ */
+describe('the file links did not take the URL path', () => {
+  const root = '/home/x/proj'
+  // Deliberately hostile: the known set contains exactly the names a URL's tail
+  // would produce if the split were believed without checking the path part.
+  const known = new Set(['a.ts', 'rendelesek.html', 'alert(1)'])
+
+  it('leaves an http address to the tab-opening path', () => {
+    expect(terminalLinkTarget('http://127.0.0.1:3301/rendelesek.html'))
+      .toBe('http://127.0.0.1:3301/rendelesek.html')
+    expect(fileReference('http://127.0.0.1:3301/rendelesek.html', root, known)).toBeNull()
+  })
+
+  it('does not read a URL port or a fragment as a line number', () => {
+    expect(fileReference('http://example.test/a.ts:12', root, known)).toBeNull()
+    expect(fileReference('https://example.test:8080/a.ts', root, known)).toBeNull()
+  })
+
+  it('opens NOWHERE for a scheme that would execute something', () => {
+    // eslint-disable-next-line no-script-url
+    expect(terminalLinkTarget('javascript:alert(1)')).toBeNull()
+    // eslint-disable-next-line no-script-url
+    expect(fileReference('javascript:alert(1)', root, known)).toBeNull()
+    expect(fileReference('file:///etc/passwd', root, known)).toBeNull()
+  })
+
+  it('still opens a genuine project path, so the refusals above are not blanket', () => {
+    // Without this the block would pass on a file provider that answers `null`
+    // to everything — a check that cannot fail in the direction that matters.
+    expect(fileReference('a.ts:12', root, known)).toEqual({ path: 'a.ts', line: 12 })
   })
 })

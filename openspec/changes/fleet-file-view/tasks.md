@@ -43,19 +43,19 @@
 - [x] 7.1 `FleetFileView.tsx` — the project's structure on the left, the opened file on the right, and a new panel type registered with the existing dock model [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
 - [x] 7.2 Build the directory tree in the browser from the flat list; mark which file is open [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
 - [x] 7.3 A file type with no highlighting renders as plain text rather than failing to open [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
-- [ ] 7.4 Open at a line: scroll it into view and mark it [REQ: the-panel-opens-at-a-named-line-and-marks-it]
-- [ ] 7.5 A line past the end of the file opens the file at its end and says the line was not there [REQ: the-panel-opens-at-a-named-line-and-marks-it]
-- [ ] 7.6 Refusals — too large, not text, unreadable — are stated where the content would be, naming the file [REQ: what-cannot-be-shown-is-stated-in-the-panel]
-- [ ] 7.7 An empty file shows as empty and says so, and is not reported as unreadable [REQ: what-cannot-be-shown-is-stated-in-the-panel]
+- [x] 7.4 Open at a line: scroll it into view and mark it [REQ: the-panel-opens-at-a-named-line-and-marks-it]
+- [x] 7.5 A line past the end of the file opens the file at its end and says the line was not there [REQ: the-panel-opens-at-a-named-line-and-marks-it]
+- [x] 7.6 Refusals — too large, not text, unreadable — are stated where the content would be, naming the file [REQ: what-cannot-be-shown-is-stated-in-the-panel]
+- [x] 7.7 An empty file shows as empty and says so, and is not reported as unreadable [REQ: what-cannot-be-shown-is-stated-in-the-panel]
 
 ## 8. Editing and saving
 
 - [x] 8.1 Editing marks the file unsaved and enables the save control [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved]
-- [ ] 8.2 Opening another file with unsaved edits asks first [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved]
+- [x] 8.2 Opening another file with unsaved edits asks first [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved]
 - [x] 8.3 An accepted save clears the mark and adopts the returned identity, so the NEXT save is checked against what was actually written [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved]
 - [x] 8.4 A refused save keeps the reader's text, says the file changed, and writes nothing [REQ: a-refused-save-is-reported-never-discarded]
-- [ ] 8.5 Loading what is on disk after a refusal is an explicit choice that says it replaces the reader's text [REQ: a-refused-save-is-reported-never-discarded]
-- [ ] 8.6 A test asserts no file content or path reaches browser storage, in the shape `fleetInstructSurface.test.tsx:251` already uses for a declared focus [REQ: nothing-about-a-projects-files-is-kept-in-the-browser]
+- [x] 8.5 Loading what is on disk after a refusal is an explicit choice that says it replaces the reader's text [REQ: a-refused-save-is-reported-never-discarded]
+- [x] 8.6 A test asserts no file content or path reaches browser storage, in the shape `fleetInstructSurface.test.tsx:251` already uses for a declared focus [REQ: nothing-about-a-projects-files-is-kept-in-the-browser]
 
 ## 9. The terminal reference
 
@@ -64,7 +64,7 @@
 - [x] 9.3 Activation opens the file view at the line; nothing opens without a person's act [REQ: activating-a-reference-opens-it-in-the-file-view]
 - [x] 9.4 **MEASURE, on a live agent with `enable-mouse-events` on, whether a click reaches the linkifier at all, and with which modifier.** Write the result — command, what was clicked, what happened — into the change before wiring any control to it [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
 - [x] 9.5 Wire the route the measurement supports and state the modifier on screen; if no mouse route reaches the terminal, offer none and say the file list is the way [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
-- [ ] 9.6 A regression test that the URL path is untouched: an http address still opens in a new tab, a `javascript:` address still opens nowhere [REQ: an-external-url-keeps-its-existing-behaviour]
+- [x] 9.6 A regression test that the URL path is untouched: an http address still opens in a new tab, a `javascript:` address still opens nowhere [REQ: an-external-url-keeps-its-existing-behaviour]
 
 ## 9b. Found by LOOKING, and added to the change rather than absorbed silently
 
@@ -90,8 +90,24 @@
 
 ## 10. Looking at it, and closing
 
-- [ ] 10.1 LOOK at the panel in the browser on a real project — open a file, jump to a line, edit, save, and force a conflict by changing the file on disk mid-edit. A UI change is not done until somebody looked [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
-- [ ] 10.2 Full suites: `pytest tests/unit` set-diffed against a baseline worktree with the import roots asserted, and `pnpm vitest run tests/unit` in `web/` [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 10.1 LOOK at the panel in the browser on a real project — open a file, jump to a line, edit, save, and force a conflict by changing the file on disk mid-edit. A UI change is not done until somebody looked [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+- [x] 10.2 Full suites: `pytest tests/unit` set-diffed against a baseline worktree with the import roots asserted, and `pnpm vitest run tests/unit` in `web/` [REQ: the-panel-shows-a-projects-structure-and-one-opened-file]
+
+## 11. Coming back to where the reader was — asked for 2026-08-22
+
+*"files ha bezarom akkor mentse el hol volt hogy ha ujra kinyitom akkor ott legyen"*
+
+- [x] 11.1 `fileToOpen(requested, remembered)` in `fleetFiles.ts` — one line of policy, asymmetric on purpose: an empty path means *just open the panel* and takes the remembered file, a named file always wins so a ctrl-click is never ignored [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only]
+- [x] 11.2 The panel reports the file it opened (`onOpened`), and `Fleet.tsx` holds one remembered file per project root IN MEMORY — never in the stored arrangement, because a path is the consumer's domain [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only]
+- [x] 11.3 `initial` restores it on APPEARING, ref-guarded so it fires once and never over a named request. Found by looking: the panel is torn down for reasons the reader did not ask for — enlarging another panel remounts it — and every one of those read as "the file view forgot" [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only]
+- [x] 11.4 Three tests on the policy, including the refusal (a named file beats the remembered one) [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only]
+- [x] 11.5 LOOKED at it: opened `web/src/lib/fleetFiles.ts:120` from a terminal, closed the panel, opened it from the project header — the same file came back at line 120, marked [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only]
+
+## 12. What LOOKING found that no test could
+
+- [x] 12.1 **Monaco was measuring itself once.** Without `automaticLayout` the editor kept the size it had at mount, so `revealLineInCenter` centred the target inside a viewport nobody could see: the DOM node was 688 px tall, the mark was IN the DOM, and the line sat at the very top of the visible box — under Monaco's sticky-scroll header. Every panel here is resizable, so a layout measured once is wrong most of the time [REQ: the-panel-opens-at-a-named-line-and-marks-it]
+- [x] 12.2 **The line was scrolled to and not MARKED.** Arriving at the right screenful with nothing saying which line was meant is a precise reference delivered imprecisely; there is now a whole-line amber decoration, cleared when a file is opened with no line [REQ: the-panel-opens-at-a-named-line-and-marks-it]
+- [x] 12.3 **Ctrl-click could NOT be measured in a terminal whose agent holds the mouse** — `.xterm` carries `enable-mouse-events`, exactly the risk the design names. Shift bypasses the grab (xterm's own force-selection), and shift+ctrl-click opened the file. So the fallback sentence on the panel stays true and stays there [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -111,22 +127,25 @@
 - [x] AC-14: WHEN the same file is read twice THEN the second answer comes from disk and no copy is held [REQ: the-framework-persists-nothing-it-read, scenario: nothing-is-cached-between-requests]
 - [x] AC-15: WHEN the reader picks a file from the structure THEN it appears highlighted and the structure marks it open [REQ: the-panel-shows-a-projects-structure-and-one-opened-file, scenario: a-file-is-opened-from-the-structure]
 - [x] AC-16: WHEN the file's type has no highlighting THEN it renders as plain text [REQ: the-panel-shows-a-projects-structure-and-one-opened-file, scenario: a-type-with-no-highlighting-still-renders]
-- [ ] AC-17: WHEN a file is opened with a line number THEN that line is scrolled into view and marked [REQ: the-panel-opens-at-a-named-line-and-marks-it, scenario: opening-at-a-line-inside-the-file]
-- [ ] AC-18: WHEN the named line is past the end THEN the file opens at its end and the panel says the line was not there [REQ: the-panel-opens-at-a-named-line-and-marks-it, scenario: a-line-beyond-the-end-of-the-file]
-- [ ] AC-19: WHEN the endpoint refuses a file THEN the reason stands where the content would be, naming the file [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-the-endpoint-refused]
-- [ ] AC-20: WHEN an opened file has no content THEN it shows as empty and says so [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: an-empty-file-is-not-a-failure]
+- [x] AC-17: WHEN a file is opened with a line number THEN that line is scrolled into view and marked [REQ: the-panel-opens-at-a-named-line-and-marks-it, scenario: opening-at-a-line-inside-the-file]
+- [x] AC-18: WHEN the named line is past the end THEN the file opens at its end and the panel says the line was not there [REQ: the-panel-opens-at-a-named-line-and-marks-it, scenario: a-line-beyond-the-end-of-the-file]
+- [x] AC-19: WHEN the endpoint refuses a file THEN the reason stands where the content would be, naming the file [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-the-endpoint-refused]
+- [x] AC-20: WHEN an opened file has no content THEN it shows as empty and says so [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: an-empty-file-is-not-a-failure]
 - [x] AC-21: WHEN the reader changes the content THEN the file is marked unsaved and the save control becomes available [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved, scenario: editing-marks-the-file-as-unsaved]
-- [ ] AC-22: WHEN the reader opens another file with unsaved changes THEN the panel asks first [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved, scenario: leaving-a-file-with-unsaved-edits]
+- [x] AC-22: WHEN the reader opens another file with unsaved changes THEN the panel asks first [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved, scenario: leaving-a-file-with-unsaved-edits]
 - [x] AC-23: WHEN a save is accepted THEN the unsaved mark clears and the returned identity is adopted [REQ: an-edited-file-is-visibly-unsaved-until-it-is-saved, scenario: a-save-that-succeeded-says-so]
 - [x] AC-24: WHEN a save is refused because the file changed THEN the reader's text remains, the panel says so, and nothing was written [REQ: a-refused-save-is-reported-never-discarded, scenario: an-agent-changed-the-file-while-the-reader-was-typing]
-- [ ] AC-25: WHEN the reader chooses to load what is on disk THEN the panel says it replaces their text and does it only on that choice [REQ: a-refused-save-is-reported-never-discarded, scenario: the-reader-asks-to-see-the-current-file]
-- [ ] AC-26: WHEN the dashboard is reloaded after a file was opened THEN no content and no path is recovered from storage [REQ: nothing-about-a-projects-files-is-kept-in-the-browser, scenario: a-reload-starts-from-nothing]
+- [x] AC-25: WHEN the reader chooses to load what is on disk THEN the panel says it replaces their text and does it only on that choice [REQ: a-refused-save-is-reported-never-discarded, scenario: the-reader-asks-to-see-the-current-file]
+- [x] AC-26: WHEN the dashboard is reloaded after a file was opened THEN no content and no path is recovered from storage [REQ: nothing-about-a-projects-files-is-kept-in-the-browser, scenario: a-reload-starts-from-nothing]
 - [x] AC-27: WHEN the output contains a project-relative path with a colon and a number THEN it is a reference to that file at that line [REQ: a-file-reference-in-terminal-output-is-recognised, scenario: a-relative-path-with-a-line-number]
 - [x] AC-28: WHEN the output contains an absolute path inside the project root THEN it is a reference to that file [REQ: a-file-reference-in-terminal-output-is-recognised, scenario: an-absolute-path-inside-the-project]
 - [x] AC-29: WHEN the output contains a path outside the project root THEN it stays ordinary text [REQ: a-file-reference-in-terminal-output-is-recognised, scenario: a-path-outside-the-project-is-not-a-link]
 - [x] AC-30: WHEN a person activates a recognised reference THEN the file view opens it at the named line [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: the-reader-activates-a-reference]
 - [x] AC-31: WHEN an agent prints a file reference THEN nothing opens until a person acts [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: output-alone-opens-nothing]
 - [x] AC-32: WHEN mouse activation reaches the terminal in the running system THEN that route is offered and its modifier is stated on screen [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse, scenario: mouse-activation-is-available]
-- [ ] AC-33: WHEN the agent's program consumes the click THEN the file is still reachable without the mouse and the screen states that route [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse, scenario: mouse-activation-does-not-reach-the-terminal]
-- [ ] AC-34: WHEN the output contains an http or https address THEN it still opens in a new tab and not in the file view [REQ: an-external-url-keeps-its-existing-behaviour, scenario: a-url-in-the-output]
-- [ ] AC-35: WHEN the output contains a scheme that could run code THEN it is not opened at all [REQ: an-external-url-keeps-its-existing-behaviour, scenario: a-scheme-that-could-execute-something]
+- [x] AC-33: WHEN the agent's program consumes the click THEN the file is still reachable without the mouse and the screen states that route [REQ: the-reference-is-reachable-while-the-agent-holds-the-mouse, scenario: mouse-activation-does-not-reach-the-terminal]
+- [x] AC-34: WHEN the output contains an http or https address THEN it still opens in a new tab and not in the file view [REQ: an-external-url-keeps-its-existing-behaviour, scenario: a-url-in-the-output]
+- [x] AC-35: WHEN the output contains a scheme that could run code THEN it is not opened at all [REQ: an-external-url-keeps-its-existing-behaviour, scenario: a-scheme-that-could-execute-something]
+- [x] AC-36: WHEN the reader closes the file view and opens it again from the project header THEN the file they were reading is open again, at the line it was opened at [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only, scenario: the-panel-is-closed-and-opened-again]
+- [x] AC-37: WHEN a reference names a file and another file is remembered THEN the named file opens and the remembered one does not [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only, scenario: a-file-is-named-while-another-is-remembered]
+- [x] AC-38: WHEN the dashboard is reloaded THEN nothing about the previously open file is recovered [REQ: closing-the-panel-keeps-where-the-reader-was-for-this-screen-only, scenario: the-dashboard-is-reloaded]
