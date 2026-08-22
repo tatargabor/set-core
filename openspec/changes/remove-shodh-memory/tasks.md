@@ -84,7 +84,7 @@ as the user's anger); a distillation reads the finished session and writes what 
 - [x] 11.3 Decide the trigger and who runs it. A Stop hook was the old carrier and it is what made the capture indiscriminate; state the choice and the reason rather than inheriting it [REQ: the-native-memory-directory-is-the-memory-layer]
 - [x] 11.4 Respect the index limit: a distillation that appends unboundedly pushes the index past the 200-line / 25 KB cut, where it loads for nobody and nothing warns [REQ: the-index-size-limit-is-stated-because-it-silently-truncates]
 - [x] 11.5 Confidentiality is a gate, not a review step: a consumer name, a partner name or a personal name must be unable to reach a memory file [REQ: confidentiality-survives-the-removal]
-- [ ] 11.6 Open it as its own OpenSpec change; this group is the scoping note, not the implementation [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
+- [x] 11.6 Open it as its own OpenSpec change; this group is the scoping note, not the implementation [REQ: the-capabilities-not-replaced-are-stated-not-discovered]
 
 **Scoping decisions — taken 2026-08-22, each naming the evidence it rests on.**
 
@@ -121,6 +121,8 @@ as the user's anger); a distillation reads the finished session and writes what 
   repository, which would itself be the leak. A candidate memory that matches is **refused**,
   not flagged for a later review, and the matched value is never echoed into the refusal.
 - **11.6 · It ships as its own OpenSpec change** — this group is the scoping note.
+  Opened 2026-08-22 as `openspec/changes/session-distillation` (two capabilities, 11 requirements,
+  23 acceptance criteria; `openspec validate --strict` → valid).
 
 ## 12. The scripts, everywhere — including the machines this one cannot see (user, 2026-08-22)
 
