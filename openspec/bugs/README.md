@@ -67,7 +67,7 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-50 — restore reports `started` for a session that has not resumed: it is sitting on a dialog nobody can see
+### B-56 — restore reports `started` for a session that has not resumed: it is sitting on a dialog nobody can see
 - **state:** open
 - **reported:** 2026-08-22 by the user, on two separate fleets — *"van ami
   visszajött de nem terminálban"* and *"wpc-pont 6 agentje most állítottam
