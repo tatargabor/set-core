@@ -67,6 +67,43 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-50 — restore reports `started` for a session that has not resumed: it is sitting on a dialog nobody can see
+- **state:** open
+- **reported:** 2026-08-22 by the user, on two separate fleets — *"van ami
+  visszajött de nem terminálban"* and *"wpc-pont 6 agentje most állítottam
+  vissza, ott egyiket sem tudom szerkeszteni"*.
+- **measured:** LOOKED at, 2026-08-22. After a restore, `POST /api/fleet/roster/
+  set-core/restore` answered `started: 7`, all `name_source: "restored"`, and
+  `GET /api/fleet/agents` reported all 9 `population: "started-here"` with a
+  terminal label — so by every check the framework performs, the fleet is back.
+  Opening the terminal on `set-core-bb` shows what the process is actually
+  doing: *"Resuming the full session will consume a substantial portion of the
+  context limits. We recommend resuming from a summary. → 1. Resume from summary
+  (recommended). Enter to confirm · Esc to cancel."* The conversation has NOT
+  resumed; the process is blocked on a keystroke. Same on `set-core-e2`, and
+  `bb`, `4f`, `33` all carry `dialog open` in their state line.
+- **and what the tile shows instead:** with the terminal pane closed — which is
+  how every tile comes back, because which panes are open is remembered per
+  browser and keyed on the label — the tile renders the transcript and the
+  sentence *"no input: this session has no seat on the messaging bus"* (B-48).
+  So the one place that could take the keystroke is the one thing not on screen,
+  and the sentence that IS on screen says, in effect, you cannot write here.
+- **why it is not merely B-48 again:** the framework's own report is wrong in the
+  reassuring direction. `started` is true of the PROCESS and false of the
+  session, which is the mechanism-versus-result split: the check asks "did an
+  agent start", the reader asks "is my conversation back". A restore of nine
+  that leaves four blocked on an unanswered dialog reads as a complete restore.
+- **measured constraint on the fix:** there is no flag that skips it —
+  `claude --help` offers `--resume`, `--continue`, `--fork-session`, and nothing
+  that pre-answers the summary prompt. And it should not be pre-answered blindly:
+  summary-versus-full is a decision about the user's own context, and choosing it
+  for them silently discards conversation they may want.
+- **fixed when:** a restored agent whose terminal is waiting on a dialog is
+  visible AS THAT on the tile — a state the reader can act on, with the terminal
+  one click away — and the restore result stops calling such an entry plainly
+  `started`. The check: restore a large session, and without opening any panel,
+  the screen says it needs an answer.
+
 ### B-49 — a runtime roster was committed, and it carries consumer project names and home paths into a PUBLIC repo
 - **state:** open — the file is out of the working tree and gitignored (this
   commit), but **it is still in local history** and must be scrubbed before the
