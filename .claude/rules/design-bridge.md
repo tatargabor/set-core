@@ -1,3 +1,11 @@
+---
+paths:
+  - "web/**"
+  - "modules/**/templates/**"
+  - "**/*.tsx"
+  - "**/design*.md"
+---
+
 # Design Tool Integration
 
 ## Design files in this project

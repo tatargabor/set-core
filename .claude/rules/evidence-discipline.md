@@ -10,473 +10,60 @@ an assumption wearing a claim's clothes.** A word like *measured*, *verified*, *
 obliges showing the command, the output, a `file:line`, a PID, a task id. Without one, the
 honest word is "assumption" — and nothing built on it may be written into a rule book.
 
-## The defect classes, because naming them is what makes them findable
+## The defect classes — the NAMES, so you can recognise one
 
-**False value.** A field the system no longer stands behind is still emitted, and lands on
-screen *next to* its replacement, contradicting it. Nobody notices, because both numbers
-look like data. The fix belongs at the source — the producer declares what it has
-deprecated — never at the display, and never as a hard-coded field name in a layer that is
-supposed to be domain-free.
+Each line is a class this repo has actually paid for. **The measurement behind each one, the
+direction it failed in, and the check that catches it are in the `evidence-discipline`
+skill** — load it when a measurement surprises you, when a green result feels too
+reassuring, or when you are about to write a test meant to prove something.
 
-**False absence.** The mirror image, and the more dangerous one: the system announces that
-something is hidden, missing, or suppressed — when it was never there. "1 deprecated field
-hidden" about a field the producer stopped sending. A declaration is not data. **Count from
-the data; use the declaration only to know what to look for.**
-
-**Prose read as fact.** Any parser reading human or model prose will eventually read an
-*example* as an instruction: a fenced code block parsed as a directive, a rule quoted before
-a verdict read as the verdict, a `##` inside a fence ending a section. Anchor such parsers —
-line start, not quoted, last occurrence wins, near the end of the output — and test them on
-the shape that actually broke, not on the happy path.
-
-**A proxy measured instead of the thing.** `ps -p <pid>` answers whether *a* process holds
-that number, not whether *your* process is alive. Ask by identity, not by a number you
-remember: `pgrep -af "<the thing it watches>"`. When a check is cheap and its subject is
-specific, matching the subject is never harder than remembering the handle.
-
-**The measurement is inside the corpus it measures.** `pgrep -af "<pattern>"` matches the
-searching process itself, because the pattern is in its own command line — and so is any
-word chosen to filter it, so `| grep -c 'while :'` counts a command containing the string
-`'while :'`. Measured four times in one day here: the check reported 3, then 2 watchers
-while exactly one ran. The direction is what costs: it **over**-reports, and "two watchers"
-invites killing one, which can leave zero. The general form covers a grep over a corpus that
-includes the file doing the grepping, a test that asserts about a directory it writes into,
-and a count of matches that its own query created. Resolve each hit to an identity and
-discriminate on something the impostor cannot fake — here, process age: a real watcher is
-hours old, the self-match is always `00:00`.
-
-**The measuring instrument hits the very wall it was built to measure, and reports a zero.**
-Sibling of the class above, and it fails in the reassuring direction. Measured 2026-08-17: a test
-written to find out how many file-watcher instances a library allocates returned **0** for every
-variant — one watcher over six directories, six watchers over one each, before and after. The
-number looked like good news. It was not a measurement at all: the kernel's per-user watcher table
-was **full** (126 of 128), so every allocation failed and the library silently fell back to polling.
-A direct probe made it plain — `inotify_init()` → `EMFILE`, zero successful allocations.
-
-The general form: **a resource meter cannot be trusted while the resource is exhausted**, and
-neither can a rate meter under throttling, a cache-hit meter with a cold cache, or a concurrency
-meter at the connection limit. Each returns a small, tidy number that reads as efficiency. Before
-believing a suspiciously low figure, allocate one unit of the thing by hand and check that it
-succeeds — the zero and the refusal look identical from inside the test.
-
-**Two agents can be wrong in the same step, four times running, and the shape is the tell.**
-Measured across one day on a cross-session channel: four consecutive rounds in which **the
-measurement was correct and the generalisation was not** — a class absent from a sample read as a
-class that cannot appear; a *missing* key described as a *stale* value; an attribution asserted
-without measuring who held the resource; and a per-process rule from one runtime applied to
-another. Plus a fifth, the worst kind, on this side: a **wrong measurement stated confidently**,
-because the classifier was a bare substring test (`"code" in cmd`) that swept this repo's own
-server into a category named for an editor — 61 descriptors misfiled.
-
-The common cause was not carelessness, and naming it is what makes it avoidable: **each side
-generalised from the runtime it could see.** One measured Node and concluded about Python; the
-other measured Python and concluded about the peer's processes. So: when a conclusion crosses to
-the other side's environment, it has to be measured *there* — and the round is cheap precisely
-because neither side believed the other.
-
-**A filter downstream of a source undoes it, and reads exactly like a source that returned
-nothing.** Measured 2026-08-19. A project list built as a union of its sources gained a third
-source; the union returned 49 entries and the endpoint served 41. Nothing errored. One line
-further down, a filter dropped every entry that had neither a live process nor an entry in *one
-named source* — a condition that was harmless while there were two sources and every entry had
-one or the other, and that silently discarded the eight the new source had just supplied.
-
-Two things make it worth a rule. **The two obvious checks disagreed and neither was wrong:** the
-in-process call reported 49 because it stopped at the union, the HTTP call reported 41 because it
-went all the way through. And **the fail shape is indistinguishable from the boring one** — a
-source that contributes nothing looks the same from the outside as a source whose contribution is
-discarded afterwards, so the first instinct is to go and debug the new reader, which is correct
-code. The general form: *completing a set means auditing everything downstream of it*, because
-any later step that names one member of the set is a copy of the set's definition, and it drifted
-the moment the set changed.
-
-**A reproducer is a measurement with a timestamp, and a symptom that stops appearing is not a
-repair.** Same day, on this file's own advice. A latent flake was recorded with its exact
-reproducer — eight named files, in that order — and re-checked "after every commit", which was
-true when written. The files then grew from 144 tests to 189 as unrelated work landed, the
-collection order that produced the fault changed with them, and the combination went green. The
-record still said *still fails*; the code still had the fault.
-
-The repair is not to re-measure more often, it is to **make the CAUSE fatal instead of waiting for
-the symptom**. Here the cause was an unraisable exception the interpreter prints and carries on
-from; running the same eight files with that warning promoted to an error answered the question
-directly — 3 failures and 1 error before the fix, 192 passed after — and that check does not care
-what order anything is collected in. Where a symptom is a side effect of a cause, assert the cause.
-
-**The harness's own cleanup can answer the question before the code under test does.** A test for
-"shutdown ends its client handlers" asked whether the tasks were done *after* the loop runner
-returned — and the loop runner cancels whatever is left before closing the loop, so it passed with
-the entire shutdown logic removed. The mutation run is what found it; nothing about the test looked
-wrong. Same class as the check that proves the renderer produced a node: it verified the
-mechanism's *end state* at a point where something else had already produced that state. When a
-test asserts about teardown, the assertion has to be taken **at the moment the code under test
-finishes**, not after the fixture has tidied up behind it.
-
-**A dead test looks exactly like a passing one, from far enough away.** Fifteen tests here
-raised `TypeError` on a removed keyword argument *before reaching any assertion* — including
-the one test written to guard against a quoted verdict being read as a verdict. Collection
-counts and green suites do not distinguish "asserted and held" from "never got there".
-
-**A pattern is blind to negation, and the blindness looks like a match.** Anchoring a
-sentinel at the start of a line stops a *quoted* verdict and nothing else. `VERIFY_RESULT:
-PASS is NOT what I emit here` still parsed as a pass, and `CRITICAL_COUNT: 0 — but I could
-not check the auth module` still parsed as zero — where zero *downgrades an explicit failure
-to a pass*, so the clause admitting the gap was the thing that hid it. When a sentinel is
-supposed to be a line, match the WHOLE line; anything else is a substring test wearing an
-anchor.
-
-**The name is a second place, and it is the copy people actually read.** A limit stated in
-a header, a docstring or a design section does not protect anything if the *name* claims
-more, because the name is what travels — into a summary, a test report, an `ls`, a status
-line, a compact. Found on both sides of an agent channel within minutes of each other on
-2026-07-24: a change called `differentiated-change-pipeline` whose 22 tasks built a detector
-and no pipeline (`grep -inE "regression|exit gate|per-lane|second pipeline" tasks.md` → zero
-hits, while its own design argued the two lanes gate opposite ends), and a test suite named
-"the output surface is CLOSED" that was closed in one direction only — a limit its file
-header stated loudly and its fourth test specifically asserted.
-
-This is the second-place defect turned inward: **within a single artifact, the name is a
-second copy of the content.** It is the shortest and most-read copy, so it drifts first and
-costs most. Two consequences: put the limit *in the name* when the thing is one-directional
-or partial, and prefer renaming to rescoping — a name that claims more than the tasks
-deliver reads later as "that part is done".
-
-**And a third, about how to look for it — because the obvious search is worthless.** The
-class is *a claim about what a MECHANISM covers*, not *a completeness word*. Grepping
-`every|all|never|always|complete|closed` across a whole test suite finds names describing
-asserted **behaviour** — "the quantity never goes negative", "every price × discount
-combination" — which are correct and numerous. Measured on the other side of the channel:
-**268 hits on the broad corpus, all legitimate; 1 on the correctly narrowed one.** Search
-only the names that describe a checker: gate suites, contract suites, manifest and surface
-tests. Anywhere else the hit rate is so bad that the next person abandons the search before
-reaching the one real instance — which is the same failure as a gate that fires daily on
-nothing.
-
-*Worked example of the narrowing, from this repo:* the broad pattern over `tests/unit/*.py`
-plus the web unit tests returns 2; the narrow corpus is 56 test names across the gate and
-contract suites, of which two make a mechanism-coverage claim
-(`test_every_envelope_field...is_named_in_the_living_record` and its `error_class` twin).
-Both say **"is named"**, which is exactly what they check — their docstrings explicitly
-refuse to claim the field is described *correctly*. So: one instance found and fixed on the
-peer's side, none here, and the corpus and pattern are stated so the negative result can be
-rechecked rather than believed.
-
-**A marker outranks the body, so a marker that is true of a narrower subject still lies.**
-Two shapes, and the second is the harder one. The blunt shape: a strike-through, a `✅` or a
-"Built" that simply contradicts the text underneath it — a list item here read as open while
-its own last paragraph said the goal it belonged to was met. The subtle shape: the marker is
-**true of its own subject** and the reader takes the subject to be wider. Measured on the
-other side of the channel the same day — a row marked `✅ DONE` because the *tool* was
-finished, while sixteen people who had filed reports still had no answer. Nothing in it was
-false; the subject had quietly widened between writer and reader.
-
-So: **when an item's name is broader than the thing delivered, the marker must say what it
-is a marker OF.** "Built" becomes "built as far as the API; the click is unproven". The
-reason is not fairness, it is arithmetic — *the marker is the part that gets counted*, in a
-summary, in a status line, in a compact. A body that states the limit while the marker
-overclaims has put the correction where nobody is standing, which is the same defect as the
-overclaiming name one section up.
-
-**Record the pattern that was WRONG, not only the number that is right.** A corrected figure
-sitting alone invites the next reader to re-derive it — and they will reach for the same
-obvious query, because it was obvious to you too. Measured across this day: `grep -i` on a
-Hungarian keyword returned 12 where the answer was 7, matching a title containing the word
-and a note saying the thing was *pending* — the two cases that mean the opposite; an
-unanchored severity match, a bare substring search for a field name, and a completeness-word
-sweep all failed the same way. In every case the corrected number is the cheap half of the
-finding and the refuted pattern is the durable half.
-
-The stronger form, where it fits: **hold the wrong pattern in a test.** `test_a_bare_substring
-_check_would_not_have_caught_it` exists so that a later "simplification" back to `key in
-document` fails instead of looking identical and quietly checking nothing. A comment asks to
-be believed; a test refuses to be reverted.
-
-**A zero with an empty breakdown is a shape error until proven otherwise.** From the same
-measurement: a count came back `0` because the reader looked for its list under the wrong
-key of an envelope, so `undefined` became an empty array became zero — and that zero would
-have *proved* there was nothing to answer. The tell was not the zero, which looked like data,
-but that the breakdown beside it was empty too. When a count is zero and its own grouping is
-empty, inspect the **shape of the input** before writing down the conclusion.
-
-**A subagent's "done" is not evidence that anything happened.** Measured here: an unflagged
-`claude -p` asked to create a file replied `Done.` and exit 0, and the file did not exist —
-the tool layer had refused the write and the agent did not know. So a gate that waits on an
-action must measure the action's *trace* (a file, a commit, a line in a log), never the
-report. The same fact cuts the other way too: **an instruction is not a constraint.** What
-an agent cannot do is decided by the tools it holds, not by the sentence telling it not to.
-
-**The check verifies the MECHANISM and is silent about the RESULT.** Three instances in one
-day, across two repositories, which is what promoted it from a bug to a class:
-
-- A field-presence check reported `RENDERED` for all five new fields **while the screen they
-  landed on was unreadable** — one of them had collapsed its row into a 500-pixel tower that
-  pushed the other rows off the display. Rendering is the mechanism; legibility is the result.
-- A status column was read as authority and a conclusion built on it, when the pipeline that
-  writes it never syncs back — the column *existed and updated*, which is the mechanism; what
-  it said was not the state.
-- A repair for a too-narrow join was run against **one** of the fields the marker can appear
-  in, so the widened check was still narrow. The join executed; the answer was short.
-
-The discriminating question is one line and it is not the obvious one: *if this check passes,
-what exactly do I now know?* "The renderer produced a node", "the query ran", "the field is
-present" — all true, all compatible with the thing being wrong. It is the same shape as a mock
-that asserts a call rather than an outcome, and the same shape as `cd`-ing into a worktree as a
-proxy for running its code. Where the result is a screen, the only check for it is to **look**.
-
-**And when a layout breaks, measure whether the size is even unusual before shortening
-anything.** Measured on the producer's side after the tower above: the offending string was the
-**15th longest** value the whole surface carries, and the longest — roughly nine times its
-size — renders fine. So length was not the variable. **Nesting was:** a sentence at top level
-gets the page's width, the same sentence inside an object inside a table cell gets whatever the
-nesting left, which can be one character. The fix belongs where the width is decided, and
-truncating the producer's text would have treated a symptom that was not there.
-
-**A test that drives the thing with an API the user does not have measures a different
-system.** Measured here on the page-scroll fix. A regression spec scrolled the container with
-`element.scrollTo()`, asserted `scrollTop > 0`, that the last row was in the viewport and that
-the sticky header held — four assertions, all green. Then the bug was rebuilt into the served
-bundle (verified: `grep -c 'overflow-y-auto'` → 0 in the exact asset the server hands out), and
-**all four passed again**. `overflow: hidden` does not disable scrolling; it disables *user*
-scrolling. The box stays programmatically scrollable, so every scripted assertion behaves
-identically on the broken page. Rewritten to `page.mouse.wheel()`, 4 of 5 failed on the mutant
-and all 5 passed on the fix.
-
-The general form is worth more than the CSS: **the harness usually has powers the user does
-not** — it can call a handler directly instead of clicking, set a value instead of typing, post
-to an endpoint instead of submitting, seed a row instead of registering. Each shortcut quietly
-tests a system where the disabled control still fires and the guarded path is still reachable.
-So the discriminating question from the tower above, in its input form: *is the action I am
-performing one the user can perform?* If not, the green is about the API, not the product.
-
-(The fifth test passed on both, correctly: it guards the over-fix — a second nested scrollbar —
-so the mutant is not supposed to trip it. A test that fails in both directions would be
-measuring nothing; one that fails in neither is the defect above.)
-
-**Two defects on opposite sides of a seam can hide each other, and fixing one is the only
-way the other ever appears.** Measured across an agent channel 2026-08-21. A recorder never
-emitted a region's accessible name unless a heading happened to sit inside it; the consumer's
-parser cut every line at the first `#`, in a format where `#` is BOTH a comment marker and a
-test-id prefix — so it would have cut the name off any line that carried one. While the first
-defect held, the second had nothing to cut, and it was **unreachable by any test either side
-could write**. The consumer's first measurement after the recorder was fixed still reported the
-name as missing.
-
-Three things follow, and the third is the one that changes behaviour:
-
-- **A green measurement on one side of a seam proves nothing about the seam** while a
-  known defect upstream is suppressing the input. The absence of a class of input is not
-  evidence that the code handles it.
-- **After a fix lands, the first measurement downstream is the SECOND defect's debut** —
-  expect it, and do not read it as the fix having failed. Here the obvious reading was
-  "the recorder fix did not work", and the second-obvious one was "our plan is wrong".
-- **A delimiter with two meanings is where this shape lives.** `#` as comment and as
-  identifier, `:` as separator and as namespace, a marker that is also ordinary text. The
-  parser that resolves the ambiguity by position (`split(x)[0]`, first match, last match)
-  is a silent tie-break — the same class as `replace(a, b, 1)` above.
-
-**Extending a configurable protection can WEAKEN it, and only the output says so.**
-Measured on both sides of an agent channel 2026-08-21. A redaction layer took a list of
-consumer-supplied patterns alongside its built-in rules; a consumer added one more pattern,
-on the obvious belief that more patterns mean more redaction. Their committed documents then
-*gained* a customer name. The pattern branch returned as soon as any pattern matched, so the
-built-in rule never ran on what was left: with no patterns the label collapsed entirely, with
-them it printed the record around the redacted fragment.
-
-- **The intent is unreviewable.** "I added a rule to the protection" reads as strictly safer
-  to every reader, including the one who wrote it. Nothing in the diff looks wrong. The only
-  thing that shows it is running both configurations and comparing the OUTPUT.
-- **A shorter output can be the safer one.** Here the better-redacted page was 1587 tokens
-  against 1603 — the size difference *was* the leak, and it looked like noise.
-- **State the invariant, not the case:** an added rule may only ADD redaction, never remove
-  it. Written that way the code has one thing to enforce, and the test says what it is.
-
-Same shape wherever a built-in policy meets user-supplied additions — a filter chain, an
-allowlist that turns into the whole list once non-empty, a validator that stops at the first
-custom check. Ask which branch the extension *takes over*, not which one it adds to.
+- **False value** — a field the system no longer stands behind is still emitted, next to its replacement.
+- **False absence** — the system announces something is hidden or suppressed that was never there.
+- **Prose read as fact** — a parser reads an example, a quote, or a fenced block as a verdict.
+- **A proxy measured instead of the thing** — `ps -p <pid>` for "is my process alive"; `cd` into a worktree for "I ran its code".
+- **The measurement is inside the corpus it measures** — `pgrep -af` matches itself; a grep matches the file doing the grepping. It OVER-reports.
+- **The instrument hits the wall it was built to measure and reports a zero** — an exhausted resource and an efficient one look identical from inside the test.
+- **Two agents generalise from the runtime each can see** — a conclusion that crosses to the other side's environment must be measured THERE.
+- **A filter downstream of a source undoes it** — and looks exactly like a source that returned nothing.
+- **A reproducer is a measurement with a timestamp** — a symptom that stops appearing is not a repair; assert the CAUSE.
+- **The harness's own cleanup answers before the code under test does** — assert at the moment the code finishes, not after teardown.
+- **A dead test looks exactly like a passing one** — a test that raises before its first assertion still counts as collected.
+- **A pattern is blind to negation** — anchor the WHOLE line; a substring test wearing an anchor is still a substring test.
+- **The name is a second place, and it is the copy people actually read** — a name claiming more than the tasks deliver reads later as "that part is done".
+- **A marker outranks the body** — and a marker true of a NARROWER subject still lies, because the marker is what gets counted.
+- **Record the pattern that was WRONG, not only the number that is right** — better still, hold the wrong pattern in a test.
+- **A zero with an empty breakdown is a shape error** until the input's shape has been inspected.
+- **A subagent's "done" is not evidence** — measure the trace (a file, a commit, a log line). And an instruction is not a constraint: tools decide what an agent can do.
+- **The check verifies the MECHANISM and is silent about the RESULT** — ask: if this passes, what exactly do I now know?
+- **A test that drives the thing with an API the user does not have** measures a different system.
+- **Two defects on opposite sides of a seam hide each other** — the first measurement after a fix is the SECOND defect's debut.
+- **Extending a configurable protection can WEAKEN it** — ask which branch the extension takes OVER, not which one it adds to.
 
 ## Fail direction outranks bug count
 
-When a guard is wrong, ask which way it is wrong before asking how often. A gate that
-guarded merges into `main` had six of seven behaviours wrong — and all six in the
-**`pass`** direction. The count made it look like sloppiness; the direction made it a hole
-that silently merged failing work. State the direction in the commit message; a reader
-months later can re-derive the count and cannot re-derive the direction.
+When a guard is wrong, ask which way it is wrong before asking how often. A gate guarding
+merges into `main` had six of seven behaviours wrong — and all six in the **`pass`**
+direction. The count made it look like sloppiness; the direction made it a hole that
+silently merged failing work. State the direction in the commit message; a reader months
+later can re-derive the count and cannot re-derive the direction.
 
 ## How to prove a fix is a fix
 
 **Stash it and rerun.** A test written alongside a fix that also passes without it proves
-nothing, and looks like proof forever.
+nothing, and looks like proof forever. Three of six tests written here passed either way.
 
 ```bash
 git stash && pytest tests/unit/<new-test>.py; git stash pop
 ```
 
-Three of six tests written here passed either way. One of them passed only because the
-fixture used an invalid enum value, so the bad input *was* parsed and a downstream validator
-stopped it — the test was measuring the validator, not the parser. Without the stash, all
-six would have been reported as proof.
+Four traps sit inside that one line, and each has cost a wrong conclusion here: the RESTORE
+can silently no-op, a `.pyc` can stop a mutation reaching the interpreter, a non-unique
+mutation pattern mutates something else and blames your test, and `git stash` inside a
+killable command can take the whole session's work with it. All four, with their
+measurements, are in the **`evidence-discipline`** skill.
 
-The same discipline applies to a screen: structural counts (sections rendered, rows present,
-zero JS errors) prove it *renders*. They say nothing about whether two fields contradict
-each other — see [ui-quality](ui-quality.md). Look at it.
-
-**Assert the RESTORE too, not only the mutation.** Mutation testing has two steps that can
-silently no-op, and only the first one is ever guarded. Measured here: a mutation was applied
-through a helper that asserts its target exists (so that half was honest), and restored with
-`git checkout <file> 2>/dev/null || true` — on a file that was **untracked**. `git checkout`
-cannot restore a file git does not know about; the `|| true` swallowed the error; the suite
-went green because the mutation was reverted only in the *assumption*, and the broken value
-sat in the tree ready to be committed as the shipped behaviour. The direction is what makes
-it expensive: the failure produces a *reassuring* run and leaves the defect behind. So the
-restore is checked the same way the mutation is — re-grep the file for the original value
-before believing the green run:
-
-```bash
-grep -n 'position="before:end"' lib/set_orch/lane_gate.py   # the restore, verified
-```
-
-And prefer a restore that works on the file's actual state: `cp` a copy aside, or write the
-original back explicitly. A revert command chosen for the tracked case fails silently in the
-untracked one — which is exactly when new code is being mutation-tested.
-
-**And the mutation must reach the interpreter, which a `.pyc` can prevent.** Measured here
-while mutation-testing a new module: a loop of *mutate → pytest → restore* reported one
-mutation as **not caught**, and the same mutation run alone caught it immediately. The cause
-is CPython's bytecode invalidation, which compares **mtime (one-second granularity) and file
-size** — nothing else. Two different mutations of the same file happened to produce **byte-
-identical sizes** (`if not args.yes:` and `if args.dry_run:` both became `if False:`), and the
-whole loop ran inside one second, so the second run reused the *first* mutant's `.pyc`. The
-test then passed because that mutant left its branch intact.
-
-The direction is the expensive one, and it is the reverse of what it looks like: the loop says
-"your test does not catch this", inviting you to rewrite a test that was fine, when what
-actually happened is that the mutation never ran. Given how mutation testing works — small
-edits to the same file, in a fast loop, often replacing different conditions with the same
-constant — the size collision is not a freak coincidence; it is the expected case.
-
-So a mutation loop sets `PYTHONDONTWRITEBYTECODE=1` and clears `__pycache__` before each run:
-
-```bash
-find lib -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
-```
-
-The general shape is already in this file under another name: **the measuring apparatus is
-part of the system being measured.** A cache sits between the source you edited and the code
-that ran, so "I changed the file" is a proxy for "the changed code executed" — the same class
-as `cd`-ing into a worktree as a proxy for running its code. And when a mutation loop and a
-single run disagree, the loop is the one to distrust: it has more machinery in it.
-
-**A mutation pattern that is not unique mutates something else, and the report blames the
-test.** Measured the same day, three times in one run: `s.replace(old, new, 1)` with patterns
-like `if not path.is_dir():` and `running = _live_process(path)`. Both appear twice in that
-file — once in the bulk path, once in the named path — and `1` takes the FIRST, so three
-mutations aimed at new code landed on old code. The tests guarding the new code passed,
-correctly, and the loop printed "NOT CAUGHT" against them.
-
-Its direction is the same as the `.pyc` case and that is what makes the pair worth naming:
-**both accuse the test of being weak when the code under test was never touched.** Following
-that accusation means weakening or rewriting a test that was right — a repair that leaves the
-suite worse than before the measurement.
-
-So the mutation helper must refuse ambiguity rather than resolve it:
-
-```python
-n = s.count(old)
-assert n == 1, f"AMBIGUOUS/MISSING: {n} occurrences"   # not a silent replace(..., 1)
-```
-
-Generalised: **`replace(x, y, 1)`, `head -1`, `grep -m1`, "the first match" — every one of
-them is a silent tie-break, and a tie-break inside a measurement is a guess wearing a result's
-clothes.** When the count matters, assert the count.
-
-**Never open a file for writing in the same expression that reads it.** Measured on the
-other side of the agent channel, on a 290 KB append-only log: `open(p, "w").write(open(p)
-.read().replace(...))` truncated the file to **0 bytes**. Python evaluates `open(p, "w")`
-first, which truncates immediately; the read that follows then sees the already-empty file.
-No exception, no non-zero exit. The same author had written it safely one round earlier —
-read into a variable, then write — and compressed it onto one line because it was shorter.
-
-Two things make it worth a rule rather than a note. **The failure direction is reassuring:**
-an empty file is a valid "nothing to write" shape, so every downstream check (size, diff,
-commit) stays green on it. And **the backup was refreshed by the destroying command itself** —
-a `cp` to a mirror ran after the truncation, so the mirror held the zero. Only the git
-history, written before the operation, still had the content. *A backup that the damaging
-operation updates is not a backup.*
-
-So: read in a separate statement, or write a temp file and `mv`. And when a check exists to
-catch a class of damage, make sure the damaging path cannot be the thing that updates it.
-
-**A baseline that shares the working tree's code is not a baseline.** Measured here on the
-very check this repo prescribes for regressions. `git worktree add --detach /tmp/base HEAD`
-then `cd /tmp/base && pytest` looks like running the old version — and does not. An editable
-install resolves the package from a finder that hard-codes the development path, so the
-baseline's TESTS ran against the working tree's LIBRARY. Two versions were never compared.
-
-The direction is the expensive part, and it is the reassuring one twice over. Additive
-changes — the common case — leave old tests passing against new code, so the two failure sets
-come out identical and the check reports "no regression" having compared one version with
-itself. And it is *most* convincing exactly when it is least earned. It surfaced only because
-two baseline tests failed that could not fail at `HEAD`, which was luck, not method.
-
-The general shape: **`cd` into a directory is a proxy for running the code in it.** Point
-`PYTHONPATH` (or the equivalent) at the baseline's own source, and *assert where the import
-came from* before believing the run:
-
-```bash
-PYTHONPATH=/tmp/base/lib python -c \
-  "import set_orch;assert set_orch.__file__.startswith('/tmp/base/'),set_orch.__file__"
-```
-
-**And the first repair was itself a narrowing.** It set `PYTHONPATH` to one root and asserted
-one package by name. This repo has three first-party roots, and a raw `.pth` entry hard-codes
-one of them to the development tree — so a package imported by 10+ unit test files still came
-from the working tree, and the "corrected" baseline was still partly hybrid. A hand-named list
-is a second copy; this one drifted at the moment it was written. The replacement asserts the
-THING — at session end, no loaded module may resolve to any set-core checkout other than this
-one — which is a check nobody has to maintain a list for.
-
-**And the detector was proven to fire before its zero was believed.** A check that reports
-clean is indistinguishable from one that cannot report anything, so the leak checker was run
-against a deliberately un-isolated baseline: **128 leaks** on the full suite, **0** with the
-import roots set. Only then does the zero mean something.
-
-Two of this repo's own measurement bugs surfaced doing it, both worth more than the result:
-
-- **`$?` after a pipeline is the LAST command's status.** `pytest … | tail -3; echo $?`
-  reports on `tail`, which always succeeds. It read `exit=0` for a run whose status was never
-  examined, twice, in the same breath as concluding the check worked.
-- **A poll condition must exclude the state the file starts in.** The checker writes
-  `NOT REACHED` at configure time so an unrun hook reports itself — and a wait loop on
-  "file is non-empty" then fired on that placeholder and read the answer before it existed.
-  A guard against silence became the thing that produced a premature reading.
-
-The finding underneath both: **a single-file run said `LEAKS 0` while the full suite said
-128.** 140 of 217 unit files insert the source root themselves and 77 do not, so whichever
-module imports first decides for the entire session. *Isolation that depends on collection
-order is not isolation* — and it fails toward clean on exactly the small, fast run someone
-reaches for when checking quickly.
-
-**A generated artefact escapes even a correct source path**, because it is a product rather
-than a source. Measured on the other side of the channel: a generated database client resolved
-from the main tree while the worktree held modified schema source, so the tests ran worktree
-code against main-tree schema — the same hybrid one layer up, and additive schema changes keep
-it green. The check therefore has two questions, not one: *where did the module come from*, and
-*when was what it loads generated*.
-
-Three lessons outrank the fix, and all are already in this file under other names. A guard is
-only as good as the thing it actually measured. *The check that verifies other work is itself
-work nobody checks*, because a green comparison is where reading stops. And a repair for a
-narrowing is a candidate narrowing until its own traversal has been measured.
-
-**Never put `git stash` in a command that can be killed.** Same defect one level up, and it
-nearly cost this session's uncommitted work: `git stash -u && <full suite> && git stash pop`
-run in the foreground hit a two-minute tool timeout **after the stash and before the pop**,
-leaving a clean tree and every change of the session in `stash@{0}`. It is recoverable —
-`git stash list` then `git stash pop stash@{0}`, and check the list first because an
-unrelated older stash may sit below it — but only if you notice, and a clean `git status`
-after a timeout looks exactly like a command that never started. For a before/after
-comparison use a **`git worktree add --detach <dir> HEAD`** instead: the baseline gets its
-own directory, the working tree is never touched, and both suites can run at once.
+Where the result is a screen, structural counts prove it *renders* and nothing more — see
+[ui-quality](ui-quality.md). Look at it.
 
 ## Why this file exists rather than a memory
 

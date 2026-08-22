@@ -54,47 +54,6 @@ This project is **set-core** — an orchestration framework for Claude Code that
 **Consumer project diagnostics:**
 Read run logs → fix set-core bugs → `set-project init` to redeploy
 
-## CLI Tools (bash)
-
-| Tool | Purpose |
-|------|---------|
-| `set-new <id>` | Create worktree |
-| `set-work <id>` | Open worktree in editor |
-| `set-list` | List worktrees |
-| `set-merge <id>` | Merge with integration gates |
-| `set-close <id>` | Remove worktree |
-| `set-orchestrate` | Core orchestration engine |
-| `set-sentinel-finding` | Log sentinel findings |
-| `set-sentinel-status` | Sentinel status registration |
-| `set-project init` | Deploy set-core to a project |
-| `set-status` | Show orchestration status |
-| `set-audit scan` | Project health scan |
-| `set-run-logs <run-id>` | Forensic analysis of a completed orchestration run |
-| `openspec` | OpenSpec CLI (list/status/new) |
-
-## MCP Tools (programmatic)
-
-**Team:** `send_message`, `get_inbox`, `get_team_status`, `get_activity`
-
-**Worktree:** `list_worktrees`, `get_worktree_tasks`, `get_ralph_status`
-
-## Project Structure
-
-| Path | What lives here |
-|------|-----------------|
-| `lib/set_orch/` | Core engine (Layer 1) — profile system, dispatcher, merger, gates |
-| `modules/web/` | Web project type plugin (Layer 2) — Next.js, Playwright, Prisma |
-| `modules/example/` | Reference plugin (Dungeon Builder) |
-| `bin/` | CLI tools (set-new, set-work, etc.) |
-| `.claude/rules/` | Rules for set-core development (NOT deployed to consumers) |
-| `.claude/skills/` | Slash command implementations |
-| `.claude/commands/` | Command definitions (set/, opsx/) |
-| `templates/core/rules/` | Core rules deployed to consumer projects via set-project init |
-| `openspec/specs/` | Capability specifications |
-| `openspec/changes/` | Active changes |
-| `docs/` | Documentation |
-| `mcp-server/` | MCP server (FastMCP) |
-
 ## Key Architectural Rules
 
 - **Layer 1 (lib/set_orch/)** is abstract — NEVER put project-specific logic here
@@ -102,3 +61,10 @@ Read run logs → fix set-core bugs → `set-project init` to redeploy
 - **All merges go through integration gates** — never `git merge` manually
 - **Profile system is the extension point** — new behaviors go through ProjectType ABC
 - **Consumer projects get set-core via `set-project init`** — templates/core/rules/ for universal rules, modules/*/templates/ for project-type rules
+
+## Where things are, and what the CLI can do
+
+Derivable, so not copied here: `ls lib/ modules/ bin/ .claude/` shows the layout,
+`set-<tool> --help` documents every CLI tool, and the MCP tools are listed in the session's
+own tool list. `/set:help` is the guided version. What is NOT derivable — the layering rules
+— is in [modular-architecture](modular-architecture.md).

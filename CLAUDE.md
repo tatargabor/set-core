@@ -140,39 +140,12 @@ same as everything that exists, and it read as the latter for five days. And **t
 belongs where the effect is, not where the alarming word is**: no hook installer is called
 anywhere in this repo, and it did not need to be.
 
-**Shipped — the safety track, in order:**
-- `8fae5733` — DB-mutation guard in `integration_pre_build`; no more
-  `prisma db push --accept-data-loss` against a non-`file:` target.
-- `d3769483` — `protected: true` across the web manifest.
-- `eb7e2839` — the two remaining live-DB paths: a guard refusing config-supplied destructive
-  commands against a non-`file:` target (`lib/set_orch/db_safety.py`, both post-merge paths),
-  and dispatch re-running the project's `worktree-init` hook *after* `env_vars`, so the
-  project's per-tree database name wins. They were a chain, not two bugs.
-- `aed09d3c` — install-time hash ledger + tombstones (`set/.deploy-manifest.json`), covering
-  BOTH deploy engines, and a `--dry-run` that finally reports the bash engine too.
-- `a20aab1f` — ownership checks on the two mutation paths outside the engines.
-- `a0334e19` — the `e2e_pre_gate` twin hole, and the gate reading a machine-readable result
-  file keyed on `(file, title)` instead of scraping the Playwright list reporter. A measured
-  consumer runs Playwright with `--reporter json`, so the old regex matched nothing and the
-  gate read zero failures.
-- `ae9706bb` — **`once: true`** separates scaffold from knowledge. 41 manifest entries are
-  seeded once and never rewritten (all `rules/*.md`, which deploy un-prefixed into the
-  project's own namespace, plus every scaffold file); 9 namespaced `framework-rules/`
-  entries keep flowing. The split follows ownership, not file type.
-- `f8f92ee3` — **git history as deletion intent.** On a first init the ledger is empty, so an
-  absent path read as "new" and came back. Now a path absent from disk AND unknown to the
-  ledger is checked against `git log --diff-filter=D`; a committed deletion is intent. Both
-  engines, one scan per repository. Fails open (`None` = no information) so a new project
-  still receives its templates. `SET_DEPLOY_IGNORE_GIT_HISTORY=1` opts out.
-- `01701912` + `e2c818db` — **the fourth unguarded write path closed.** `_deploy_memory` no
-  longer shells out to `set-memory-hooks remove`; that tool resolved its own target with
-  `git rev-parse`, so a deploy into a non-repo-root walked UP and edited an ancestor
-  repository, and it knew nothing about ownership. The in-process cleanup covers a superset
-  of the same files through the ledger. Removing it exposed why nobody had noticed: the
-  in-process migration matched zero blocks (its regex demanded a closing
-  `<!-- /set-memory hooks -->` while the installer emitted `start`/`end`), so the unguarded
-  external call had been doing the real work all along. A test now fails if the call
-  returns.
+**Shipped — the safety track, in order.** Nine commits between `8fae5733` and `01701912`
+closed every write path into a consumer tree. The list is `git log`; what is NOT in git log
+and must not be lost is above and below this line. One item is worth naming because a session
+could undo it by accident: **`once: true`** in the deploy manifest separates scaffold from
+knowledge — 41 entries are seeded once and never rewritten, 9 namespaced `framework-rules/`
+entries keep flowing, and the split follows OWNERSHIP, not file type.
 
 **Superseded:** `0a′` (`--no-verify` on automated commits/pushes) is **withdrawn for pushes**.
 Consumer gate chains commonly hang off the *pre-push* hook; bypassing it makes every one of
@@ -223,172 +196,17 @@ something that works.
 ## Cross-project agent channel — TEMPORARY (from 2026-07-24)
 
 While set-core and a consumer project are being integrated, their two copilot sessions
-coordinate over a **file channel**, because no shared transport exists. **Remove this
-section once the real transport ships.**
+coordinate over a **file channel**. The protocol, the durable location, the resume
+procedure after a compact, and the rules for checking the Monitor and cron **without
+creating duplicates** are in the **`cross-project-channel` skill** — load it whenever you
+are coordinating with a consumer's session, resuming one, or suspect a watch has died.
 
-*Corrected 2026-07-29 — the stated reason was wrong, and wrong in the direction that closes
-off a working option.* This said `.set-control` is per-project, so `send_message`/`get_inbox`
-"cannot cross a project boundary". Measured: the registry is **global**
-(`~/.config/set-core/projects.json`, 38 entries), and `_find_control_worktree()`
-(`mcp-server/set_mcp_server.py:462`) walks it and returns the **first** project that has a
-`.set-control` directory — regardless of which project the server was started in. So both
-sides would resolve to the *same* worktree; the project boundary was never the obstacle. The
-real ones are that **no `.set-control` exists anywhere** (checked on both trees → both tools
-return `Error: No .set-control worktree found`), and that the git-based ~15 s commit cycle is
-rejected below. This is the proxy-instead-of-the-thing class applied to a code path: the
-sentence described what the resolution *ought* to scope to, not what the function does.
+Two things stay here because a session must not have to go looking for them:
 
-**DECISION 2026-07-24 — do not revive the git-based control sync for this.** The existing
-agent-messaging path (`set-control-sync`, `.set-control` worktree, ~15 s commit cycle) is
-rejected as the cross-project channel: it caused problems in practice, and it carries
-*ephemeral messages* where this coordination needs *durable state*. A live (non-git)
-transport may be built later as its own piece of work; until then the file channel below is
-the agreed mechanism.
-
-**Protocol — one file, one writer.** Channel dir:
-`~/.local/share/set-core/channels/<consumer-slug>/` (the slug is runtime-derived; never
-hard-code a consumer name here — see External Project Confidentiality below). Each side
-appends **only** to its own file and reads the other's:
-
-| file | writer | reader |
-|---|---|---|
-| `set-core.md` | this project's session | the consumer's session |
-| `<consumer-slug>.md` | the consumer's session | this project's session |
-| `README.md` | whoever creates the channel | both |
-
-- **Append-only**, newest last, each entry headed `## <ISO timestamp> — <TYPE>` where TYPE is
-  one of `TÉNY` / `KÉRDÉS` / `VÁLASZ` / `KÉRÉS`. Answers cite what they answer (`re: …`).
-- One writer per file means **no lock is needed** and no write can be lost. When a genuinely
-  shared file must be edited (e.g. a planning doc in the consumer repo), take a POSIX-atomic
-  lock first: `mkdir "$F.lock" || exit 1` with `trap 'rmdir "$F.lock"' EXIT`.
-- Watch the other side with a Monitor on its file size — do not poll by hand.
-- **A word like "measured" obliges you to show the evidence** — the command, its output, a
-  `file:line`, a PID, a task id. Without one, the honest word is "assumption", and the other
-  side must not write it into a rule book. This is not pedantry: a plausible guess crossed
-  this bus, was reasonably taken for a measurement, and ended up in BOTH projects' rules
-  before anyone ran the one-line check that disproved it. On an agent channel a confident
-  claim propagates further and faster than an ordinary mistake, because the receiving side
-  has every reason to trust it.
-- The channel survives a reboot but **not a lost disk, and not another machine.** It is
-  coordination state, not the agreement itself: anything durable belongs in a repo. Read the
-  channel to rebuild the contact; read `docs/integration/consumer-integration.md` to learn
-  what was decided.
-
-**DONE 2026-07-24 — the channel moved off `/tmp` (user instruction), jointly, both sides
-switched.** A restart or a power cut used to lose the status. Kept here rather than deleted,
-because every reason below is a rule the *next* move would otherwise rediscover:
-
-- **Target: `~/.local/share/set-core/channels/<slug>/`.** Measured, not invented: that root
-  already exists and is the framework's durable per-user store (`memory`, `metrics`,
-  `e2e-runs`, `manager`, `runtime`). Survives reboot, pollutes neither repository, and is
-  symmetric — neither side's tree is the host.
-- **Why not a gitignored directory inside this repo**, even though the user allowed one:
-  `.gitignore` is itself a *tracked* file, so an entry naming the consumer would publish the
-  name that External Project Confidentiality forbids. The gitignore would BE the leak.
-  Neutral ground cannot produce that problem at all. (A generically-named local dir such as
-  `docs/integration/local/` stays fine — the rule is about the consumer's name, not the
-  practice.)
-- **Copy, never move.** `mv` breaks the peer's live watch mid-flight; `cp` is reversible and
-  leaves the old file as a fallback. Both sides append a final pointer entry to the OLD file.
-  **A closed file must state its successor, not merely fall silent** — otherwise a session
-  that lands on it reads the old tail as the current state, which is the exact loss the move
-  was meant to prevent. The old dir also gained a `MOVED.md`; neither side deletes it.
-- **The watches are the dangerous step.** Kill the old Monitor FIRST, identified by the file
-  it watches (`pgrep -af "<old path>"`), and only then start one on the new path — otherwise
-  two run and every entry arrives twice. Same for the cron. During the cutover **one Monitor
-  watching BOTH paths** is the correct shape (used by both sides here): the duplicate bug is
-  two watchers on one file, not one watcher on two.
-- **`CLAUDE.md` is the second place, and the second place is itself the error source.** The
-  path lives in the rule book as well as in the running watch, so a move that updates only
-  the watch sends the *next* session to the dead location. The peer had seven occurrences,
-  this file six — of which two were instruction-valued. Grep before declaring the move done.
-
-**Resuming the channel after a compact, a `/clear`, or a fresh session.** The channel is the
-only thing that survives — rebuild the contact from it, do not ask the user to re-explain:
-
-1. **Find it:** `ls -dt ~/.local/share/set-core/channels/*/ 2>/dev/null | head` — the channel
-   dir is the newest match. Read its `README.md` first; it carries the protocol and the
-   addressing convention. (Before 2026-07-24 the channel lived under `/tmp/*-set/`; if you
-   land there, its last entry names the successor.)
-2. **Catch up:** read the OTHER side's file end-to-end (`<consumer-slug>.md`), then your own
-   (`set-core.md`) to see what you already answered. Entries are timestamped and append-only,
-   so the tail is the current state.
-3. **Check both watches, then re-arm only what is missing.** A dead watch is
-   indistinguishable from a quiet peer, so the work stops without anyone noticing — but
-   blindly re-arming is its own bug: a duplicate fires the same catch-up twice, and two
-   Monitors on one file send two notifications for every entry. **`CronList` first**, and
-   look for a live Monitor process before starting one.
-
-   **Both survive a compact** — verified on this machine, not assumed: a `persistent: true`
-   Monitor started at 08:19 was still the same live PID hours later, across the compact
-   that produced this session's summary (`ps -eo pid,lstart,cmd | grep <watched file>`).
-   An earlier version of this section claimed the Monitor does not survive; that claim was
-   a guess that travelled between two sessions and got written into both rule books before
-   anyone ran the check.
-   **Check the Monitor by WHAT IT IS, not by a number you remember.** Use
-   `pgrep -af "<watched file>"` — match the process by the file it watches. `ps -p <pid>`
-   answers a different question: whether *a* process holds that number. PIDs are recycled,
-   so the answer can be yes while the Monitor is long dead, and the check then reports a
-   watch that is not there. A task registry is worse still: the Monitor is a background
-   process and does not appear in `TaskList` at all, so a registry lookup answers "no
-   watcher" for a watcher that is running — which sends you to start a second one, which is
-   the exact duplicate this step exists to prevent.
-
-   **But `pgrep -af "<watched file>"` MATCHES ITSELF, and piping it into `grep -c` counts
-   the count.** Measured four separate times on 2026-07-24: the check reported 3 and then 2
-   watchers while exactly one was running. Every extra hit was the measuring command — the
-   pattern appears in the searching shell's own command line, and so does any word used to
-   filter it (`grep -c "while :"` matches a command containing the string `'while :'`). This
-   is the same class as the completeness-word sweep: **the measurement is inside the corpus
-   it measures.** Its direction is the dangerous one — it over-reports, and "two watchers"
-   invites killing one, which can leave zero.
-
-   Resolve each PID instead of counting lines, and discriminate by age — a real Monitor is
-   hours old — but **the impostor is NOT always `00:00`.** Measured 2026-07-30: a self-match came
-   back at `00:30`, because the measuring pipeline itself takes time to run. Age is a hint; the
-   discriminator is `lstart` plus the command line, since a real watcher's argv contains the loop
-   and the watched path while a self-match's contains the harness's shell snapshot.
-
-   **And a dead watch is not necessarily a failure: check whether another session TOOK OVER.**
-   Also measured that day — a Monitor exited non-zero because an incoming session had killed it by
-   PID to avoid two watchers on one file, the outgoing session read that as the silent-death
-   failure, re-armed, and recreated the duplicate. A deliberate kill and a spontaneous death
-   produce identical evidence and need opposite responses; the channel tail separates them in one
-   read.
-
-
-   ```bash
-   pgrep -f 'NEW=.*<watched file>' | while read -r p; do
-     ps -o pid=,etime=,lstart= -p "$p"
-   done          # one row per candidate; the seconds-old one is your own command
-   ```
-
-   This is the same defect class as reading a verdict out of prose: **measuring a proxy
-   instead of the thing.** A remembered PID is a proxy for a process; a registry entry is a
-   proxy for a running program; a matched substring is a proxy for a decision. The direction
-   of the wrong answer is what makes it expensive — here it says "missing" for something
-   present, and the correction is to create a duplicate.
-   - a **Monitor** on the other side's file size (`persistent: true`) — how you learn about
-     new entries without polling by hand. It is a real background process; `pgrep -af` on
-     the watched path is the evidence, and it outlives a compact.
-   - a **CronCreate** catch-up every ~10 minutes as the fallback for when the Monitor does
-     die. Its prompt: read the last peer entry, check whether you have already answered it,
-     do the work and reply if not, restart the Monitor if it is gone, and **say nothing at
-     all when there is nothing to do** — a fallback that chatters gets muted. Pick a period
-     that does not coincide with the peer's (they run one too); cron jobs are session-only
-     and expire after 7 days.
-4. **Announce the resume** in your own file: one `TÉNY` entry saying the context restarted and
-   which entry number you have read up to, so the other side knows nothing was lost.
-5. **The durable agreements are not in the channel.** The negotiated contract lives in the consumer's
-   planning document (the channel's entries point at it) — read that before answering anything
-   substantive, and never re-open a decision it already records.
-
-**Addressing convention (spoken sessions).** When both copilots listen to the same
-microphone, the speaker names the addressee **first in the sentence** — a turn opening with
-this project's name (`set-core`, or its spoken variants) is for this session; a turn opening
-with the other project's slug is not, and this session stays silent on it. An unaddressed
-turn is for whoever it is actually useful to. Getting this wrong is what makes two copilots
-talk over each other.
+- **DECISION 2026-07-24 — the git-based control sync (`set-control-sync`, `.set-control`,
+  the ~15 s commit cycle) is NOT the cross-project channel.** Do not revive it for this.
+- **Find the channel with** `ls -dt ~/.local/share/set-core/channels/*/ | head`; read its
+  `README.md` first. **Remove this section once a real transport ships.**
 
 ## Framework work goes through OpenSpec again — decided by the user, 2026-07-24
 
@@ -443,83 +261,14 @@ asked for — seeing project status in set-core, and planning/preparing/managing
 sits outside those three, and the verdict's own finding (the missing piece is a router
 between differentiated ADWs) is what it continues.
 
-**Known unrelated debt — and the figure is not the check.** Measured on a pristine checkout
-of `HEAD` (2026-07-24, late): **81 failed / ~2980 passed / 21 errors**, and the failures are
-not confined to `test_web_api_write.py` + `test_web_integration.py`. Pre-existing and outside
-the current track.
-
-**Do not quote this number as a baseline.** It has now been stale twice in one file: "17
-failed" understated it by ~77, and "94 / 2631 / 21" — written earlier the same day — was off
-by 352 passing tests within hours. The passing count also moves a few tests between runs. A
-debt figure is a *measurement with a timestamp*, and a stale one waves a real regression
-through as "expected".
-
-**The check that works is a set diff against a baseline you actually ran.** Never a stash
-inside a killable command — a timeout between the stash and the pop leaves a clean tree and
-the whole session's work in `stash@{0}`, which looks exactly like a command that never
-started:
-
-```bash
-git worktree add -q --detach /tmp/base HEAD
-python -m pytest tests/unit -q -p no:randomly 2>&1 | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort > /tmp/now.txt
-# THREE import roots, and a session-end assertion that nothing leaked. Both matter — see below.
-cat > /tmp/leakcheck.py <<'EOF'
-import os, sys
-def pytest_sessionfinish(session, exitstatus):
-    base = os.environ["BASELINE_ROOT"]
-    leaks = sorted({m.__name__ for m in list(sys.modules.values())
-                    if getattr(m, "__file__", None) and "/set-core/" in str(m.__file__)
-                    and not str(m.__file__).startswith(base)})
-    if leaks:
-        print(f"BASELINE LEAK ({len(leaks)}): " + ", ".join(leaks[:25]), file=sys.stderr)
-        session.exitstatus = 99
-EOF
-(cd /tmp/base && BASELINE_ROOT=/tmp/base/ \
-   PYTHONPATH=/tmp/base/lib:/tmp/base/modules/web:/tmp/base:/tmp \
-   python -m pytest tests/unit -q -p no:randomly -p leakcheck 2>&1 \
-    | grep -E "^(FAILED|ERROR) " | sed 's/ - .*//' | sort) > /tmp/base.txt
-diff /tmp/base.txt /tmp/now.txt   # empty = no regression, whatever the counts say
-git worktree remove /tmp/base --force
-```
-
-**The `PYTHONPATH` line and the assertion are not decoration — without them this check does
-not compare two versions.** Measured 2026-07-24: `set-core` is installed editable, so its
-`__editable___set_core_0_3_0_finder` resolves `set_orch` to `/home/…/set-core/lib` from
-*anywhere*. A worktree at `/tmp/base` therefore ran the BASELINE TESTS against the WORKING
-TREE's library — a hybrid, not a baseline.
-
-Its fail direction is what makes it expensive: the usual change is additive, so old tests
-still pass against new code and the failure sets come out identical. The check then reports
-"no regression" having compared one version with itself, and it does so most convincingly
-exactly when it is least earned. It only became visible when two baseline tests failed that
-could not fail at `HEAD` — the hybrid's own tell, and it appeared by luck.
-
-So: point `PYTHONPATH` at the worktree's source roots, and **assert where the imports came
-from before believing the run**. This is the proxy-instead-of-the-thing class applied to a
-version: `cd`-ing into a worktree is a proxy for running its code.
-
-**And the first repair of it was itself incomplete, which is the more useful half.** It set
-`PYTHONPATH=/tmp/base/lib` and asserted `set_orch` — one package, named by hand. Measured
-afterwards, prompted by an integration peer generalising the finding on their own side: this
-repo puts first-party code under **three** roots, and a raw `.pth` entry hard-codes
-`modules/web` to the development tree. `set_project_web` is imported by 10+ unit test files
-and was still coming from the working tree, so the "corrected" baseline was *still* partly
-hybrid. The named list was a second copy, and it drifted at the moment it was written.
-
-Hence the session-end check above, which asserts **the thing** — no module loaded from any
-set-core checkout other than this one — instead of a list of paths somebody has to maintain.
-Measured on `HEAD` with full isolation: **0 leaks, 106 failure entries, identical to the
-partially-isolated run**, so the earlier conclusion survives while the evidence for it is now
-real.
-
-**One thing this does NOT cover**, raised by the same peer with their own measurement: a
-**generated artefact** can come from the other tree even when every source path is right,
-because it is a product, not a source (their case: a generated database client resolved from
-the main tree's `node_modules`, so worktree source ran against main-tree schema — the same
-hybrid, and additive changes keep it green). Measured here: set-core's Python has **no
-generated layer** (`find lib modules set_tools -name '*_pb2.py' -o -name '*_generated*.py'`
-→ empty), so `tests/unit` is not exposed. The dashboard under `web/` does have a build
-product, and that path has **not** been measured — do not assume it is clean.
+**Known unrelated debt, and how to measure a regression.** This repo has a substantial
+pre-existing failure count in `tests/unit`. **A debt figure is a measurement with a
+timestamp — never quote a remembered number as a baseline**; every figure written down here
+has gone stale within hours at least twice. The only check that works is a **set diff
+against a baseline you actually ran**, and building that baseline correctly is subtle enough
+to have been got wrong twice: the recipe, the three import roots, the session-end leak
+assertion, and why `git stash` must never sit inside a killable command are in the
+**`regression-baseline` skill**. Load it before claiming anything about a regression.
 
 ## Every reported defect goes into the bug register — stated by the user, 2026-08-19
 
@@ -679,127 +428,22 @@ extra checks (traceability matrix, acceptance criteria, scope boundary, overshoo
 per-change `verify-hook.sh`) nor the two sentinels the gate parses. The orchestrator's gate
 resolves and names that file automatically; an interactive run does not.
 
-## Help & Documentation
-
-When the user asks how a feature works or needs help with set-core:
-- **General overview or "what can I do?"**: use `/set:help` (quick reference for all commands, skills, MCP tools)
-- **CLI tools** (set-new, set-project, etc.): run `set-<tool> --help`
-- **Skills** (/opsx:*, /set:*): read `.claude/skills/openspec-*/SKILL.md` or `.claude/skills/set/SKILL.md`
-- **Agent messaging / team sync**: read `docs/team-sync.md`
-
 ## Auto-Commit After Apply
 <!-- set-core:managed — DO NOT edit or remove this section. It is auto-generated by `set-project init`. -->
 
 After a skill-driven apply (e.g. `/opsx:apply`) finishes or pauses, automatically commit all changes. Follow the standard commit flow (stage relevant files, write a concise commit message).
 
-## Consumer Project Diagnostics
+## E2E runs and consumer diagnostics
 
-set-core is developed and battle-tested through consumer projects. Before fixing bugs or adding features, always consult the primary consumer for real-world diagnostics.
+set-core is developed and battle-tested through consumer projects. Everything about
+setting up a run, starting the sentinel, comparing two runs, harvesting framework fixes
+from a consumer, and running the web dashboard's Playwright suite is in the
+**`e2e-runs` skill** — load it before touching any of that.
 
-### Harvest (primary tool)
-
-After every E2E run, use `set-harvest` to scan consumer projects for framework-relevant fixes:
-```bash
-set-harvest                          # scan all registered consumer projects
-set-harvest --project craftbrew-run-20260320-1445 # scan single project
-set-harvest --dry-run                # preview without updating state
-```
-
-The harvest tool scans ISS fix commits, classifies them (framework-relevant vs project-specific), and presents them for interactive adoption into planning rules, templates, or core code.
-
-### Manual workflow
-
-1. **Read the latest orchestration run log** — each log has a "set-core Bugs to Report" section and "Conclusions for set-core Development" with prioritized issues, root cause analysis, and design decisions.
-2. **Diff .claude/ for upstream changes** — during orchestration, the sentinel or user may improve commands, skills, or configs in the consumer's `.claude/`. Diff against set-core source to find changes to adopt.
-3. **Check orchestration.yaml** — the consumer's config reflects production usage. Understand what directives are actually used before changing defaults.
-4. **Use run comparison data** — run logs contain quantitative comparisons (wasted iterations, token efficiency, intervention count). Use these to validate whether a fix actually improved things.
-
-### Bidirectional flow
-
-```
-set-core (source)                     consumer project
-   │                                      │
-   ├── set-project init ──────────────────►│  deploy .claude/ files
-   │                                      │
-   │◄── run logs (bugs, design) ──────────┤  diagnostics after each run
-   │◄── .claude/ diffs ──────────────────┤  sentinel/user improvements
-   │◄── orchestration.yaml ──────────────┤  config evolution
-   │                                      │
-   ├── fix bugs, add features             │
-   ├── set-project init ──────────────────►│  redeploy
-```
-
-## E2E Run Setup
-
-**Read `tests/e2e/README.md` first** — it documents scaffolds, fallback logic, and runner internals.
-
-**NEVER** initialize E2E runs manually. Always use `tests/e2e/runners/`:
-```bash
-./tests/e2e/runners/run-micro-web.sh     # scaffold + init + register
-./tests/e2e/runners/run-minishop.sh      # scaffold + init + register
-./tests/e2e/runners/run-craftbrew.sh     # scaffold + init + register
-```
-
-If you MUST init manually, **always** include `--project-type web --template nextjs`:
-```bash
-set-project init --name minishop-run-YYYYMMDD-HHMM --project-type web --template nextjs
-```
-Without `--project-type web`, no `project-type.yaml` is created → NullProfile loads → integration gates silently skip (no build/test/e2e detection).
-
-### Starting the sentinel
-
-After the runner script finishes, start the sentinel via the **manager API** (not CLI):
-```bash
-# Restart set-web first if the project was just registered (picks up new projects)
-systemctl --user restart set-web && sleep 5
-
-# Start sentinel via API
-curl -X POST http://localhost:7400/api/<project>/sentinel/start \
-  -H 'Content-Type: application/json' -d '{"spec":"docs/spec.md"}'
-```
-
-**NEVER** use `nohup set-sentinel` from CLI — that only starts the orchestrator without the sentinel poll loop.
-
-### Comparing runs for divergence
-
-After two runs of the same spec, compare their structural similarity:
-```bash
-./bin/set-compare minishop-run-20260315-0930 minishop-run-20260318-1415          # markdown report
-./bin/set-compare micro-web-run-20260322-1100 micro-web-run-20260325-0845 --json # JSON output
-./bin/set-compare run-a run-b --output docs/comparison.md # save to file
-```
-
-Metrics: route coverage, schema equivalence, dependencies, functional categories, template compliance, convention compliance, E2E test results. Score 0-100 with verdict.
-
-## Web Dashboard E2E Tests
-
-The web dashboard (`web/`) has Playwright E2E tests that verify the UI renders API data correctly. Tests run against a **live server** with a **real project** — no mocks.
-
-### Running
-
-```bash
-cd web/
-
-# Prerequisites: set-orch-core running, project with completed orchestration
-E2E_PROJECT=minishop-run-20260315-0930 pnpm test:e2e
-
-# View HTML report (screenshots on failure, step-by-step trace)
-pnpm test:e2e:report
-
-# Single test file
-E2E_PROJECT=minishop-run-20260315-0930 npx playwright test changes-data
-
-# Debug with visible browser
-E2E_PROJECT=minishop-run-20260315-0930 npx playwright test --headed
-```
-
-### What they test
-
-Gate icons, token values, status colors, session counts, duration calculation, phase grouping, chart rendering, log display, tab navigation, action buttons — every tab of the dashboard. Tests fetch API data first, then assert the UI matches. See `web/tests/e2e/README.md` for details.
-
-### After refactoring the web UI
-
-Always run the E2E suite to verify nothing broke. The HTML report (`pnpm test:e2e:report`) shows exactly which assertions failed with screenshots.
+**The one rule that stays resident, because breaking it costs a whole run:** NEVER
+initialize an E2E run by hand. Use `tests/e2e/runners/*.sh`. If you must init manually,
+`--project-type web --template nextjs` is mandatory — without it no `project-type.yaml`
+is written, `NullProfile` loads, and every integration gate silently skips.
 
 ## Compact Instructions
 
@@ -809,8 +453,8 @@ When compacting context, always preserve:
 - Active worktree path (if working in a worktree)
 - Test commands and their last pass/fail results
 - Any unresolved errors or blockers
-- The cross-project channel dir (if one is active) and the last entry read on each side — see
-  the temporary cross-project agent channel section above
+- The cross-project channel dir (if one is active) and the last entry read on each side — the
+  section above names where it lives; the `cross-project-channel` skill carries the protocol
 - **The living record's path, and that it is read BACK, not summarised forward.** A compact
   keeps confidence and loses precision; the record is the only carrier that does not. If the
   summary and `docs/integration/consumer-integration.md` disagree, the file wins.
