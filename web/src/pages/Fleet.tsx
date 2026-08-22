@@ -42,7 +42,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Columns2, Columns3, Columns4, Square } from 'lucide-react'
+import { Columns2, Columns3, Columns4, FolderTree, Square } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
@@ -1988,6 +1988,16 @@ export default function Fleet() {
     The layout, the tab strip and the tile all consult this single value, so they
     cannot disagree about what is maximised.
   */
+  /*
+    Is the file view on screen for THIS project at all — docked or in the grid.
+
+    One value, because the control that opens it and the control that closes it
+    are the same button: a control whose label says "open" while the panel is
+    already open on an edge is a control that lies about the state it is in.
+  */
+  const filesShowing = !!active?.root
+    && (filesOpen.has(active.root) || docks.some(d => d.kind === PANEL_FILES && d.id === active.root))
+
   const filesBig = filesMax !== null
     && filesMax === active?.root
     && filesOpen.has(filesMax)
@@ -2554,19 +2564,6 @@ export default function Fleet() {
                 <span className="text-sm text-fg-loud">{active.name}</span>
                 <span className="text-xs text-fg-muted tabular-nums">{active.agents.length} agent</span>
                 <span className="text-xs text-fg-ghost truncate">{active.root}</span>
-                {/* The file view, reachable without a terminal — and that is the
-                    point rather than a convenience: whether a click in a
-                    terminal reaches the emulator at all depends on whether the
-                    agent's own program has taken the mouse, so the route that
-                    always works must not be behind the one that might not. */}
-                <button
-                  data-fleet-files-open={active.root}
-                  className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline shrink-0"
-                  title="Open this project's files beside the agents — the panel docks to an edge and can be moved."
-                  onClick={() => openFile(active.root, { path: '' })}
-                >
-                  files
-                </button>
                 <StartAgent
                   project={active}
                   onStarted={label => { toggleTerminal(active.name, label, true); load() }}
@@ -2603,8 +2600,41 @@ export default function Fleet() {
                     So it stays, and choosing a count also closes whatever is
                     open: a control that is visible but does nothing where you
                     clicked it is worse than one that is missing. */}
+                {/*
+                  THE FILE VIEW'S OWN CONTROL, and it lives HERE — asked for
+                  2026-08-22: *"hogy tudom csak ugy magatol megnyitni a file
+                  bögészót a projektben ha nincs link?"*.
+
+                  It used to be the word `files` in the title row, between the
+                  path and *+ start an agent*, where it read as part of a
+                  sentence rather than as a control — which is the same defect as
+                  a divider drawn in the colour of the surface behind it: present,
+                  and invisible for it.
+
+                  So it is a button in the row that already answers *what is on
+                  screen and how*, in the same visual language as the column
+                  glyphs, and it is LIT while the panel is open — so it also says
+                  whether the files are showing, which the word never did.
+
+                  Rendered outside the `agents.length > 1` guard on purpose: a
+                  project with one agent has files too.
+                */}
+                <button
+                  data-fleet-files-open={active.root}
+                  aria-pressed={filesShowing}
+                  aria-label="the project's files"
+                  title={filesShowing
+                    ? "Close the project's files"
+                    : "Open the project's files — the panel sits in the grid and can be sent to any edge"}
+                  onClick={() => (filesShowing ? closeFiles(active.root) : openFile(active.root, { path: '' }))}
+                  className={`ml-auto p-1 rounded border shrink-0 ${
+                    filesShowing
+                      ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
+                      : 'border-transparent text-fg-ghost hover:text-fg-muted'
+                  }`}
+                ><FolderTree size={14} strokeWidth={1.75} /></button>
                 {active.agents.length > 1 && (
-                  <span className="ml-auto flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
+                  <span className="flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
                     <span className="text-xs text-fg-ghost">layout</span>
                     {COLUMN_CHOICES.map(c => {
                       /* The icon SHOWS the arrangement — asked for 2026-08-19:
