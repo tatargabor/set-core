@@ -67,6 +67,24 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-68 — a review finding's `line` is rendered with an `L` prefix whatever it holds, so prose becomes a line number
+- **state:** open
+- **reported:** 2026-08-23 by this session, during the required visual check of
+  `findings-path-resolvable` on the Learnings screen
+- **measured:** dashboard, Learnings tab of a registered project, a HIGH finding rendered
+  as `File: /home/.../tests/unit/target.test.ts L(file does not exist)`. The stored value
+  is prose the reviewer put on the `LINE:` line, and `web/src/components/LearningsPanel.tsx`
+  renders `L{issue.line}` unconditionally. `_parse_review_issues`
+  (`lib/set_orch/verifier.py`) takes whatever follows `LINE:` verbatim, with no shape check.
+- **why it matters, and which way it fails:** it reads as a location. `L(file does not
+  exist)` is a claim about *where* the finding is, made out of a sentence about *whether the
+  file exists at all* — and the reassuring direction, because a reader who scrolls past it
+  sees a finding that looks located.
+- **fixed when:** a `line` that is not a line reference is not rendered as one — either the
+  parser rejects a non-numeric `LINE:` value at the point it is stored, or the row renders
+  the prefix only for a numeric value. Held by a test that feeds `line: "(file does not
+  exist)"` through the row and asserts the `L` prefix is absent.
+
 ### B-67 — the restore control runs on the first click, next to `+ start an agent`, and its count is the blast radius
 - **state:** fixed in the surface (`<sha>` — this commit); the spec delta is still open
 - **reported:** 2026-08-23 by the user, with a screenshot — *"és hiba túl közel van a
