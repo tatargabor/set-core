@@ -59,6 +59,12 @@ The LearningsPanel SHALL display review findings with recurring patterns highlig
 #### Scenario: Expanded finding
 - **WHEN** the user expands a finding row
 - **THEN** the detail shows file path, line number, fix recommendation, and attempt number
+- **AND** the file path shown SHALL be the resolved absolute path the API supplies, so it can
+  be opened from where the reader is standing
+
+#### Scenario: Expanded finding with no resolved path
+- **WHEN** the API supplies no resolved path for a finding
+- **THEN** the detail SHALL show the stored relative path rather than an empty field
 
 ### Requirement: Gate performance section
 The LearningsPanel SHALL display aggregate gate pass rates and retry costs in a table format.
