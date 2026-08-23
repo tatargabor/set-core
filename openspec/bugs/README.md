@@ -67,6 +67,31 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-67 — the restore control runs on the first click, next to `+ start an agent`, and its count is the blast radius
+- **state:** fixed in the surface (`<sha>` — this commit); the spec delta is still open
+- **reported:** 2026-08-23 by the user, with a screenshot — *"és hiba túl közel van a
+  restore gomb és krédezzen rá!!!!!"*
+- **measured:** live, on this machine, twice in one hour:
+  - the user mis-clicked the control and **21 agents started** on `wpc-pont`
+    (`journalctl --user -u set-web`: `10:44:02`–`10:44:24`, *"20 started, 15 skipped"*
+    then *"1 started, 50 skipped"*), plus 3 on `set-core` at `10:43:51`. Nothing undid
+    them except stopping each one by hand.
+  - the screenshot shows why: `+ start an agent` and
+    `⟳ Restore 21 of 53 — 2 already running, 30 cannot be resumed` sit in the SAME
+    header row, a few pixels apart. One is additive and cheap; the other starts
+    twenty-one processes that immediately begin reading context.
+  - the same shape hit this session minutes earlier: an Enter keypress submitted the
+    start form and started an agent nobody asked for.
+- **fixed when:** the control asks before acting, naming the count and the project, and
+  a first click sends NOTHING to the server. Held by
+  `web/tests/unit/fleetRestoreSurface.test.tsx` — the assertion is the absence of a
+  POST, not the presence of a dialog, because a confirmation that is drawn but not
+  obeyed looks identical from the outside. Mutation-checked: reverting to the
+  run-on-first-click behaviour fails 8 tests.
+- **still open:** the `agent-fleet-restore` spec still describes a control that acts on
+  a click, so this behaviour change needs its delta. Also unexamined: whether the same
+  one-click exposure exists on `RestoreFromEmpty` and on the column indicator.
+
 ### B-66 — `set-list` presents a prunable worktree as a live one, and so does the Worktrees page
 - **state:** open
 - **reported:** 2026-08-23 by this session, while adding worktree selection to the fleet

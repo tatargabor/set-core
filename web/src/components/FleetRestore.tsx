@@ -159,6 +159,13 @@ export function RestoreForProject({ project, onRestored }: {
   onRestored?: () => void
 }) {
   const [answer, setAnswer] = useState<RosterAnswer | null>(null)
+  // Restore is ARMED before it runs, and the arming is not a nicety.
+  // Reported by the user 2026-08-23 with a screenshot: this control sits inches
+  // from `+ start an agent` in the same header row, and one mis-aimed click
+  // started **21 agents** — a real cost, on somebody else's project, with no
+  // way to undo it except stopping each one. An act whose blast radius is a
+  // number printed on the button itself must state that number and wait.
+  const [armed, setArmed] = useState(false)
   const { busy, summary, error, run } = useRestore(project, onRestored)
 
   useEffect(() => {
@@ -190,18 +197,42 @@ export function RestoreForProject({ project, onRestored }: {
   }
 
   return (
-    <span className="inline-flex flex-col" data-fleet-restore-project={project}>
-      <button
-        onClick={run}
-        disabled={busy}
-        data-fleet-restore-offer={offer.restorable}
-        title="Starts an agent for each recorded session and resumes it. A session that is already running is left alone."
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-surface-line
-                   text-xs text-fg-strong hover:bg-surface-raised disabled:opacity-50"
-      >
-        <RotateCcw size={11} strokeWidth={1.75} />
-        {busy ? 'Restoring…' : offer.label}
-      </button>
+    <span className="inline-flex flex-col ml-4 pl-4 border-l border-surface-line"
+          data-fleet-restore-project={project}>
+      {armed ? (
+        <span className="inline-flex items-baseline gap-2" data-fleet-restore-confirm={offer.restorable}>
+          <span className="text-xs text-amber-300">
+            Start {offer.restorable} agent{offer.restorable === 1 ? '' : 's'} in {project}?
+          </span>
+          <button
+            onClick={() => { setArmed(false); run() }}
+            disabled={busy}
+            data-fleet-restore-go={offer.restorable}
+            className="px-1.5 py-0.5 rounded border border-amber-500/60 text-xs text-amber-200
+                       hover:bg-amber-500/10 disabled:opacity-50"
+          >
+            {busy ? 'Restoring…' : `yes, restore ${offer.restorable}`}
+          </button>
+          <button
+            onClick={() => setArmed(false)}
+            className="text-xs text-fg-muted hover:text-fg-strong"
+          >
+            cancel
+          </button>
+        </span>
+      ) : (
+        <button
+          onClick={() => setArmed(true)}
+          disabled={busy}
+          data-fleet-restore-offer={offer.restorable}
+          title="Asks first. Then starts an agent for each recorded session and resumes it — a session that is already running is left alone."
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-surface-line
+                     text-xs text-fg-strong hover:bg-surface-raised disabled:opacity-50"
+        >
+          <RotateCcw size={11} strokeWidth={1.75} />
+          {busy ? 'Restoring…' : offer.label}
+        </button>
+      )}
       {error && <span className="mt-1 text-xs text-red-400">{error}</span>}
       {summary && <Result summary={summary} />}
     </span>

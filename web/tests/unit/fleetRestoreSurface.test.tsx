@@ -36,7 +36,95 @@ const entry = (key: string, resumable = true) => ({
   resumable, not_resumable_reason: resumable ? null : 'no transcript on disk',
 })
 
+/**
+ * Restore takes TWO clicks now, and that is the behaviour under test.
+ *
+ * Reported by the user 2026-08-23 with a screenshot: this control sits in the
+ * same header row as `+ start an agent`, and one mis-aimed click started 21
+ * agents on a project they were not working on. Nothing undoes that except
+ * stopping each one by hand.
+ */
+async function armAndRun() {
+  const offer = await screen.findByRole('button')
+  await act(async () => { fireEvent.click(offer) })
+  const go = await screen.findByText(/yes, restore/)
+  await act(async () => { fireEvent.click(go) })
+}
+
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+describe('the confirmation — one click must not start twenty-one agents', () => {
+  /**
+   * The load-bearing one. The old control ran on the FIRST click, and the count
+   * it printed was the blast radius: "Restore 21 of 53" started twenty-one
+   * agents on somebody else's project. This asserts the absence of a POST, not
+   * the presence of a dialog — a confirmation that is drawn but not obeyed
+   * looks identical from the outside.
+   */
+  it('sends nothing to the server on the first click', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterAnswer([entry('A'), entry('B'), entry('C')]),
+      'POST /api/fleet/roster/proj/restore': {
+        project: 'proj', attempted: 3, complete: true, record_exists: true,
+        started: [outcome('started', null, 'A')], skipped: [], failed: [],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<RestoreForProject project="proj" />)
+    const offer = await screen.findByRole('button')
+    await act(async () => { fireEvent.click(offer) })
+
+    const posted = fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    expect(posted).toEqual([])
+  })
+
+  it('names the number and the project before it acts', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterAnswer([entry('A'), entry('B'), entry('C')]),
+    }))
+    render(<RestoreForProject project="proj" />)
+    const offer = await screen.findByRole('button')
+    await act(async () => { fireEvent.click(offer) })
+    // The count is what makes this a decision rather than a reflex.
+    expect(await screen.findByText(/Start 3 agents in proj\?/)).toBeTruthy()
+    expect(screen.getByText(/yes, restore 3/)).toBeTruthy()
+  })
+
+  it('cancelling leaves the offer intact and starts nothing', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterAnswer([entry('A'), entry('B')]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<RestoreForProject project="proj" />)
+    const offer = await screen.findByRole('button')
+    await act(async () => { fireEvent.click(offer) })
+    const cancel = await screen.findByText(/cancel/)
+    await act(async () => { fireEvent.click(cancel) })
+
+    expect(await screen.findByText(/Restore 2 agents/)).toBeTruthy()
+    const posted = fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    expect(posted).toEqual([])
+  })
+
+  it('the second click is the one that runs it', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterAnswer([entry('A')]),
+      'POST /api/fleet/roster/proj/restore': {
+        project: 'proj', attempted: 1, complete: true, record_exists: true,
+        started: [outcome('started', null, 'A')], skipped: [], failed: [],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<RestoreForProject project="proj" />)
+    await armAndRun()
+
+    const posted = fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    expect(posted.length).toBe(1)
+  })
+})
 
 describe('the offer', () => {
   it('states how many would be attempted before the act is taken', async () => {
@@ -77,8 +165,7 @@ describe('the result', () => {
       },
     }))
     render(<RestoreForProject project="proj" />)
-    const button = await screen.findByRole('button')
-    await act(async () => { fireEvent.click(button) })
+    await armAndRun()
 
     expect(await screen.findByText(/1 of 3 restored/)).toBeTruthy()
     expect(screen.getByText(/bound to a live process/)).toBeTruthy()
@@ -98,8 +185,7 @@ describe('the result', () => {
       },
     }))
     const { container } = render(<RestoreForProject project="proj" />)
-    const button = await screen.findByRole('button')
-    await act(async () => { fireEvent.click(button) })
+    await armAndRun()
     await waitFor(() =>
       expect(container.querySelector('[data-fleet-restore-result="partial"]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-restore-result="complete"]')).toBeNull()
@@ -122,8 +208,7 @@ describe('the result', () => {
       },
     }))
     const { container } = render(<RestoreForProject project="proj" />)
-    const button = await screen.findByRole('button')
-    await act(async () => { fireEvent.click(button) })
+    await armAndRun()
     await waitFor(() =>
       expect(container.querySelector('[data-fleet-restore-unnamed="1"]')).toBeTruthy())
     expect(screen.getByText(/no name was recorded for it/)).toBeTruthy()
@@ -142,8 +227,7 @@ describe('the result', () => {
       },
     }))
     const { container } = render(<RestoreForProject project="proj" />)
-    const button = await screen.findByRole('button')
-    await act(async () => { fireEvent.click(button) })
+    await armAndRun()
     await waitFor(() =>
       expect(container.querySelector('[data-fleet-restore-result="complete"]')).toBeTruthy())
     expect(screen.getByText('All 1 restored.')).toBeTruthy()
@@ -156,8 +240,7 @@ describe('the result', () => {
       'POST /api/fleet/roster/proj/restore': 'ERROR-503',
     }))
     render(<RestoreForProject project="proj" />)
-    const button = await screen.findByRole('button')
-    await act(async () => { fireEvent.click(button) })
+    await armAndRun()
     expect(await screen.findByText(/owner is not running/)).toBeTruthy()
     expect(screen.queryByText(/restored/)).toBeNull()
   })
