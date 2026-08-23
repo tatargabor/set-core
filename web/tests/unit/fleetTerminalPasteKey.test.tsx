@@ -140,11 +140,22 @@ describe('Ctrl+C, resolved by the selection', () => {
     expect(handler!(key({ ctrlKey: true, key: 'c' }))).toBe(false)
   })
 
-  it('leaves the interrupt one keystroke away — the selection is cleared by copying', () => {
+  it('does NOT clear the selection in the handler — that is the browser\'s to copy', () => {
+    /*
+      CHANGED with B-65, and the reason is worth more than the assertion.
+
+      This test used to demand the opposite: that the handler clear the selection
+      immediately, so the next Ctrl+C would interrupt. That was correct about the
+      GOAL and wrong about the MECHANISM — clearing it synchronously destroys the
+      selection the browser is about to copy, which is one of the reasons nothing
+      ever reached the clipboard.
+
+      The safety property it protected is intact and asserted where it now lives,
+      in `fleetTerminalCopy.test.tsx`: the selection is cleared right after the
+      copy event, so the interrupt is still one keystroke away.
+    */
     term._sel = 'a selected line'
     handler!(key({ ctrlKey: true, key: 'c' }))
-    expect(term.getSelection()).toBe('')
-    // ...so the second press interrupts, which is the whole safety argument.
-    expect(handler!(key({ ctrlKey: true, key: 'c' }))).toBe(true)
+    expect(term.getSelection()).toBe('a selected line')
   })
 })

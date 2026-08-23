@@ -233,6 +233,8 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   /** The copy act itself, installed by the effect once the emulator exists. */
   const copyRef = useRef<(() => void) | null>(null)
   const pasteNoticeTimer = useRef<number | undefined>(undefined)
+  /** Whether the browser asked us for the copy data — the proof a copy happened. */
+  const nativeCopy = useRef(false)
   /** The notice's own timer, so a second copy does not inherit the first's. */
   const copyNoticeTimer = useRef<number | undefined>(undefined)
 
@@ -341,12 +343,60 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         if (isAmbiguousCopyKey(e)) {
           const text = term.getSelection()
           if (!text) return true
-          void copySelection(text).then(announce)
-          term.clearSelection()
+          /*
+            B-65 — GET OUT OF THE WAY, exactly as the paste fix does.
+
+            Two rounds were spent making the panel perform the copy itself, and
+            both failed in the browser while passing every test: the async
+            clipboard API never answered, and the synchronous one is refused
+            wherever the browser does not consider the document eligible. The
+            reader's last report is what redirects this — *"ha egér jobb gomb
+            akkor is eltűnik a kijelölés de nem másolja"*. A path that fails for
+            the KEY and for the MOUSE alike is not a keyboard problem.
+
+            So: decline the keystroke and let the browser copy. Declining is what
+            made paste work, and it is the same mechanism here — xterm consults
+            this handler before it cancels, so returning `false` leaves the
+            browser's own copy command running on the selection that is already
+            there. Nothing is cleared here: clearing it synchronously would
+            destroy the very selection the browser is about to copy.
+          */
+          nativeCopy.current = false
+          window.setTimeout(() => {
+            if (nativeCopy.current) return
+            // The browser never asked us for the data, so its copy did not
+            // happen. Only now is a clipboard API worth trying — and whatever it
+            // answers is announced, so this path cannot end in silence.
+            void copySelection(text).then(outcome => {
+              announce(outcome ?? { ok: false, reason: 'the browser did not copy' })
+              term.clearSelection()
+            })
+          }, 400)
           return false
         }
         return true
       })
+
+      /*
+        The copy EVENT is the proof, and that is why the announcement hangs off
+        it rather than off our own call. The browser fires it to ask who owns the
+        data; answering means the copy is really happening, for `Ctrl+C` and for
+        the context menu alike. Setting the data explicitly also guarantees what
+        lands is the terminal's selection rather than whatever the DOM happens to
+        have selected.
+      */
+      const onCopy = (ev: ClipboardEvent) => {
+        const text = term.getSelection()
+        if (!text) return
+        nativeCopy.current = true
+        ev.clipboardData?.setData('text/plain', text)
+        ev.preventDefault()
+        announce({ ok: true, chars: text.length })
+        // Asynchronously, so the interrupt stays one keystroke away without
+        // taking the selection out from under the copy that is in flight.
+        window.setTimeout(() => term.clearSelection(), 0)
+      }
+      host.current.addEventListener('copy', onCopy)
       copyRef.current = () => {
         const text = term.getSelection()
         if (!text) {
@@ -579,6 +629,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         window.clearTimeout(copyNoticeTimer.current)
         window.clearTimeout(pasteNoticeTimer.current)
         el.removeEventListener('paste', onPaste, true)
+        el.removeEventListener('copy', onCopy)
         classWatch.disconnect()
         termRef.current = null
         copyRef.current = null

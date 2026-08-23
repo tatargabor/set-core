@@ -111,6 +111,43 @@ consumer's name, path, or content.
   hand here, so the last step needs a person: select with Shift held, press
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
 
+### B-65 — the panel was doing the copy itself; the browser was going to do it
+- **state:** open (fix shipped, browser confirmation outstanding)
+- **reported:** 2026-08-23 by the user, third round — *"beillesztés szöveg ment copy még nem"*,
+  and then the observation that redirected the whole thing: *"semmi nem jelenik meg es ha eger
+  jobb gomb akkor is eltunik a kijeloles de nem masolja"*.
+- **why that one sentence is the finding:** the MOUSE fails the same way. Two rounds had been
+  spent treating this as a keyboard problem — B-60 picked a key Chrome had already claimed,
+  B-64 replaced the clipboard call with a synchronous one. A path that fails for the key AND
+  for the right button is not about keys and not about which clipboard API is called. It is
+  the panel performing work the browser was going to perform.
+- **the cause, and it was in our own fix:** the handler cleared the selection SYNCHRONOUSLY,
+  in the keydown, on the reasoning that copying should leave the interrupt one keystroke away.
+  Correct about the goal, wrong about the mechanism — the browser copies the selection that
+  exists when the event finishes, so clearing it in the handler destroys the very thing being
+  copied. Both clipboard APIs were then the only remaining path, and both are refused or hang
+  wherever the browser does not consider the document eligible.
+- **the fix, and it is the same shape that made paste work:** decline the keystroke and get
+  out of the way. Nothing is cleared in the handler. A `copy` listener answers the browser's
+  request for the data with the terminal's selection, which is what PROVES a copy happened —
+  the announcement hangs off that event rather than off our own call, and it covers the
+  context menu as well as the key. The selection is cleared one macrotask later, so the
+  interrupt is still one keystroke away. If the browser never asks within 400 ms, the
+  clipboard APIs run as a fallback and announce whatever they answer, so **silence is
+  structurally impossible** — which is the property that failed in all three rounds.
+- **measured:** 7 new tests, 5 of 5 mutants caught (synchronous clear restored, the data not
+  set, the fallback firing after a successful copy, the fallback removed entirely, a copy
+  event taken while nothing is selected). 852 web tests green, `npx tsc -b` silent.
+  One existing test had to CHANGE rather than pass — it demanded the synchronous clear — and
+  the reason is recorded in it rather than edited away.
+- **NOT verified in a browser, and it cannot be from this session:** the MCP-driven tab is
+  structurally `visibilityState: hidden`, where Chrome refuses `execCommand('copy')` outright
+  (measured: returned `false`) and stalls `writeText` (measured: 4.7 s, no answer). Whether a
+  reader's own visible tab copies is exactly the thing this session cannot press a key in.
+- **fixed when:** the reader selects with Shift, presses Ctrl+C, and PASTES THE TEXT SOMEWHERE
+  ELSE. A "copied N chars" notice is a claim about the mechanism; three rounds of this entry
+  exist because the mechanism was not the thing that was broken.
+
 ### B-64 — copying said NOTHING and cleared the selection: the async clipboard write never answers
 - **state:** open
 - **reported:** 2026-08-23 by the user, testing the B-63 fix — *"tudod mi nem megy? ha innen
