@@ -67,6 +67,41 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-69 — renaming a held agent kills the drain on its terminal, silently and then fatally
+- **state:** fixed in the working tree, NOT yet live — the running owner daemon still
+  carries the old code (see *fixed when*)
+- **reported:** 2026-08-23 by the user — renamed a terminal on the fleet screen and
+  *"since then I cannot type into it"*
+- **measured:** `journalctl --user -u set-agent-owner`, six seconds apart:
+
+  ```
+  16:12:28  fleet owner: renamed <old> to <new> (unit set-agent-<old>.scope, pid … — unchanged)
+  16:12:34  fleet owner: terminal of <old> reached EOF after 0 bytes
+  ```
+
+  Nothing had ended. `OwnerDaemon._attach_drain` installed the pty reader as
+  `loop.add_reader(fd, self._drain, agent.label, fd)`, so the label was baked in at
+  start; `AgentOwner.rename` re-keys the map, so the next read asked for a name nobody
+  held, `owner.read` raised `OwnerError`, `_drain` caught it as an empty read — and an
+  empty read is EOF, so it called `_detach_drain(fd)`. Behavioural proof against
+  `HEAD` vs the fix, same input, a rename between the attach and the read:
+  `detached: [7] | tail: b''` → `detached: [] | tail: b'after the rename'`.
+- **why it matters, and which way it fails:** twice in the reassuring direction. The
+  terminal goes SILENT rather than broken — keystrokes still reach the pty (`write` is
+  by label and the new label resolves), they simply never echo, so it reads to the
+  person as *I cannot type into it*. And an undrained pty fills after about a
+  screenful, at which point the agent process BLOCKS on its own output: a rename whose
+  entire promise is *the process is untouched* eventually stops it. `_rekey` moved
+  every label-keyed store and looked complete; the reader in the event loop is not a
+  store, which is the same shape as the fifth write path that was not a file.
+- **fixed when:** `_drain` takes the fd only and asks `AgentOwner.label_for_fd(fd)`
+  each time, and an `OwnerError` is no longer reported as EOF —
+  `tests/unit/test_fleet_ownerd.py::test_a_rename_does_not_end_the_drain`. **Live only
+  after `systemctl --user restart set-agent-owner`,** which drops every pty master this
+  owner holds: the agents keep running in their scopes but become orphans, and each one
+  costs a `recover` (stop + `--resume`) to get its terminal back. Until that restart,
+  do not rename a terminal.
+
 ### B-68 — a review finding's `line` is rendered with an `L` prefix whatever it holds, so prose becomes a line number
 - **state:** open
 - **reported:** 2026-08-23 by this session, during the required visual check of

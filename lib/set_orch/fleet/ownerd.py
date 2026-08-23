@@ -129,7 +129,9 @@ class OwnerDaemon:
         self._dropped.setdefault(agent.label, False)
         self._drained.setdefault(agent.label, 0)
         try:
-            loop.add_reader(agent.master_fd, self._drain, agent.label, agent.master_fd)
+            # The fd, and deliberately NOT the label: the callback outlives every
+            # name the agent will ever have (see `_drain`).
+            loop.add_reader(agent.master_fd, self._drain, agent.master_fd)
         except (OSError, ValueError) as exc:
             # An agent nobody drains freezes after about a screenful (see the
             # module header), so this is not a degraded mode — say so loudly.
@@ -138,11 +140,48 @@ class OwnerDaemon:
                 "its pty buffer fills", agent.label, exc,
             )
 
-    def _drain(self, label: str, fd: int) -> None:
+    def _drain(self, fd: int) -> None:
+        """One readable pty master, drained under the name it has NOW.
+
+        **Keyed by fd, and that is the bug this carries a name for.** It used to
+        take the label the agent had when the reader was installed, and a rename
+        re-keys the owner's map — so the very next read asked for a name nobody
+        held, got an `OwnerError`, and the `except` below turned that into an
+        empty read, which this method reads as EOF. Measured 2026-08-23 on a live
+        agent, six seconds after the rename:
+
+            16:12:28  fleet owner: renamed wpc-pont-… to … (pid …, unchanged)
+            16:12:34  fleet owner: terminal of wpc-pont-… reached EOF after 0 bytes
+
+        Both halves fail in the reassuring direction. The reader is REMOVED, so
+        the terminal goes silent for every viewer — a keystroke still reaches the
+        pty, it just never echoes, which reads as *I cannot type into it* rather
+        than as a broken terminal. And an undrained pty fills after about a
+        screenful, at which point the agent itself blocks (see the module
+        header): a rename, whose whole promise is that the process is untouched,
+        eventually stops it.
+
+        `label_for_fd` asks the owner, so no name is carried across a rename here
+        or anywhere downstream — `_rekey` has already moved the stores.
+        """
+        label = self.owner.label_for_fd(fd)
+        if label is None:
+            # Not EOF either: nothing is held on this fd, so there is nothing to
+            # read and nowhere to put it. Said with the fd, because there is no
+            # name left to say it with.
+            self._detach_drain(fd)
+            logger.warning(
+                "fleet owner: nothing is owned on fd %s any more; stopped draining it", fd,
+            )
+            return
         try:
             data = self.owner.read(label)
-        except OwnerError:
-            data = b""
+        except OwnerError as exc:
+            # A refusal is NOT an end-of-file, and reporting it as one is what
+            # made a rename look like a terminal that had finished.
+            self._detach_drain(fd)
+            logger.warning("fleet owner: stopped draining %s: %s", label, exc)
+            return
         if not data:
             self._detach_drain(fd)
             logger.info("fleet owner: terminal of %s reached EOF after %d bytes",

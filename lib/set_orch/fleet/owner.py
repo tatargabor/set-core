@@ -451,6 +451,20 @@ class AgentOwner:
     def owned(self) -> List[OwnedAgent]:
         return list(self._agents.values())
 
+    def label_for_fd(self, master_fd: int) -> Optional[str]:
+        """The name this owner holds `master_fd` under RIGHT NOW, or None.
+
+        The map is keyed by label and a rename re-keys it, so a label captured
+        at any earlier moment stops naming an agent the instant it is renamed —
+        while the fd goes on naming the same pty for as long as the agent lives.
+        Anything long-lived that watches a terminal must therefore ask this
+        rather than remember a name (measured 2026-08-23: the drain remembered
+        one, and a rename killed it — see `ownerd._drain`).
+        """
+        return next(
+            (a.label for a in self._agents.values() if a.master_fd == master_fd), None
+        )
+
     def population_of(self, unit_or_label: str) -> str:
         """`started-here` only while THIS owner holds the handle.
 

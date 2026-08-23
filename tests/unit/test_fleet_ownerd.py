@@ -179,12 +179,20 @@ def test_every_supported_method_has_a_handler(tmp_path):
 class _FakeOwner:
     """Enough of `AgentOwner` to drive the daemon without systemd or a pty."""
 
-    def __init__(self, chunks=()):
+    def __init__(self, chunks=(), held=None):
         self._chunks = list(chunks)
         self.agents = []
         self.stopped = []
+        #: fd -> the label this owner holds it under, and the drain must ask it
+        #: EVERY time: a rename moves the name while the fd stays put.
+        self.held = {-1: "x"} if held is None else dict(held)
+
+    def label_for_fd(self, fd):
+        return self.held.get(fd)
 
     def read(self, label, size=65536):
+        if label not in self.held.values():
+            raise OwnerError(f"no terminal owned here for {label}")
         return self._chunks.pop(0) if self._chunks else b""
 
     def owned(self):
@@ -211,14 +219,70 @@ def test_the_tail_is_bounded_and_admits_when_it_lost_its_head(tmp_path):
     daemon._dropped["x"] = False
     daemon._drained["x"] = 0
 
-    daemon._drain("x", -1)
+    daemon._drain(-1)
     assert daemon._dropped["x"] is False           # 100 bytes still fit
-    daemon._drain("x", -1)
+    daemon._drain(-1)
 
     assert len(daemon._tails["x"]) == 150          # bounded
     assert daemon._dropped["x"] is True            # and it says so
     assert daemon._drained["x"] == 200             # while the true total is kept
     assert bytes(daemon._tails["x"]).endswith(b"b" * 100)
+
+
+def test_a_rename_does_not_end_the_drain(tmp_path):
+    """MEASURED 2026-08-23 on a live agent, and it is why a renamed terminal
+    went silent.
+
+    The reader was installed with `functools`-style bound arguments carrying the
+    LABEL, so after a rename the drain asked the owner for a name the rename had
+    just removed. `owner.read` refused, the refusal was caught as an empty read,
+    and an empty read is EOF — so the reader was removed and the pty stopped
+    being drained. The log said `terminal of <old name> reached EOF after 0
+    bytes`, which is a false value twice over: nothing had ended, and 0 was the
+    freshly re-keyed counter rather than the traffic.
+
+    Both failures point the reassuring way. A viewer sees a terminal that shows
+    nothing new — a keystroke still reaches the pty, it simply never echoes, so
+    it reads as *I cannot type into it*. And an undrained pty fills after about a
+    screenful, at which point the agent BLOCKS: a rename that promises to touch
+    nothing eventually stops the process.
+    """
+    owner = _FakeOwner([b"after the rename"], held={7: "old"})
+    daemon = _daemon(tmp_path, owner=owner)
+    daemon._tails["old"] = bytearray()
+    daemon._dropped["old"] = False
+    daemon._drained["old"] = 0
+    detached = []
+    daemon._detach_drain = lambda fd: detached.append(fd)
+
+    # Exactly what a rename does: the owner re-keys its map, the daemon re-keys
+    # its stores. Nothing tells the installed reader about either.
+    owner.held[7] = "new"
+    daemon._rekey("old", "new")
+
+    daemon._drain(7)
+
+    assert detached == []                                    # the drain lives
+    assert bytes(daemon._tails["new"]) == b"after the rename"  # under the new name
+    assert daemon._drained["new"] == 16
+    assert "old" not in daemon._tails
+
+
+def test_a_drain_on_an_fd_nobody_holds_is_not_reported_as_eof(tmp_path):
+    """The other half of the same defect: a refusal read as an ending.
+
+    `_detach_drain` is still right here — there is nothing to read and nowhere to
+    put it — but calling it EOF told a reader the terminal had finished when the
+    truth was that the daemon had lost track of it.
+    """
+    daemon = _daemon(tmp_path, owner=_FakeOwner([b"never read"], held={}))
+    detached = []
+    daemon._detach_drain = lambda fd: detached.append(fd)
+
+    daemon._drain(7)
+
+    assert detached == [7]
+    assert daemon._tails == {}          # nothing was invented under a guessed name
 
 
 def test_the_tail_answer_reports_truncation_it_caused_itself(tmp_path):
