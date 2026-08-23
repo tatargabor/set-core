@@ -43,9 +43,9 @@
 
 ## 5. Verification that a passing suite cannot give
 
-- [ ] 5.1 **STILL OPEN — the browser could not be reached: the endpoint needs a `set-web` restart, which the user declined for now (it kills a running sentinel).** Look at it in the browser, on a live agent terminal: paste a real screenshot with the real key and watch the path arrive. A structural count proves the mechanism ran, not that the result is right [REQ: a-pasted-image-reaches-the-agent-as-a-path-it-can-open]
-- [ ] 5.2 Drive it with the key a reader has, not a synthetic `ClipboardEvent` — the defect this whole change came from was measured by a synthetic paste that the reader could never have produced [REQ: a-pasted-image-reaches-the-agent-as-a-path-it-can-open]
-- [ ] 5.3 Trigger a real refusal (oversize) in the browser and read the message on screen [REQ: a-failed-paste-is-stated-never-silent]
+- [x] 5.1 **VERIFIED 2026-08-23 in Chrome, after the `set-web` restart:** a real 64x64 PNG on the SYSTEM clipboard, pasted with a real Ctrl+V into a live agent terminal — the path appeared in the agent's prompt, and the stored file's sha256 equals the clipboard image's, byte for byte. Look at it in the browser, on a live agent terminal: paste a real screenshot with the real key and watch the path arrive. A structural count proves the mechanism ran, not that the result is right [REQ: a-pasted-image-reaches-the-agent-as-a-path-it-can-open]
+- [x] 5.2 Drive it with the key a reader has, not a synthetic `ClipboardEvent` — the defect this whole change came from was measured by a synthetic paste that the reader could never have produced [REQ: a-pasted-image-reaches-the-agent-as-a-path-it-can-open]
+- [x] 5.3 **VERIFIED 2026-08-23:** a 9 445 104-byte PNG on the system clipboard, pasted with a real Ctrl+V — the header read `image not sent: the image is 9445104 bytes and the limit is 8388608 bytes`, and nothing reached the pty. Trigger a real refusal (oversize) in the browser and read the message on screen [REQ: a-failed-paste-is-stated-never-silent]
 - [x] 5.4 `npx tsc -b` in `web/` (`--noEmit` is blind here), the full web unit suite, and the python set-diff baseline from `CLAUDE.md` with the three import roots and the leak assertion [REQ: pasted-content-is-stored-outside-every-project-tree]
 - [x] 5.5 If the browser cannot be reached, tasks 5.1–5.3 stay OPEN and say so in the commit — an unverifiable screen is a known unknown [REQ: a-failed-paste-is-stated-never-silent]
 
