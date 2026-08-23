@@ -225,7 +225,7 @@ function ReviewFindings({ entries }: { entries: ReviewFindingEntry[] }) {
   )
 }
 
-function FindingRow({ issue }: { issue: { severity: string; summary: string; file?: string; line?: string; fix?: string; change: string; attempt: number } }) {
+export function FindingRow({ issue }: { issue: { severity: string; summary: string; file?: string; file_abs?: string; line?: string; fix?: string; change: string; attempt: number } }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -243,9 +243,12 @@ function FindingRow({ issue }: { issue: { severity: string; summary: string; fil
       </button>
       {expanded && (
         <div className="px-3 pb-2 text-sm space-y-1">
-          {issue.file && (
+          {(issue.file_abs || issue.file) && (
             <div className="text-fg-faint">
-              File: <span className="text-fg-muted">{issue.file}</span>
+              {/* Absolute when the server could resolve it — a relative path is not
+                  openable from wherever the reader happens to be. Falls back to the
+                  stored value rather than showing an empty field. */}
+              File: <span className="text-fg-muted break-all">{issue.file_abs || issue.file}</span>
               {issue.line && <span> L{issue.line}</span>}
             </div>
           )}

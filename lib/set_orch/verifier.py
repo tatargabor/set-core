@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any
 
 from .events import EventBus
+from .finding_paths import BASE_FIELD as _FP_BASE_FIELD
+from .finding_paths import BASE_REPO_ROOT as _FP_BASE_REPO_ROOT
 from .config import DIRECTIVE_DEFAULTS
 from .notifications import send_notification
 from .process import check_pid
@@ -246,6 +248,10 @@ def _append_review_finding(findings_path: str, change_name: str,
         "change": change_name,
         "timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
         "attempt": attempt,
+        # What the issue paths below resolve against. Symbolic, never a literal root:
+        # an absolute root would go stale on clone and is what a committed artifact must
+        # not carry. See set_orch.finding_paths.
+        _FP_BASE_FIELD: _FP_BASE_REPO_ROOT,
         "issue_count": len(issues),
         "critical_count": sum(1 for i in issues if i["severity"] == "CRITICAL"),
         "high_count": sum(1 for i in issues if i["severity"] == "HIGH"),
@@ -646,6 +652,12 @@ def _capture_retry_diff(wt_path: str) -> str | None:
 
 # ─── Review Findings MD (per-change, committed to branch) ─────────
 
+#: Stated once per file so a reader can resolve the relative paths below it. Symbolic on
+#: purpose — this file is committed, so it must carry no absolute local path.
+_REVIEW_FINDINGS_MD_BASE_NOTE = (
+    "<!-- File paths below are relative to the repository root. -->"
+)
+
 
 def _review_findings_md_path(wt_path: str) -> str:
     """Return path to the review findings MD file in the worktree."""
@@ -742,6 +754,10 @@ def _write_review_findings_md(
     # Header if file doesn't exist yet
     if not os.path.isfile(md_path) or os.path.getsize(md_path) == 0:
         lines.append(f"# Review Findings: {change_name}\n")
+        # The paths below are relative, and a relative path without its base cannot be
+        # opened. This file is committed, so the base is stated symbolically — an
+        # absolute /home/<user>/... here would publish the local layout.
+        lines.append(_REVIEW_FINDINGS_MD_BASE_NOTE + "\n")
 
     lines.append(f"\n## Round {round_num} — {ts}\n")
 

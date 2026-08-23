@@ -691,13 +691,20 @@ export interface ScoreboardEntry {
 export interface ReviewFindingIssue {
   severity: string
   summary: string
+  /** As stored — relative to the repository root, and not openable on its own. */
   file?: string
+  /** Resolved by the server against the project root. Empty when there is nothing to
+   *  resolve, or when the entry declares a base the server does not know. */
+  file_abs?: string
   line?: string
   fix?: string
 }
 
 export interface ReviewFindingEntry {
   change: string
+  /** What `issues[].file` resolves against. Symbolic; absent on entries written before
+   *  the base was recorded, which means the repository root. */
+  path_base?: string
   timestamp: string
   attempt: number
   issue_count: number

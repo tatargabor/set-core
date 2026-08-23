@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import time
@@ -24,6 +25,8 @@ from .sessions import (
     _derive_session_label,
     _session_outcome,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -146,7 +149,43 @@ def _read_review_findings(
             except OSError:
                 pass
 
+    _annotate_absolute_paths(entries, project_path)
+
     return {"entries": entries, "summary": summary, "recurring_patterns": recurring}
+
+
+def _annotate_absolute_paths(entries: list, project_path: Path) -> None:
+    """Add a resolved absolute path to every issue that stores a relative one.
+
+    Mutates ``entries`` in place. The stored ``file`` value is left untouched — it is what
+    fingerprints are computed from and what the committed artifacts carry. ``file_abs`` is
+    derived per response and never persisted, which is why this join belongs here and not
+    at the point the finding was written.
+
+    An entry that declares a base this server does not know gets an empty ``file_abs``
+    rather than a path built from the project root anyway: a path resolved against the
+    wrong base still looks openable, which is worse than showing nothing.
+    """
+    from ..finding_paths import BASE_REPO_ROOT, base_of, resolve_finding_path
+
+    root = str(project_path)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        base = base_of(entry)
+        if base != BASE_REPO_ROOT:
+            logger.warning(
+                "review finding entry for change=%s declares unknown path base %r — "
+                "leaving file_abs empty rather than resolving against the project root",
+                entry.get("change", "?"), base,
+            )
+        for issue in entry.get("issues", []) or []:
+            if not isinstance(issue, dict):
+                continue
+            if base == BASE_REPO_ROOT:
+                issue["file_abs"] = resolve_finding_path(issue.get("file", ""), root)
+            else:
+                issue["file_abs"] = ""
 
 
 def _compute_gate_stats(
