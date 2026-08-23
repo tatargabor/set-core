@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import json
+import logging
 import os
 import subprocess
 import time
@@ -17,6 +18,8 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────────────
 
@@ -217,8 +220,55 @@ def _quick_status(project_path: Path) -> str:
 # ─── Worktree & activity helpers ──────────────────────────────────────
 
 
-def _list_worktrees(project_path: Path) -> list[dict]:
-    """List git worktrees for a project with loop-state enrichment."""
+def _parse_worktree_porcelain(text: str) -> list[dict]:
+    """Parse `git worktree list --porcelain` into one dict per working tree.
+
+    Carries `prunable`, which this parser used to drop. A prunable worktree is
+    one whose directory git can no longer find, so nothing can run in it — and
+    dropping the line made it parse *identically to a live one*. Measured
+    2026-08-23 in this repository: four worktrees listed, three of them prunable,
+    and every surface reading this function presented all four as live.
+
+    `is_main` comes from position, not from comparing paths: git always emits the
+    main working tree first. Deriving it by comparing against a project root
+    would be a second definition of the same fact, and the two would drift the
+    first time a root was a symlink.
+    """
+    worktrees: list[dict] = []
+    current: dict = {}
+    for line in text.splitlines():
+        if line.startswith("worktree "):
+            if current:
+                worktrees.append(current)
+            current = {"path": line[9:], "branch": "", "head": "", "prunable": False}
+        elif not current:
+            continue
+        elif line.startswith("HEAD "):
+            current["head"] = line[5:]
+        elif line.startswith("branch "):
+            current["branch"] = line[7:].replace("refs/heads/", "")
+        elif line == "bare":
+            current["bare"] = True
+        elif line == "detached":
+            current["detached"] = True
+        elif line == "prunable" or line.startswith("prunable "):
+            current["prunable"] = True
+            reason = line[9:].strip()
+            if reason:
+                current["prunable_reason"] = reason
+        elif line == "":
+            worktrees.append(current)
+            current = {}
+    if current:
+        worktrees.append(current)
+
+    for index, wt in enumerate(worktrees):
+        wt["is_main"] = index == 0
+    return worktrees
+
+
+def _worktree_porcelain(project_path: Path) -> str:
+    """The raw porcelain listing, or an empty string when git cannot answer."""
     try:
         result = subprocess.run(
             ["git", "worktree", "list", "--porcelain"],
@@ -227,29 +277,38 @@ def _list_worktrees(project_path: Path) -> list[dict]:
             text=True,
             timeout=5,
         )
-        if result.returncode != 0:
-            return []
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return []
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        logger.warning("worktree list failed for %s: %s", project_path, type(exc).__name__)
+        return ""
+    if result.returncode != 0:
+        logger.warning("worktree list returned %s for %s", result.returncode, project_path)
+        return ""
+    return result.stdout
 
-    worktrees = []
-    current: dict = {}
-    for line in result.stdout.splitlines():
-        if line.startswith("worktree "):
-            if current:
-                worktrees.append(current)
-            current = {"path": line[9:], "branch": "", "head": ""}
-        elif line.startswith("HEAD "):
-            current["head"] = line[5:]
-        elif line.startswith("branch "):
-            current["branch"] = line[7:].replace("refs/heads/", "")
-        elif line == "bare":
-            current["bare"] = True
-        elif line == "" and current:
-            worktrees.append(current)
-            current = {}
-    if current:
-        worktrees.append(current)
+
+def list_worktree_locations(project_path: Path) -> list[dict]:
+    """The working trees of one repository — identity only, no filesystem reads.
+
+    This is what the start guard and the start form both ask, so that what the
+    screen offers and what the endpoint accepts are the same list rather than two
+    definitions of it. Deliberately does NOT filter prunable entries: a filter
+    downstream of a source looks exactly like a source that returned nothing, and
+    the caller that shows the list wants to be able to say *why* one is missing.
+    """
+    return [
+        {
+            "path": wt["path"],
+            "branch": wt.get("branch", ""),
+            "is_main": bool(wt.get("is_main")),
+            "prunable": bool(wt.get("prunable")),
+        }
+        for wt in _parse_worktree_porcelain(_worktree_porcelain(project_path))
+    ]
+
+
+def _list_worktrees(project_path: Path) -> list[dict]:
+    """List git worktrees for a project with loop-state enrichment."""
+    worktrees = _parse_worktree_porcelain(_worktree_porcelain(project_path))
 
     # Enrich with loop-state
     for wt in worktrees:

@@ -67,6 +67,29 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-66 — `set-list` presents a prunable worktree as a live one, and so does the Worktrees page
+- **state:** open
+- **reported:** 2026-08-23 by this session, while adding worktree selection to the fleet
+  start form (`fleet-start-agent-in-worktree`).
+- **measured:** in this repository, same moment:
+  - `git worktree list --porcelain` returns **four** entries, and **three** carry
+    `prunable gitdir file points to non-existent location` — their directories no
+    longer exist.
+  - `set-list` prints all four under "Worktrees for ..." with a `Path:` line each,
+    with nothing distinguishing the three that are gone.
+  - the dashboard's Worktrees page reads `_list_worktrees`, which parsed the
+    `worktree`, `HEAD`, `branch` and `bare` lines and **dropped `prunable`** — so a
+    vanished worktree parsed identically to a live one.
+- **fixed when:** `set-list` marks or omits a prunable entry, and the Worktrees page
+  shows it as prunable rather than as live. The parser half is already done
+  (`_list_worktrees` now carries `prunable` and `is_main`, with
+  `tests/unit/test_worktree_locations.py` holding it); what is open is the two
+  surfaces that still render every entry the same way.
+- **note:** the fleet start form and its guard already refuse prunable locations, so
+  the *startable* path is covered. This entry is about the two surfaces that only
+  DISPLAY — which is the false-value class: a value the system no longer stands
+  behind, shown next to ones it does.
+
 ### B-60 — nothing can be copied out of a terminal: there is no clipboard path, and mouse tracking eats the selection
 - **state:** open
 - **reported:** 2026-08-22 by the user — *"copy-pase mintha nem mene a terminal

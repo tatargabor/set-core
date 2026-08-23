@@ -63,6 +63,10 @@ import type { LabelMemory } from '../lib/fleetTerminal'
 import { buildActs, speakerLabel, speakerOf } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
 import { tally } from '../lib/fleetAttention'
+import {
+  defaultLocation, fetchStartLocations, locationLabel, offerable, selectorWorthShowing,
+} from '../lib/fleetStartLocations'
+import type { StartLocation } from '../lib/fleetStartLocations'
 import { blockUnexpectedFrom, declaredStanding, instructability, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
@@ -1276,6 +1280,9 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [locations, setLocations] = useState<StartLocation[] | null>(null)
+  const [locationsFailed, setLocationsFailed] = useState(false)
+  const [cwd, setCwd] = useState(project.root)
 
   useEffect(() => {
     let cancelled = false
@@ -1285,6 +1292,28 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
       .catch(e => { if (!cancelled) setOwner({ available: false, reason: String(e?.message ?? e) }) })
     return () => { cancelled = true }
   }, [])
+
+  // Asked when the form opens, not on every poll: a `git worktree list` per
+  // project on the fleet's polling path would be paid by every reader for a
+  // control almost nobody has open.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetchStartLocations(project.name).then(answer => {
+      if (cancelled) return
+      if (answer === null) {
+        // Not an empty list — that is the value that reads as "no worktrees".
+        setLocationsFailed(true)
+        setLocations(null)
+        setCwd(project.root)
+        return
+      }
+      setLocationsFailed(false)
+      setLocations(answer.locations)
+      setCwd(defaultLocation(answer.locations, answer.root || project.root))
+    })
+    return () => { cancelled = true }
+  }, [open, project.name, project.root])
 
   const suggest = useCallback(() => {
     const stamp = new Date().toTimeString().slice(0, 5).replace(':', '')
@@ -1329,7 +1358,7 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
         fetch('/api/fleet/agents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label: name, cwd: project.root }),
+          body: JSON.stringify({ label: name, cwd: cwd || project.root }),
         })
           .then(async r => {
             if (!r.ok) {
@@ -1353,13 +1382,32 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
         aria-label="name for the agent to start"
         className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-48"
       />
+      {locations && selectorWorthShowing(locations) && (
+        <select
+          data-fleet-start="location"
+          value={cwd}
+          onChange={e => setCwd(e.target.value)}
+          aria-label="working tree to start the agent in"
+          title={cwd}
+          className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong max-w-[14rem]"
+        >
+          {offerable(locations).map(loc => (
+            <option key={loc.path} value={loc.path}>{locationLabel(loc)}</option>
+          ))}
+        </select>
+      )}
       <button type="submit" disabled={busy} className="text-xs text-sky-300 hover:underline disabled:opacity-50">
         {busy ? 'starting…' : 'start'}
       </button>
       <button type="button" onClick={() => setOpen(false)} className="text-xs text-fg-muted hover:text-fg-strong">
         cancel
       </button>
-      {error && <span className="text-xs text-red-400" title={error}>nem indult el: {error}</span>}
+      {locationsFailed && (
+        <span data-fleet-start="locations-unread" className="text-xs text-amber-400">
+          worktrees could not be read — starting in the project root
+        </span>
+      )}
+      {error && <span className="text-xs text-red-400" title={error}>did not start: {error}</span>}
     </form>
   )
 }

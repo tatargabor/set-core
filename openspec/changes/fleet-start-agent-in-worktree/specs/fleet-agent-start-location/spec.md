@@ -32,8 +32,8 @@ whether git reports it `prunable`.
 - **THEN** the entry is present in the answer and carries `prunable: true`
 
 #### Scenario: A project that is not known is refused
-- **WHEN** startable locations are requested for a directory that is not a project this screen knows
-- **THEN** the request is refused with a 400 naming the directory, and no list is returned
+- **WHEN** startable locations are requested for a project name this screen does not list
+- **THEN** the request is refused with a 404 naming it, and no list is returned
 
 ### Requirement: A prunable worktree is never offered and never accepted
 A worktree git reports as `prunable` no longer has a working directory, so an agent cannot

@@ -33,6 +33,8 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -56,7 +58,7 @@ from ..fleet.layout import LayoutConflict
 from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
 )
-from .helpers import _load_projects
+from .helpers import _load_projects, list_worktree_locations
 
 logger = logging.getLogger(__name__)
 
@@ -673,6 +675,122 @@ def _known_roots() -> set:
     return roots
 
 
+#: Why a start was refused, in the words the caller sees. Keyed by the verdict
+#: `_start_location_verdict` returns, so the reason class that is logged and the
+#: sentence that is shown cannot drift apart.
+_START_REFUSALS = {
+    "unknown": "{cwd} is not a project this screen knows, nor a worktree of one; "
+               "register it first",
+    "prunable": "{cwd} is a worktree git reports as prunable — its directory is gone, "
+                "so nothing can run there",
+}
+
+
+def _worktree_owner_root(cwd: str) -> Optional[str]:
+    """The repository whose worktree list could contain `cwd`, in one git call.
+
+    A worktree's `.git` is a file pointing at the main repository, and
+    `--git-common-dir` resolves it. Asking here — rather than running
+    `git worktree list` in each of the roots until one matches — keeps the start
+    path O(1) instead of O(projects); measured 2026-08-19 the screen serves 49.
+
+    Returns None when `cwd` is not inside a git repository at all. This does NOT
+    decide anything: the answer is only used to pick which root's worktree list
+    to consult, and membership in that list is what actually grants a start.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=cwd, capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        logger.warning("fleet api: git could not be asked about %s: %s", cwd, type(exc).__name__)
+        return None
+    if result.returncode != 0:
+        return None
+    common = result.stdout.strip()
+    if not common:
+        return None
+    # `<root>/.git` for an ordinary checkout; a bare repository answers with the
+    # repository directory itself, whose parent is not a working tree — such a
+    # root simply will not be in `_known_roots()`, which refuses it correctly.
+    root = os.path.dirname(common) if os.path.basename(common) == ".git" else common
+    return os.path.realpath(root)
+
+
+def _start_location_verdict(cwd: str) -> tuple:
+    """Whether an agent may be started in `cwd`, and which rule decided it.
+
+    Two rules, and the second is deliberately not a prefix test:
+
+      - `cwd` IS a known project root — unchanged from before this function existed.
+      - `cwd` is a non-prunable worktree that `git worktree list` reports for one
+        of those roots.
+
+    Accepting anything *under* a known root would read as a small loosening and is
+    not one: it would make `node_modules` a place to run an agent, and it would
+    stop matching what the start form offers. It would also be too narrow at the
+    same time — `set-new` puts worktrees in `../<project>-<id>/`, outside the root.
+    Membership in an enumerated list, never a prefix.
+
+    Returns `(allowed, reason)` where reason is `root`, `worktree`, `prunable` or
+    `unknown`. The reason is returned rather than logged here so that the caller
+    logs one line for the decision it actually took.
+    """
+    roots = _known_roots()
+    if cwd in roots:
+        return True, "root"
+    owner_root = _worktree_owner_root(cwd)
+    if owner_root is None or owner_root not in roots:
+        return False, "unknown"
+    for location in list_worktree_locations(Path(owner_root)):
+        if os.path.realpath(location["path"]) != cwd:
+            continue
+        if location["prunable"]:
+            return False, "prunable"
+        return True, "worktree"
+    # Inside a known repository, but not one of its working trees — an ordinary
+    # subdirectory. Refused, and this is the case a prefix test would have let in.
+    return False, "unknown"
+
+
+@router.get("/api/fleet/projects/{name}/worktrees")
+def fleet_project_worktrees(name: str) -> Dict[str, Any]:
+    """Where an agent may be started for one project: its checkout and worktrees.
+
+    The start form asks this when it opens, and the start guard resolves the same
+    list at request time. Two readers, one source — the screen cannot offer a
+    location the endpoint would refuse.
+
+    Prunable entries are RETURNED, carrying `prunable: true`, rather than filtered
+    out here. The caller that renders the list wants to be able to say why one is
+    missing, and a filter downstream of a source is indistinguishable from a
+    source that found nothing.
+    """
+    target = None
+    for project in discover_projects(discover_agents(include_oneshot=False),
+                                     registered=_safe_registry(),
+                                     messaging=_safe_messaging()):
+        if project.name == name:
+            target = project
+            break
+    if target is None or not target.root:
+        raise HTTPException(status_code=404, detail=f"no project named {name!r} is listed")
+    root = os.path.realpath(target.root)
+    if not os.path.isdir(root):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{name} is listed but its directory is not readable",
+        )
+    locations = list_worktree_locations(Path(root))
+    if not locations:
+        # Not a git repository, or git could not answer. The project root is still
+        # a place an agent runs, so the answer is that one location rather than an
+        # empty list — an empty list would read as "nowhere to start".
+        locations = [{"path": root, "branch": "", "is_main": True, "prunable": False}]
+    return {"project": name, "root": root, "locations": locations}
+
+
 @router.get("/api/fleet/owner")
 def fleet_owner() -> Dict[str, Any]:
     """Whether an agent can be started at all, and if not, what to run.
@@ -705,11 +823,10 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
     cwd = os.path.realpath(os.path.expanduser(body.cwd))
     if not os.path.isdir(cwd):
         raise HTTPException(status_code=400, detail=f"no such directory: {body.cwd}")
-    if cwd not in _known_roots():
-        raise HTTPException(
-            status_code=400,
-            detail=f"{cwd} is not a project this screen knows; register it first",
-        )
+    allowed, why = _start_location_verdict(cwd)
+    if not allowed:
+        logger.info("fleet api: refused a start in %s (%s)", cwd, why)
+        raise HTTPException(status_code=400, detail=_START_REFUSALS[why].format(cwd=cwd))
     try:
         agent = OwnerClient().start(
             label=body.label, cwd=cwd, rows=body.rows, cols=body.cols,
@@ -721,7 +838,10 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
         # The owner refused — a label already held, a scope already running. A
         # refusal is the caller's answer, not a server fault.
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    logger.info("fleet api: started agent %s in %s (pid %s)", agent["label"], cwd, agent.get("pid"))
+    logger.info(
+        "fleet api: started agent %s in %s (%s, pid %s)",
+        agent["label"], cwd, why, agent.get("pid"),
+    )
     return agent
 
 
