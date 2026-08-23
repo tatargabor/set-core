@@ -111,6 +111,34 @@ consumer's name, path, or content.
   hand here, so the last step needs a person: select with Shift held, press
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
 
+### B-64 — copying said NOTHING and cleared the selection: the async clipboard write never answers
+- **state:** open
+- **reported:** 2026-08-23 by the user, testing the B-63 fix — *"tudod mi nem megy? ha innen
+  ctrl-c"*, and then the detail that locates it exactly: *"1 és eltűnik a kijelölés"* — no
+  message in the header at all, and the selection gone.
+- **measured:** those two observations together leave one candidate, and that is why the
+  report was worth more than a stack trace. **The selection vanishing proves the handler
+  RAN** — `term.clearSelection()` is only called on the copy branch. **The silence proves
+  the write never answered** — every settled outcome, success or refusal, renders a notice.
+  So the fault is in `navigator.clipboard.writeText`, not in the key handling.
+  Corroborating, from this session: the same call did not return in **4.7 s** from a tab
+  whose `visibilityState` was `hidden` (`clipboard-write: granted`, `hasFocus: true`), and
+  the B-60 commit had already recorded a **45 s** non-return. That measurement alone could
+  not have decided it — a hidden tab is a documented reason for Chrome to stall — which is
+  why the reader's observation is the evidence and mine is only the corroboration.
+- **why the existing 2 s race did not save it:** it turns a hang into a *reported* failure,
+  which is the right thing and still leaves the reader unable to copy. A guard that converts
+  silence into a message is not a repair for the thing that was silent.
+- **the fix, and its shape:** the SYNCHRONOUS `document.execCommand('copy')` runs FIRST,
+  inside the keystroke's own transient activation; the async API stays only as a fallback.
+  Order is the whole fix — a fallback that runs second cannot rescue a call that never
+  settles. Focus is restored to whatever held it, because a copy that moved the keyboard out
+  of the terminal would be its own defect.
+- **fixed when:** the reader selects with Shift, presses Ctrl+C, and PASTES THE TEXT
+  SOMEWHERE ELSE. Nothing short of the paste proves it — a header saying "copied" is a claim
+  about the mechanism, and this whole entry exists because the mechanism reported nothing
+  while the result was also absent.
+
 ### B-63 — the shipped copy key cannot be pressed in Chrome: Ctrl+Shift+C is the browser's own DevTools shortcut
 - **state:** open
 - **reported:** 2026-08-23 by the user, testing the B-62 fix — *"beillesztes szoveg ment,

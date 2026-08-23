@@ -469,13 +469,64 @@ export type CopyOutcome = { ok: true; chars: number } | { ok: false; reason: str
  * did nothing is the false-absence shape: the reader pastes the PREVIOUS
  * clipboard content somewhere and finds out much later.
  */
+/**
+ * Put text on the clipboard SYNCHRONOUSLY, inside the gesture that asked for it.
+ *
+ * This exists because the asynchronous clipboard API is the thing that fails
+ * here. Measured twice: `navigator.clipboard.writeText` called from this panel
+ * did not return in 45 s once, and did not return in 4.7 s on a second occasion
+ * — and a promise that never settles announces nothing, so the screen sits
+ * silent while the reader believes they have copied something.
+ *
+ * Reported by the reader on 2026-08-23 in the shape that identifies it exactly:
+ * *"1 és eltűnik a kijelölés"* — no message at all, and the selection gone. The
+ * selection vanishing proves the handler RAN; the silence proves the write never
+ * answered. Those two facts together leave only the clipboard call.
+ *
+ * `execCommand('copy')` is deprecated and it is also the one that works here: it
+ * is synchronous, so it cannot hang, and it needs the transient activation of
+ * the keystroke rather than the browser's judgement about whether the document
+ * is focused — which is the condition that was failing. Focus is restored to
+ * whatever had it, because a copy that silently moved the keyboard out of the
+ * terminal would be its own defect.
+ */
+export function copySynchronously(text: string, doc: Document = document): boolean {
+  if (!text) return false
+  const previous = doc.activeElement as HTMLElement | null
+  const holder = doc.createElement('textarea')
+  holder.value = text
+  holder.setAttribute('readonly', '')
+  holder.style.cssText =
+    'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;'
+  doc.body.appendChild(holder)
+  try {
+    holder.select()
+    holder.setSelectionRange(0, text.length)
+    return doc.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    holder.remove()
+    previous?.focus?.()
+  }
+}
+
 export async function copySelection(
   text: string,
   write: (t: string) => Promise<void> = t => navigator.clipboard.writeText(t),
   timeoutMs = CLIPBOARD_TIMEOUT_MS,
   later: (fn: () => void, ms: number) => unknown = (fn, ms) => setTimeout(fn, ms),
+  sync: (t: string) => boolean = copySynchronously,
 ): Promise<CopyOutcome> {
   if (!text) return null
+  /*
+    The synchronous path FIRST, and the async API only as a fallback. That order
+    is the fix (B-64): the async write is what hangs, and a fallback that runs
+    first is not a fallback. `sync` is injectable so a test can force each branch
+    — without that, whichever path the test environment happens to support would
+    be the only one ever measured.
+  */
+  if (sync(text)) return { ok: true, chars: text.length }
   try {
     // A clipboard write that NEVER SETTLES is the worst of the three outcomes,
     // and it is not hypothetical: measured 2026-08-22, `writeText` called from a

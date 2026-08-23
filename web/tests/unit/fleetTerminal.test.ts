@@ -18,6 +18,7 @@ import {
   FOREIGN_REASON,
   copySelection,
   isAmbiguousCopyKey,
+  copySynchronously,
   isCopyRequest,
   pastedImage,
   isPasteRequest,
@@ -310,6 +311,87 @@ describe('copying out of a terminal', () => {
       // Nothing selected is not a failure and must not be announced as one.
       copySelection('', async () => {}).then(o => expect(o).toBeNull()),
     ])
+  })
+
+  /*
+    B-64 — the ORDER is the fix, so the order is what is asserted.
+
+    Reported by the reader on 2026-08-23: pressing Ctrl+C on a selection said
+    nothing at all and cleared the selection. Those two facts together locate the
+    fault exactly — the handler ran, and the clipboard write never answered. A
+    fallback that runs second cannot rescue a call that never settles, so the
+    synchronous write has to be the FIRST path, not the safety net.
+  */
+  it('uses the synchronous write first, and never reaches the async one', async () => {
+    let asyncCalled = false
+    const outcome = await copySelection(
+      'copied by the gesture',
+      async () => { asyncCalled = true },
+      5,
+      (fn, ms) => setTimeout(fn, ms),
+      () => true,
+    )
+    expect(outcome).toEqual({ ok: true, chars: 21 })
+    expect(asyncCalled).toBe(false)
+  })
+
+  it('falls back to the async write when the synchronous one is refused', async () => {
+    const outcome = await copySelection('x', async () => {}, 5, (fn, ms) => setTimeout(fn, ms), () => false)
+    expect(outcome).toEqual({ ok: true, chars: 1 })
+  })
+
+  it('a synchronous write that a browser refuses is reported, not assumed', () => {
+    // `execCommand` is absent under jsdom, so this also proves the helper answers
+    // `false` rather than throwing when the browser has no such command at all —
+    // which is the case in which the fallback has to take over.
+    expect(copySynchronously('anything')).toBe(false)
+    expect(copySynchronously('')).toBe(false)
+  })
+
+  /*
+    jsdom has no `execCommand` at all, so every assertion about the synchronous
+    path taken against the REAL document measures the absence of the command
+    rather than the code — two mutations survived exactly that way before this
+    stub existed. The browser is therefore supplied, not assumed.
+  */
+  function browserWhereCopy(result: boolean | (() => never)) {
+    const restored: string[] = []
+    const holder = {
+      value: '', style: { cssText: '' },
+      setAttribute() { /* readonly */ },
+      select() { /* the holder's own selection */ },
+      setSelectionRange() { /* ditto */ },
+      remove() { restored.push('holder removed') },
+    }
+    const doc = {
+      activeElement: { focus: () => restored.push('focus restored') },
+      body: { appendChild: () => restored.push('holder attached') },
+      createElement: () => holder,
+      execCommand: () => (typeof result === 'function' ? result() : result),
+    } as unknown as Document
+    return { doc, restored, holder }
+  }
+
+  it('reports what the browser ANSWERED, not that the command was issued', () => {
+    expect(copySynchronously('x', browserWhereCopy(true).doc)).toBe(true)
+    expect(copySynchronously('x', browserWhereCopy(false).doc)).toBe(false)
+    const throwing = browserWhereCopy(() => { throw new Error('denied') })
+    expect(copySynchronously('x', throwing.doc)).toBe(false)
+  })
+
+  it('gives the keyboard back, and takes its holder away, whatever the answer', () => {
+    // A copy that left the keyboard in a hidden textarea would be its own
+    // defect: the reader's next keystroke would go nowhere near the agent.
+    for (const answer of [true, false]) {
+      const b = browserWhereCopy(answer)
+      copySynchronously('x', b.doc)
+      expect(b.restored).toContain('focus restored')
+      expect(b.restored).toContain('holder removed')
+    }
+    const thrown = browserWhereCopy(() => { throw new Error('denied') })
+    copySynchronously('x', thrown.doc)
+    expect(thrown.restored).toContain('focus restored')
+    expect(thrown.restored).toContain('holder removed')
   })
 
   it('turns a clipboard that never answers into an answer', async () => {
