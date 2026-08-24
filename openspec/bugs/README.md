@@ -102,6 +102,31 @@ consumer's name, path, or content.
   costs a `recover` (stop + `--resume`) to get its terminal back. Until that restart,
   do not rename a terminal.
 
+### B-69 — the leakscan hook blocks a LOCAL `git tag`, which is the safety net the scrub procedure requires
+
+- **state:** open
+- **reported:** 2026-08-24 by this session, while clearing the 25 findings that were
+  blocking a 112-commit push
+- **measured:** `bin/set-hook-leakscan:29` — `PUBLISH_RX` is
+  `git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*(?:push|tag)(?:\s|$)`, so it fires on any `git tag`.
+  The blocked command was `git tag leakscan-backup-20260824 HEAD && … && git filter-branch
+  --msg-filter …` — a purely local backup tag followed by the message rewrite that FIXES the
+  findings. Re-running the `filter-branch` half alone passed, which isolates the trigger to
+  the `git tag`.
+- **why it matters, and which way it fails:** it fails in the blocking direction, which is
+  the safe one for leaks and the wrong one here — it stands in front of the repair. A local
+  tag publishes nothing; only `git push --tags` (or an explicit refspec) does, and that form
+  is already caught by the `push` half. Worse, `.claude/rules/release-safety.md` tells the
+  operator to take a backup tag before a history rewrite, so the gate blocks the exact step
+  its own rule book prescribes — and the gate's message says not to work around it. A guard
+  that refuses the documented repair is how a guard earns its way into `--no-verify`, which
+  is the failure mode the leakscan's own phone-number docstring already names.
+- **fixed when:** a local `git tag` is not treated as publishing — the pattern matches only
+  tag forms that reach a remote (`git push … --tags`, `git push <remote> <tag>`), while
+  `git tag <name> <ref>`, `git tag -d`, and `git tag -l` pass. Held by a test that feeds
+  `git tag backup-x HEAD` and asserts the hook does not block, alongside the existing
+  positive control that `git push --tags` still does.
+
 ### B-68 — a review finding's `line` is rendered with an `L` prefix whatever it holds, so prose becomes a line number
 - **state:** open
 - **reported:** 2026-08-23 by this session, during the required visual check of
