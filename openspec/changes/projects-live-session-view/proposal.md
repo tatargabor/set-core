@@ -46,6 +46,15 @@ only mechanism on offer.
 - **The fleet being unreachable is a stated absence, never an empty live view.** Zero live
   sessions and "the measurement did not arrive" must not render alike.
 
+- **The same way of looking on the FLEET's project column** — the left panel where the reader
+  actually stands, whose hand-made groups, parked section and collapsed blocks are exactly the
+  places a live project can hide. It writes nothing: no project moves, no order is saved, and
+  the arrangement returns untouched. Its attention header keeps counting the whole column in
+  both ways of looking, by construction.
+- **Entries sharing a project name are merged, not overwritten.** Measured mid-change: the
+  fleet answers with one project twice (a checkout and a worktree of it), and keyed assignment
+  let the empty entry erase five live sessions on both surfaces.
+
 Not in this change: grouping, sorting controls, or any change to what
 `GET /api/projects` or `GET /api/fleet/agents` return. The screen consumes both as they are.
 
@@ -68,4 +77,6 @@ Not in this change: grouping, sorting controls, or any change to what
   pattern (model separate from render, unit-tested without a DOM).
 - `web/src/lib/api.ts` — a typed reader for the live-session counts from the existing
   `GET /api/fleet/agents` payload.
+- `web/src/components/FleetProjectColumn.tsx` and a second pure module for its view model —
+  the fleet screen's project column.
 - No Python, no API, no schema change. Read-only consumption of two endpoints that already ship.

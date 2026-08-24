@@ -5,6 +5,7 @@ import { Archive, Bot, Clock, History, TriangleAlert } from 'lucide-react'
 import { age, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
 import type { FleetProject, FleetResponse } from '../lib/fleetTypes'
+import { type ColumnMode, buildColumnView, mergeByName } from '../lib/fleetColumnView'
 import {
   type FleetArrangement,
   type FleetGroup,
@@ -451,6 +452,18 @@ function useRosterCount(project: string): number {
   return useContext(RosterCounts).get(project) ?? 0
 }
 
+/**
+ * Which group holds this project, or `null` for parked / ungrouped / orphaned.
+ *
+ * The flat list needs it for the row's own move menu: without it every row
+ * would offer to move itself into the group it is already in, which reads as a
+ * no-op that did something.
+ */
+function groupIdOf(groups: FleetGroup[], name: string): string | null {
+  for (const g of groups) if (g.order.includes(name)) return g.id
+  return null
+}
+
 interface RowProps {
   name: string
   project: FleetProject | undefined
@@ -832,6 +845,17 @@ export default function FleetProjectColumn({
   // so the block the reader arranges is the block they can see — see the note
   // where the toggle is rendered for why this cannot hide a failure.
   const [showQuietUngrouped, setShowQuietUngrouped] = useState(false)
+  /**
+   * How the column is being LOOKED at, and what has been typed into the filter.
+   *
+   * Not persisted, and not on the server. The arrangement is work the user did
+   * once and relies on; this is a way of looking at it for a minute. A
+   * remembered `live` would also mean arriving at a column that has already
+   * dropped rows before the reader chose anything — the one direction this
+   * screen refuses everywhere else.
+   */
+  const [mode, setMode] = useState<ColumnMode>('arrangement')
+  const [query, setQuery] = useState('')
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const [newGroup, setNewGroup] = useState<{ name: string; prefix: string } | null>(null)
@@ -839,11 +863,9 @@ export default function FleetProjectColumn({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inFlight = useRef(false)
 
-  const byName = useMemo(() => {
-    const m = new Map<string, FleetProject>()
-    for (const p of data.projects) m.set(p.name, p)
-    return m
-  }, [data.projects])
+  // Merged rather than assigned — see `mergeByName` for the measurement. Keyed
+  // assignment let a worktree's empty entry erase a checkout's five agents.
+  const byName = useMemo(() => mergeByName(data.projects), [data.projects])
 
   const waitingKnown = useMemo(
     () => waitingReported(data, data.projects as AttentionProject[]),
@@ -964,6 +986,16 @@ export default function FleetProjectColumn({
   const present = useMemo(() => order.filter(n => byName.has(n)), [order, byName])
   const missingCount = order.length - present.length
   const totals = useMemo(() => tallyOf(order, byName as ReadonlyMap<string, AttentionProject>), [order, byName])
+  /**
+   * The rows the CURRENT way of looking leaves. `totals` above is deliberately
+   * NOT derived from this: the attention header counts the whole order in every
+   * mode, so narrowing the list can never make the header read calm.
+   */
+  const colView = useMemo(
+    () => buildColumnView(order, byName, { mode, query }),
+    [order, byName, mode, query],
+  )
+  const colHidden = colView.hiddenNoLive + colView.hiddenByFilter
   const firstWaiting = useMemo(
     () => firstWith(order, byName as ReadonlyMap<string, AttentionProject>, [WAITING]),
     [order, byName],
@@ -1179,6 +1211,91 @@ export default function FleetProjectColumn({
         )}
       </div>
 
+      {/* ---------------------------------------------------------------- */}
+      {/* How to look at the column. A flex sibling of the scroll area, like
+          the attention header above it, so it cannot be scrolled past.
+
+          The live count sits ON the control, so the reader learns how much
+          work is live without switching to find out — and the arrangement
+          keeps its own size next to it for the same reason. */}
+      {/* ---------------------------------------------------------------- */}
+      <div data-fleet-column-controls className="shrink-0 border-b border-surface-line px-2 py-1.5 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <div className="inline-flex rounded border border-surface-line overflow-hidden text-xs shrink-0">
+            {(['arrangement', 'live'] as ColumnMode[]).map(m => {
+              const on = mode === m
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  data-fleet-column-mode={m}
+                  data-fleet-column-mode-active={on ? 'on' : undefined}
+                  onClick={() => setMode(m)}
+                  title={m === 'arrangement'
+                    ? 'Your groups, in your order.'
+                    : 'Only the projects holding a live agent session, in your order. It changes nothing — no project moves.'}
+                  className={`px-2 py-1 transition-colors ${
+                    on ? 'bg-surface-raised text-fg-loud' : 'text-fg-faint hover:text-fg-normal'
+                  } ${m === 'live' ? 'border-l border-surface-line' : ''}`}
+                >
+                  {m === 'arrangement' ? 'groups' : 'live'}
+                  <span className="ml-1 tabular-nums text-fg-muted">
+                    {m === 'arrangement' ? colView.totalPresent : colView.totalLive}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="relative flex-1 min-w-0">
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="filter…"
+              aria-label="Filter projects by name"
+              data-fleet-column-filter
+              className="w-full bg-surface-panel border border-surface-line rounded px-2 py-1 pr-6 text-xs text-fg-normal placeholder:text-fg-ghost focus:outline-none focus:border-fg-dim"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Clear the name filter"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-fg-faint hover:text-fg-normal px-1"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Compaction the reader chose is still compaction, and this is the
+            sharpest on the screen — it drops whole projects. So it says what it
+            dropped, split by cause, and one control puts the column back. The
+            attention header above is unaffected by the mode by construction. */}
+        {colHidden > 0 && (
+          <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-hidden={colHidden}>
+            {colHidden} project(s) not shown
+            <span className="text-fg-ghost">
+              {' '}({[
+                colView.hiddenNoLive > 0 ? `${colView.hiddenNoLive} with no live session` : null,
+                colView.hiddenByFilter > 0 ? `${colView.hiddenByFilter} filtered out` : null,
+              ].filter(Boolean).join(', ')})
+            </span>
+            {' · '}
+            <button
+              type="button"
+              data-fleet-column-clear
+              onClick={() => { setMode('arrangement'); setQuery('') }}
+              className="underline underline-offset-2 hover:text-fg-normal"
+            >
+              show all
+            </button>
+          </div>
+        )}
+      </div>
+
       {conflict && (
         <div data-fleet-conflict className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300 space-y-1">
           <div>Saving the arrangement was refused: {conflict}</div>
@@ -1206,6 +1323,54 @@ export default function FleetProjectColumn({
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 space-y-1 min-h-0">
+        {/* ------------------------------------------------------------ */}
+        {/* The flat list — live mode, or anything typed into the filter.
+
+            One list, in the reader's own order, with no groups and no drag: a
+            tree with most of its rows removed is not the arrangement any more,
+            and offering a drop target inside a filtered view would let a
+            reorder mean something the reader cannot see.
+
+            Every row is the SAME `ProjectRow` the tree uses, so a project reads
+            identically in both views and the states it carries — waiting,
+            unknown, a contradicting declaration — arrive here unchanged. */}
+        {/* ------------------------------------------------------------ */}
+        {colView.flat ? (
+          <div data-fleet-column-flat={mode} className="space-y-0.5">
+            {colView.rows.length === 0 ? (
+              <div data-fleet-column-empty className="px-2 py-1.5 text-xs text-fg-muted">
+                {mode === 'live' && colView.totalLive === 0
+                  ? 'No project holds a live agent session right now.'
+                  : `No project name matches \u201C${query}\u201D.`}
+                {' '}
+                <button
+                  type="button"
+                  data-fleet-column-clear
+                  onClick={() => { setMode('arrangement'); setQuery('') }}
+                  className="underline underline-offset-2 hover:text-fg-normal"
+                >
+                  show all {colView.totalPresent}
+                </button>
+              </div>
+            ) : colView.rows.map((r, i) => (
+              <ProjectRow
+                key={r.name}
+                name={r.name}
+                last={i === colView.rows.length - 1}
+                project={r.project}
+                active={selected === r.name}
+                waitingKnown={waitingKnown}
+                onSelect={() => onSelect(r.name)}
+                menuOpen={menuFor === r.name}
+                onMenu={() => setMenuFor(menuFor === r.name ? null : r.name)}
+                groups={view.groups}
+                currentGroupId={groupIdOf(view.groups, r.name)}
+                parked={parkedFound.has(r.name)}
+                onAssign={target => { setMenuFor(null); void save(assign(view, r.name, target)) }}
+              />
+            ))}
+          </div>
+        ) : (<>
         {arr === null && !loadError && (
           <div data-fleet-arrangement="loading" className="px-2 py-1.5 text-xs text-fg-muted">
             loading the arrangement…
@@ -1392,6 +1557,7 @@ export default function FleetProjectColumn({
             )}
           </div>
         )}
+        </>)}
       </div>
 
       {/* ------------------------------------------------------------ */}

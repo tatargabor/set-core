@@ -1,5 +1,6 @@
 ## IN SCOPE
 - The view control at the top of the projects screen, and what each view shows
+- The same way of looking on the FLEET's project column, where the reader actually stands
 - The name filter over the rows, in every view
 - The live-session count carried on a project row, and where it comes from
 - Rows the fleet measures as live that the project registry does not know
@@ -129,3 +130,83 @@ measured absence of live work. Failure of that measurement SHALL leave the All v
 #### Scenario: The live view does not claim calm it did not measure
 - **WHEN** the fleet measurement cannot be read and the reader selects the Live sessions view
 - **THEN** the view says the measurement is missing rather than showing an empty list
+
+### Requirement: The fleet's project column SHALL offer the same live way of looking
+The project column on the fleet screen SHALL present, above its list, a control selecting
+between the reader's **arrangement** (groups, parked, ungrouped — the default) and a **live**
+list holding only the projects with at least one live agent session, plus a name filter that
+applies to both. Selecting the live list SHALL change no stored arrangement: no project moves,
+no order is written, and returning to the arrangement SHALL restore it exactly.
+
+This is where the reader stands. The projects screen answers the same question for someone
+arriving cold; the column answers it for someone already working, whose 40-odd arranged
+projects run something in a handful of them.
+
+#### Scenario: The column opens on the arrangement
+- **WHEN** the fleet screen loads
+- **THEN** the column renders the group tree, and claims no hidden rows
+
+#### Scenario: The live list narrows the column
+- **WHEN** the reader selects the live way of looking
+- **THEN** only projects holding a live agent session are listed, in the reader's own order
+
+#### Scenario: It writes nothing
+- **WHEN** the reader switches to the live list and back
+- **THEN** no arrangement is saved and the column renders exactly as before
+
+#### Scenario: A typed filter flattens the tree
+- **WHEN** the reader types a name filter in either way of looking
+- **THEN** the matching projects are listed as one flat list rather than as a group tree with
+  most of its rows removed
+
+### Requirement: A live project SHALL reach the live list wherever the arrangement filed it
+The live list SHALL be built from the column's whole reading order — every group whether
+collapsed or open, the parked section, the ungrouped tail, and projects the arrangement places
+nowhere. A project SHALL NOT be absent from it because of where the reader filed it.
+
+A list built from what the tree happens to render would drop exactly the projects the reader
+cannot see, which is the population this way of looking exists to surface.
+
+#### Scenario: A live project inside a collapsed group
+- **WHEN** a project with a live session sits in a collapsed group
+- **THEN** it is listed in the live list
+
+#### Scenario: A live project in the parked section
+- **WHEN** a project with a live session is parked
+- **THEN** it is listed in the live list
+
+### Requirement: Narrowing the column SHALL NOT narrow its attention header
+The attention header above the column SHALL count the whole column in every way of looking —
+agents waiting for an answer, work waiting for a human, unknown states, contradicting
+declarations, and projects with no measurement at all. Narrowing the list SHALL be stated as a
+hidden count, and clearing back to the full arrangement SHALL be one action.
+
+A view that removes a row and its alarm together is the failure `ui-quality.md` names above all
+others: a tidy screen reporting calm it has not verified. The rows this view removes are
+precisely the agent-less ones — which is the population "waiting for a human" is drawn from.
+
+#### Scenario: An agent-less project awaiting a human
+- **WHEN** the live list is selected and a project with no agent is awaiting a human
+- **THEN** the project is not listed, and the header still counts it and offers the jump to it
+
+#### Scenario: The narrowing states itself
+- **WHEN** the live list or the filter removes projects from the column
+- **THEN** the column states how many are not shown, split by cause, with one control to restore
+
+### Requirement: Discovery entries sharing a project name SHALL be merged, never overwritten
+Where the fleet answer contains more than one entry for the same project name, every surface
+reading it SHALL merge their agents. The last entry SHALL NOT replace the first.
+
+MEASURED 2026-08-24 on the running dashboard: one project arrived twice — the checkout with
+five agents, and a worktree of it with none — and keyed assignment let the empty entry win. The
+projects screen showed no live sessions for it and dropped it from the live view; the fleet
+column read `live 5` while the screen's own header counted agents in 6 projects. Both failed in
+the direction that renders running work as idle.
+
+#### Scenario: Two entries, one name
+- **WHEN** the fleet answer holds two entries for one project, with 5 agents and 0
+- **THEN** the project counts 5 live sessions and appears in every live view
+
+#### Scenario: The surfaces agree
+- **WHEN** a project is named twice in the answer
+- **THEN** the per-project count and the screen's own project total do not contradict each other

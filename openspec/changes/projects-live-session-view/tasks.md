@@ -47,6 +47,35 @@
   in the live view leaves one row and says `25 not shown (20 without a live session, 5 filtered
   out) · show all`. Original 5.2 text: Open `/projects` in the browser and LOOK: the default view, the live view, a typed filter, and the hidden-row line. Say what is on screen, not that it rendered. If the browser cannot be reached, this task stays OPEN and says so [REQ: the-projects-screen-shall-offer-a-view-control-defaulting-to-the-full-listing]
 
+## 6. The same way of looking on the fleet's project column
+
+- [x] 6.1 `web/src/lib/fleetColumnView.ts` — a pure model: reading order + discovered projects +
+  `{mode, query}` becomes rows, `flat`, and the two hidden counts [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking]
+- [x] 6.2 The live list is built from the column's WHOLE reading order — collapsed groups, the
+  parked section, the ungrouped tail, the orphans [REQ: a-live-project-shall-reach-the-live-list-wherever-the-arrangement-filed-it]
+- [x] 6.3 `mergeByName` — discovery entries sharing a name merge their agents; the first entry
+  keeps its own fields [REQ: discovery-entries-sharing-a-project-name-shall-be-merged-never-overwritten]
+- [x] 6.4 The control and the filter above the column, as a flex sibling of the scroll area so
+  they cannot be scrolled past [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking]
+- [x] 6.5 The flat list reuses `ProjectRow`, without drag handles — a drop target inside a
+  filtered view would mean a reorder the reader cannot see [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking]
+- [x] 6.6 The hidden count, split by cause, and one control back to the arrangement; an empty
+  live list says why it is empty [REQ: narrowing-the-column-shall-not-narrow-its-attention-header]
+- [x] 6.7 `totals` stays derived from the whole order, never from the narrowed view [REQ: narrowing-the-column-shall-not-narrow-its-attention-header]
+- [x] 6.8 Tests: `fleetColumnView.test.ts` (13) and `fleetColumnMode.test.tsx` (9). The header
+  test was REWRITTEN after mutation N4 passed against it — it compared the header before and
+  after the switch, which a mutation breaking both readings survives. It now asserts a VALUE:
+  an agent-less project awaiting a human is dropped from the list and still counted in the
+  header [REQ: narrowing-the-column-shall-not-narrow-its-attention-header]
+- [x] 6.9 Mutation-checked: 5 targeted mutations, 4 caught first time, N4 caught only after the
+  test was fixed; restore verified green each time [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking]
+- [x] 6.10 LOOKED at it in the browser: `groups 51 | live 6` matches the screen's own header
+  ("19 agents in 6 of 52 projects") only AFTER 6.3 — before it, the column said `live 5`. The
+  live list shows six projects with no groups and `45 project(s) not shown (45 with no live
+  session) · show all`; typing `co` leaves three and says `48 project(s) not shown (45 with no
+  live session, 3 filtered out)` [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking]
+
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN the projects screen loads THEN the All view is selected and every project the endpoint returned is listed [REQ: the-projects-screen-shall-offer-a-view-control-defaulting-to-the-full-listing, scenario: the-screen-opens-on-the-full-listing]
@@ -66,3 +95,13 @@
 - [x] AC-15: WHEN the fleet measurement cannot be read THEN the screen states that live sessions are unmeasured and each row's cell shows unmeasured rather than zero [REQ: an-absent-fleet-measurement-shall-be-stated-never-rendered-as-zero, scenario: the-fleet-request-fails]
 - [x] AC-16: WHEN the fleet measurement cannot be read THEN the All view still lists every project the projects endpoint returned [REQ: an-absent-fleet-measurement-shall-be-stated-never-rendered-as-zero, scenario: the-listing-still-works-without-the-fleet]
 - [x] AC-17: WHEN the fleet measurement cannot be read and the reader selects the Live sessions view THEN the view says the measurement is missing rather than showing an empty list [REQ: an-absent-fleet-measurement-shall-be-stated-never-rendered-as-zero, scenario: the-live-view-does-not-claim-calm-it-did-not-measure]
+- [x] AC-18: WHEN the fleet screen loads THEN the column renders the group tree and claims no hidden rows [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking, scenario: the-column-opens-on-the-arrangement]
+- [x] AC-19: WHEN the reader selects the live way of looking THEN only projects holding a live agent session are listed, in the reader's own order [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking, scenario: the-live-list-narrows-the-column]
+- [x] AC-20: WHEN the reader switches to the live list and back THEN no arrangement is saved and the column renders exactly as before [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking, scenario: it-writes-nothing]
+- [x] AC-21: WHEN the reader types a name filter THEN the matches are listed flat rather than as a gutted group tree [REQ: the-fleets-project-column-shall-offer-the-same-live-way-of-looking, scenario: a-typed-filter-flattens-the-tree]
+- [x] AC-22: WHEN a project with a live session sits in a collapsed group THEN it is listed in the live list [REQ: a-live-project-shall-reach-the-live-list-wherever-the-arrangement-filed-it, scenario: a-live-project-inside-a-collapsed-group]
+- [x] AC-23: WHEN a project with a live session is parked THEN it is listed in the live list [REQ: a-live-project-shall-reach-the-live-list-wherever-the-arrangement-filed-it, scenario: a-live-project-in-the-parked-section]
+- [x] AC-24: WHEN the live list is selected and an agent-less project is awaiting a human THEN it is not listed and the header still counts it and offers the jump [REQ: narrowing-the-column-shall-not-narrow-its-attention-header, scenario: an-agent-less-project-awaiting-a-human]
+- [x] AC-25: WHEN the live list or the filter removes projects THEN the column states how many are not shown, split by cause, with one control to restore [REQ: narrowing-the-column-shall-not-narrow-its-attention-header, scenario: the-narrowing-states-itself]
+- [x] AC-26: WHEN the fleet answer holds two entries for one project, with 5 agents and 0 THEN the project counts 5 live sessions and appears in every live view [REQ: discovery-entries-sharing-a-project-name-shall-be-merged-never-overwritten, scenario: two-entries-one-name]
+- [x] AC-27: WHEN a project is named twice in the answer THEN the per-project count and the screen's own project total do not contradict each other [REQ: discovery-entries-sharing-a-project-name-shall-be-merged-never-overwritten, scenario: the-surfaces-agree]
