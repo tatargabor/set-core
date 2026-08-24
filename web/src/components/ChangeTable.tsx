@@ -147,7 +147,7 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
   // Mobile: compact expandable rows
   if (isMobile) {
     return (
-      <div className="divide-y divide-neutral-800/50">
+      <div className="divide-y divide-surface-line/50">
         {sortedChanges.map((c) => {
           const isExpanded = selected === c.name
           const hasGates = !!(c.build_result || c.test_result || c.review_result || c.smoke_result || c.e2e_result || c.spec_coverage_result)
@@ -394,7 +394,7 @@ export default function ChangeTable({ changes, project, selected, onSelect, load
     {/* Artifact modal overlay */}
     {screenshotChange && (
       <div
-        className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center"
+        className="fixed inset-0 z-40 bg-surface-page/70 flex items-center justify-center"
         onClick={() => setScreenshotChange(null)}
       >
         <div

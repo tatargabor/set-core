@@ -3,11 +3,31 @@
 /**
  * Semantic tokens — the single place a colour means something.
  *
- * Every token references a Tailwind colour rather than restating a hex value, so this file
- * is a RENAMING and not a repalette. That matters for how the migration can be checked: a
- * screenshot diff after the classes are swapped should be empty everywhere except where the
- * old code was genuinely inconsistent. If the tokens introduced new values, every screen
- * would differ and the real inconsistencies would be invisible in the noise.
+ * The tokens ONCE referenced Tailwind colours rather than restating hex values, so that the
+ * naming migration could be checked by a screenshot diff that should come out empty. That
+ * job is done, and on 2026-08-24 this file stopped being a renaming and became a repalette:
+ * the surfaces and the text ramp now carry literal One Dark values. Do not reintroduce the
+ * old claim — a screenshot diff against anything before that date differs on every screen,
+ * which is the intended outcome and not a regression.
+ *
+ * WHY the values changed, because the reason constrains any future edit: the page ground was
+ * `neutral-950` (#0a0a0a), and near-black is the shade that costs an evening reader the most.
+ * The replacement is the user's own editor palette — Zed's One Dark — taken from its theme
+ * file rather than eyeballed, so `page`/`panel`/`raised` are its `editor.background`,
+ * `panel.background` and `background`, and the top of the text ramp is its `text`.
+ *
+ * The part that gets underestimated, so it is written down: LIFTING THE GROUND COMPRESSES THE
+ * BOTTOM OF THE TEXT RAMP. Measured before the change — on the new ground the OLD `fg-faint`
+ * (neutral-500) falls from 4.18:1 to 2.96:1, under even the 3.0 needed for a UI element, and
+ * `fg-ghost` falls to 1.79:1. So the ramp moved WITH the ground: every token below `normal`
+ * was re-solved to reproduce its previous contrast (faint 4.08 vs 4.18, ghost 2.52 vs 2.53,
+ * dim 1.91 vs 1.91). The top three could not be preserved — no colour reaches 19:1 on this
+ * ground — and were spread instead, so the hierarchy survives even though the numbers drop.
+ * Every accent was re-checked and needed no change; the weakest is `status-fail` at 5.07:1.
+ *
+ * The consequence for anyone editing this block: a surface and the ramp are ONE decision. A
+ * background lifted on its own silently deletes the quiet end of the type hierarchy, and
+ * nothing fails — the text is still drawn, just no longer readable.
  *
  * Three groups, because measuring the 880 neutral and ~250 hued occurrences in the tree
  * turned up three different jobs being done by one palette:
@@ -32,22 +52,22 @@
   --color-status-warn: var(--color-amber-400);
   --color-status-stalled: var(--color-yellow-400);
   --color-status-blocked: var(--color-orange-400);
-  --color-status-planned: var(--color-neutral-400);
-  --color-status-idle: var(--color-neutral-500);
+  --color-status-planned: #a9afbc;
+  --color-status-idle: #878a98;
 
   /* ── Text: how loud, not what state ───────────────────────────────────────────────
      The five neutrals carry 880 of the tree's colour classes, and almost none of them are
      about state. Separating them is what lets the drift test say something true: after the
      migration, a bare `text-neutral-*` in a component is a finding, because either it is
      hierarchy (and has a token) or it is state (and has a different one). */
-  --color-fg-brightest: var(--color-neutral-50);
-  --color-fg-loud: var(--color-neutral-100);
-  --color-fg-strong: var(--color-neutral-200);
-  --color-fg-normal: var(--color-neutral-300);
-  --color-fg-muted: var(--color-neutral-400);
-  --color-fg-faint: var(--color-neutral-500);
-  --color-fg-ghost: var(--color-neutral-600);
-  --color-fg-dim: var(--color-neutral-700);
+  --color-fg-brightest: #f2f5f9;
+  --color-fg-loud: #e8ecf2;
+  --color-fg-strong: #dce0e5;   /* One Dark `text` */
+  --color-fg-normal: #c9cfd8;
+  --color-fg-muted: #a9afbc;    /* One Dark `text.muted` */
+  --color-fg-faint: #878a98;    /* One Dark `text.placeholder` */
+  --color-fg-ghost: #656872;
+  --color-fg-dim: #53565e;
 
   /* ── Log syntax: which category a line belongs to ─────────────────────────────────
      Deliberately its own namespace. These are the hues the log panels already use; giving
@@ -77,19 +97,22 @@
   --color-log-error: var(--color-red-400);
 
   /* ── Surfaces ─────────────────────────────────────────────────────────────────────── */
-  --color-surface-page: var(--color-neutral-950);
-  --color-surface-panel: var(--color-neutral-900);
-  --color-surface-raised: var(--color-neutral-800);
-  --color-surface-line: var(--color-neutral-800);
-  --color-surface-strong: var(--color-neutral-700);
-  --color-surface-edge: var(--color-neutral-700);
-  --color-surface-edge-soft: var(--color-neutral-600);
+  --color-surface-page: #282c33;        /* One Dark `editor.background` */
+  --color-surface-panel: #2f343e;       /* One Dark `panel.background` */
+  --color-surface-raised: #3b414d;      /* One Dark `background` */
+  --color-surface-line: #363c46;        /* One Dark `border.variant` */
+  --color-surface-strong: #464b57;      /* One Dark `border` */
+  --color-surface-edge: #464b57;
+  --color-surface-edge-soft: #565c6a;
+  /* The terminal is the one surface that stays BELOW the page, the way an editor's
+     buffer sits below its chrome. One Dark's own terminal ground, not an invention. */
+  --color-surface-terminal: #21252b;
 }
 
 body {
   margin: 0;
-  background: #0a0a0a;
-  color: #e5e5e5;
+  background: var(--color-surface-page);
+  color: var(--color-fg-strong);
   font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Monaco, Consolas, monospace;
 }
 
@@ -110,7 +133,7 @@ body {
  */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-neutral-700) transparent;
+  scrollbar-color: var(--color-surface-edge) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -146,7 +169,7 @@ body {
  *
  * Measured before adding it: ~20 000 lines of dashboard carried **12** `aria-*` attributes and
  * **9** `onKeyDown` handlers, and the browser default ring is close to invisible against
- * `#0a0a0a`. So a keyboard reader could tab through the whole surface without ever seeing where
+ * the page ground. So a keyboard reader could tab through the whole surface without ever seeing where
  * they were — not a styling gap, but the surface being unusable without a mouse.
  *
  * `:focus-visible` rather than `:focus`, so a mouse click does not leave a ring behind. The
@@ -173,7 +196,7 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--color-neutral-900);
+  background: var(--color-surface-panel);
 }
 
 /*

@@ -204,7 +204,7 @@ function DagCanvas({ layout, autoFollow, changeName }: InnerProps) {
         nodesConnectable={false}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} color="#262626" />
+        <Background gap={20} color="#363c46" />
         <Controls showInteractive={false} position="bottom-left" />
       </ReactFlow>
     </div>

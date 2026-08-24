@@ -103,7 +103,7 @@ export function IssueDetail({ project, issueId, onClose }: Props) {
 function Modal({ children, onClose }: { onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-surface-page/60" />
       <div
         className="relative w-full max-w-3xl mx-4 bg-surface-page border border-surface-line rounded-xl shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}

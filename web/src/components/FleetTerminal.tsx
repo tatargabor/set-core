@@ -258,7 +258,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         fontSize: 12,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         scrollback: 5000,
-        theme: { background: '#0b0f14', foreground: '#d7dde4' },
+        theme: { background: '#21252b', foreground: '#dce0e5' },
       })
       const fit = new FitAddon()
       term.loadAddon(fit)
@@ -978,7 +978,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
            was rejected: it keeps the floor and puts the status line below a fold
            the reader has to discover, which is the shape `ui-quality.md`
            forbids. A short terminal is honest; a truncated one is not. */
-        className="flex-[1_1_12rem] min-h-0 rounded border border-surface-edge overflow-x-auto overflow-y-hidden bg-[#0b0f14]"
+        className="flex-[1_1_12rem] min-h-0 rounded border border-surface-edge overflow-x-auto overflow-y-hidden bg-surface-terminal"
       />
     </div>
   )

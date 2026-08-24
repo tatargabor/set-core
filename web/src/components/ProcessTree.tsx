@@ -157,7 +157,7 @@ export default function ProcessTree({ project }: Props) {
       </div>
 
       {/* Process tree */}
-      <div className="rounded-lg border border-surface-line bg-surface-panel/30 divide-y divide-neutral-800/30">
+      <div className="rounded-lg border border-surface-line bg-surface-panel/30 divide-y divide-surface-line/30">
         {processes.map(node => (
           <ProcessRow key={node.pid} node={node} depth={0} project={project} onRefresh={load} />
         ))}

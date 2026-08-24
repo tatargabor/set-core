@@ -22,14 +22,14 @@ const STATUS_BAR_COLOR: Record<string, string> = {
   failed: '#ef4444',
   'verify-failed': '#ef4444',
   stalled: '#eab308',
-  pending: '#525252',
-  planned: '#404040',
+  pending: '#656872',
+  planned: '#53565e',
 }
 
 const MODEL_COLOR: Record<string, string> = {
   opus: '#3b82f6',
   sonnet: '#22c55e',
-  haiku: '#737373',
+  haiku: '#878a98',
 }
 
 const PHASE_MAP: Record<string, string> = {
@@ -237,21 +237,21 @@ export default function TokenChart({ changes, project }: Props) {
                 <XAxis
                   type="number"
                   tickFormatter={formatK}
-                  tick={{ fill: '#525252', fontSize: 12 }}
-                  axisLine={{ stroke: '#333' }}
+                  tick={{ fill: '#656872', fontSize: 12 }}
+                  axisLine={{ stroke: '#464b57' }}
                   tickLine={false}
                 />
                 <YAxis
                   type="category"
                   dataKey="shortName"
-                  tick={{ fill: '#737373', fontSize: 12 }}
+                  tick={{ fill: '#878a98', fontSize: 12 }}
                   axisLine={false}
                   tickLine={false}
                   width={140}
                 />
                 <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 6, fontSize: 12 }}
-                  labelStyle={{ color: '#aaa' }}
+                  contentStyle={{ background: '#2f343e', border: '1px solid #464b57', borderRadius: 6, fontSize: 12 }}
+                  labelStyle={{ color: '#a9afbc' }}
                   formatter={(value) => [formatK(Number(value ?? 0)), undefined]}
                   labelFormatter={(label) => {
                     const item = data.find(d => d.shortName === label)
@@ -260,7 +260,7 @@ export default function TokenChart({ changes, project }: Props) {
                 />
                 <Bar dataKey="input" stackId="tokens" name="Input" fill="#3b82f6" radius={0}>
                   {data.map((entry) => (
-                    <Cell key={entry.name} fill={STATUS_BAR_COLOR[entry.status] ?? '#525252'} fillOpacity={0.9} />
+                    <Cell key={entry.name} fill={STATUS_BAR_COLOR[entry.status] ?? '#656872'} fillOpacity={0.9} />
                   ))}
                 </Bar>
                 <Bar dataKey="output" stackId="tokens" name="Output" fill="#22c55e" radius={0} />
@@ -301,7 +301,7 @@ export default function TokenChart({ changes, project }: Props) {
                     // operators can tell opus-4-6 from opus-4-7 at a glance.
                     const family = modelFamily(call.model)
                     const modelLabel = displayModel(call.model)
-                    const modelColor = MODEL_COLOR[family] ?? '#737373'
+                    const modelColor = MODEL_COLOR[family] ?? '#878a98'
                     const iters = call.iterations ?? []
                     const hasIters = iters.length > 0
                     const isExpanded = expandedRows.has(i)

@@ -259,7 +259,7 @@ export function FollowPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-page/60"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

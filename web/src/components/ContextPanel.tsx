@@ -77,21 +77,21 @@ export default function ContextPanel({ project }: { project: string }) {
           </h3>
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 40)}>
             <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30 }}>
-              <XAxis type="number" tickFormatter={fmtK} tick={{ fill: '#a3a3a3', fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" width={150} tick={{ fill: '#a3a3a3', fontSize: 11 }} />
+              <XAxis type="number" tickFormatter={fmtK} tick={{ fill: '#a9afbc', fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={150} tick={{ fill: '#a9afbc', fontSize: 11 }} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#262626', border: '1px solid #404040', borderRadius: 6 }}
-                labelStyle={{ color: '#e5e5e5' }}
+                contentStyle={{ backgroundColor: '#2f343e', border: '1px solid #464b57', borderRadius: 6 }}
+                labelStyle={{ color: '#dce0e5' }}
                 formatter={(value: unknown, name: unknown) => [fmtK(Number(value) || 0), String(name)]}
                 labelFormatter={(_label, payload) => {
                   const entry = payload?.[0]?.payload as Record<string, unknown> | undefined
                   return String(entry?.fullName ?? _label)
                 }}
               />
-              <Legend wrapperStyle={{ fontSize: 11, color: '#a3a3a3' }} />
+              <Legend wrapperStyle={{ fontSize: 11, color: '#a9afbc' }} />
               <Bar dataKey="base" stackId="ctx" fill="#3b82f6" name="Base Context" />
               <Bar dataKey="memory" stackId="ctx" fill="#22c55e" name="Memory Injection" />
-              <Bar dataKey="prompt" stackId="ctx" fill="#737373" name="Prompt" />
+              <Bar dataKey="prompt" stackId="ctx" fill="#878a98" name="Prompt" />
               <Bar dataKey="tools" stackId="ctx" fill="#f97316" name="Tool Output" />
             </BarChart>
           </ResponsiveContainer>

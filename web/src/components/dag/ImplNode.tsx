@@ -46,9 +46,9 @@ export default function ImplNode({ data, selected }: Props) {
         selected ? 'ring-2 ring-violet-500/60' : ''
       }`}
     >
-      <Handle type="target" position={Position.Left} id="top" style={{ background: '#404040' }} />
-      <Handle type="target" position={Position.Top} id="topRetry" style={{ background: '#404040' }} />
-      <Handle type="source" position={Position.Right} style={{ background: '#404040' }} />
+      <Handle type="target" position={Position.Left} id="top" style={{ background: '#464b57' }} />
+      <Handle type="target" position={Position.Top} id="topRetry" style={{ background: '#464b57' }} />
+      <Handle type="source" position={Position.Right} style={{ background: '#464b57' }} />
       <div className="flex items-center gap-1.5">
         <span className={`text-sm text-violet-300 ${isRunning ? 'animate-pulse' : ''}`}>✎</span>
         <span className="text-xs font-medium text-fg-strong flex-1 truncate">impl</span>

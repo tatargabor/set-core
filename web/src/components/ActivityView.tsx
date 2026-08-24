@@ -41,11 +41,11 @@ const CATEGORY_COLORS: Record<string, string> = {
   'gate:rules': '#94a3b8',
   'gate:dep-install': '#475569',
   merge: '#10b981',          // emerald
-  idle: '#262626',           // very dark gray (true terminal idle)
+  idle: '#3b414d',           // the raised surface — a visibly quiet block, not the ground
   'stall-recovery': '#ef4444', // red
-  'dep-wait': '#737373',     // gray
-  'manual-wait': '#a3a3a3',  // light gray
-  sentinel: '#525252',       // dim
+  'dep-wait': '#878a98',     // gray
+  'manual-wait': '#a9afbc',  // light gray
+  sentinel: '#656872',       // dim
   // Sentinel-side LLM calls — muted cool hues to distinguish from orchestrator LLM
   'sentinel:llm:review': '#64748b',       // slate-500
   'sentinel:llm:spec_verify': '#475569',  // slate-600
@@ -70,7 +70,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'agent:tool:toolsearch': '#64748b',
   'agent:tool:multiedit': '#0891b2',
   'agent:tool:notebookedit': '#06b6d4',
-  'agent:tool:other': '#737373',
+  'agent:tool:other': '#878a98',
   'agent:overhead': '#3f3f46',     // zinc-700 — legacy fallback
   // Gap categories — each gap in the session is classified by the prompt
   // content that appears after it (review findings / failing tests / etc.)
@@ -132,8 +132,8 @@ export function getCategoryColor(cat: string): string {
   if (cat.startsWith('sentinel:llm:')) return '#475569'
   if (cat.startsWith('llm:')) return '#f59e0b'
   if (cat.startsWith('agent:subagent:')) return '#f97316' // orange — subagent dispatch
-  if (cat.startsWith('agent:tool:')) return '#737373'
-  return '#525252'
+  if (cat.startsWith('agent:tool:')) return '#878a98'
+  return '#656872'
 }
 
 export function getCategoryLabel(cat: string): string {
@@ -279,14 +279,14 @@ export function GanttTimeline({
         onMouseLeave={handleSvgMouseLeave}
       >
         {/* Time axis */}
-        <line x1={0} y1={headerHeight} x2={totalWidth} y2={headerHeight} stroke="#404040" strokeWidth={1} />
+        <line x1={0} y1={headerHeight} x2={totalWidth} y2={headerHeight} stroke="#464b57" strokeWidth={1} />
         {ticks.map((tick, i) => (
           <g key={i}>
-            <line x1={tick.x} y1={headerHeight - 4} x2={tick.x} y2={headerHeight} stroke="#525252" />
-            <text x={tick.x} y={headerHeight - 8} fill="#a3a3a3" fontSize={12} textAnchor="middle" fontFamily="monospace">
+            <line x1={tick.x} y1={headerHeight - 4} x2={tick.x} y2={headerHeight} stroke="#656872" />
+            <text x={tick.x} y={headerHeight - 8} fill="#a9afbc" fontSize={12} textAnchor="middle" fontFamily="monospace">
               {tick.label}
             </text>
-            <line x1={tick.x} y1={headerHeight} x2={tick.x} y2={totalHeight} stroke="#1a1a1a" strokeWidth={1} strokeDasharray="2,4" />
+            <line x1={tick.x} y1={headerHeight} x2={tick.x} y2={totalHeight} stroke="#363c46" strokeWidth={1} strokeDasharray="2,4" />
           </g>
         ))}
 
@@ -298,7 +298,7 @@ export function GanttTimeline({
           return (
             <g key={cat}>
               {/* Lane background — terminal stripe */}
-              <rect x={0} y={y} width={totalWidth} height={laneHeight} fill={laneIdx % 2 === 0 ? '#000000' : '#0a0a0a'} />
+              <rect x={0} y={y} width={totalWidth} height={laneHeight} fill={laneIdx % 2 === 0 ? '#21252b' : '#282c33'} />
 
               {/* Span blocks */}
               {laneSpans.map((item, si) => {
@@ -383,7 +383,7 @@ export function GanttTimeline({
       {/* Tooltip — terminal-style ASCII border */}
       {tooltip && (
         <div
-          className="fixed z-50 bg-black border border-surface-edge-soft px-3 py-2 text-xs pointer-events-none shadow-lg"
+          className="fixed z-50 bg-surface-page border border-surface-edge-soft px-3 py-2 text-xs pointer-events-none shadow-lg"
           style={{
             left: tooltip.x + 12,
             top: Math.max(8, tooltip.y - 60),
@@ -742,7 +742,7 @@ export default function ActivityView({ project, isRunning }: Props) {
   if (!project) return <div className="p-3 text-fg-faint text-sm">No project selected</div>
 
   return (
-    <div className="p-3 space-y-4 text-xs bg-black min-h-full">
+    <div className="p-3 space-y-4 text-xs bg-surface-page min-h-full">
       {/* Error state */}
       {error && (
         <div className="text-red-400 bg-red-950/30 border border-red-900 px-3 py-2">
@@ -836,7 +836,7 @@ export default function ActivityView({ project, isRunning }: Props) {
               {/* Scrollable timeline */}
               <div
                 ref={scrollRef}
-                className="flex-1 overflow-x-auto overflow-y-hidden bg-black min-w-0"
+                className="flex-1 overflow-x-auto overflow-y-hidden bg-surface-page min-w-0"
                 onWheel={handleWheel}
               >
                 <GanttTimeline

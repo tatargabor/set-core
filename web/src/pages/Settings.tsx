@@ -53,7 +53,7 @@ function Panel({ label, wide, children }: { label: string; wide?: boolean; child
   return (
     <section className={wide ? 'col-span-full' : undefined}>
       <TuiSection label={label} />
-      <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-2 divide-y divide-neutral-800/50">
+      <div className="bg-surface-panel/50 rounded-lg border border-surface-line px-4 py-2 divide-y divide-surface-line/50">
         {children}
       </div>
     </section>

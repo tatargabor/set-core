@@ -115,7 +115,7 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
   }, [])
 
   return (
-    <div className="border border-surface-edge bg-black p-3 mt-2 text-xs">
+    <div className="border border-surface-edge bg-surface-page p-3 mt-2 text-xs">
       {/* Header — ASCII bordered */}
       <div className="flex items-center gap-4 border-b border-surface-line pb-2 mb-3">
         <div className="text-fg-loud font-bold">┌─ Drilldown: {span.change || '(no change)'}</div>
@@ -172,7 +172,7 @@ export default function ActivitySessionDetail({ project, span, onClose }: Props)
                     </div>
                   ))}
                 </div>
-                <div ref={miniContainerRef} className="flex-1 overflow-hidden bg-black min-w-0">
+                <div ref={miniContainerRef} className="flex-1 overflow-hidden bg-surface-page min-w-0">
                   <GanttTimeline
                     spans={data.sub_spans as unknown as GanttSpan[]}
                     categories={categories}

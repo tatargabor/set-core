@@ -30,7 +30,7 @@ export default function TerminalNode({ data }: Props) {
     <div
       className={`relative rounded-lg border-2 px-3 py-2 w-[150px] h-[60px] flex flex-col items-center justify-center ${baseClasses}`}
     >
-      <Handle type="target" position={Position.Left} style={{ background: '#404040' }} />
+      <Handle type="target" position={Position.Left} style={{ background: '#464b57' }} />
       <div className="flex items-center gap-1.5">
         <span className="text-xl font-bold">{icon}</span>
         <span className="text-sm font-bold tracking-wide">{label}</span>

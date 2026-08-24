@@ -52,7 +52,7 @@ export default function Worktrees({ project }: Props) {
         {worktrees.length === 0 ? (
           <p className="p-3 text-fg-faint text-sm">No worktrees found</p>
         ) : (
-          <div className="divide-y divide-neutral-800/50">
+          <div className="divide-y divide-surface-line/50">
             {worktrees.map((wt) => (
               <button
                 key={wt.path}

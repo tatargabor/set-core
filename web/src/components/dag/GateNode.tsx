@@ -93,13 +93,13 @@ export default function GateNode({ data, selected }: Props) {
         selected ? 'ring-2 ring-blue-500/60' : ''
       }`}
     >
-      <Handle type="target" position={Position.Left} style={{ background: '#404040' }} />
-      <Handle type="source" position={Position.Right} style={{ background: '#404040' }} />
+      <Handle type="target" position={Position.Left} style={{ background: '#464b57' }} />
+      <Handle type="source" position={Position.Right} style={{ background: '#464b57' }} />
       <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
-        style={{ background: '#404040' }}
+        style={{ background: '#464b57' }}
       />
       <div className="flex items-center gap-1.5">
         <span className={`text-sm font-medium ${color} ${isRunning ? 'animate-pulse' : ''}`}>

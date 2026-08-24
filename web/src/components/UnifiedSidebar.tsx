@@ -100,7 +100,7 @@ export default function UnifiedSidebar({ project, sidebarOpen, onClose, sidebarS
     <>
       {/* Backdrop (mobile) */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={onClose} />
+        <div className="fixed inset-0 z-40 bg-surface-page/60 md:hidden" onClick={onClose} />
       )}
 
       <aside className={`

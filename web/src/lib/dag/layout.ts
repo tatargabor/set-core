@@ -26,7 +26,7 @@ const RETRY_EDGE_COLORS: Record<RetryReason, string> = {
   'merge-conflict': '#f97316',
   replan: '#a78bfa',
   'reset-failed': '#ec4899',
-  unknown: '#737373',
+  unknown: '#878a98',
 }
 
 function rfTypeFromKind(kind: AttemptNode['kind']): string {
@@ -65,7 +65,7 @@ export function layoutAttemptGraph(
           source: prev.id,
           target: node.id,
           type: 'default',
-          style: { stroke: '#737373', strokeWidth: 1.5 },
+          style: { stroke: '#878a98', strokeWidth: 1.5 },
         })
       }
     }
@@ -90,7 +90,7 @@ export function layoutAttemptGraph(
       label: reason === 'merge-conflict' ? 'conflict' : 'retry',
       style: { stroke: color, strokeWidth: 2 },
       labelStyle: { fill: color, fontSize: 10 },
-      labelBgStyle: { fill: '#171717' },
+      labelBgStyle: { fill: '#2f343e' },
     })
   }
 

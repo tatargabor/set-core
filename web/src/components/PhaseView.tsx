@@ -252,7 +252,7 @@ export default function PhaseView({ changes, state }: Props) {
   })
 
   return (
-    <div className="divide-y divide-neutral-800/50">
+    <div className="divide-y divide-surface-line/50">
       {orderedKeys.map(key => {
         const meta = groupMeta.get(key)!
         const phaseChanges = groups.get(key)!
