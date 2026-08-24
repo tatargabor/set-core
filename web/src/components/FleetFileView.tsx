@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, File as FileIcon, Maximize2, Minimize2, RefreshCw, Save, X } from 'lucide-react'
 
 import { buildTree, languageOf, type TreeNode } from '../lib/fleetFiles'
+import { classifyLoadFailure, type LoadFailure } from '../lib/buildFreshness'
 import { DOCK_CONTROLS, IconButton } from './TileControls'
 import FleetSplitter from './FleetSplitter'
 import type { DockEdge } from '../lib/fleetDocks'
@@ -133,6 +134,8 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   const [save, setSave] = useState<SaveState>({ kind: 'idle' })
   const [ask, setAsk] = useState<FileRequest | null>(null)
   const [ready, setReady] = useState(false)
+  /** Why the editor never arrived, when it never arrived — B-77. */
+  const [editorFailure, setEditorFailure] = useState<LoadFailure | null>(null)
   interface EditorHandle {
     revealLineInCenter(l: number): void
     setPosition(p: { lineNumber: number; column: number }): void
@@ -145,19 +148,39 @@ export default function FleetFileView({ root, projectName, request, initial, onC
 
   const dirty = opened.kind === 'open' && text !== opened.text
 
-  /* Monaco arrives lazily — see `monacoLocal.ts` for why it is never the CDN. */
+  /*
+    Monaco arrives lazily — see `monacoLocal.ts` for why it is never the CDN.
+
+    AND THE ARRIVAL CAN FAIL — B-77. The chunk's filename carries a build hash,
+    so a redeploy deletes the one this page knows about: the reader's next click
+    asks for a file the server no longer has, the `import()` rejects, and without
+    the catch below `ready` stays false and the panel says `loading the editor…`
+    for ever. Reported 2026-08-24 with the console open beside it, because the
+    console was the only place the failure existed.
+
+    The state it fails into is NOT a guess about why. `classifyLoadFailure` asks
+    the server whether this page's entry script is still the one it serves, and
+    only that answer licenses telling the reader to reload — see the module's
+    own header. Everything else surfaces the underlying error verbatim.
+  */
   useEffect(() => {
     let dead = false
     void (async () => {
-      const [{ default: Editor }, { useLocalMonaco }] = await Promise.all([
-        import('@monaco-editor/react'),
-        import('../lib/monacoLocal'),
-      ])
-      useLocalMonaco()
-      if (dead) return
-      MonacoRef.current = Editor as unknown as React.ComponentType<Record<string, unknown>>
-      setReady(true)
-      forceRender(n => n + 1)
+      try {
+        const [{ default: Editor }, { useLocalMonaco }] = await Promise.all([
+          import('@monaco-editor/react'),
+          import('../lib/monacoLocal'),
+        ])
+        useLocalMonaco()
+        if (dead) return
+        MonacoRef.current = Editor as unknown as React.ComponentType<Record<string, unknown>>
+        setReady(true)
+        forceRender(n => n + 1)
+      } catch (err) {
+        const failure = await classifyLoadFailure(err)
+        if (dead) return
+        setEditorFailure(failure)
+      }
     })()
     return () => { dead = true }
   }, [])
@@ -567,6 +590,27 @@ export default function FleetFileView({ root, projectName, request, initial, onC
                     automaticLayout: true,
                   }}
                 />
+              ) : editorFailure ? (
+                /*
+                  B-77 — a named failure where the endless `loading…` used to be.
+
+                  The reload control is offered ONLY on the measured case. On an
+                  unmeasured one the underlying error is shown instead: a reload
+                  button beside an error a reload cannot fix spends the reader's
+                  attention and returns them to the same screen.
+                */
+                <div className="p-2 text-xs text-amber-400" data-fleet-editor-failed={editorFailure.kind}>
+                  the editor could not be loaded — {editorFailure.reason}
+                  {editorFailure.kind === 'stale' && (
+                    <button
+                      className="ml-2 underline underline-offset-2 hover:text-amber-300"
+                      data-fleet-editor-reload="yes"
+                      onClick={() => window.location.reload()}
+                    >
+                      reload
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="p-2 text-xs text-fg-ghost">loading the editor…</div>
               )}

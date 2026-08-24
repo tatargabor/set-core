@@ -204,6 +204,60 @@ consumer's name, path, or content.
   byte-identical before and after. Held by a test that snapshots the registry file's sha256
   around a dry-run init of an unregistered repo and asserts equality — with the positive
   control that a real init of the same repo does change it.
+### B-77 — a lazy chunk that a redeploy removed leaves `loading the editor…` on screen for ever
+
+- **state:** closed for the file view; **the same shape is still open at four other lazy
+  imports** — see *what is NOT fixed* below. Numbered after checking `origin/main` as well as
+  the local file, which is the lesson B-76 carries.
+- **reported:** 2026-08-24 by the user — *"hiba file betöltéskor fleet file editor nézeten"* —
+  with a screenshot whose devtools panel is the actual evidence, and that is the tell: a
+  reader who has to open devtools to learn that nothing is loading is looking at a screen
+  that is lying calmly.
+- **measured:** four console lines, of which the third names the mechanism:
+
+  ```
+  GET /assets/index-C41P94E2.js        404 (Not Found)
+  GET /assets/monacoLocal-DhsFH-Aq.js  404 (Not Found)
+  Uncaught (in promise) TypeError: Failed to fetch dynamically imported module:
+      http://localhost:7400/assets/index-C41P94E2.js
+  ```
+
+  The page was running `index-DIYHZ1ow.js`, a build that had been replaced twice while the
+  tab stayed open. Vite hashes every chunk by content, so a redeploy deletes the exact
+  filenames the running page knows; `curl -o /dev/null -w '%{http_code}'` against all four
+  confirmed 404 for each. `FleetFileView.tsx:149` awaited `Promise.all([import(…), import(…)])`
+  with **no catch**, so the rejection escaped as an unhandled promise, `ready` stayed `false`,
+  and the `ready ? <Editor/> : loading the editor…` ternary rendered the second branch for ever.
+- **why it matters, and which way it fails:** in the silent direction, and on a screen with no
+  other symptom — the tree lists fine, the file name is in the header, the panel simply never
+  fills. The reader cannot tell it apart from a slow load. It is also self-inflicted at exactly
+  the wrong moment: the redeploy that breaks the open tab is the one that carries the fix the
+  reader was waiting for.
+- **fixed:** the import is caught, and the message is a MEASUREMENT rather than a guess.
+  Printing *"the dashboard was updated — reload"* on any chunk failure would be wrong: the same
+  rejection is what an offline tab or a dead server produces, and a reload cannot help there.
+  So `web/src/lib/buildFreshness.ts` fetches `/index.html` with `cache: 'no-store'` and asks
+  whether it still names **this** page's entry script. Only a `false` licenses the word
+  *updated* and the reload control; everything else — including *cannot be answered* — shows
+  the underlying error with no button.
+- **fixed when:** `web/tests/unit/buildFreshness.test.ts` (9) and
+  `web/tests/unit/fleetFileViewEditorFailure.test.tsx` (3). Both directions are held: a served
+  page that STILL names this build must not be reported as a redeploy, and an unrelated error
+  must not even cost a round trip. Mutation-proven — dropping the `setEditorFailure` call turns
+  all three surface tests red. 940 web tests green, `tsc -b` clean.
+- **and it was LOOKED at** — `ui-quality.md`, 2026-08-24, by reproducing the redeploy rather
+  than by mocking it: a tab was opened on the served build, the monaco chunk was renamed and
+  `index.html` repointed at a different entry (a real 404 plus a real entry mismatch), then a
+  file was clicked in that tab. The panel read *"the editor could not be loaded — the dashboard
+  was updated while this page was open, so the part it just asked for is no longer on the
+  server — reload the page"* with a `reload` control. `dist` was restored afterwards and every
+  asset `index.html` names verified 200.
+- ⚠ **what is NOT fixed, stated so a green suite does not imply it.** The same unguarded shape
+  is at four more lazy imports: `FleetTerminal.tsx:248-252` (xterm — the most-used surface on
+  this screen), `VoiceInput.tsx:57`, `Dashboard.tsx:18` (`lazy(() => import(…))`) and the graph
+  panel behind it. Each fails the same silent way after a redeploy. `classifyLoadFailure` is
+  written to be reused; wiring it is a task, not a redesign.
+
 ### B-76 — a re-attached terminal is never asked to repaint, so the status footer comes back partial
 
 - ⚠ **renumbered 2026-08-24 from B-71, which a PARALLEL SESSION had already taken.** Rule 3
