@@ -150,8 +150,8 @@ class OwnerDaemon:
         empty read, which this method reads as EOF. Measured 2026-08-23 on a live
         agent, six seconds after the rename:
 
-            16:12:28  fleet owner: renamed wpc-pont-… to … (pid …, unchanged)
-            16:12:34  fleet owner: terminal of wpc-pont-… reached EOF after 0 bytes
+            16:12:28  fleet owner: renamed consumer-app-… to … (pid …, unchanged)
+            16:12:34  fleet owner: terminal of consumer-app-… reached EOF after 0 bytes
 
         Both halves fail in the reassuring direction. The reader is REMOVED, so
         the terminal goes silent for every viewer — a keystroke still reaches the

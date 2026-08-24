@@ -131,7 +131,7 @@ describe('an image paste', () => {
   it('uploads once and types the path with a trailing space and no newline', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ path: '/home/tg/.local/share/set-core/paste/abc.png', bytes: 4, type: 'image/png' }),
+      json: async () => ({ path: '/home/user/.local/share/set-core/paste/abc.png', bytes: 4, type: 'image/png' }),
     })
     const ev = firePaste(clipboard({ image: png() }))
     expect(ev.defaultPrevented).toBe(true)
@@ -139,7 +139,7 @@ describe('an image paste', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe('/api/fleet/paste')
     const written = bytesSent()[0]
-    expect(written).toBe('/home/tg/.local/share/set-core/paste/abc.png ')
+    expect(written).toBe('/home/user/.local/share/set-core/paste/abc.png ')
     // The reader decides when it is sent — so nothing that submits a line.
     expect(written).not.toContain('\n')
     expect(written).not.toContain('\r')

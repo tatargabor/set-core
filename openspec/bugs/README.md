@@ -125,7 +125,7 @@ consumer's name, path, or content.
 - **reported:** 2026-08-23 by the user, with a screenshot — *"és hiba túl közel van a
   restore gomb és krédezzen rá!!!!!"*
 - **measured:** live, on this machine, twice in one hour:
-  - the user mis-clicked the control and **21 agents started** on `wpc-pont`
+  - the user mis-clicked the control and **21 agents started** on `consumer-app`
     (`journalctl --user -u set-web`: `10:44:02`–`10:44:24`, *"20 started, 15 skipped"*
     then *"1 started, 50 skipped"*), plus 3 on `set-core` at `10:43:51`. Nothing undid
     them except stopping each one by hand.
@@ -360,7 +360,7 @@ consumer's name, path, or content.
 - **state:** closed 2026-08-22 — LOOKED at on the same three agents (see *state after
   the fix* below: 38 px of header, 333 px of terminal). The entry stays here with its
   evidence; a deleted entry and one that was never written look the same.
-- **reported:** 2026-08-22 by the user, with a screenshot — *"a wpc-pont 3
+- **reported:** 2026-08-22 by the user, with a screenshot — *"a consumer-app 3
   agentjénél alig marad hely a terminal tartalmának mert tul sok helyet elvisz
   felette a heder … sztem 2 sor kellene egy layout/agent fejlécnek összesen"*.
 - **measured:** three agent tiles in the screenshot, each carrying above its
@@ -408,7 +408,7 @@ consumer's name, path, or content.
   - **measured after, same three agents, three columns, 1517 px:** head 22 px +
     `says:` 16 px = **38 px**, a terminal row of its own measures **0**, and the
     terminal itself is **376 px** (333 before the merge). The cost, stated: the
-    name and the branch truncate on a narrow tile — `wpc-pont-atne…`, `quiet d…`
+    name and the branch truncate on a narrow tile — `consumer-app-atne…`, `quiet d…`
     — with the full text in the tooltip.
   - the portal is held by a test that fails without it (measured: removing
     `createPortal` turns it red; the restore was grep-verified).
@@ -469,7 +469,7 @@ consumer's name, path, or content.
 ### B-56 — restore reports `started` for a session that has not resumed: it is sitting on a dialog nobody can see
 - **state:** open
 - **reported:** 2026-08-22 by the user, on two separate fleets — *"van ami
-  visszajött de nem terminálban"* and *"wpc-pont 6 agentje most állítottam
+  visszajött de nem terminálban"* and *"consumer-app 6 agentje most állítottam
   vissza, ott egyiket sem tudom szerkeszteni"*.
 - **measured:** LOOKED at, 2026-08-22. After a restore, `POST /api/fleet/roster/
   set-core/restore` answered `started: 7`, all `name_source: "restored"`, and
@@ -710,7 +710,7 @@ consumer's name, path, or content.
 - **reported:** 2026-08-21 by the user, after the first real reboot — *"a nevek nem álltak vissza"*.
 - **measured:** the owner's log before the reboot names hand-chosen labels —
   `journalctl --user -u set-agent-owner` → `a viewer attached to set-core-bugfix`,
-  `set-core-restart`, `wpc-pont-eszkozok`. After restore the same log names
+  `set-core-restart`, `consumer-app-tools`. After restore the same log names
   `started set-core-34 … resumed session 039178b5…`. The roster entry for that
   session carries `label: set-core-c6`, which is the runtime's own
   `nameSource: "derived"` name from `~/.claude/sessions/<pid>.json`, not the
@@ -789,7 +789,7 @@ consumer's name, path, or content.
   legitimate signal ignored — and the count is the first number on the screen.
 - **fixed when / verified:** `open_decisions` over this repo returns `[]` while a
   fixture with a genuinely open `- [ ] 1.1 … <!-- awaiting: q -->` still returns
-  it. Measured after: `GET /api/fleet/agents` → `awaiting: 2`, both wpc-pont's
+  it. Measured after: `GET /api/fleet/agents` → `awaiting: 2`, both consumer-app's
   (`orphaned: ["returns-and-commissions", "driver-photos-storage"]`), and the
   header on screen reads `2 waiting for a human`.
 - **the guard:** a test asserts against THIS repository's own

@@ -27,7 +27,7 @@ knows, identified the same way the fleet API's other guarded endpoints identify 
 root, checked against the set the screen itself is built from.
 
 *Measured 2026-08-22, which is why it is the root and not the registry name:* of the projects
-on the screen, `set-core` and `wpc-pont` are in `~/.config/set-core/projects.json` and two
+on the screen, `set-core` and `consumer-app` are in `~/.config/set-core/projects.json` and two
 others are not — they reach the screen through process discovery and the messaging registry.
 Resolving by registry name would therefore refuse a project the reader is looking at, which is
 the divergence `fleet.py:660-673` already warns about in its own words: the rule is *what the

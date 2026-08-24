@@ -1,6 +1,6 @@
 ## Context
 
-Several Claude sessions work in `/home/tg/code2/set-core` at once. That is ordinary
+Several Claude sessions work in `/home/user/code2/set-core` at once. That is ordinary
 here, not an edge case — three threads were active in it on 2026-08-20. A checkout has
 **one index and one working tree**, so a command that names no paths acts on all of it,
 including whatever another session is holding.

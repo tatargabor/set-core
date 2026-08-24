@@ -5,7 +5,7 @@ worked: 8 agents came back, every recorded entry got a stated outcome. What did 
 back was the thing the user actually navigates by — the **name**. The roster stores the
 runtime's own generated name (`nameSource: "derived"` in `~/.claude/sessions/<pid>.json`),
 not the label the user typed when they started the agent. So `set-core-bugfix`,
-`set-core-restart` and `wpc-pont-eszkozok` returned as `set-core-34`, `set-core-bb`,
+`set-core-restart` and `consumer-app-tools` returned as `set-core-34`, `set-core-bb`,
 `set-core-e2`; the docked right-hand panel, which is keyed on the label, came back empty;
 and a resumed session then derives a *third* name, so the screen shows one identity while
 every control keys on another. Measured, and registered as B-45, B-46, B-47.
