@@ -67,6 +67,67 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-73 — a CRASHED leakscan is reported to the operator as "this push would publish content that must not leave"
+
+- **state:** open — the crash itself is fixed (`c3fdb91d`); the hook's wrong REASON is not
+- **reported:** 2026-08-24 by this session, while trying to push
+- **measured:** `set-leakscan` died with `FileNotFoundError: 'gh'` (an optional tool, absent on
+  this machine). `bin/set-hook-leakscan:106` branches on `returncode == 0` alone, so the
+  non-zero *crash* took the same path as a real finding and printed:
+
+  ```
+  BLOCKED by set-hook-leakscan — this push would publish content that must
+  not leave the repository (repository: …)
+  <the Python traceback>
+  ```
+
+- **why it matters, and which way it fails:** the *blocking* is right — a gate that cannot run
+  must not report clean, and the hook's own comment says so. The *sentence* is false: nothing
+  was found, and the operator is sent to hunt a leak that does not exist. The traceback is
+  printed underneath, so it is recoverable — but only by a reader who distrusts the headline.
+  This is the false-value class: a claim the system no longer has evidence for, stated in the
+  alarming direction next to the real reason.
+- **fixed when:** a non-zero exit that produced no findings is reported as *"the scan could not
+  run"* with the tool's stderr, and is distinguishable from *"the scan found something"* — both
+  still exit 2. Held by a test that stubs `set-leakscan` to exit non-zero with a traceback on
+  stderr and asserts the hook's message does NOT claim content would be published, alongside
+  the positive control that a real finding still does.
+
+### B-74 — two consumer project names are already PUBLIC in this repository's history
+
+- **state:** open — the working tree is scrubbed (`35a12993`); the history is not
+- **reported:** 2026-08-24 by this session, on the first push after the registry was populated
+- **measured:** `set-leakscan` on the push range flagged
+  `openspec/changes/archive/2026-08-24-projects-live-session-view/proposal.md:16`, which named
+  two consumer projects in a parenthesis. `git log --oneline github/main -- <that file>` puts
+  the content in **`cb1bad62`**, pushed to the PUBLIC GitHub repository the same day. So the
+  scrub commit removes it from the tree and from nothing else.
+- **why it matters, and which way it fails:** the same B-72 mechanism with the timing reversed
+  — the text was written while the registry was empty, so no gate could have caught it, and it
+  became a finding only once the names were registered. Two lines above it the same paragraph
+  says *"a consumer project"* correctly, which is the tell: this was a slipped enumeration, not
+  a misunderstanding, and enumerations are exactly what a name-based scanner exists for.
+- **fixed when:** the user decides. Removing it means rewriting published history on a public
+  repository, which also invalidates the clone on the other machine — that is their call, not a
+  session's. `release-safety.md` has the procedure and its traps (the backup tag gets rewritten
+  too). Until then this entry is the record that the exposure is known and deliberate.
+
+### B-75 — `CLAUDE.md` sends every new session to a file that does not exist
+
+- **state:** open
+- **reported:** 2026-08-24 by this session, looking for the web build command
+- **measured:** `CLAUDE.md:472` — *"See [START.md](START.md) for application startup commands
+  (install, dev server, database, tests)"*. `ls START.md` → `No such file or directory`.
+- **why it matters, and which way it fails:** it fails by sending a reader somewhere empty at
+  the exact moment they need the answer, and the instructions it promises are not trivial ones
+  — this repo's web build needs a Node the system default is too old for (`v18.19.1` here;
+  the tooling needs the nvm `v24.15.0`), and `pnpm test:unit` aborts on an unapproved esbuild
+  build script. A session that guesses instead gets `npx` pulling an unrelated vitest, which is
+  what happened here.
+- **fixed when:** either `START.md` exists and names the interpreter and the package manager,
+  or the reference is removed from `CLAUDE.md`. Held by nothing automated today; the cheap
+  check is that every relative link in `CLAUDE.md` resolves to a file that exists.
+
 ### B-72 — the leakscan's consumer-name check was passing on an EMPTY pattern list, and a leak was already in the tree
 
 - **state:** partly closed — one of four findings is scrubbed (this file); three remain
