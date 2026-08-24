@@ -479,7 +479,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       }
 
       /**
-       * ASK THE PROGRAM TO REPAINT — B-71, and the half of B-16 that was left
+       * ASK THE PROGRAM TO REPAINT — B-76, and the half of B-16 that was left
        * standing on an assumption.
        *
        * B-16 ends with *"if it matches there is nothing to repaint and nothing

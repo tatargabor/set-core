@@ -204,8 +204,16 @@ consumer's name, path, or content.
   byte-identical before and after. Held by a test that snapshots the registry file's sha256
   around a dry-run init of an unregistered repo and asserts equality — with the positive
   control that a real init of the same repo does change it.
-### B-71 — a re-attached terminal is never asked to repaint, so the status footer comes back partial
+### B-76 — a re-attached terminal is never asked to repaint, so the status footer comes back partial
 
+- ⚠ **renumbered 2026-08-24 from B-71, which a PARALLEL SESSION had already taken.** Rule 3
+  says allocate by measuring the file, and that was done — `grep … | tail -1` on the local
+  file said B-69. It was still wrong: another session held B-71 and B-72 in its own working
+  tree and pushed them (`15b28571`) while this entry was being written. **Measuring a file
+  measures one checkout, not the register**, and on a repository with parallel sessions those
+  are different things. `git fetch && grep` on `origin/main` before allocating is the check
+  that would have caught it; it costs one round trip. The commits below (`e07c2ad1`,
+  `6ee3b348`) name this entry as B-71 in their subject and body.
 - **state:** closed (`e07c2ad1`) — fix, tests and the visual check below
 - **reported:** 2026-08-24 by the user, with a screenshot, switching between agent tabs on
   the fleet screen: *"ha valtas van agentek kozott akkor a render alul hianyosan renereli a

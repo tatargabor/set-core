@@ -185,7 +185,7 @@ describe('the replay renders at the geometry it was drawn at', () => {
   })
 
   /**
-   * THE REPAINT — B-71.
+   * THE REPAINT — B-76.
    *
    * Reported 2026-08-24 by the user, switching between agent tabs: the status
    * footer comes back partial, and dragging the layout border repairs it. A
