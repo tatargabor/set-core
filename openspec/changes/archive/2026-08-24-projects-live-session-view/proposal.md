@@ -13,7 +13,7 @@ Measured on `HEAD`, 2026-08-24, against the running dashboard on port 7400:
 2. **`GET /api/fleet/agents` knows 52 projects, and exactly 6 of them hold a live agent
    session** (`set-core` 10, a consumer project 5, and four framework repos with one
    each). None of that reaches the projects screen.
-3. **Two of those six are not in the registry at all** (`tg`, `blackbelt-web` arrive with
+3. **Two of those six are not in the registry at all** (both arrive with
    `sources: ["messaging"]`), so a project with a live session can be **absent** from the
    projects table rather than merely mis-stated.
 4. The `status` column this screen leans on is the orchestration record, which is already
