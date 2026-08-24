@@ -206,7 +206,7 @@ consumer's name, path, or content.
   control that a real init of the same repo does change it.
 ### B-77 — a lazy chunk that a redeploy removed leaves `loading the editor…` on screen for ever
 
-- **state:** closed for the file view; **the same shape is still open at four other lazy
+- **state:** closed (`133a1e1c`) for the file view; **the same shape is still open at four other lazy
   imports** — see *what is NOT fixed* below. Numbered after checking `origin/main` as well as
   the local file, which is the lesson B-76 carries.
 - **reported:** 2026-08-24 by the user — *"hiba file betöltéskor fleet file editor nézeten"* —
