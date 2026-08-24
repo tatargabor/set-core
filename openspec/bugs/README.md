@@ -204,6 +204,48 @@ consumer's name, path, or content.
   byte-identical before and after. Held by a test that snapshots the registry file's sha256
   around a dry-run init of an unregistered repo and asserts equality — with the positive
   control that a real init of the same repo does change it.
+### B-71 — a re-attached terminal is never asked to repaint, so the status footer comes back partial
+
+- **state:** closed (working tree — fix, tests and the visual check below; not yet committed
+  when this line was written)
+- **reported:** 2026-08-24 by the user, with a screenshot, switching between agent tabs on
+  the fleet screen: *"ha valtas van agentek kozott akkor a render alul hianyosan renereli a
+  status footert, de ha ujrarajzoltatom layout change miatt (elhuzom a layout hatart) akkor
+  megjavul"* — and their own diagnosis, which was right: *"agent valtaskor ki kellene adni
+  egy repaintet"*.
+- **measured:** three places, and it is the third that closes the argument.
+  - `lib/set_orch/fleet/ownerd.py:494` — the replay is `bytes(self._tails[label])`, a RING
+    buffer, and the ack carries `replay_truncated` precisely because it can begin
+    mid-stream. A tail that starts mid-stream is missing the cursor moves and erases that
+    composed the screen before it, so what renders is honestly incomplete — and what goes
+    missing is what was drawn last and least often: the bottom row.
+  - `lib/set_orch/fleet/owner.py:406` — a resize is one `TIOCSWINSZ` and nothing else. Linux
+    `tty_do_resize` compares the struct and returns BEFORE signalling when it is unchanged,
+    so no `SIGWINCH` reaches the program and nothing repaints.
+  - `web/src/components/FleetTerminal.tsx` — the B-16 comment ends *"if it matches there is
+    nothing to repaint and nothing is stale"*. The first clause is true; the second does not
+    follow, and it is the assumption the whole defect sits on. A tab switch is exactly the
+    matching case: same tile, same box, same geometry — so `sendSize()` sent a size that
+    changed nothing, and the truncated replay stayed on screen.
+- **why the earlier fix did not cover it:** B-16 repaired the *order* of the two geometries,
+  which is what makes the replay render at the width it was composed for. It cannot repair a
+  replay that is INCOMPLETE, and it deliberately does nothing when the two geometries agree.
+  Two defects on the same seam, and the first one's fix is what made the second visible.
+- **fixed:** `settle()` now sends one row less immediately before the real size, so the
+  second write always differs from the first and the program gets a `SIGWINCH` whether or not
+  it processed the first. Unconditional rather than gated on `replay_truncated`: an
+  unnecessary repaint costs a flicker nobody sees, a skipped one costs the defect back,
+  silently, still looking like a terminal.
+- **fixed when:** `tests/unit/fleetTerminalReplayGeometry.test.tsx` — *asks the program to
+  repaint even when its size did not change* asserts the PAIR and its order, and *does not
+  nudge a terminal that has no row to spare* holds the one-row floor. Mutation-proven:
+  removing the `nudge()` call turns 6 of the 12 tests in that file red (measured 2026-08-24),
+  so nothing there passes either way. **The visual half is DONE** — `ui-quality.md`, 2026-08-24 on the running
+  dashboard at `http://localhost:7400/fleet`, nine agents as tabs: a busy agent's terminal
+  was opened, another tab selected, then this one again. Both footer rows came back whole
+  (`[web] web (main) | Opus 5 … | Ctx: 14 %` and the permissions row), and the context
+  counter had MOVED across the switch — 141509 → 143660 tokens. That second number is what
+  makes it a repaint rather than a lucky replay: a stale screen cannot show a newer number.
 
 ### B-69 — renaming a held agent kills the drain on its terminal, silently and then fatally
 - **state:** fixed in the working tree, NOT yet live — the running owner daemon still
@@ -242,6 +284,11 @@ consumer's name, path, or content.
 
 ### B-70 — the leakscan hook blocks a LOCAL `git tag`, which is the safety net the scrub procedure requires
 
+- ⚠ **renumbered 2026-08-24 from B-69, which was already taken.** Two entries carried
+  that number for a day — the register's own rule 3, broken again — and BOTH are cited in
+  commit messages: the rename defect above in `3411d907`'s body, this one in `c75706b0`'s
+  subject (`bugs(B-69): a leakscan-hook …`). The earlier-written entry keeps the number, so
+  that commit subject names this entry under its old handle and nothing else does.
 - **state:** open
 - **reported:** 2026-08-24 by this session, while clearing the 25 findings that were
   blocking a 112-commit push

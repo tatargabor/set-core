@@ -91,6 +91,12 @@ class FakeSocket {
 }
 
 const resizes = () => sent.map(s => JSON.parse(s)).filter(m => m.resize).map(m => m.resize)
+/**
+ * What the pty is left at. Settling sends TWO sizes, not one — see the repaint
+ * nudge at the bottom of this file — so "the size it ended on" is the last one,
+ * and a count is asserted only where the count is the subject.
+ */
+const finalSize = () => resizes()[resizes().length - 1]
 
 beforeEach(() => {
   calls.length = 0
@@ -133,7 +139,7 @@ describe('the replay renders at the geometry it was drawn at', () => {
     expect(resizes(), 'the grid was resized out from under the replay').toHaveLength(0)
 
     socket.replay(200)
-    await waitFor(() => expect(resizes()).toHaveLength(1))
+    await waitFor(() => expect(resizes()).toHaveLength(2))
   })
 
   /**
@@ -144,17 +150,17 @@ describe('the replay renders at the geometry it was drawn at', () => {
     await mounted()
     socket.attach({ replayed_bytes: 50 })
     socket.replay(50)
-    await waitFor(() => expect(resizes()).toHaveLength(1))
+    await waitFor(() => expect(resizes()).toHaveLength(2))
     // The FITTED size, not the ack's — the stub's `fit` leaves the terminal at
     // whatever the last resize set, which is the pty's, so this asserts the
-    // message went out at all and exactly once.
-    expect(resizes()[0]).toEqual({ rows: 44, cols: 132 })
+    // message went out at all and that it is what the pty is LEFT at.
+    expect(finalSize()).toEqual({ rows: 44, cols: 132 })
   })
 
   it('sends it immediately when there is nothing to replay', async () => {
     await mounted()
     socket.attach({ replayed_bytes: 0 })
-    await waitFor(() => expect(resizes()).toHaveLength(1))
+    await waitFor(() => expect(resizes()).toHaveLength(2))
   })
 
   /**
@@ -174,8 +180,49 @@ describe('the replay renders at the geometry it was drawn at', () => {
     expect(resizes()).toHaveLength(0)
 
     await vi.advanceTimersByTimeAsync(1500)
-    expect(resizes(), 'a short replay left the pty stuck at a size nobody chose')
-      .toHaveLength(1)
+    expect(finalSize(), 'a short replay left the pty stuck at a size nobody chose')
+      .toEqual({ rows: 44, cols: 132 })
+  })
+
+  /**
+   * THE REPAINT — B-71.
+   *
+   * Reported 2026-08-24 by the user, switching between agent tabs: the status
+   * footer comes back partial, and dragging the layout border repairs it. A
+   * drag changes the size, and a size change is the only thing here that
+   * reaches the remote program at all.
+   *
+   * The replay is a ring buffer, so a tail that begins mid-stream cannot
+   * reconstruct what was drawn before it — and the row drawn last and least
+   * often is the footer. Sending the size the pty ALREADY HAS repairs nothing:
+   * `TIOCSWINSZ` with an unchanged struct raises no `SIGWINCH`, so the program
+   * is never asked to redraw and the stale screen stays.
+   *
+   * Hence a size that differs, immediately before the real one. This asserts
+   * the pair AND the order: a nudge sent after the real size would leave the
+   * pty one row short of the tile, which is B-29 rebuilt by hand.
+   */
+  it('asks the program to repaint even when its size did not change', async () => {
+    await mounted()
+    socket.attach({ replayed_bytes: 0 })
+    await waitFor(() => expect(resizes()).toHaveLength(2))
+
+    expect(resizes()[0], 'nothing differed, so nothing was asked to repaint')
+      .toEqual({ rows: 43, cols: 132 })
+    expect(resizes()[1], 'the pty was left at a size nobody is looking at')
+      .toEqual({ rows: 44, cols: 132 })
+  })
+
+  /**
+   * And it is never sent at a geometry no terminal can hold. One row is the
+   * floor: nudging a one-row terminal to zero would be a resize the pty may
+   * refuse, which is a repaint that silently does not happen.
+   */
+  it('does not nudge a terminal that has no row to spare', async () => {
+    await mounted()
+    socket.attach({ replayed_bytes: 0, rows: 1, cols: 80 })
+    await waitFor(() => expect(resizes()).toHaveLength(1))
+    expect(resizes()[0]).toEqual({ rows: 1, cols: 80 })
   })
 
   /**
@@ -187,7 +234,7 @@ describe('the replay renders at the geometry it was drawn at', () => {
     await mounted()
     socket.attach({ replayed_bytes: 20, rows: null, cols: null })
     socket.replay(20)
-    await waitFor(() => expect(resizes()).toHaveLength(1))
+    await waitFor(() => expect(resizes()).toHaveLength(2))
     expect(calls.filter(c => c.startsWith('resize:'))).toHaveLength(0)
   })
 })
@@ -207,7 +254,7 @@ describe('closing the view is not stopping the agent', () => {
   it('offers a stop and a close as two separate controls', async () => {
     await mounted()
     socket.attach({ replayed_bytes: 0 })
-    await waitFor(() => expect(resizes()).toHaveLength(1))
+    await waitFor(() => expect(resizes()).toHaveLength(2))
 
     const stop = document.querySelector('[data-fleet-terminal-stop]')
     const close = document.querySelector('[data-fleet-terminal-close]')

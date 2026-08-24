@@ -478,6 +478,48 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         ws.send(JSON.stringify({ resize: { rows: term.rows, cols: term.cols } }))
       }
 
+      /**
+       * ASK THE PROGRAM TO REPAINT — B-71, and the half of B-16 that was left
+       * standing on an assumption.
+       *
+       * B-16 ends with *"if it matches there is nothing to repaint and nothing
+       * is stale"*. The first clause is true and the second does not follow.
+       * The replay is a RING BUFFER of raw bytes — the owner says so itself,
+       * `replay_truncated` — so a tail that begins mid-stream is missing the
+       * cursor moves and erases that composed the screen before it. What
+       * renders is then honestly incomplete, and the part that goes missing is
+       * the part drawn LAST and least often: the status footer at the bottom.
+       *
+       * Reported 2026-08-24 by the user, switching between agent tabs: the
+       * footer comes back partial, *"de ha ujrarajzoltatom layout change miatt
+       * (elhuzom a layout hatart) akkor megjavul"*. A drag changes the size; a
+       * size change is the only thing here that reaches the remote program.
+       *
+       * And it reaches it only when the size actually CHANGES. `TIOCSWINSZ`
+       * with the geometry the pty already has is a no-op in the kernel — Linux
+       * compares the struct and returns before signalling — so the ordinary
+       * path sends a size, nothing differs, no `SIGWINCH` is raised, and the
+       * stale screen stays. Which is exactly the case a tab switch produces:
+       * the same tile, the same box, the same geometry.
+       *
+       * Hence one row less, immediately before the real size. Two writes, the
+       * second of which always differs from the first, so the program gets a
+       * `SIGWINCH` and repaints at the geometry it ends on whether or not it
+       * processed the first. xterm is not resized — this is addressed at the
+       * pty, and the grid on screen never leaves the tile's shape.
+       *
+       * **Unconditional, deliberately.** `replay_truncated` is the narrower
+       * signal and would skip the nudge on a faithful replay, but the two
+       * failures are not comparable: a nudge that was not needed costs one
+       * repaint the reader does not notice, and a nudge that was needed and
+       * skipped costs the defect back, silently, looking like a terminal.
+       */
+      const nudge = () => {
+        if (ws.readyState !== WebSocket.OPEN) return
+        if (term.rows < 2) return
+        ws.send(JSON.stringify({ resize: { rows: term.rows - 1, cols: term.cols } }))
+      }
+
       /*
         THE TWO GEOMETRIES, AND WHY THEY ARE SEQUENCED — B-16.
 
@@ -501,8 +543,10 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         settled = true
         if (settleTimer !== undefined) { window.clearTimeout(settleTimer); settleTimer = undefined }
         refit()
+        nudge()
         sendSize()
       }
+
 
       ws.onmessage = ev => {
         if (typeof ev.data === 'string') {
