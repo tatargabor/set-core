@@ -1,5 +1,7 @@
 /** Typed fetch wrappers for all REST endpoints. */
 
+import type { FleetResponse } from './fleetTypes'
+
 const BASE = '/api'
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
@@ -245,6 +247,19 @@ export async function getProjectsWithArchiveInfo(
   const projects = (await res.json()) as ProjectInfo[]
   const header = res.headers.get('X-Archived-Count')
   return { projects, archivedCount: header === null ? 0 : Number(header) || 0 }
+}
+
+/**
+ * The fleet's own measurement of live agent sessions, per project.
+ *
+ * The projects screen reads it to answer "where is work actually happening" —
+ * a question its `status` column cannot answer, having been measured reporting
+ * a project stopped while six agents worked inside it. The shape is owned by
+ * `fleetTypes.ts`, which the fleet screen already reads; a second copy of it
+ * would drift the day it was written.
+ */
+export function getFleet(): Promise<FleetResponse> {
+  return fetchJSON('/fleet/agents')
 }
 
 /**
