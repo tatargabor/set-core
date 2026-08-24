@@ -206,8 +206,7 @@ consumer's name, path, or content.
   control that a real init of the same repo does change it.
 ### B-71 — a re-attached terminal is never asked to repaint, so the status footer comes back partial
 
-- **state:** closed (working tree — fix, tests and the visual check below; not yet committed
-  when this line was written)
+- **state:** closed (`e07c2ad1`) — fix, tests and the visual check below
 - **reported:** 2026-08-24 by the user, with a screenshot, switching between agent tabs on
   the fleet screen: *"ha valtas van agentek kozott akkor a render alul hianyosan renereli a
   status footert, de ha ujrarajzoltatom layout change miatt (elhuzom a layout hatart) akkor
@@ -294,7 +293,7 @@ consumer's name, path, or content.
   commit messages: the rename defect above in `3411d907`'s body, this one in `c75706b0`'s
   subject (`bugs(B-69): a leakscan-hook …`). The earlier-written entry keeps the number, so
   that commit subject names this entry under its old handle and nothing else does.
-- **state:** closed — `bin/set-hook-leakscan` now matches `push` only.
+- **state:** closed (`6ee3b348`) — `bin/set-hook-leakscan` now matches `push` only.
   ⚠ `c75706b0` (*"bugs(B-69): a leakscan-hook …"*) is the entry, NOT the fix: it touched one
   file, `openspec/bugs/README.md`, +25 lines. A commit subject in the form of a fix is one
   of the two places a defect is claimed done, and here the diff said otherwise —
