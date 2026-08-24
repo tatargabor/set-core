@@ -67,6 +67,83 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-72 — the leakscan's consumer-name check was passing on an EMPTY pattern list, and a leak was already in the tree
+
+- **state:** partly closed — one of four findings is scrubbed (this file); three remain
+- **reported:** 2026-08-24 by this session, the moment the registry stopped being empty
+- **measured:** `set-leakscan` resolves its consumer-name list at run time from
+  `~/.config/set-core/projects.json`. That file held `{"default":null,"projects":{}}` and had
+  not been written since May, so the list was **empty** and every scan returned clean:
+
+  ```
+  before:  ✔ set-leakscan: clean (…, remote unknown)          # 0 consumer patterns
+  after:   ✖ set-leakscan: 4 finding(s) in 5270 scanned file(s)
+             consumer-name (3) [BLOCKS]        — 3 tracked files
+             consumer-name:commit-message (1)  — 1 commit in history
+  ```
+
+  Nothing about the repository changed between the two runs. The only change was that
+  eight projects were registered, which is what gives the scanner its patterns.
+- **why it matters, and which way it fails:** it fails **clean**, which is the one direction
+  a leak scanner must never fail in. A green scan on an empty pattern list is
+  indistinguishable from a green scan on a real one — no count was printed, no warning that
+  the list was empty, and this repository is public. `release-safety.md` already states the
+  general form of this — *"a check whose input list has to be reconstructed by hand is a
+  check that never runs"* — and this is that sentence with the manual step automated and the
+  list still empty. The `set-hook-leakscan` PreToolUse gate and the `pre-push` hook both
+  inherit the blindness, so BOTH gates were passing everything.
+- **fixed when:** two things, and the first is the one that generalises:
+  1. a scan with **zero** consumer patterns does not report `clean` — it reports that it
+     could not check (the same distinction the fleet draws between a gap and a zero). Held
+     by a test that runs the scanner against an empty registry and asserts a non-clean,
+     non-blocking "unmeasured" verdict, with the positive control that a populated registry
+     still reports clean on a clean tree.
+  2. the three remaining tracked findings are scrubbed and the commit message is rewritten,
+     verified by `set-leakscan --tree` returning clean with a non-zero pattern count.
+
+### B-71 — `set-project init --dry-run` WRITES the project registry, and can silently change the default project
+
+- **state:** open
+- **reported:** 2026-08-24 by this session, on the first dry-run of the day — the run was a
+  preview taken precisely because the rule book requires one before touching a project tree
+- **measured:** the registry was empty and untouched since May:
+
+  ```
+  $ cat ~/.config/set-core/projects.json
+  {"default":null,"projects":{}}
+  $ stat -c '%y' ~/.config/set-core/projects.json
+  2026-05-14 17:33 …
+  ```
+
+  One `set-project init --dry-run`, run inside a project directory, later:
+
+  ```
+  $ cat ~/.config/set-core/projects.json
+  {"default": "<project>", "projects": {"<project>": {"path": "…", "addedAt": "2026-08-24T12:16:54Z"}}}
+  ```
+
+  The write is `bin/set-project:975-985` — the `jq '.projects[$name] = …'` block and the
+  `json_set "$CONFIG_FILE" ".default"` that follows it. Neither is inside a `DRY_RUN` guard,
+  while every write into the project tree below them is. The tree itself was clean
+  afterwards (`git status --porcelain` unchanged), which is what makes this hard to see.
+- **why it matters, and which way it fails:** it fails by mutating state a preview promised
+  not to mutate, and the second write is worse than the first — registering a project is at
+  least what `init` is for, but **setting it as the DEFAULT** changes which project every
+  other tool operates on when none is named. A user previewing a deploy has no reason to
+  expect either.
+
+  It also invalidates a completeness claim already written down. `CLAUDE.md` records the
+  dry-run as *"proven not to write in preview"*, on the evidence of a sha256 snapshot of
+  **2477 files any deploy path can reach**, before and after, zero bytes changed. That
+  snapshot covers the project tree. The registry is outside it, so the measurement was
+  structurally blind to the one write that happened — a proxy measured instead of the thing,
+  and the proxy said what the reader wanted to hear.
+- **fixed when:** a `--dry-run` init prints `Would register '<name>'` and
+  `Would set '<name>' as the default project`, and `~/.config/set-core/projects.json` is
+  byte-identical before and after. Held by a test that snapshots the registry file's sha256
+  around a dry-run init of an unregistered repo and asserts equality — with the positive
+  control that a real init of the same repo does change it.
+
 ### B-69 — renaming a held agent kills the drain on its terminal, silently and then fatally
 - **state:** fixed in the working tree, NOT yet live — the running owner daemon still
   carries the old code (see *fixed when*)
@@ -102,7 +179,7 @@ consumer's name, path, or content.
   costs a `recover` (stop + `--resume`) to get its terminal back. Until that restart,
   do not rename a terminal.
 
-### B-69 — the leakscan hook blocks a LOCAL `git tag`, which is the safety net the scrub procedure requires
+### B-70 — the leakscan hook blocks a LOCAL `git tag`, which is the safety net the scrub procedure requires
 
 - **state:** open
 - **reported:** 2026-08-24 by this session, while clearing the 25 findings that were
@@ -1658,7 +1735,7 @@ consumer's name, path, or content.
   consider whether an item can be answered at all. Measured on the same snapshot:
   `/api/fleet/pm` presented pid 3202485 (no pty, no bus seat — nothing the reader
   can do) while the queue also held 113100 (`set-core-bugfix`) and 183020
-  (`itline-web-animtoolok`), both with a terminal. A mode whose promise is
+  (a consumer project's session), both with a terminal. A mode whose promise is
   *"whichever is waiting on you"* spent the screen on the one item that cannot be
   answered. Ordering is `lib/set_orch/fleet/attention.py`; changing it is a
   contract change and is deliberately not folded into the display fix.
