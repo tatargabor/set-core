@@ -123,8 +123,23 @@ class _PhoneCheck:
 
 
 def sh(args, cwd=None):
-    """Run a command, return stdout. Never raises on a non-zero git status."""
-    p = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    """Run a command, return stdout. Never raises — not on a non-zero exit, and
+    not on a binary that is not installed.
+
+    The second half was added after a measured crash: `remote_visibility` shells
+    out to `gh`, which is optional and absent on this machine, and the resulting
+    `FileNotFoundError` propagated out of `main` and killed the whole scan. The
+    fail direction is what makes it worth a comment — `set-hook-leakscan` blocks
+    on any non-zero exit, so the crash did NOT let anything through. It reported
+    the push as carrying content that must not leave the repository, which is a
+    different and false statement, and the operator is then debugging a leak that
+    does not exist. A missing optional tool must read as "this could not be
+    determined" (the caller already defaults to "unknown"), never as a finding.
+    """
+    try:
+        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    except (FileNotFoundError, NotADirectoryError, PermissionError):
+        return ""
     return p.stdout
 
 
