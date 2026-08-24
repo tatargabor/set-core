@@ -248,8 +248,13 @@ consumer's name, path, or content.
   makes it a repaint rather than a lucky replay: a stale screen cannot show a newer number.
 
 ### B-69 — renaming a held agent kills the drain on its terminal, silently and then fatally
-- **state:** fixed in the working tree, NOT yet live — the running owner daemon still
-  carries the old code (see *fixed when*)
+- **state:** open — the code is fixed and COMMITTED (`3411d907`), the running daemon is not.
+  Re-measured 2026-08-24, and this is why the entry stays open rather than closing on the
+  commit: `systemctl --user show set-agent-owner -p ExecMainStartTimestamp` says
+  **Sat 2026-08-22 10:54:11 CEST**, while `3411d907` was authored 2026-08-23 16:22:27. A
+  long-lived service holds the code it started with, so the defect is live right now on this
+  machine. Closing it on the commit alone would have been the shipped-commit-is-not-a-
+  running-system error, in the reassuring direction.
 - **reported:** 2026-08-23 by the user — renamed a terminal on the fleet screen and
   *"since then I cannot type into it"*
 - **measured:** `journalctl --user -u set-agent-owner`, six seconds apart:
@@ -289,7 +294,11 @@ consumer's name, path, or content.
   commit messages: the rename defect above in `3411d907`'s body, this one in `c75706b0`'s
   subject (`bugs(B-69): a leakscan-hook …`). The earlier-written entry keeps the number, so
   that commit subject names this entry under its old handle and nothing else does.
-- **state:** open
+- **state:** closed — `bin/set-hook-leakscan` now matches `push` only.
+  ⚠ `c75706b0` (*"bugs(B-69): a leakscan-hook …"*) is the entry, NOT the fix: it touched one
+  file, `openspec/bugs/README.md`, +25 lines. A commit subject in the form of a fix is one
+  of the two places a defect is claimed done, and here the diff said otherwise —
+  `git show --stat` cost seconds and is the only thing that separated them.
 - **reported:** 2026-08-24 by this session, while clearing the 25 findings that were
   blocking a 112-commit push
 - **measured:** `bin/set-hook-leakscan:29` — `PUBLISH_RX` is
@@ -306,11 +315,15 @@ consumer's name, path, or content.
   its own rule book prescribes — and the gate's message says not to work around it. A guard
   that refuses the documented repair is how a guard earns its way into `--no-verify`, which
   is the failure mode the leakscan's own phone-number docstring already names.
-- **fixed when:** a local `git tag` is not treated as publishing — the pattern matches only
-  tag forms that reach a remote (`git push … --tags`, `git push <remote> <tag>`), while
-  `git tag <name> <ref>`, `git tag -d`, and `git tag -l` pass. Held by a test that feeds
-  `git tag backup-x HEAD` and asserts the hook does not block, alongside the existing
-  positive control that `git push --tags` still does.
+- **fixed:** `tag` is gone from `PUBLISH_RX`; a tag reaches a remote only through a push
+  (`--tags`, `<remote> <tag>`, `refs/tags/…`) and every one of those forms is caught by the
+  `push` half — the narrowing removes a false block and opens no hole, which is the only
+  shape of narrowing a safety gate may take.
+- **fixed when:** `tests/unit/test_leakscan.py::…::test_a_local_tag_is_not_a_publication_
+  either` (a `git tag` in the DIRTY repository passes — a clean one would pass for the wrong
+  reason and stay green with `tag` still in the pattern) and
+  `test_but_pushing_tags_to_a_remote_still_is` (three push forms still blocked). Both green,
+  22 in the file; mutation-proven — putting `tag` back turns the first one red.
 
 ### B-68 — a review finding's `line` is rendered with an `L` prefix whatever it holds, so prose becomes a line number
 - **state:** open

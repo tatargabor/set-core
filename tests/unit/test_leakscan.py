@@ -238,6 +238,38 @@ class TestTheHookIsNotTriggeredByTextThatMerelyMentionsPushing:
         r = _hook(dirty, "git commit -m 'wip'", home)
         assert r.returncode == 0, r.stderr
 
+    def test_a_local_tag_is_not_a_publication_either(self, two_repos):
+        """B-70. A tag writes a ref into `.git` and reaches nobody.
+
+        The direction is what makes this worth a test rather than a tidy-up: the
+        gate blocked `git tag <name> HEAD && git filter-branch --msg-filter …`,
+        which is the REPAIR for the findings it had just reported — and
+        `release-safety.md` prescribes exactly that backup tag before a history
+        rewrite. A guard standing in front of its own rule book's fix is how a
+        guard earns its way into `--no-verify`.
+
+        Scanned in the DIRTY repository deliberately: a clean one would pass for
+        the wrong reason, and the assertion would hold with `tag` still in the
+        pattern.
+        """
+        dirty, _clean, home = two_repos
+        r = _hook(dirty, "git " + "tag leakscan-backup-x HEAD", home)
+        assert r.returncode == 0, f"a local tag was refused: {r.stderr}"
+
+    def test_but_pushing_tags_to_a_remote_still_is(self, two_repos):
+        """The positive control, and it is not optional.
+
+        Narrowing a safety gate is only allowed to remove a false block; if it
+        also opened a hole, this is where it shows. Every route a tag has to a
+        remote goes through `push`.
+        """
+        dirty, _clean, home = two_repos
+        for cmd in ("git " + "push --tags",
+                    "git " + "push origin v1.2.3",
+                    "git " + "push origin refs/tags/v1.2.3"):
+            r = _hook(dirty, cmd, home)
+            assert r.returncode == 2, f"{cmd!r} was not scanned: {r.stderr}"
+
 
 class TestARepositoryMayNameItself:
     """The gate ran inside one of the private projects and reported 893 findings

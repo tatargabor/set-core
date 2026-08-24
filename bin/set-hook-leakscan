@@ -24,9 +24,23 @@ import sys
 
 # A publishing verb, at the start of the command or after a separator. A local
 # commit is not a publication, and gating one trains the user to disable the hook.
+#
+# `push` ONLY — B-70, and the reason it is not "push or tag" is that a tag does
+# not publish anything. Measured 2026-08-24: `git tag <name> HEAD && git
+# filter-branch --msg-filter …` was refused, and that command IS the repair — a
+# local backup tag is the step `release-safety.md` prescribes before a history
+# rewrite. So the gate stood in front of the fix for the very findings it had
+# just reported, while its own message says not to work around it. A guard that
+# refuses the documented repair is how a guard earns its way into `--no-verify`.
+#
+# Nothing is lost by dropping it: a tag reaches a remote only through a push —
+# `git push --tags`, `git push <remote> <tag>`, `git push … refs/tags/…` — and
+# every one of those forms is caught by the `push` half. The narrowing removes
+# the false block and adds no hole, which is the only shape of narrowing a
+# safety gate may take.
 PUBLISH_RX = re.compile(
     r"(?:^|[;&|\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
-    r"git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*(?:push|tag)(?:\s|$)"
+    r"git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*push(?:\s|$)"
 )
 
 HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
