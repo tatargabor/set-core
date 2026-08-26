@@ -50,7 +50,7 @@
 ## 7. Close out
 
 - [x] 7.1 Rebuild `web/` so port 7400 serves the change [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 7.2 Close B-78 in `openspec/bugs/README.md` with the commit sha and the check that went green [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 7.2 B-78 closed in the register with the three shas and the live measurement (24 recorded → 3 in the last round); two new findings the work surfaced went in as **B-79** (the dashboard claims it is listening 82 s early) and **B-80** (six recorded entries share one label) [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 
 ## Acceptance Criteria (from spec scenarios)
 

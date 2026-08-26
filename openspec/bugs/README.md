@@ -67,38 +67,54 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-78 — the restore offer is built from 30 days of HISTORY, so it promises back conversations nobody had open
+### B-79 — `set-web dashboard running at …:7400` is printed 66–82 s before anything listens on that port
 
 - **state:** open
-- **reported:** 2026-08-26 by the user, with a screenshot of the fleet screen: the header read
-  `Restore 9 of 24 — 3 already running, 12 cannot be resumed`, and the ask was that restore
-  offer *what is open now*, not everything.
-- **measured:** the roster is an accumulating record — `RETENTION_SECONDS = 30 * 24 * 3600`
-  (`lib/set_orch/fleet/roster.py:71`) — and `restore()` attempts **every** recorded entry for
-  the project (`lib/set_orch/fleet/restore.py:161`, `for entry in entries`). Counted on this
-  machine's own `fleet-roster.json`, comparing every entry against those seen in the LAST
-  discovery round:
+- **reported:** 2026-08-26 by this session, while trying to verify a UI change on the running dashboard
+- **measured:** `lib/set_orch/cli.py:838` prints the line, and `server.run()` — which binds the
+  socket — is at `lib/set_orch/cli.py:880`. Between them sits the whole lifespan startup (42
+  projects, their watchers and detectors). Timed on the live service:
 
   ```
-  projects: 18   recorded entries: 233   seen in the last round: 13
-  worst single project: 109 recorded,  4 open
-  the screenshotted one:  24 recorded,  3 open
+  11:25:26  systemd: Started SET Web Dashboard
+  11:25:29  set-web dashboard running at http://0.0.0.0:7400
+  11:26:51  port 7400 actually LISTENING   (82 s after the line, 85 s after start)
   ```
 
-  The duplication is not noise: one named agent accumulates one entry per `--resume`, because
-  the key is the session id. In the screenshotted project a single label held **five** recorded
-  session ids, of which one is the live conversation.
-- **why it matters, and which way it fails:** in the direction that ACTS. The button's number is
-  honest about what the code will do, and what the code will do is start nine sessions the user
-  did not leave open — on a project where a mis-aimed click has already cost 21 started agents
-  (`web/src/components/FleetRestore.tsx`, the `armed` note). "Everything ever recorded" and
-  "the composition I had" are different sets, and only the second is what a restore means.
-- **fixed when:** the offer's default set is the last observed COMPOSITION — the entries seen in
-  the final discovery round before the fleet went down — with the recorded-but-not-open remainder
-  reachable behind an expander, never silently dropped. Held by a test over a roster document
-  whose entries carry three different `last_seen` rounds: the offer counts only the newest round,
-  and the full list is still readable. A round with no entries must read as *"nothing was open
-  when the fleet was last seen"*, not as the previous round's composition.
+  During that window `curl` gets `Connection refused`, `ss -ltn` shows no socket, and
+  `systemctl is-active` says `active`. The main thread sits in `futex_wait_queue`.
+- **why it matters, and which way it fails:** the line is a **claim, not a measurement** — it is
+  printed before the act it describes, so it is false for the entire window and there is nothing
+  in the journal to correct it (`Uvicorn running on …` never reaches the journal at all —
+  `journalctl --user -u set-web --since -7d | grep -c "Uvicorn running"` → **0**). An operator
+  reading the log sees a healthy start and a dead port, which reads as a crash. It cost this
+  session two restarts and about five minutes of diagnosis, and one of those restarts was a
+  second 91-second outage of the user's dashboard.
+- **fixed when:** the line is printed from a uvicorn startup callback — after the socket is
+  bound — or replaced with two lines, *starting* before and *listening on* after, and uvicorn's
+  own startup log reaches the journal. Held by a test that asserts the "running at" string is not
+  emitted before the port accepts a connection.
+
+### B-80 — six recorded entries share one label, and only their age tells them apart
+
+- **state:** open
+- **reported:** 2026-08-26 by this session, LOOKING at the restore disclosure after
+  `fleet-restore-last-composition` shipped
+- **measured:** on the live record, one project's 49 entries include **six** rows reading
+  `set-core-bugfix2` — `last seen 15.1h / 36.6h / 2.0d / 2.0d / 2.8d / 3.9d ago` — and a second
+  label repeats five times. The cause is structural and correct: an entry is keyed on the session
+  id and a `--resume` mints a new one, so one named agent accumulates one entry per resume.
+- **why it matters, and which way it fails:** in the *unactionable* direction rather than the
+  acting one — the list is honest, and nobody can choose from it. Two rows two days apart carrying
+  the same name is exactly the state where a person picks the wrong conversation to resume, and
+  the screen gave them no way to know. Deliberately left out of
+  `fleet-restore-last-composition` (see its `design.md`, "Open Questions"): collapsing the
+  duplicates changes what the RECORD means, which is a different act from fixing what restore
+  offers.
+- **fixed when:** a repeated label renders as one lineage the reader can open — the resumes of one
+  agent, newest first — or each row carries something besides its age that distinguishes it
+  (first-seen, a transcript size, the last thing it was doing). Held by a test over a record with
+  five same-label entries asserting the surface renders one group rather than five equal rows.
 
 ### B-73 — a CRASHED leakscan is reported to the operator as "this push would publish content that must not leave"
 
@@ -2153,6 +2169,47 @@ consumer's name, path, or content.
 
 
 ## Closed
+
+### B-78 — the restore offer is built from 30 days of HISTORY, so it promises back conversations nobody had open
+
+- **state:** closed (`da98ddf7` core, `f6bc0166` surface, `a7f5ee6b` the height fix the look found) — change `fleet-restore-last-composition`
+- **reported:** 2026-08-26 by the user, with a screenshot of the fleet screen: the header read
+  `Restore 9 of 24 — 3 already running, 12 cannot be resumed`, and the ask was that restore
+  offer *what is open now*, not everything.
+- **measured:** the roster is an accumulating record — `RETENTION_SECONDS = 30 * 24 * 3600`
+  (`lib/set_orch/fleet/roster.py:71`) — and `restore()` attempts **every** recorded entry for
+  the project (`lib/set_orch/fleet/restore.py:161`, `for entry in entries`). Counted on this
+  machine's own `fleet-roster.json`, comparing every entry against those seen in the LAST
+  discovery round:
+
+  ```
+  projects: 18   recorded entries: 233   seen in the last round: 13
+  worst single project: 109 recorded,  4 open
+  the screenshotted one:  24 recorded,  3 open
+  ```
+
+  The duplication is not noise: one named agent accumulates one entry per `--resume`, because
+  the key is the session id. In the screenshotted project a single label held **five** recorded
+  session ids, of which one is the live conversation.
+- **why it matters, and which way it fails:** in the direction that ACTS. The button's number is
+  honest about what the code will do, and what the code will do is start nine sessions the user
+  did not leave open — on a project where a mis-aimed click has already cost 21 started agents
+  (`web/src/components/FleetRestore.tsx`, the `armed` note). "Everything ever recorded" and
+  "the composition I had" are different sets, and only the second is what a restore means.
+- **closed with:** the roster document now carries `last_round_at`, stamped by the write that
+  stamps every entry that round saw, so "was open" is an exact equality rather than a time window;
+  `read()` reports `in_last_round` per entry (`None`, never `False`, when the record cannot say);
+  `restore()` takes an optional key selection where absent, empty and populated are three
+  different requests. On the live record the same project now reads **24 recorded, 3 in the last
+  round** — and on screen, `All 3 already running` instead of `Restore 9 of 24`. Verified in the
+  browser, not only by test: 11 Python tests of which 10 fail without the source, 13 web tests all
+  13 failing without it, and a baseline set diff (0 leaks) showing no new failure.
+- **fixed when:** the offer's default set is the last observed COMPOSITION — the entries seen in
+  the final discovery round before the fleet went down — with the recorded-but-not-open remainder
+  reachable behind an expander, never silently dropped. Held by a test over a roster document
+  whose entries carry three different `last_seen` rounds: the offer counts only the newest round,
+  and the full list is still readable. A round with no entries must read as *"nothing was open
+  when the fleet was last seen"*, not as the previous round's composition.
 
 ### B-29 — the terminal's last row is cut in half, and the last row is the status bar
 
