@@ -65,6 +65,80 @@ DEFAULT_TAIL_BYTES = 64 * 1024
 DEFAULT_AGENT_ARGV = ("claude", "--dangerously-skip-permissions")
 
 
+#: How far past a cut `_resync` will look for a boundary before giving up.
+#:
+#: Measured 2026-08-26 across 12 live terminals: the first `ESC` after an
+#: arbitrary cut was 0-66 bytes away, mean 14.5. 1 KiB is therefore two orders of
+#: magnitude of headroom, and it bounds the one case that would otherwise be
+#: unbounded — a long run of plain text with no escape in it at all.
+_RESYNC_WINDOW = 1024
+
+
+def _resync(buf: bytes, drop: int) -> int:
+    """Where to cut `buf` so that what REMAINS starts at a sequence boundary.
+
+    ## The defect this exists for — B-82
+
+    The tail is a ring buffer of raw pty bytes and the cut was `len - cap`:
+    wherever 64 KiB happened to land. A terminal stream is mostly escape
+    sequences — measured on live agents, one `ESC` every 8-18 bytes — so the cut
+    lands INSIDE a sequence most of the time, and what is replayed then begins
+    with its tail: `ESC[55;1H` arrives as `55;1H`.
+
+    xterm has no way to know those five characters were ever a command. It draws
+    them, at the top-left, as text. Reported 2026-08-26 from a live screen, with
+    that exact string in the corner of a tile that was otherwise near-empty.
+
+    **This is not the same failure as a truncated replay, and the difference is
+    the point.** A replay missing its head is INCOMPLETE, which the ack already
+    says (`replay_truncated`). A replay whose head is a decapitated sequence is
+    WRONG: the cursor never moved, so everything after it lands in the wrong
+    place, and the tile reads as broken rather than as partial. That is also why
+    resizing repairs it and nothing else does — a resize makes the program
+    repaint from scratch, which is the reader's own workaround
+    (*"átméretezés megjavítja mindig"*).
+
+    ## Why forward-to-the-next-ESC, and not a parser
+
+    An exact repair would parse the dropped region and work out whether the cut
+    fell inside a sequence. That is ~40 lines of escape-sequence grammar — CSI,
+    OSC, DCS, string terminators, charset designators — and every one of its
+    mistakes would fail in the silent direction, producing a stream that still
+    looks like a terminal.
+
+    `ESC` always begins a new unit. So skipping forward to the next one cannot
+    leave a decapitated sequence, needs no grammar, and is checkable in one line.
+    Its cost is dropping a few more bytes of an ALREADY truncated replay, and
+    that cost was measured before the design was chosen: at most 66 bytes across
+    12 live terminals, of 65 536. Under 0.1 %.
+
+    Two bounds keep it honest:
+
+    - **the search is bounded** (`_RESYNC_WINDOW`), so a stream with no escapes
+      in it cannot make this drop the whole buffer. Failing towards "keep some
+      plain text that renders fine" is right; failing towards "empty the replay"
+      is not.
+    - **when no `ESC` is found, the UTF-8 alignment is still repaired.** A cut
+      inside a multi-byte character leaves continuation bytes at the head, which
+      render as replacement characters — a smaller version of the same defect,
+      and the box-drawing an agent's TUI is made of is exactly where it shows.
+
+    Returns an index >= `drop`; cutting there is safe.
+    """
+    if drop <= 0:
+        return 0
+    limit = min(len(buf), drop + _RESYNC_WINDOW)
+    esc = buf.find(0x1B, drop, limit)
+    if esc >= 0:
+        return esc
+    # No sequence within reach: at least do not start inside a character.
+    # UTF-8 continuation bytes are 0b10xxxxxx; a boundary is anything else.
+    i = drop
+    while i < len(buf) and (buf[i] & 0xC0) == 0x80:
+        i += 1
+    return i
+
+
 def default_socket_path() -> str:
     """`$XDG_RUNTIME_DIR/set-agent-owner.sock` — the unit file's `%t` expansion."""
     runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
@@ -187,11 +261,29 @@ class OwnerDaemon:
             logger.info("fleet owner: terminal of %s reached EOF after %d bytes",
                         label, self._drained.get(label, 0))
             return
+        self._append(label, data)
+
+    def _append(self, label: str, data: bytes) -> None:
+        """Record one chunk: count it, keep the bounded tail, publish it.
+
+        ⚠ **THE ONLY PLACE THAT DOES THIS, and it was not always.** The real
+        drain and the test seam below used to hold two copies, and they had
+        already diverged: the seam extended the tail and never applied
+        `tail_bytes` at all. So every test written through it measured a buffer
+        that is unbounded — a different system from the one that ships, and one
+        in which B-82 cannot occur, because nothing is ever cut.
+
+        Found 2026-08-26 by writing a test for B-82 through the seam and having
+        it fail for the wrong reason. That is the cheap way to find this; the
+        expensive way is a green suite that proves nothing about the code the
+        reader is looking at.
+        """
         self._drained[label] = self._drained.get(label, 0) + len(data)
         tail = self._tails.setdefault(label, bytearray())
         tail.extend(data)
         if len(tail) > self.tail_bytes:
-            del tail[: len(tail) - self.tail_bytes]
+            # WHERE the cut lands is a decision, not an offset — see `_resync`.
+            del tail[:_resync(tail, len(tail) - self.tail_bytes)]
             self._dropped[label] = True
         self._publish(label, data)
 
@@ -201,10 +293,12 @@ class OwnerDaemon:
         Named so it cannot be mistaken for a production path: the real drain is
         driven by `loop.add_reader` on a pty master, and a test that reached for
         that would need a pty, a child and a race.
+
+        It differs from `_drain` in exactly one way — where the bytes came from.
+        Everything after that is `_append`, shared, so a test through this seam
+        measures the shipping behaviour rather than a relaxed copy of it.
         """
-        self._drained[label] = self._drained.get(label, 0) + len(data)
-        self._tails.setdefault(label, bytearray()).extend(data)
-        self._publish(label, data)
+        self._append(label, data)
 
     def _detach_drain(self, fd: int) -> None:
         try:
@@ -540,7 +634,12 @@ class OwnerDaemon:
             raise OwnerError(f"no terminal owned here for {label}")
         tail = bytes(self._tails[label])
         limit = int(params.get("max_bytes", self.tail_bytes))
-        clipped = tail[-limit:] if limit < len(tail) else tail
+        # The SAME resynchronisation as the ring buffer's own cut — B-82. This
+        # clip is a second place that starts a byte stream at an arbitrary
+        # offset, so it can decapitate an escape sequence in exactly the same
+        # way, and a caller rendering this answer would draw `55;1H` as text.
+        # Two cuts that must agree, made to agree by calling one function.
+        clipped = bytes(tail[_resync(tail, len(tail) - limit):]) if limit < len(tail) else tail
         return {
             "data_b64": base64.b64encode(clipped).decode("ascii"),
             "bytes": len(clipped),

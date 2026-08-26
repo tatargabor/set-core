@@ -67,6 +67,43 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-82 — the terminal replay ring buffer cuts at an arbitrary byte, so a tab switch can start mid-escape-sequence
+
+- **state:** closed (`PENDING_SHA`) — the fix ships; it takes effect only when the owner
+  service is restarted, which orphans every held agent, so WHEN that happens is the user's
+  call and not this session's.
+- **reported:** 2026-08-26 by the user, switching between agent tabs — *"még mindig van ilyen
+  képernyő rajzolási hiba ha átváltok időnként. átméretezés megjavítja mindig"*, with a
+  screenshot showing `55;1H` printed as literal text in the top-left corner of an otherwise
+  near-empty terminal tile.
+- **measured:** `ownerd.py:193-195` drops the head of the tail at a byte offset
+  (`del tail[: len(tail) - self.tail_bytes]`), which is wherever 64 KiB happens to land. Asked
+  of the live owner over its own socket, all 12 attached terminals:
+
+  ```
+  all 12 attached terminals:  tail_bytes = 65536, tail_truncated = True
+  terminal A   head = b'[1B        \xe2\x94\x82 assis'   <- ESC gone, xterm prints "[1B"
+  terminal B   head = b'1m2. A csatolm\xc3\xa1ny \xe2'     <- ESC[ gone, prints "1m2."
+  terminal C   contains \x1b[55;1H — the exact sequence in the screenshot
+  first ESC after the cut:  0-66 bytes away, mean 14.5, one ESC per 8-18 bytes
+  ```
+
+  Terminal C is the one in the report. The cut had landed between its `\x1b[` and its
+  `55;1H`, so the cursor never moved and the parameters were drawn as text.
+- **why it matters, and which way it fails:** the replay is honest about being truncated
+  (`replay_truncated`), so the missing HEAD is a stated fact — but a decapitated escape
+  sequence is not a missing screen, it is a WRONG one: the cursor stays where it was, the
+  following output lands in the wrong place, and the tile looks broken rather than partial.
+  It is distinct from B-16 and B-76, which are about a screen that is stale; this one is
+  about a screen that was never well-formed. Resizing repairs it because the program repaints
+  from scratch, which is why it *"always"* works and why nothing else does.
+- **fixed when:** after a drop, the retained buffer begins at a sequence boundary. Measured
+  cost of resynchronising forward to the first `ESC`: **at most 66 bytes** across the 12 live
+  tails (mean 14.5, of 65 536 — under 0.1 %), so this is paid for. The check that goes from
+  red to green: a unit test feeding a stream whose cut lands inside `ESC[55;1H` and asserting
+  the replay does not begin with `55;1H`; and, live, none of the attached tails beginning
+  with a decapitated sequence.
+
 ### B-81 — local absolute paths reach this public repository, and `set-leakscan` does not look for them
 
 - **state:** open

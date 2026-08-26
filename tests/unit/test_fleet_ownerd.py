@@ -941,3 +941,110 @@ def test_a_rename_the_owner_refuses_comes_back_as_an_error_and_moves_nothing(tmp
                                                    params={"label": "before", "new_label": "after"})))
     assert response.error is not None and "taken" in response.error
     assert "before" in daemon._tails and "after" not in daemon._tails
+
+
+# ─── B-82: where the ring buffer is allowed to cut ───────────────────────────
+
+
+def test_a_cut_inside_an_escape_sequence_does_not_leave_its_tail_behind(tmp_path):
+    """The reported defect, with the reported bytes.
+
+    A terminal stream is mostly escape sequences — measured on 12 live agents,
+    one `ESC` every 8-18 bytes — so a cut at `len - cap` lands inside one most
+    of the time. What is replayed then begins with the sequence's TAIL, and
+    xterm draws it: `ESC[55;1H` arrives as `55;1H` and appears in the corner of
+    the tile, which is exactly what the 2026-08-26 screenshot shows.
+
+    The assertion is on what the buffer BEGINS with, because that is what the
+    viewer renders first. Asserting only that the length is bounded — which the
+    test above does — passes on the broken behaviour.
+    """
+    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=20)
+    daemon._tails["x"] = bytearray()
+    daemon._dropped["x"] = False
+    daemon._drained["x"] = 0
+
+    # 30 bytes: the cut at `len - 20` falls between the `ESC[` and the `55;1H`.
+    daemon._drain_from(b"0123456789" + b"\x1b[55;1H" + b"----------", "x")
+
+    kept = bytes(daemon._tails["x"])
+    assert daemon._dropped["x"] is True
+    assert not kept.startswith(b"55;1H"), "a decapitated escape sequence was kept"
+    # It resynchronised FORWARD to the sequence's own start, so nothing after
+    # the cut was lost either.
+    assert kept.startswith(b"\x1b[55;1H")
+
+
+def test_resynchronising_never_drops_more_than_the_window(tmp_path):
+    """A far-away escape must not drag the cut across the whole buffer.
+
+    The fail direction that matters: keeping some plain text that renders
+    perfectly well is right; emptying an already-truncated replay is not.
+
+    ⚠ **The first version of this test used a payload with no escape in it at
+    all**, so `find` returned -1 whichever limit it was given and the bound was
+    never exercised — removing the window entirely left the test green.
+    Measured, not assumed. The payload now puts the only `ESC` well beyond the
+    window, which is the case the bound exists for: unbounded, the cut would
+    jump to it and take everything before it.
+    """
+    # The cap must exceed the window, or the retained region is shorter than the
+    # search and the bound cannot be reached at all — which is how the first
+    # version of this test managed to pass against every mutation.
+    cap = ownerd_mod._RESYNC_WINDOW * 2
+    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=cap)
+    daemon._tails["x"] = bytearray()
+    daemon._dropped["x"] = False
+    daemon._drained["x"] = 0
+
+    # The cut lands 50 bytes in; the only ESC is 1500 bytes past it, well beyond
+    # the window. Unbounded, the cut would jump to it and take 1500 bytes of
+    # perfectly renderable text with it.
+    drop, far = 50, 1500
+    daemon._drain_from(b"x" * (drop + far) + b"\x1b[0m" + b"y" * (cap - far - 4), "x")
+
+    kept = bytes(daemon._tails["x"])
+    assert kept.startswith(b"x")
+    assert len(kept) == cap
+
+
+def test_a_cut_inside_a_utf8_character_does_not_leave_continuation_bytes(tmp_path):
+    """The smaller version of the same defect, and where it actually shows.
+
+    An agent's TUI is drawn with box characters, every one of them three bytes.
+    A cut inside one leaves continuation bytes at the head, which render as
+    replacement characters. Asserted here rather than assumed because this path
+    is the FALLBACK — it only runs when no escape is within reach, so a mistake
+    in it would be invisible in every ordinary stream.
+    """
+    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=10)
+    daemon._tails["x"] = bytearray()
+    daemon._dropped["x"] = False
+    daemon._drained["x"] = 0
+
+    # `│` is b'\xe2\x94\x82'. Twelve bytes of them: the cut at `len - 10` falls
+    # one byte into the first character.
+    daemon._drain_from(("│" * 4).encode(), "x")
+
+    kept = bytes(daemon._tails["x"])
+    assert kept.decode("utf-8")            # decodes, rather than raising
+    assert kept == ("│" * 3).encode()
+
+
+def test_the_tail_answer_cuts_at_the_same_boundary_as_the_ring(tmp_path):
+    """Two places clip a byte stream at an arbitrary offset, not one.
+
+    `_do_tail`'s `max_bytes` is the second, and a caller rendering ITS answer
+    would draw the decapitated sequence just the same. Made to agree by calling
+    one function; asserted so that a later edit to either cannot quietly
+    separate them.
+    """
+    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=1000)
+    daemon._tails["x"] = bytearray(b"0123456789" + b"\x1b[55;1H" + b"----------")
+    daemon._dropped["x"] = False
+
+    answer = _run(daemon._do_tail({"label": "x", "max_bytes": 20}))
+    data = base64.b64decode(answer["data_b64"])
+    assert not data.startswith(b"55;1H")
+    assert data.startswith(b"\x1b[55;1H")
+    assert answer["truncated"] is True
