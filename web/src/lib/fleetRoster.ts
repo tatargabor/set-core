@@ -306,3 +306,91 @@ export function ageLabel(seconds: number): string {
   if (seconds < 172800) return `${(seconds / 3600).toFixed(1)}h`
   return `${(seconds / 86400).toFixed(1)}d`
 }
+
+/**
+ * The conversations one agent NAME holds — a lineage, not a group of agents.
+ *
+ * An entry is keyed on the session id and a `--resume` mints a new one, so one
+ * named agent accumulates one entry per resume. Measured on a live record
+ * 2026-08-26: six rows read the same label, differing only by an age (15.1h,
+ * 36.6h, 2.0d, 2.0d, 2.8d, 3.9d). The list was honest and nobody could choose
+ * from it — B-80.
+ *
+ * **This is a way of SHOWING rows, never a thing that can be restored.** The
+ * selection stays per entry throughout: an act that restored a lineage would
+ * start six conversations of one agent at once, which is the defect B-78 just
+ * removed, re-entering through a different door.
+ */
+export interface Lineage {
+  /** What to call it — the shared label, or the key when there is no label. */
+  label: string
+  /** Stable across renders: the newest entry's key. */
+  key: string
+  /** Newest first. Always at least one. */
+  entries: RosterEntry[]
+}
+
+export function groupByLabel(entries: readonly RosterEntry[]): Lineage[] {
+  const byLabel = new Map<string, RosterEntry[]>()
+  for (const e of entries) {
+    // An entry with no label groups under its own KEY, so two unlabelled
+    // entries are never silently merged into one lineage that claims they are
+    // the same agent.
+    const name = e.label || e.key
+    const list = byLabel.get(name)
+    if (list) list.push(e)
+    else byLabel.set(name, [e])
+  }
+  const out: Lineage[] = []
+  for (const [label, list] of byLabel) {
+    const sorted = [...list].sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0))
+    out.push({ label, key: sorted[0].key, entries: sorted })
+  }
+  // Between lineages, newest first — the same order the flat list had, so the
+  // grouping changes the shape of the list and not what is near the top.
+  out.sort((a, b) => (b.entries[0].last_seen || 0) - (a.entries[0].last_seen || 0))
+  return out
+}
+
+/** Whether every entry in a lineage is one that cannot come back. */
+export function allBlocked(entries: readonly RosterEntry[]): boolean {
+  return entries.every(e => e.running === true || !e.resumable)
+}
+
+/** One turn of a recorded conversation, as the peek route returns it. */
+export interface PeekTurn {
+  role: string
+  timestamp: string | null
+  text: string
+  thinking: string
+  tools: { name?: string | null; id?: string | null }[]
+  results: number
+}
+
+export interface Peek {
+  turns: PeekTurn[]
+  /** Present only when there was no conversation to read. Never with turns. */
+  problem?: string | null
+  total_read?: number
+  truncated?: boolean
+  limit?: number
+}
+
+/**
+ * What one turn SAYS, when it says nothing.
+ *
+ * Measured on the live record: the last turn of a recorded session is often a
+ * `/compact`, an empty user entry, or an assistant turn that only called tools.
+ * Dropping those would make the peek look like it found nothing; rendering them
+ * blank is worse. So a turn with no text is described by what it did.
+ */
+export function turnSummary(turn: PeekTurn): string {
+  if (turn.text) return turn.text
+  if (turn.tools.length) {
+    const names = turn.tools.map(t => t.name).filter(Boolean)
+    return names.length ? `ran ${names.join(", ")}` : `ran ${turn.tools.length} tool(s)`
+  }
+  if (turn.results) return `${turn.results} tool result${turn.results === 1 ? "" : "s"}`
+  if (turn.thinking) return "thought"
+  return "(nothing recorded for this turn)"
+}

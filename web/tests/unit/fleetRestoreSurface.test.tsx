@@ -426,3 +426,144 @@ describe('the rest of the record is picked by hand', () => {
     expect(screen.getByText(/no transcript on disk/)).toBeTruthy()
   })
 })
+
+/**
+ * The lineage and the peek — B-80, and the question that decides which
+ * conversation to bring back.
+ */
+const past = (key: string, label: string, last_seen: number, over: Record<string, unknown> = {}) =>
+  ({ ...entry(key), label, last_seen, in_last_round: false, ...over })
+
+async function openTheRest(container: HTMLElement) {
+  const toggle = await waitFor(() => {
+    const el = container.querySelector('[data-fleet-restore-rest-toggle]') as HTMLElement | null
+    if (!el) throw new Error('no disclosure')
+    return el
+  })
+  await act(async () => { fireEvent.click(toggle) })
+}
+
+describe('six entries under one label read as one lineage', () => {
+  it('renders one row for the six, and opens to them', async () => {
+    const six = Array.from({ length: 6 }, (_, i) => past(`B${i}`, 'proj-bugfix2', 100 - i))
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), ...six, past('S', 'proj-solo', 5)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+
+    // Two rows for seven entries: one lineage of six, one single entry.
+    expect(container.querySelector('[data-fleet-restore-lineages]')?.getAttribute('data-fleet-restore-lineages'))
+      .toBe('2')
+    const lineage = container.querySelector('[data-fleet-lineage="proj-bugfix2"]') as HTMLElement
+    expect(lineage.textContent).toContain('6 conversations')
+    // Before opening, none of the six is a selectable row.
+    expect(container.querySelectorAll('[data-fleet-recorded-entry]')).toHaveLength(1)
+
+    await act(async () => {
+      fireEvent.click(lineage.querySelector('[data-fleet-lineage-toggle]') as HTMLElement)
+    })
+    expect(container.querySelectorAll('[data-fleet-recorded-entry]')).toHaveLength(7)
+  })
+
+  it('a label with one entry has no group to open', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), past('S', 'proj-solo', 5)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    expect(container.querySelector('[data-fleet-lineage]')).toBeNull()
+    expect(container.querySelectorAll('[data-fleet-recorded-entry]')).toHaveLength(1)
+  })
+
+  it('selection inside a lineage is per entry, and posts only the ticked one', async () => {
+    // There is deliberately no act that restores a lineage as a unit: it would
+    // start six conversations of one agent at once, which is the defect the
+    // composition offer just removed, coming back through another door.
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('B1', 'proj-dup', 200), past('B2', 'proj-dup', 100)], 1000),
+      'POST /api/fleet/roster/proj/restore': {
+        project: 'proj', attempted: 1, complete: true, record_exists: true,
+        started: [outcome('started', null, 'B2')], skipped: [], failed: [],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-lineage-toggle]') as HTMLElement)
+    })
+    const boxes = screen.getAllByLabelText('proj-dup')
+    expect(boxes).toHaveLength(2)
+    await act(async () => { fireEvent.click(boxes[1]) })
+    const selected = container.querySelector('[data-fleet-restore-selection]') as HTMLElement
+    await act(async () => { fireEvent.click(selected) })
+    await act(async () => { fireEvent.click(await screen.findByText(/yes, restore 1/)) })
+
+    const posted = fetchMock.mock.calls.find(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    expect(JSON.parse(String((posted![1] as RequestInit).body))).toEqual({ keys: ['B2'] })
+  })
+})
+
+describe('peeking at a recorded conversation', () => {
+  const peekUrl = (key: string) => `GET /api/fleet/roster/proj/${key}/peek?limit=6`
+  const turn = (role: string, text: string) =>
+    ({ role, timestamp: null, text, thinking: '', tools: [], results: 0 })
+
+  it('shows the last turns, states how many, and starts nothing', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), past('OLD', 'proj-old', 5)], 1000),
+      [peekUrl('OLD')]: { turns: [turn('user', 'what did we decide'), turn('assistant', 'the gate stays')],
+                          total_read: 314, truncated: true, limit: 6 },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-peek-toggle="OLD"]') as HTMLElement)
+    })
+    await waitFor(() => expect(container.querySelector('[data-fleet-peek="OLD"]')).toBeTruthy())
+
+    expect(screen.getByText(/the gate stays/)).toBeTruthy()
+    expect(screen.getByText(/the last 2 turns/)).toBeTruthy()
+    // The bound must not read as the whole conversation.
+    expect(screen.getByText(/of 314/)).toBeTruthy()
+    // A read is a read: nothing was posted, and nothing was armed.
+    expect(fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')).toEqual([])
+    expect(screen.queryByText(/yes, restore/)).toBeNull()
+  })
+
+  it('renders the stated problem instead of an empty conversation', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), past('GONE', 'proj-gone', 5)], 1000),
+      [peekUrl('GONE')]: { turns: [], problem: 'no transcript on disk for session GONE' },
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-peek-toggle="GONE"]') as HTMLElement)
+    })
+    await waitFor(() => expect(container.querySelector('[data-fleet-peek-problem]')).toBeTruthy())
+    expect(screen.getByText(/no transcript on disk/)).toBeTruthy()
+    expect(screen.getByText(/nothing to read/)).toBeTruthy()
+  })
+
+  it('a read that fails at the transport says so, rather than showing an empty session', async () => {
+    // The route is not in the mock at all, so `readJson` answers null — a 404,
+    // a proxy, a body that is not JSON. None of those is a conversation with
+    // nothing in it.
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), past('X', 'proj-x', 5)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-peek-toggle="X"]') as HTMLElement)
+    })
+    await waitFor(() => expect(container.querySelector('[data-fleet-peek-problem]')).toBeTruthy())
+    expect(screen.getByText(/could not be read/)).toBeTruthy()
+  })
+})

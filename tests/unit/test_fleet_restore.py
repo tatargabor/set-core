@@ -526,3 +526,137 @@ def test_the_route_passes_the_selection_through(monkeypatch):
 
     fleet_api.fleet_roster_restore("proj", fleet_api.RestoreBody(keys=[]))
     assert seen["keys"] == [], "an empty selection is not an absent one"
+
+
+# --------------------------------------------------------------------------- #
+# peeking at a recorded session — read, never resumed (B-80's other half)
+# --------------------------------------------------------------------------- #
+
+def _transcript(tmp_path, session_id, turns, *, project="proj"):
+    """Write a transcript the way the runtime writes one, for one recorded session."""
+    d = tmp_path / "projects" / f"-{project}"
+    d.mkdir(parents=True, exist_ok=True)
+    log = d / f"{session_id}.jsonl"
+    log.write_text("\n".join(
+        json.dumps({"type": "user" if i % 2 == 0 else "assistant",
+                    "timestamp": f"2026-08-26T10:{i:02d}:00Z",
+                    "message": {"content": [{"type": "text", "text": t}]}})
+        for i, t in enumerate(turns)) + "\n")
+    return log
+
+
+def test_a_recorded_session_is_readable_without_being_resumed(tmp_path):
+    """AC-1. The owner is asserted to have been asked NOTHING: a read that
+    happens to start an agent would look identical in the payload.
+    """
+    from set_orch.api import fleet as fleet_api
+    owner = FakeOwner()
+    path, _, _ = _seed(tmp_path, ["S1"], with_logs=False)
+    _transcript(tmp_path, "S1", ["first", "second", "third"])
+    monkey = fleet_api.roster.read
+    try:
+        fleet_api.roster.read = lambda project, **kw: monkey(project, path=path, **kw)
+        out = fleet_api.fleet_roster_peek("proj", "S1", limit=2)
+    finally:
+        fleet_api.roster.read = monkey
+    assert [t["text"] for t in out["turns"]] == ["second", "third"]
+    assert out.get("problem") is None
+    assert out["limit"] == 2 and out["key"] == "S1"
+    assert owner.recovered == [], "a read must not start anything"
+
+
+def test_a_long_transcript_answers_the_bound_and_says_there_is_more(tmp_path):
+    """AC-2. `truncated` is what stops a six-turn answer from reading as the
+    whole of a two-hundred-turn conversation.
+    """
+    from set_orch.api import fleet as fleet_api
+    path, _, _ = _seed(tmp_path, ["S1"], with_logs=False)
+    _transcript(tmp_path, "S1", [f"turn-{i}" for i in range(200)])
+    real = fleet_api.roster.read
+    try:
+        fleet_api.roster.read = lambda project, **kw: real(project, path=path, **kw)
+        out = fleet_api.fleet_roster_peek("proj", "S1", limit=6)
+    finally:
+        fleet_api.roster.read = real
+    assert len(out["turns"]) == 6
+    assert out["turns"][-1]["text"] == "turn-199"
+    assert out["truncated"] is True and out["total_read"] == 200
+
+
+def test_an_entry_with_no_transcript_says_so_rather_than_reading_as_empty(tmp_path):
+    """AC-3 and AC-4. Two different absences, two different sentences — and
+    neither is an empty `turns` with no problem, which means exactly one thing:
+    the transcript was read and holds no conversation.
+    """
+    from set_orch.api import fleet as fleet_api
+    path, _, _ = _seed(tmp_path, ["S1"], with_logs=False)          # no transcript
+    roster.record([_A(str(tmp_path / "proj"), None, "proj-nameless", pid=9)],
+                  labels={9: "proj-nameless"}, path=path, now=1000.0)
+    real = fleet_api.roster.read
+    try:
+        fleet_api.roster.read = lambda project, **kw: real(project, path=path, **kw)
+        gone = fleet_api.fleet_roster_peek("proj", "S1", limit=6)
+        nameless = fleet_api.fleet_roster_peek("proj", "no-session:proj/proj-nameless", limit=6)
+    finally:
+        fleet_api.roster.read = real
+    assert gone["turns"] == [] and "no transcript on disk" in gone["problem"]
+    assert nameless["turns"] == [] and "no session id" in nameless["problem"]
+    assert gone["problem"] != nameless["problem"], "two absences, two sentences"
+    # The sentence is the entry's own, so the panel and the row beside it cannot
+    # disagree about why this conversation is not there.
+    assert gone["problem"] == real("proj", path=path)["entries"][0]["not_resumable_reason"] \
+        or any(e["not_resumable_reason"] == gone["problem"] for e in real("proj", path=path)["entries"])
+
+
+def test_peeking_at_an_unrecorded_key_is_a_404(tmp_path):
+    """AC-5. Not in the record and recorded-but-unreadable are different facts,
+    and only the second one describes an agent.
+    """
+    from fastapi import HTTPException
+    from set_orch.api import fleet as fleet_api
+    path, _, _ = _seed(tmp_path, ["S1"], with_logs=False)
+    real = fleet_api.roster.read
+    try:
+        fleet_api.roster.read = lambda project, **kw: real(project, path=path, **kw)
+        with pytest.raises(HTTPException) as excinfo:
+            fleet_api.fleet_roster_peek("proj", "GHOST", limit=6)
+    finally:
+        fleet_api.roster.read = real
+    assert excinfo.value.status_code == 404
+
+
+def test_the_peek_is_not_cached(tmp_path):
+    """AC-7, asserted by MUTATING the source between two reads.
+
+    A cache would make the second answer identical, and a cache of transcript
+    content is the confidentiality boundary being crossed — the framework may
+    read a project's data and must hold none of it.
+    """
+    from set_orch.api import fleet as fleet_api
+    path, _, _ = _seed(tmp_path, ["S1"], with_logs=False)
+    _transcript(tmp_path, "S1", ["before"])
+    real = fleet_api.roster.read
+    try:
+        fleet_api.roster.read = lambda project, **kw: real(project, path=path, **kw)
+        first = fleet_api.fleet_roster_peek("proj", "S1", limit=6)
+        _transcript(tmp_path, "S1", ["before", "after"])
+        second = fleet_api.fleet_roster_peek("proj", "S1", limit=6)
+    finally:
+        fleet_api.roster.read = real
+    assert [t["text"] for t in first["turns"]] == ["before"]
+    assert [t["text"] for t in second["turns"]] == ["before", "after"]
+
+
+def test_the_peek_route_holds_no_module_level_store():
+    """AC-6/AC-7 structurally: a memo added later would pass every test above on
+    its first call and fail the boundary silently on the second.
+    """
+    import inspect
+    from set_orch.api import fleet as fleet_api
+    # The DOCSTRING is stripped before the check, because it says the word
+    # "cached" while promising the opposite — and a test that reads prose as
+    # code is this repo's own named defect class.
+    source = inspect.getsource(fleet_api.fleet_roster_peek)
+    body = source.split('"""')[-1]
+    for forbidden in ("lru_cache", "cache", "_PEEK", "global "):
+        assert forbidden not in body, f"the peek must hold nothing: found {forbidden!r}"

@@ -9,8 +9,9 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  ageLabel, canRestore, composition, offerFor, restoreOffer, summarise,
-  type RestoreResult, type RosterAnswer, type RosterEntry,
+  ageLabel, allBlocked, canRestore, composition, groupByLabel, offerFor,
+  restoreOffer, summarise, turnSummary,
+  type PeekTurn, type RestoreResult, type RosterAnswer, type RosterEntry,
 } from '../../src/lib/fleetRoster'
 
 function entry(over: Partial<RosterEntry> = {}): RosterEntry {
@@ -334,5 +335,64 @@ describe('the last composition', () => {
     ])
     expect(offer.keys).toEqual(['A'])
     expect(offer.restorable).toBe(1)
+  })
+})
+
+/**
+ * One label, several conversations — B-80.
+ *
+ * Measured on a live record 2026-08-26: six entries read the same label and
+ * differed only by an age. The list was honest and nobody could choose from it.
+ */
+describe('lineages', () => {
+  const at = (key: string, label: string | null, last_seen: number, over: Partial<RosterEntry> = {}) =>
+    entry({ key, label, last_seen, ...over })
+
+  it('groups repeated labels, newest first inside and between', () => {
+    const lines = groupByLabel([
+      at('A', 'bugfix', 100), at('B', 'other', 500), at('C', 'bugfix', 900), at('D', 'bugfix', 300),
+    ])
+    expect(lines.map(l => [l.label, l.entries.length])).toEqual([['bugfix', 3], ['other', 1]])
+    expect(lines[0].entries.map(e => e.key)).toEqual(['C', 'D', 'A'])
+    expect(lines[0].key).toBe('C')
+  })
+
+  it('a label with one entry is a lineage of one, not a group to open', () => {
+    const lines = groupByLabel([at('A', 'solo', 100)])
+    expect(lines).toHaveLength(1)
+    expect(lines[0].entries).toHaveLength(1)
+  })
+
+  it('two unlabelled entries are never merged into one agent', () => {
+    // They have nothing in common but the absence of a name. Grouping them
+    // would claim they are the same agent, which the record does not say.
+    const lines = groupByLabel([at('A', null, 100), at('B', null, 200)])
+    expect(lines).toHaveLength(2)
+    expect(lines.map(l => l.label).sort()).toEqual(['A', 'B'])
+  })
+
+  it('says when nothing in a lineage can come back', () => {
+    const gone = { resumable: false, session_log: null, not_resumable_reason: 'no transcript' }
+    expect(allBlocked([at('A', 'x', 1, gone), at('B', 'x', 2, { running: true })])).toBe(true)
+    expect(allBlocked([at('A', 'x', 1, gone), at('B', 'x', 2)])).toBe(false)
+  })
+})
+
+describe('a turn that says nothing is described by what it did', () => {
+  const turn = (over: Partial<PeekTurn> = {}): PeekTurn =>
+    ({ role: 'assistant', timestamp: null, text: '', thinking: '', tools: [], results: 0, ...over })
+
+  it('renders the text when there is text', () => {
+    expect(turnSummary(turn({ text: 'hello' }))).toBe('hello')
+  })
+
+  it('names the tools when there is no text', () => {
+    // Measured on the live record: the last turn of a recorded session is often
+    // a tool-only assistant turn or an empty user entry. Dropping those would
+    // make the peek look like it found nothing; drawing them blank is worse.
+    expect(turnSummary(turn({ tools: [{ name: 'Bash' }, { name: 'Read' }] }))).toBe('ran Bash, Read')
+    expect(turnSummary(turn({ results: 2 }))).toBe('2 tool results')
+    expect(turnSummary(turn({ thinking: 'x' }))).toBe('thought')
+    expect(turnSummary(turn())).toContain('nothing recorded')
   })
 })

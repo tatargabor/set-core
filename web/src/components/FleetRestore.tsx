@@ -26,8 +26,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, History, RotateCcw, TriangleAlert } from 'lucide-react'
 import {
-  ageLabel, canRestore, composition, offerFor, restoreOffer, summarise,
-  type RestoreOffer, type RestoreResult, type RestoreSummary,
+  ageLabel, allBlocked, canRestore, composition, groupByLabel, offerFor,
+  restoreOffer, summarise, turnSummary,
+  type Peek, type RestoreOffer, type RestoreResult, type RestoreSummary,
   type RosterAnswer, type RosterEntry, type RosterProject,
 } from '../lib/fleetRoster'
 
@@ -243,6 +244,144 @@ function ArmedRestore({ project, offer, keys, busy, onRun, label, title, mark }:
  * checked because those 21 are old conversations of the same agents, and
  * starting them was the defect this whole change exists to remove.
  */
+/**
+ * The last turns of ONE recorded conversation, read on request.
+ *
+ * The question this answers is the one a person has in front of six rows
+ * carrying the same name: *which conversation was this*. The answer is in the
+ * transcript the entry would be resumed from, and reading its end costs a tail
+ * read — no agent started, no session resumed, no context loaded.
+ *
+ * **Read on every open, held nowhere.** Not `localStorage`, not a module store,
+ * not a memo that survives the panel closing. The framework may display a
+ * project's data at runtime and must persist none of it, and a convenience
+ * cache is exactly how that boundary gets crossed without anyone deciding to.
+ */
+function Peeked({ project, entry, onClose }: {
+  project: string
+  entry: RosterEntry
+  onClose: () => void
+}) {
+  const [peek, setPeek] = useState<Peek | null>(null)
+  const [busy, setBusy] = useState(true)
+
+  useEffect(() => {
+    let live = true
+    setBusy(true)
+    void readJson<Peek>(
+      `/api/fleet/roster/${encodeURIComponent(project)}/${encodeURIComponent(entry.key)}/peek?limit=6`,
+    ).then(d => {
+      if (!live) return
+      // `null` is the READ failing — a transport error, a 404, a body that is
+      // not JSON. It must not render as a conversation with nothing in it.
+      setPeek(d ?? { turns: [], problem: 'the last turns of this session could not be read' })
+      setBusy(false)
+    })
+    return () => { live = false }
+  }, [project, entry.key])
+
+  return (
+    <div className="mt-1 ml-5 rounded border border-surface-line bg-surface-raised/40 p-1.5"
+         data-fleet-peek={entry.key}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-fg-muted">
+          {busy ? 'reading the transcript…'
+            : peek?.problem ? 'nothing to read'
+            : `the last ${peek?.turns.length ?? 0} turn${(peek?.turns.length ?? 0) === 1 ? '' : 's'}`}
+          {/* Stated with the turns, always: a six-turn answer to a
+              two-hundred-turn conversation must not read as the whole of it. */}
+          {peek?.truncated && peek.total_read
+            ? <span className="text-fg-ghost"> of {peek.total_read} — earlier ones are still in the transcript</span>
+            : null}
+        </span>
+        <button onClick={onClose} className="text-xs text-fg-muted hover:text-fg-strong">close</button>
+      </div>
+      {peek?.problem ? (
+        <p className="mt-1 text-xs text-amber-400" data-fleet-peek-problem>{peek.problem}</p>
+      ) : (
+        <ul className="mt-1 space-y-1 max-h-48 overflow-y-auto pr-1">
+          {(peek?.turns ?? []).map((t, i) => (
+            <li key={i} className="text-xs">
+              <span className={t.role === 'user' ? 'text-sky-300' : 'text-fg-muted'}>{t.role}</span>
+              <span className="text-fg-ghost"> · </span>
+              <span className="text-fg-strong whitespace-pre-wrap break-words">
+                {turnSummary(t).slice(0, 400)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/**
+ * One recorded entry: pick it, or look at what it was.
+ *
+ * The two are deliberately separate controls. Peeking is a READ and must not be
+ * able to arm, select or start anything — the whole point of it is to decide
+ * before acting.
+ */
+function RecordedEntry({ project, entry, picked, onPick, now }: {
+  project: string
+  entry: RosterEntry
+  picked: boolean
+  onPick: (key: string, on: boolean) => void
+  now: number
+}) {
+  const [peeking, setPeeking] = useState(false)
+  // Why an entry cannot be picked is said next to it. A checkbox that is simply
+  // dead teaches the reader the screen is broken.
+  const blocked = entry.running === true
+    ? 'running now — a resume would fork its conversation'
+    : !entry.resumable ? (entry.not_resumable_reason || 'not resumable') : null
+
+  return (
+    <li className="text-xs" data-fleet-recorded-entry={entry.key}>
+      <span className="flex items-start gap-1.5">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={picked}
+          disabled={!!blocked}
+          aria-label={entry.label || entry.key}
+          onChange={ev => onPick(entry.key, ev.target.checked)}
+        />
+        <span className="min-w-0">
+          <span className={blocked ? 'text-fg-ghost' : 'text-fg-strong'}>{entry.label || entry.key}</span>
+          <span className="text-fg-ghost tabular-nums"> · last seen {ageLabel(now - entry.last_seen)} ago</span>
+          {blocked && <span className="text-fg-ghost"> — {blocked}</span>}
+          {' '}
+          <button
+            onClick={() => setPeeking(v => !v)}
+            className="text-fg-muted hover:text-fg-strong underline decoration-dotted"
+            data-fleet-peek-toggle={entry.key}
+            title="Reads the last few turns of this conversation. Nothing is started and nothing is resumed."
+          >
+            {peeking ? 'hide' : 'what was this?'}
+          </button>
+        </span>
+      </span>
+      {peeking && <Peeked project={project} entry={entry} onClose={() => setPeeking(false)} />}
+    </li>
+  )
+}
+
+/**
+ * Everything recorded that was NOT open — reachable, and never offered by
+ * accident.
+ *
+ * It is on the screen because the record holding more than the composition is
+ * information: a project with 3 open and 21 remembered tells the reader
+ * something a list of 3 does not. It is behind a disclosure and individually
+ * checked because those 21 are old conversations of the same agents, and
+ * starting them was the defect this whole change exists to remove.
+ *
+ * **Entries sharing a label render as one lineage** (B-80): six rows of one
+ * name differing only by an age is the state in which a person picks the wrong
+ * conversation. The lineage is a way of SHOWING rows — the selection stays per
+ * entry, and there is no act that restores a lineage as a unit.
+ */
 function TheRest({ project, entries, busy, onRun }: {
   project: string
   entries: RosterEntry[]
@@ -250,12 +389,15 @@ function TheRest({ project, entries, busy, onRun }: {
   onRun: (keys: string[] | null) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<Record<string, boolean>>({})
   if (!entries.length) return null
 
   const chosen = entries.filter(e => picked[e.key])
   const offer = offerFor(chosen)
   const now = Date.now() / 1000
+  const lineages = groupByLabel(entries)
+  const pick = (key: string, on: boolean) => setPicked(p => ({ ...p, [key]: on }))
 
   return (
     <span className="mt-1 flex flex-col" data-fleet-restore-rest={entries.length}>
@@ -274,28 +416,44 @@ function TheRest({ project, entries, busy, onRun }: {
               disclosure is in a header row, so its height is the page's. A list
               that hides the work to show the history is the compacting rule
               failing in the other direction. */}
-          <ul className="mt-1 space-y-0.5 max-h-64 overflow-y-auto pr-1">
-            {entries.map(e => {
-              // Why an entry cannot be picked is said next to it. A checkbox
-              // that is simply dead teaches the reader the screen is broken.
-              const blocked = e.running === true
-                ? 'running now — a resume would fork its conversation'
-                : !e.resumable ? (e.not_resumable_reason || 'not resumable') : null
+          <ul className="mt-1 space-y-0.5 max-h-64 overflow-y-auto pr-1"
+              data-fleet-restore-lineages={lineages.length}>
+            {lineages.map(line => {
+              // One entry under a name is that entry. Wrapping it in a group
+              // would make the reader open something to find one row.
+              if (line.entries.length === 1) {
+                return (
+                  <RecordedEntry key={line.key} project={project} entry={line.entries[0]}
+                                 picked={!!picked[line.entries[0].key]} onPick={pick} now={now} />
+                )
+              }
+              const shown = !!expanded[line.key]
+              const dead = allBlocked(line.entries)
               return (
-                <li key={e.key} className="flex items-start gap-1.5 text-xs">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={!!picked[e.key]}
-                    disabled={!!blocked}
-                    aria-label={e.label || e.key}
-                    onChange={ev => setPicked(p => ({ ...p, [e.key]: ev.target.checked }))}
-                  />
-                  <span className="min-w-0">
-                    <span className={blocked ? 'text-fg-ghost' : 'text-fg-strong'}>{e.label || e.key}</span>
-                    <span className="text-fg-ghost tabular-nums"> · last seen {ageLabel(now - e.last_seen)} ago</span>
-                    {blocked && <span className="text-fg-ghost"> — {blocked}</span>}
-                  </span>
+                <li key={line.key} data-fleet-lineage={line.label}>
+                  <button
+                    onClick={() => setExpanded(p => ({ ...p, [line.key]: !shown }))}
+                    className="flex items-center gap-1 text-xs text-left"
+                    data-fleet-lineage-toggle={shown ? 'open' : 'closed'}
+                  >
+                    {shown ? <ChevronDown size={11} strokeWidth={1.75} className="shrink-0" />
+                           : <ChevronRight size={11} strokeWidth={1.75} className="shrink-0" />}
+                    <span className={dead ? 'text-fg-ghost' : 'text-fg-strong'}>{line.label}</span>
+                    <span className="text-fg-ghost tabular-nums">
+                      · {line.entries.length} conversations · newest {ageLabel(now - line.entries[0].last_seen)} ago
+                    </span>
+                    {/* A compacted row must not be able to hide that nothing
+                        inside it can come back. */}
+                    {dead && <span className="text-fg-ghost">· none can be resumed</span>}
+                  </button>
+                  {shown && (
+                    <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-surface-line pl-2">
+                      {line.entries.map(e => (
+                        <RecordedEntry key={e.key} project={project} entry={e}
+                                       picked={!!picked[e.key]} onPick={pick} now={now} />
+                      ))}
+                    </ul>
+                  )}
                 </li>
               )
             })}

@@ -1131,6 +1131,64 @@ def fleet_roster_restore(project: str, body: Optional[RestoreBody] = None) -> Di
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/api/fleet/roster/{project}/{key:path}/peek")
+def fleet_roster_peek(project: str, key: str,
+                      limit: int = Query(6, ge=1, le=60)) -> Dict[str, Any]:
+    """The last turns of a RECORDED session — read, never resumed.
+
+    The question this answers is the one a person has in front of a list where
+    six entries carry the same label and differ only by an age: *which
+    conversation was this*. The answer is on disk, in the transcript that entry
+    would be resumed from, and reading its end costs a tail read (B-80).
+
+    **Addressed by the roster key rather than by a pid**, because a pid is
+    exactly what a recorded entry does not have — that is the condition the
+    roster exists for. `{key:path}` for the reason the forget route below
+    already gives: an entry with no session id is keyed on a synthetic name
+    containing a slash, and those must be addressable in order to be REFUSED
+    with a reason rather than being silently unreachable.
+
+    **Two failures, deliberately different answers.** A key the record does not
+    hold is a 404 — that entry is not in the record, which is a bug or a race
+    with a forget. A recorded entry whose transcript is gone is a 200 carrying a
+    `problem`, because that is information about the agent, and it is the same
+    fact `not_resumable_reason` already states on the same entry.
+
+    ⚠ Nothing here is cached or written down. The framework may READ a project's
+    data at runtime and must persist none of it — so this reads on request and
+    returns, and every diagnostic names the file and the failure kind rather
+    than a line of content.
+    """
+    entries = {str(e.get("key")): e for e in roster.read(project)["entries"]}
+    entry = entries.get(key)
+    if entry is None:
+        raise HTTPException(status_code=404,
+                            detail=f"no entry {key} recorded for {project}")
+
+    if not entry.get("session_log"):
+        # Not an empty conversation, and the sentence comes from the ENTRY
+        # rather than being written a second time here. `roster.read()` has
+        # already decided why this entry cannot be resumed — no session id was
+        # ever recorded, or the transcript for the one that was is gone — and a
+        # second phrasing of the same fact would drift from the one the row
+        # beside it is showing.
+        payload: Dict[str, Any] = {
+            "turns": [],
+            "problem": entry.get("not_resumable_reason") or "there is nothing recorded to read",
+        }
+    else:
+        payload = read_conversation(entry.get("session_log"), limit=limit)
+
+    payload["key"] = key
+    payload["project"] = project
+    payload["label"] = entry.get("label")
+    payload["last_seen"] = entry.get("last_seen")
+    # Stated with the turns, always: a bounded read of a long conversation must
+    # not be able to read as the whole of it.
+    payload["limit"] = limit
+    return payload
+
+
 @router.delete("/api/fleet/roster/{project}/{key:path}")
 def fleet_roster_forget(project: str, key: str) -> Dict[str, Any]:
     """Drop one entry from a project's record.
