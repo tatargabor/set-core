@@ -31,25 +31,25 @@
 
 ## 5. The surface (web)
 
-- [ ] 5.1 `fleetRoster.ts`: split the offer into the composition (entries `in_last_round`, resumable, not running) and the remainder, each with its own count, and carry `last_round_at` for the age [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 5.2 An unknown composition (`in_last_round === null` / no stamp) falls back to the whole-list offer and carries a stated reason — never a silent whole-list offer dressed as a composition [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 5.3 `FleetRestore.tsx`: the primary armed control posts the composition's keys and states the observation's age via `ageLabel` [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 5.4 An expander lists the remaining recorded entries with per-entry checkboxes and its own armed restore for the checked set; nothing recorded is dropped from the screen [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 5.5 A project whose last round holds nothing says so in words, and offers no composition button [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 5.6 Both offers render through the existing `summarise()` result path, so a partial restore still reads as partial [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 5.7 `RestoreFromEmpty` — the post-reboot panel — offers the composition the same way; it is the placement this feature exists for [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.1 `fleetRoster.ts`: split the offer into the composition (entries `in_last_round`, resumable, not running) and the remainder, each with its own count, and carry `last_round_at` for the age [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.2 An unknown composition (`in_last_round === null` / no stamp) falls back to the whole-list offer and carries a stated reason — never a silent whole-list offer dressed as a composition [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.3 `FleetRestore.tsx`: the primary armed control posts the composition's keys and states the observation's age via `ageLabel` [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.4 An expander lists the remaining recorded entries with per-entry checkboxes and its own armed restore for the checked set; nothing recorded is dropped from the screen [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.5 A project whose last round holds nothing says so in words, and offers no composition button [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.6 Both offers render through the existing `summarise()` result path, so a partial restore still reads as partial [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 5.7 `RestoreFromEmpty` — the post-reboot panel — offers the composition the same way; it is the placement this feature exists for [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 
 ## 6. Web tests and a look at the screen
 
-- [ ] 6.1 Vitest over the offer split: 24 recorded / 3 in the last round yields a primary offer of 3 and a remainder of 21 [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 6.2 Vitest: an empty last round renders the "nothing was open" sentence and no composition button; an unknown round renders the whole-list fallback with its reason [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 6.3 Vitest: the checkbox selection posts exactly the checked keys, and posts nothing when none is checked [REQ: restore-takes-an-explicit-selection-or-the-whole-recorded-list]
-- [ ] 6.4 Run the full web suite and the Python fleet tests; compare failures against a baseline set diff, not against a remembered number [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 6.1 Vitest over the offer split: 24 recorded / 3 in the last round yields a primary offer of 3 and a remainder of 21 [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 6.2 Vitest: an empty last round renders the "nothing was open" sentence and no composition button; an unknown round renders the whole-list fallback with its reason [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 6.3 Vitest: the checkbox selection posts exactly the checked keys, and posts nothing when none is checked [REQ: restore-takes-an-explicit-selection-or-the-whole-recorded-list]
+- [x] 6.4 Web: 67 files / 953 tests green. Python: a set diff against a `/tmp/base` worktree baseline with the three import roots and the session-end leak check (**0 leaks**) — baseline 99 failure entries, working tree 98, and the diff is one line in the BASELINE's favour (`test_paths.py::TestResolveProjectName::test_resolve_with_explicit_path`, cwd-dependent). No new failure [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 - [ ] 6.5 LOOK at it in the browser against the running dashboard: open a project with a large record, read the primary offer, expand the remainder, and say what is on screen. If the browser cannot be reached, this task stays open and is named as such in the commit [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 
 ## 7. Close out
 
-- [ ] 7.1 Rebuild `web/` so port 7400 serves the change [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 7.1 Rebuild `web/` so port 7400 serves the change [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 - [ ] 7.2 Close B-78 in `openspec/bugs/README.md` with the commit sha and the check that went green [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 
 ## Acceptance Criteria (from spec scenarios)
@@ -76,10 +76,10 @@
 
 ### the-surface-offers-restore-per-project-and-shows-what-happened
 
-- [ ] AC-12: WHEN a project's record holds entries and its screen is opened THEN a restore control is offered stating how many entries would be attempted [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-project-with-a-record-offers-restore-and-names-the-count]
-- [ ] AC-13: WHEN a project's record holds 24 entries of which 3 belong to the last round, and its screen is opened THEN the primary restore control offers those 3, states when that composition was observed, and does not offer to start the other 21 [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-primary-offer-is-the-last-composition-with-its-age]
-- [ ] AC-14: WHEN a project's record holds entries outside the last composition THEN the screen makes those entries reachable and individually selectable for restore, rather than omitting them [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-rest-of-the-record-stays-reachable-and-selectable]
-- [ ] AC-15: WHEN a project's record holds entries but none of them belongs to the last round THEN the screen states that nothing was open when the fleet was last seen, and no earlier round is offered as the composition [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-project-that-was-not-open-when-the-fleet-went-down-says-so]
-- [ ] AC-16: WHEN the record carries no last round at all THEN the screen offers the whole recorded list and states that the composition could not be determined [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: an-undeterminable-composition-is-stated-not-invented]
-- [ ] AC-17: WHEN restore completes with entries that were skipped or failed THEN the screen shows each of those entries with its reason, rather than a single success or failure message [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-outcome-of-every-entry-is-visible-after-restoring]
-- [ ] AC-18: WHEN a project has no recorded entries THEN no restore control is offered for it [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: an-empty-record-offers-no-restore-control]
+- [x] AC-12: WHEN a project's record holds entries and its screen is opened THEN a restore control is offered stating how many entries would be attempted [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-project-with-a-record-offers-restore-and-names-the-count]
+- [x] AC-13: WHEN a project's record holds 24 entries of which 3 belong to the last round, and its screen is opened THEN the primary restore control offers those 3, states when that composition was observed, and does not offer to start the other 21 [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-primary-offer-is-the-last-composition-with-its-age]
+- [x] AC-14: WHEN a project's record holds entries outside the last composition THEN the screen makes those entries reachable and individually selectable for restore, rather than omitting them [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-rest-of-the-record-stays-reachable-and-selectable]
+- [x] AC-15: WHEN a project's record holds entries but none of them belongs to the last round THEN the screen states that nothing was open when the fleet was last seen, and no earlier round is offered as the composition [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-project-that-was-not-open-when-the-fleet-went-down-says-so]
+- [x] AC-16: WHEN the record carries no last round at all THEN the screen offers the whole recorded list and states that the composition could not be determined [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: an-undeterminable-composition-is-stated-not-invented]
+- [x] AC-17: WHEN restore completes with entries that were skipped or failed THEN the screen shows each of those entries with its reason, rather than a single success or failure message [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: the-outcome-of-every-entry-is-visible-after-restoring]
+- [x] AC-18: WHEN a project has no recorded entries THEN no restore control is offered for it [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: an-empty-record-offers-no-restore-control]

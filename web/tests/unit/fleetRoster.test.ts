@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  ageLabel, canRestore, restoreOffer, summarise,
+  ageLabel, canRestore, composition, offerFor, restoreOffer, summarise,
   type RestoreResult, type RosterAnswer, type RosterEntry,
 } from '../../src/lib/fleetRoster'
 
@@ -255,5 +255,84 @@ describe('a restored agent says WHICH name came back', () => {
     // invented one would put a warning on the screen with nothing behind it.
     const s = summarise(result({ attempted: 1, complete: true, started: [outcome('started')] as any }))
     expect(s.unnamed).toHaveLength(0)
+  })
+})
+
+/**
+ * What was OPEN, versus what is merely remembered.
+ *
+ * Measured 2026-08-26 on one machine: 233 recorded entries against 13 that were
+ * open in the last observed round, because an entry is keyed on the session id
+ * and a resume mints a new one. The offer built from the record was honest
+ * about what it would do — and what it would do was start conversations nobody
+ * had left open.
+ */
+describe('the last composition', () => {
+  const open = (over: Partial<RosterEntry> = {}) => entry({ in_last_round: true, ...over })
+  const past = (over: Partial<RosterEntry> = {}) => entry({ in_last_round: false, ...over })
+
+  it('splits the record into what was open and the rest', () => {
+    const c = composition(answer(
+      [open({ key: 'A' }), past({ key: 'B' }), past({ key: 'C' })],
+      { last_round_at: 5000 },
+    ))
+    expect(c.known).toBe(true)
+    expect(c.entries.map(e => e.key)).toEqual(['A'])
+    expect(c.rest.map(e => e.key)).toEqual(['B', 'C'])
+    expect(c.observedAt).toBe(5000)
+  })
+
+  it('offers only the composition, and its keys are what the request carries', () => {
+    const c = composition(answer([open({ key: 'A' }), open({ key: 'B' }), past({ key: 'C' })]))
+    const offer = offerFor(c.entries)
+    expect(offer.restorable).toBe(2)
+    expect(offer.keys).toEqual(['A', 'B'])
+    expect(offer.label).toBe('Restore 2 agents')
+  })
+
+  it('a fleet observed with nothing open reports an EMPTY composition, not the previous round', () => {
+    // The reason the round is a stored stamp rather than max(last_seen): a
+    // derived answer would hand back agents the user had already closed and
+    // call them "what was open".
+    const c = composition(answer([past({ key: 'A' }), past({ key: 'B' })], { last_round_at: 9000 }))
+    expect(c.known).toBe(true)
+    expect(c.entries).toEqual([])
+    expect(c.rest).toHaveLength(2)
+  })
+
+  it('a record that cannot say is UNKNOWN, never "nothing was open"', () => {
+    // `undefined` is an older server, `null` is a record with no observation.
+    // Neither may read as `false`, which would mean the agent was not open.
+    for (const value of [undefined, null]) {
+      const c = composition(answer([entry({ key: 'A', in_last_round: value })]))
+      expect(c.known).toBe(false)
+      expect(c.reason).toContain('does not say')
+      expect(c.rest.map(e => e.key)).toEqual(['A'])
+      expect(c.entries).toEqual([])
+    }
+  })
+
+  it('a mixed answer, where only some entries carry the field, is unknown rather than partly known', () => {
+    // Half an answer is not half a composition. Treating the entries that
+    // happen to carry the field as the whole truth would offer a subset of a
+    // subset, with nothing saying so.
+    const c = composition(answer([open({ key: 'A' }), entry({ key: 'B' })]))
+    expect(c.known).toBe(false)
+    expect(c.rest).toHaveLength(2)
+  })
+
+  it('an empty record is not a composition', () => {
+    expect(composition(answer([])).known).toBe(false)
+    expect(composition(null).known).toBe(false)
+  })
+
+  it('the offer keys never include a running or unresumable entry', () => {
+    const offer = offerFor([
+      open({ key: 'A' }),
+      open({ key: 'B', running: true }),
+      open({ key: 'C', resumable: false, session_log: null, not_resumable_reason: 'no transcript' }),
+    ])
+    expect(offer.keys).toEqual(['A'])
+    expect(offer.restorable).toBe(1)
   })
 })

@@ -282,3 +282,147 @@ describe('the empty screen — the placement a reboot lands on', () => {
     expect(screen.getByText(/conversations are on disk and can be resumed/)).toBeTruthy()
   })
 })
+
+/**
+ * The composition on screen — the primary offer, and the twenty-one it no
+ * longer starts.
+ *
+ * Reported by the user 2026-08-26 with a screenshot of `Restore 9 of 24`. The
+ * assertions below are about what is NOT offered: the count on this control is
+ * its blast radius, so an offer that is too large is not a cosmetic defect.
+ */
+const openEntry = (key: string) => ({ ...entry(key), in_last_round: true })
+const pastEntry = (key: string, resumable = true) =>
+  ({ ...entry(key, resumable), in_last_round: false })
+
+const rosterWithRound = (entries: unknown[], last_round_at: number | null) =>
+  ({ ...rosterAnswer(entries), last_round_at })
+
+describe('the primary offer is the last composition', () => {
+  it('offers the 3 that were open and not the 21 that were not', async () => {
+    const rest = Array.from({ length: 21 }, (_, i) => pastEntry(`P${i}`))
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), openEntry('B'), openEntry('C'), ...rest], Date.now() / 1000 - 600),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+
+    const primary = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-restore-composition]')
+      if (!el) throw new Error('no composition offer')
+      return el
+    })
+    expect(primary.getAttribute('data-fleet-restore-composition')).toBe('3')
+    expect(primary.textContent).toContain('Restore 3 agents')
+    // The age, because a composition from ten minutes ago and one from three
+    // days ago deserve different confidence.
+    expect(primary.textContent).toContain('open 10m ago')
+    expect(container.querySelector('[data-fleet-restore-rest]')?.textContent)
+      .toContain('21 more recorded here, not open')
+  })
+
+  it('posts exactly the composition keys, and no others', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), openEntry('B'), pastEntry('OLD')], 1000),
+      'POST /api/fleet/roster/proj/restore': {
+        project: 'proj', attempted: 2, complete: true, record_exists: true,
+        started: [outcome('started', null, 'A'), outcome('started', null, 'B')],
+        skipped: [], failed: [],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    const primary = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-restore-composition]') as HTMLElement | null
+      if (!el) throw new Error('no composition offer')
+      return el
+    })
+    await act(async () => { fireEvent.click(primary) })
+    await act(async () => { fireEvent.click(await screen.findByText(/yes, restore 2/)) })
+
+    const posted = fetchMock.mock.calls.find(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    expect(JSON.parse(String((posted![1] as RequestInit).body))).toEqual({ keys: ['A', 'B'] })
+  })
+
+  it('says nothing was open, rather than offering an earlier round', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [pastEntry('A'), pastEntry('B')], Date.now() / 1000 - 3600),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-restore-composition-empty]')).toBeTruthy())
+    expect(screen.getByText(/Nothing was open here when the fleet was last seen/)).toBeTruthy()
+    expect(container.querySelector('[data-fleet-restore-composition]')).toBeNull()
+    // The two are still reachable — the record holding more than the
+    // composition is information, not clutter.
+    expect(container.querySelector('[data-fleet-restore-rest="2"]')).toBeTruthy()
+  })
+
+  it('falls back to the whole list when the record cannot say — and says so', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterAnswer([entry('A'), entry('B')]),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-restore-whole-list="2"]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-restore-unknown-composition]')?.textContent)
+      .toContain('does not say which of these were open')
+    expect(container.querySelector('[data-fleet-restore-composition]')).toBeNull()
+  })
+})
+
+describe('the rest of the record is picked by hand', () => {
+  it('posts only the ticked entries', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), pastEntry('OLD1'), pastEntry('OLD2')], 1000),
+      'POST /api/fleet/roster/proj/restore': {
+        project: 'proj', attempted: 1, complete: true, record_exists: true,
+        started: [outcome('started', null, 'OLD2')], skipped: [], failed: [],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    const toggle = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-restore-rest-toggle]') as HTMLElement | null
+      if (!el) throw new Error('no disclosure')
+      return el
+    })
+    await act(async () => { fireEvent.click(toggle) })
+
+    // Nothing ticked: no act is offered at all. A button promising to restore
+    // zero agents is a control that does nothing.
+    expect(container.querySelector('[data-fleet-restore-selection]')).toBeNull()
+
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-OLD2')) })
+    const selected = container.querySelector('[data-fleet-restore-selection]') as HTMLElement
+    expect(selected.textContent).toContain('Restore 1 selected')
+    await act(async () => { fireEvent.click(selected) })
+    await act(async () => { fireEvent.click(await screen.findByText(/yes, restore 1/)) })
+
+    const posted = fetchMock.mock.calls.find(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    expect(JSON.parse(String((posted![1] as RequestInit).body))).toEqual({ keys: ['OLD2'] })
+  })
+
+  it('refuses to tick what cannot come back, and says why', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), pastEntry('GONE', false)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    const toggle = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-restore-rest-toggle]') as HTMLElement | null
+      if (!el) throw new Error('no disclosure')
+      return el
+    })
+    await act(async () => { fireEvent.click(toggle) })
+    const box = screen.getByLabelText('proj-GONE') as HTMLInputElement
+    expect(box.disabled).toBe(true)
+    expect(screen.getByText(/no transcript on disk/)).toBeTruthy()
+  })
+})

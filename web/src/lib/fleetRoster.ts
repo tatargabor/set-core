@@ -39,6 +39,17 @@ export interface RosterEntry {
    * below subtracts, and subtracting an unmeasured zero overstates the act.
    */
   running?: boolean | null
+  /**
+   * Whether this entry was still being seen when the fleet was last observed —
+   * which is what "was open" means for a record that consults nothing live.
+   *
+   * `null` is *we cannot tell* (the record carries no observation), and it is
+   * NOT `false`, which would mean *this agent was not open*. The surface renders
+   * the two differently on purpose: an unknown composition falls back to the
+   * whole list and says so, where a known-empty one says nothing was open.
+   * `undefined` is an older server and reads the same as `null`.
+   */
+  in_last_round?: boolean | null
 }
 
 export interface RosterAnswer {
@@ -49,6 +60,11 @@ export interface RosterAnswer {
   unreadable: boolean
   /** False when liveness could not be asked. Then every `running` is `null`. */
   liveness_known?: boolean
+  /**
+   * When the fleet was last observed, in epoch seconds — the stamp every entry
+   * seen in that round carries. `null` or absent means the record cannot say.
+   */
+  last_round_at?: number | null
 }
 
 export interface RosterProject {
@@ -181,11 +197,26 @@ function entriesOf(answer: RosterAnswer | null | undefined): RosterEntry[] {
  * is the information — "6 recorded, 4 can be resumed" tells the reader two of
  * their agents are gone, which is the fact a single number would hide.
  */
-export function restoreOffer(answer: RosterAnswer): {
+export interface RestoreOffer {
   total: number; resumable: number; running: number; restorable: number
   label: string; actionable: boolean
-} {
-  const entries = entriesOf(answer)
+  /** The keys the act would attempt — exactly the restorable ones, in order. */
+  keys: string[]
+}
+
+export function restoreOffer(answer: RosterAnswer): RestoreOffer {
+  return offerFor(entriesOf(answer))
+}
+
+/**
+ * The same offer, over an arbitrary subset of a project's entries.
+ *
+ * Split out when the surface gained a second offer (2026-08-26): the primary one
+ * over the last composition, the secondary over a hand-picked selection. One
+ * function rather than two, because two would drift, and the half that drifts is
+ * always the one being read — the label states a count somebody acts on.
+ */
+export function offerFor(entries: readonly RosterEntry[]): RestoreOffer {
   const total = entries.length
   const resumable = entries.filter(e => e.resumable).length
   // `running === true` only. `null` is "could not ask" and `undefined` is an
@@ -207,7 +238,64 @@ export function restoreOffer(answer: RosterAnswer): {
     if (total - resumable) parts.push(`${total - resumable} cannot be resumed`)
     label = `Restore ${restorable} of ${total} — ${parts.join(', ')}`
   }
-  return { total, resumable, running, restorable, label, actionable: restorable > 0 }
+  return {
+    total, resumable, running, restorable, label, actionable: restorable > 0,
+    // Exactly what the label promises. Derived here rather than at the call
+    // site so the number the reader sees and the set the request carries cannot
+    // come apart — the defect that would look like a restore doing more than it
+    // said, which is the direction that acts.
+    keys: entries.filter(e => e.resumable && e.running !== true).map(e => e.key),
+  }
+}
+
+/**
+ * What was open when the fleet was last observed, and what merely sits in the
+ * record — the split the primary restore offer is built from.
+ *
+ * Three states, not two, and collapsing them is the defect this exists to avoid:
+ *
+ *  - **known, non-empty** — those entries were open; offer them.
+ *  - **known, empty** — the fleet WAS observed and nothing was open here. Say
+ *    that. Never fall back to an earlier round: presenting agents the user had
+ *    already closed as "what was open" is a false value in the acting direction.
+ *  - **unknown** — the record carries no observation (an older document, or one
+ *    written by a partial pass). Then the whole list is offered *with the reason
+ *    stated*, because a whole-list offer wearing a composition's label is the
+ *    same lie by a quieter route.
+ */
+export interface Composition {
+  known: boolean
+  /** Present only when `known` is false — why the composition cannot be given. */
+  reason: string | null
+  observedAt: number | null
+  /** In the last round. Empty when known-and-nothing-was-open. */
+  entries: RosterEntry[]
+  /** Recorded, but not in the last round. The whole record when unknown. */
+  rest: RosterEntry[]
+}
+
+export function composition(answer: RosterAnswer | null): Composition {
+  const entries = entriesOf(answer)
+  // `undefined` is an older server and reads as `null`: both mean the record
+  // cannot say, and neither may be read as `false`.
+  const known = entries.length > 0 && entries.every(e => e.in_last_round === true || e.in_last_round === false)
+  if (!known) {
+    return {
+      known: false,
+      reason: 'the record does not say which of these were open when the fleet was last seen',
+      observedAt: null,
+      entries: [],
+      rest: entries,
+    }
+  }
+  const at = answer && typeof answer.last_round_at === 'number' ? answer.last_round_at : null
+  return {
+    known: true,
+    reason: null,
+    observedAt: at,
+    entries: entries.filter(e => e.in_last_round === true),
+    rest: entries.filter(e => e.in_last_round !== true),
+  }
 }
 
 /** Human-readable age. Shared so the tile and the empty screen cannot disagree. */
