@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildTree, fileReference, languageOf, fileToOpen } from '../../src/lib/fleetFiles'
+import { buildTree, externalReference, fileReference, languageOf, fileToOpen } from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
   it('nests directories and keeps a stable order', () => {
@@ -120,6 +120,68 @@ describe('a file reference in terminal output', () => {
   it('says nothing about an empty or blank token', () => {
     expect(fileReference('', root, known)).toBeNull()
     expect(fileReference('   ', root, known)).toBeNull()
+  })
+})
+
+/**
+ * A PATH THAT IS NOT THIS PROJECT'S — reported 2026-08-26.
+ *
+ * An agent prints where it put a screenshot, and it is almost never inside the
+ * tree it is working in. `fileReference` refuses those, correctly: the framework
+ * may not READ them. `externalReference` decides whether the same token may be
+ * HANDED OVER to the desktop instead, so its refusals are about a different
+ * question and every one of them is here.
+ */
+describe('an absolute path that is not this project\'s', () => {
+  const root = '/home/x/proj'
+
+  it('reads the reported case — a screenshot path inside parentheses', () => {
+    expect(externalReference('(/tmp/claude-chrome-screenshots-DJPCLm/shot-2.jpg)', root))
+      .toBe('/tmp/claude-chrome-screenshots-DJPCLm/shot-2.jpg')
+  })
+
+  it('drops a trailing line number, which no desktop handler can use', () => {
+    // Kept as a path rather than refused: `/tmp/run.log:42` names a file that
+    // exists, and refusing it would be a link that fails for a reason the reader
+    // cannot see.
+    expect(externalReference('/tmp/run.log:42', root)).toBe('/tmp/run.log')
+    expect(externalReference('/tmp/run.log:42:7', root)).toBe('/tmp/run.log')
+  })
+
+  it('leaves this project\'s own files to the file view', () => {
+    // Precedence lives HERE, not in whichever provider is registered first.
+    expect(externalReference('/home/x/proj/src/app.ts', root)).toBeNull()
+    expect(externalReference('/home/x/proj', root)).toBeNull()
+  })
+
+  it('is not fooled by a prefix that merely starts the same', () => {
+    // The mirror image of `fileReference`'s own boundary test: `/home/x/projX`
+    // is a DIFFERENT project, so it is external and must be offered.
+    expect(externalReference('/home/x/projX/src/app.ts', root)).toBe('/home/x/projX/src/app.ts')
+  })
+
+  it('answers with no project context at all', () => {
+    // A docked panel knows no root. An external path needs none, so the link is
+    // still offered there — the degradation is that an in-project path is
+    // offered as an external one, not that nothing works.
+    expect(externalReference('/tmp/shot.png')).toBe('/tmp/shot.png')
+  })
+
+  it('refuses a URL, which belongs to the other link provider', () => {
+    // Handing a URL to a desktop opener is how a scheme that was already
+    // refused in the browser gets a second chance at being followed.
+    expect(externalReference('http://localhost:7400/x', root)).toBeNull()
+    expect(externalReference('file:///etc/passwd', root)).toBeNull()
+  })
+
+  it('refuses anything that is not one absolute path', () => {
+    expect(externalReference('src/app.ts', root)).toBeNull()
+    expect(externalReference('12:30', root)).toBeNull()
+    expect(externalReference('', root)).toBeNull()
+    expect(externalReference('   ', root)).toBeNull()
+    expect(externalReference('/', root)).toBeNull()
+    // `//host/share` is a UNC-shaped token, not a local path.
+    expect(externalReference('//host/share', root)).toBeNull()
   })
 })
 

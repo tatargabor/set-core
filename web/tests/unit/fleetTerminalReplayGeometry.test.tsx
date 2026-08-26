@@ -57,6 +57,12 @@ vi.mock('@xterm/xterm', () => ({
     attachCustomKeyEventHandler() { /* the copy key, not exercised here */ }
     getSelection() { return this._sel ?? '' }
     clearSelection() { this._sel = '' }
+    /* The file-link provider registers on every attach, project context or not
+       — an external path needs neither a root nor a listing. A mock without
+       this throws inside the effect, which surfaces here as every geometry
+       assertion failing for a reason that has nothing to do with geometry. */
+    registerLinkProvider() { return { dispose() { /* nothing registered */ } } }
+    buffer = { active: { getLine: () => undefined } }
   },
 }))
 

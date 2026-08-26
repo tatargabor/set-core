@@ -22,6 +22,7 @@ from fastapi import APIRouter
 
 from .fleet import router as fleet_router
 from .files import router as files_router
+from .desktop import router as desktop_router
 from .paste import router as paste_router
 from .projects import router as projects_router
 from .orchestration import router as orchestration_router
@@ -45,6 +46,10 @@ router.include_router(fleet_router)
 # Also a `/api/fleet/...` family, and therefore also BEFORE the `/api/{project}/...`
 # routers below, for the same reason (CB-16).
 router.include_router(files_router)
+# `/api/desktop/open` — before the `/api/{project}/...` families for the same
+# reason as the two above (CB-16): a two-segment route registered later would be
+# answered as a project named "desktop".
+router.include_router(desktop_router)
 router.include_router(paste_router)
 router.include_router(projects_router)
 router.include_router(orchestration_router)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
-import { fileReference, type FileRef } from '../lib/fleetFiles'
+import { externalReference, fileReference, type FileRef } from '../lib/fleetFiles'
 import {
   type AttachedEvent,
   type CopyOutcome,
@@ -216,6 +216,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     the terminal itself.
   */
   const [pasted, setPasted] = useState<PasteOutcome>(null)
+  /**
+   * The outcome of handing an out-of-project path to the desktop.
+   *
+   * BOTH outcomes are shown, and that is a deliberate departure from the paste
+   * notice above, where success says nothing. There the receipt is on screen —
+   * the path appears in the prompt. Here the handler's window may open on
+   * another workspace, behind the browser, or on a second monitor, so an
+   * invisible success is indistinguishable from a dead link, which is the exact
+   * complaint this feature answers.
+   *
+   * A success clears itself; a refusal does not, because a refusal is something
+   * the reader has to read.
+   */
+  const [opened, setOpened] = useState<{ ok: boolean; path: string; reason?: string } | null>(null)
+  const openedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (openedTimer.current) clearTimeout(openedTimer.current) }, [])
   /**
    * The live emulator, for the ONE thing that must not wait for a re-attach.
    *
@@ -710,6 +726,38 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label])
 
+  /**
+   * Hand ONE out-of-project path to the desktop, and report what happened.
+   *
+   * The fetch lives here rather than in the page for the same reason the stop
+   * does: the outcome has to be rendered in THIS terminal's status row, and
+   * lifting the state to the parent would put a second copy of it somewhere
+   * that can disagree with the terminal it describes.
+   *
+   * The endpoint's refusals are the guard (an executable, a launcher, a path
+   * that is not there); nothing is decided here beyond showing what it said.
+   */
+  const openExternal = useCallback(async (path: string) => {
+    if (openedTimer.current) { clearTimeout(openedTimer.current); openedTimer.current = null }
+    try {
+      const res = await fetch('/api/desktop/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setOpened({ ok: false, path, reason: String(body?.detail ?? `HTTP ${res.status}`) })
+        return
+      }
+      setOpened({ ok: true, path })
+      // Only the success clears itself — see the state's own note.
+      openedTimer.current = setTimeout(() => setOpened(null), 4000)
+    } catch (e) {
+      setOpened({ ok: false, path, reason: String((e as Error)?.message ?? e) })
+    }
+  }, [])
+
   /*
     FILE REFERENCES — the second kind of link in this output.
 
@@ -726,8 +774,17 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   */
   useEffect(() => {
     const term = termRef.current
-    if (!term || !projectRoot || !knownFiles || knownFiles.size === 0 || !onOpenFile) return
-    const open = onOpenFile
+    if (!term) return
+    /*
+      The project context is OPTIONAL now, and that is the change: an external
+      path needs no listing and no root, so a docked panel that knows neither
+      still offers it. Where the context IS present the in-project route wins —
+      that precedence is `externalReference`'s, in the lib, so it cannot be
+      decided by the order two providers happen to be registered in.
+    */
+    const inProject = projectRoot && knownFiles && knownFiles.size > 0 && onOpenFile
+      ? { root: projectRoot, known: knownFiles, open: onOpenFile }
+      : null
     const registration = term.registerLinkProvider({
       provideLinks(lineNumber, callback) {
         const row = term.buffer.active.getLine(lineNumber - 1)
@@ -739,14 +796,16 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         const re = /\S+/g
         let m: RegExpExecArray | null
         while ((m = re.exec(text)) !== null) {
-          const ref = fileReference(m[0], projectRoot, knownFiles)
-          if (!ref) continue
+          const ref = inProject ? fileReference(m[0], inProject.root, inProject.known) : null
+          const external = ref ? null : externalReference(m[0], projectRoot)
+          if (!ref && !external) continue
+          const token = m[0]
           links.push({
             range: {
               start: { x: m.index + 1, y: lineNumber },
-              end: { x: m.index + m[0].length, y: lineNumber },
+              end: { x: m.index + token.length, y: lineNumber },
             },
-            text: m[0],
+            text: token,
             /*
               CTRL (or CMD), and a plain click deliberately does nothing here.
 
@@ -755,15 +814,23 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
               select. Opening a file on every such click would take the screen
               somewhere nobody asked to go. The modifier is also what the reader
               was asked for, and what every editor uses for the same act.
+
+              The same act for both destinations, on purpose: the reader is
+              activating a path, and which one of the two it turns out to be is
+              the framework's business, not a second gesture to learn.
             */
-            activate: (event: MouseEvent) => { if (event.ctrlKey || event.metaKey) open(ref) },
+            activate: (event: MouseEvent) => {
+              if (!event.ctrlKey && !event.metaKey) return
+              if (ref && inProject) { inProject.open(ref); return }
+              if (external) void openExternal(external)
+            },
           })
         }
         callback(links.length ? links : undefined)
       },
     })
     return () => registration.dispose()
-  }, [projectRoot, knownFiles, onOpenFile, phase.kind])
+  }, [projectRoot, knownFiles, onOpenFile, openExternal, phase.kind])
 
   const stop = useCallback(async () => {
     setStopping(true)
@@ -993,6 +1060,29 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
 
       {stopError && (
         <div className="text-xs text-red-400 mb-1">the stop failed: {stopError}</div>
+      )}
+
+      {/*
+        The desktop hand-over, both ways — see the `opened` state for why the
+        success is said out loud. It lands on its own line rather than in the
+        header row because a refusal carries a sentence ("executable files are
+        not opened"), and the header does not wrap: truncated to an ellipsis it
+        would be an alarm nobody can read, which `ui-quality.md` counts as
+        hiding a failure rather than compacting it.
+      */}
+      {opened && (
+        <div
+          className={`text-xs mb-1 break-all ${opened.ok ? 'text-emerald-400' : 'text-red-400'}`}
+          /* NOT `data-fleet-terminal-open` — that name is already taken by the
+             tile control that OPENS a terminal (`TileControls.tsx`), and a
+             selector matching both would find the wrong element while looking
+             perfectly correct. Measured on the live screen 2026-08-26. */
+          data-fleet-terminal-open-outcome={opened.ok ? 'ok' : 'failed'}
+        >
+          {opened.ok
+            ? `handed to the desktop: ${opened.path}`
+            : `could not open ${opened.path}: ${opened.reason}`}
+        </div>
       )}
 
       <div

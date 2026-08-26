@@ -8,7 +8,8 @@
  *  - what a flat list of paths becomes on screen (`buildTree`),
  *  - what a path is called in Monaco's language (`languageOf`),
  *  - and what counts as a file reference in an agent's terminal output
- *    (`fileReference`) — the one fed by text somebody else wrote.
+ *    (`fileReference`, and `externalReference` for the paths that are not this
+ *    project's) — the ones fed by text somebody else wrote.
  */
 
 /** One node of the structure. A directory holds children; a file does not. */
@@ -89,6 +90,22 @@ export interface FileRef {
 }
 
 /**
+ * The punctuation a sentence leaves around a path, removed.
+ *
+ * Leading first, then trailing — and a trailing `:<digits>` is NOT punctuation,
+ * it is the line number, which is the whole reason the trailing strip is a
+ * callback and not a plain replace.
+ *
+ * Shared by both recognisers below rather than written twice: the reported case
+ * was `(/tmp/…/screenshot-2.jpg)`, so a second copy that forgot one bracket
+ * would produce a link that is underlined and wrong, which is worse than none.
+ */
+function unwrap(token: string): string {
+  const text = token.trim().replace(/^[([<'"`]+/, '')
+  return text.replace(/[)\]>,.;:'"`]+$/, m => (/^:\d+$/.test(m) ? m : ''))
+}
+
+/**
  * Whether a token from an agent's terminal is a reference to a file of THIS
  * project — and if so, which file and which line.
  *
@@ -117,13 +134,8 @@ export function fileReference(
   root: string,
   known: ReadonlySet<string>,
 ): FileRef | null {
-  let text = token.trim()
+  const text = unwrap(token)
   if (!text) return null
-  // The punctuation a sentence leaves around a path. Leading first, then
-  // trailing — and a trailing `:<digits>` is NOT punctuation, it is the line
-  // number, which is the whole reason this is a callback and not a plain strip.
-  text = text.replace(/^[([<'"`]+/, '')
-  text = text.replace(/[)\]>,.;:'"`]+$/, m => (/^:\d+$/.test(m) ? m : ''))
 
   const withLine = /^(.*?):(\d+)(?::\d+)?$/.exec(text)
   const candidates: Array<{ path: string; line?: number }> = []
@@ -145,6 +157,61 @@ export function fileReference(
     return c.line === undefined ? { path: rel } : { path: rel, line: c.line }
   }
   return null
+}
+
+/**
+ * The absolute path a terminal token names when that path is NOT this project's
+ * — or `null` when the token is not one.
+ *
+ * The complement of `fileReference`, and deliberately its own function rather
+ * than a widened version of it, because the two answer different questions and
+ * end in different places: one names a file the framework may READ and open in
+ * the file view; this one names a path the framework may only HAND OVER, to the
+ * desktop's default application, having read nothing.
+ *
+ * ## The rules, and why each one is a refusal
+ *
+ *  - **absolute only.** A relative token would have to be resolved against a
+ *    working directory the reader cannot see, so a wrong guess would open a
+ *    stranger's file with the same name.
+ *  - **no `://`.** A URL is the other link provider's business, and handing one
+ *    to a desktop opener is how a `file:` or a `javascript:` scheme gets a
+ *    second chance at being followed.
+ *  - **a trailing `:<line>` is dropped.** A desktop handler takes no line
+ *    number, and `/tmp/run.log:42` should still open `/tmp/run.log` rather than
+ *    fail as a path that does not exist.
+ *  - **inside the known root wins the other way.** When a project root is known
+ *    and the path lies inside it, the answer is `null` — the file view is the
+ *    right destination there. Precedence lives in this one place on purpose: two
+ *    link providers deciding it by their registration order is a rule nobody can
+ *    read off the code.
+ *
+ * What it does NOT check is whether the path exists, and that is a decision, not
+ * an omission. Asking the server would answer "is there a file at X" for any
+ * path on the machine, one request at a time — the oracle the file endpoints
+ * refuse to be. The cost is accepted and paid where the reader is standing: an
+ * activation that cannot be honoured reports its reason.
+ */
+export function externalReference(token: string, root?: string): string | null {
+  const text = unwrap(token)
+  if (!text) return null
+  if (!text.startsWith('/') || text.startsWith('//')) return null
+  if (text.includes('://')) return null
+
+  // Same `path:line` shape as `fileReference` reads, minus the line: this
+  // destination has nowhere to put it.
+  const path = /^(.*?):(\d+)(?::\d+)?$/.exec(text)?.[1] ?? text
+  if (path.length < 2) return null
+
+  if (root) {
+    // Path-boundary comparison, so `/home/x/proj-other` is not read as inside
+    // `/home/x/proj` — the same boundary `fileReference` draws, in reverse.
+    const normalisedRoot = root.replace(/\/+$/, '')
+    if (normalisedRoot && (path === normalisedRoot || path.startsWith(normalisedRoot + '/'))) {
+      return null
+    }
+  }
+  return path
 }
 
 /**
