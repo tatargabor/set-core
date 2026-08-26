@@ -152,28 +152,139 @@ def _identity(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _git_files(root: Path) -> Optional[List[str]]:
+def _skipped(rel: str) -> bool:
+    """Whether a path lies inside one of the heavy directories nobody wants listed.
+
+    The SAME `_SKIP_DIRS` the non-repository walk refuses to enter, applied to the
+    directory components of a path. Reused rather than written twice on purpose:
+    two lists meant to agree drift, and this module has already paid for exactly
+    that — see `_known_root`, whose docstring claimed an agreement the code did
+    not have until a live report found it.
+
+    Only used when the ignore rules have been lifted. With them in place the
+    project's own `.gitignore` is doing this job, better.
+    """
+    return any(part in _SKIP_DIRS for part in rel.split("/")[:-1])
+
+
+def _git_lines(root: Path, args: List[str]) -> Optional[List[str]]:
+    """A NUL-separated git answer, split, or `None` if the command did not work.
+
+    ⚠ **`-z` is not an optimisation — it is the difference between a path and a
+    RENDERING of one.** Without it git renders any name containing a byte outside
+    the portable set as a quoted C-string: `"docs/…\\303\\263….md"`. Measured
+    2026-08-26 on a consumer checkout — 11 of 1794 paths — and the damage
+    compounds: the tree builder reads the leading quote as part of the first
+    segment, so a directory named `"docs` appears that nobody made, the eleven
+    real files sit unreachable under it, and the path sent back names no file, so
+    opening one is refused. A phantom folder and eleven broken files, from a
+    quoting rule.
+
+    `-z` also removes the newline-in-a-filename ambiguity that was always latent
+    in splitting on `\\n` and had simply never been hit.
+    """
+    try:
+        out = subprocess.run(
+            ["git", *args],
+            cwd=str(root), capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("files: git %s failed in %s: %s", args[0], root, exc)
+        return None
+    if out.returncode != 0:
+        logger.warning("files: git %s exited %s in %s", args[0], out.returncode, root)
+        return None
+    return [field for field in out.stdout.split("\0") if field]
+
+
+def _git_files(root: Path, include_ignored: bool = False) -> Optional[List[str]]:
     """The project's own list of its files, or `None` if this is not a repo.
 
     `--cached --others --exclude-standard`: what git tracks, plus what exists but
     is not tracked yet, minus what the project's ignore rules exclude. The middle
     term is the one that matters on this screen — a file an agent wrote a minute
     ago is exactly the file a reader wants to open, and it is not committed.
+
+    ## `include_ignored`, and why it is not simply the third term dropped
+
+    Dropping `--exclude-standard` outright is the obvious widening and it is
+    wrong. Measured 2026-08-26 on a consumer checkout: **36 149** paths against a
+    cap of 20 000, so the answer would come back TRUNCATED — one silent absence
+    traded for another — and what filled it was `node_modules` and build output.
+
+    So the widened listing re-applies `_SKIP_DIRS`. Measured on the same tree:
+    **2005** paths against 1794 with the flag off, and the 211 difference is the
+    framework directories the reader was looking for.
+
+    The bound is real and stated: a file under `node_modules` is not listable
+    either way. The flag's answer is *the ignored files this view will carry*,
+    never *all of them* — which is why the caller marks them rather than merging
+    them into the rest.
     """
     if not (root / ".git").exists():
         return None
-    try:
-        out = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-            cwd=str(root), capture_output=True, text=True, timeout=30, check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("files: git ls-files failed in %s: %s", root, exc)
+    args = ["ls-files", "-z", "--cached", "--others"]
+    if not include_ignored:
+        args.append("--exclude-standard")
+    found = _git_lines(root, args)
+    if found is None:
         return None
-    if out.returncode != 0:
-        logger.warning("files: git ls-files exited %s in %s", out.returncode, root)
+    return [rel for rel in found if not _skipped(rel)] if include_ignored else found
+
+
+def _git_status(root: Path) -> Optional[Dict[str, str]]:
+    """Each non-clean path's status code, or `None` when there is nothing to ask.
+
+    ## The absence of this map is a VALUE
+
+    `None` and `{}` are different answers and the caller must be able to tell them
+    apart: `{}` says *I asked, and everything is clean*; `None` says *there was
+    nothing to ask* — no repository, or a read that failed. A panel handed `{}`
+    for a directory that is not a repository would render a tree of unmarked rows
+    and imply a cleanliness it never measured, which is this repository's
+    "a gap is not a zero" rule arriving at the wire.
+
+    ## Two details that are easy to get plausibly wrong
+
+    - **`-uall`.** The default collapses an untracked directory into one `dir/`
+      entry, while the listing carries its files individually — so every file in a
+      newly created directory would come back unmarked. That is the reassuring
+      direction, which is the one to distrust.
+    - **A rename's second field.** Under `-z` the porcelain-v1 record is
+      `XY<space><path>\\0`, but a rename or copy is `XY<space><to>\\0<from>\\0`.
+      The `<from>` is NOT a new record. A parser that treats it as one invents a
+      status entry out of the origin path — and the malformed-record guard below
+      catches that only by luck: it fires when the origin's third character is
+      not a space, which for `src/app.ts` it is not and for `my file.ts` it is.
+      So the phantom appears for some filenames and not others, marked with a
+      code git never emitted. Measured while mutation-testing this parser: the
+      first test written for it renamed `src/app.ts` and passed with this
+      consume removed.
+
+    A failure here does not fail the listing: files with no marks are useful, an
+    error instead of the files is not.
+    """
+    if not (root / ".git").exists():
         return None
-    return [line for line in out.stdout.splitlines() if line]
+    fields = _git_lines(root, ["status", "--porcelain", "-z", "-uall"])
+    if fields is None:
+        return None
+    status: Dict[str, str] = {}
+    i = 0
+    while i < len(fields):
+        field = fields[i]
+        i += 1
+        # `XY path` — the code is the first two characters, then one space.
+        if len(field) < 4 or field[2] != " ":
+            logger.debug("files: unparsable status record %r in %s", field[:16], root)
+            continue
+        code, path = field[:2], field[3:]
+        status[path] = code
+        # A rename or a copy carries its ORIGIN as the next NUL field. Consume it
+        # here or it becomes a phantom record and shifts everything after it.
+        if "R" in code or "C" in code:
+            i += 1
+    return status
 
 
 def _walked_files(root: Path, cap: int) -> List[str]:
@@ -195,7 +306,7 @@ def _walked_files(root: Path, cap: int) -> List[str]:
 
 
 @router.get("/api/fleet/files")
-def list_files(root: str) -> Dict[str, Any]:
+def list_files(root: str, ignored: bool = False) -> Dict[str, Any]:
     """Every file of one project, and whether the answer is complete.
 
     `truncated`, `cap` and `total` are returned together on purpose. A list cut
@@ -207,13 +318,51 @@ def list_files(root: str) -> Dict[str, Any]:
     that is not a repository and "no files" from an empty repository are
     different facts, and a caller that cannot tell them apart will debug the
     wrong one.
+
+    ## `ignored`, and why it defaults to off
+
+    The project's ignore rules are the project's own statement of what is noise,
+    and a listing that overrode them by default would bury the source tree. But
+    the framework directory a project deliberately ignores is exactly what a
+    reader of THIS screen comes looking for — measured 2026-08-26: `.set/` is
+    ignored on a consumer checkout, so **0 of its 156 files** were listable, and
+    nothing on the screen distinguished that from a project without it.
+
+    So it is asked for. Entries present ONLY because it was asked for are marked
+    `!!` in `status`, git's own code for an ignored path, so a caller can render
+    the difference rather than merge it — the whole point being that a control
+    which changes the answer must be visible in the answer.
+
+    ## `status`
+
+    A map of the paths that are NOT clean, to git's two-character code. Absent
+    from the map means clean; a `null` map means there was nothing to ask. See
+    `_git_status` — the two are deliberately different values.
     """
     project_root = _known_root(root)
-    tracked = _git_files(project_root)
+    tracked = _git_files(project_root, include_ignored=ignored)
     source = "git"
+    status: Optional[Dict[str, str]] = None
     if tracked is None:
         source = "walk"
         tracked = _walked_files(project_root, MAX_FILES)
+    else:
+        status = _git_status(project_root)
+        # Which entries are here only because the rules were lifted — a set
+        # difference against the unwidened answer, rather than a second guess at
+        # what "ignored" means. `git check-ignore` per path would be one process
+        # per file; `ls-files --ignored` is a third listing whose own exclusions
+        # would then have to be kept in step with these.
+        #
+        # Merged only into a map that EXISTS. Building one out of the `!!` marks
+        # alone would answer "everything else is clean" on the strength of a
+        # status read that failed — the reassuring direction, and the whole
+        # reason `None` is a distinct value here.
+        if ignored and status is not None:
+            plain = _git_files(project_root, include_ignored=False)
+            if plain is not None:
+                for rel in set(tracked) - set(plain):
+                    status[rel] = "!!"
     total = len(tracked)
     truncated = total > MAX_FILES
     return {
@@ -223,6 +372,8 @@ def list_files(root: str) -> Dict[str, Any]:
         "total": total,
         "cap": MAX_FILES,
         "truncated": truncated,
+        "ignored": ignored,
+        "status": status,
     }
 
 

@@ -19,6 +19,58 @@ export interface TreeNode {
   path: string
   dir: boolean
   children?: TreeNode[]
+  /**
+   * Git's own two-character code for this FILE, when it is not clean — ` M`,
+   * `??`, `R `, and `!!` for an entry present only because ignored files were
+   * asked for. Absent means clean, which is the same convention the endpoint
+   * uses: one representation of clean is enough.
+   */
+  status?: string
+  /**
+   * For a DIRECTORY: what lies anywhere beneath it. A summary and never a code,
+   * because a directory does not have one — inventing a `M ` for a folder would
+   * be a false value sitting next to real ones.
+   *
+   * This is what makes a collapsed folder honest. Every layout that hides
+   * something creates a place a changed thing can sit while the screen looks
+   * settled (`ui-quality`), so what is hidden and wrong is marked where the
+   * reader is standing, not only where it lives.
+   */
+  below?: { changed: boolean; untracked: boolean }
+  /** Whether everything here is ignored — the whole row renders subordinate. */
+  ignored?: boolean
+}
+
+/** What a git status code MEANS to this screen. */
+export type StatusKind = 'untracked' | 'ignored' | 'changed'
+
+/**
+ * A two-character git code, reduced to the three cases the tree draws.
+ *
+ * Three and not more on purpose. The full porcelain vocabulary distinguishes
+ * index from working tree, and a reader of a file TREE cannot act on that
+ * distinction — they can act on *this was never committed*, *this has work in
+ * it*, and *this is only here because I asked for ignored files*. The exact code
+ * stays on the node for the row's title, so nothing is lost, only summarised.
+ */
+export function statusKind(code: string | undefined): StatusKind | undefined {
+  if (!code) return undefined
+  if (code === '!!') return 'ignored'
+  if (code === '??') return 'untracked'
+  return 'changed'
+}
+
+/**
+ * Every directory between the root and a path, outermost first.
+ *
+ * `a/b/c.ts` → `['a', 'a/b']`. The file itself is not one of its own ancestors,
+ * and a top-level file has none. Used to reveal the open file: a mark on a row
+ * that is not rendered is a mark nobody can see.
+ */
+export function ancestorsOf(path: string): string[] {
+  const parts = path.split('/').filter(Boolean)
+  parts.pop()
+  return parts.map((_, i) => parts.slice(0, i + 1).join('/'))
 }
 
 /**
@@ -30,8 +82,27 @@ export interface TreeNode {
  *
  * Directories sort before files and both sort by name — a listing whose order
  * changes between renders is a listing nobody can find anything in twice.
+ *
+ * ## `status`, and why the roll-up happens HERE
+ *
+ * The optional second argument is the endpoint's map of non-clean paths. Passing
+ * it attaches each file's code to its node AND summarises every directory by
+ * what lies beneath it, at any depth, in the same single pass.
+ *
+ * This is the only place that sees a directory together with its whole subtree.
+ * Rolling up in the row component instead would walk the subtree once per
+ * directory per render, and would put a decision about MEANING inside something
+ * whose job is drawing.
+ *
+ * `undefined` and `{}` are different arguments and must stay so: no map means
+ * the listing had nothing to report — no repository — and the tree then carries
+ * no marks and makes no claim. An empty map means everything is clean. A tree
+ * that rendered both the same way would report calm it never measured.
  */
-export function buildTree(paths: readonly string[]): TreeNode[] {
+export function buildTree(
+  paths: readonly string[],
+  status?: Readonly<Record<string, string>> | null,
+): TreeNode[] {
   const root: TreeNode = { name: '', path: '', dir: true, children: [] }
   for (const p of paths) {
     const parts = p.split('/').filter(Boolean)
@@ -53,7 +124,43 @@ export function buildTree(paths: readonly string[]): TreeNode[] {
     n.children.forEach(sort)
     return n
   }
-  return sort(root).children ?? []
+  sort(root)
+  if (status) decorate(root, status)
+  return root.children ?? []
+}
+
+/**
+ * Attach each file's code, then summarise every directory by its subtree.
+ *
+ * Depth-first and bottom-up, so a directory sees its children already decorated
+ * — one pass, and a folder ten levels above a modified file is marked by the
+ * same rule as its immediate parent.
+ *
+ * A directory counts as ignored only when it has children and ALL of them are:
+ * a folder holding one ignored file beside three tracked ones is not an ignored
+ * folder, and dimming it would hide three files the reader did not ask to hide.
+ */
+function decorate(node: TreeNode, status: Readonly<Record<string, string>>): void {
+  if (!node.dir) {
+    const code = status[node.path]
+    if (code) {
+      node.status = code
+      node.ignored = code === '!!'
+    }
+    return
+  }
+  const children = node.children ?? []
+  children.forEach(child => decorate(child, status))
+  const below = { changed: false, untracked: false }
+  for (const child of children) {
+    const kind = statusKind(child.status)
+    if (kind === 'untracked') below.untracked = true
+    if (kind === 'changed') below.changed = true
+    if (child.below?.untracked) below.untracked = true
+    if (child.below?.changed) below.changed = true
+  }
+  if (below.changed || below.untracked) node.below = below
+  if (children.length > 0 && children.every(c => c.ignored)) node.ignored = true
 }
 
 /**

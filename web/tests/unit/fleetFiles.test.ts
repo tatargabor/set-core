@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildTree, desktopReference, fileReference, languageOf, fileToOpen, terminalTarget } from '../../src/lib/fleetFiles'
+import { ancestorsOf, buildTree, desktopReference, fileReference, languageOf, fileToOpen, statusKind, terminalTarget } from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
   it('nests directories and keeps a stable order', () => {
@@ -326,5 +326,94 @@ describe('which file opening the panel opens', () => {
   it('changes nothing when there is nothing remembered', () => {
     expect(fileToOpen({ path: '' }, null)).toEqual({ path: '' })
     expect(fileToOpen({ path: '' })).toEqual({ path: '' })
+  })
+})
+
+describe('the structure carries what is not committed', () => {
+  it('attaches a file its own code and nothing to a clean one', () => {
+    const tree = buildTree(['src/a.ts', 'src/b.ts'], { 'src/a.ts': ' M' })
+    const src = tree[0]
+    expect(src.children!.find(n => n.name === 'a.ts')!.status).toBe(' M')
+    expect(src.children!.find(n => n.name === 'b.ts')!.status).toBeUndefined()
+  })
+
+  it('rolls a change up through every directory above it', () => {
+    // The reported case, and the reason the roll-up exists: the folders are
+    // collapsed, so a mark only on the file is a mark nobody can see.
+    const tree = buildTree(['a/b/c/deep.ts', 'other.md'], { 'a/b/c/deep.ts': ' M' })
+    const a = tree.find(n => n.name === 'a')!
+    const b = a.children![0]
+    const c = b.children![0]
+    expect(a.below).toEqual({ changed: true, untracked: false })
+    expect(b.below).toEqual({ changed: true, untracked: false })
+    expect(c.below).toEqual({ changed: true, untracked: false })
+    expect(tree.find(n => n.name === 'other.md')!.below).toBeUndefined()
+  })
+
+  it('keeps untracked distinguishable from changed, all the way up', () => {
+    const tree = buildTree(['a/new.ts', 'a/edited.ts'],
+                           { 'a/new.ts': '??', 'a/edited.ts': 'M ' })
+    expect(tree[0].below).toEqual({ changed: true, untracked: true })
+  })
+
+  it('marks nothing when there is no status, and nothing when all is clean', () => {
+    // These two produce the SAME tree, and that is stated rather than asserted
+    // away: at this level "there was nothing to ask" and "I asked and everything
+    // is clean" both mean no marks. Measured by mutation — replacing the
+    // `if (status)` guard with `status ?? {}` changes no test here, because
+    // there is nothing at this level for it to change.
+    //
+    // So the distinction the endpoint is careful to preserve (`null` vs `{}`)
+    // is NOT kept honest here. It is kept honest in the panel, which states the
+    // absence in words rather than leaving unmarked rows to imply calm — see
+    // `FleetFileView`'s note in the structure pane and its component test.
+    const unknown = buildTree(['a/b.ts'])
+    const clean = buildTree(['a/b.ts'], {})
+    expect(unknown[0].below).toBeUndefined()
+    expect(unknown[0].children![0].status).toBeUndefined()
+    expect(clean[0].below).toBeUndefined()
+  })
+
+  it('calls a directory ignored only when everything under it is', () => {
+    const all = buildTree(['.set/x.json', '.set/y.json'],
+                          { '.set/x.json': '!!', '.set/y.json': '!!' })
+    expect(all[0].ignored).toBe(true)
+    // One ignored file beside a tracked one is not an ignored folder: dimming
+    // it would hide a file the reader never asked to hide.
+    const some = buildTree(['mix/x.json', 'mix/keep.ts'], { 'mix/x.json': '!!' })
+    expect(some[0].ignored).toBeUndefined()
+  })
+
+  it('does not count an ignored file as work in progress', () => {
+    const tree = buildTree(['.set/x.json'], { '.set/x.json': '!!' })
+    expect(tree[0].below).toBeUndefined()
+  })
+})
+
+describe('statusKind reduces a git code to what the tree draws', () => {
+  it('names the three cases and leaves clean undefined', () => {
+    expect(statusKind('??')).toBe('untracked')
+    expect(statusKind('!!')).toBe('ignored')
+    expect(statusKind(' M')).toBe('changed')
+    expect(statusKind('R ')).toBe('changed')
+    expect(statusKind('A ')).toBe('changed')
+    expect(statusKind(undefined)).toBeUndefined()
+    expect(statusKind('')).toBeUndefined()
+  })
+})
+
+describe('ancestorsOf, for revealing the open file', () => {
+  it('lists every directory between the root and the file, outermost first', () => {
+    expect(ancestorsOf('a/b/c.ts')).toEqual(['a', 'a/b'])
+  })
+
+  it('gives a top-level file no ancestors', () => {
+    // Not `['']` — an empty path would be expanded as a directory that is not
+    // there, which is a phantom row in a `Set` nobody can clear.
+    expect(ancestorsOf('README.md')).toEqual([])
+  })
+
+  it('is not confused by a leading or doubled slash', () => {
+    expect(ancestorsOf('/a//b/c.ts')).toEqual(['a', 'a/b'])
   })
 })

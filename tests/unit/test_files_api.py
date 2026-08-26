@@ -420,3 +420,165 @@ def test_a_subdirectory_of_a_known_root_is_still_refused(wt_client, repo_with_wo
     main, _ = repo_with_worktree
     r = wt_client.get("/api/fleet/files", params={"root": str(main / "src")})
     assert r.status_code == 400
+
+
+# ─── Path fidelity, the ignored flag, and status ─────────────────────────────
+
+
+def _repo(root):
+    """A real git repository at `root`, committed, with git's own quoting ON.
+
+    `core.quotePath` is left at its default deliberately: the defect this file
+    now covers only exists because that default is on, and a fixture that turned
+    it off would produce a test that passes against the broken code.
+    """
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=str(root), check=True,
+                       capture_output=True, text=True)
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    return git
+
+
+def test_a_non_ascii_name_is_listed_as_it_is_on_disk(client, project):
+    """The phantom-directory defect: git RENDERS a path, `-z` returns one.
+
+    Measured 2026-08-26 on a consumer checkout — 11 of 1794 paths came back as
+    `"docs/…\\303\\263….md"`. The tree builder read the leading quote as part of
+    the first segment, so a directory named `"docs` appeared that nobody made,
+    the real files sat unreachable beneath it, and the path sent back named no
+    file. Both halves are asserted here: the name comes back intact, AND that
+    same string opens the file.
+    """
+    root, _ = project
+    name = "docs/Összéfoglaló.md"
+    (root / "docs").mkdir()
+    (root / name).write_text("tartalom\n")
+    _repo(root)
+
+    body = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    assert name in body["files"], body["files"]
+    assert not any(f.startswith('"') for f in body["files"])
+
+    content = client.get("/api/fleet/files/content",
+                         params={"root": str(root), "path": name})
+    assert content.status_code == 200
+    assert content.json()["content"] == "tartalom\n"
+
+
+def test_ignored_files_are_absent_until_they_are_asked_for(client, project):
+    root, _ = project
+    (root / ".gitignore").write_text(".set/\nnode_modules/\n")
+    (root / ".set").mkdir()
+    (root / ".set" / "state.json").write_text("{}\n")
+    (root / "node_modules").mkdir()
+    (root / "node_modules" / "dep.js").write_text("x\n")
+    _repo(root)
+
+    off = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    assert ".set/state.json" not in off["files"]
+    assert off["ignored"] is False
+
+    on = client.get("/api/fleet/files",
+                    params={"root": str(root), "ignored": "true"}).json()
+    assert ".set/state.json" in on["files"]
+    assert on["ignored"] is True
+    # The bound is real and stated: lifting the ignore rules does NOT lift the
+    # skip list. 36 149 paths against a cap of 20 000 was the measured
+    # alternative — one silent absence traded for another.
+    assert "node_modules/dep.js" not in on["files"]
+    # And an entry that is only here because the flag was set says so.
+    assert on["status"][".set/state.json"] == "!!"
+
+
+def test_the_ignored_flag_does_not_lift_the_cap(client, project, monkeypatch):
+    root, _ = project
+    (root / ".gitignore").write_text(".set/\n")
+    (root / ".set").mkdir()
+    for i in range(5):
+        (root / ".set" / f"f{i}.json").write_text("{}\n")
+    _repo(root)
+    monkeypatch.setattr(files_module, "MAX_FILES", 2)
+    body = client.get("/api/fleet/files",
+                      params={"root": str(root), "ignored": "true"}).json()
+    assert body["truncated"] is True
+    assert body["cap"] == 2
+    assert len(body["files"]) == 2
+
+
+def test_status_marks_modified_and_untracked_and_nothing_else(client, project):
+    root, _ = project
+    _repo(root)
+    (root / "README.md").write_text("# hello, edited\n")
+    (root / "fresh.ts").write_text("just written by an agent\n")
+
+    body = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    status = body["status"]
+    assert status["README.md"].strip() == "M"
+    assert status["fresh.ts"] == "??"
+    # A clean file is ABSENT from the map, not present with a blank code: absent
+    # means clean, and one representation of clean is enough.
+    assert "src/app.ts" not in status
+
+
+def test_a_directory_that_is_not_a_repository_reports_no_status(client, project):
+    """`null`, never `{}`.
+
+    `{}` says *I asked, and everything is clean*. `null` says *there was nothing
+    to ask*. A panel handed the first for a non-repository would render a tree of
+    unmarked rows and imply a cleanliness nobody measured.
+    """
+    root, _ = project
+    body = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    assert body["source"] == "walk"
+    assert body["status"] is None
+
+
+def test_a_status_read_that_fails_still_answers_with_the_files(client, project,
+                                                               monkeypatch):
+    root, _ = project
+    _repo(root)
+    monkeypatch.setattr(files_module, "_git_status", lambda _root: None)
+    body = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    assert "README.md" in body["files"]
+    assert body["status"] is None
+
+
+def test_a_rename_does_not_invent_an_entry_for_its_ORIGIN(client, project):
+    """Under `-z` a rename record carries its ORIGIN as the next NUL field.
+
+    `R  <to>\\0<from>\\0` — the `<from>` is not a record. A parser that reads it
+    as one invents a status entry, and the origin path is chosen here so that the
+    invention is not caught by the malformed-record guard: `my file.ts` has a
+    space at index 2, so it parses as code `my`, path `file.ts` — a file the
+    project does not have, marked with a code git never emitted.
+
+    **This assertion was written twice.** The first version renamed `src/app.ts`,
+    and it passed with the origin-consuming line removed — `src/app.ts` has a `c`
+    at index 2, so the malformed guard dropped the phantom by luck rather than by
+    design. A test that passes against the mutation proves nothing and looks like
+    proof forever, so the fixture now names the case the guard cannot save.
+    """
+    import subprocess
+    root, _ = project
+    (root / "my file.ts").write_text("const a = 1\n")
+    (root / "src" / "zzz.ts").write_text("const z = 1\n")
+    _repo(root)
+    subprocess.run(["git", "mv", "my file.ts", "renamed.ts"], cwd=str(root),
+                   check=True, capture_output=True)
+    (root / "src" / "zzz.ts").write_text("const z = 2\n")
+
+    body = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    status = body["status"]
+    assert status["renamed.ts"].startswith("R")
+    # No phantom from the origin field, under either name it could take.
+    assert "file.ts" not in status
+    assert "my file.ts" not in status
+    # And the record that follows the rename keeps its own code.
+    assert status["src/zzz.ts"].strip() == "M"

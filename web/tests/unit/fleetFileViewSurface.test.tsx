@@ -20,12 +20,13 @@ const editorCalls: string[] = []
 
 vi.mock('@monaco-editor/react', () => ({
   loader: { config: () => {} },
-  default: ({ value, onChange, onMount, language, path }: {
+  default: ({ value, onChange, onMount, language, path, options }: {
     value: string
     onChange?: (v: string | undefined) => void
     onMount?: (editor: unknown) => void
     language?: string
     path?: string
+    options?: { wordWrap?: string }
   }) => {
     // A stand-in for the editor handle, recording what the panel asks of it.
     const handle = {
@@ -42,6 +43,7 @@ vi.mock('@monaco-editor/react', () => ({
         data-testid="monaco"
         data-language={language ?? 'none'}
         data-path={path}
+        data-wrap={options?.wordWrap ?? 'unset'}
         value={value}
         ref={el => { if (el) onMount?.(handle) }}
         onChange={e => onChange?.(e.target.value)}
@@ -62,12 +64,17 @@ let files: Record<string, Fake | { status: number; detail: string }>
 let writes: Array<Record<string, unknown>>
 /** Every `root=` the panel asked an endpoint for, in order. */
 let rootsAsked: string[]
+/** The status map the fake listing answers with — `null` for "nothing to ask". */
+let listStatus: Record<string, string> | null
+/** Every `ignored=` the panel asked the listing for, in order. */
+let ignoredAsked: boolean[]
 
 function server() {
   return vi.fn((url: string | URL, init?: RequestInit) => {
     const u = String(url)
     const askedRoot = /[?&]root=([^&]+)/.exec(u)?.[1]
     if (askedRoot) rootsAsked.push(decodeURIComponent(askedRoot))
+    if (u.includes('/api/fleet/files?')) ignoredAsked.push(u.includes('ignored=true'))
     if (init?.method === 'PUT') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
       writes.push(body)
@@ -102,6 +109,8 @@ function server() {
       json: () => Promise.resolve({
         root: ROOT, source: 'git', files: Object.keys(files), total: Object.keys(files).length,
         cap: 20000, truncated: false,
+        ignored: u.includes('ignored=true'),
+        status: listStatus,
       }),
     } as Response)
   })
@@ -111,6 +120,8 @@ beforeEach(() => {
   editorCalls.length = 0
   writes = []
   rootsAsked = []
+  ignoredAsked = []
+  listStatus = {}
   files = {
     'a.ts': { content: 'one\ntwo\nthree\n', identity: 'id-a' },
     'b.ts': { content: 'other file\n', identity: 'id-b' },
@@ -325,5 +336,116 @@ describe('a request that names another checkout', () => {
     // Saving into the main checkout what was read from the worktree would be a
     // cross-branch write — the worst thing this panel could do.
     expect(writes[0].root).toBe(WT)
+  })
+})
+
+describe('the five things the reader could not see', () => {
+  it('wraps long lines only when asked, and remembers the answer', async () => {
+    // Off first, because a wrapped line stops matching its line number and this
+    // panel's other job is *open at line N and mark it*.
+    const first = view({ request: { path: 'a.ts' } })
+    await waitFor(() => expect(screen.getByTestId('monaco').dataset.wrap).toBe('off'))
+    fireEvent.click(first.container.querySelector('[data-fleet-file-wrap]')!)
+    await waitFor(() => expect(screen.getByTestId('monaco').dataset.wrap).toBe('on'))
+    cleanup()
+
+    // A REMOUNT, which is what docking, enlarging and closing all do to this
+    // panel. Before the preference was remembered, each of those silently
+    // undid the reader's choice.
+    view({ request: { path: 'a.ts' } })
+    await waitFor(() => expect(screen.getByTestId('monaco').dataset.wrap).toBe('on'))
+  })
+
+  it('asks the endpoint for ignored files only when the control is on', async () => {
+    const { container } = view()
+    await waitFor(() => expect(ignoredAsked).toEqual([false]))
+    fireEvent.click(container.querySelector('[data-fleet-file-ignored]')!)
+    // The listing is re-fetched — a toggle that changed only the rendering
+    // would filter a list that never contained the files in the first place.
+    await waitFor(() => expect(ignoredAsked).toEqual([false, true]))
+    expect(container.querySelector('[data-fleet-file-ignored]')!
+      .getAttribute('data-fleet-file-ignored')).toBe('on')
+  })
+
+  it('says that ignored files are being withheld while they are', async () => {
+    // The reported defect was not that the files were absent — it was that
+    // nothing distinguished their absence from a project without them.
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-ignored-hint]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-file-ignored]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-ignored-hint]')).toBeNull())
+  })
+
+  it('marks a changed file and an untracked one differently', async () => {
+    listStatus = { 'a.ts': ' M', 'b.ts': '??' }
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="a.ts"]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-node="a.ts"]')!
+      .getAttribute('data-fleet-file-mark')).toBe('changed')
+    expect(container.querySelector('[data-fleet-file-node="b.ts"]')!
+      .getAttribute('data-fleet-file-mark')).toBe('untracked')
+    // A clean file carries no mark at all.
+    expect(container.querySelector('[data-fleet-file-node="empty.ts"]')!
+      .getAttribute('data-fleet-file-mark')).toBeNull()
+  })
+
+  it('marks a COLLAPSED directory that holds a changed file', async () => {
+    // The rule that outranks compactness: a layout that hides something creates
+    // a place a changed thing can sit while the screen looks settled.
+    files = { 'deep/nest/x.ts': { content: 'x\n', identity: 'id-x' } }
+    listStatus = { 'deep/nest/x.ts': ' M' }
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="deep"]')).toBeTruthy())
+    // The file's own row is not rendered — its directory is collapsed — and the
+    // mark is on the row that IS.
+    expect(container.querySelector('[data-fleet-file-node="deep/nest/x.ts"]')).toBeNull()
+    expect(container.querySelector('[data-fleet-file-node="deep"]')!
+      .getAttribute('data-fleet-file-mark')).toBe('changed')
+  })
+
+  it('states that there is no status rather than leaving rows to imply calm', async () => {
+    listStatus = null
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-nostatus]')).toBeTruthy())
+    // And no row claims anything.
+    expect(container.querySelector('[data-fleet-file-mark]')).toBeNull()
+  })
+
+  it('expands every directory down to the file it opens', async () => {
+    // The reported defect: a file opened from a terminal link sits many levels
+    // down a collapsed tree, so the active mark was on a row nobody could see.
+    files = { 'deep/nest/x.ts': { content: 'x\n', identity: 'id-x' }, 'top.md': { content: 't\n', identity: 'id-t' } }
+    const { container } = view({ request: { path: 'deep/nest/x.ts' } })
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-node="deep/nest/x.ts"]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-node-active="yes"]')!
+      .getAttribute('data-fleet-file-node')).toBe('deep/nest/x.ts')
+  })
+
+  it('does not collapse what the reader opened themselves', async () => {
+    files = {
+      'deep/nest/x.ts': { content: 'x\n', identity: 'id-x' },
+      'other/y.ts': { content: 'y\n', identity: 'id-y' },
+    }
+    const { container, rerender } = render(
+      <FleetFileView root={ROOT} projectName="proj" onClose={() => {}} />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="other"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-file-node="other"]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="other/y.ts"]')).toBeTruthy())
+
+    /*
+      The file is opened WITHOUT its own branches being expanded first — which
+      is the whole point, and what the earlier version of this test got wrong.
+      Expanding `deep` and `deep/nest` by hand first left the reveal with
+      nothing to add, so its merge never ran and a mutation replacing that
+      merge with `new Set(ancestors)` stayed green. Measured, not assumed.
+    */
+    rerender(<FleetFileView root={ROOT} projectName="proj" onClose={() => {}}
+                            request={{ path: 'deep/nest/x.ts' }} />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node-active="yes"]')
+      ?.getAttribute('data-fleet-file-node')).toBe('deep/nest/x.ts'))
+
+    // Revealing ADDS branches; it never takes away one somebody chose to open.
+    expect(container.querySelector('[data-fleet-file-node="other/y.ts"]')).toBeTruthy()
   })
 })

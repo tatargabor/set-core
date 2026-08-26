@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, File as FileIcon, Maximize2, Minimize2, RefreshCw, Save, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, EyeOff, File as FileIcon, Maximize2, Minimize2, RefreshCw, Save, WrapText, X } from 'lucide-react'
 
-import { buildTree, languageOf, type TreeNode } from '../lib/fleetFiles'
+import { ancestorsOf, buildTree, languageOf, statusKind, type TreeNode } from '../lib/fleetFiles'
 import { classifyLoadFailure, type LoadFailure } from '../lib/buildFreshness'
 import { DOCK_CONTROLS, IconButton } from './TileControls'
 import FleetSplitter from './FleetSplitter'
@@ -29,11 +29,41 @@ import type { DockEdge } from '../lib/fleetDocks'
  *
  * ## And what it must not keep
  *
- * Nothing reaches browser storage — not the content, not the path, not the list.
- * A project's source is the project's own domain (`CLAUDE.md`, External Project
- * Confidentiality), and this panel displays it for as long as it is on screen
- * and no longer.
+ * **Nothing OF THE PROJECT reaches browser storage** — not the content, not the
+ * path, not the list. A project's source is the project's own domain
+ * (`CLAUDE.md`, External Project Confidentiality), and this panel displays it
+ * for as long as it is on screen and no longer.
+ *
+ * Two booleans DO persist: whether lines are wrapped, and whether ignored files
+ * are shown. The line the rule draws is not "localStorage is forbidden" but
+ * "a consumer's domain does not leave the framework's memory", and a flag about
+ * this panel is not a consumer's domain. They are stored because the panel is
+ * torn down for reasons that have nothing to do with the reader — docking it to
+ * an edge, enlarging it, closing it — and losing a setting to each of those is
+ * the same complaint already answered for *which file was I reading*.
  */
+
+/**
+ * A remembered yes/no about this panel — read and written defensively.
+ *
+ * Every access is wrapped, because a browser configured to refuse site data
+ * THROWS on the accessor rather than returning null. An unguarded read would
+ * take the whole panel down over a preference, which is a much worse failure
+ * than forgetting one.
+ */
+function remembered(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw === null ? fallback : raw === '1'
+  } catch { return fallback }
+}
+
+function remember(key: string, value: boolean): void {
+  try { localStorage.setItem(key, value ? '1' : '0') } catch { /* a preference, not the panel */ }
+}
+
+const WRAP_KEY = 'set-file-wrap'
+const IGNORED_KEY = 'set-file-ignored'
 
 /** What the listing endpoint answers. */
 interface Listing {
@@ -43,6 +73,19 @@ interface Listing {
   total: number
   cap: number
   truncated: boolean
+  /** Whether the answer includes what the project's ignore rules exclude. */
+  ignored?: boolean
+  /**
+   * Each non-clean path's git code — and `null` when there was NOTHING TO ASK.
+   *
+   * The two are different answers and the panel must keep them different: `{}`
+   * means the status was read and everything is clean, `null` means there is no
+   * repository or the read failed. Rendering both as a tree of unmarked rows
+   * would report a cleanliness nobody measured, so the `null` case is stated in
+   * words in the structure pane rather than left to be inferred from an absence
+   * of marks — which is what an absence of marks always looks like.
+   */
+  status?: Record<string, string> | null
 }
 
 /** What the panel is showing, or why it is not. */
@@ -231,6 +274,20 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   */
   const [reloads, setReloads] = useState(0)
   /*
+    The two remembered preferences — see `remembered` above for why they persist
+    and `WRAP_KEY` / `IGNORED_KEY` for where.
+
+    Wrapping starts OFF, and that is a decision rather than a default inherited
+    from Monaco. A wrapped line breaks the correspondence between a row on screen
+    and a line NUMBER, and this panel's other job is *open at line N and mark it*
+    — the terminal links depend on it. Somebody who asked to go to a line did not
+    ask for the ruler to stop matching, so wrapping is something they turn on.
+  */
+  const [wrap, setWrap] = useState(() => remembered(WRAP_KEY, false))
+  const [showIgnored, setShowIgnored] = useState(() => remembered(IGNORED_KEY, false))
+  useEffect(() => { remember(WRAP_KEY, wrap) }, [wrap])
+  useEffect(() => { remember(IGNORED_KEY, showIgnored) }, [showIgnored])
+  /*
     The structure's width — asked for 2026-08-22: *"kellene a file nézet és a
     file lista közötti savot is tudnk húzogatni"*.
 
@@ -250,7 +307,8 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     let dead = false
     setListing(null)
     setListError(null)
-    void fetch(`/api/fleet/files?root=${encodeURIComponent(readRoot)}`)
+    void fetch(`/api/fleet/files?root=${encodeURIComponent(readRoot)}`
+               + (showIgnored ? '&ignored=true' : ''))
       .then(async r => {
         const body = await r.json().catch(() => null)
         if (!r.ok) throw new Error(String(body?.detail ?? `HTTP ${r.status}`))
@@ -259,9 +317,21 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       .then(l => { if (!dead) setListing(l) })
       .catch(e => { if (!dead) setListError(String((e as Error)?.message ?? e)) })
     return () => { dead = true }
-  }, [readRoot, reloads])
+  }, [readRoot, reloads, showIgnored])
 
-  const tree = useMemo(() => buildTree(listing?.files ?? []), [listing])
+  /*
+    `listing.status` is passed straight through, INCLUDING its absence.
+
+    `undefined`/`null` means the listing had nothing to report — a directory that
+    is not a repository, or a status read that failed — and the tree then carries
+    no marks. That is indistinguishable from a clean tree by looking at it, which
+    is exactly why the pane SAYS so below rather than leaving the reader to infer
+    calm from an absence of marks.
+  */
+  const tree = useMemo(
+    () => buildTree(listing?.files ?? [], listing?.status ?? undefined),
+    [listing],
+  )
 
   const load = useCallback(async (path: string, line?: number) => {
     setOpened({ kind: 'loading', path })
@@ -403,6 +473,44 @@ export default function FleetFileView({ root, projectName, request, initial, onC
 
   const openPath = opened.kind === 'none' ? null : opened.path
 
+  /*
+    THE STRUCTURE FOLLOWS THE OPEN FILE — reported 2026-08-26:
+    *"ha egy filet megnyitok akkor a navigacio a file listaban oda kelllene
+    alljon (koveti)"*.
+
+    Marking the active row was never enough on its own. A file opened from a
+    terminal link is usually many levels down a tree whose branches are all
+    collapsed, so the mark sat on a row that was not rendered at all — the panel
+    knew where the reader was and the list did not show it.
+
+    Two rules, and the second is the one that is easy to get wrong:
+
+     - **expand, never collapse.** Ancestors are ADDED to `expanded`; nothing is
+       removed. A reveal that tidied the tree would undo branches somebody opened
+       on purpose, which is the panel overriding a choice rather than serving one.
+     - **`block: 'nearest'` scrolls only if it has to.** Revealing the file the
+       reader just clicked in the tree must not yank the list under their cursor.
+  */
+  const revealRef = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    if (!openPath) return
+    const ancestors = ancestorsOf(openPath)
+    if (ancestors.length > 0) {
+      setExpanded(prev => {
+        const missing = ancestors.filter(a => !prev.has(a))
+        if (missing.length === 0) return prev
+        const next = new Set(prev)
+        missing.forEach(a => next.add(a))
+        return next
+      })
+    }
+    // One frame later: the rows the expansion just created do not exist yet.
+    const id = requestAnimationFrame(() => {
+      revealRef.current?.scrollIntoView({ block: 'nearest' })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [openPath])
+
   return (
     <div className="flex flex-col h-full min-h-0" data-fleet-file-view={projectName}>
       <div className="flex items-center gap-1.5 px-2 py-1 border-b border-surface-line min-w-0">
@@ -466,6 +574,30 @@ export default function FleetFileView({ root, projectName, request, initial, onC
               onClick={onMaximise}
             />
           )}
+          <IconButton
+            icon={WrapText}
+            testId="file-wrap"
+            active={wrap}
+            mark={{ 'data-fleet-file-wrap': wrap ? 'on' : 'off' }}
+            label={wrap
+              ? 'stop wrapping — a wrapped line no longer matches its line number'
+              : 'wrap long lines to the width of the editor'}
+            onClick={() => setWrap(w => !w)}
+          />
+          {/* Ignored files. The label states what is being WITHHELD when it is
+              off, because that is the reported defect: a directory of files was
+              missing and nothing on the screen distinguished that from a project
+              that does not have one. */}
+          <IconButton
+            icon={EyeOff}
+            testId="file-ignored"
+            active={showIgnored}
+            mark={{ 'data-fleet-file-ignored': showIgnored ? 'on' : 'off' }}
+            label={showIgnored
+              ? 'hide the files this project ignores'
+              : 'show the files this project ignores — they are being withheld now'}
+            onClick={() => setShowIgnored(v => !v)}
+          />
           <IconButton
             icon={RefreshCw}
             testId="file-refresh"
@@ -543,12 +675,38 @@ export default function FleetFileView({ root, projectName, request, initial, onC
           )}
           {tree.map(node => (
             <Node key={node.path} node={node} depth={0} openPath={openPath}
+                  activeRef={revealRef}
                   expanded={expanded} onToggle={p => setExpanded(prev => {
                     const next = new Set(prev)
                     if (next.has(p)) next.delete(p); else next.add(p)
                     return next
                   })} onOpen={openFile} />
           ))}
+          {/*
+            A STATED ABSENCE, not an inferred calm.
+
+            When the listing carries no status map there is nothing to ask — the
+            directory is not a repository, or the read failed — and every row
+            renders unmarked. Unmarked rows are exactly what a clean project
+            looks like, so without this line the panel would report a
+            cleanliness it never measured. Same rule as `a gap is not a zero`,
+            reaching a tree instead of a number.
+          */}
+          {listing && listing.status == null && (
+            <div className="text-xs text-fg-ghost p-1 mt-1 border-t border-surface-line"
+                 data-fleet-file-nostatus={listing.source}>
+              {listing.source === 'walk'
+                ? 'not a git repository — nothing here says what is committed'
+                : 'the change marks could not be read — an unmarked row does not mean clean'}
+            </div>
+          )}
+          {/* And the other withheld thing, said where the reader is standing. */}
+          {listing && listing.status != null && !showIgnored && (
+            <div className="text-xs text-fg-ghost p-1 mt-1"
+                 data-fleet-file-ignored-hint="yes">
+              files this project ignores are not listed
+            </div>
+          )}
         </div>
 
         <FleetSplitter
@@ -615,6 +773,9 @@ export default function FleetFileView({ root, projectName, request, initial, onC
                     minimap: { enabled: false },
                     fontSize: 12,
                     scrollBeyondLastLine: false,
+                    /* Reported 2026-08-26: a long line ran off the editor with
+                       no way to bring it back. Off by default — see `wrap`. */
+                    wordWrap: wrap ? 'on' : 'off',
                     /*
                       WITHOUT THIS, Monaco keeps the size it had at mount.
 
@@ -665,35 +826,83 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   )
 }
 
+/**
+ * What a status code looks like on a row, and what it MEANS in words.
+ *
+ * One colour per meaning, and the colours are the ones this dashboard already
+ * uses for these facts elsewhere: amber is work in progress, emerald is new,
+ * ghost is present-but-subordinate. Nothing decorative uses them.
+ *
+ * The `title` carries git's own code, so summarising into three kinds loses
+ * nothing a reader might want — it is a summary on the surface with the exact
+ * answer one hover away.
+ */
+const MARKS: Record<string, { glyph: string; className: string; what: string }> = {
+  changed: { glyph: '●', className: 'text-amber-400', what: 'changed since the last commit' },
+  untracked: { glyph: '✚', className: 'text-emerald-400', what: 'never committed' },
+  ignored: { glyph: '·', className: 'text-fg-ghost', what: 'ignored by this project' },
+}
+
 /** One row of the structure. Recursive, because the structure is. */
-function Node({ node, depth, openPath, expanded, onToggle, onOpen }: {
+function Node({ node, depth, openPath, expanded, onToggle, onOpen, activeRef }: {
   node: TreeNode
   depth: number
   openPath: string | null
   expanded: ReadonlySet<string>
   onToggle: (path: string) => void
   onOpen: (path: string) => void
+  /** Attached to the OPEN row, so the panel can scroll it into view. */
+  activeRef?: React.MutableRefObject<HTMLButtonElement | null>
 }) {
   const isOpen = expanded.has(node.path)
   const active = openPath === node.path
+  /*
+    A file wears its own code; a directory wears a SUMMARY of its subtree.
+
+    The directory case is the one that matters. Every layout that hides
+    something creates a place a changed thing can sit while the screen looks
+    settled (`ui-quality`), and a collapsed folder is exactly such a place — so
+    what is hidden and not committed is marked here, where the reader is
+    standing, and not only on the row they cannot see.
+
+    Untracked wins the single glyph when a folder holds both, because "there is
+    something new in here" is the fact a reader is least likely to already know.
+  */
+  const kind = node.dir
+    ? (node.below?.untracked ? 'untracked' : node.below?.changed ? 'changed' : undefined)
+    : statusKind(node.status)
+  const mark = kind ? MARKS[kind] : undefined
+  const meaning = mark && (node.dir
+    ? `something under here is ${kind === 'untracked' ? 'never committed' : 'changed since the last commit'}`
+    : `${node.status} — ${mark.what}`)
   return (
     <>
       <button
+        ref={active ? activeRef : undefined}
         className={`flex items-center gap-1 w-full text-left text-xs px-1 py-0.5 rounded truncate ${
-          active ? 'bg-surface-raised/60 text-sky-300' : 'text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'}`}
+          active ? 'bg-surface-raised/60 text-sky-300' : 'text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'} ${
+          node.ignored && !active ? 'opacity-50' : ''}`}
         style={{ paddingLeft: `${depth * 10 + 4}px` }}
         data-fleet-file-node={node.path}
         data-fleet-file-node-active={active ? 'yes' : undefined}
+        data-fleet-file-mark={kind}
+        data-fleet-file-node-ignored={node.ignored ? 'yes' : undefined}
         onClick={() => (node.dir ? onToggle(node.path) : onOpen(node.path))}
-        title={node.path}
+        title={meaning ? `${node.path} — ${meaning}` : node.path}
       >
         {node.dir
           ? (isOpen ? <ChevronDown size={11} aria-hidden /> : <ChevronRight size={11} aria-hidden />)
           : <FileIcon size={11} aria-hidden className="shrink-0 opacity-60" />}
         <span className="truncate">{node.name}</span>
+        {mark && (
+          <span className={`ml-auto shrink-0 pl-1 ${mark.className}`} aria-hidden>
+            {mark.glyph}
+          </span>
+        )}
       </button>
       {node.dir && isOpen && node.children?.map(child => (
         <Node key={child.path} node={child} depth={depth + 1} openPath={openPath}
+              activeRef={activeRef}
               expanded={expanded} onToggle={onToggle} onOpen={onOpen} />
       ))}
     </>
