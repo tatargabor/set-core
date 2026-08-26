@@ -269,7 +269,12 @@ function TheRest({ project, entries, busy, onRun }: {
       </button>
       {open && (
         <>
-          <ul className="mt-1 space-y-0.5">
+          {/* Capped and scrolled, because LOOKING at it on 2026-08-26 showed a
+              47-entry record push the entire agent grid off the screen: the
+              disclosure is in a header row, so its height is the page's. A list
+              that hides the work to show the history is the compacting rule
+              failing in the other direction. */}
+          <ul className="mt-1 space-y-0.5 max-h-64 overflow-y-auto pr-1">
             {entries.map(e => {
               // Why an entry cannot be picked is said next to it. A checkbox
               // that is simply dead teaches the reader the screen is broken.
