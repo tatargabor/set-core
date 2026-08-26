@@ -207,6 +207,42 @@ describe('when the project IS known', () => {
       .toEqual({ path: '/home/x/proj/openspec/changes/mobil-nezet-reszponziv' })
   })
 
+  it('hands a worktree agent\'s DIRECTORY to the desktop, resolved against the worktree', async () => {
+    // The live report, 2026-08-26: the dashboard resolved against the project
+    // root and answered "no such file or directory" for a directory the agent
+    // was plainly looking at, one checkout over.
+    line = '4 file(s): openspec/changes/mobil-nezet-reszponziv/'
+    await mount({
+      projectRoot: root,
+      agentCwd: '/home/x/proj-wt-mobil',
+      knownFiles: new Set(['src/app.ts']),
+      onOpenFile: vi.fn(),
+    })
+
+    click(links()[0], { ctrl: true })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string))
+      .toEqual({ path: '/home/x/proj-wt-mobil/openspec/changes/mobil-nezet-reszponziv' })
+  })
+
+  it('opens a worktree agent\'s FILE in the file view, naming the worktree', async () => {
+    // Asked for 2026-08-26: what is inside the project and the internal editor
+    // can open, opens there. The listing handed in is the WORKTREE's, so the
+    // panel is told which checkout to read — not left to assume the main one.
+    line = 'wrote src/app.ts'
+    const openFile = vi.fn()
+    await mount({
+      projectRoot: root,
+      agentCwd: '/home/x/proj-wt-mobil',
+      knownFiles: new Set(['src/app.ts']),
+      onOpenFile: openFile,
+    })
+
+    click(links()[0], { ctrl: true })
+    expect(openFile).toHaveBeenCalledWith({ path: 'src/app.ts' }, '/home/x/proj-wt-mobil')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('leaves the prose around it alone', async () => {
     // The same line, and the point is what is NOT underlined: one link, not four.
     line = 'A change kész: openspec/changes/x/ és/vagy 24/7 a docs/ alatt'
@@ -223,7 +259,7 @@ describe('when the project IS known', () => {
     expect(found.map(l => l.text)).toEqual(['/home/x/proj/src/app.ts:12', '/tmp/shot.png'])
 
     click(found[0], { ctrl: true })
-    expect(openFile).toHaveBeenCalledWith({ path: 'src/app.ts', line: 12 })
+    expect(openFile).toHaveBeenCalledWith({ path: 'src/app.ts', line: 12 }, root)
     expect(fetchMock).not.toHaveBeenCalled()
 
     click(found[1], { ctrl: true })

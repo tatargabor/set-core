@@ -70,6 +70,16 @@ export interface FleetAgent {
    * more than this word promises something measured not to happen.
    */
   survives?: string | null
+  /**
+   * Where the agent is STANDING — its own working directory, which is NOT the
+   * project root when it runs in a worktree. Measured 2026-08-26 on a live
+   * payload: `project_root: /home/x/proj`, `cwd: /home/x/proj-wt-<name>`,
+   * `branch: change/<name>`.
+   *
+   * Load-bearing for terminal links: a relative path printed there names a file
+   * in that checkout, on that branch. See `terminalTarget`.
+   */
+  cwd?: string | null
   /** The terminal's address. Non-null only for `started-here`. */
   terminal_label?: string | null
   /**

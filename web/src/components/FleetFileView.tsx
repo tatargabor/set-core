@@ -63,10 +63,21 @@ type SaveState =
 export interface FileRequest {
   path: string
   line?: number
+  /**
+   * The CHECKOUT the path is relative to, when it is not the project root.
+   *
+   * A worktree agent's relative path names a file in ITS tree, on ITS branch.
+   * Without this the panel would read the project root's copy — which either
+   * does not exist (a refusal for a file plainly in front of the agent) or does,
+   * and is a different file with the same name, opened silently. The panel's
+   * IDENTITY stays the project root, so docking, remembering and closing are
+   * unchanged; only what it reads moves.
+   */
+  from?: string
 }
 
 export default function FleetFileView({ root, projectName, request, initial, onClose, onRequestHandled, onOpened, onDock, dockedEdge, maximised, onMaximise }: {
-  /** The project's root — how every endpoint here identifies the project. */
+  /** The project's root — the panel's IDENTITY, and its default checkout. */
   root: string
   projectName: string
   /** A file somebody asked for: the terminal, or a click in another panel. */
@@ -126,6 +137,25 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   maximised?: boolean
   onMaximise?: () => void
 }) {
+  /*
+    WHICH CHECKOUT THIS PANEL IS READING — reported 2026-08-26.
+
+    The panel's identity is the project root; what it READS follows the request,
+    because a worktree agent's paths belong to its own tree. It is held in state
+    rather than derived from `request` on every render for one reason: the
+    request is cleared once it has been handled, and a derived value would then
+    snap the panel back to the project root while the reader is still in the
+    worktree's file.
+
+    It is also SHOWN in the header. A panel silently reading another branch is
+    the same defect as the one this fixes, pointing the other way.
+  */
+  const [readRoot, setReadRoot] = useState(root)
+  useEffect(() => { setReadRoot(root) }, [root])
+  useEffect(() => {
+    if (request?.from && request.from !== readRoot) setReadRoot(request.from)
+  }, [request, readRoot])
+
   const [listing, setListing] = useState<Listing | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -220,7 +250,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     let dead = false
     setListing(null)
     setListError(null)
-    void fetch(`/api/fleet/files?root=${encodeURIComponent(root)}`)
+    void fetch(`/api/fleet/files?root=${encodeURIComponent(readRoot)}`)
       .then(async r => {
         const body = await r.json().catch(() => null)
         if (!r.ok) throw new Error(String(body?.detail ?? `HTTP ${r.status}`))
@@ -229,7 +259,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       .then(l => { if (!dead) setListing(l) })
       .catch(e => { if (!dead) setListError(String((e as Error)?.message ?? e)) })
     return () => { dead = true }
-  }, [root, reloads])
+  }, [readRoot, reloads])
 
   const tree = useMemo(() => buildTree(listing?.files ?? []), [listing])
 
@@ -238,7 +268,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     setSave({ kind: 'idle' })
     try {
       const r = await fetch(
-        `/api/fleet/files/content?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`)
+        `/api/fleet/files/content?root=${encodeURIComponent(readRoot)}&path=${encodeURIComponent(path)}`)
       const body = await r.json().catch(() => null)
       if (!r.ok) {
         setOpened({ kind: 'refused', path, reason: String(body?.detail ?? `HTTP ${r.status}`) })
@@ -260,7 +290,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     } catch (e) {
       setOpened({ kind: 'refused', path, reason: String((e as Error)?.message ?? e) })
     }
-  }, [root, onOpened])
+  }, [readRoot, onOpened])
 
   /* Somebody asked for a file — from the terminal, usually. An unsaved edit
      turns the request into a question rather than an action. */
@@ -357,7 +387,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       const r = await fetch('/api/fleet/files/content', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ root, path: opened.path, content: text, identity: opened.identity }),
+        body: JSON.stringify({ root: readRoot, path: opened.path, content: text, identity: opened.identity }),
       })
       const body = await r.json().catch(() => null)
       if (r.status === 409) { setSave({ kind: 'conflict' }); return }
@@ -369,7 +399,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     } catch (e) {
       setSave({ kind: 'failed', reason: String((e as Error)?.message ?? e) })
     }
-  }, [opened, root, text])
+  }, [opened, readRoot, text])
 
   const openPath = opened.kind === 'none' ? null : opened.path
 
@@ -378,6 +408,19 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       <div className="flex items-center gap-1.5 px-2 py-1 border-b border-surface-line min-w-0">
         <span className="text-xs text-fg-strong shrink-0">files</span>
         <span className="text-xs text-fg-ghost truncate" title={root}>{projectName}</span>
+        {/* WHICH CHECKOUT — shown whenever it is not the project's own. A panel
+            reading another branch without saying so is the same defect this
+            feature exists to fix, pointing the other way: the file is right, the
+            reader's belief about which branch it came from is not. */}
+        {readRoot !== root && (
+          <span
+            className="text-xs text-sky-400 shrink-0"
+            data-fleet-file-checkout={readRoot}
+            title={`Reading ${readRoot} — a worktree, not ${root}`}
+          >
+            · {readRoot.split('/').filter(Boolean).pop()}
+          </span>
+        )}
         {openPath && (
           <span className="text-xs text-fg-muted truncate" data-fleet-file-open={openPath}>
             · {openPath}{dirty && <span className="text-amber-400" data-fleet-file-dirty="yes"> ●</span>}

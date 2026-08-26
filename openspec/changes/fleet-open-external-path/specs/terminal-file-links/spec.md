@@ -97,6 +97,100 @@ working directory the reader cannot see would name a stranger's file.
 - **WHEN** a relative token appears in a terminal whose project root is not known
 - **THEN** it is left as ordinary text
 
+### Requirement: A relative reference belongs to the agent's own working directory
+
+A relative token SHALL be resolved against the working directory of the agent whose terminal
+printed it, never against the project root when the two differ, and the destination SHALL
+carry WHICH checkout it meant.
+
+The failure this prevents has two halves, and the quiet one is the reason for the rule:
+
+- the path may not exist in the project root, and the reader gets a refusal for a file that
+  is plainly in front of the agent;
+- the path may exist in BOTH, and the reader is then shown a different file with the same
+  name, from another branch, with nothing on screen to say so.
+
+Where no working directory is reported the project root SHALL be used, and the framework
+SHALL NOT refuse the reference on that ground — the fallback is wrong only for a worktree,
+which is exactly the case the payload reports.
+
+#### Scenario: An agent working in a worktree
+
+- **WHEN** an agent whose working directory is a worktree of the project prints a relative
+  path
+- **THEN** it is resolved against that worktree
+
+#### Scenario: The same relative path exists in both checkouts
+
+- **WHEN** the relative path is also a file of the project root's own listing
+- **THEN** the worktree's copy is still what is opened, and the project root's copy is never
+  what the reader gets
+
+#### Scenario: An agent standing in the project itself
+
+- **WHEN** the agent's working directory is the project root
+- **THEN** a relative path behaves exactly as before
+
+#### Scenario: No working directory reported
+
+- **WHEN** the payload carries no working directory for an agent
+- **THEN** the project root is used, and the reference is still offered
+
+### Requirement: What the internal editor can open, opens in the internal editor
+
+A reference to a FILE of the checkout the agent is standing in SHALL open in the dashboard's
+own file view — including a file of a worktree — and only what that view cannot open SHALL be
+handed to the desktop.
+
+What the view cannot open, and therefore what the desktop gets, is exactly:
+
+- a DIRECTORY, which no file listing contains;
+- a path no listing of that checkout has;
+- an absolute path outside that checkout, including one in another checkout of the same
+  project.
+
+The framework SHALL therefore read the file listing of the checkout the agent is standing in,
+not only of the project root, and SHALL be able to serve the files of a worktree of a project
+it knows. A screen that offers to start an agent in a worktree and then refuses to open that
+agent's files is two guards that were meant to agree and did not.
+
+Where the file view reads a checkout other than the project's own, it SHALL SAY SO on screen.
+A panel silently showing another branch is the same defect this requirement exists to fix,
+pointing the other way: the file is right and the reader's belief about it is not.
+
+#### Scenario: A file of the agent's worktree
+
+- **WHEN** a person activates a relative path that is a file of the agent's worktree
+- **THEN** the file view opens it, reading that worktree
+
+#### Scenario: The panel names the checkout it is reading
+
+- **WHEN** the file view is reading a checkout other than the project root
+- **THEN** the panel names that checkout where the reader is standing
+
+#### Scenario: A save goes back where the file came from
+
+- **WHEN** a file read from a worktree is edited and saved
+- **THEN** it is written back to that worktree, never to the project root
+
+#### Scenario: A directory still goes to the desktop
+
+- **WHEN** the activated reference names a directory
+- **THEN** it is handed to the desktop — no listing contains a directory, so the file view
+  has nothing to open
+
+#### Scenario: A worktree of a known project may be read
+
+- **WHEN** the file endpoints are asked for a non-prunable worktree of a project the screen
+  knows
+- **THEN** they serve it, with the same confinement, limits and refusals as the project root
+
+#### Scenario: An unrelated directory is still refused
+
+- **WHEN** the file endpoints are asked for a directory that is neither a known project root
+  nor a worktree of one — including a subdirectory of a known root
+- **THEN** they refuse it
+
 ### Requirement: Activating a desktop reference hands it to the desktop
 
 A person activating a recognised DESKTOP reference SHALL cause that path to be handed to the

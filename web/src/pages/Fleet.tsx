@@ -964,7 +964,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   projectRoot?: string
   /** The files that project has — see `FleetTerminal`'s prop of the same name. */
   knownFiles?: ReadonlySet<string>
-  onOpenFile?: (file: { path: string; line?: number }) => void
+  onOpenFile?: (file: { path: string; line?: number }, root: string) => void
 }) {
   /**
    * B-30 — an OPEN terminal survives a poll the owner did not answer.
@@ -1248,6 +1248,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           headerSlot={termSlot}
           projectRoot={projectRoot}
           knownFiles={knownFiles}
+          agentCwd={agent.cwd ?? undefined}
           onOpenFile={onOpenFile}
         />
       )}
@@ -1931,25 +1932,49 @@ export default function Fleet() {
   */
   const [knownFiles, setKnownFiles] = useState<Record<string, ReadonlySet<string>>>({})
 
-  /* The listing arrives once per project, and only once a terminal is open. */
+  /*
+    WHICH CHECKOUTS to list — the project's own, and every WORKTREE an open
+    terminal's agent is standing in.
+
+    One listing per project was wrong for a worktree agent, and wrong twice:
+    a file it names may not exist in the project root at all, and when it does,
+    it is a different file on a different branch. Reported 2026-08-26. The
+    endpoint now serves a worktree of a known project, so the fix is to ask it
+    for the checkout the agent is actually in.
+  */
+  const listingRoots = useMemo(() => {
+    const roots = new Set<string>()
+    if (active?.root) roots.add(active.root)
+    for (const agent of active?.agents ?? []) {
+      const label = agent.terminal_label
+      if (!label || !openTerminals.includes(label)) continue
+      if (agent.cwd) roots.add(agent.cwd)
+    }
+    return [...roots]
+  }, [active, openTerminals])
+
+  /* The listing arrives once per checkout, and only once a terminal is open. */
   useEffect(() => {
-    const root = active?.root
-    if (!root || openTerminals.length === 0 || knownFiles[root]) return
+    if (openTerminals.length === 0) return
+    const wanted = listingRoots.filter(r => !knownFiles[r])
+    if (wanted.length === 0) return
     let dead = false
-    void fetch(`/api/fleet/files?root=${encodeURIComponent(root)}`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(body => {
-        if (dead || !body) return
-        setKnownFiles(prev => ({ ...prev, [root]: new Set<string>(body.files ?? []) }))
-      })
-      .catch(() => {
-        // A listing that cannot be fetched means no file links in this
-        // terminal, which is the correct degradation: `fileReference` refuses
-        // everything without a known set, so nothing is offered that cannot be
-        // opened. Silent on purpose — the terminal itself is unaffected.
-      })
+    for (const root of wanted) {
+      void fetch(`/api/fleet/files?root=${encodeURIComponent(root)}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(body => {
+          if (dead || !body) return
+          setKnownFiles(prev => ({ ...prev, [root]: new Set<string>(body.files ?? []) }))
+        })
+        .catch(() => {
+          // A listing that cannot be fetched means no file links for that
+          // checkout, which is the correct degradation: `fileReference` refuses
+          // everything without a known set, so nothing is offered that cannot
+          // be opened. Silent on purpose — the terminal itself is unaffected.
+        })
+    }
     return () => { dead = true }
-  }, [active?.root, openTerminals.length, knownFiles])
+  }, [listingRoots, openTerminals.length, knownFiles])
 
   const toggleTerminal = useCallback((project: string | null, label: string | null, on: boolean) => {
     if (!label) { return }
@@ -2382,8 +2407,8 @@ export default function Fleet() {
       <AgentCard
         agent={agent}
         projectRoot={active?.root}
-        knownFiles={active?.root ? knownFiles[active.root] : undefined}
-        onOpenFile={active?.root ? (f => openFile(active.root as string, f)) : undefined}
+        knownFiles={knownFiles[agent.cwd || active?.root || '']}
+        onOpenFile={active?.root ? ((f, from) => openFile(active.root as string, { ...f, from })) : undefined}
         enlarged
         open={openLogs.includes(agent.pid)}
         onToggle={() => toggleLog(active?.name ?? null, agent.pid, !openLogs.includes(agent.pid))}
@@ -2849,8 +2874,8 @@ export default function Fleet() {
                   key={focused.pid}
                   agent={focused}
                   projectRoot={active.root}
-                  knownFiles={knownFiles[active.root]}
-                  onOpenFile={f => openFile(active.root, f)}
+                  knownFiles={knownFiles[focused.cwd || active.root]}
+                  onOpenFile={(f, from) => openFile(active.root, { ...f, from })}
                   enlarged
                   focused
                   open={openLogs.includes(focused.pid)}
@@ -2959,8 +2984,8 @@ export default function Fleet() {
                     key={a.pid}
                     agent={a}
                     projectRoot={active.root}
-                    knownFiles={knownFiles[active.root]}
-                    onOpenFile={f => openFile(active.root, f)}
+                    knownFiles={knownFiles[a.cwd || active.root]}
+                    onOpenFile={(f, from) => openFile(active.root, { ...f, from })}
                     /*
                       No `wide` any more, and the reason it existed is now fixed
                       at its source. A tile that had opened something used to

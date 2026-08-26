@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 from fastapi.testclient import TestClient
 from set_orch.server import create_app
 from set_orch.api import files as files_module
+from set_orch.api import fleet as fleet_module
 
 
 @pytest.fixture
@@ -41,11 +42,16 @@ def client(monkeypatch, project):
     """A client for which exactly one root is known to the screen.
 
     `_known_roots` is patched rather than the registry, because that is the
-    function the endpoint actually asks — patching the registry would test a
-    different resolution path than the one that ships.
+    function the resolution actually asks — patching the registry would test a
+    different path than the one that ships.
+
+    Patched on `fleet`, not on `files`: the endpoint asks
+    `_start_location_verdict`, which reads `_known_roots` in ITS own module. A
+    patch on `files` was silently ineffective the moment the guard started
+    delegating — measured here, as nineteen tests going red at once.
     """
     root, _ = project
-    monkeypatch.setattr(files_module, "_known_roots", lambda: {os.path.realpath(root)})
+    monkeypatch.setattr(fleet_module, "_known_roots", lambda: {os.path.realpath(root)})
     return TestClient(create_app(web_dist_dir=None))
 
 
@@ -333,3 +339,84 @@ def test_no_log_record_carries_file_content(client, project, caplog):
     assert caplog.records, "nothing was logged at all — the check would be vacuous"
     for record in caplog.records:
         assert secret not in record.getMessage()
+
+
+# ─── A worktree of a known project ───────────────────────────────────────────
+
+
+@pytest.fixture
+def repo_with_worktree(tmp_path):
+    """A real git repository with a real second working tree.
+
+    Real git rather than a patched verdict, because what is being tested IS the
+    reuse: the endpoint now asks the same function the start path asks, and a
+    stubbed answer would prove only that the stub was called.
+    """
+    import subprocess
+
+    main = tmp_path / "proj"
+    (main / "src").mkdir(parents=True)
+    (main / "src" / "app.ts").write_text("main branch\n")
+
+    def git(*args, cwd=main):
+        subprocess.run(["git", *args], cwd=str(cwd), check=True,
+                       capture_output=True, env={**os.environ,
+                                                 "GIT_AUTHOR_NAME": "t",
+                                                 "GIT_AUTHOR_EMAIL": "t@e",
+                                                 "GIT_COMMITTER_NAME": "t",
+                                                 "GIT_COMMITTER_EMAIL": "t@e",
+                                                 "HOME": str(tmp_path)})
+
+    git("init", "-q", "-b", "main")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    wt = tmp_path / "proj-wt-mobil"
+    git("worktree", "add", "-q", "-b", "change/mobil", str(wt))
+    # The file the agent in the worktree is actually looking at, and which the
+    # main checkout does NOT have. This is the reported case.
+    (wt / "openspec").mkdir()
+    (wt / "openspec" / "plan.md").write_text("only in the worktree\n")
+    (wt / "src" / "app.ts").write_text("worktree branch\n")
+    return main, wt
+
+
+@pytest.fixture
+def wt_client(monkeypatch, repo_with_worktree):
+    main, _ = repo_with_worktree
+    monkeypatch.setattr(fleet_module, "_known_roots", lambda: {os.path.realpath(main)})
+    return TestClient(create_app(web_dist_dir=None))
+
+
+def test_a_worktree_of_a_known_project_can_be_listed(wt_client, repo_with_worktree):
+    _, wt = repo_with_worktree
+    r = wt_client.get("/api/fleet/files", params={"root": str(wt)})
+    assert r.status_code == 200
+    assert "openspec/plan.md" in r.json()["files"]
+
+
+def test_a_worktree_file_is_read_from_the_worktree_not_from_main(wt_client, repo_with_worktree):
+    """The silent half of the defect: same path, two checkouts, one right answer."""
+    main, wt = repo_with_worktree
+    from_wt = wt_client.get("/api/fleet/files/content",
+                            params={"root": str(wt), "path": "src/app.ts"})
+    from_main = wt_client.get("/api/fleet/files/content",
+                              params={"root": str(main), "path": "src/app.ts"})
+    assert from_wt.status_code == 200 and from_main.status_code == 200
+    assert from_wt.json()["content"] == "worktree branch\n"
+    assert from_main.json()["content"] == "main branch\n"
+
+
+def test_an_unrelated_directory_is_still_refused(wt_client, tmp_path):
+    """Widening to worktrees must not widen to anything else."""
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+    r = wt_client.get("/api/fleet/files", params={"root": str(stranger)})
+    assert r.status_code == 400
+    assert "nor a worktree of one" in r.json()["detail"]
+
+
+def test_a_subdirectory_of_a_known_root_is_still_refused(wt_client, repo_with_worktree):
+    """The case a prefix test would let in — `node_modules` as a project."""
+    main, _ = repo_with_worktree
+    r = wt_client.get("/api/fleet/files", params={"root": str(main / "src")})
+    assert r.status_code == 400

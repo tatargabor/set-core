@@ -45,7 +45,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .fleet import _known_roots
+from .fleet import _known_roots, _start_location_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -79,20 +79,35 @@ _DENIED = "access denied"
 
 
 def _known_root(raw: str) -> Path:
-    """The project root for a request, or the refusal.
+    """The checkout a request may read, or the refusal.
 
-    The same two refusals as `fleet_start_agent`, reusing the same
-    `_known_roots()` rather than a second check: a directory this screen may
-    start an agent in and one it may open a file in are the same set, and two
-    checks meant to agree drift.
+    The same verdict as `fleet_start_agent`, from the same function: a directory
+    this screen may start an agent in and one it may open a file in are the same
+    set, and two checks meant to agree drift.
+
+    ⚠ **They HAD drifted, and it took a live report to notice.** This used to ask
+    `_known_roots()` while the start path asked `_start_location_verdict()`, which
+    is wider by exactly one case: a non-prunable WORKTREE of a known project. So
+    the screen would start an agent in a worktree and then refuse to open any of
+    the files that agent was working on — measured 2026-08-26 as
+    `could not open <project>/openspec/changes/<name>: no such file or directory`,
+    where the framework had resolved a worktree agent's relative path against the
+    main checkout.
+
+    The docstring above claimed the two agreed while they did not, which is why
+    the claim is now made by CALLING the other function rather than by copying
+    what it does. A prefix test would be the wrong repair in both directions —
+    see `_start_location_verdict` for why.
     """
     root = os.path.realpath(os.path.expanduser(raw or ""))
     if not os.path.isdir(root):
         raise HTTPException(status_code=400, detail=f"no such directory: {raw}")
-    if root not in _known_roots():
+    allowed, _reason = _start_location_verdict(root)
+    if not allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"{root} is not a project this screen knows; register it first",
+            detail=f"{root} is not a project this screen knows, nor a worktree of one; "
+                   "register it first",
         )
     return Path(root)
 

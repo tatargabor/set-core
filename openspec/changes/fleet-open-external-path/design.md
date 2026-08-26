@@ -181,6 +181,44 @@ manager, and one destination for "everything the file view cannot open" is one r
 three. The endpoint already handles a directory, so this is a change of destination if it ever
 turns out to be wanted, not a new mechanism.
 
+### D8 — The worktree: the base is where the agent stands, and the endpoints follow it there
+
+Reported 2026-08-26 from a live screen, twice in one hour. First: an agent in
+`<project>-wt-<name>` printed a relative path and the dashboard answered `could not open
+<project>/openspec/changes/<name>: no such file or directory`. Then, on the first cut of the
+fix: *what is inside the project and the internal editor can open, must open in the internal
+editor* — the first cut had sent every worktree relative token to the desktop, because the
+file view could not read a worktree at all.
+
+The repair is one substitution and one widening:
+
+- **The base is `cwd`, not `root`.** Everything a terminal token resolves against is the
+  checkout the agent is standing in. `root` is the fallback for a payload with no cwd.
+- **The file endpoints serve a worktree of a known project.** `files.py` asked
+  `_known_roots()`; the start path asks `_start_location_verdict()`, which is wider by exactly
+  one case — a non-prunable worktree. `files.py`'s own docstring claimed the two agreed. They
+  had not agreed since the worktree case was added to the start path, and nothing noticed
+  until a reader clicked a link.
+
+Then the rest follows without special cases: the client fetches the LISTING of each open
+terminal's cwd, `terminalTarget` is handed that listing, and the answer carries which checkout
+it meant. A file of the worktree opens in the editor; a directory, an unlisted file and any
+path of another checkout go to the desktop — which is precisely "what the file view cannot
+open".
+
+*The claim that had to be made by calling rather than by copying.* The lesson is not
+"widen the guard": it is that a docstring asserting two checks agree is not a check. The
+repair calls the other function, so the claim cannot go stale again.
+
+*The panel's identity does not move.* The checkout travels on the REQUEST (`FileRequest.from`)
+while the panel stays keyed by the project root, so docking, remembering and closing are
+untouched. And the panel NAMES the checkout it is reading — a file view silently showing
+another branch is the same defect as the one being fixed, pointing the other way.
+
+*Alternative considered — one panel per checkout.* Rejected: the panel's root is its identity
+in the dock layout, the remembered-file map and the request routing. A second identity per
+worktree multiplies all three for a view that is meant to answer one question.
+
 ## Risks / Trade-offs
 
 - **An underlined token that opens nothing** → accepted, and answered by D5. No existence

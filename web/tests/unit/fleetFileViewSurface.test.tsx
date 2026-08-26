@@ -60,10 +60,14 @@ interface Fake { content: string; identity: string }
 
 let files: Record<string, Fake | { status: number; detail: string }>
 let writes: Array<Record<string, unknown>>
+/** Every `root=` the panel asked an endpoint for, in order. */
+let rootsAsked: string[]
 
 function server() {
   return vi.fn((url: string | URL, init?: RequestInit) => {
     const u = String(url)
+    const askedRoot = /[?&]root=([^&]+)/.exec(u)?.[1]
+    if (askedRoot) rootsAsked.push(decodeURIComponent(askedRoot))
     if (init?.method === 'PUT') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
       writes.push(body)
@@ -106,6 +110,7 @@ function server() {
 beforeEach(() => {
   editorCalls.length = 0
   writes = []
+  rootsAsked = []
   files = {
     'a.ts': { content: 'one\ntwo\nthree\n', identity: 'id-a' },
     'b.ts': { content: 'other file\n', identity: 'id-b' },
@@ -271,5 +276,54 @@ describe('the route that does not need the mouse is stated', () => {
     const { container } = view()
     await waitFor(() => expect(container.textContent).toMatch(/pick a file from the structure/))
     expect(container.textContent).toMatch(/may go to the agent/)
+  })
+})
+
+
+/**
+ * WHICH CHECKOUT THE PANEL READS — reported 2026-08-26.
+ *
+ * A worktree agent's relative path names a file in ITS tree. The panel's
+ * identity stays the project root — docking, remembering, closing are keyed by
+ * it — so the checkout travels on the REQUEST. Two things have to hold, and the
+ * second is the one nobody would miss until it was wrong on screen: it must read
+ * the worktree, and it must SAY that it is.
+ */
+describe('a request that names another checkout', () => {
+  const WT = '/home/x/proj-wt-mobil'
+
+  it('reads the worktree, not the project root', async () => {
+    view({ request: { path: 'a.ts', from: WT } })
+    await waitFor(() => expect(screen.getByTestId('monaco')).toBeTruthy())
+    // Both the listing and the content come from the worktree.
+    expect(rootsAsked.filter(r => r === WT).length).toBeGreaterThan(0)
+    expect(rootsAsked.some(r => r === ROOT && rootsAsked.indexOf(WT) < rootsAsked.lastIndexOf(r)))
+      .toBe(false)
+  })
+
+  it('says which checkout it is reading', async () => {
+    const { container } = view({ request: { path: 'a.ts', from: WT } })
+    await waitFor(() => expect(container.querySelector(`[data-fleet-file-checkout="${WT}"]`)).toBeTruthy())
+    // A panel quietly showing another branch is the same defect as the one this
+    // fixes, pointing the other way.
+    expect(screen.getByText(/proj-wt-mobil/)).toBeTruthy()
+  })
+
+  it('says nothing when it is reading the project itself', async () => {
+    const { container } = view({ request: { path: 'a.ts' } })
+    await waitFor(() => expect(screen.getByTestId('monaco')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-checkout]')).toBeNull()
+  })
+
+  it('writes back to the checkout it read from', async () => {
+    const { container } = view({ request: { path: 'a.ts', from: WT } })
+    await waitFor(() => expect(screen.getByTestId('monaco')).toBeTruthy())
+    fireEvent.change(screen.getByTestId('monaco'), { target: { value: 'edited\n' } })
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-save]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-file-save]')!)
+    await waitFor(() => expect(writes.length).toBe(1))
+    // Saving into the main checkout what was read from the worktree would be a
+    // cross-branch write — the worst thing this panel could do.
+    expect(writes[0].root).toBe(WT)
   })
 })

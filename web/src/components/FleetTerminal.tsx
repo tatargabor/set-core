@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
-import { desktopReference, fileReference, type FileRef } from '../lib/fleetFiles'
+import { terminalTarget, type FileRef } from '../lib/fleetFiles'
 import {
   type AttachedEvent,
   type CopyOutcome,
@@ -145,8 +145,28 @@ interface Props {
    */
   projectRoot?: string
   knownFiles?: ReadonlySet<string>
-  /** Open a file the reader activated in this terminal. */
-  onOpenFile?: (file: FileRef) => void
+  /**
+   * Where this agent is STANDING — its own working directory.
+   *
+   * Not the same as `projectRoot` whenever the agent runs in a worktree, and
+   * that difference is the whole reason this prop exists: a relative path in
+   * that terminal names a file in the worktree, on the change branch, and
+   * resolving it against the project root either refuses a file that is plainly
+   * there or — worse — opens the main branch's copy of it. See `terminalTarget`.
+   *
+   * Absent on an older payload, which falls back to `projectRoot` rather than
+   * refusing: the fallback is wrong only for a worktree, which is exactly the
+   * case the payload now reports.
+   */
+  agentCwd?: string
+  /**
+   * Open a file the reader activated in this terminal.
+   *
+   * `root` is the CHECKOUT the path is relative to — the agent's worktree when
+   * it is in one. Passing it is what keeps the panel from opening the main
+   * branch's copy of a file whose name exists in both.
+   */
+  onOpenFile?: (file: FileRef, root: string) => void
 }
 
 /** One link the emulator may draw and activate. xterm's `ILink`, structurally. */
@@ -176,7 +196,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, onOpenFile }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   // Held in a ref because the effect below depends on `[label]` alone: the
   // handler is captured once, so a parent passing a fresh closure each render
@@ -776,17 +796,20 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     const term = termRef.current
     if (!term) return
     /*
-      The project context is OPTIONAL now, and that is the change: an ABSOLUTE
-      path needs no listing and no root, so a docked panel that knows neither
-      still offers it. A RELATIVE one does need the root — it is resolved
-      against it — so there it stays text. Where the context IS present the
-      in-project file route wins: that precedence is `desktopReference`'s, in
-      the lib, so it cannot be decided by the order two providers happen to be
-      registered in.
+      The project context is OPTIONAL: an ABSOLUTE path needs no listing and no
+      root, so a docked panel that knows neither still offers it. A RELATIVE one
+      needs a base to resolve against, so there it stays text.
+
+      WHICH destination a token gets is `terminalTarget`'s decision, in the lib,
+      where it can be measured without a browser — and it depends on where the
+      agent is standing, not only on what the project has.
     */
-    const inProject = projectRoot && knownFiles && knownFiles.size > 0 && onOpenFile
-      ? { root: projectRoot, known: knownFiles, open: onOpenFile }
-      : null
+    const open = onOpenFile
+    const where = {
+      ...(projectRoot ? { root: projectRoot } : {}),
+      ...(agentCwd ? { cwd: agentCwd } : {}),
+      ...(open && knownFiles && knownFiles.size > 0 ? { known: knownFiles } : {}),
+    }
     const registration = term.registerLinkProvider({
       provideLinks(lineNumber, callback) {
         const row = term.buffer.active.getLine(lineNumber - 1)
@@ -798,9 +821,8 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         const re = /\S+/g
         let m: RegExpExecArray | null
         while ((m = re.exec(text)) !== null) {
-          const ref = inProject ? fileReference(m[0], inProject.root, inProject.known) : null
-          const external = ref ? null : desktopReference(m[0], projectRoot)
-          if (!ref && !external) continue
+          const target = terminalTarget(m[0], where)
+          if (!target) continue
           const token = m[0]
           links.push({
             range: {
@@ -823,8 +845,8 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
             */
             activate: (event: MouseEvent) => {
               if (!event.ctrlKey && !event.metaKey) return
-              if (ref && inProject) { inProject.open(ref); return }
-              if (external) void openExternal(external)
+              if (target.kind === 'file') { open?.(target.ref, target.root); return }
+              void openExternal(target.path)
             },
           })
         }
@@ -832,7 +854,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       },
     })
     return () => registration.dispose()
-  }, [projectRoot, knownFiles, onOpenFile, openExternal, phase.kind])
+  }, [projectRoot, knownFiles, agentCwd, onOpenFile, openExternal, phase.kind])
 
   const stop = useCallback(async () => {
     setStopping(true)

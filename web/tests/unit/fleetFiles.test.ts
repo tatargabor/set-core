@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildTree, desktopReference, fileReference, languageOf, fileToOpen } from '../../src/lib/fleetFiles'
+import { buildTree, desktopReference, fileReference, languageOf, fileToOpen, terminalTarget } from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
   it('nests directories and keeps a stable order', () => {
@@ -150,10 +150,12 @@ describe('a path the file view cannot open', () => {
     expect(desktopReference('/tmp/run.log:42:7', root)).toBe('/tmp/run.log')
   })
 
-  it('leaves this project\'s own files to the file view', () => {
-    // Precedence lives HERE, not in whichever provider is registered first.
-    expect(desktopReference('/home/x/proj/src/app.ts', root)).toBeNull()
-    expect(desktopReference('/home/x/proj', root)).toBeNull()
+  it('does not decide precedence — it only names a path', () => {
+    // It used to return null for anything inside the project root. That put the
+    // decision in the wrong place: whether the file view can open a path depends
+    // on the LISTING and on where the agent stands, neither of which this
+    // function holds. `terminalTarget` decides; this one answers "which path".
+    expect(desktopReference('/home/x/proj/src/app.ts', root)).toBe('/home/x/proj/src/app.ts')
   })
 
   it('is not fooled by a prefix that merely starts the same', () => {
@@ -218,6 +220,87 @@ describe('a path the file view cannot open', () => {
     expect(desktopReference('/', root)).toBeNull()
     // `//host/share` is a UNC-shaped token, not a local path.
     expect(desktopReference('//host/share', root)).toBeNull()
+  })
+})
+
+/**
+ * WHERE THE AGENT IS STANDING — reported 2026-08-26 from a live screen.
+ *
+ * An agent working in `<project>-wt-<name>` on a change branch printed a
+ * relative path, and the dashboard answered `could not open
+ * <project>/openspec/changes/<name>: no such file or directory`. It had resolved
+ * against the project root — a different checkout, on a different branch.
+ *
+ * The error is the mild half. The dangerous half has no error at all: when the
+ * same relative path exists in BOTH checkouts, the file view opens the main
+ * branch's copy, silently, and the reader reads the wrong file believing it is
+ * the agent's. Every test below exists to hold one of those two apart.
+ */
+describe('where a terminal token should be opened', () => {
+  const root = '/home/x/proj'
+  const wt = '/home/x/proj-wt-mobil'
+  // The listing of the checkout the agent is standing in — that substitution is
+  // the whole design, so every case below passes the worktree's own listing when
+  // the agent is in a worktree.
+  const known = new Set(['src/app.ts', 'openspec/changes/a/spec.md'])
+
+  it('opens a worktree file in the file view, and says WHICH checkout', () => {
+    // The reported case, and its repair: the internal editor is still the
+    // destination — it just reads the tree the agent is standing in.
+    expect(terminalTarget('openspec/changes/a/spec.md', { root, cwd: wt, known }))
+      .toEqual({ kind: 'file', ref: { path: 'openspec/changes/a/spec.md' }, root: wt })
+    expect(terminalTarget('src/app.ts:12', { root, cwd: wt, known }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts', line: 12 }, root: wt })
+  })
+
+  it('never answers with the project root for a worktree agent', () => {
+    // The silent half of the defect: `src/app.ts` exists in BOTH checkouts, so
+    // an answer of `root` would open a different file with the same name.
+    const target = terminalTarget('src/app.ts', { root, cwd: wt, known })
+    expect(target).not.toBeNull()
+    expect(target!.kind === 'file' && target!.root).toBe(wt)
+  })
+
+  it('hands a DIRECTORY to the desktop, resolved against the same checkout', () => {
+    // No listing contains a directory, so the file view is not a destination.
+    expect(terminalTarget('openspec/changes/a/', { root, cwd: wt, known }))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj-wt-mobil/openspec/changes/a' })
+  })
+
+  it('opens a project file in the file view when the agent stands in the project', () => {
+    expect(terminalTarget('src/app.ts', { root, cwd: root, known }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root })
+    // And with no cwd reported at all — an older payload — the root is the base.
+    expect(terminalTarget('src/app.ts', { root, known }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root })
+  })
+
+  it('hands over a path of ANOTHER checkout, which the panel could not read', () => {
+    // An absolute path into the main tree, printed by a worktree agent. The
+    // file view reads one checkout at a time and this is not that one, so the
+    // desktop opens it — with the right content, which is the point.
+    expect(terminalTarget('/home/x/proj/src/app.ts', { root, cwd: wt, known }))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj/src/app.ts' })
+  })
+
+  it('hands over an in-project path the listing does not have', () => {
+    expect(terminalTarget('/home/x/proj/openspec/changes/a/', { root, cwd: root, known }))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj/openspec/changes/a' })
+  })
+
+  it('hands over an absolute path outside the project', () => {
+    expect(terminalTarget('/tmp/shot.png', { root, cwd: root, known }))
+      .toEqual({ kind: 'desktop', path: '/tmp/shot.png' })
+  })
+
+  it('offers an absolute path with no project context, and refuses a relative one', () => {
+    expect(terminalTarget('/tmp/shot.png', {})).toEqual({ kind: 'desktop', path: '/tmp/shot.png' })
+    expect(terminalTarget('openspec/changes/a/', {})).toBeNull()
+  })
+
+  it('leaves prose alone wherever the agent stands', () => {
+    expect(terminalTarget('és/vagy', { root, cwd: wt, known })).toBeNull()
+    expect(terminalTarget('24/7', { root, cwd: root, known })).toBeNull()
   })
 })
 

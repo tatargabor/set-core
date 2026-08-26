@@ -7,6 +7,7 @@
  *
  *  - what a flat list of paths becomes on screen (`buildTree`),
  *  - what a path is called in Monaco's language (`languageOf`),
+ *  - where a token in terminal output should be OPENED (`terminalTarget`),
  *  - and what counts as a file reference in an agent's terminal output
  *    (`fileReference`, and `desktopReference` for the paths the file view cannot
  *    open) — the ones fed by text somebody else wrote.
@@ -167,8 +168,9 @@ export function fileReference(
  * than a widened version of it, because the two answer different questions and
  * end in different places: one names a file the framework may READ and open in
  * the file view; this one names a path the framework may only HAND OVER, having
- * read nothing. `fileReference` is asked first, so a file the project actually
- * has never reaches here.
+ * read nothing. Which of the two answers a given token is `terminalTarget`
+ * below — this function does not know about the file view and does not refuse a
+ * path because the file view could have opened it.
  *
  * ## Two kinds of token reach the desktop
  *
@@ -188,13 +190,11 @@ export function fileReference(
  *  - **a trailing `:<line>` is dropped.** A desktop handler takes no line
  *    number, and `/tmp/run.log:42` should still open `/tmp/run.log` rather than
  *    fail as a path that does not exist.
- *  - **an absolute path inside the known root wins the other way.** The file
- *    view is the right destination there. Precedence lives in this one place on
- *    purpose: two link providers deciding it by their registration order is a
- *    rule nobody can read off the code.
- *  - **a relative token needs a root to resolve against.** Without one — a
+ *  - **a relative token needs a BASE to resolve against.** Without one — a
  *    docked panel with no project — it stays text rather than being resolved
- *    against a working directory the reader cannot see.
+ *    against a working directory the reader cannot see. Which base that is —
+ *    the agent's own working directory, not the project root — is
+ *    `terminalTarget`'s decision, and the reason it exists.
  *  - **and a relative token must LOOK like a path**, which is the load-bearing
  *    one. `fileReference` keeps prose out by checking the known set; this route
  *    has no such set, so the shape is the only filter left. See `looksLikePath`.
@@ -205,7 +205,7 @@ export function fileReference(
  * refuse to be. The cost is accepted and paid where the reader is standing: an
  * activation that cannot be honoured reports its reason.
  */
-export function desktopReference(token: string, root?: string): string | null {
+export function desktopReference(token: string, base?: string): string | null {
   const text = unwrap(token)
   if (!text) return null
   if (text.includes('://')) return null
@@ -222,20 +222,12 @@ export function desktopReference(token: string, root?: string): string | null {
   const path = written.replace(/(.)\/+$/, '$1')
   if (path.length < 2) return null
 
-  const normalisedRoot = root?.replace(/\/+$/, '') ?? ''
+  if (path.startsWith('/')) return path
 
-  if (path.startsWith('/')) {
-    // Path-boundary comparison, so `/home/x/proj-other` is not read as inside
-    // `/home/x/proj` — the same boundary `fileReference` draws, in reverse.
-    if (normalisedRoot && (path === normalisedRoot || path.startsWith(normalisedRoot + '/'))) {
-      return null
-    }
-    return path
-  }
-
-  if (!normalisedRoot) return null
+  const normalisedBase = base?.replace(/\/+$/, '') ?? ''
+  if (!normalisedBase) return null
   if (!looksLikePath(written)) return null
-  return normalisedRoot + '/' + path
+  return normalisedBase + '/' + path
 }
 
 /**
@@ -269,6 +261,68 @@ function looksLikePath(written: string): boolean {
   return /\/[^/]*\.[A-Za-z0-9]+$/.test(written)
 }
 
+
+/** Where a token in terminal output should be opened, or `null` for text. */
+export type TerminalTarget =
+  /** In the file view — `root` is the CHECKOUT the path is relative to. */
+  | { kind: 'file'; ref: FileRef; root: string }
+  | { kind: 'desktop'; path: string }
+  | null
+
+/**
+ * THE ONE PLACE that decides where a terminal token goes.
+ *
+ * `fileReference` and `desktopReference` each answer "is this token mine?".
+ * Neither may answer "which of us wins", because that answer depends on
+ * something neither of them holds: WHERE THE AGENT IS STANDING.
+ *
+ * ## The worktree, which is what this function was written for
+ *
+ * Reported 2026-08-26 from a live screen: an agent working in
+ * `<project>-wt-<name>` on a change branch printed a relative path, and the
+ * dashboard answered `could not open <project>/openspec/changes/<name>: no such
+ * file or directory` — it had resolved the path against the PROJECT ROOT, which
+ * is a different checkout on a different branch.
+ *
+ * Two ways that goes wrong, and the second is worse than the error the reader
+ * actually saw:
+ *
+ *  - the path does not exist in the main checkout, and the reader gets a
+ *    refusal for a file that is plainly in front of the agent;
+ *  - **the path DOES exist in both**, and the reader is shown the main branch's
+ *    copy — a different file, with the same name, silently. A wrong file that
+ *    opens is worse than a right one that refuses.
+ *
+ * So the BASE for everything here is `cwd` — where the agent stands — and
+ * `root` is only the fallback for a payload that reported no cwd.
+ *
+ * ## Why `known` is the base's listing, and why that is the whole design
+ *
+ * The caller passes the file listing OF THE BASE. That one substitution is what
+ * lets a worktree file open in the internal editor rather than on the desktop:
+ * the framework serves a worktree of a known project, so the same
+ * `fileReference` answer is right in both checkouts, and the answer now carries
+ * WHICH checkout it meant.
+ *
+ * What is left for the desktop is then exactly what the file view cannot open:
+ * a directory (no listing contains one), a file no listing has, and any
+ * absolute path outside the base. That is the rule the reader asked for —
+ * *anything inside the project that the internal editor can open, opens there*.
+ */
+export function terminalTarget(
+  token: string,
+  where: { root?: string; cwd?: string; known?: ReadonlySet<string> },
+): TerminalTarget {
+  const { root, cwd, known } = where
+  const base = cwd || root
+
+  if (base && known && known.size > 0) {
+    const ref = fileReference(token, base, known)
+    if (ref) return { kind: 'file', ref, root: base }
+  }
+  const path = desktopReference(token, base)
+  return path ? { kind: 'desktop', path } : null
+}
 
 /**
  * Which file the panel should open when somebody opens the panel.
