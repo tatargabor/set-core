@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
-import { externalReference, fileReference, type FileRef } from '../lib/fleetFiles'
+import { desktopReference, fileReference, type FileRef } from '../lib/fleetFiles'
 import {
   type AttachedEvent,
   type CopyOutcome,
@@ -776,11 +776,13 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     const term = termRef.current
     if (!term) return
     /*
-      The project context is OPTIONAL now, and that is the change: an external
+      The project context is OPTIONAL now, and that is the change: an ABSOLUTE
       path needs no listing and no root, so a docked panel that knows neither
-      still offers it. Where the context IS present the in-project route wins —
-      that precedence is `externalReference`'s, in the lib, so it cannot be
-      decided by the order two providers happen to be registered in.
+      still offers it. A RELATIVE one does need the root — it is resolved
+      against it — so there it stays text. Where the context IS present the
+      in-project file route wins: that precedence is `desktopReference`'s, in
+      the lib, so it cannot be decided by the order two providers happen to be
+      registered in.
     */
     const inProject = projectRoot && knownFiles && knownFiles.size > 0 && onOpenFile
       ? { root: projectRoot, known: knownFiles, open: onOpenFile }
@@ -797,7 +799,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         let m: RegExpExecArray | null
         while ((m = re.exec(text)) !== null) {
           const ref = inProject ? fileReference(m[0], inProject.root, inProject.known) : null
-          const external = ref ? null : externalReference(m[0], projectRoot)
+          const external = ref ? null : desktopReference(m[0], projectRoot)
           if (!ref && !external) continue
           const token = m[0]
           links.push({

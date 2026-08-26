@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildTree, externalReference, fileReference, languageOf, fileToOpen } from '../../src/lib/fleetFiles'
+import { buildTree, desktopReference, fileReference, languageOf, fileToOpen } from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
   it('nests directories and keeps a stable order', () => {
@@ -124,19 +124,21 @@ describe('a file reference in terminal output', () => {
 })
 
 /**
- * A PATH THAT IS NOT THIS PROJECT'S — reported 2026-08-26.
+ * A PATH THE FILE VIEW CANNOT OPEN — reported 2026-08-26, twice.
  *
- * An agent prints where it put a screenshot, and it is almost never inside the
- * tree it is working in. `fileReference` refuses those, correctly: the framework
- * may not READ them. `externalReference` decides whether the same token may be
- * HANDED OVER to the desktop instead, so its refusals are about a different
- * question and every one of them is here.
+ * First an agent printed where it put a screenshot, and that is almost never
+ * inside the tree it is working in. Then it printed a DIRECTORY —
+ * `openspec/changes/<name>/` — which no listing ever contains, because a listing
+ * carries files. `fileReference` refuses both, correctly: the framework may not
+ * READ them. `desktopReference` decides whether the same token may be HANDED
+ * OVER to the desktop instead, so its refusals are about a different question
+ * and every one of them is here.
  */
-describe('an absolute path that is not this project\'s', () => {
+describe('a path the file view cannot open', () => {
   const root = '/home/x/proj'
 
   it('reads the reported case — a screenshot path inside parentheses', () => {
-    expect(externalReference('(/tmp/claude-chrome-screenshots-DJPCLm/shot-2.jpg)', root))
+    expect(desktopReference('(/tmp/claude-chrome-screenshots-DJPCLm/shot-2.jpg)', root))
       .toBe('/tmp/claude-chrome-screenshots-DJPCLm/shot-2.jpg')
   })
 
@@ -144,44 +146,78 @@ describe('an absolute path that is not this project\'s', () => {
     // Kept as a path rather than refused: `/tmp/run.log:42` names a file that
     // exists, and refusing it would be a link that fails for a reason the reader
     // cannot see.
-    expect(externalReference('/tmp/run.log:42', root)).toBe('/tmp/run.log')
-    expect(externalReference('/tmp/run.log:42:7', root)).toBe('/tmp/run.log')
+    expect(desktopReference('/tmp/run.log:42', root)).toBe('/tmp/run.log')
+    expect(desktopReference('/tmp/run.log:42:7', root)).toBe('/tmp/run.log')
   })
 
   it('leaves this project\'s own files to the file view', () => {
     // Precedence lives HERE, not in whichever provider is registered first.
-    expect(externalReference('/home/x/proj/src/app.ts', root)).toBeNull()
-    expect(externalReference('/home/x/proj', root)).toBeNull()
+    expect(desktopReference('/home/x/proj/src/app.ts', root)).toBeNull()
+    expect(desktopReference('/home/x/proj', root)).toBeNull()
   })
 
   it('is not fooled by a prefix that merely starts the same', () => {
     // The mirror image of `fileReference`'s own boundary test: `/home/x/projX`
     // is a DIFFERENT project, so it is external and must be offered.
-    expect(externalReference('/home/x/projX/src/app.ts', root)).toBe('/home/x/projX/src/app.ts')
+    expect(desktopReference('/home/x/projX/src/app.ts', root)).toBe('/home/x/projX/src/app.ts')
   })
 
   it('answers with no project context at all', () => {
     // A docked panel knows no root. An external path needs none, so the link is
     // still offered there — the degradation is that an in-project path is
     // offered as an external one, not that nothing works.
-    expect(externalReference('/tmp/shot.png')).toBe('/tmp/shot.png')
+    expect(desktopReference('/tmp/shot.png')).toBe('/tmp/shot.png')
   })
 
   it('refuses a URL, which belongs to the other link provider', () => {
     // Handing a URL to a desktop opener is how a scheme that was already
     // refused in the browser gets a second chance at being followed.
-    expect(externalReference('http://localhost:7400/x', root)).toBeNull()
-    expect(externalReference('file:///etc/passwd', root)).toBeNull()
+    expect(desktopReference('http://localhost:7400/x', root)).toBeNull()
+    expect(desktopReference('file:///etc/passwd', root)).toBeNull()
   })
 
-  it('refuses anything that is not one absolute path', () => {
-    expect(externalReference('src/app.ts', root)).toBeNull()
-    expect(externalReference('12:30', root)).toBeNull()
-    expect(externalReference('', root)).toBeNull()
-    expect(externalReference('   ', root)).toBeNull()
-    expect(externalReference('/', root)).toBeNull()
+  it('resolves a relative DIRECTORY against the project root — the reported case', () => {
+    // `openspec/changes/<name>/` printed by an agent. Not in the known set and
+    // never will be: the listing carries files, so every directory an agent
+    // named was plain text until now.
+    expect(desktopReference('openspec/changes/mobil-nezet-reszponziv/', root))
+      .toBe('/home/x/proj/openspec/changes/mobil-nezet-reszponziv')
+    expect(desktopReference('docs/', root)).toBe('/home/x/proj/docs')
+    expect(desktopReference('./openspec/changes/x/', root)).toBe('/home/x/proj/openspec/changes/x')
+  })
+
+  it('resolves a relative FILE the project listing does not have', () => {
+    // A gitignored file, or one past the listing's cap. `fileReference` answers
+    // null for it, so it arrives here rather than staying text.
+    expect(desktopReference('build/out/report.html', root))
+      .toBe('/home/x/proj/build/out/report.html')
+    expect(desktopReference('build/out/report.html:12', root))
+      .toBe('/home/x/proj/build/out/report.html')
+  })
+
+  it('refuses a relative token when no project root is known', () => {
+    // There is nothing to resolve against, and resolving against a working
+    // directory the reader cannot see would open a stranger's file of that name.
+    expect(desktopReference('openspec/changes/x/')).toBeNull()
+  })
+
+  it('does not turn prose into a link just because it has a slash', () => {
+    // The filter that replaces the known-file set. Each of these has appeared in
+    // this repository's own terminals.
+    expect(desktopReference('és/vagy', root)).toBeNull()
+    expect(desktopReference('and/or', root)).toBeNull()
+    expect(desktopReference('24/7', root)).toBeNull()
+    expect(desktopReference('TCP/IP', root)).toBeNull()
+  })
+
+  it('refuses a bare word, a clock, and an empty token', () => {
+    expect(desktopReference('app.ts', root)).toBeNull()
+    expect(desktopReference('12:30', root)).toBeNull()
+    expect(desktopReference('', root)).toBeNull()
+    expect(desktopReference('   ', root)).toBeNull()
+    expect(desktopReference('/', root)).toBeNull()
     // `//host/share` is a UNC-shaped token, not a local path.
-    expect(externalReference('//host/share', root)).toBeNull()
+    expect(desktopReference('//host/share', root)).toBeNull()
   })
 })
 

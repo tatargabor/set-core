@@ -8,8 +8,8 @@
  *  - what a flat list of paths becomes on screen (`buildTree`),
  *  - what a path is called in Monaco's language (`languageOf`),
  *  - and what counts as a file reference in an agent's terminal output
- *    (`fileReference`, and `externalReference` for the paths that are not this
- *    project's) — the ones fed by text somebody else wrote.
+ *    (`fileReference`, and `desktopReference` for the paths the file view cannot
+ *    open) — the ones fed by text somebody else wrote.
  */
 
 /** One node of the structure. A directory holds children; a file does not. */
@@ -160,31 +160,44 @@ export function fileReference(
 }
 
 /**
- * The absolute path a terminal token names when that path is NOT this project's
- * — or `null` when the token is not one.
+ * The absolute path a terminal token names, for the route that hands a path to
+ * the DESKTOP — or `null` when the token is not one.
  *
  * The complement of `fileReference`, and deliberately its own function rather
  * than a widened version of it, because the two answer different questions and
  * end in different places: one names a file the framework may READ and open in
- * the file view; this one names a path the framework may only HAND OVER, to the
- * desktop's default application, having read nothing.
+ * the file view; this one names a path the framework may only HAND OVER, having
+ * read nothing. `fileReference` is asked first, so a file the project actually
+ * has never reaches here.
+ *
+ * ## Two kinds of token reach the desktop
+ *
+ *  - **an absolute path outside the project.** Reported 2026-08-26: an agent
+ *    prints where it put a screenshot, and it is almost never inside the tree it
+ *    is working in.
+ *  - **a relative path the project does not have as a FILE.** Reported the same
+ *    day, with `openspec/changes/<name>/` as the case — a DIRECTORY. The file
+ *    listing carries files, so no directory is ever in the known set, and every
+ *    directory an agent printed was therefore plain text.
  *
  * ## The rules, and why each one is a refusal
  *
- *  - **absolute only.** A relative token would have to be resolved against a
- *    working directory the reader cannot see, so a wrong guess would open a
- *    stranger's file with the same name.
  *  - **no `://`.** A URL is the other link provider's business, and handing one
  *    to a desktop opener is how a `file:` or a `javascript:` scheme gets a
  *    second chance at being followed.
  *  - **a trailing `:<line>` is dropped.** A desktop handler takes no line
  *    number, and `/tmp/run.log:42` should still open `/tmp/run.log` rather than
  *    fail as a path that does not exist.
- *  - **inside the known root wins the other way.** When a project root is known
- *    and the path lies inside it, the answer is `null` — the file view is the
- *    right destination there. Precedence lives in this one place on purpose: two
- *    link providers deciding it by their registration order is a rule nobody can
- *    read off the code.
+ *  - **an absolute path inside the known root wins the other way.** The file
+ *    view is the right destination there. Precedence lives in this one place on
+ *    purpose: two link providers deciding it by their registration order is a
+ *    rule nobody can read off the code.
+ *  - **a relative token needs a root to resolve against.** Without one — a
+ *    docked panel with no project — it stays text rather than being resolved
+ *    against a working directory the reader cannot see.
+ *  - **and a relative token must LOOK like a path**, which is the load-bearing
+ *    one. `fileReference` keeps prose out by checking the known set; this route
+ *    has no such set, so the shape is the only filter left. See `looksLikePath`.
  *
  * What it does NOT check is whether the path exists, and that is a decision, not
  * an omission. Asking the server would answer "is there a file at X" for any
@@ -192,27 +205,70 @@ export function fileReference(
  * refuse to be. The cost is accepted and paid where the reader is standing: an
  * activation that cannot be honoured reports its reason.
  */
-export function externalReference(token: string, root?: string): string | null {
+export function desktopReference(token: string, root?: string): string | null {
   const text = unwrap(token)
   if (!text) return null
-  if (!text.startsWith('/') || text.startsWith('//')) return null
   if (text.includes('://')) return null
+  if (text.startsWith('//')) return null
 
   // Same `path:line` shape as `fileReference` reads, minus the line: this
   // destination has nowhere to put it.
-  const path = /^(.*?):(\d+)(?::\d+)?$/.exec(text)?.[1] ?? text
+  const withoutLine = /^(.*?):(\d+)(?::\d+)?$/.exec(text)?.[1] ?? text
+  const written = withoutLine.replace(/^\.\//, '')
+  // A trailing slash is how a directory is usually printed. It is dropped from
+  // the ANSWER so the message names the directory rather than the directory plus
+  // a slash — but the shape test below sees the token as it was written, because
+  // that slash is one of the three things that make a token look like a path.
+  const path = written.replace(/(.)\/+$/, '$1')
   if (path.length < 2) return null
 
-  if (root) {
+  const normalisedRoot = root?.replace(/\/+$/, '') ?? ''
+
+  if (path.startsWith('/')) {
     // Path-boundary comparison, so `/home/x/proj-other` is not read as inside
     // `/home/x/proj` — the same boundary `fileReference` draws, in reverse.
-    const normalisedRoot = root.replace(/\/+$/, '')
     if (normalisedRoot && (path === normalisedRoot || path.startsWith(normalisedRoot + '/'))) {
       return null
     }
+    return path
   }
-  return path
+
+  if (!normalisedRoot) return null
+  if (!looksLikePath(written)) return null
+  return normalisedRoot + '/' + path
 }
+
+/**
+ * Whether a relative token is shaped like a path at all.
+ *
+ * This is the filter that replaces `fileReference`'s known-file set, and it
+ * exists because of what a terminal actually contains: prose. An agent writes
+ * sentences, and a rule as simple as "contains a slash" turns `és/vagy`,
+ * `and/or`, `24/7` and `TCP/IP` into links that fail when clicked.
+ *
+ * Three conditions, chosen so the misses fall in the harmless direction:
+ *
+ *  - **ASCII path characters only.** Accented prose is excluded; a real path
+ *    with an accent in it is missed. A missed link costs a right-click; a wrong
+ *    one costs the reader's trust in every underline on the screen.
+ *  - **at least one slash**, because a bare word is a word.
+ *  - **and one of: a second slash, a trailing slash, or a dot-extension.** That
+ *    is what separates `openspec/changes/x`, `docs/` and `src/app.ts` from
+ *    `and/or`.
+ *
+ * It is given the token AS WRITTEN, trailing slash included, because that slash
+ * is one of the three signals. What this misses — `web/src`, one slash, no
+ * extension, no trailing slash — is mostly covered already: a relative FILE the
+ * project has is `fileReference`'s answer, not this one's.
+ */
+function looksLikePath(written: string): boolean {
+  if (!/^[A-Za-z0-9._+@\-/]+$/.test(written)) return false
+  const slashes = (written.match(/\//g) ?? []).length
+  if (slashes === 0) return false
+  if (slashes >= 2 || written.endsWith('/')) return true
+  return /\/[^/]*\.[A-Za-z0-9]+$/.test(written)
+}
+
 
 /**
  * Which file the panel should open when somebody opens the panel.

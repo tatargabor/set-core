@@ -13,8 +13,8 @@
 
 ## 3. The terminal (web component)
 
-- [x] 3.1 Extend `FleetTerminal`'s link provider so it also runs when no project context is present, offering external links there, and keeps `fileReference` first when it is [REQ: activating-an-external-reference-hands-it-to-the-desktop]
-- [x] 3.2 Activate an external link on ctrl/cmd-click only — a plain click stays the terminal's — and POST the path to `/api/desktop/open` from the component itself [REQ: activating-an-external-reference-hands-it-to-the-desktop]
+- [x] 3.1 Extend `FleetTerminal`'s link provider so it also runs when no project context is present, offering external links there, and keeps `fileReference` first when it is [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
+- [x] 3.2 Activate an external link on ctrl/cmd-click only — a plain click stays the terminal's — and POST the path to `/api/desktop/open` from the component itself [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
 - [x] 3.3 Render both outcomes on the existing status row: a refusal that stays until the next activation, and a success line that auto-clears [REQ: an-activation-that-cannot-be-honoured-says-why]
 - [x] 3.4 Verify no code path asks the server whether a path exists before rendering a link [REQ: an-activation-that-cannot-be-honoured-says-why]
 
@@ -29,11 +29,23 @@
 
 ## 5. Deploy and look at it
 
-- [x] 5.1 `pnpm build` in `web/` and restart `set-web` so the running service serves the change [REQ: activating-an-external-reference-hands-it-to-the-desktop]
-- [x] 5.2 Open the fleet screen in the browser, find an absolute out-of-project path in a live terminal, ctrl-click it, and report what actually happened — the application that opened, or the refusal text on the status row. If the browser cannot be reached, this task stays OPEN and says so [REQ: activating-an-external-reference-hands-it-to-the-desktop]
+- [x] 5.1 `pnpm build` in `web/` and restart `set-web` so the running service serves the change [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
+- [x] 5.2 Open the fleet screen in the browser, find an absolute out-of-project path in a live terminal, ctrl-click it, and report what actually happened — the application that opened, or the refusal text on the status row. If the browser cannot be reached, this task stays OPEN and says so [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
   - **DONE, and here is exactly what was seen** (2026-08-26, Chrome on the running dashboard): hovering `/tmp/desktop-open-probe.txt` in a live agent terminal underlined it — measured while the emulator carried `enable-mouse-events`, i.e. with the agent holding the mouse — and a ctrl-click put `handed to the desktop: /tmp/desktop-open-probe.txt` in emerald on the row under the terminal's header.
   - **NOT seen on the live screen: the refusal row.** The terminal used for the check is a live session whose own output moves under the cursor between one tool call and the next, so a click aimed at a bogus path could not be landed twice in a row. The red row is covered by three unit tests and by the endpoint answering `400 no such file or directory` / `400 executable files are not opened` to a live `curl`. Stated rather than implied: nobody has looked at the failure colour on the running screen.
   - **One defect found by looking, and fixed:** the outcome row first carried `data-fleet-terminal-open`, a name the tile's *open a terminal* control already uses (`TileControls.tsx`). It is now `data-fleet-terminal-open-outcome`.
+
+## 6. Relative paths and directories — the second report, same day
+
+- [x] 6.1 Rename `externalReference` to `desktopReference` and extend it: a relative token is resolved against the project root when `fileReference` refused it [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [x] 6.2 Add the shape test (`looksLikePath`): ASCII path characters, at least one slash, and one of a second slash / a trailing slash / a dot-extension — the filter that replaces the known-file set on this route [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [x] 6.3 Strip a trailing slash from the ANSWER but not from the shape test, so `docs/` is recognised and the message names `docs` [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [x] 6.4 Refuse a relative token when no project root is known [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [x] 6.5 Vitest for all of it — the reported directory, `docs/`, an unlisted file, `path:line`, no-root, and four prose tokens (`és/vagy`, `and/or`, `24/7`, `TCP/IP`) [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [x] 6.6 Terminal test: the reported line hands over `<root>/openspec/changes/<name>`, and a line mixing a path with prose underlines only the paths [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
+- [x] 6.7 Mutation-prove each new rule (no-relative, no-shape-filter, no-trailing-slash-signal, root-not-required) — all four killed 2026-08-26 [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [x] 6.8 Rebuild the dashboard so the running service serves the change [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
+- [ ] 6.9 **OPEN — look at a relative directory link in the browser.** Attempted 2026-08-26 and NOT done: after the earlier check the Chrome extension began answering every interaction with *"Can't interact with browser-internal or unparseable URLs"* while `navigate` reported the dashboard URL, across a new tab and a new tab group. So nobody has yet seen a relative directory underlined on the running screen. What IS measured: the same route, with an absolute path, was seen working on the live screen earlier the same day, and the relative half is covered by 6 lib tests, 2 terminal tests and 4 killed mutants. Do not read a green suite as this task [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -55,11 +67,15 @@
 - [x] AC-11: WHEN the output contains a project-relative path followed by a colon and a number THEN the terminal treats it as a reference to that file at that line [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-path-with-a-line-number]
 - [x] AC-12: WHEN the output contains an absolute path inside the project root THEN it is treated as a reference to that file [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: an-absolute-path-inside-the-project]
 - [x] AC-13: WHEN the output contains an absolute path outside the project root THEN it is recognised as an external reference [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: an-absolute-path-outside-the-project]
-- [x] AC-14: WHEN the output contains a path-shaped token that is not absolute and names nothing the project has THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-path-the-project-does-not-have]
+- [x] AC-14: WHEN the output contains a relative path that names a directory of the project THEN it is a desktop reference resolved against the root [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-directory]
+- [x] AC-14b: WHEN the output contains a path-shaped relative token the listing does not have THEN it is a desktop reference rather than text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-path-the-projects-listing-does-not-have]
+- [x] AC-14c: WHEN the output contains a word such as `and/or` or `24/7` THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: prose-that-merely-contains-a-slash]
+- [x] AC-14d: WHEN a relative token appears in a terminal whose project root is not known THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-with-no-project-context]
 - [x] AC-15: WHEN a person activates a recognised file reference in the terminal THEN the file view opens that file and lands on the named line [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: the-reader-activates-a-reference]
 - [x] AC-16: WHEN an agent prints a file reference THEN nothing opens until a person acts on it [REQ: activating-a-reference-opens-it-in-the-file-view, scenario: output-alone-opens-nothing]
-- [x] AC-17: WHEN a person activates an absolute path outside the project root THEN the path is handed to the desktop and nothing opens inside the dashboard [REQ: activating-an-external-reference-hands-it-to-the-desktop, scenario: the-reader-activates-an-external-path]
-- [x] AC-18: WHEN a person clicks a recognised external reference without the activation modifier THEN the click is the terminal's and nothing opens [REQ: activating-an-external-reference-hands-it-to-the-desktop, scenario: a-plain-click-still-belongs-to-the-terminal]
+- [x] AC-17: WHEN a person activates an absolute path outside the project root THEN the path is handed to the desktop and nothing opens inside the dashboard [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-reader-activates-an-external-path]
+- [x] AC-17b: WHEN a person activates a relative directory of the project THEN the resolved absolute path is handed to the desktop and the file manager opens [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-reader-activates-a-directory]
+- [x] AC-18: WHEN a person clicks a recognised desktop reference without the activation modifier THEN the click is the terminal's and nothing opens [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: a-plain-click-still-belongs-to-the-terminal]
 - [x] AC-19: WHEN a person activates an external reference whose file does not exist THEN the terminal reports the refusal and its reason [REQ: an-activation-that-cannot-be-honoured-says-why, scenario: the-path-names-nothing]
 - [x] AC-20: WHEN the activated external reference names an executable or a desktop entry THEN the terminal reports that it was refused and nothing is started [REQ: an-activation-that-cannot-be-honoured-says-why, scenario: the-path-is-something-that-would-be-run]
 - [x] AC-21: WHEN terminal output is rendered THEN the framework does not ask the server whether the paths in it exist [REQ: an-activation-that-cannot-be-honoured-says-why, scenario: no-advance-probing]

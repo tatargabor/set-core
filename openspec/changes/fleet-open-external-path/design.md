@@ -107,7 +107,7 @@ without a desktop this is the honest answer.
 
 ### D4 — The client decision lives in `fleetFiles.ts`, beside the one it complements
 
-A new `externalReference(token, root?)` returns the absolute path a token names, or `null`.
+A new `desktopReference(token, root?)` returns the absolute path a token names, or `null`.
 It shares `fileReference`'s punctuation stripping — the parentheses in
 `(/tmp/…/screenshot-2.jpg)` are exactly the reported case — and adds:
 
@@ -120,9 +120,11 @@ It shares `fileReference`'s punctuation stripping — the parentheses in
   link providers happen to be registered in.
 
 Consequence, stated rather than discovered later: in a docked panel with no project context,
-an in-project path is offered as an external one and opens through the desktop instead of the
-file view. That is a degradation, not a defect — it reaches the file either way — and it is
-the same "no project context, no project behaviour" rule the file link already follows.
+an in-project ABSOLUTE path is offered as an external one and opens through the desktop
+instead of the file view. That is a degradation, not a defect — it reaches the file either
+way — and it is the same "no project context, no project behaviour" rule the file link
+already follows. A RELATIVE token in that state is left as text, because there is nothing to
+resolve it against.
 
 ### D5 — Both outcomes are shown, on the terminal's existing status row
 
@@ -141,6 +143,43 @@ being threaded through `Fleet.tsx` as another callback: the outcome has to be re
 this terminal's* status row, and lifting it to the page would put a second copy of that state
 somewhere that can disagree with the terminal it describes — the same argument the component
 already makes for its header portal.
+
+### D7 — A relative token is resolved against the project root, and the SHAPE is what filters it
+
+Added after the second report the same day: an agent printed `openspec/changes/<name>/` — a
+directory — and it was plain text. It always would have been. The file listing carries files,
+so no directory is ever in the known set, and `fileReference`'s "must be in the known set"
+rule is therefore not a bar a directory can clear. The same applies to a gitignored file and
+to anything past the listing's 20 000-path cap.
+
+So a relative token that `fileReference` refuses is resolved against the project root and
+offered as a desktop reference. Two conditions, and the second is the load-bearing one:
+
+- **a project root must be known.** Otherwise the token would be resolved against a working
+  directory the reader cannot see, and would name a stranger's file of that name.
+- **it must LOOK like a path.** The known set was doing double duty in `fileReference`: it
+  decided the destination AND it kept prose out. This route has no set, so the shape is the
+  only filter left, and a terminal is full of sentences. "Contains a slash" alone underlines
+  `and/or`, `24/7`, `TCP/IP` and — in this repository's own terminals — `és/vagy`.
+
+The test is: ASCII path characters only, at least one slash, and one of (a second slash, a
+trailing slash, a dot-extension). Every one of those misses in the same direction — a real
+path is left as text — because a missed link costs a right-click and a wrong one costs the
+reader's trust in every underline on the screen.
+
+*Alternative considered — resolve every relative token and let the endpoint refuse the
+misses.* Rejected: it is the same trade as the absolute case on paper, but not in practice.
+An absolute token is unambiguous; a relative one competes with prose, and the failure is not
+one bad link but an underline under half the sentence.
+
+*Alternative considered — ask the server which relative tokens exist.* That is the existence
+probe D-nothing: the oracle this design refuses in the first place.
+
+*Alternative considered — open a directory in the file view's tree instead.* Rejected for now:
+the panel can show a tree, but the reader asking for a directory is usually asking for a file
+manager, and one destination for "everything the file view cannot open" is one rule instead of
+three. The endpoint already handles a directory, so this is a change of destination if it ever
+turns out to be wanted, not a new mechanism.
 
 ## Risks / Trade-offs
 

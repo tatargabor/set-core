@@ -192,6 +192,28 @@ describe('an out-of-project path in the output', () => {
 describe('when the project IS known', () => {
   const root = '/home/x/proj'
 
+  it('hands over a relative DIRECTORY, resolved against the root', async () => {
+    // The second report, 2026-08-26: an agent names the change directory it just
+    // finished. No listing ever contains it, so it was plain text.
+    line = 'A change kész: openspec/changes/mobil-nezet-reszponziv/ — 4/4 artefaktum'
+    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: vi.fn() })
+
+    const found = links()
+    expect(found.map(l => l.text)).toEqual(['openspec/changes/mobil-nezet-reszponziv/'])
+
+    click(found[0], { ctrl: true })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string))
+      .toEqual({ path: '/home/x/proj/openspec/changes/mobil-nezet-reszponziv' })
+  })
+
+  it('leaves the prose around it alone', async () => {
+    // The same line, and the point is what is NOT underlined: one link, not four.
+    line = 'A change kész: openspec/changes/x/ és/vagy 24/7 a docs/ alatt'
+    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: vi.fn() })
+    expect(links().map(l => l.text)).toEqual(['openspec/changes/x/', 'docs/'])
+  })
+
   it('leaves this project’s own file to the file view, and hands over the other one', async () => {
     line = '/home/x/proj/src/app.ts:12 and /tmp/shot.png'
     const openFile = vi.fn()

@@ -25,9 +25,15 @@ what `xdg-open` is for and what the reader asked for by name.
   - The framework never opens anything on its own: the endpoint answers only a request a
     person's activation produced.
   - It reads no content and persists nothing — it does not become a second file-read path.
-- **Modified**: the terminal's file-link rule gains a second destination. A path-shaped
-  absolute token inside the project keeps opening in the file view, unchanged; one outside it
-  is now offered as a link that hands the path to the desktop.
+- **Modified**: the terminal's file-link rule gains a second destination. A file the project
+  actually has keeps opening in the file view, unchanged; everything else the framework can
+  still name is offered as a link that hands the path to the desktop — an absolute path
+  outside the project root, and a path-shaped relative token resolved against that root.
+  - The relative half was reported separately the same day, with a DIRECTORY as the case:
+    `openspec/changes/<name>/`. A file listing carries files, so no directory is ever in the
+    known set, and every directory an agent printed was plain text with no route at all.
+  - What keeps prose out of the link layer is then a shape test rather than the listing:
+    "contains a slash" alone would underline `and/or` and `24/7`.
 - **Modified**: activating a link that turns out to be unopenable — no such file, an
   executable, a refusal — says so on the terminal's status row. There is deliberately NO
   existence probe: a "does this path exist" endpoint would be a filesystem oracle over the

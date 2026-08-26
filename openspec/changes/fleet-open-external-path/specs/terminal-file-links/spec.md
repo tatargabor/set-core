@@ -11,8 +11,10 @@ other scenario unchanged, word for word.
 
 **Migration**: recognition of the agent's own project files does not change — a relative path
 the project has, an absolute path inside the root, and the `path:line` form all behave exactly
-as before. What changes is one case that used to be ordinary text: an absolute path outside
-the project root. Nothing stored, no API shape, and no URL handling is affected.
+as before, and still open in the file view. What changes is what used to be ordinary text: an
+absolute path outside the project root, and a path-shaped relative token the listing does not
+have — most importantly a DIRECTORY, which no listing can ever contain. Nothing stored, no API
+shape, and no URL handling is affected.
 
 ## MODIFIED Requirements
 
@@ -40,14 +42,21 @@ that act.
 The terminal SHALL recognise a path-shaped token in its output as a reference, and SHALL
 distinguish two kinds, because they have different destinations:
 
-- a reference to a file of the agent's OWN project — a project-relative path the project
-  actually has, or an absolute path inside the project root — including a trailing line
-  number in the `path:line` form the tools in this repository already print;
-- an EXTERNAL reference — an absolute path that does not lie inside the project root.
+- a FILE-VIEW reference — a file of the agent's own project: a project-relative path the
+  project actually has, or an absolute path inside the project root, including a trailing
+  line number in the `path:line` form the tools in this repository already print;
+- a DESKTOP reference — everything else the framework can still name: an absolute path
+  outside the project root, and a relative path the project does not have as a file, which
+  is resolved against the project root.
 
-A relative path the project does not have SHALL remain ordinary text. The known-file set is
-what keeps `12:30` and a dotted word out; without it the terminal would offer links to files
-that do not exist, and a control that fails when activated is worse than an absent one.
+The second kind covers the case no listing can ever answer: a DIRECTORY. A file listing
+carries files, so `openspec/changes/<name>/` is not in it and never will be.
+
+A relative token SHALL become a desktop reference only when it is shaped like a path and a
+project root is known. The shape test is what keeps prose out — a terminal is full of
+sentences, and "contains a slash" alone would turn `and/or` and `24/7` into links that fail
+when activated. Without a root there is nothing to resolve against, and resolving against a
+working directory the reader cannot see would name a stranger's file.
 
 #### Scenario: A relative path with a line number
 
@@ -62,22 +71,42 @@ that do not exist, and a control that fails when activated is worse than an abse
 #### Scenario: An absolute path outside the project
 
 - **WHEN** the output contains an absolute path that does not lie inside the project root
-- **THEN** it is recognised as an external reference — an agent commonly prints the path of
+- **THEN** it is recognised as a desktop reference — an agent commonly prints the path of
   what it produced, and it is almost never inside the tree it is working in
 
-#### Scenario: A relative path the project does not have
+#### Scenario: A relative directory
 
-- **WHEN** the output contains a token that looks path-shaped but names nothing the project
-  has, and is not absolute
+- **WHEN** the output contains a relative path that names a directory of the project
+- **THEN** it is recognised as a desktop reference, resolved against the project root — no
+  listing contains directories, so this is the only route that can reach one
+
+#### Scenario: A relative path the project's listing does not have
+
+- **WHEN** the output contains a path-shaped relative token that is not a file of the
+  listing
+- **THEN** it is recognised as a desktop reference rather than left as text
+
+#### Scenario: Prose that merely contains a slash
+
+- **WHEN** the output contains a word such as `and/or` or `24/7`
+- **THEN** it is left as ordinary text — an underline that fails when activated costs the
+  reader's trust in every other underline on the screen
+
+#### Scenario: A relative token with no project context
+
+- **WHEN** a relative token appears in a terminal whose project root is not known
 - **THEN** it is left as ordinary text
 
-### Requirement: Activating an external reference hands it to the desktop
+### Requirement: Activating a desktop reference hands it to the desktop
 
-A person activating a recognised EXTERNAL reference SHALL cause that path to be handed to the
+A person activating a recognised DESKTOP reference SHALL cause that path to be handed to the
 desktop's default application, through the framework's desktop-open capability and its
-refusals. The dashboard SHALL NOT attempt to read or display the file itself — the file view
-may read only inside a registered project, and pretending otherwise would produce a panel
-that opens empty.
+refusals. A directory reaches the desktop the same way a file does; what opens it is the
+desktop's own association, which for a directory is a file manager.
+
+The dashboard SHALL NOT attempt to read or display the path itself — the file view may read
+only inside a registered project, and it has no way to show a directory at all, so pretending
+otherwise would produce a panel that opens empty.
 
 Activation SHALL require the same deliberate act as an in-project reference, and no other:
 what a plain click does in the terminal is unchanged.
@@ -87,9 +116,15 @@ what a plain click does in the terminal is unchanged.
 - **WHEN** a person activates an absolute path outside the project root
 - **THEN** the path is handed to the desktop, and nothing is opened inside the dashboard
 
+#### Scenario: The reader activates a directory
+
+- **WHEN** a person activates a relative directory of the project
+- **THEN** the resolved absolute path is handed to the desktop, and the desktop's file
+  manager is what opens
+
 #### Scenario: A plain click still belongs to the terminal
 
-- **WHEN** a person clicks a recognised external reference without the activation modifier
+- **WHEN** a person clicks a recognised desktop reference without the activation modifier
 - **THEN** the click is the terminal's — focus, cursor, selection — and nothing opens
 
 ### Requirement: An activation that cannot be honoured says why
@@ -106,12 +141,12 @@ stated: some underlined tokens will fail on activation, and they will say why.
 
 #### Scenario: The path names nothing
 
-- **WHEN** a person activates an external reference whose file does not exist
+- **WHEN** a person activates a desktop reference whose file does not exist
 - **THEN** the terminal reports the refusal and its reason, and stays where it was
 
 #### Scenario: The path is something that would be run
 
-- **WHEN** the activated external reference names an executable or a desktop entry
+- **WHEN** the activated desktop reference names an executable or a desktop entry
 - **THEN** the terminal reports that it was refused, and nothing is started
 
 #### Scenario: No advance probing
