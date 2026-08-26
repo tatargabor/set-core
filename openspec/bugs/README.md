@@ -67,6 +67,39 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-78 — the restore offer is built from 30 days of HISTORY, so it promises back conversations nobody had open
+
+- **state:** open
+- **reported:** 2026-08-26 by the user, with a screenshot of the fleet screen: the header read
+  `Restore 9 of 24 — 3 already running, 12 cannot be resumed`, and the ask was that restore
+  offer *what is open now*, not everything.
+- **measured:** the roster is an accumulating record — `RETENTION_SECONDS = 30 * 24 * 3600`
+  (`lib/set_orch/fleet/roster.py:71`) — and `restore()` attempts **every** recorded entry for
+  the project (`lib/set_orch/fleet/restore.py:161`, `for entry in entries`). Counted on this
+  machine's own `fleet-roster.json`, comparing every entry against those seen in the LAST
+  discovery round:
+
+  ```
+  projects: 18   recorded entries: 233   seen in the last round: 13
+  worst single project: 109 recorded,  4 open
+  the screenshotted one:  24 recorded,  3 open
+  ```
+
+  The duplication is not noise: one named agent accumulates one entry per `--resume`, because
+  the key is the session id. In the screenshotted project a single label held **five** recorded
+  session ids, of which one is the live conversation.
+- **why it matters, and which way it fails:** in the direction that ACTS. The button's number is
+  honest about what the code will do, and what the code will do is start nine sessions the user
+  did not leave open — on a project where a mis-aimed click has already cost 21 started agents
+  (`web/src/components/FleetRestore.tsx`, the `armed` note). "Everything ever recorded" and
+  "the composition I had" are different sets, and only the second is what a restore means.
+- **fixed when:** the offer's default set is the last observed COMPOSITION — the entries seen in
+  the final discovery round before the fleet went down — with the recorded-but-not-open remainder
+  reachable behind an expander, never silently dropped. Held by a test over a roster document
+  whose entries carry three different `last_seen` rounds: the offer counts only the newest round,
+  and the full list is still readable. A round with no entries must read as *"nothing was open
+  when the fleet was last seen"*, not as the previous round's composition.
+
 ### B-73 — a CRASHED leakscan is reported to the operator as "this push would publish content that must not leave"
 
 - **state:** open — the crash itself is fixed (`c3fdb91d`); the hook's wrong REASON is not
