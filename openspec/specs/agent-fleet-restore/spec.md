@@ -77,6 +77,12 @@ and individually selectable for restore. It MUST NOT be dropped from the surface
 holding more than the composition is information, and a screen that shows only the
 composition would report a smaller history than exists.
 
+That list SHALL open as a **dialog over the page**, not inside the row that triggers it, and it
+SHALL offer an explicit way out — a close control, the Escape key, and a click outside it — while
+a click inside it SHALL NOT close it. A row is as wide as a row: a record of dozens of entries
+carrying a transcript excerpt does not fit in one, and a surface that can be opened and not
+obviously closed is a trap rather than a compact layout.
+
 **Entries sharing a label SHALL be presented as one lineage** rather than as that many equal
 rows. An entry is keyed on the session id and a resume mints a new one, so one named agent
 accumulates one entry per resume; several rows carrying the same name and differing only by an
@@ -154,6 +160,21 @@ nothing.
 
 - **WHEN** a project has no recorded entries
 - **THEN** no restore control is offered for it
+
+#### Scenario: The recorded list opens as a dialog
+
+- **WHEN** the reader opens the recorded list
+- **THEN** it opens as a dialog over the page rather than inside the row that triggered it
+
+#### Scenario: The recorded list can be closed three ways
+
+- **WHEN** the recorded list is open
+- **THEN** it can be closed by an explicit close control, by the Escape key, and by a click outside it
+
+#### Scenario: A click inside the list does not throw the reader out
+
+- **WHEN** the reader clicks inside the open list
+- **THEN** it stays open
 
 ### Requirement: Restore takes an explicit selection, or the whole recorded list
 
