@@ -483,3 +483,107 @@ def test_the_roster_never_asks_the_owner_itself(tmp_path):
     import inspect
     source = inspect.getsource(roster)
     assert "OwnerClient" not in source and "owner_client" not in source
+
+
+# --------------------------------------------------------------------------- #
+# the last round — WHICH agents were open when the fleet was last observed
+# --------------------------------------------------------------------------- #
+
+def test_only_the_newest_round_is_the_composition(tmp_path):
+    """AC-4. Three rounds in the record, one composition.
+
+    The entries from the older rounds are still returned — filtering them would
+    make the record claim a smaller fleet than it holds, which is the failure
+    this module already refuses for unresumable entries.
+    """
+    p = _path(tmp_path)
+    a = FakeAgent(pid=1, cwd="/home/x/proj", session_id="S1", project_name="proj")
+    b = FakeAgent(pid=2, cwd="/home/x/proj", session_id="S2", project_name="proj")
+    c = FakeAgent(pid=3, cwd="/home/x/proj", session_id="S3", project_name="proj")
+    roster.record([a], path=p, now=1000.0)
+    roster.record([b], path=p, now=2000.0)
+    roster.record([c], path=p, now=3000.0)
+
+    answer = roster.read("proj", path=p, log_root=tmp_path / "logs")
+    by_key = {e["key"]: e for e in answer["entries"]}
+    assert len(by_key) == 3, "nothing is dropped for being out of the round"
+    assert by_key["S3"]["in_last_round"] is True
+    assert by_key["S2"]["in_last_round"] is False
+    assert by_key["S1"]["in_last_round"] is False
+    assert answer["last_round_at"] == 3000.0
+
+
+def test_a_round_that_saw_nothing_empties_the_composition(tmp_path):
+    """AC-5, and the reason the stamp is stored rather than derived.
+
+    A machine that goes down with nothing running still gets a final observation.
+    Derived from `max(last_seen)` the composition would be the previous round —
+    a screen offering back agents the user had already closed, presented as what
+    was open. Here it must come out EMPTY.
+    """
+    p = _path(tmp_path)
+    a = FakeAgent(pid=1, cwd="/home/x/proj", session_id="S1", project_name="proj")
+    roster.record([a], path=p, now=1000.0)
+    roster.record([], path=p, now=2000.0)          # observed, and empty
+
+    answer = roster.read("proj", path=p, log_root=tmp_path / "logs")
+    assert answer["last_round_at"] == 2000.0
+    assert [e["in_last_round"] for e in answer["entries"]] == [False]
+    assert len(answer["entries"]) == 1, "the entry is still recorded, just not open"
+
+
+def test_a_record_with_no_stamp_reports_membership_as_unknown(tmp_path):
+    """AC-6. A gap is not a zero.
+
+    `False` would mean *this agent was not open*, which the document has no
+    evidence for; `None` means *we cannot tell*, and the surface says so instead
+    of offering a composition it invented. Asserted with `is None` — a falsiness
+    check would pass on `False` and prove nothing.
+    """
+    p = _path(tmp_path)
+    roster.record([FakeAgent(pid=1, cwd="/home/x/proj", session_id="S1", project_name="proj")],
+                  path=p, now=1000.0)
+    document = json.loads(Path(p).read_text())
+    del document["last_round_at"]                   # a document from before this existed
+    Path(p).write_text(json.dumps(document))
+
+    answer = roster.read("proj", path=p, log_root=tmp_path / "logs")
+    assert answer["last_round_at"] is None
+    assert all(e["in_last_round"] is None for e in answer["entries"])
+
+
+def test_the_stamp_survives_a_read_modify_write_and_a_prune(tmp_path):
+    """`normalise()` REBUILDS the document field by field, so a field it does not
+    name is dropped on the next write — silently, and the result reads exactly
+    like a document written before the field existed. Pruning removes entries;
+    it must not remove the observation.
+    """
+    p = _path(tmp_path)
+    roster.record([FakeAgent(pid=1, cwd="/home/x/proj", session_id="S1", project_name="proj")],
+                  path=p, now=1000.0)
+    # A later round that prunes the first entry out entirely.
+    roster.record([FakeAgent(pid=2, cwd="/home/x/proj", session_id="S2", project_name="proj")],
+                  path=p, now=1000.0 + roster.RETENTION_SECONDS + 1)
+    stored = json.loads(Path(p).read_text())
+    assert "S1" not in stored["projects"]["proj"], "the old entry was pruned"
+    assert stored["last_round_at"] == 1000.0 + roster.RETENTION_SECONDS + 1
+
+
+def test_a_partial_write_does_not_move_the_stamp(tmp_path):
+    """A write that is not the whole fleet may not claim to be an observation of
+    it. If it did, every agent it happened to omit would silently fall out of the
+    composition — the safe direction, and still a wrong answer nobody is told
+    about.
+    """
+    p = _path(tmp_path)
+    roster.record([FakeAgent(pid=1, cwd="/home/x/proj", session_id="S1", project_name="proj")],
+                  path=p, now=1000.0)
+    roster.record([FakeAgent(pid=2, cwd="/home/x/proj", session_id="S2", project_name="proj")],
+                  path=p, now=2000.0, full_sweep=False)
+
+    stored = json.loads(Path(p).read_text())
+    assert stored["last_round_at"] == 1000.0, "a partial write is not an observation of the fleet"
+    assert stored["projects"]["proj"]["S2"]["last_seen"] == 2000.0, "the entry is still recorded"
+    answer = roster.read("proj", path=p, log_root=tmp_path / "logs")
+    by_key = {e["key"]: e for e in answer["entries"]}
+    assert by_key["S1"]["in_last_round"] is True and by_key["S2"]["in_last_round"] is False

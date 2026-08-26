@@ -343,15 +343,19 @@ def test_the_roster_routes_are_registered_and_distinct():
         "the listing route must be declared before the wildcard that would swallow it"
 
 
-def test_the_restore_route_takes_no_body_and_no_selection():
-    """Narrower than the owner socket on purpose. A signature with an argv or an
-    entry list would make this a general-purpose start route wearing a
-    restore's name.
+def test_the_restore_route_takes_a_project_and_a_selection_and_nothing_else():
+    """Narrower than the owner socket on purpose. A signature carrying an argv, a
+    cwd or a label would make this a general-purpose start route wearing a
+    restore's name — and that is still refused. What it may carry, since
+    2026-08-26, is WHICH recorded entries to bring back.
     """
     import inspect
-    from set_orch.api.fleet import fleet_roster_restore
+    from set_orch.api.fleet import fleet_roster_restore, RestoreBody
     params = inspect.signature(fleet_roster_restore).parameters
-    assert list(params) == ["project"], f"unexpected parameters: {list(params)}"
+    assert list(params) == ["project", "body"], f"unexpected parameters: {list(params)}"
+    assert params["body"].default is None, "the body must be optional — a bodiless POST is the whole list"
+    assert set(RestoreBody.model_fields) == {"keys"}, \
+        f"the body may name entries and nothing else: {set(RestoreBody.model_fields)}"
 
 
 def test_an_unreachable_owner_is_a_503_from_the_route(monkeypatch, tmp_path):
@@ -441,3 +445,84 @@ def test_a_collision_reports_both_the_wanted_and_the_used_name(tmp_path):
     started = out["started"][0]
     assert started["name_source"] == restore_mod.RENAMED
     assert (started["wanted_label"], started["label_used"]) == ("proj-s1", "proj-s1-r2")
+
+
+# --------------------------------------------------------------------------- #
+# the selection — absent, empty and populated are three different requests
+# --------------------------------------------------------------------------- #
+
+def test_no_selection_still_attempts_the_whole_record(tmp_path):
+    """AC-7, and the regression this change must not cause: `keys=None` is what
+    every existing caller passes by not passing anything.
+    """
+    owner = FakeOwner()
+    path, _, cwd = _seed(tmp_path, ["S1", "S2", "S3"])
+    out = restore_mod.restore("proj", client=owner, roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    assert out["attempted"] == 3 and len(out["started"]) == 3
+
+
+def test_a_selection_attempts_exactly_that_selection(tmp_path):
+    """AC-8. The others are not attempted AT ALL — asserted against the owner's
+    own record of what it was asked for, not against the outcome list, because a
+    skipped outcome and an unattempted entry read alike from the result.
+    """
+    owner = FakeOwner()
+    path, _, cwd = _seed(tmp_path, ["S1", "S2", "S3"])
+    out = restore_mod.restore("proj", keys=["S1", "S3"], client=owner, roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    assert out["attempted"] == 2
+    assert {o["session_id"] for o in out["started"]} == {"S1", "S3"}
+    assert {r["session_id"] for r in owner.recovered} == {"S1", "S3"}, "S2 was never asked about"
+    assert out["complete"] is True
+
+
+def test_an_empty_selection_attempts_nothing(tmp_path):
+    """AC-9. The `keys or entries` fallback would turn "restore none" into
+    "restore all", which on a record holding a month of conversations is the
+    exact act this selection exists to prevent.
+    """
+    owner = FakeOwner()
+    path, _, cwd = _seed(tmp_path, ["S1", "S2", "S3"])
+    out = restore_mod.restore("proj", keys=[], client=owner, roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    assert out["attempted"] == 0
+    assert owner.recovered == [], "nothing was asked for, so nothing may be started"
+
+
+def test_a_selected_key_that_is_not_recorded_is_reported(tmp_path):
+    """AC-10. Filtering the entries by the selection would make this key vanish,
+    and the result would then report fewer attempts than were asked for while
+    reading like a complete restore.
+    """
+    owner = FakeOwner()
+    path, _, cwd = _seed(tmp_path, ["S1"])
+    out = restore_mod.restore("proj", keys=["S1", "GHOST"], client=owner, roster_path=path,
+                              known_roots={os.path.realpath(cwd)})
+    assert out["attempted"] == 2
+    assert len(out["started"]) == 1
+    ghost = [o for o in out["skipped"] if o["key"] == "GHOST"]
+    assert len(ghost) == 1 and "nothing is recorded" in ghost[0]["reason"]
+    assert out["complete"] is False, "an unrecognised key is not a completed restore"
+
+
+def test_the_route_passes_the_selection_through(monkeypatch):
+    """AC-8 at the route, and AC-7 beside it: a bodiless POST must still mean the
+    whole list. A route that defaulted the body to an empty selection would turn
+    every existing caller into a no-op — silently, and in the direction that
+    looks like success.
+    """
+    from set_orch.api import fleet as fleet_api
+    seen: Dict[str, Any] = {}
+    monkeypatch.setattr(fleet_api, "_known_roots", lambda: set())
+    monkeypatch.setattr(fleet_api.fleet_restore, "restore",
+                        lambda project, **kw: seen.update(kw) or {"attempted": 0})
+
+    fleet_api.fleet_roster_restore("proj")
+    assert seen["keys"] is None, "no body means the whole recorded list"
+
+    fleet_api.fleet_roster_restore("proj", fleet_api.RestoreBody(keys=["S1", "S2"]))
+    assert seen["keys"] == ["S1", "S2"]
+
+    fleet_api.fleet_roster_restore("proj", fleet_api.RestoreBody(keys=[]))
+    assert seen["keys"] == [], "an empty selection is not an absent one"

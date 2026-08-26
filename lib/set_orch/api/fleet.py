@@ -1088,15 +1088,32 @@ def fleet_roster(project: str) -> Dict[str, Any]:
     return answer
 
 
-@router.post("/api/fleet/roster/{project}/restore")
-def fleet_roster_restore(project: str) -> Dict[str, Any]:
-    """Bring back the whole recorded list for one project.
+class RestoreBody(BaseModel):
+    """Which recorded entries to bring back — or, absent, all of them.
 
-    **No body, and that is the design.** No `argv`, for the reason already
-    recorded on `StartAgentBody` — an HTTP route running an arbitrary command
-    list is a different thing from a button that starts an agent. And no
-    per-entry selection: the act asked for is *the list back*, and a subset
-    restore is a different act that can be added without changing this one.
+    Still no `argv`, for the reason recorded on `StartAgentBody`: an HTTP route
+    running an arbitrary command list is a different thing from a button that
+    starts an agent. What this body adds is a *selection*, which the route
+    deliberately did not have when it shipped — and the three states of that
+    selection are not interchangeable:
+
+    - the body absent entirely, or `keys` absent → the whole recorded list, which
+      is exactly what this route has always done;
+    - `keys` present and empty → nothing;
+    - `keys` present and populated → those entries.
+
+    A list of strings, and nothing else: a value of another shape is refused with
+    a 422 rather than coerced, because a coerced key silently names no entry and
+    a restore that quietly attempts fewer entries than it was asked for reads
+    like one that attempted them all.
+    """
+
+    keys: Optional[List[str]] = None
+
+
+@router.post("/api/fleet/roster/{project}/restore")
+def fleet_roster_restore(project: str, body: Optional[RestoreBody] = None) -> Dict[str, Any]:
+    """Bring back the recorded list for one project — all of it, or a selection.
 
     The known-roots guard is passed in from here rather than resolved in the
     fleet layer, which is domain-free and must not read the project registry.
@@ -1105,7 +1122,9 @@ def fleet_roster_restore(project: str) -> Dict[str, Any]:
     being deleted one caller at a time.
     """
     try:
-        return fleet_restore.restore(project, known_roots=_known_roots())
+        return fleet_restore.restore(project,
+                                     keys=body.keys if body is not None else None,
+                                     known_roots=_known_roots())
     except OwnerUnavailable as exc:
         # Nothing was attempted, so this is one answer about the request rather
         # than N answers about N entries.

@@ -82,7 +82,21 @@ NO_SESSION_KEY_PREFIX = "no-session:"
 #: path, a name someone chose — cannot reach the file by being passed along.
 ENTRY_FIELDS = ("session_id", "label", "cwd", "project", "kind", "first_seen", "last_seen")
 
-EMPTY: Dict[str, Any] = {"version": 1, "projects": {}}
+#: The document-level fact this record gained on 2026-08-26: **when the fleet was
+#: last observed**, stamped by the write that also stamps every entry that round
+#: saw. `None` means unknown — a document written before this existed — and it is
+#: never inferred from the newest entry's `last_seen`.
+#:
+#: The difference is the whole reason it is stored rather than derived: a machine
+#: that went down with NOTHING running has a newest-`last_seen` pointing at the
+#: last time something was alive, so a derived answer would present a composition
+#: from days earlier as the one that was open — the false-value class, in the
+#: direction that acts. The stamp answers "when was the fleet last observed"; the
+#: maximum answers "when was something last alive", and only the first one is the
+#: question a restore asks.
+LAST_ROUND_FIELD = "last_round_at"
+
+EMPTY: Dict[str, Any] = {"version": 1, "projects": {}, LAST_ROUND_FIELD: None}
 
 
 def _now() -> float:
@@ -165,7 +179,7 @@ def _normalise_entry(key: str, raw: Any) -> Optional[Dict[str, Any]]:
 def normalise(raw: Any) -> Dict[str, Any]:
     """The stored document, or an empty one. Never raises on a shape it dislikes."""
     if not isinstance(raw, dict):
-        return {"version": 1, "projects": {}}
+        return {"version": 1, "projects": {}, LAST_ROUND_FIELD: None}
     projects: Dict[str, Dict[str, Any]] = {}
     for project, entries in (raw.get("projects") or {}).items():
         if not isinstance(entries, dict):
@@ -176,7 +190,16 @@ def normalise(raw: Any) -> Dict[str, Any]:
             if entry is not None:
                 kept[str(key)] = entry
         projects[str(project)] = kept
-    return {"version": 1, "projects": projects}
+    # Carried explicitly, because this function REBUILDS rather than copies: a
+    # field not named here is dropped on the next read-modify-write, and the
+    # loss would be silent — the document would simply stop knowing when the
+    # fleet was last observed, which reads exactly like a document written
+    # before the field existed.
+    try:
+        last_round = float(raw[LAST_ROUND_FIELD])
+    except (KeyError, TypeError, ValueError):
+        last_round = None
+    return {"version": 1, "projects": projects, LAST_ROUND_FIELD: last_round}
 
 
 class RosterUnreadable(RuntimeError):
@@ -237,6 +260,7 @@ def record(
     path: Optional[str] = None,
     now: Optional[float] = None,
     retention: float = RETENTION_SECONDS,
+    full_sweep: bool = True,
 ) -> Dict[str, int]:
     """Upsert one entry per interactive agent. Returns what it did.
 
@@ -244,6 +268,15 @@ def record(
     is passed IN rather than resolved here: this module is a document, and a
     document that opens a socket to the agent owner would make every write
     depend on a service being up. `None` means the holder could not be asked.
+
+    **`full_sweep` says whether `agents` is the WHOLE fleet.** Only a whole-fleet
+    pass may move `last_round_at`, because the stamp's meaning is *"everything
+    running at this moment is stamped with it"*. A partial write that moved it
+    would drop every agent it did not happen to include out of the composition —
+    the safe direction (offering too few), but silent, and a silent wrong answer
+    here is what this record exists to avoid. Today there is one caller and it
+    always passes the whole fleet; that is a property of the current code, not a
+    guarantee, so a partial caller has to say so and gets a stated no-stamp.
 
     Raises on a write failure — the CALLER decides that discovery's answer
     survives it. Swallowing here would put the decision in the wrong place: a
@@ -281,6 +314,18 @@ def record(
             added += 1
 
     pruned = _prune(document, now=now, retention=retention)
+    if full_sweep:
+        # Stamped even when this round saw NOTHING. That is not an edge case to
+        # optimise away — it is the case the stamp exists for: "the fleet was
+        # observed and was empty" is what distinguishes an empty composition
+        # from an unobserved one, and without the write the surface would offer
+        # the previous round's agents as though they were still open.
+        document[LAST_ROUND_FIELD] = now
+    else:
+        logger.info(
+            "fleet roster: partial write (%s entries); %s left at %s",
+            added + updated, LAST_ROUND_FIELD, document.get(LAST_ROUND_FIELD),
+        )
     _write_atomically(document, path)
     logger.debug(
         "fleet roster: recorded %s added, %s updated, %s skipped, %s pruned -> %s",
@@ -301,6 +346,16 @@ def read(
     nothing a reboot destroys. The one thing it does look at is the transcript,
     because that is what a resume needs and it is the question the reader is
     actually asking.
+
+    **`in_last_round` is what "was open" means for a record that consults
+    nothing live**: the entry was still being seen when the fleet was last
+    observed. `True` on equality with the document's stamp, `False` otherwise,
+    and `None` for every entry when there is no stamp — never `False`, because a
+    gap is not a zero and this value decides what a restore offers.
+
+    Entries outside the last round are still returned in full. Filtering them
+    would make the record claim a smaller fleet than it holds, which is the
+    failure this module already refuses for unresumable entries.
     """
     path = path or default_roster_path()
     log_root = log_root or discovery.SESSION_LOG_ROOT
@@ -311,6 +366,7 @@ def read(
         document, exists, unreadable = dict(EMPTY, projects={}), True, True
 
     stored = document.get("projects", {}).get(project, {})
+    last_round = document.get(LAST_ROUND_FIELD)
     entries: List[Dict[str, Any]] = []
     for key, entry in stored.items():
         session_id = entry.get("session_id")
@@ -327,6 +383,10 @@ def read(
             "session_log": log,
             "resumable": resumable,
             "not_resumable_reason": reason,
+            "in_last_round": (
+                None if last_round is None
+                else float(entry.get("last_seen") or 0.0) == float(last_round)
+            ),
         })
     # Newest first: the list a person recognises starts with what they had open.
     entries.sort(key=lambda e: e.get("last_seen") or 0, reverse=True)
@@ -338,6 +398,10 @@ def read(
         # the surface says different things about them.
         "record_exists": bool(exists),
         "unreadable": unreadable,
+        # `None` means the record cannot say when the fleet was last observed.
+        # The surface falls back to the whole list AND says why, rather than
+        # presenting the whole list as though it were the composition.
+        LAST_ROUND_FIELD: last_round,
     }
 
 

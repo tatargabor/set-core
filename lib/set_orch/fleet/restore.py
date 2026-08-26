@@ -122,11 +122,26 @@ def _outcome(entry: Dict[str, Any], status: str, reason: Optional[str] = None,
 def restore(
     project: str,
     *,
+    keys: Optional[Sequence[str]] = None,
     known_roots: Optional[Set[str]] = None,
     client: Optional[Any] = None,
     roster_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Attempt every recorded entry for one project.
+    """Attempt the selected recorded entries for one project, or all of them.
+
+    **`keys` absent, empty and populated are three different requests.** `None`
+    means no selection was made and the whole record is attempted — the
+    behaviour that already shipped. A list attempts exactly those keys. An
+    EMPTY list attempts nothing: the tempting `keys or entries` fallback would
+    turn "restore none" into "restore all", which on a record holding a month of
+    conversations is the act this selection exists to prevent.
+
+    **The selection is iterated, not used as a filter over the entries.** A
+    filter makes an unknown key disappear, and the result then reports fewer
+    attempts than were asked for while reading like a complete one — a filter
+    downstream of a source undoing it. So a requested key the record does not
+    hold becomes a `skipped` outcome naming that, counts in `attempted`, and
+    therefore makes `complete` false.
 
     `known_roots` is passed in rather than resolved here: this layer is
     domain-free and must not read the project registry. The caller that already
@@ -141,8 +156,24 @@ def restore(
     """
     stored = roster.read(project, path=roster_path)
     entries = stored["entries"]
-    if not entries:
-        logger.info("fleet restore: %s has no recorded entries; nothing attempted", project)
+    if keys is None:
+        selected: List[Dict[str, Any]] = list(entries)
+        unknown: List[str] = []
+    else:
+        by_key = {str(e.get("key")): e for e in entries}
+        selected = [by_key[k] for k in (str(k) for k in keys) if k in by_key]
+        unknown = [k for k in (str(k) for k in keys) if k not in by_key]
+        logger.info("fleet restore: %s — %s of %s recorded entries selected, %s unrecognised",
+                    project, len(selected), len(entries), len(unknown))
+
+    if not selected and not unknown:
+        logger.info("fleet restore: %s — nothing to attempt (%s recorded, selection %s)",
+                    project, len(entries), "absent" if keys is None else "empty")
+        # No `complete` key, exactly as this return has always shipped. Nothing
+        # was attempted, and the surface reads that from `attempted == 0` before
+        # it looks at anything else; adding a `true` here would repaint "nothing
+        # was recorded" as a completed restore, which is a change to a behaviour
+        # this work has no business touching.
         return {"project": project, "attempted": 0, "started": [], "skipped": [], "failed": [],
                 "record_exists": stored["record_exists"]}
 
@@ -158,7 +189,14 @@ def restore(
     skipped: List[Dict[str, Any]] = []
     failed: List[Dict[str, Any]] = []
 
-    for entry in entries:
+    # Named but not recorded — reported, never dropped. `_outcome` reads the
+    # entry's own fields, so these carry a minimal one rather than a real entry.
+    for key in unknown:
+        skipped.append(_outcome(
+            {"key": key, "session_id": None, "label": None, "cwd": "", "last_seen": None},
+            SKIPPED, "nothing is recorded under this key for this project"))
+
+    for entry in selected:
         session_id = entry.get("session_id")
         cwd = entry.get("cwd") or ""
 
@@ -225,11 +263,12 @@ def restore(
         logger.info("fleet restore: %s resumed session %s as %s (pid %s)",
                     project, session_id, label, agent.get("pid"))
 
+    attempted = len(selected) + len(unknown)
     logger.info("fleet restore: %s — %s started, %s skipped, %s failed of %s attempted",
-                project, len(started), len(skipped), len(failed), len(entries))
+                project, len(started), len(skipped), len(failed), attempted)
     return {
         "project": project,
-        "attempted": len(entries),
+        "attempted": attempted,
         "started": started,
         "skipped": skipped,
         "failed": failed,
@@ -237,5 +276,5 @@ def restore(
         # Stated rather than left to the reader's arithmetic: a restore where
         # anything did not start is a PARTIAL result, and the surface must not
         # be able to render it as a completed one by counting only `started`.
-        "complete": len(started) == len(entries),
+        "complete": len(started) == attempted,
     }
