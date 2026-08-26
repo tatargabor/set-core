@@ -57,6 +57,10 @@ import {
 import { PANEL_AGENT, PANEL_FILES } from '../lib/fleetPanels'
 import FleetFileView, { type FileRequest } from '../components/FleetFileView'
 import { fileToOpen } from '../lib/fleetFiles'
+import {
+  agentKey, loadAgentOrders, moveKey, orderAgents, saveAgentOrder, type AgentOrderMap,
+} from '../lib/fleetAgentOrder'
+import { useReorder } from '../lib/useReorder'
 import type { FleetAgent, FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../lib/fleetTerminal'
 import type { LabelMemory } from '../lib/fleetTerminal'
@@ -645,13 +649,46 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
  * one honestly. The cost is one click — select the agent, then type into its
  * card — and it is stated here rather than discovered later.
  */
-function AgentTabs({ agents, selected, onSelect }: {
+function AgentTabs({ agents, selected, onSelect, onMove }: {
   agents: readonly FleetAgent[]
   selected: number | null
   onSelect: (pid: number) => void
+  /**
+   * Move the agent at `from` to `to` — asked for 2026-08-26: *"a tabokat akarom
+   * tudni húzva rendezni felül és a sorrendet mentve kialakítani"*.
+   *
+   * Absent, and the strip is exactly what it was: a click still selects, and no
+   * gesture reorders anything. A surface that only works when a callback happens
+   * to be passed is a surface that will one day be silently unarrangeable, so
+   * the drag attributes are only attached when this is here.
+   */
+  onMove?: (from: number, to: number) => void
 }) {
+  const strip = useRef<HTMLDivElement | null>(null)
+  /*
+    A DRAG MUST NOT ALSO SELECT.
+
+    The tab is its own handle — a tab is too small to carry a separate grip — so
+    the same element receives both the gesture and the click. `preventDefault` on
+    pointerdown does not stop the click, which is what keeps a plain click
+    selecting; but after a real drag that click would ALSO enlarge the agent the
+    reader was only moving, which is a layout change nobody asked for.
+
+    So a move raises this flag and the next click spends it. It is cleared on
+    every pointerdown rather than after a timeout: a keyboard move raises it too,
+    and a flag that outlives the gesture would swallow the reader's next real
+    click on some other tab.
+  */
+  const moved = useRef(false)
+  const { handlers, dragFrom, dragTo } = useReorder(
+    (from, to) => { moved.current = true; onMove?.(from, to) },
+    strip,
+    agents.length,
+    'x',
+  )
   return (
     <div
+      ref={strip}
       role="tablist"
       aria-label="agents in this project"
       data-fleet-agent-tabs={agents.length}
@@ -660,7 +697,7 @@ function AgentTabs({ agents, selected, onSelect }: {
          with extra steps. */
       className="flex items-center gap-1 overflow-x-auto shrink-0 border-b border-surface-line pb-1 mb-2"
     >
-      {agents.map(a => {
+      {agents.map((a, i) => {
         const on = a.pid === selected
         const why = [
           a.terminal_label ?? a.name ?? 'unnamed',
@@ -669,20 +706,38 @@ function AgentTabs({ agents, selected, onSelect }: {
           `pid ${a.pid}`,
           `last moved ${age(a.last_movement_seconds)} ago`,
         ].join(' · ')
+        /* The tab being dragged, and where it would land — the same two marks
+           the project column draws, so the reader sees the move before
+           committing it rather than only afterwards. */
+        const lifted = dragFrom === i
+        const target = dragTo === i && dragFrom !== null && dragFrom !== i
         return (
           <button
             key={a.pid}
             role="tab"
             aria-selected={on}
-            title={why}
+            title={onMove ? `${why} — drag to reorder, or ←/→ when focused` : why}
             data-fleet-agent-tab={a.pid}
             data-fleet-agent-tab-active={on ? 'on' : undefined}
-            onClick={() => onSelect(a.pid)}
+            {...(onMove
+              ? {
+                  ...handlers,
+                  'data-drag-item': '',
+                  'data-drag-index': i,
+                  'data-drag-handle': agentKey(a),
+                  onPointerDownCapture: () => { moved.current = false },
+                }
+              : {})}
+            onClick={() => {
+              // Spent, not merely read: the next click on any tab must select.
+              if (moved.current) { moved.current = false; return }
+              onSelect(a.pid)
+            }}
             className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
               on
                 ? 'border-sky-400 text-fg-loud bg-surface-raised/60'
                 : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'
-            }`}
+            }${lifted ? ' opacity-50' : ''}${target ? ' ring-1 ring-sky-400/60' : ''}`}
           >
             {/* The state's DOT, not its word: the colour is the alarm and it
                 survives at any width, while the word would be the first thing
@@ -1797,10 +1852,44 @@ export default function Fleet() {
    * other is the one that goes stale. It would also mean docking gave the
    * reader a second panel rather than moving the one they had.
    */
+/*
+    THE HAND-MADE AGENT ORDER — asked for 2026-08-26.
+
+    Held here rather than inside the strip because the GRID reads it too: one
+    list governs both surfaces, so they cannot disagree. Loaded once, then owned
+    locally and written through — the write is optimistic, so a drag shows its
+    result before the server answers, and a failed write leaves the screen
+    saying something the file does not. That trade is the same one the docking
+    makes, and for the same reason: what is lost is one sequence, re-dragged.
+  */
+  const [agentOrders, setAgentOrders] = useState<AgentOrderMap>({})
+  useEffect(() => {
+    let dead = false
+    void loadAgentOrders().then(orders => { if (!dead) setAgentOrders(orders) })
+    return () => { dead = true }
+  }, [])
+
+  /*
+    The dock filter FIRST, then the reader's order. A docked agent is not in the
+    grid to be ordered within it — and its place in the stored list is kept for
+    when it comes back, which is `moveKey`'s rule seen from the other side.
+  */
   const gridAgents = useMemo(
-    () => (active?.agents ?? []).filter(a => dockedEdgeOf(a.terminal_label) === null),
-    [active, dockedEdgeOf],
+    () => orderAgents(
+      (active?.agents ?? []).filter(a => dockedEdgeOf(a.terminal_label) === null),
+      active ? agentOrders[active.name] : undefined,
+    ),
+    [active, dockedEdgeOf, agentOrders],
   )
+
+  /** Move an agent within the project's order, and store the result. */
+  const moveAgent = useCallback((from: number, to: number) => {
+    if (!active) return
+    const project = active.name
+    const next = moveKey(gridAgents, agentOrders[project], from, to)
+    setAgentOrders(prev => ({ ...prev, [project]: next }))
+    void saveAgentOrder(project, next)
+  }, [active, gridAgents, agentOrders])
 
   /**
    * ⚠ Resolved against `gridAgents`, NOT against every agent in the project —
@@ -1932,6 +2021,7 @@ export default function Fleet() {
   */
   const [knownFiles, setKnownFiles] = useState<Record<string, ReadonlySet<string>>>({})
 
+
   /*
     WHICH CHECKOUTS to list — the project's own, and every WORKTREE an open
     terminal's agent is standing in.
@@ -2011,6 +2101,19 @@ export default function Fleet() {
     labelMemory.current = Object.fromEntries(
       Object.entries(labelMemory.current).map(([pid, label]) => [pid, label === from ? to : label]),
     )
+    /* The hand-made order is keyed by the same label, so it moves with the
+       rename here as well as on the server. Both, deliberately: the server's
+       carry is what survives a reload, and this one is what keeps the agent
+       from jumping to the end of the strip between now and the next layout
+       read. */
+    setAgentOrders(prev => {
+      const next: AgentOrderMap = {}
+      for (const [project, keys] of Object.entries(prev)) {
+        const renamed = keys.map(k => (k === from ? to : k))
+        next[project] = renamed.filter((k, i) => renamed.indexOf(k) === i)
+      }
+      return next
+    })
   }, [openTerminals, selected, setTerminals])
 
   /**
@@ -2936,6 +3039,7 @@ export default function Fleet() {
                   agents={gridAgents}
                   selected={enlarged}
                   onSelect={pid => setEnlarged(active.name, pid)}
+                  onMove={moveAgent}
                 />
               )}
               {/* `gridAgents`, not `active.agents`: a docked agent has MOVED to

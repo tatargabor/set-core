@@ -217,6 +217,39 @@ def _normalise_docks(raw: Any) -> Dict[str, List[Dict[str, Any]]]:
     return out
 
 
+def _normalise_agent_order(raw: Any) -> Dict[str, List[str]]:
+    """Each project's hand-made agent order: `{project: [key, ...]}`.
+
+    A list of KEYS, kept verbatim — including keys for agents that are not
+    running. That is the whole reason it is stored rather than derived: an entry
+    dropped because its agent is stopped comes back at the end, and the reader's
+    arrangement rewrites itself while nobody is looking at a diff of it. Same
+    discipline as a project group's `order`.
+
+    Duplicates are dropped (a key names one agent) and empties are refused; an
+    empty list for a project is stored as no key at all, so "no order" and "an
+    order of nothing" cannot be two states.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, List[str]] = {}
+    for project, keys in raw.items():
+        name = str(project or "").strip()
+        if not name or not isinstance(keys, list):
+            continue
+        seen: set = set()
+        ordered: List[str] = []
+        for key in keys:
+            text = str(key or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            ordered.append(text)
+        if ordered:
+            out[name] = ordered
+    return out
+
+
 def _normalise_dock_legacy(raw: Any) -> List[Dict[str, Any]]:
     """The pre-2026-08-20 flat dock list, preserved verbatim and never rendered.
 
@@ -273,6 +306,7 @@ def normalise(raw: Any) -> Dict[str, Any]:
         # document written before that carries a flat list, which lands in
         # `docks_legacy` instead of being guessed into a project.
         "docks": _normalise_docks(raw.get("docks")),
+        "agent_order": _normalise_agent_order(raw.get("agent_order")),
         "docks_legacy": _normalise_dock_legacy(
             raw.get("docks") if isinstance(raw.get("docks"), list) else raw.get("docks_legacy")
         ),
@@ -356,6 +390,44 @@ def save_docks(docks: Any, *, project: str, path: Optional[str] = None) -> List[
     logger.info("fleet layout: %d docked view(s) stored for project %r at version %s (unchanged)",
                 len(docked), name, payload["version"])
     return docked
+
+
+def save_agent_order(order: Any, *, project: str, path: Optional[str] = None) -> List[str]:
+    """Store ONE PROJECT's hand-made agent order, without touching the arrangement.
+
+    The same two properties as `save_docks`, for the same two reasons: the
+    version guarding the hand-made project arrangement does not move — a drag of
+    a tab must not make the reader's own next group edit conflict — and
+    last-write-wins is accepted, because what a race costs here is one sequence,
+    re-dragged in a second.
+
+    **`project` is required**, and the argument is not a convenience. Docking was
+    stored screen-wide once, and a terminal docked in one project then occupied
+    the same edge in every other. An agent order is a fact about one project's
+    agents; refusing a write that names no project means the shape cannot regress
+    into a global list by a caller forgetting an argument.
+
+    The list is stored VERBATIM, keys of stopped agents included — see
+    `_normalise_agent_order`.
+    """
+    name = str(project or "").strip()
+    if not name:
+        raise ValueError("save_agent_order needs the project the order belongs to")
+    path = path or default_layout_path()
+    current = load(path)
+    payload = dict(current)
+    stored = {k: list(v) for k, v in (current.get("agent_order") or {}).items()}
+    ordered = _normalise_agent_order({name: order}).get(name, [])
+    if ordered:
+        stored[name] = ordered
+    else:
+        # An empty order is no order: see `_normalise_agent_order`.
+        stored.pop(name, None)
+    payload["agent_order"] = stored
+    _write_atomically(payload, path)
+    logger.info("fleet layout: agent order of %d entr(ies) stored for project %r at version %s (unchanged)",
+                len(ordered), name, payload["version"])
+    return ordered
 
 
 def save_splits(splits: Any, *, path: Optional[str] = None) -> Dict[str, int]:
@@ -495,7 +567,52 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
         # Stated rather than dropped: docking arranged before it became
         # per-project. Preserved, never rendered — see `_normalise_dock_legacy`.
         "docks_legacy": list(layout.get("docks_legacy") or []),
+        # Unjoined, like `docks`, and for a stronger reason: this list names
+        # AGENTS, which this module never sees. Joining it to what is running
+        # would mean pruning keys whose agent is stopped — the drift the stored
+        # list exists to prevent. The client holds the inventory and does the
+        # join at render time.
+        "agent_order": {k: list(v) for k, v in (layout.get("agent_order") or {}).items()},
     }
+
+
+def relabel_agent_order(old_key: str, new_key: str, *, path: Optional[str] = None) -> int:
+    """Carry a renamed agent's PLACE in every project's order.
+
+    The order is keyed by the same identity the dock entries use, which is what
+    makes this a two-line carry rather than a design problem — and it is also why
+    it must not be forgotten: an agent renamed without this keeps its old key in
+    the stored list, so it drops to the end of the strip at the next render and
+    the reader's arrangement changes for a reason that is nowhere on screen.
+
+    Every project is scanned rather than the agent's own, because this module is
+    not told which project an agent belongs to and inferring it from the key
+    would be a guess. A key names one agent, so a scan cannot rename the wrong
+    entry.
+
+    Returns how many lists changed, rather than a boolean: an agent with no
+    stored place is the ordinary case and must not look like a failure.
+    """
+    path = path or default_layout_path()
+    current = load(path)
+    orders = {p: list(keys) for p, keys in (current.get("agent_order") or {}).items()}
+    moved = 0
+    for project, keys in orders.items():
+        if old_key not in keys:
+            continue
+        # The new key may already be present — a rename onto a name the list has
+        # seen before. Substituting and then de-duplicating keeps ONE entry, at
+        # the renamed agent's position.
+        replaced = [new_key if k == old_key else k for k in keys]
+        orders[project] = [k for i, k in enumerate(replaced) if replaced.index(k) == i]
+        moved += 1
+    if moved:
+        payload = dict(current)
+        payload["agent_order"] = orders
+        _write_atomically(payload, path)
+        logger.info("fleet layout: agent order key %r renamed to %r in %d project(s)",
+                    old_key, new_key, moved)
+    return moved
 
 
 def relabel_dock(kind: str, old_id: str, new_id: str, *,

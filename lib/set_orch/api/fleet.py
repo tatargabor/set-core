@@ -980,6 +980,11 @@ def fleet_rename_agent(label: str, body: RenameAgentBody) -> Dict[str, Any]:
 
     try:
         carried.update(fleet_layout.relabel_dock("agent", label, new_label))
+        # The hand-made tab order is keyed by the same identity, so it needs the
+        # same carry. Without it a renamed agent keeps its old key in the stored
+        # list and drops to the end of the strip — the reader's arrangement
+        # changing for a reason that is nowhere on screen.
+        carried["agent_order"] = fleet_layout.relabel_agent_order(label, new_label)
     except Exception as exc:
         logger.warning("fleet api: rename %s -> %s: the layout was not updated (%s)",
                        label, new_label, type(exc).__name__)
@@ -1535,6 +1540,44 @@ def fleet_put_docks(body: DocksBody) -> Dict[str, Any]:
         logger.error("fleet api: cannot write the docking: %s", exc)
         raise HTTPException(status_code=500, detail=f"cannot write the docking: {exc}") from exc
     return {"project": project, "docks": stored}
+
+
+class AgentOrderBody(BaseModel):
+    """One project's hand-made agent order: the keys, in the order they sit in.
+
+    `project` is required and has no default, for the reason `DocksBody` states:
+    an order is a fact about ONE project's agents, and a body that can omit the
+    project is the shape that made docking screen-wide.
+    """
+
+    project: str
+    order: List[str] = []
+
+
+@router.put("/api/fleet/layout/agent-order")
+def fleet_put_agent_order(body: AgentOrderBody) -> Dict[str, Any]:
+    """Store the order of a project's agents, leaving the arrangement untouched.
+
+    Its own route for the same reason docking and the divider positions have
+    one: the whole-document PUT is guarded by `base_version`, and dragging a tab
+    is not an edit to the hand-made project arrangement that guard protects.
+    Putting it there would force a choice between bumping the version — so the
+    reader's next group edit conflicts with their own dragging — and skipping the
+    guard on the very route that exists to guard.
+
+    The keys are the client's: a terminal label, a name, or `pid:<n>`. This layer
+    stores a sequence of strings and never asks what they name, which is also why
+    it cannot prune the ones that are not running.
+    """
+    project = (body.project or "").strip()
+    if not project:
+        raise HTTPException(status_code=400, detail="an agent order needs the project it belongs to")
+    try:
+        stored = fleet_layout.save_agent_order(body.order, project=project)
+    except OSError as exc:
+        logger.error("fleet api: cannot write the agent order: %s", exc)
+        raise HTTPException(status_code=500, detail=f"cannot write the agent order: {exc}") from exc
+    return {"project": project, "order": stored}
 
 
 class SplitsBody(BaseModel):
