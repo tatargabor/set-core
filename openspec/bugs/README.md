@@ -67,6 +67,33 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-81 — local absolute paths reach this public repository, and `set-leakscan` does not look for them
+
+- **state:** open
+- **reported:** 2026-08-26 by this session, while running the pre-push scan on a 20-commit range
+- **measured:**
+
+  ```
+  set-leakscan                                    → clean (77 files, 11 consumer patterns)
+  git grep -l "/home/<user>"                      → 2 tracked files
+  git log <upstream> --format='%s%n%b' | grep -c  → 8 already-PUSHED commit messages
+  ```
+
+  So the scan passes while the local username and directory layout are already published —
+  in the tree and in history. One further occurrence was caught by hand in an unpushed
+  commit message and left alone (rewriting it would remove nothing that is not already out,
+  and would rewrite another session's commits in a shared checkout).
+- **why it matters, and which way it fails:** `release-safety.md` lists absolute local paths
+  as check 4, and the tool that replaced the hand-run recipe does not implement it. A green
+  scan therefore reads as "checked", which is the fail direction that makes a gate worse than
+  none. The leak itself is mild — a username and a layout — but the pattern is the one the
+  rule exists for.
+- **fixed when:** `set-leakscan --list-patterns` names a `/home/<user>/` pattern; a staged
+  file containing an absolute home path makes `set-leakscan --staged` exit non-zero; and the
+  two tracked files are rewritten to relative or `<repo-root>`-prefixed paths. The already-
+  pushed history is NOT in scope — scrubbing it is cleanup, not remediation, and it is a
+  username, not a credential.
+
 ### B-79 — `set-web dashboard running at …:7400` is printed 66–82 s before anything listens on that port
 
 - **state:** open
