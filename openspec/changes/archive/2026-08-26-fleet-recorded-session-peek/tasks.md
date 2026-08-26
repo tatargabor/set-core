@@ -42,7 +42,7 @@
 ## 6. Close out
 
 - [x] 6.1 Rebuild `web/` so the running dashboard serves it [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
-- [ ] 6.2 Close B-80 in the register with the sha and the check that went green [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
+- [x] 6.2 B-80 closed in the register with the sha and the live check [REQ: the-surface-offers-restore-per-project-and-shows-what-happened]
 
 ## Acceptance Criteria (from spec scenarios)
 

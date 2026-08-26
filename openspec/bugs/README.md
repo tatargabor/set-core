@@ -95,27 +95,6 @@ consumer's name, path, or content.
   own startup log reaches the journal. Held by a test that asserts the "running at" string is not
   emitted before the port accepts a connection.
 
-### B-80 — six recorded entries share one label, and only their age tells them apart
-
-- **state:** open
-- **reported:** 2026-08-26 by this session, LOOKING at the restore disclosure after
-  `fleet-restore-last-composition` shipped
-- **measured:** on the live record, one project's 49 entries include **six** rows reading
-  `set-core-bugfix2` — `last seen 15.1h / 36.6h / 2.0d / 2.0d / 2.8d / 3.9d ago` — and a second
-  label repeats five times. The cause is structural and correct: an entry is keyed on the session
-  id and a `--resume` mints a new one, so one named agent accumulates one entry per resume.
-- **why it matters, and which way it fails:** in the *unactionable* direction rather than the
-  acting one — the list is honest, and nobody can choose from it. Two rows two days apart carrying
-  the same name is exactly the state where a person picks the wrong conversation to resume, and
-  the screen gave them no way to know. Deliberately left out of
-  `fleet-restore-last-composition` (see its `design.md`, "Open Questions"): collapsing the
-  duplicates changes what the RECORD means, which is a different act from fixing what restore
-  offers.
-- **fixed when:** a repeated label renders as one lineage the reader can open — the resumes of one
-  agent, newest first — or each row carries something besides its age that distinguishes it
-  (first-seen, a transcript size, the last thing it was doing). Held by a test over a record with
-  five same-label entries asserting the surface renders one group rather than five equal rows.
-
 ### B-73 — a CRASHED leakscan is reported to the operator as "this push would publish content that must not leave"
 
 - **state:** open — the crash itself is fixed (`c3fdb91d`); the hook's wrong REASON is not
@@ -2169,6 +2148,36 @@ consumer's name, path, or content.
 
 
 ## Closed
+
+### B-80 — six recorded entries share one label, and only their age tells them apart
+
+- **state:** closed (`ceecdeb5`) — change `fleet-recorded-session-peek`
+- **reported:** 2026-08-26 by this session, LOOKING at the restore disclosure after
+  `fleet-restore-last-composition` shipped
+- **measured:** on the live record, one project's 49 entries include **six** rows reading
+  `set-core-bugfix2` — `last seen 15.1h / 36.6h / 2.0d / 2.0d / 2.8d / 3.9d ago` — and a second
+  label repeats five times. The cause is structural and correct: an entry is keyed on the session
+  id and a `--resume` mints a new one, so one named agent accumulates one entry per resume.
+- **why it matters, and which way it fails:** in the *unactionable* direction rather than the
+  acting one — the list is honest, and nobody can choose from it. Two rows two days apart carrying
+  the same name is exactly the state where a person picks the wrong conversation to resume, and
+  the screen gave them no way to know. Deliberately left out of
+  `fleet-restore-last-composition` (see its `design.md`, "Open Questions"): collapsing the
+  duplicates changes what the RECORD means, which is a different act from fixing what restore
+  offers.
+- **closed with:** `groupByLabel()` renders a repeated label as **one lineage** stating how many
+  conversations it holds and the newest one's age, opening to the individual entries — each still
+  separately selectable, because an act that restored a lineage as a unit would start six
+  conversations of one agent at once. And the discriminator the entries lacked now exists: a
+  per-entry `what was this?` reads the last turns of that conversation from its own transcript
+  through `GET /api/fleet/roster/{project}/{key}/peek` — nothing started, nothing resumed, nothing
+  written down. Verified on the live record against a second instance: 47 flat rows became five
+  lineages plus the singles, and a peek rendered `the last 6 turns of 92 — earlier ones are still
+  in the transcript`. 18 new tests, all 18 failing without the source.
+- **fixed when:** a repeated label renders as one lineage the reader can open — the resumes of one
+  agent, newest first — or each row carries something besides its age that distinguishes it
+  (first-seen, a transcript size, the last thing it was doing). Held by a test over a record with
+  five same-label entries asserting the surface renders one group rather than five equal rows.
 
 ### B-78 — the restore offer is built from 30 days of HISTORY, so it promises back conversations nobody had open
 
