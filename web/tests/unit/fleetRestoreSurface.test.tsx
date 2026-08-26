@@ -567,3 +567,84 @@ describe('peeking at a recorded conversation', () => {
     expect(screen.getByText(/could not be read/)).toBeTruthy()
   })
 })
+
+/**
+ * The recorded list is a DIALOG, and a dialog owes the reader a way out.
+ *
+ * Reported by the user 2026-08-26, with the screen in front of them: *"funkcióban
+ * jó de szerintem ez egy popup screen kellene legyen nagyban és nincs close most
+ * pl hogy bezárjam"*. The list had opened inside a header row — as wide as a
+ * header row, with a transcript excerpt read through a letterbox — and the only
+ * way out was pressing the line that opened it, which is a toggle wearing the
+ * clothes of a heading.
+ */
+describe('the recorded list opens as a dialog that can be closed', () => {
+  const withRest = () => mockFetch({
+    'GET /api/fleet/roster/proj': rosterWithRound(
+      [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+  })
+
+  it('is a dialog, not a drop-down', async () => {
+    vi.stubGlobal('fetch', withRest())
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    const dialog = container.querySelector('[data-fleet-restore-dialog]') as HTMLElement
+    expect(dialog).toBeTruthy()
+    expect(dialog.getAttribute('role')).toBe('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+  })
+
+  it('closes on the × — the control whose absence was reported', async () => {
+    vi.stubGlobal('fetch', withRest())
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-restore-dialog-close]') as HTMLElement)
+    })
+    expect(container.querySelector('[data-fleet-restore-dialog]')).toBeNull()
+    // And the trigger is still there, so it can be opened again.
+    expect(container.querySelector('[data-fleet-restore-rest-toggle]')).toBeTruthy()
+  })
+
+  it('closes on Escape', async () => {
+    // A layer that covers the page and can only be dismissed with the mouse is
+    // a trap for anyone reading with the keyboard.
+    vi.stubGlobal('fetch', withRest())
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    // Asserted PRESENT first. Without it this test passes on a build that has
+    // no dialog at all — an absence that was already true, which is a dead test
+    // wearing a passing one's clothes.
+    expect(container.querySelector('[data-fleet-restore-dialog]')).toBeTruthy()
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }) })
+    expect(container.querySelector('[data-fleet-restore-dialog]')).toBeNull()
+  })
+
+  it('closes on a click outside it, and NOT on a click inside', async () => {
+    vi.stubGlobal('fetch', withRest())
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    // Inside first: a click on the list must not throw the reader out mid-choice.
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-restore-lineages]') as HTMLElement)
+    })
+    expect(container.querySelector('[data-fleet-restore-dialog]')).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-restore-dialog]') as HTMLElement)
+    })
+    expect(container.querySelector('[data-fleet-restore-dialog]')).toBeNull()
+  })
+
+  // A carry-over control rather than a new assertion: it passes on the previous
+  // build too, and it is here so the act does not get lost while the list moves
+  // into a dialog.
+  it('the selection survives nothing being ticked, and the act is still in the dialog', async () => {
+    vi.stubGlobal('fetch', withRest())
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    expect(container.querySelector('[data-fleet-restore-selected]')).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-a')) })
+    expect((container.querySelector('[data-fleet-restore-selection]') as HTMLElement).textContent)
+      .toContain('Restore 1 selected')
+  })
+})

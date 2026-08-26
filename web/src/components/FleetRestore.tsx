@@ -391,6 +391,17 @@ function TheRest({ project, entries, busy, onRun }: {
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<Record<string, boolean>>({})
+
+  // Escape closes it, because a layer that covers the page and can only be
+  // dismissed with the mouse is a trap for anyone reading with the keyboard.
+  // The same rule the follow panel already states, for the same reason.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   if (!entries.length) return null
 
   const chosen = entries.filter(e => picked[e.key])
@@ -402,79 +413,126 @@ function TheRest({ project, entries, busy, onRun }: {
   return (
     <span className="mt-1 flex flex-col" data-fleet-restore-rest={entries.length}>
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-strong"
         data-fleet-restore-rest-toggle={open ? 'open' : 'closed'}
       >
-        {open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}
+        <History size={11} strokeWidth={1.75} />
         {entries.length} more recorded here, not open
       </button>
+
+      {/*
+        A DIALOG, not a drop-down — asked for by the user 2026-08-26, with the
+        screen in front of them: *"funkcióban jó de szerintem ez egy popup screen
+        kellene legyen nagyban és nincs close most pl hogy bezárjam"*.
+
+        Both halves of that are the same defect. The list opened inside a header
+        row, so it was as wide as a header row and as tall as whatever was left
+        — a 47-entry record with a transcript excerpt inside it does not fit in
+        that, and the peek was reading a paragraph through a letterbox. And the
+        only way to close it was the line that opened it, which is a toggle
+        wearing the clothes of a heading: nothing about it says *press me again
+        and this goes away*. A surface that can be opened and not obviously
+        closed is a trap, and it was reported as one within minutes.
+
+        So: the house dialog (the follow panel's), which already carries the
+        three ways out a covering layer owes the reader — the ×, Escape, and a
+        click on the backdrop.
+      */}
       {open && (
-        <>
-          {/* Capped and scrolled, because LOOKING at it on 2026-08-26 showed a
-              47-entry record push the entire agent grid off the screen: the
-              disclosure is in a header row, so its height is the page's. A list
-              that hides the work to show the history is the compacting rule
-              failing in the other direction. */}
-          <ul className="mt-1 space-y-0.5 max-h-64 overflow-y-auto pr-1"
-              data-fleet-restore-lineages={lineages.length}>
-            {lineages.map(line => {
-              // One entry under a name is that entry. Wrapping it in a group
-              // would make the reader open something to find one row.
-              if (line.entries.length === 1) {
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-surface-page/60"
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          data-fleet-restore-dialog={entries.length}
+        >
+          <div
+            className="w-[70vw] max-w-4xl h-[76vh] flex flex-col rounded border border-surface-line
+                       bg-surface-page shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-line shrink-0">
+              <History size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" />
+              <span className="text-sm text-fg-strong">Recorded in {project}, not open</span>
+              <span className="text-xs text-fg-ghost">
+                {entries.length} conversation{entries.length === 1 ? '' : 's'} · {lineages.length} agent
+                {lineages.length === 1 ? '' : 's'}
+              </span>
+              <button
+                onClick={() => setOpen(false)}
+                className="ml-auto text-fg-muted hover:text-fg-strong px-1 text-base leading-none"
+                aria-label="close"
+                data-fleet-restore-dialog-close
+              >×</button>
+            </div>
+
+            <ul className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5"
+                data-fleet-restore-lineages={lineages.length}>
+              {lineages.map(line => {
+                // One entry under a name is that entry. Wrapping it in a group
+                // would make the reader open something to find one row.
+                if (line.entries.length === 1) {
+                  return (
+                    <RecordedEntry key={line.key} project={project} entry={line.entries[0]}
+                                   picked={!!picked[line.entries[0].key]} onPick={pick} now={now} />
+                  )
+                }
+                const shown = !!expanded[line.key]
+                const dead = allBlocked(line.entries)
                 return (
-                  <RecordedEntry key={line.key} project={project} entry={line.entries[0]}
-                                 picked={!!picked[line.entries[0].key]} onPick={pick} now={now} />
+                  <li key={line.key} data-fleet-lineage={line.label}>
+                    <button
+                      onClick={() => setExpanded(p => ({ ...p, [line.key]: !shown }))}
+                      className="flex items-center gap-1 text-xs text-left"
+                      data-fleet-lineage-toggle={shown ? 'open' : 'closed'}
+                    >
+                      {shown ? <ChevronDown size={11} strokeWidth={1.75} className="shrink-0" />
+                             : <ChevronRight size={11} strokeWidth={1.75} className="shrink-0" />}
+                      <span className={dead ? 'text-fg-ghost' : 'text-fg-strong'}>{line.label}</span>
+                      <span className="text-fg-ghost tabular-nums">
+                        · {line.entries.length} conversations · newest {ageLabel(now - line.entries[0].last_seen)} ago
+                      </span>
+                      {/* A compacted row must not be able to hide that nothing
+                          inside it can come back. */}
+                      {dead && <span className="text-fg-ghost">· none can be resumed</span>}
+                    </button>
+                    {shown && (
+                      <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-surface-line pl-2">
+                        {line.entries.map(e => (
+                          <RecordedEntry key={e.key} project={project} entry={e}
+                                         picked={!!picked[e.key]} onPick={pick} now={now} />
+                        ))}
+                      </ul>
+                    )}
+                  </li>
                 )
-              }
-              const shown = !!expanded[line.key]
-              const dead = allBlocked(line.entries)
-              return (
-                <li key={line.key} data-fleet-lineage={line.label}>
-                  <button
-                    onClick={() => setExpanded(p => ({ ...p, [line.key]: !shown }))}
-                    className="flex items-center gap-1 text-xs text-left"
-                    data-fleet-lineage-toggle={shown ? 'open' : 'closed'}
-                  >
-                    {shown ? <ChevronDown size={11} strokeWidth={1.75} className="shrink-0" />
-                           : <ChevronRight size={11} strokeWidth={1.75} className="shrink-0" />}
-                    <span className={dead ? 'text-fg-ghost' : 'text-fg-strong'}>{line.label}</span>
-                    <span className="text-fg-ghost tabular-nums">
-                      · {line.entries.length} conversations · newest {ageLabel(now - line.entries[0].last_seen)} ago
-                    </span>
-                    {/* A compacted row must not be able to hide that nothing
-                        inside it can come back. */}
-                    {dead && <span className="text-fg-ghost">· none can be resumed</span>}
-                  </button>
-                  {shown && (
-                    <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-surface-line pl-2">
-                      {line.entries.map(e => (
-                        <RecordedEntry key={e.key} project={project} entry={e}
-                                       picked={!!picked[e.key]} onPick={pick} now={now} />
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-          <span className="mt-1" data-fleet-restore-selected={offer.restorable}>
-            {offer.actionable ? (
-              <ArmedRestore
-                project={project}
-                offer={offer}
-                keys={offer.keys}
-                busy={busy}
-                onRun={onRun}
-                label={`Restore ${offer.restorable} selected`}
-                title="Resumes only the conversations you ticked."
-                mark={{ 'data-fleet-restore-selection': offer.restorable }}
-              />
-            ) : (
-              <span className="text-xs text-fg-ghost">Tick the ones to bring back.</span>
-            )}
-          </span>
-        </>
+              })}
+            </ul>
+
+            <div className="flex items-center gap-3 px-3 py-2 border-t border-surface-line shrink-0"
+                 data-fleet-restore-selected={offer.restorable}>
+              {offer.actionable ? (
+                <ArmedRestore
+                  project={project}
+                  offer={offer}
+                  keys={offer.keys}
+                  busy={busy}
+                  onRun={onRun}
+                  label={`Restore ${offer.restorable} selected`}
+                  title="Resumes only the conversations you ticked."
+                  mark={{ 'data-fleet-restore-selection': offer.restorable }}
+                />
+              ) : (
+                <span className="text-xs text-fg-ghost">Tick the ones to bring back.</span>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                className="ml-auto text-xs text-fg-muted hover:text-fg-strong"
+              >close</button>
+            </div>
+          </div>
+        </div>
       )}
     </span>
   )
