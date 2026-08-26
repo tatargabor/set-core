@@ -69,7 +69,7 @@ consumer's name, path, or content.
 
 ### B-82 — the terminal replay ring buffer cuts at an arbitrary byte, so a tab switch can start mid-escape-sequence
 
-- **state:** closed (`PENDING_SHA`) — the fix ships; it takes effect only when the owner
+- **state:** closed (`fba77d2c`) — the fix ships; it takes effect only when the owner
   service is restarted, which orphans every held agent, so WHEN that happens is the user's
   call and not this session's.
 - **reported:** 2026-08-26 by the user, switching between agent tabs — *"még mindig van ilyen
