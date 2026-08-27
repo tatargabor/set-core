@@ -46,7 +46,7 @@ import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Fold
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
-import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
+import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
@@ -2296,6 +2296,19 @@ export default function Fleet() {
     && filesOpen.has(filesMax)
     && !docks.some(d => d.kind === PANEL_FILES && d.id === filesMax)
 
+  /*
+    HOW MANY TILES THE GRID ACTUALLY DRAWS — the agents it lays out plus the
+    file view when that is a tile rather than a docked band. The same two
+    conditions the tile itself renders under, read once here so the layout, the
+    column control and the tile cannot disagree about the count.
+  */
+  const fileTileInGrid = !!active?.root
+    && filesOpen.has(active.root)
+    && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root)
+  const gridTiles = gridAgents.length + (fileTileInGrid ? 1 : 0)
+  /* The preference, clamped to what there is to lay out — see `fitColumns`. */
+  const fittedColumns = fitColumns(columns, gridTiles)
+
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.
    *
@@ -2918,10 +2931,7 @@ export default function Fleet() {
                     an offer that is always open is one somebody clicks by
                     accident. */}
                 <FleetInstall project={active.name} root={active.root} capabilities={active.capabilities} />
-                {/* Density is a per-project choice — task 7.5. Offered only
-                    where it can change anything: with one agent there is
-                    nothing to lay out, and while a tile is enlarged the grid
-                    is not the arrangement in use. */}
+                {/* Density is a per-project choice — task 7.5. */}
                 {/* Offered whenever there is more than one agent — including
                     while a tile is open. It used to hide itself under
                     `!focused && enlarged === null`, on the reasoning that the
@@ -2967,8 +2977,33 @@ export default function Fleet() {
                       : 'border-transparent text-fg-ghost hover:text-fg-muted'
                   }`}
                 ><FolderTree size={13} strokeWidth={1.75} /></button>
-                {active.agents.length > 1 && (
-                  <span className="flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
+                {/*
+                  OFFERED WHENEVER THE GRID DRAWS ANYTHING — it used to hide
+                  itself under `agents.length > 1`, and that hid the one state a
+                  reader cannot get out of. The default is TWO columns, so a
+                  project with a single agent opened into a half-empty grid with
+                  no control to fix it: *"ha csak 1 terminal van akkor nincs
+                  layout grid size ikon megjelenítve … és akkor latom gridbe de
+                  nem tudom beallitani 1-esbe"* (2026-08-27). A stored choice
+                  outliving the agents that justified it is the same trap one
+                  size down.
+
+                  The lit glyph is the FITTED count, not the stored one, so it
+                  says what is on screen rather than what was once chosen — and
+                  a choice with no tiles to fill is disabled rather than
+                  clickable-and-inert. The stored preference is untouched by
+                  either, and rides in `data-fleet-columns-choice` so nothing
+                  that needs to read it has to infer it from the lit button.
+                */}
+                {gridTiles > 0 && (
+                  <span
+                    className="flex items-center gap-1 shrink-0"
+                    data-fleet-columns-choice={columns}
+                    data-fleet-columns-fitted={fittedColumns}
+                    title={fittedColumns === columns
+                      ? 'How many columns this project is laid out in — choosing one returns to the grid'
+                      : `Laid out in ${fittedColumns} column${fittedColumns > 1 ? 's' : ''}: there ${gridTiles === 1 ? 'is one tile' : `are ${gridTiles} tiles`} to place, and ${columns} is remembered for when there are more`}
+                  >
                     {COLUMN_CHOICES.map(c => {
                       /* The icon SHOWS the arrangement — asked for 2026-08-19:
                          *"oszlop 1,2,3,4 helyett ikonok kellenek amin látszik
@@ -2978,22 +3013,33 @@ export default function Fleet() {
                          in `data-fleet-columns`, so nothing that could only
                          read the digit lost anything. */
                       const Glyph = COLUMN_GLYPH[c] ?? Columns2
+                      /* A count past the tiles cannot be drawn, so it is not
+                         offered as if it could: four columns holding one tile
+                         is three empty columns, which is the emptiness this
+                         control exists to get out of. One is always offered —
+                         it is the way back from any stored choice. */
+                      const unusable = c > gridTiles
                       return (
                         <button
                           key={c}
                           data-fleet-columns={c}
-                          aria-pressed={c === columns}
+                          aria-pressed={c === fittedColumns}
+                          disabled={unusable}
                           aria-label={`${c} column${c > 1 ? 's' : ''}`}
-                          title={`${c} column${c > 1 ? 's' : ''} of agents`}
+                          title={unusable
+                            ? `${c} columns needs ${c} tiles — this project has ${gridTiles}`
+                            : `${c} column${c > 1 ? 's' : ''}`}
                           onClick={() => {
                             setColumns(active.name, c)
                             setFocus(active.name, null)
                             setEnlarged(active.name, null)
                           }}
                           className={`p-1 rounded border ${
-                            c === columns
+                            c === fittedColumns
                               ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
-                              : 'border-transparent text-fg-ghost hover:text-fg-muted'
+                              : unusable
+                                ? 'border-transparent text-fg-ghost/30 cursor-default'
+                                : 'border-transparent text-fg-ghost hover:text-fg-muted'
                           }`}
                         ><Glyph size={13} strokeWidth={1.75} /></button>
                       )
@@ -3165,7 +3211,7 @@ export default function Fleet() {
                 />
               ) : (
               <div className={enlarged === null && !filesBig
-                ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[columns] ?? GRID_COLS[2]}`
+                ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[fittedColumns] ?? GRID_COLS[2]}`
                 : 'flex-1 min-h-0 flex flex-col'}>
               {/* One enlarged tile: the others are a tab strip, not rows. The
                   strip is OUTSIDE the scrolling area so it stays put while the

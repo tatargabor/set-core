@@ -271,3 +271,29 @@ export function resolveLogs(
     return true
   })
 }
+
+/**
+ * The column count to actually LAY OUT with, given how many tiles the grid has.
+ *
+ * The stored choice is a preference; this is what the screen can honour without
+ * drawing emptiness. Two tiles in a four-column grid are two quarter-width
+ * tiles and half a black panel — the same defect `ui-quality.md` was written
+ * after, only smaller. One tile in the DEFAULT two-column grid is that defect
+ * on every single-agent project, out of the box, and it was reported that way:
+ * *"ha csak 1 terminal van akkor nincs layout grid size ikon megjelenítve de
+ * lehet hogy nem 1 volt kivalasztva és akkor latom gridbe de nem tudom
+ * beallitani 1-esbe"* (2026-08-27).
+ *
+ * It CLAMPS and does not store: the preference survives untouched, so a project
+ * that grows a second agent goes back to two columns without the reader
+ * choosing again. A fit that wrote itself back would silently overwrite a
+ * choice nobody changed.
+ *
+ * `tiles <= 0` returns the stored value rather than 1 — with nothing to lay out
+ * there is no measurement to clamp against, and answering 1 would be a claim
+ * about a grid that is not on screen.
+ */
+export function fitColumns(stored: number, tiles: number): number {
+  if (!Number.isFinite(tiles) || tiles <= 0) return stored
+  return Math.max(1, Math.min(stored, Math.floor(tiles)))
+}
