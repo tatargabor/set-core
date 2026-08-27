@@ -25,7 +25,7 @@
  * must still shout about.
  */
 
-import { freshestSeconds } from './fleetAge'
+import { ageKey, freshestSeconds } from './fleetAge'
 import type { FleetProject } from './fleetTypes'
 
 export type ColumnMode = 'arrangement' | 'live'
@@ -48,19 +48,22 @@ export type ColumnMode = 'arrangement' | 'live'
  * flatten the arrangement, and this mode reorders a way of looking, never the
  * arrangement itself.
  *
- * ## To the MINUTE, and that is not a rounding error
+ * ## The key is the number the row DISPLAYS
  *
- * Measured in the browser while building this: two projects both being worked
- * in read `1s` and `1s` on screen, and the raw seconds behind them differed in
- * the third decimal. The fleet polls every second or two, so the top of the
- * list swapped under the pointer — while showing two identical numbers, which
- * makes it look broken rather than live, and it is where the reader is about to
- * click.
+ * Two projects both being worked in read `1s` and `1s` on screen while their
+ * raw seconds differ in the third decimal; the fleet polls every couple of
+ * seconds, so sorting on the raw value swaps the top of the list under the
+ * pointer, beneath two identical numbers. That looks broken rather than live.
  *
- * So the key is the minute, and ties keep the reader's own order. Everything
- * that moved within the last minute is one block — which is the question that
- * was actually asked, *which projects am I working in* — and the order can only
- * change when the answer does.
+ * The first attempt at fixing it bucketed by whole minutes, and bought a worse
+ * defect — measured on the running dashboard: four projects all inside one
+ * minute, and `3s` rendered BELOW `32s`. An order the reader cannot explain
+ * from the rows is an order they stop trusting, and they are right to.
+ *
+ * So the key is `ageKey` — the displayed value at `age`'s own resolution. Equal
+ * text means an equal key, and ties keep the reader's own order; different text
+ * always sorts the way it reads. The list can only reorder when a number on it
+ * visibly changes.
  */
 export type ColumnSort = 'order' | 'recent'
 
@@ -158,16 +161,16 @@ export function buildColumnView(
   const sorted = flat && sort === 'recent'
   const fresh = new Map(kept.map(n => {
     const s = freshestSeconds(byName.get(n))
-    // Whole minutes — see the note on `ColumnSort`. `null` stays `null`: a
-    // project nobody measured must not floor to the same 0 as one that moved
-    // this second.
-    return [n, s === null ? null : Math.floor(s / 60)] as const
+    // The DISPLAYED value — see the note on `ColumnSort`. `null` stays `null`:
+    // a project nobody measured must not collapse into the same bucket as one
+    // that moved this second.
+    return [n, s === null ? null : ageKey(s)] as const
   }))
   const unmeasured = kept.filter(n => fresh.get(n) === null).length
 
-  // Stable by specification (ES2019), and that is load-bearing: every project
-  // worked in during the last minute shares a key, and keeps the reader's own
-  // order rather than swapping on every poll. The unmeasured rows are ranked
+  // Stable by specification (ES2019), and that is load-bearing: two projects
+  // whose rows show the same age share a key, and keep the reader's own order
+  // rather than swapping on every poll. The unmeasured rows are ranked
   // below every measured one — including one that moved an hour ago — because
   // "we did not look" is not a time, and interleaving it would state one.
   const rows = sorted

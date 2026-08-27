@@ -180,18 +180,26 @@ describe('the freshest-first order', () => {
     expect(v.rows.map(r => r.name)).toEqual(['c', 'a', 'b'])
   })
 
-  it('ranks by the MINUTE, so two projects being worked in do not swap each poll', () => {
-    // Measured in the browser: two projects both read `1s` on screen, their raw
-    // seconds differed in the third decimal, and the top of the list — where
-    // the reader is about to click — swapped every poll while showing two
-    // identical numbers.
-    const byName = map(moving('second', 50), moving('first', 1))
-    expect(buildColumnView(['second', 'first'], byName, RECENT).rows.map(r => r.name))
-      .toEqual(['second', 'first'])
-    // A real minute of difference still moves it.
-    const later = map(moving('second', 130), moving('first', 1))
-    expect(buildColumnView(['second', 'first'], later, RECENT).rows.map(r => r.name))
-      .toEqual(['first', 'second'])
+  it('ranks by the number the row DISPLAYS, so the order reads off the screen', () => {
+    // Measured on the running dashboard while a first attempt bucketed by whole
+    // minutes: four projects all inside one minute, and `3s` rendered BELOW
+    // `32s`. Defensible, unreadable — which on a screen is the same as wrong.
+    const byName = map(moving('shows-32s', 32), moving('shows-3s', 3))
+    expect(buildColumnView(['shows-32s', 'shows-3s'], byName, RECENT).rows.map(r => r.name))
+      .toEqual(['shows-3s', 'shows-32s'])
+  })
+
+  it('does not swap two rows showing the SAME age', () => {
+    // Both render `1s`; the raw seconds differ in the third decimal, and the
+    // fleet polls every couple of seconds. Sorting on the raw value swaps the
+    // top of the list under the pointer beneath two identical numbers.
+    const byName = map(moving('a', 1.002), moving('b', 1.001))
+    expect(buildColumnView(['a', 'b'], byName, RECENT).rows.map(r => r.name))
+      .toEqual(['a', 'b'])
+    // Same at the minute resolution, where `age` rounds 130s and 140s alike.
+    const mins = map(moving('x', 130), moving('y', 125))
+    expect(buildColumnView(['x', 'y'], mins, RECENT).rows.map(r => r.name))
+      .toEqual(['x', 'y'])
   })
 
   it('does not floor an unmeasured project into the freshest minute', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { age, freshestSeconds, stalestSeconds } from '../../src/lib/fleetAge'
+import { age, ageKey, freshestSeconds, stalestSeconds } from '../../src/lib/fleetAge'
 
 describe('age — one formatter, shared rather than copied', () => {
   it('says nothing rather than zero when nothing is known', () => {
@@ -67,5 +67,28 @@ describe('freshestSeconds — the other question: where am I working right now',
 
   it('keeps a real zero', () => {
     expect(freshestSeconds(project(0, 60) as never)).toBe(0)
+  })
+})
+
+describe('ageKey — the sort key IS the displayed value', () => {
+  // The whole contract in two properties, checked across the range rather than
+  // at hand-picked points: a bucket that drifts from `age` puts a row above one
+  // showing a smaller number, and nothing in a screenshot would explain why.
+  const samples = [0, 0.4, 1.001, 1.002, 5, 32, 59.4, 59.6, 60, 89, 89.4, 89.6,
+    90, 91, 100, 125, 130, 149, 150, 600, 3599, 5399, 5400, 5401, 7200, 12000, 86400]
+
+  it('gives equal keys to exactly the rows that read the same', () => {
+    for (const a of samples) {
+      for (const b of samples) {
+        expect(ageKey(a) === ageKey(b)).toBe(age(a) === age(b))
+      }
+    }
+  })
+
+  it('never sorts a row above one that displays a smaller age', () => {
+    const sorted = [...samples].sort((x, y) => x - y)
+    for (let i = 1; i < sorted.length; i++) {
+      expect(ageKey(sorted[i])).toBeGreaterThanOrEqual(ageKey(sorted[i - 1]))
+    }
   })
 })

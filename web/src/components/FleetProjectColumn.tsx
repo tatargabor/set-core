@@ -1129,8 +1129,8 @@ export default function FleetProjectColumn({
               if (next === 'recent' && !colView.flat) setMode('live')
             }}
             title={sort === 'recent'
-              ? 'Freshest first, to the minute — everything worked in during the last minute stays in your own order, so the top does not swap on every poll. Click to go back to your order.'
-              : 'Put the projects you are working in on top — ordered by the freshest agent movement, to the minute. Your arrangement is not changed.'}
+              ? 'Freshest first — ordered by the age each row shows, so two rows reading the same age keep your own order. Click to go back to it.'
+              : 'Put the projects you are working in on top — ordered by the freshest agent movement. Your arrangement is not changed.'}
             aria-label="Order by the freshest agent movement"
             className={`shrink-0 rounded border px-1.5 py-1 transition-colors ${
               sort === 'recent'
