@@ -1,4 +1,10 @@
-"""Transient scopes — why a started agent outlives the service that started it.
+"""The Linux backend: transient systemd scopes.
+
+Moved here unedited from `fleet/scopes.py` when the module became a package;
+the shared vocabulary then moved out to `_types`. Everything below this
+paragraph is the original text.
+
+Transient scopes — why a started agent outlives the service that started it.
 
 Task 5.9. The finding it answers (CB-1) is that the dashboard unit runs with
 `KillMode=control-group`, and every existing spawn uses `start_new_session=True`,
@@ -32,51 +38,22 @@ import os
 import re
 import shlex
 import subprocess
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
+
+from ._types import (
+    SCOPE_PREFIX,
+    Scope,
+    ScopeError,
+    UNIT_SUFFIX,
+    as_unit_name,
+    sanitize,
+    unit_name,
+)
 
 logger = logging.getLogger(__name__)
 
-#: Every scope this framework starts carries this prefix, so the fleet can tell
-#: its own agents from every other transient unit on the machine without keeping
-#: a list anywhere. The name is the record.
-SCOPE_PREFIX = "set-agent-"
-
 #: `systemd-run --user` places transient scopes here.
 EXPECTED_SLICE = "app.slice"
-
-
-class ScopeError(RuntimeError):
-    """A scope could not be started, stopped or verified."""
-
-
-@dataclass
-class Scope:
-    """One framework-owned agent scope."""
-
-    unit: str
-    #: The first live pid inside the scope, or None when it holds none.
-    pid: Optional[int]
-    cgroup: str
-    #: `ActiveState == "active"`. Deliberately NOT the same question as "is it
-    #: gone" — see `state` below and `_await_gone`.
-    active: bool
-    #: Every live pid in the scope. A scope normally holds one, but an agent that
-    #: spawns children holds more, and stopping is a property of the unit rather
-    #: than of any one of them.
-    pids: List[int] = field(default_factory=list)
-    #: systemd's raw `ActiveState`. Kept because collapsing it into `active`
-    #: throws away the one distinction that matters when stopping: `deactivating`
-    #: is not `active`, and its processes are still running. MEASURED 2026-08-18
-    #: on a live interactive agent — `stop()` returned "gone" in 0.0s and logged
-    #: "stopped on SIGTERM" while the scope was `deactivating` and its pid was
-    #: still alive.
-    state: str = ""
-
-    @property
-    def label(self) -> str:
-        """The part of the name after the prefix — what the caller asked for."""
-        return self.unit[len(SCOPE_PREFIX):-len(".scope")] if self.unit.startswith(SCOPE_PREFIX) else self.unit
 
 
 def _systemctl(*args: str, check: bool = False, timeout: float = 20) -> subprocess.CompletedProcess:
@@ -99,26 +76,6 @@ def _systemctl(*args: str, check: bool = False, timeout: float = 20) -> subproce
 def _show(unit: str, prop: str) -> str:
     proc = _systemctl("show", unit, "-p", prop, "--value")
     return proc.stdout.strip() if proc.returncode == 0 else ""
-
-
-def sanitize(label: str) -> str:
-    """A label made safe for a unit name, without becoming ambiguous.
-
-    Unit names accept a narrow alphabet; a caller's label may not. Substituting
-    the offending characters silently would let two different labels collapse
-    onto one unit name — and a scope is an identity here, so a collision would
-    stop the wrong agent. Anything substituted is therefore followed by a short
-    digest of the original.
-    """
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "-", label).strip("-") or "agent"
-    if safe != label:
-        import hashlib
-        safe = f"{safe}-{hashlib.sha256(label.encode()).hexdigest()[:6]}"
-    return safe
-
-
-def unit_name(label: str) -> str:
-    return f"{SCOPE_PREFIX}{sanitize(label)}.scope"
 
 
 def service_cgroup(service: str = "set-web.service") -> str:
@@ -186,7 +143,7 @@ def start(
     )
     # `systemd-run --scope` blocks for the child's lifetime, so we do not wait on
     # it; we wait for the unit to appear instead, which is the fact we need.
-    scope = _await_unit(unit)
+    scope = await_unit(unit)
     if scope is None:
         err = ""
         if proc.poll() is not None and proc.stderr:
@@ -198,7 +155,58 @@ def start(
     return Scope(unit=unit, pid=scope.pid, pids=scope.pids, cgroup=cgroup, active=True)
 
 
-def _await_unit(unit: str, *, attempts: int = 40, interval: float = 0.1) -> Optional[Scope]:
+def child_exec(unit: str, argv: Sequence[str], cwd: str, env: Dict[str, str]) -> None:
+    """Become the agent. Runs INSIDE the caller's forked pty child; never returns.
+
+    `systemd-run --scope` moves the process into a transient unit at
+    `app.slice/<unit>.scope` — a sibling of the dashboard's service rather than a
+    member of its control group — while leaving it on the pty the parent forked.
+
+    Lived in `owner.py`'s fork child until the package was split; it is the one
+    platform-specific step that was above this package, and D1a moved it in.
+    """
+    os.chdir(cwd)
+    os.execvpe(
+        "systemd-run",
+        ["systemd-run", "--user", "--scope", "--collect", "--quiet",
+         f"--unit={unit}", *argv],
+        env,
+    )
+
+
+def adopt(unit: str, child_pid: int, cwd: str) -> Scope:
+    """Take up the agent the caller just forked, and verify it will survive.
+
+    `child_pid` is unused here and that is not an oversight: systemd registered
+    the unit when the child exec'd, so the authority on what is running is the
+    unit, not the pid the parent happens to hold. A backend without a registry
+    needs the pid, so the contract carries it on both.
+
+    Raises `ScopeError` when the unit never became active, or when it came out
+    inside the service's own control group.
+    """
+    scope = await_unit(unit)
+    if scope is None:
+        raise ScopeError(f"{unit} did not become active")
+    cgroup = assert_survivable(unit, scope.pid)
+    return Scope(unit=unit, pid=scope.pid, pids=scope.pids, cgroup=cgroup, active=True)
+
+
+def assert_survivable(unit: str, pid: Optional[int] = None) -> str:
+    """The cross-platform name for what `assert_sibling` checks here.
+
+    `pid` is accepted and ignored — see `adopt`. Kept in the signature so that
+    the caller has one call shape on every platform.
+    """
+    return assert_sibling(unit)
+
+
+def forget(unit: str) -> None:
+    """No record to drop: systemd's unit registry is the record."""
+    return None
+
+
+def await_unit(unit: str, *, attempts: int = 40, interval: float = 0.1) -> Optional[Scope]:
     import time
     for _ in range(attempts):
         found = get(unit)
@@ -234,7 +242,7 @@ def pids_in(cgroup: str) -> List[int]:
 
 def get(unit: str) -> Optional[Scope]:
     """One scope by unit name, or None when systemd does not know it."""
-    unit = _as_scope(unit)
+    unit = as_unit_name(unit)
     state = _show(unit, "ActiveState")
     if not state or state in {"inactive", "failed"} and not _show(unit, "ControlGroup"):
         return None
@@ -275,19 +283,6 @@ def list_scopes() -> List[Scope]:
     return found
 
 
-def _as_scope(unit: str) -> str:
-    """Normalise a name to a unit name without inventing a nonsense one.
-
-    Appending `.scope` unconditionally turns `set-web.service` into
-    `set-web.service.scope`, which does not exist — so the refusal below would
-    be right for the wrong reason, and its message would name a unit nobody
-    asked about.
-    """
-    if "." in os.path.basename(unit):
-        return unit
-    return f"{unit}.scope"
-
-
 def stop(unit: str, *, grace: float = 5.0, kill_grace: float = 5.0) -> bool:
     """Stop a scope by name. True when it is gone afterwards.
 
@@ -295,7 +290,7 @@ def stop(unit: str, *, grace: float = 5.0, kill_grace: float = 5.0) -> bool:
     is reused and a remembered one may name something else entirely, while the
     unit name is the identity systemd itself keeps.
     """
-    unit = _as_scope(unit)
+    unit = as_unit_name(unit)
     if not unit.startswith(SCOPE_PREFIX) or not unit.endswith(".scope"):
         raise ScopeError(f"refusing to stop {unit}: not a framework-owned agent scope")
 

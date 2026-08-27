@@ -19,6 +19,31 @@ import pytest
 
 from set_orch.fleet import owner as owner_mod
 from set_orch.fleet import scopes as scopes_mod
+# The systemd backend, patched directly. `scopes` delegates to it at access
+# time, so calling through `scopes_mod` still reaches whatever is installed
+# here — but a fake must be installed on the module whose GLOBALS the code
+# under test reads. Patching the package would shadow the name for a caller
+# reaching through it and leave `assert_sibling`'s own `_show` untouched, which
+# is the half that decides the answer.
+from set_orch.fleet.scopes import _systemd as scopes_backend
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_systemd_backend(monkeypatch):
+    """Every test in this file drives the SYSTEMD backend, so it says so.
+
+    `scopes` picks a backend from `sys.platform` at import, and its delegation
+    resolves through the module-global `_backend` on every access — so pinning it
+    here redirects the whole package for the duration of one test, without the
+    file having to know which platform it is running on.
+
+    Without this the file silently tested whichever backend the developer's
+    machine happened to select: green on Linux, and on macOS thirteen failures
+    that look like product defects and are not. The macOS backend has its own
+    file; a shared one would test neither properly.
+    """
+    from set_orch.fleet import scopes as _scopes
+    monkeypatch.setattr(_scopes, "_backend", scopes_backend)
 from set_orch.fleet.owner import AgentOwner, OwnerError, recover, FOREIGN, STARTED_HERE
 from set_orch.fleet.scopes import Scope, ScopeError
 
@@ -33,8 +58,8 @@ def test_a_scope_inside_the_service_cgroup_is_refused_not_warned(monkeypatch):
     so this refuses rather than logs.
     """
     svc = "/user.slice/user@1000.service/app.slice/set-web.service"
-    monkeypatch.setattr(scopes_mod, "_show", lambda unit, prop: svc + "/agent" if prop == "ControlGroup" else "active")
-    monkeypatch.setattr(scopes_mod, "service_cgroup", lambda service="set-web.service": svc)
+    monkeypatch.setattr(scopes_backend, "_show", lambda unit, prop: svc + "/agent" if prop == "ControlGroup" else "active")
+    monkeypatch.setattr(scopes_backend, "service_cgroup", lambda service="set-web.service": svc)
     with pytest.raises(ScopeError) as excinfo:
         scopes_mod.assert_sibling("set-agent-x.scope")
     assert "INSIDE" in str(excinfo.value)
@@ -43,8 +68,8 @@ def test_a_scope_inside_the_service_cgroup_is_refused_not_warned(monkeypatch):
 def test_a_sibling_scope_is_accepted(monkeypatch):
     svc = "/user.slice/user@1000.service/app.slice/set-web.service"
     sib = "/user.slice/user@1000.service/app.slice/set-agent-x.scope"
-    monkeypatch.setattr(scopes_mod, "_show", lambda unit, prop: sib if prop == "ControlGroup" else "active")
-    monkeypatch.setattr(scopes_mod, "service_cgroup", lambda service="set-web.service": svc)
+    monkeypatch.setattr(scopes_backend, "_show", lambda unit, prop: sib if prop == "ControlGroup" else "active")
+    monkeypatch.setattr(scopes_backend, "service_cgroup", lambda service="set-web.service": svc)
     assert scopes_mod.assert_sibling("set-agent-x.scope") == sib
 
 
@@ -54,13 +79,13 @@ def test_a_prefix_of_the_service_path_is_not_a_parent(monkeypatch):
     perfectly good scope — and the refusal would look like the guard working.
     """
     svc = "/user.slice/app.slice/set-web.service"
-    monkeypatch.setattr(scopes_mod, "_show", lambda unit, prop: svc + "-extra/x.scope" if prop == "ControlGroup" else "active")
-    monkeypatch.setattr(scopes_mod, "service_cgroup", lambda service="set-web.service": svc)
+    monkeypatch.setattr(scopes_backend, "_show", lambda unit, prop: svc + "-extra/x.scope" if prop == "ControlGroup" else "active")
+    monkeypatch.setattr(scopes_backend, "service_cgroup", lambda service="set-web.service": svc)
     assert scopes_mod.assert_sibling("set-agent-x.scope")
 
 
 def test_stopping_a_unit_that_is_not_ours_is_refused(monkeypatch):
-    monkeypatch.setattr(scopes_mod, "_systemctl", lambda *a, **k: pytest.fail("must not reach systemctl"))
+    monkeypatch.setattr(scopes_backend, "_systemctl", lambda *a, **k: pytest.fail("must not reach systemctl"))
     for name in ("set-web.service", "user@1000.service", "something.scope"):
         with pytest.raises(ScopeError):
             scopes_mod.stop(name)
@@ -99,9 +124,9 @@ def test_stop_escalates_to_sigkill_when_sigterm_is_ignored(monkeypatch):
             state["active"] = False
         return not state["active"]
 
-    monkeypatch.setattr(scopes_mod, "_systemctl", fake_systemctl)
-    monkeypatch.setattr(scopes_mod, "get", fake_get)
-    monkeypatch.setattr(scopes_mod, "_await_gone", fake_await)
+    monkeypatch.setattr(scopes_backend, "_systemctl", fake_systemctl)
+    monkeypatch.setattr(scopes_backend, "get", fake_get)
+    monkeypatch.setattr(scopes_backend, "_await_gone", fake_await)
 
     assert scopes_mod.stop("set-agent-x.scope") is True
     assert any("stop" in a for a in calls), calls
@@ -147,7 +172,7 @@ def test_orphans_are_live_framework_scopes_this_owner_does_not_hold(monkeypatch)
         Scope(unit="set-agent-stray.scope", pid=2, pids=[2], cgroup="/x", active=True, state="active"),
         Scope(unit="set-agent-dead.scope", pid=None, cgroup="/x", active=False, state="inactive"),
     ]
-    monkeypatch.setattr(scopes_mod, "list_scopes", lambda: live)
+    monkeypatch.setattr(scopes_backend, "list_scopes", lambda: live)
     o = _owner_with("mine")
     assert [s.unit for s in o.orphans()] == ["set-agent-stray.scope"]
 
@@ -159,14 +184,14 @@ def test_orphans_are_live_framework_scopes_this_owner_does_not_hold(monkeypatch)
 def test_recover_stops_the_old_scope_before_it_resumes(monkeypatch):
     order = []
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
-    monkeypatch.setattr(scopes_mod, "get", lambda u: Scope(unit=u, pid=None, cgroup="/x", active=False, state="inactive")
+    monkeypatch.setattr(scopes_backend, "get", lambda u: Scope(unit=u, pid=None, cgroup="/x", active=False, state="inactive")
                         if order else Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
 
     def fake_stop(unit, **kw):
         order.append("stop")
         return True
 
-    monkeypatch.setattr(scopes_mod, "stop", fake_stop)
+    monkeypatch.setattr(scopes_backend, "stop", fake_stop)
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: order.append("resume") or "started")
 
@@ -182,9 +207,9 @@ def test_recover_refuses_to_resume_when_the_scope_will_not_die(monkeypatch):
     aborts the recovery — it does not proceed hopefully.
     """
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
-    monkeypatch.setattr(scopes_mod, "get",
+    monkeypatch.setattr(scopes_backend, "get",
                         lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
-    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: False)
+    monkeypatch.setattr(scopes_backend, "stop", lambda unit, **kw: False)
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
 
@@ -199,9 +224,9 @@ def test_recover_rechecks_the_state_rather_than_trusting_the_stop_call(monkeypat
     moment ago is not.
     """
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
-    monkeypatch.setattr(scopes_mod, "get",
+    monkeypatch.setattr(scopes_backend, "get",
                         lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
-    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: True)   # lies
+    monkeypatch.setattr(scopes_backend, "stop", lambda unit, **kw: True)   # lies
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
 
@@ -216,7 +241,7 @@ def test_a_resumed_agent_says_it_was_resumed(monkeypatch):
     continuity the mechanism does not have.
     """
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
-    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
     captured = {}
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: captured.update(k) or "ok")
@@ -277,10 +302,10 @@ def test_recover_refuses_while_the_old_scope_is_still_shutting_down(monkeypatch)
     """
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
     monkeypatch.setattr(
-        scopes_mod, "get",
+        scopes_backend, "get",
         lambda u: Scope(unit=u, pid=5, pids=[5], cgroup="/x", active=False, state="deactivating"),
     )
-    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **kw: True)   # claims success
+    monkeypatch.setattr(scopes_backend, "stop", lambda unit, **kw: True)   # claims success
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
 
@@ -296,7 +321,7 @@ def test_a_scope_that_is_shutting_down_is_still_listed_as_an_orphan(monkeypatch)
     """
     live = [Scope(unit="set-agent-stray.scope", pid=2, pids=[2],
                   cgroup="/x", active=False, state="deactivating")]
-    monkeypatch.setattr(scopes_mod, "list_scopes", lambda: live)
+    monkeypatch.setattr(scopes_backend, "list_scopes", lambda: live)
     assert [s.unit for s in AgentOwner().orphans()] == ["set-agent-stray.scope"]
 
 
@@ -313,8 +338,8 @@ def test_stopping_a_name_that_is_not_running_anywhere_reports_no_find(monkeypatc
     stopped when there had never been one. The three outcomes are different acts
     and the caller is told which one happened.
     """
-    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
-    monkeypatch.setattr(scopes_mod, "stop",
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "stop",
                         lambda *a, **kw: pytest.fail("must not try to stop what is not there"))
     result = AgentOwner().stop("never-existed")
     assert result["found"] is False
@@ -327,10 +352,10 @@ def test_stopping_an_orphan_is_allowed_and_named_as_one(monkeypatch):
     reporting it as though this owner had been holding it.
     """
     monkeypatch.setattr(
-        scopes_mod, "get",
+        scopes_backend, "get",
         lambda u: Scope(unit=u, pid=4, pids=[4], cgroup="/x", active=True, state="active"),
     )
-    monkeypatch.setattr(scopes_mod, "stop", lambda *a, **kw: True)
+    monkeypatch.setattr(scopes_backend, "stop", lambda *a, **kw: True)
     result = AgentOwner().stop("someone-elses")
     assert result["found"] is True
     assert result["population"] == FOREIGN
@@ -338,7 +363,7 @@ def test_stopping_an_orphan_is_allowed_and_named_as_one(monkeypatch):
 
 
 def test_stopping_an_agent_this_owner_holds_says_so(monkeypatch):
-    monkeypatch.setattr(scopes_mod, "stop", lambda *a, **kw: True)
+    monkeypatch.setattr(scopes_backend, "stop", lambda *a, **kw: True)
     o = _owner_with("mine")
     result = o.stop("mine")
     assert result["found"] is True
@@ -360,7 +385,7 @@ def test_a_session_a_live_process_is_bound_to_is_never_resumed(monkeypatch):
     original never sees, with nothing reporting it (design §6.1).
     """
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: {"live-one"})
-    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: pytest.fail("resumed against a live session"))
 
@@ -389,7 +414,7 @@ def test_an_empty_set_of_live_sessions_still_allows_a_resume(monkeypatch):
     guard, and recovery would be impossible.
     """
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids", lambda *a, **k: set())
-    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
     started = {}
     o = AgentOwner()
     monkeypatch.setattr(o, "start", lambda *a, **k: started.update(k) or "ok")
@@ -406,9 +431,9 @@ def test_the_liveness_check_runs_BEFORE_the_scope_is_stopped(monkeypatch):
     events = []
     monkeypatch.setattr(owner_mod.discovery, "live_session_ids",
                         lambda *a, **k: events.append("checked") or {"live-one"})
-    monkeypatch.setattr(scopes_mod, "get",
+    monkeypatch.setattr(scopes_backend, "get",
                         lambda u: Scope(unit=u, pid=1, pids=[1], cgroup="/x", active=True, state="active"))
-    monkeypatch.setattr(scopes_mod, "stop", lambda *a, **kw: events.append("stopped") or True)
+    monkeypatch.setattr(scopes_backend, "stop", lambda *a, **kw: events.append("stopped") or True)
 
     with pytest.raises(OwnerError):
         recover(AgentOwner(), unit="set-agent-x.scope", session_id="live-one", cwd="/tmp")
@@ -501,7 +526,7 @@ def _resuming_owner(monkeypatch, transcript):
     """An owner whose `start` does what a resumed session does first: read the
     transcript's tail and append under it."""
     o = AgentOwner()
-    monkeypatch.setattr(scopes_mod, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
     monkeypatch.setattr(
         o, "start",
         lambda *a, **k: _append_turn(transcript, uuid="resumed-1", parent=_tail_uuid(transcript)) or "started",
@@ -574,8 +599,8 @@ def test_a_rename_moves_the_name_and_touches_nothing_else(monkeypatch):
     o = _owner_with("before")
     agent = o._agents["before"]
     unit_before, pid_before, fd_before = agent.unit, agent.pid, agent.master_fd
-    monkeypatch.setattr(scopes_mod, "_systemctl", lambda *a, **k: pytest.fail("a rename must not touch systemd"))
-    monkeypatch.setattr(scopes_mod, "start", lambda *a, **k: pytest.fail("a rename must not start a scope"))
+    monkeypatch.setattr(scopes_backend, "_systemctl", lambda *a, **k: pytest.fail("a rename must not touch systemd"))
+    monkeypatch.setattr(scopes_backend, "start", lambda *a, **k: pytest.fail("a rename must not start a scope"))
 
     returned = o.rename("before", "after")
 
@@ -594,8 +619,8 @@ def test_a_renamed_agent_is_still_stopped_by_its_original_unit(monkeypatch):
     """
     stopped = []
     o = _owner_with("before")
-    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **k: stopped.append(unit) or True)
-    monkeypatch.setattr(scopes_mod, "is_gone", lambda unit: False)
+    monkeypatch.setattr(scopes_backend, "stop", lambda unit, **k: stopped.append(unit) or True)
+    monkeypatch.setattr(scopes_backend, "is_gone", lambda unit: False)
     o.rename("before", "after")
 
     result = o.stop("after")
@@ -613,8 +638,8 @@ def test_the_old_name_stops_resolving_and_does_not_reach_the_agent(monkeypatch):
     report it as a foreign orphan — the agent stopped under a name nothing holds.
     """
     o = _owner_with("before")
-    monkeypatch.setattr(scopes_mod, "stop", lambda unit, **k: pytest.fail("the old name must not stop anything"))
-    monkeypatch.setattr(scopes_mod, "is_gone", lambda unit: False)
+    monkeypatch.setattr(scopes_backend, "stop", lambda unit, **k: pytest.fail("the old name must not stop anything"))
+    monkeypatch.setattr(scopes_backend, "is_gone", lambda unit: False)
     o.rename("before", "after")
 
     with pytest.raises(OwnerError) as excinfo:

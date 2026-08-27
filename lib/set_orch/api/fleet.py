@@ -1445,8 +1445,10 @@ def fleet_waiters() -> Dict[str, Any]:
     """
     waiters = fleet_instruct.live_waiters()
     if waiters is None:
-        # `/proc` could not be read. Not an empty list: "no waiters" is an
-        # invitation to install one, and "we could not look" is not.
+        # The process table could not be read — `/proc` on Linux, `ps` on macOS.
+        # Not an empty list: "no waiters" is an invitation to install one, and
+        # "we could not look" is not. Named by what it means rather than by one
+        # platform's mechanism, since the reader now has two.
         return {"measured": False, "reason": "the process table could not be read",
                 "waiters": [], "orphaned": [], "orphaned_count": 0}
 

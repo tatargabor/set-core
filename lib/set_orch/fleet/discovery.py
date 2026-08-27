@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -143,6 +144,41 @@ def _proc_cwd(pid: int, proc_root: str = "/proc") -> Optional[str]:
         return os.readlink(os.path.join(proc_root, str(pid), "cwd"))
     except (OSError, PermissionError):
         return None
+
+
+def _pids_by_comm_from_ps(name: str) -> Optional[List[int]]:
+    """Pids whose executable identity is `name`, from the platform's process table.
+
+    macOS has no `/proc`, and `ps -o comm=` prints the executable PATH rather
+    than the bare name — so the basename is taken. Identity, not substring: a
+    shell whose command line merely contains the word is not an agent, and there
+    were 31 of those on the machine the Linux reader was measured against.
+
+    None when the table could not be read at all, which the callers distinguish
+    from an empty list.
+    """
+    try:
+        proc = subprocess.run(
+            ["ps", "-A", "-o", "pid=,comm="],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("fleet discovery: cannot read the process table: %s", exc)
+        return None
+    if proc.returncode != 0:
+        logger.warning(
+            "fleet discovery: ps exited %s: %s", proc.returncode, proc.stderr.strip()[:200],
+        )
+        return None
+
+    found: List[int] = []
+    for line in proc.stdout.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) != 2 or not parts[0].isdigit():
+            continue
+        if os.path.basename(parts[1].strip()) == name:
+            found.append(int(parts[0]))
+    return found
 
 
 def _live_agent_pids(proc_root: str = "/proc") -> List[int]:
@@ -422,19 +458,31 @@ def live_session_ids(
     failure is surfaced rather than flattened, and the caller treats
     undeterminable liveness as live.
     """
-    try:
-        entries = os.listdir(proc_root)
-    except OSError as exc:
-        logger.warning("fleet discovery: cannot read %s: %s", proc_root, exc)
-        return None
+    if sys.platform == "darwin" and proc_root == "/proc":
+        # macOS: `/proc` does not exist, so the walk below could only ever return
+        # None here — "liveness undeterminable", forever, on every Mac. The
+        # caller treats that as "the session is live", which is the safe
+        # direction for a resume and the useless one for everything else: the
+        # waiters panel reported that nothing was known about what was listening,
+        # permanently, and no action could clear it.
+        pids = _pids_by_comm_from_ps(AGENT_COMM)
+        if pids is None:
+            return None
+        live_pids = set(pids)
+    else:
+        try:
+            entries = os.listdir(proc_root)
+        except OSError as exc:
+            logger.warning("fleet discovery: cannot read %s: %s", proc_root, exc)
+            return None
 
-    live_pids = set()
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        comm = _read(os.path.join(proc_root, entry, "comm"))
-        if comm is not None and comm.strip() == AGENT_COMM:
-            live_pids.add(int(entry))
+        live_pids = set()
+        for entry in entries:
+            if not entry.isdigit():
+                continue
+            comm = _read(os.path.join(proc_root, entry, "comm"))
+            if comm is not None and comm.strip() == AGENT_COMM:
+                live_pids.add(int(entry))
 
     try:
         records = _load_session_records(record_dir)

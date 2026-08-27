@@ -747,7 +747,7 @@ install_projects() {
             # Also deploy to each worktree of this project
             local worktree_paths
             worktree_paths=$(git -C "$project_path" worktree list --porcelain 2>/dev/null \
-                | grep '^worktree ' | cut -d' ' -f2- | grep -v "^$project_path$")
+                | grep '^worktree ' | cut -d' ' -f2- | grep -v "^$project_path$") || true
             while IFS= read -r wt_path; do
                 [[ -z "$wt_path" ]] && continue
                 if [[ -d "$wt_path" ]]; then
@@ -1163,6 +1163,53 @@ install_launchd_service() {
         warn "  set-web service installed but not running"
         echo "    Check: launchctl list | grep set-core"
         echo "    Logs: $log_dir/set-web.log"
+    fi
+
+    install_launchd_agent_owner "$PYTHON" "$plist_dir" "$log_dir"
+}
+
+# Install the agent-owner launchd user agent (macOS).
+#
+# The macOS counterpart of the systemd branch above, and it was missing — which
+# is why the fleet screen's `+ start an agent` was dead on every Mac, reporting a
+# socket under /run/user and offering a systemctl command. The systemd branch
+# already carries the argument for placing it here: the dashboard deliberately
+# refuses to start this service itself (that would put the owner back inside the
+# lifetime it was split out of), so if the installer does not place the unit,
+# nothing ever will.
+install_launchd_agent_owner() {
+    local python="$1" plist_dir="$2" log_dir="$3"
+    local label="com.set-core.agent-owner"
+    local owner_src="$SCRIPT_DIR/templates/launchd/$label.plist"
+    local owner_dst="$plist_dir/$label.plist"
+
+    if [[ ! -f "$owner_src" ]]; then
+        warn "  Agent owner plist template not found: $owner_src"
+        return 0
+    fi
+
+    if launchctl list 2>/dev/null | grep -q "$label"; then
+        launchctl unload "$owner_dst" 2>/dev/null || true
+        info "  Unloaded existing agent owner"
+    fi
+
+    sed -e "s|__SET_TOOLS_ROOT__|$SCRIPT_DIR|g" \
+        -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+        -e "s|__LOG_DIR__|$log_dir|g" \
+        -e "s|__PYTHON__|$python|g" \
+        "$owner_src" > "$owner_dst"
+
+    launchctl load "$owner_dst" 2>/dev/null || true
+
+    # Reported either way, never silently. A start control that is dead because
+    # the service did not come up looks identical, from the screen, to one that
+    # is dead because the port was never done.
+    if launchctl list 2>/dev/null | grep -q "$label"; then
+        success "  set-agent-owner service running (agents started from the fleet screen live here)"
+    else
+        warn "  set-agent-owner installed but not running; the fleet screen cannot start agents"
+        echo "    Start manually: launchctl kickstart -k gui/$(id -u)/$label"
+        echo "    Logs: $log_dir/set-agent-owner.log"
     fi
 }
 

@@ -32,11 +32,11 @@ import pytest
 from set_orch.fleet import ownerd as ownerd_mod
 from set_orch.fleet.owner import OwnedAgent, OwnerError
 from set_orch.fleet.owner_client import (
-    START_COMMAND,
     OwnerClient,
     OwnerClientError,
     OwnerUnavailable,
     owner_available,
+    start_command,
 )
 from set_orch.fleet.ownerd import OwnerDaemon
 from set_orch.fleet.protocol import (
@@ -82,8 +82,8 @@ def _run(coro):
         loop.close()
 
 
-def _daemon(tmp_path, **kwargs) -> OwnerDaemon:
-    return OwnerDaemon(str(tmp_path / "owner.sock"), **kwargs)
+def _daemon(sock_dir, **kwargs) -> OwnerDaemon:
+    return OwnerDaemon(str(sock_dir / "owner.sock"), **kwargs)
 
 
 def test_this_file_leaves_the_ambient_event_loop_alone():
@@ -153,8 +153,8 @@ def test_bytes_travel_base64_so_a_split_utf8_sequence_survives():
     assert base64.b64decode(wire) == half
 
 
-def test_an_unknown_method_is_refused_and_the_answer_names_what_exists(tmp_path):
-    daemon = _daemon(tmp_path)
+def test_an_unknown_method_is_refused_and_the_answer_names_what_exists(sock_dir):
+    daemon = _daemon(sock_dir)
     resp = _run(daemon.dispatch(Request(method="exec", params={})))
     assert not resp.ok
     assert "exec" in resp.error
@@ -163,11 +163,11 @@ def test_an_unknown_method_is_refused_and_the_answer_names_what_exists(tmp_path)
         assert method in resp.error
 
 
-def test_every_supported_method_has_a_handler(tmp_path):
+def test_every_supported_method_has_a_handler(sock_dir):
     """A name in the protocol with no handler behind it fails as `AttributeError`
     at request time — a shape error reported as a crash.
     """
-    daemon = _daemon(tmp_path)
+    daemon = _daemon(sock_dir)
     missing = [m for m in SUPPORTED_METHODS if not hasattr(daemon, f"_do_{m}")]
     assert missing == []
 
@@ -210,11 +210,11 @@ class _FakeOwner:
         return getattr(self, "geometry", (24, 80))
 
 
-def test_the_tail_is_bounded_and_admits_when_it_lost_its_head(tmp_path):
+def test_the_tail_is_bounded_and_admits_when_it_lost_its_head(sock_dir):
     """A tail that silently starts mid-stream reads as the whole stream. The
     same false-absence class as a count taken from a declaration.
     """
-    daemon = _daemon(tmp_path, owner=_FakeOwner([b"a" * 100, b"b" * 100]), tail_bytes=150)
+    daemon = _daemon(sock_dir, owner=_FakeOwner([b"a" * 100, b"b" * 100]), tail_bytes=150)
     daemon._tails["x"] = bytearray()
     daemon._dropped["x"] = False
     daemon._drained["x"] = 0
@@ -229,7 +229,7 @@ def test_the_tail_is_bounded_and_admits_when_it_lost_its_head(tmp_path):
     assert bytes(daemon._tails["x"]).endswith(b"b" * 100)
 
 
-def test_a_rename_does_not_end_the_drain(tmp_path):
+def test_a_rename_does_not_end_the_drain(sock_dir):
     """MEASURED 2026-08-23 on a live agent, and it is why a renamed terminal
     went silent.
 
@@ -248,7 +248,7 @@ def test_a_rename_does_not_end_the_drain(tmp_path):
     nothing eventually stops the process.
     """
     owner = _FakeOwner([b"after the rename"], held={7: "old"})
-    daemon = _daemon(tmp_path, owner=owner)
+    daemon = _daemon(sock_dir, owner=owner)
     daemon._tails["old"] = bytearray()
     daemon._dropped["old"] = False
     daemon._drained["old"] = 0
@@ -268,14 +268,14 @@ def test_a_rename_does_not_end_the_drain(tmp_path):
     assert "old" not in daemon._tails
 
 
-def test_a_drain_on_an_fd_nobody_holds_is_not_reported_as_eof(tmp_path):
+def test_a_drain_on_an_fd_nobody_holds_is_not_reported_as_eof(sock_dir):
     """The other half of the same defect: a refusal read as an ending.
 
     `_detach_drain` is still right here — there is nothing to read and nowhere to
     put it — but calling it EOF told a reader the terminal had finished when the
     truth was that the daemon had lost track of it.
     """
-    daemon = _daemon(tmp_path, owner=_FakeOwner([b"never read"], held={}))
+    daemon = _daemon(sock_dir, owner=_FakeOwner([b"never read"], held={}))
     detached = []
     daemon._detach_drain = lambda fd: detached.append(fd)
 
@@ -285,11 +285,11 @@ def test_a_drain_on_an_fd_nobody_holds_is_not_reported_as_eof(tmp_path):
     assert daemon._tails == {}          # nothing was invented under a guessed name
 
 
-def test_the_tail_answer_reports_truncation_it_caused_itself(tmp_path):
+def test_the_tail_answer_reports_truncation_it_caused_itself(sock_dir):
     """Clipping to `max_bytes` is also a lost head, even when the ring never
     wrapped — the flag is about the answer, not only about the buffer.
     """
-    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=1000)
+    daemon = _daemon(sock_dir, owner=_FakeOwner(), tail_bytes=1000)
     daemon._tails["x"] = bytearray(b"z" * 500)
     daemon._dropped["x"] = False
     daemon._drained["x"] = 500
@@ -303,26 +303,26 @@ def test_the_tail_answer_reports_truncation_it_caused_itself(tmp_path):
     assert clipped.result["drained_total"] == 500
 
 
-def test_a_tail_for_an_unheld_terminal_is_a_refusal_not_an_empty_answer(tmp_path):
+def test_a_tail_for_an_unheld_terminal_is_a_refusal_not_an_empty_answer(sock_dir):
     """An empty tail and no terminal at all must not look alike."""
-    daemon = _daemon(tmp_path, owner=_FakeOwner())
+    daemon = _daemon(sock_dir, owner=_FakeOwner())
     resp = _run(daemon.dispatch(Request(method="tail", params={"label": "nobody"})))
     assert not resp.ok
     assert "nobody" in resp.error
 
 
-def test_an_owner_refusal_comes_back_as_an_error_not_as_a_crash(tmp_path):
+def test_an_owner_refusal_comes_back_as_an_error_not_as_a_crash(sock_dir):
     class _Refusing(_FakeOwner):
         def stop(self, label):
             raise OwnerError("this owner does not hold that")
 
-    daemon = _daemon(tmp_path, owner=_Refusing())
+    daemon = _daemon(sock_dir, owner=_Refusing())
     resp = _run(daemon.dispatch(Request(method="stop", params={"label": "x"})))
     assert not resp.ok and "does not hold" in resp.error
 
 
-def test_a_missing_parameter_is_a_bad_request_not_a_daemon_fault(tmp_path):
-    daemon = _daemon(tmp_path, owner=_FakeOwner())
+def test_a_missing_parameter_is_a_bad_request_not_a_daemon_fault(sock_dir):
+    daemon = _daemon(sock_dir, owner=_FakeOwner())
     resp = _run(daemon.dispatch(Request(method="stop", params={})))
     assert not resp.ok and "bad request" in resp.error
 
@@ -331,13 +331,13 @@ def test_a_missing_parameter_is_a_bad_request_not_a_daemon_fault(tmp_path):
 # the socket — the load-bearing part
 # --------------------------------------------------------------------------- #
 
-def test_a_live_socket_is_never_clobbered(tmp_path):
+def test_a_live_socket_is_never_clobbered(sock_dir):
     """Two owners on one path is the worst failure this service has: the second
     answers for terminals it does not hold, and every keystroke addressed to a
     real agent lands nowhere. Unlinking is irreversible, so the question asked
     first is whether anything is *listening* — not whether a file is there.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     live = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     live.bind(path)
     live.listen(1)
@@ -351,12 +351,12 @@ def test_a_live_socket_is_never_clobbered(tmp_path):
         live.close()
 
 
-def test_a_stale_socket_file_is_removed_rather_than_refused(tmp_path):
+def test_a_stale_socket_file_is_removed_rather_than_refused(sock_dir):
     """The other direction, and it matters as much: a crashed owner leaves the
     file behind, and refusing on file-presence would make every crash need a
     manual `rm` before the service could start again.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     dead.bind(path)
     dead.close()                                   # bound, never listened, now gone
@@ -366,12 +366,12 @@ def test_a_stale_socket_file_is_removed_rather_than_refused(tmp_path):
     assert not os.path.exists(path)
 
 
-def test_a_file_presence_check_would_not_have_told_the_two_apart(tmp_path):
+def test_a_file_presence_check_would_not_have_told_the_two_apart(sock_dir):
     """Holds the pattern that was WRONG, so a later simplification back to
     `os.path.exists` fails instead of looking identical and checking nothing.
     """
-    live_path = str(tmp_path / "live.sock")
-    stale_path = str(tmp_path / "stale.sock")
+    live_path = str(sock_dir / "live.sock")
+    stale_path = str(sock_dir / "stale.sock")
     live = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     live.bind(live_path)
     live.listen(1)
@@ -392,26 +392,26 @@ def test_a_file_presence_check_would_not_have_told_the_two_apart(tmp_path):
 # the client — what it refuses to do FOR you
 # --------------------------------------------------------------------------- #
 
-def test_the_client_does_not_start_the_owner_and_says_which_command_does(tmp_path):
+def test_the_client_does_not_start_the_owner_and_says_which_command_does(sock_dir):
     """The one place this client departs from the removed memory daemon's client, which
     auto-starts its daemon. An owner started from inside the web service joins
     its control group and dies with it (CB-1) — the exact defect the second
     service exists to remove. Convenience here would rebuild it silently.
     """
-    path = str(tmp_path / "nothing.sock")
+    path = str(sock_dir / "nothing.sock")
     with pytest.raises(OwnerUnavailable) as excinfo:
         OwnerClient(path).health()
     message = str(excinfo.value)
-    assert START_COMMAND in message
+    assert start_command() in message
     assert not os.path.exists(path), "an absent owner must not be started by the caller"
 
 
-def test_availability_is_asked_by_connecting_not_by_file_presence(tmp_path):
+def test_availability_is_asked_by_connecting_not_by_file_presence(sock_dir):
     """A crashed owner leaves its socket file behind. Reading presence as
     availability is the proxy-instead-of-the-thing class, and it fails toward
     'yes' — the screen would offer a start that cannot work.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     dead = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     dead.bind(path)
     dead.close()
@@ -419,13 +419,13 @@ def test_availability_is_asked_by_connecting_not_by_file_presence(tmp_path):
     assert owner_available(path) is False
 
 
-def test_a_refusal_from_the_owner_is_not_reported_as_unavailability(tmp_path):
+def test_a_refusal_from_the_owner_is_not_reported_as_unavailability(sock_dir):
     """"The owner said no" and "the owner is not there" need opposite responses
     from the surface — a 409 and a 503 — so the client must not collapse them
     into one error. Driven over a real socket, because the distinction is made
     on the wire and a type-level assertion would not exercise it.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
 
     class _Refusing(_FakeOwner):
         def stop(self, label):
@@ -458,8 +458,8 @@ def test_a_refusal_from_the_owner_is_not_reported_as_unavailability(tmp_path):
 # round trip over a real socket
 # --------------------------------------------------------------------------- #
 
-def test_a_request_crosses_the_socket_and_comes_back(tmp_path):
-    path = str(tmp_path / "owner.sock")
+def test_a_request_crosses_the_socket_and_comes_back(sock_dir):
+    path = str(sock_dir / "owner.sock")
     daemon = OwnerDaemon(path, owner=_FakeOwner())
 
     async def scenario():
@@ -475,11 +475,11 @@ def test_a_request_crosses_the_socket_and_comes_back(tmp_path):
     assert health["socket"] == path
 
 
-def test_an_unparseable_line_is_answered_rather_than_dropped(tmp_path):
+def test_an_unparseable_line_is_answered_rather_than_dropped(sock_dir):
     """A client that gets no answer waits for its read timeout — 30 seconds of
     looking like a slow owner instead of one second of a clear error.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     daemon = OwnerDaemon(path, owner=_FakeOwner())
 
     async def scenario():
@@ -529,7 +529,7 @@ def _daemon_with_terminal(path, tail=b"SCREEN-AS-IT-WAS"):
     return daemon
 
 
-def test_the_replayed_screen_is_not_eaten_by_the_attach_response(tmp_path):
+def test_the_replayed_screen_is_not_eaten_by_the_attach_response(sock_dir):
     """The first of two bugs the end-to-end probe found, and the reason the
     client may not read its own answers.
 
@@ -539,7 +539,7 @@ def test_the_replayed_screen_is_not_eaten_by_the_attach_response(tmp_path):
     terminal's first screen was wrong rather than absent, which is the direction
     nobody investigates.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     daemon = _daemon_with_terminal(path)
 
     async def scenario():
@@ -563,7 +563,7 @@ def test_the_replayed_screen_is_not_eaten_by_the_attach_response(tmp_path):
     assert replay is True, "a viewer that cannot tell replay from live output cannot know what is now"
 
 
-def test_a_keystroke_while_streaming_does_not_kill_the_connection(tmp_path):
+def test_a_keystroke_while_streaming_does_not_kill_the_connection(sock_dir):
     """The second bug, and it produced a terminal that showed output until you
     touched it: with the output pump and a keystroke's request both reading the
     same stream, the connection died on the first keystroke.
@@ -572,7 +572,7 @@ def test_a_keystroke_while_streaming_does_not_kill_the_connection(tmp_path):
     consuming frames — because a test that writes with nothing pumping would
     pass on the broken version too.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     daemon = _daemon_with_terminal(path)
 
     async def scenario():
@@ -610,7 +610,7 @@ def test_a_keystroke_while_streaming_does_not_kill_the_connection(tmp_path):
     assert b"echo" in b"".join(seen), "live output after a keystroke never arrived"
 
 
-def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(tmp_path):
+def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(sock_dir):
     """Drives the discriminator instead of asserting about shapes.
 
     A first version of this test compared a frame dict with a response dict and
@@ -625,7 +625,7 @@ def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(tmp_p
     instead of the whole suite hanging.
     """
     import json as _json
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
 
     async def scenario():
         from set_orch.fleet.owner_client import OwnerStream
@@ -637,12 +637,37 @@ def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(tmp_p
             # A response whose result IS null — the shape the mutation confuses.
             writer.write((_json.dumps({"id": request_id, "result": None}) + "\n").encode())
             await writer.drain()
+            # The handler owns this transport and must close it. Returning
+            # without closing leaves the connection open, and from Python 3.12
+            # the exit of `async with server` waits for open connections — so an
+            # unclosed transport here hangs the test rather than failing it.
+            writer.close()
 
         server = await asyncio.start_unix_server(handle, path=path)
         async with server:
             stream = OwnerStream("term", path)
-            ack = await asyncio.wait_for(stream.open(), timeout=5)
-            frame, _replay = await asyncio.wait_for(stream.frames().__anext__(), timeout=5)
+            try:
+                ack = await asyncio.wait_for(stream.open(), timeout=5)
+                frame, _replay = await asyncio.wait_for(stream.frames().__anext__(), timeout=5)
+            finally:
+                # The transport directly, not `stream.close()`: that sends a
+                # `detach` and waits for an answer, and the fake server above
+                # implements exactly two writes and no method table.
+                #
+                # Closing at all is not tidiness. From Python 3.12 the exit of
+                # `async with server` waits for open CONNECTIONS as well as for
+                # handlers, so leaving this one open hangs the block — and a
+                # hanging test is worse than a failing one, because the suite
+                # stops rather than reports. Measured 2026-08-27: this test hung
+                # indefinitely the first time it was able to bind its socket.
+                if stream._pump is not None:
+                    stream._pump.cancel()
+                if stream._writer is not None:
+                    stream._writer.close()
+                    try:
+                        await asyncio.wait_for(stream._writer.wait_closed(), timeout=2)
+                    except (asyncio.TimeoutError, ConnectionResetError, BrokenPipeError):
+                        pass
             return ack, frame
 
     ack, frame = _run(scenario())
@@ -650,7 +675,7 @@ def test_a_frame_and_a_response_are_told_apart_by_the_id_not_by_the_result(tmp_p
     assert frame == b"SCREEN", "the frame was consumed as though it were the response"
 
 
-def test_a_viewer_detaching_leaves_the_agent_held_and_running(tmp_path):
+def test_a_viewer_detaching_leaves_the_agent_held_and_running(sock_dir):
     """Task 5.4: stopping is a deliberate act, never a consequence of closing a
     view. Driven through the real attach/detach path rather than asserted about
     it, because the hazard is a future "tidy up on disconnect" — which would look
@@ -660,7 +685,7 @@ def test_a_viewer_detaching_leaves_the_agent_held_and_running(tmp_path):
     was still in the fleet listing. This holds the code path so the live check
     does not have to be the only guard.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     daemon = _daemon_with_terminal(path)
     daemon.owner.agents = [
         OwnedAgent(label="term", unit="set-agent-term.scope", pid=7, cwd="/tmp", master_fd=-1)
@@ -683,12 +708,12 @@ def test_a_viewer_detaching_leaves_the_agent_held_and_running(tmp_path):
     assert daemon.owner.stopped == [], "detach must never reach the stop path"
 
 
-def test_a_second_viewer_attaches_to_the_same_terminal(tmp_path):
+def test_a_second_viewer_attaches_to_the_same_terminal(sock_dir):
     """Reattachable, and by more than one reader: the terminal belongs to the
     owner, not to whoever is looking at it. Each arrival is sent the buffered
     screen, so a viewer that joins late does not start blank halfway through.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     daemon = _daemon_with_terminal(path, tail=b"ALREADY-ON-SCREEN")
 
     async def scenario():
@@ -715,7 +740,7 @@ def test_a_second_viewer_attaches_to_the_same_terminal(tmp_path):
     assert lives == (b"-LIVE", b"-LIVE"), "live output must reach every viewer, not just the first"
 
 
-def test_a_full_screen_replay_survives_the_wire(tmp_path):
+def test_a_full_screen_replay_survives_the_wire(sock_dir):
     """The third bug the live probe found, and the only one that was CERTAIN
     rather than merely likely.
 
@@ -739,7 +764,7 @@ def test_a_full_screen_replay_survives_the_wire(tmp_path):
     Sized at 60 KiB: over the 48 KiB where the old code starts failing, under
     the 64 KiB tail cap so nothing here is testing truncation instead.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     screen = bytes(bytearray((i * 7 + 33) % 94 + 32 for i in range(60 * 1024)))
     daemon = _daemon_with_terminal(path, tail=screen)
 
@@ -767,7 +792,7 @@ def test_a_full_screen_replay_survives_the_wire(tmp_path):
     assert got == screen, "the replayed screen did not arrive intact"
 
 
-def test_no_single_frame_exceeds_the_readers_line_limit(tmp_path):
+def test_no_single_frame_exceeds_the_readers_line_limit(sock_dir):
     """The rule stated as a size, so a later change cannot quietly re-cross it.
 
     The test above proves the client survives today's owner. This one proves the
@@ -775,7 +800,7 @@ def test_no_single_frame_exceeds_the_readers_line_limit(tmp_path):
     including one in a different process, an older client, or a consumer written
     against the protocol rather than against this class.
     """
-    daemon = OwnerDaemon(str(tmp_path / "owner.sock"), owner=_Streamable())
+    daemon = OwnerDaemon(str(sock_dir / "owner.sock"), owner=_Streamable())
     frames = daemon._frames("term", b"x" * (64 * 1024), replay=True)
     assert len(frames) > 1, "a 64 KiB chunk must not go out as one line"
     assert max(len(f) for f in frames) < 64 * 1024, (
@@ -803,14 +828,14 @@ def test_no_single_frame_exceeds_the_readers_line_limit(tmp_path):
 # attributed to whichever test the collector happened to interrupt.
 # --------------------------------------------------------------------------- #
 
-def test_shutdown_ends_the_client_handlers_while_the_loop_is_still_alive(tmp_path):
+def test_shutdown_ends_the_client_handlers_while_the_loop_is_still_alive(sock_dir):
     """`wait_closed()` is not enough, and the gap is invisible without this.
 
     Stash the `_clients` cancellation in `shutdown()` and this test fails with a
     handler still pending — which is exactly the state that produces the
     unraisable exception one garbage collection later.
     """
-    path = str(tmp_path / "owner.sock")
+    path = str(sock_dir / "owner.sock")
     daemon = OwnerDaemon(path, owner=_Streamable())
 
     async def scenario():
@@ -841,7 +866,7 @@ def test_shutdown_ends_the_client_handlers_while_the_loop_is_still_alive(tmp_pat
     assert not tracked, "shutdown() left tracked client tasks behind"
 
 
-def test_the_handlers_cleanup_survives_a_transport_that_can_no_longer_be_closed(tmp_path):
+def test_the_handlers_cleanup_survives_a_transport_that_can_no_longer_be_closed(sock_dir):
     """The second half, for the connection that arrives during the race.
 
     Cancelling the tracked handlers closes the ordinary path. It cannot close the
@@ -858,7 +883,7 @@ def test_the_handlers_cleanup_survives_a_transport_that_can_no_longer_be_closed(
         async def readline(self):
             return b""                      # returns at once, so the finally runs
 
-    daemon = OwnerDaemon(str(tmp_path / "owner.sock"), owner=_Streamable())
+    daemon = OwnerDaemon(str(sock_dir / "owner.sock"), owner=_Streamable())
     _run(daemon._serve_client(_EmptyReader(), _DeadWriter()))   # must not raise
 
 
@@ -900,7 +925,7 @@ class _RenamingOwner(_FakeOwner):
         return agent
 
 
-def test_a_rename_leaves_no_per_label_state_behind(tmp_path):
+def test_a_rename_leaves_no_per_label_state_behind(sock_dir):
     """Asserted against the THING, not against a list somebody maintains.
 
     The daemon keeps four dictionaries keyed by label, and `LABEL_KEYED` names
@@ -910,7 +935,7 @@ def test_a_rename_leaves_no_per_label_state_behind(tmp_path):
     A store added later and forgotten in `_rekey` fails here.
     """
     agent = OwnedAgent(label="before", unit="set-agent-before.scope", pid=7, cwd="/tmp", master_fd=-1)
-    daemon = _daemon(tmp_path, owner=_RenamingOwner())
+    daemon = _daemon(sock_dir, owner=_RenamingOwner())
     daemon.owner.agents.append(agent)
     daemon._tails["before"] = bytearray(b"scrollback")
     daemon._dropped["before"] = True
@@ -930,12 +955,12 @@ def test_a_rename_leaves_no_per_label_state_behind(tmp_path):
     assert daemon._drained["after"] == 10
 
 
-def test_a_rename_the_owner_refuses_comes_back_as_an_error_and_moves_nothing(tmp_path):
+def test_a_rename_the_owner_refuses_comes_back_as_an_error_and_moves_nothing(sock_dir):
     class _Refusing(_FakeOwner):
         def rename(self, label, new_label):
             raise OwnerError("taken")
 
-    daemon = _daemon(tmp_path, owner=_Refusing())
+    daemon = _daemon(sock_dir, owner=_Refusing())
     daemon._tails["before"] = bytearray(b"x")
     response = _run(daemon.dispatch(Request(id=1, method="rename",
                                                    params={"label": "before", "new_label": "after"})))
@@ -946,7 +971,7 @@ def test_a_rename_the_owner_refuses_comes_back_as_an_error_and_moves_nothing(tmp
 # ─── B-82: where the ring buffer is allowed to cut ───────────────────────────
 
 
-def test_a_cut_inside_an_escape_sequence_does_not_leave_its_tail_behind(tmp_path):
+def test_a_cut_inside_an_escape_sequence_does_not_leave_its_tail_behind(sock_dir):
     """The reported defect, with the reported bytes.
 
     A terminal stream is mostly escape sequences — measured on 12 live agents,
@@ -959,7 +984,7 @@ def test_a_cut_inside_an_escape_sequence_does_not_leave_its_tail_behind(tmp_path
     viewer renders first. Asserting only that the length is bounded — which the
     test above does — passes on the broken behaviour.
     """
-    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=20)
+    daemon = _daemon(sock_dir, owner=_FakeOwner(), tail_bytes=20)
     daemon._tails["x"] = bytearray()
     daemon._dropped["x"] = False
     daemon._drained["x"] = 0
@@ -975,7 +1000,7 @@ def test_a_cut_inside_an_escape_sequence_does_not_leave_its_tail_behind(tmp_path
     assert kept.startswith(b"\x1b[55;1H")
 
 
-def test_resynchronising_never_drops_more_than_the_window(tmp_path):
+def test_resynchronising_never_drops_more_than_the_window(sock_dir):
     """A far-away escape must not drag the cut across the whole buffer.
 
     The fail direction that matters: keeping some plain text that renders
@@ -992,7 +1017,7 @@ def test_resynchronising_never_drops_more_than_the_window(tmp_path):
     # search and the bound cannot be reached at all — which is how the first
     # version of this test managed to pass against every mutation.
     cap = ownerd_mod._RESYNC_WINDOW * 2
-    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=cap)
+    daemon = _daemon(sock_dir, owner=_FakeOwner(), tail_bytes=cap)
     daemon._tails["x"] = bytearray()
     daemon._dropped["x"] = False
     daemon._drained["x"] = 0
@@ -1008,7 +1033,7 @@ def test_resynchronising_never_drops_more_than_the_window(tmp_path):
     assert len(kept) == cap
 
 
-def test_a_cut_inside_a_utf8_character_does_not_leave_continuation_bytes(tmp_path):
+def test_a_cut_inside_a_utf8_character_does_not_leave_continuation_bytes(sock_dir):
     """The smaller version of the same defect, and where it actually shows.
 
     An agent's TUI is drawn with box characters, every one of them three bytes.
@@ -1017,7 +1042,7 @@ def test_a_cut_inside_a_utf8_character_does_not_leave_continuation_bytes(tmp_pat
     is the FALLBACK — it only runs when no escape is within reach, so a mistake
     in it would be invisible in every ordinary stream.
     """
-    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=10)
+    daemon = _daemon(sock_dir, owner=_FakeOwner(), tail_bytes=10)
     daemon._tails["x"] = bytearray()
     daemon._dropped["x"] = False
     daemon._drained["x"] = 0
@@ -1031,7 +1056,7 @@ def test_a_cut_inside_a_utf8_character_does_not_leave_continuation_bytes(tmp_pat
     assert kept == ("│" * 3).encode()
 
 
-def test_the_tail_answer_cuts_at_the_same_boundary_as_the_ring(tmp_path):
+def test_the_tail_answer_cuts_at_the_same_boundary_as_the_ring(sock_dir):
     """Two places clip a byte stream at an arbitrary offset, not one.
 
     `_do_tail`'s `max_bytes` is the second, and a caller rendering ITS answer
@@ -1039,7 +1064,7 @@ def test_the_tail_answer_cuts_at_the_same_boundary_as_the_ring(tmp_path):
     one function; asserted so that a later edit to either cannot quietly
     separate them.
     """
-    daemon = _daemon(tmp_path, owner=_FakeOwner(), tail_bytes=1000)
+    daemon = _daemon(sock_dir, owner=_FakeOwner(), tail_bytes=1000)
     daemon._tails["x"] = bytearray(b"0123456789" + b"\x1b[55;1H" + b"----------")
     daemon._dropped["x"] = False
 

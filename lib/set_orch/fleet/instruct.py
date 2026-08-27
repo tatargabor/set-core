@@ -66,6 +66,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
@@ -449,14 +450,8 @@ def _is_waiter_argv(argv: Sequence[str]) -> bool:
     return argv[2] == "wait"
 
 
-def live_waiters(proc_root: str = "/proc") -> Optional[List[Waiter]]:
-    """Every waiter process on this machine, resolved to an identity.
-
-    None when `/proc` cannot be read at all — the caller must not read that as
-    "no waiters", because the two lead to opposite actions: no waiters is an
-    invitation to install one, an unreadable `/proc` is an invitation to do
-    nothing.
-    """
+def _waiters_from_proc(proc_root: str) -> Optional[List[Waiter]]:
+    """The Linux reader. Unchanged behaviour; it was `live_waiters` itself."""
     try:
         entries = os.listdir(proc_root)
     except OSError as exc:
@@ -483,6 +478,122 @@ def live_waiters(proc_root: str = "/proc") -> Optional[List[Waiter]]:
         ))
     logger.debug("fleet instruct: %d waiter processes", len(found))
     return found
+
+
+def _ps_session(pid: int) -> Optional[str]:
+    """One waiter's session id, from the process table.
+
+    `ps -E` prints a process's environment after its command line, and macOS
+    allows it for a process the caller owns — verified 2026-08-27 against the
+    dashboard's own launchd job. There is no `/proc/<pid>/environ` to read here,
+    and no privileged alternative worth asking the user for.
+
+    Absent rather than guessed when it cannot be read: a waiter whose session is
+    unknown is treated as live and never offered for removal, which is the
+    direction that cannot kill a working one.
+    """
+    try:
+        proc = subprocess.run(
+            ["ps", "-E", "-p", str(pid), "-o", "command="],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("fleet instruct: cannot read the environment of %s: %s", pid, exc)
+        return None
+    marker = "CLAUDE_CODE_SESSION_ID="
+    for token in proc.stdout.split():
+        if token.startswith(marker):
+            return token[len(marker):] or None
+    return None
+
+
+def _ps_cwd(pid: int) -> Optional[str]:
+    """One waiter's working directory, via `lsof`.
+
+    Asked per MATCHED waiter, never for every process: `lsof` over a whole
+    process table is a syscall sweep, and this runs on the fleet's polling path.
+
+    None when it cannot be read — `lsof` missing, slow, or refused. The waiter is
+    still listed. Dropping it would be the false absence this whole capability
+    exists to prevent, arrived at through a missing field instead of a missing
+    process.
+    """
+    try:
+        proc = subprocess.run(
+            ["lsof", "-p", str(pid), "-a", "-d", "cwd", "-Fn"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("fleet instruct: cannot read the cwd of %s: %s", pid, exc)
+        return None
+    for line in proc.stdout.splitlines():
+        if line.startswith("n"):
+            return line[1:] or None
+    return None
+
+
+def _waiters_from_ps() -> Optional[List[Waiter]]:
+    """The macOS reader.
+
+    One `ps` for the whole table, then the per-waiter lookups only for the few
+    lines that matched. `ps` joins a command line with spaces, so an argument
+    containing a space cannot be recovered — accepted, because the structural
+    test below reads three fixed POSITIONS and a waiter's own argv has no spaces
+    in them.
+    """
+    try:
+        proc = subprocess.run(
+            ["ps", "-A", "-o", "pid=,args="],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("fleet instruct: cannot read the process table: %s", exc)
+        return None
+    if proc.returncode != 0:
+        logger.warning(
+            "fleet instruct: ps exited %s: %s", proc.returncode, proc.stderr.strip()[:200],
+        )
+        return None
+
+    found: List[Waiter] = []
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 2 or not parts[0].isdigit():
+            continue
+        pid, argv = int(parts[0]), parts[1:]
+        if not _is_waiter_argv(argv):
+            continue
+        found.append(Waiter(
+            pid=pid,
+            session=_ps_session(pid),
+            cwd=_ps_cwd(pid),
+            rooms=tuple(a for a in argv[3:] if not a.startswith("-")),
+        ))
+    logger.debug("fleet instruct: %d waiter processes", len(found))
+    return found
+
+
+def live_waiters(proc_root: Optional[str] = None) -> Optional[List[Waiter]]:
+    """Every waiter process on this machine, resolved to an identity.
+
+    None when the process table cannot be read AT ALL — the caller must not read
+    that as "no waiters", because the two lead to opposite actions: no waiters is
+    an invitation to install one, an unreadable table is an invitation to do
+    nothing.
+
+    The source is chosen by platform. `proc_root` selects the `/proc` reader
+    explicitly whatever the platform, which is how a test drives it against a
+    tree it built; passing it on macOS is meaningful and reads that tree.
+
+    Before this split the `/proc` walk was unconditional, so macOS answered
+    "could not measure" forever — a permanent unknown that the surface correctly
+    reported and nobody could act on.
+    """
+    if proc_root is not None:
+        return _waiters_from_proc(proc_root)
+    if sys.platform == "darwin":
+        return _waiters_from_ps()
+    return _waiters_from_proc("/proc")
 
 
 def waiters_for_session(

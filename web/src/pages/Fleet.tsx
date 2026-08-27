@@ -2757,7 +2757,18 @@ export default function Fleet() {
               </FleetDockBand>
             ))}
         <div className="flex-1 min-h-0 p-3 min-w-0 flex flex-col gap-2">
-          {data.agents === 0 ? (
+          {/* `!active` is load-bearing, and its absence was the defect. This
+              read `data.agents === 0` alone, so a FLEET-wide zero replaced the
+              project strip — and the strip is where `StartAgent` lives. The
+              screen you land on after a reboot therefore offered no way to
+              start the first agent, which is the one state where starting one
+              is the only thing to do. Reported 2026-08-27 as *"itt a fejlécnek
+              kellene lennie hogy tudjak ujat indítani mashogy ne tudok"*.
+              Same class as the layout control that hid itself exactly when a
+              reader reached for it: the zero is a fact about the fleet, not a
+              reason to withdraw a project's own controls. The measurement is
+              not lost — it moves next to the per-project line below. */}
+          {data.agents === 0 && !active ? (
             <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
           ) : active ? (
             <>
@@ -2944,6 +2955,18 @@ export default function Fleet() {
                 <div className="text-sm text-fg-muted">
                   Discovery found no running agent in this project.
                   {active.archived && <span className="text-fg-ghost"> (archived project)</span>}
+                  {/* The fleet-wide result, kept as a RESULT rather than
+                      dropped. It used to be the whole panel; now that the strip
+                      above stays, this is what is left of it that a reader
+                      still needs — the two readings of "nothing here" are told
+                      apart by the sentence, not by which screen appeared. */}
+                  {data.agents === 0 && (
+                    <span className="text-fg-ghost tabular-nums">
+                      {' '}Nowhere else either — discovery ran at{' '}
+                      {answeredAt ? new Date(answeredAt).toLocaleTimeString() : '\u2014'}
+                      {' '}over {data.projects.length} known projects.
+                    </span>
+                  )}
                 </div>
               )}
               {/* Task 7.4 — the enlarged tile stays in the list's own order, and
