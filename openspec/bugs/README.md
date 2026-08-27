@@ -67,6 +67,31 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-92 — the project header's icon buttons align on the BASELINE, so one of them sits 8 px high
+
+- **state:** closed as no-longer-reproducible — the CAUSE was removed by `fa6d4162`, not by a
+  fix aimed at this. Kept because the structure that produced it is still there.
+- **reported:** 2026-08-27 by the user, with a screenshot circling the file-view icon in the
+  project header — *"fejlécben a file ikon missalligned"*.
+- **measured:** on the bundle the user was looking at (`540349b2`), in Chromium:
+  `[data-fleet-files-open] svg` top **60**, `[data-fleet-columns] svg` top **68** — the file
+  icon sat **8 px** above the four layout glyphs beside it. The row is
+  `flex items-baseline`, and a `<button>` whose only child is an SVG has no text baseline, so
+  it aligns differently from the `<span class="flex">` the column glyphs live in. What made
+  the difference visible was the row's other content: a text label (`layout`) and a two-line
+  block, both of which put the row's baseline somewhere neither icon could meet.
+- **why it no longer shows:** `fa6d4162` (a parallel session, converting the header to icons
+  and numbers) removed the `layout` label. Measured after it, same page: delta **0**, and in
+  the rendered pixels the ink of every icon in that row centres on the same row — folder-tree
+  47..54, the glyphs 46..55, midpoint 50.5 for both.
+- **what is NOT fixed:** the row is still `items-baseline` and the file button is still a
+  text-less flex item of it. Any text put back into that row can reproduce this. An isolated
+  rig rebuilt from the same classes did NOT reproduce it, so the exact trigger is a
+  combination of that row's contents rather than the label alone — which is why this is
+  recorded rather than "fixed" with a change nobody can prove.
+- **fixed when:** the header's icon controls sit in one `items-center` group, so their
+  alignment to each other does not depend on what text shares the row.
+
 ### B-91 — a rename test asserts a `carried` dict that gained a key three commits ago
 - **state:** open
 - **reported:** 2026-08-27 by this session, hit while adding the fleet tab's cache
