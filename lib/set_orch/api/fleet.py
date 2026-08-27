@@ -50,6 +50,7 @@ from ..fleet import instruct as fleet_instruct
 from ..fleet import purpose as fleet_purpose
 from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
+from ..fleet.cache_heat import read_cache_heat
 from ..fleet import layout as fleet_layout
 from ..fleet import roster
 from ..fleet import restore as fleet_restore
@@ -96,6 +97,35 @@ def _descendants_index(agents, owned) -> Dict[str, List[int]]:
         if who:
             index.setdefault(str(who), []).append(a.pid)
     return index
+
+
+def _cache_payload(agent) -> Dict[str, Any]:
+    """The seat's prompt-cache state, or nothing at all.
+
+    Returns a dict to be splatted into a payload, so an unmeasured seat omits
+    the key rather than carrying a null: a consumer of this API can then tell
+    "not measured" from "measured as empty" without a convention to remember.
+
+    `cooled` and `cold` are computed HERE rather than on the surface. They are a
+    function of the clock, and a browser's clock is not this machine's — a tab
+    computing its own expiry from a timestamp would be able to disagree with the
+    ordering PM mode does from the same record.
+    """
+    heat = read_cache_heat(agent.session_log)
+    if heat is None:
+        return {}
+    return {"cache": {
+        "started_at": heat.started_at.isoformat(),
+        "tokens": heat.tokens,
+        "ttl_seconds": heat.ttl_seconds,
+        "model": heat.model,
+        # None when the model is not in the price table. The surface shows the
+        # token count instead — never a figure derived from another model.
+        "rewrite_usd": heat.rewrite_usd,
+        "seconds_remaining": round(heat.seconds_remaining(), 1),
+        "cooled": round(heat.cooled_fraction(), 4),
+        "cold": heat.is_cold(),
+    }}
 
 
 def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
@@ -168,6 +198,18 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # A binding that came from a record, not a guess. The surface shows an
         # unconfirmed binding as a guess; there is currently no guessing path.
         "binding_confirmed": agent.binding_confirmed,
+        # What it costs to type into this seat right now.
+        #
+        # OPTIONAL, and its absence is a measurement rather than a default: a
+        # session with no transcript, no usage record, or an unreadable one has
+        # no cache state, and rendering that as a zero-token expired cache would
+        # read as "cold, cheap to restart" — the opposite of "never measured".
+        # So the key is omitted entirely and the surface says so.
+        #
+        # ⚠ Computed per request and written down nowhere. Sizes and costs
+        # derived from a consumer's session are that consumer's data, and
+        # CLAUDE.md's boundary is persistence, not naming.
+        **_cache_payload(agent),
         "sources": agent.sources,
         # Which sources were asked and did not know. A shorter `sources` list is
         # only meaningful against the set that was consulted: without this,
@@ -1230,6 +1272,9 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "name": agent.name,
         "session_id": agent.session_id,
         "binding_confirmed": agent.binding_confirmed,
+        # Same field as the list payload, from the same helper — two payloads
+        # computing this separately is two chances to disagree.
+        **_cache_payload(agent),
         "sources": agent.sources,
         # Which sources were asked and did not know. A shorter `sources` list is
         # only meaningful against the set that was consulted: without this,

@@ -1,23 +1,23 @@
 ## 1. The price table
 
-- [ ] 1.1 Add a pricing module holding the cache multipliers (read 0.1×, 5-minute write 1.25×, one-hour write 2×) and per-model input prices, each carrying the date its figures were verified against platform.claude.com [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
-- [ ] 1.2 Return no price — never a fabricated one — for a model absent from the table, so callers can degrade to tokens [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
-- [ ] 1.3 Unit-test both paths: a known model yields a cost, an unknown model yields none [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
+- [x] 1.1 Add a pricing module holding the cache multipliers (read 0.1×, 5-minute write 1.25×, one-hour write 2×) and per-model input prices, each carrying the date its figures were verified against platform.claude.com [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
+- [x] 1.2 Return no price — never a fabricated one — for a model absent from the table, so callers can degrade to tokens [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
+- [x] 1.3 Unit-test both paths: a known model yields a cost, an unknown model yields none [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
 
 ## 2. Reading the cache state
 
-- [ ] 2.1 Add a reader that takes a transcript path and returns the last assistant record's cache state — request start timestamp, size (`cache_read_input_tokens` + `cache_creation_input_tokens`), and the lifetime from whichever `cache_creation.ephemeral_*` bucket holds tokens [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
-- [ ] 2.2 Scan BACKWARD from the end of the file and stop at the first usage block, so cost does not scale with transcript size [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
-- [ ] 2.3 Return absent — not a zero-valued state — for a missing transcript, a transcript with no usage record, and an unreadable or malformed file [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
-- [ ] 2.4 Unit-test with fixtures covering: a 1h record, a 5m record, no transcript, a transcript with no usage block, and a truncated final line [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
-- [ ] 2.5 Prove the lifetime is read rather than assumed: a fixture writing the 5-minute bucket must yield 5 minutes, and the test must fail if the value is hard-coded [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
+- [x] 2.1 Add a reader that takes a transcript path and returns the last assistant record's cache state — request start timestamp, size (`cache_read_input_tokens` + `cache_creation_input_tokens`), and the lifetime from whichever `cache_creation.ephemeral_*` bucket holds tokens [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
+- [x] 2.2 Scan BACKWARD from the end of the file and stop at the first usage block, so cost does not scale with transcript size [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
+- [x] 2.3 Return absent — not a zero-valued state — for a missing transcript, a transcript with no usage record, and an unreadable or malformed file [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
+- [x] 2.4 Unit-test with fixtures covering: a 1h record, a 5m record, no transcript, a transcript with no usage block, and a truncated final line [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
+- [x] 2.5 Prove the lifetime is read rather than assumed: a fixture writing the 5-minute bucket must yield 5 minutes, and the test must fail if the value is hard-coded [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
 
 ## 3. Carrying it to the surface
 
-- [ ] 3.1 Give the fleet `Agent` record an optional cache field, populated from the reader via the transcript path `_session_log_for` already resolves [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
-- [ ] 3.2 Serialize it into the fleet API payload as an optional object, omitted entirely when unmeasured [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
-- [ ] 3.3 Confirm by inspection that no code path writes cache state to disk — no cache file, no log line carrying size or cost, no debug dump [REQ: nothing-measured-from-a-session-is-written-down]
-- [ ] 3.4 Test that a fleet payload for an agent with no transcript carries no cache object at all [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
+- [x] 3.1 Give the fleet `Agent` record an optional cache field, populated from the reader via the transcript path `_session_log_for` already resolves [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes]
+- [x] 3.2 Serialize it into the fleet API payload as an optional object, omitted entirely when unmeasured [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
+- [x] 3.3 Confirm by inspection that no code path writes cache state to disk — no cache file, no log line carrying size or cost, no debug dump [REQ: nothing-measured-from-a-session-is-written-down]
+- [x] 3.4 Test that a fleet payload for an agent with no transcript carries no cache object at all [REQ: a-session-with-no-measurement-is-representable-and-is-not-a-cold-one]
 
 ## 4. The mark on the tab
 

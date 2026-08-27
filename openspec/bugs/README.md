@@ -67,6 +67,28 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-91 — a rename test asserts a `carried` dict that gained a key three commits ago
+- **state:** open
+- **reported:** 2026-08-27 by this session, hit while adding the fleet tab's cache
+  field. Not caused by that work — see below.
+- **measured:** `tests/unit/test_fleet_api.py::test_a_rename_carries_the_record_and_the_layout`
+  asserts `answer["carried"] == {"record": 1, "docked": 1, "splits": 1}`; the
+  route now also returns `agent_order`, so the equality fails. Confirmed
+  pre-existing by running that one test against `git show HEAD:lib/set_orch/api/fleet.py`
+  copied over the working file — it fails identically, and the working diff at the
+  time touched only `_cache_payload` and its two call sites.
+- **cause:** `4ecac3a5` (agent tabs became hand-orderable) added `agent_order` to
+  the rename's `carried` report without updating the assertion that enumerates it.
+  The test uses `==` on the whole dict, so a fourth carried document is a failure
+  rather than a pass — which is the right choice for a test about *what a rename
+  carries*, and means the assertion is simply out of date.
+- **what would prove it fixed:** the assertion names all four carried documents
+  and the test passes; and a fifth carried document still fails it, so the
+  equality keeps doing its job.
+- **why it matters more than one red test:** the fleet unit file is where the
+  confidentiality guard lives (`test_the_session_record_never_reaches_the_payload`).
+  A file that is already red is a file where the next red goes unnoticed.
+
 ### B-89 — the desktop guard measures the PERMISSION BIT, but what runs a file is the MIME handler
 
 - **state:** open
