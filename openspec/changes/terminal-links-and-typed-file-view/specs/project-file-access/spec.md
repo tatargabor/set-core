@@ -34,6 +34,14 @@ name or its permission bits:
 - a file the framework can neither decode nor classify as renderable is refused with a reason
   naming its media type and its size.
 
+**Bytes SHALL be served in a form the browser will not itself render.** The response SHALL
+carry `X-Content-Type-Options: nosniff` and a `Content-Disposition` that marks it as an
+attachment, and the media type SHALL be checked against an allow-list of non-executing types
+before the bytes are served at all. A dashboard has one origin, holding its own terminals and
+its write endpoint; the isolation a second origin would give — the reason GitHub serves user
+content from a separate domain entirely — is not available locally, so the substitute is that
+nothing the endpoint returns is ever handed to the browser as something to interpret.
+
 **The executable bit SHALL NOT be consulted.** Reading a file returns its bytes and starts
 nothing, so a shell script is text like any other text. The guard that refuses to *run* a
 file belongs to the desktop hand-over route, which this endpoint is not.
@@ -69,6 +77,18 @@ for the wrong problem.
   serves for rendering
 - **THEN** the endpoint returns its bytes with that media type, and does not attempt a lossy
   decode
+
+#### Scenario: The bytes are not served as something to render
+
+- **WHEN** any byte response is served
+- **THEN** it carries `nosniff` and an attachment disposition, so the browser will not
+  interpret the body on its own
+
+#### Scenario: A media type off the allow-list
+
+- **WHEN** the determined media type is not one of the non-executing types the endpoint
+  serves
+- **THEN** no bytes are served at all, and the answer is the naming refusal
 
 #### Scenario: A binary that cannot be rendered names its type
 

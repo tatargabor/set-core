@@ -13,23 +13,34 @@
 
 ## 1. The recogniser — lib only, measurable without a browser
 
-- [ ] 1.1 Extend `unwrap` in `web/src/lib/fleetFiles.ts` to strip markdown emphasis (`*`),
-  and a trailing table-cell separator (`|`), while still keeping a trailing `:<digits>` as the
-  line number [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [ ] 1.1 Replace `unwrap`'s single strip with a CANDIDATE LIST — the token as written, plus
+  each progressively unwrapped variant (markdown emphasis `*`, code fences, brackets, quotes,
+  a trailing table-cell `|`), each still keeping a trailing `:<digits>` as the line number.
+  Resolve candidates in order and take the first that places; VS Code's detector works this
+  way because one destructive strip can delete the variant that would have matched
+  [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
 - [ ] 1.2 Add `~/` expansion against a supplied home directory; a token starting with `~/`
   with no home supplied stays text. The browser never guesses the home
   [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
 - [ ] 1.3 Apply the ASCII path-character class to the ABSOLUTE branch too, so route tokens
   carrying `[`, `<` or other non-path characters are text
   [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
-- [ ] 1.4 Implement D3's absolute shape rule: inside a known checkout → internal; otherwise
-  ≥2 segments AND an extension on the last segment → desktop; otherwise text
+- [ ] 1.4 Implement D3's three-tier rule: inside a known checkout → internal; ≥2 segments AND
+  an extension → desktop; otherwise path-shaped but unplaceable → LOW CONFIDENCE; neither →
+  text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [ ] 1.4b Carry the tier out to the link decoration: a low-confidence link sets
+  `ILink.decorations` so it draws no underline and no tooltip, and stays activatable only
+  while the modifier is held
   [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
 - [ ] 1.5 Implement path-boundary, longest-match checkout resolution (D2), with a test that a
   `<project>-wt-<name>` worktree is not matched by `<project>` and vice versa
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
-- [ ] 1.6 Implement unique-suffix resolution (D4): resolve only on exactly one boundary match,
-  leave two or more as text, and build the suffix index once per listing rather than per token
+- [ ] 1.6 Implement suffix resolution (D4): one boundary match resolves; SEVERAL are returned
+  as a choice for the reader rather than discarded; none is text. Build the suffix index once
+  per listing rather than per token
+  [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
+- [ ] 1.6b Add the recogniser's limits (D9) — max row length, max references per row, max
+  token length — and a test that a row beyond them stops recognition instead of scanning
   [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
 - [ ] 1.7 Widen `terminalTarget` to take the known checkouts and the home, and return an
   `internal` target carrying WHICH checkout it resolved to — replacing the single-base
@@ -71,7 +82,9 @@
   still reaches it with the same refusals
   [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
 - [ ] 3.4 Test that a plain click (no modifier) still belongs to the terminal for every target
-  kind [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
+  kind, including low-confidence [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
+- [ ] 3.5 Present the ambiguous-suffix matches for the reader to choose from, opening nothing
+  until they do [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
 
 ## 4. The endpoint — a typed answer
 
@@ -82,8 +95,9 @@
   distinguishable from the type refusal
   [REQ: file-content-is-served-typed-by-its-bytes]
 - [ ] 4.3 Add the raw byte route behind the SAME `_known_root` and `_confine` calls, serving
-  only allow-listed non-executable media types, with `nosniff` and an explicit
-  `Content-Disposition` (D5) [REQ: file-content-is-served-typed-by-its-bytes]
+  only allow-listed non-executing media types, with `nosniff` and an ATTACHMENT
+  `Content-Disposition` — the browser must never be asked to interpret the body (D5)
+  [REQ: file-content-is-served-typed-by-its-bytes]
 - [ ] 4.4 Give the raw route its own higher size cap, and make each refusal name which cap
   fired (D7) [REQ: file-content-is-served-typed-by-its-bytes]
 - [ ] 4.5 Test the hostile cases: a path escaping the root, a symlink to outside, a root that
@@ -97,7 +111,12 @@
 
 - [ ] 5.1 Extend the `Opened` union in `FleetFileView.tsx` with a binary arm carrying the
   media type and size [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 5.2 Render an image scaled to fit the panel without overflowing it, with no save control
+- [ ] 5.2 Render an image by FETCHING the bytes, checking the media type against the panel's
+  own allow-list, and building the object URL client-side — never by pointing an `<img>` at
+  the endpoint. Scaled to fit the panel without overflowing it, with no save control
+  [REQ: the-panel-renders-a-file-by-its-type]
+- [ ] 5.2b A PDF is named with its size and handed over, not embedded — the research behind
+  this is in design.md's resolved open question
   [REQ: the-panel-renders-a-file-by-its-type]
 - [ ] 5.3 Render a stated-type binary as type + size, offering the desktop hand-over
   [REQ: the-panel-renders-a-file-by-its-type]
@@ -144,12 +163,12 @@
 - [ ] AC-1: WHEN the output contains a project-relative path followed by a colon and a number THEN the terminal treats it as a reference to that file at that line [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-path-with-a-line-number]
 - [ ] AC-2: WHEN the output contains an absolute path inside any registered project or a worktree of one THEN it is treated as an internal reference [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: an-absolute-path-inside-a-checkout-the-framework-may-read]
 - [ ] AC-3: WHEN the output contains an absolute path under no registered checkout THEN it is recognised as a desktop reference [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: an-absolute-path-under-no-known-checkout]
-- [ ] AC-4: WHEN the output contains `/opsx:ff`, `/dd` or a web route THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-single-segment-absolute-token]
+- [ ] AC-4: WHEN the output contains `/opsx:ff`, `/dd` or a web route THEN it carries no underline and no tooltip in ordinary reading [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-single-segment-absolute-token]
 - [ ] AC-5: WHEN a path appears inside backticks, bold markers, or both THEN the markers are stripped and the path is recognised [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-path-wrapped-in-markdown-emphasis]
 - [ ] AC-6: WHEN the output contains `docs/x.md:12|` as a table cell THEN the separator is stripped and the reference is `docs/x.md` at line 12 [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-path-at-the-end-of-a-table-row]
 - [ ] AC-7: WHEN a token begins with `~/` THEN it is resolved against the framework account's home and judged as absolute [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-home-relative-path]
 - [ ] AC-8: WHEN exactly one listing path ends with the relative token on a path boundary THEN that file is what the reference names [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-that-uniquely-suffixes-one-known-file]
-- [ ] AC-9: WHEN two or more listing paths end with the token THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-that-suffixes-more-than-one-known-file]
+- [ ] AC-9: WHEN two or more listing paths end with the token and the reader activates it THEN the matches are offered and none is opened until they choose [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-that-suffixes-more-than-one-known-file]
 - [ ] AC-10: WHEN the output contains a relative path naming a directory of a readable checkout THEN it is an internal reference to that directory [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-directory]
 - [ ] AC-11: WHEN the output contains `and/or` or `24/7` THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: prose-that-merely-contains-a-slash]
 - [ ] AC-12: WHEN a relative token appears with no project context THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-with-no-project-context]
@@ -208,3 +227,13 @@
 - [ ] AC-44: WHEN a directory of the opened checkout is revealed THEN its ancestors expand, the node scrolls into view and is marked, and no file opens [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: a-directory-that-has-files-beneath-it]
 - [ ] AC-45: WHEN the revealed directory has no files under it in the listing THEN the panel states that and mentions the listing may be excluding what it holds [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: a-directory-the-listing-has-nothing-beneath]
 - [ ] AC-46: WHEN a directory is revealed while the opened file has unsaved edits THEN the edits are untouched and the file stays open [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: revealing-does-not-disturb-an-unsaved-edit]
+
+### Added after the 2026-08-27 research pass
+
+- [ ] AC-47: WHEN a person holds the modifier over a path-shaped token the framework could not place THEN it becomes activatable [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-low-confidence-token-while-the-modifier-is-held]
+- [ ] AC-48: WHEN the token carries characters no path may hold, such as a route parameter's brackets THEN no modifier makes it a link [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-token-that-is-not-path-shaped-at-all]
+- [ ] AC-49: WHEN a row, a token, or the reference count on a row exceeds the limits THEN recognition stops for that row [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-line-a-token-or-a-row-count-beyond-the-recognisers-limits]
+- [ ] AC-50: WHEN any byte response is served THEN it carries nosniff and an attachment disposition [REQ: file-content-is-served-typed-by-its-bytes, scenario: the-bytes-are-not-served-as-something-to-render]
+- [ ] AC-51: WHEN the determined media type is off the allow-list THEN no bytes are served and the answer is the naming refusal [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-media-type-off-the-allow-list]
+- [ ] AC-52: WHEN the activated file is a PDF THEN the panel names it with its size and offers the hand-over, embedding no viewer [REQ: the-panel-renders-a-file-by-its-type, scenario: a-pdf]
+- [ ] AC-53: WHEN the fetched bytes would be interpreted as a renderable document by a browser left to itself THEN nothing renders them [REQ: the-panel-renders-a-file-by-its-type, scenario: a-file-whose-bytes-claim-to-be-a-document]

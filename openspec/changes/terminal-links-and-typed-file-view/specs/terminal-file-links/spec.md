@@ -23,19 +23,29 @@ A token beginning with `~/` SHALL be resolved to the home directory of the accou
 framework runs as, and SHALL then be judged as any other absolute path. The browser SHALL NOT
 guess at that expansion.
 
-**Both branches SHALL apply the shape test, not only the relative one.** An absolute token
-that is a single segment (`/word`) SHALL be left as ordinary text: a terminal carries web
-routes, this framework's own slash commands and component names, none of which is a
-filesystem path. Measured over the same corpus: **395 distinct single-segment absolute
-tokens, 1 464 occurrences**, every one of them rendered as a link that answers *no such file
-or directory* when activated. The fail direction is what makes this a requirement rather than
-a tidy-up — an underline that fails teaches the reader to distrust every underline on the
-screen, spending the credibility of the links that do work.
+**Recognition SHALL have a CONFIDENCE tier, not a binary link-or-text answer.** A token the
+framework can place — inside a served checkout, or shaped unambiguously like a file path —
+SHALL be drawn as a link. A token that is merely path-SHAPED and cannot be placed SHALL be
+recognised at LOW CONFIDENCE: no underline and no tooltip in ordinary reading, and reachable
+only while the activation modifier is held.
+
+Measured over the corpus: **395 distinct single-segment absolute tokens, 1 464 occurrences**
+— web routes, this framework's own slash commands, component names — each one currently
+underlined and each one answering *no such file or directory* when activated. The fail
+direction is what makes this normative rather than cosmetic: an underline that fails teaches
+the reader to distrust every underline on the screen, spending the credibility of the links
+that do work.
+
+The tier exists so that suppressing the noise does not also remove the capability. An
+extensionless path outside every checkout — `/tmp`, `~/bin/mytool` — is a real path a reader
+may want, and dropping it to satisfy the first rule would trade one silent loss for another.
 
 A relative token that is not itself in a checkout's listing MAY be resolved by SUFFIX against
-that listing, and only when EXACTLY ONE path ends with it on a path boundary. Two or more
-matches SHALL leave the token as text: a wrong file that opens is worse than a link that does
-not, because nothing on screen says it is the wrong one.
+that listing, on a path boundary. Where EXACTLY ONE path ends with it, that file is what the
+reference names. Where SEVERAL do, the framework SHALL offer the matches and let the reader
+choose — it SHALL NOT pick one, because a wrong file that opens looks exactly like a right
+one and nothing on screen says otherwise; and it SHALL NOT discard them, because that leaves
+the reader with nothing when the framework knew several answers.
 
 A relative token SHALL become a desktop reference only when it is shaped like a path and a
 base is known. The shape test is what keeps prose out — a terminal is full of sentences, and
@@ -64,7 +74,20 @@ the reader cannot see would name a stranger's file.
 #### Scenario: A single-segment absolute token
 
 - **WHEN** the output contains a token such as `/opsx:ff`, `/dd` or a web application's route
-- **THEN** it is left as ordinary text, and no link is offered
+- **THEN** it carries no underline and no tooltip in ordinary reading — the reader sees prose
+
+#### Scenario: A low-confidence token while the modifier is held
+
+- **WHEN** a person holds the activation modifier over a path-shaped token the framework
+  could not place
+- **THEN** it becomes activatable, so an extensionless path outside every checkout is still
+  reachable
+
+#### Scenario: A token that is not path-shaped at all
+
+- **WHEN** the token contains characters no path may carry here, such as a route parameter's
+  brackets
+- **THEN** it is left as ordinary text at any confidence, and no modifier makes it a link
 
 #### Scenario: A path wrapped in markdown emphasis
 
@@ -90,8 +113,9 @@ the reader cannot see would name a stranger's file.
 
 #### Scenario: A relative token that suffixes more than one known file
 
-- **WHEN** two or more paths in the listing end with the token
-- **THEN** it is left as ordinary text — no file is guessed at
+- **WHEN** two or more paths in the listing end with the token and the reader activates it
+- **THEN** the matches are offered for the reader to choose from, and none is opened until
+  they do — no file is guessed at
 
 #### Scenario: A relative directory
 
@@ -109,6 +133,14 @@ the reader cannot see would name a stranger's file.
 
 - **WHEN** a relative token appears in a terminal whose project root is not known
 - **THEN** it is left as ordinary text
+
+#### Scenario: A line, a token or a row count beyond the recogniser's limits
+
+- **WHEN** a terminal row, a single token, or the number of references on one row exceeds the
+  recogniser's stated limits
+- **THEN** recognition stops for that row rather than degrading the terminal — an unbounded
+  scan stutters exactly while an agent is producing output fastest, and a stuttering terminal
+  is indistinguishable from a stalled agent
 
 ### Requirement: What the internal editor can open, opens in the internal editor
 

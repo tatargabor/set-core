@@ -39,9 +39,22 @@ not have.
 ### Requirement: The panel renders a file by its type
 
 The panel SHALL render what the endpoint gave it according to the type in that answer, in one
-place: text in the editor, an image as an image, and a document format the panel supports in
-its own view. The reader SHALL NOT have to know which kind of file they activated — the same
-act opens all of them, in the same panel, and the panel decides what to draw.
+place: text in the editor, and an image as an image. The reader SHALL NOT have to know which
+kind of file they activated — the same act opens all of them, in the same panel, and the panel
+decides what to draw.
+
+**A PDF SHALL be named and handed over, not embedded.** Measured against how others answered
+this: GitLab serves PDFs as downloads and has not shipped inline rendering; Gitea's embedded
+pdf.js viewer is blocked by its own `X-Frame-Options`; and a PDF may not render at all inside
+a sandboxed frame, because a browser can implement it as a plugin. Embedding therefore means
+carrying a large offline viewer to solve a problem the machine already solves — this is a
+local dashboard and the desktop opens a PDF in the reader the person chose.
+
+The bytes the panel renders SHALL come from a response the browser was told not to render.
+The panel fetches, checks the media type against its own allow-list, and constructs the
+renderable object itself, so the type that reaches the renderer is the panel's choice rather
+than something a file's own bytes could claim. There is no second origin available to a local
+dashboard, which is the isolation this substitutes for.
 
 Saving SHALL be offered for TEXT only. A binary the panel merely displays has no editor
 behind it, so a save control there would either do nothing or write back something the reader
@@ -74,6 +87,19 @@ the disagreement would show as a file that renders one way and saves another.
 - **WHEN** the endpoint refuses a file as a media type the panel cannot render
 - **THEN** the panel names the type and size and offers the desktop hand-over, and shows no
   editor
+
+#### Scenario: A PDF
+
+- **WHEN** the activated file is a PDF
+- **THEN** the panel names it as a PDF with its size and offers the desktop hand-over, and
+  does not embed a viewer
+
+#### Scenario: A file whose bytes claim to be a document
+
+- **WHEN** the fetched bytes would be interpreted as a renderable document by a browser left
+  to itself
+- **THEN** nothing renders them, because the response was not served as renderable and the
+  panel builds the renderable object only for types on its own allow-list
 
 #### Scenario: Switching from a binary back to text
 

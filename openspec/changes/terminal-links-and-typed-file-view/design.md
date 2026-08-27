@@ -69,6 +69,16 @@ So the fleet payload gains two fields, both derived from knowledge the server al
 A LISTING is still fetched for one checkout at a time, as today: it is what relative tokens
 and suffix matching need, and it is only needed for the checkout the reader is looking at.
 
+**Precision on the oracle argument, because it does not say what it first appears to.** VS
+Code's terminal resolves links by asking the filesystem whether each candidate exists — the
+opposite of the rule above — and it is right to, because there its detector and the filesystem
+sit inside one trust boundary. Ours do not. But INSIDE a checkout the framework serves, the
+listing already enumerates every file, so a per-path existence question would reveal nothing
+the caller cannot already read. The oracle concern is real only OUTSIDE those roots, which is
+exactly where `fleet-open-external-path` already decided not to probe. So the reason for
+shipping roots rather than listings is SIZE, not secrecy — and the no-probe rule stands
+undisturbed on the desktop branch, where it was always the one that mattered.
+
 **Consequence, stated rather than discovered later:** an absolute path into a registered
 checkout links even when its listing has not been fetched, because the prefix answers. The
 panel then opens it and the endpoint decides — which is the correct division: the endpoint is
@@ -103,9 +113,30 @@ otherwise                          → text                 (/opsx:ff, /api/v1/i
 The same ASCII path-character class both branches already use is applied to both, which
 disposes of `/items/[id]`-shaped route tokens (`[`, `<` are not path characters here).
 
-What this deliberately loses: an extensionless file or a directory outside every registered
-checkout — `~/bin/mytool`, `/tmp` — stays text. Accepted, and the direction is the reason: a
-missed link costs a right-click; a wrong one costs the reader's trust in every underline.
+**Revised after looking at how VS Code solved the same problem (2026-08-27).** Its terminal
+does NOT make a binary link/text decision. It ranks by CONFIDENCE: a *file link* is one it
+verified on disk and underlines; a *word link* is a fallback that "won't display underlines or
+tooltips unless you hold Ctrl/Cmd". So a low-confidence token costs no visual noise while
+staying reachable.
+
+That is strictly better than dropping the token, and it dissolves the trade-off the paragraph
+above was accepting. The rule becomes:
+
+```
+inside a known checkout                          → internal, underlined
+≥2 segments AND an extension on the last segment → desktop, underlined
+anything else that is absolute and path-shaped   → LOW CONFIDENCE: no underline, no tooltip,
+                                                   activatable only while the modifier is held
+neither                                          → text
+```
+
+xterm.js supports this directly — `ILink.decorations` carries `underline` and `pointerCursor`
+per link, so the third row is a decoration decision, not a second link system.
+
+What it buys, measured: the 1 464 false-link occurrences stop drawing underlines, and
+`/tmp` and `~/bin/mytool` — extensionless, outside every checkout, and previously destined to
+be dropped — stay reachable. Both halves of the old trade-off are avoided rather than
+balanced.
 
 ### D4 — Suffix resolution is a UNIQUENESS test, not a best match
 
@@ -114,6 +145,13 @@ resolve to exactly one listing entry, 13 to more than one. Only the unique ones 
 Never "the shortest", never "the first": a wrong file that opens looks exactly like a right
 one, and nothing on the screen says otherwise. The match is on a path boundary (`endsWith('/'
 + token)`), so `actions/dashboard.ts` does not match `.../my-actions/dashboard.ts`.
+
+**But an ambiguous match is offered, not discarded — VS Code's answer again.** Its word links
+"search the workspace for the word. If a single match exists, it opens automatically; multiple
+matches display as search results." Discarding is a third behaviour neither of those, and it
+is the one that leaves the reader with nothing. So: one match opens; several offer the
+matches; none is text. That recovers the 13 ambiguous tokens the uniqueness rule alone throws
+away.
 
 Cost: the listing is up to 30 121 entries and the check runs per token per rendered row. A
 precomputed suffix index built once per listing keeps this off the render path; the link
@@ -126,11 +164,21 @@ through the JSON parser, and gives the panel a data URI to manage. A second rout
 (`GET /api/fleet/files/raw`) returns bytes with a media type, behind the SAME `_known_root`
 and `_confine` calls — the guard is the function, not the endpoint.
 
-**The security decision inside this one is the load-bearing part.** Anything served inline
-runs in the dashboard's origin. So the raw route serves inline **only media types on an
-allow-list that cannot execute** — raster images and PDF — and everything else is refused
-before it is served, with `X-Content-Type-Options: nosniff` and an explicit
-`Content-Disposition` so no sniffing can promote a file into something executable.
+**The security decision inside this one is the load-bearing part, and research changed it.**
+GitHub does not serve user content from its own origin at all — `raw.githubusercontent.com`
+exists precisely so that "subdomain isolation securely separates user-supplied content from
+other portions of GitHub". A local dashboard cannot buy a second origin. What it CAN do is
+never serve a renderable response in the first place:
+
+- the raw route answers with `Content-Disposition: attachment` and
+  `X-Content-Type-Options: nosniff`, so the browser will not render whatever it holds;
+- the panel `fetch`es it, checks the media type against its OWN allow-list, and builds a
+  `Blob` with that type, rendering `URL.createObjectURL(blob)`;
+- **the type that reaches the renderer is therefore chosen by the panel, not carried by the
+  response.** A file whose bytes look like HTML cannot become an inline document, because
+  nothing ever asks the browser to interpret the response body.
+
+The server-side allow-list stays as well — two independent gates, not one moved.
 
 **SVG is deliberately NOT rendered as an image.** It is XML that can carry script, and it is
 also text — so it takes the text route and opens in the editor, which is the honest answer:
@@ -162,6 +210,19 @@ A directory activation calls the panel with a *reveal* intent: expand ancestors,
 the node, mark it. It must not touch what is open — the panel already refuses to lose an
 unsaved edit, and a reveal that quietly closed a dirty file would be that same loss through a
 new door.
+
+### D9 — The recogniser carries explicit limits, copied from a system that has hit them
+
+Nothing in the current recogniser bounds its work, and the suffix index makes that worse: it
+runs per token, per rendered row, against a listing of up to 30 121 entries. VS Code's
+terminal link stack carries hard caps, and they are the shape to copy rather than to invent:
+`MaxLineLength = 2000`, `MaxResolvedLinksInLine = 10`, `MaxResolvedLinkLength = 1024`, and a
+500-character cap on word-based detection.
+
+The framework adopts the same four, with its own numbers where the situation differs. The
+reason to state them rather than let them be implicit: an unbounded scan degrades under
+exactly the condition this screen is for — an agent producing output flat out — and a terminal
+that stutters while an agent works is indistinguishable from an agent that has stalled.
 
 ## Risks / Trade-offs
 
@@ -198,11 +259,37 @@ No data migration; no stored shape changes. The order that matters:
 Rollback is per-step: each step is independently revertable, and no step leaves a stored
 artifact behind.
 
-## Open Questions
+## Open Questions — both answered by research, 2026-08-27
 
-- **PDF in the panel, or hand-over?** The spec says a document format the panel supports;
-  browsers render PDF in an `<embed>` well, but inside a docked band it may be unusable.
-  Decide when the panel view is built, by looking at it — not on paper.
-- **Does an image count against the panel's remembered-file behaviour?** Reopening the panel
-  restores where the reader was; an image is a fine thing to restore, but the remembered value
-  is a path and nothing here changes that. Assumed yes, no special case, until it looks wrong.
+### RESOLVED: PDF is handed over, not embedded
+
+Three findings, and they point the same way:
+
+- **GitLab serves PDFs as downloads**, not inline. Adding `application/pdf` to its
+  `allowedInlineTypes` is still an open request, not shipped behaviour — a project with far
+  more at stake in file rendering than this one has declined to embed.
+- **Gitea does embed, via pdf.js, and hit exactly the framing problem** — its viewer request
+  carries `X-Frame-Options: DENY`, so the PDF does not display.
+- **A sandboxed iframe may not render PDF at all.** Chrome implements PDF through a plugin,
+  and the WHATWG has an open interop issue that a PDF "might or might not render in a
+  sandboxed iframe depending on a browser". So the safe framing and the native viewer are in
+  direct tension.
+
+Embedding therefore means bundling pdf.js (a large offline dependency, since the artifact CSP
+forbids a CDN) to solve a problem the machine already solves: this is a local dashboard, and
+`xdg-open` opens a PDF in the reader the person chose. **The panel names the type and hands
+over.** If a reader asks for inline PDF later it is a change of its own, with pdf.js costed
+honestly.
+
+### RESOLVED: an image counts in the remembered-file behaviour, with no special case
+
+VS Code restores the previous session wholesale — "the folder, layout and opened files are
+preserved" — with no type-based exception; an image tab comes back like any other. The
+assumption was right, and it now rests on something. The remembered value stays a path, so
+nothing in that mechanism changes.
+
+### Still open
+
+- **What the low-confidence tier looks like in practice** (D3). The decoration is settled;
+  whether a tooltip appears on modifier-hold, and whether the status row should say the tier
+  exists, is a thing to decide by looking at the screen rather than on paper.
