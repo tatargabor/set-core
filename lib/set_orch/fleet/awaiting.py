@@ -59,6 +59,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from . import procsource
+
 logger = logging.getLogger(__name__)
 
 #: Statuses that mean the engine believes this change is in flight. A change in
@@ -115,10 +117,19 @@ def _pid_alive(pid: object) -> Optional[bool]:
     None for a pid that was never recorded — which must not collapse into
     False, because "no pid was written down" and "the process is gone" lead to
     different conclusions and only the second one is a finding.
+
+    Asked of the process source rather than of `/proc` directly. This was
+    `os.path.isdir(f"/proc/{pid}")`, which is False for every pid on a platform
+    that has no `/proc` — so every recorded orchestrator and ralph pid read as
+    gone there, and "the process is gone" is precisely the answer this function
+    calls a finding. It was found by the grep that checks no `/proc` path is
+    built outside the source package, NOT by the enumeration that opened this
+    change: that listed three modules and this is a fourth, which is why a
+    completeness claim has to be a measurement rather than a summary.
     """
     if not isinstance(pid, int) or pid <= 0:
         return None
-    return os.path.isdir(f"/proc/{pid}")
+    return procsource.is_alive(pid)
 
 
 #: Parsed results keyed by state-file path → (mtime, size, Awaiting).

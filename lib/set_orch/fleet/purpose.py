@@ -43,11 +43,18 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from . import procsource
+# The agent's executable identity, imported rather than spelled a second time.
+# It was the bare literal `"claude"` here and `AGENT_COMM` in `discovery`, which
+# is one fact with two spellings — the kind that stays consistent right up until
+# somebody changes one of them. The direction of the import is the safe one:
+# `discovery` is where identity is decided and it does not read runs.
+from .discovery import AGENT_COMM
 
 logger = logging.getLogger(__name__)
 
@@ -170,21 +177,55 @@ def read_progress(project_root: str, change: str) -> Progress:
     return Progress(done=done, total=total, partial=partial, measured=True)
 
 
-def _pid_state(pid: int, proc_root: str = "/proc") -> tuple:
-    """(alive, is_agent). Both questions, because they are different questions."""
+class _LazyTable:
+    """One process-table read, taken on first use and shared afterwards.
+
+    Not a cache with a lifetime — it lives for one `read_purposes()` call and is
+    discarded. A table that outlived its pass would report an exited process as
+    live, which is the direction that makes a stale run look like a running one.
+    """
+
+    def __init__(self, proc_root: str):
+        self._proc_root = proc_root
+        self._read = None
+
+    @property
+    def rows(self):
+        if self._read is None:
+            self._read = procsource.read_table(root=self._proc_root)
+        return self._read.rows
+
+
+def _pid_state(pid: int, proc_root: str = "/proc", table=None) -> tuple:
+    """(alive, is_agent). Both questions, because they are different questions.
+
+    Read from a process-table row rather than from `/proc/<pid>` directly, which
+    is what makes this answer on a platform that has no `/proc`. Measured before
+    the change, on a machine with a live agent at pid 37343: this returned
+    `(False, False)` there, so **every recorded run reported `stale`** — "nothing
+    is running", stated about a machine where something was.
+
+    The row, not the identity, decides liveness. A pid that is present with an
+    unreadable `comm` stays `(True, False)` — alive but unverified — exactly as
+    the `/proc` version had it. Collapsing the two into "not alive" would have
+    reintroduced the same false absence through a narrower door.
+
+    `table` is the whole-table read, taken once by the caller. A failed read
+    yields `(False, False)`, which keeps the existing behaviour of an unreadable
+    root: a run whose liveness cannot be established is not claimed to be
+    running.
+    """
     if pid <= 0:
         return False, False
-    if not os.path.isdir(os.path.join(proc_root, str(pid))):
+    if table is None:
+        table = _LazyTable(proc_root)
+    row = table.rows.get(pid)
+    if row is None:
         return False, False
-    try:
-        with open(os.path.join(proc_root, str(pid), "comm")) as fh:
-            comm = fh.read().strip()
-    except OSError:
-        return True, False
-    return True, comm == "claude"
+    return True, row.comm == AGENT_COMM
 
 
-def _status_of(record: dict, proc_root: str) -> tuple:
+def _status_of(record: dict, proc_root: str, table=None) -> tuple:
     """`finished` / `running` / `stale`, and whether the pid was verified.
 
     Finished first, because a committed or set-aside run is finished whatever its
@@ -194,7 +235,7 @@ def _status_of(record: dict, proc_root: str) -> tuple:
     if record.get("commit") is not None or record.get("set_aside") is not None:
         return "finished", False
     pid = int(record.get("pid") or 0)
-    alive, is_agent = _pid_state(pid, proc_root)
+    alive, is_agent = _pid_state(pid, proc_root, table)
     if not alive:
         return "stale", False
     return "running", not is_agent
@@ -218,6 +259,12 @@ def read_purposes(
         return []
     out: List[Purpose] = []
     progress_cache: Dict[str, Progress] = {}
+    # One process-table read for the whole directory of records, and NONE at all
+    # if no record needs it. Both halves are load-bearing: on a platform where
+    # reading the table is a process spawn, once-per-record is the cost this
+    # avoids — and reading it eagerly would consult the machine for a directory
+    # of finished runs, which `_status_of` decides without the pid on purpose.
+    table = _LazyTable(proc_root)
     for path in sorted(root.rglob("*.json")):
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
@@ -229,7 +276,7 @@ def read_purposes(
         if not isinstance(record, dict):
             continue
         change_name = str(record.get("change") or "")
-        status, unverified = _status_of(record, proc_root)
+        status, unverified = _status_of(record, proc_root, table)
         if with_progress and change_name and change_name not in progress_cache:
             progress_cache[change_name] = read_progress(project_root, change_name)
         out.append(Purpose(

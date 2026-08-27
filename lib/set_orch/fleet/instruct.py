@@ -66,10 +66,10 @@ import os
 import shutil
 import signal
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
+from . import procsource
 from . import state as agent_state
 
 logger = logging.getLogger(__name__)
@@ -414,27 +414,6 @@ class Waiter:
         return bool(self.session)
 
 
-def _proc_argv(pid: str, proc_root: str) -> List[str]:
-    try:
-        with open(os.path.join(proc_root, pid, "cmdline"), "rb") as fh:
-            raw = fh.read()
-    except (OSError, PermissionError):
-        return []
-    return [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
-
-
-def _proc_env(pid: str, proc_root: str, key: str) -> Optional[str]:
-    try:
-        with open(os.path.join(proc_root, pid, "environ"), "rb") as fh:
-            raw = fh.read()
-    except (OSError, PermissionError):
-        return None
-    for item in raw.split(b"\0"):
-        if item.startswith(key.encode() + b"="):
-            return item.split(b"=", 1)[1].decode("utf-8", "replace")
-    return None
-
-
 def _is_waiter_argv(argv: Sequence[str]) -> bool:
     """The structural test: `<node> …/sac.mjs wait […]`.
 
@@ -442,6 +421,13 @@ def _is_waiter_argv(argv: Sequence[str]) -> bool:
     which is the point. A command line that merely CONTAINS the words (a grep
     looking for waiters, this module's own test run, a shell snapshot) matches
     none of them. Task 9.14 asserts exactly that case.
+
+    ⚠ Known gap, registered as B-83 and deliberately NOT widened here: a waiter
+    started through the PATH symlink (`sac wait <room>`, the form the tool's own
+    help prints) has `argv[1] == "<prefix>/bin/sac"` and fails this test. The
+    form `sac install` bakes in ends in `sac.mjs` and matches, which is why the
+    panel works at all. Fixing it is a change to what counts as a waiter, not to
+    where process facts come from.
     """
     if len(argv) < 3:
         return False
@@ -450,127 +436,9 @@ def _is_waiter_argv(argv: Sequence[str]) -> bool:
     return argv[2] == "wait"
 
 
-def _waiters_from_proc(proc_root: str) -> Optional[List[Waiter]]:
-    """The Linux reader. Unchanged behaviour; it was `live_waiters` itself."""
-    try:
-        entries = os.listdir(proc_root)
-    except OSError as exc:
-        logger.warning("fleet instruct: cannot read %s: %s", proc_root, exc)
-        return None
-
-    found: List[Waiter] = []
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        argv = _proc_argv(entry, proc_root)
-        if not _is_waiter_argv(argv):
-            continue
-        rooms = tuple(a for a in argv[3:] if not a.startswith("-"))
-        try:
-            cwd = os.readlink(os.path.join(proc_root, entry, "cwd"))
-        except OSError:
-            cwd = None
-        found.append(Waiter(
-            pid=int(entry),
-            session=_proc_env(entry, proc_root, "CLAUDE_CODE_SESSION_ID"),
-            cwd=cwd,
-            rooms=rooms,
-        ))
-    logger.debug("fleet instruct: %d waiter processes", len(found))
-    return found
-
-
-def _ps_session(pid: int) -> Optional[str]:
-    """One waiter's session id, from the process table.
-
-    `ps -E` prints a process's environment after its command line, and macOS
-    allows it for a process the caller owns — verified 2026-08-27 against the
-    dashboard's own launchd job. There is no `/proc/<pid>/environ` to read here,
-    and no privileged alternative worth asking the user for.
-
-    Absent rather than guessed when it cannot be read: a waiter whose session is
-    unknown is treated as live and never offered for removal, which is the
-    direction that cannot kill a working one.
-    """
-    try:
-        proc = subprocess.run(
-            ["ps", "-E", "-p", str(pid), "-o", "command="],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.debug("fleet instruct: cannot read the environment of %s: %s", pid, exc)
-        return None
-    marker = "CLAUDE_CODE_SESSION_ID="
-    for token in proc.stdout.split():
-        if token.startswith(marker):
-            return token[len(marker):] or None
-    return None
-
-
-def _ps_cwd(pid: int) -> Optional[str]:
-    """One waiter's working directory, via `lsof`.
-
-    Asked per MATCHED waiter, never for every process: `lsof` over a whole
-    process table is a syscall sweep, and this runs on the fleet's polling path.
-
-    None when it cannot be read — `lsof` missing, slow, or refused. The waiter is
-    still listed. Dropping it would be the false absence this whole capability
-    exists to prevent, arrived at through a missing field instead of a missing
-    process.
-    """
-    try:
-        proc = subprocess.run(
-            ["lsof", "-p", str(pid), "-a", "-d", "cwd", "-Fn"],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.debug("fleet instruct: cannot read the cwd of %s: %s", pid, exc)
-        return None
-    for line in proc.stdout.splitlines():
-        if line.startswith("n"):
-            return line[1:] or None
-    return None
-
-
-def _waiters_from_ps() -> Optional[List[Waiter]]:
-    """The macOS reader.
-
-    One `ps` for the whole table, then the per-waiter lookups only for the few
-    lines that matched. `ps` joins a command line with spaces, so an argument
-    containing a space cannot be recovered — accepted, because the structural
-    test below reads three fixed POSITIONS and a waiter's own argv has no spaces
-    in them.
-    """
-    try:
-        proc = subprocess.run(
-            ["ps", "-A", "-o", "pid=,args="],
-            capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.warning("fleet instruct: cannot read the process table: %s", exc)
-        return None
-    if proc.returncode != 0:
-        logger.warning(
-            "fleet instruct: ps exited %s: %s", proc.returncode, proc.stderr.strip()[:200],
-        )
-        return None
-
-    found: List[Waiter] = []
-    for line in proc.stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 2 or not parts[0].isdigit():
-            continue
-        pid, argv = int(parts[0]), parts[1:]
-        if not _is_waiter_argv(argv):
-            continue
-        found.append(Waiter(
-            pid=pid,
-            session=_ps_session(pid),
-            cwd=_ps_cwd(pid),
-            rooms=tuple(a for a in argv[3:] if not a.startswith("-")),
-        ))
-    logger.debug("fleet instruct: %d waiter processes", len(found))
-    return found
+#: The variable a waiter's own session identity is carried in. Named once
+#: because two functions read it and a typo in either is a silent "unknown".
+SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
 
 
 def live_waiters(proc_root: Optional[str] = None) -> Optional[List[Waiter]]:
@@ -581,19 +449,39 @@ def live_waiters(proc_root: Optional[str] = None) -> Optional[List[Waiter]]:
     an invitation to install one, an unreadable table is an invitation to do
     nothing.
 
-    The source is chosen by platform. `proc_root` selects the `/proc` reader
-    explicitly whatever the platform, which is how a test drives it against a
-    tree it built; passing it on macOS is meaningful and reads that tree.
+    **One reader, both platforms.** There were two until the `macos-fleet-discovery`
+    change: a `/proc` walk and a `ps` walk, each with its own cwd and environment
+    lookups. The `ps` half worked and was verified, which is precisely why it was
+    worth consolidating — two implementations of "the working directory of a pid
+    on macOS" drift, and the one that drifts is the one nobody is looking at.
+    Where a fact comes from is now `procsource`'s business; this function is the
+    matching and nothing else.
 
-    Before this split the `/proc` walk was unconditional, so macOS answered
-    "could not measure" forever — a permanent unknown that the surface correctly
-    reported and nobody could act on.
+    `proc_root` still selects the `/proc` reader explicitly whatever the platform,
+    which is how a test drives it against a tree it built.
+
+    The cwd is looked up only for the pids that ALREADY matched. `lsof` over a
+    whole process table is a syscall sweep and this runs on the fleet's polling
+    path.
     """
-    if proc_root is not None:
-        return _waiters_from_proc(proc_root)
-    if sys.platform == "darwin":
-        return _waiters_from_ps()
-    return _waiters_from_proc("/proc")
+    argvs = procsource.argvs(root=proc_root)
+    if argvs is None:
+        return None
+
+    matched = {pid: argv for pid, argv in argvs.items() if _is_waiter_argv(argv)}
+    cwds = procsource.cwds(sorted(matched), root=proc_root)
+
+    found = [
+        Waiter(
+            pid=pid,
+            session=procsource.env_value(pid, SESSION_ENV, root=proc_root),
+            cwd=cwds.get(pid),
+            rooms=tuple(a for a in argv[3:] if not a.startswith("-")),
+        )
+        for pid, argv in sorted(matched.items())
+    ]
+    logger.debug("fleet instruct: %d waiter processes", len(found))
+    return found
 
 
 def waiters_for_session(
@@ -651,14 +539,14 @@ def remove_waiter(
     because its session is alive" is information to show, not an error to
     swallow.
     """
-    argv = _proc_argv(str(pid), proc_root)
+    argv = procsource.argv(pid, root=proc_root) or []
     if not _is_waiter_argv(argv):
         logger.info("fleet instruct: refusing to remove pid %s — not a waiter", pid)
         return {"removed": False, "pid": pid, "reason": "this pid is not a waiter process"}
     if live_sessions is None:
         return {"removed": False, "pid": pid,
                 "reason": "session liveness could not be determined, so it is treated as alive"}
-    session = _proc_env(str(pid), proc_root, "CLAUDE_CODE_SESSION_ID")
+    session = procsource.env_value(pid, SESSION_ENV, root=proc_root)
     if not session:
         return {"removed": False, "pid": pid,
                 "reason": "this waiter's session cannot be determined, so it is treated as alive"}

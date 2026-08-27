@@ -67,6 +67,93 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-84 — `sac agents --json` prints the human listing, so the fleet reads "the bus could not be asked who exists"
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, from the fleet screen during the visual
+  check of the `macos-fleet-discovery` change. Not that change's defect: it is a
+  flag on an external CLI, not a process fact.
+- **measured:** `instruct` shells out for the bus roster and parses stdout as JSON.
+  The service log carries, on every listing:
+
+  ```
+  [WARNING] set_orch.fleet.instruct: fleet instruct: the bus roster did not parse:
+            Expecting value: line 1 column 1 (char 0)
+  ```
+
+  Run by hand, `sac agents --json` writes the **human** listing — aligned columns,
+  tree glyphs, prose — and exits 0. There is no JSON on stdout to parse. (The
+  output names third-party projects, so it is described here by shape and not
+  quoted; see External Project Confidentiality.)
+- **what it costs on the screen:** the agent tile shows *"we could not ask what
+  this agent says about itself"* and *"no input: the messaging bus could not be
+  asked who exists"* for an agent whose seat is in fact enrolled. False absence,
+  and the panel offers enrolment for something already enrolled.
+- **which way it fails:** safe in that nothing is acted on, useless in that the
+  state can never clear. Same shape as a permanent "undeterminable".
+- **fixed when:** with a live enrolled seat, the fleet listing reports the agent as
+  instructable and the WARNING stops appearing. Decide first WHERE: if the CLI is
+  meant to honour `--json`, that is its bug; if the framework is calling a flag
+  that never existed, the caller is wrong and should say so rather than warn.
+
+### B-85 — the dashboard's stderr log is unbounded and had reached 1.47 GB
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while looking for the cause of B-84.
+- **measured:**
+
+  ```
+  -rw-r--r--  1 <user> staff  1472625386  ~/Library/Logs/set-core/set-web.err
+  ```
+
+  1.47 GB, and the tail is DEBUG-level: one `module_install: no project
+  declaration` and one `fleet capabilities: 4 checked` line per poll, plus a
+  `watchfiles: rust notify timeout, continuing` roughly once a second. The launchd
+  plist redirects stderr to a fixed path with no rotation and no size cap.
+- **which way it fails:** silently, and then all at once. Nothing degrades until
+  the disk does, and the log carries working directories and project names, so it
+  is also a growing pile of exactly the content the confidentiality rule says must
+  not accumulate where it can leave the machine.
+- **fixed when:** the service's stderr is bounded — rotated, size-capped, or the
+  per-poll DEBUG lines demoted — and a fresh run over an hour grows the file by a
+  bounded amount that somebody has actually measured.
+
+### B-83 — a waiter started through the `sac` PATH symlink is invisible to the waiters panel
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while capturing a real waiter as a
+  baseline for the `macos-fleet-discovery` change. Not a task in that change: the
+  matcher is platform-independent and the change only moves where process facts
+  come from.
+- **measured:** `instruct.py:_is_waiter_argv` requires `argv[1].endswith("sac.mjs")`.
+  A waiter started as documented in the tool's own help (`sac wait <room>`) runs as:
+
+  ```
+  $ ps -p 47091 -o pid=,args=
+  47091 node /opt/homebrew/bin/sac wait scratch-portcheck
+
+  >>> instruct._is_waiter_argv(['node','/opt/homebrew/bin/sac','wait','scratch-portcheck'])
+  False
+  >>> instruct.live_waiters()          # while that waiter is alive
+  []
+  ```
+
+  `argv[1]` is the PATH symlink, which has no extension. The installed form —
+  `<node> <prefix>/bin/sac.mjs wait <rooms>`, baked in by `sac install` — does end
+  in `sac.mjs` and IS matched, which is why the panel works at all and why this
+  went unnoticed.
+- **the narrower statement, because the wider one is wrong:** the panel is not
+  blind to waiters. It is blind to waiters a human started by typing the command
+  the help text prints. Both forms run the same script.
+- **which way it fails:** false absence. A live waiter is reported as no waiter, so
+  the panel invites installing one that is already running, and `remove_waiter`
+  refuses that pid with *"this pid is not a waiter process"* — a true-sounding
+  reason that is not the real one.
+- **fixed when:** with a waiter started as `sac wait <room>`, `live_waiters()`
+  returns it, and a shell whose command line merely contains the word still does
+  not match. Resolve the symlink, or test the script rather than the spelling of
+  the path — the identity is the file that runs, not the name it was reached by.
+
 ### B-82 — the terminal replay ring buffer cuts at an arbitrary byte, so a tab switch can start mid-escape-sequence
 
 - **state:** closed (`fba77d2c`) — the fix ships; it takes effect only when the owner
