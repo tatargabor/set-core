@@ -4,13 +4,17 @@ Usage Worker - Background thread for fetching Claude usage data
 Primary: Local JSONL parsing (cross-platform, no auth needed)
 Secondary: Claude.ai API with session key (optional, for exact data)
 Supports multiple accounts with per-account usage fetching.
+
+The transport, the authentication and the organization lookup live in
+`set_orch.usage` — one measurement path shared with the web dashboard, so a fix
+to either reaches both. What stays here is this window's own MAPPING of the
+answer (`session_pct`, the burn rates, `has_weekly`), because that mapping is a
+shipped requirement of `usage-display` with its own scenarios. Moving the
+plumbing must not move the meaning.
 """
 
 import json
 import logging
-import subprocess
-import urllib.request
-import urllib.error
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QThread, Signal
@@ -18,20 +22,13 @@ from PySide6.QtCore import QThread, Signal
 from ..constants import CONFIG_DIR, CLAUDE_SESSION_FILE
 from ..usage_calculator import UsageCalculator
 
-try:
-    from curl_cffi import requests as cffi_requests
-except ImportError:
-    cffi_requests = None
+from set_orch.usage.accounts import Account, KIND_CC, KIND_WEB
+from set_orch.usage.client import UsageClient
 
 __all__ = ["UsageWorker", "load_accounts", "save_accounts", "load_cc_accounts"]
 
 logger = logging.getLogger("set-control.workers.usage")
 
-_API_BASE = "https://claude.ai/api"
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) set-core/1.0",
-    "Accept": "application/json",
-}
 
 
 def load_accounts():
@@ -121,7 +118,7 @@ class UsageWorker(QThread):
         self._running = True
         self._config = config
         self._calculator = UsageCalculator()
-        self._cffi_warned = False
+        self._client = UsageClient()
 
     def _get_limit(self, key: str, default: int) -> int:
         """Get usage limit from config"""
@@ -129,167 +126,60 @@ class UsageWorker(QThread):
             return self._config.get("usage", key, default)
         return default
 
-    def _api_get(self, url: str, session_key: str):
-        """Make an API GET request with session key cookie.
-
-        Tries curl-cffi first (Chrome TLS fingerprint, bypasses Cloudflare),
-        falls back to curl subprocess, then urllib.
-        Returns parsed JSON or None on failure.
-        """
-        # Try curl-cffi first (impersonates Chrome TLS fingerprint)
-        if cffi_requests is not None:
-            try:
-                resp = cffi_requests.get(
-                    url,
-                    headers={"Accept": "application/json"},
-                    cookies={"sessionKey": session_key},
-                    impersonate="chrome",
-                    timeout=15,
-                )
-                if resp.status_code == 200:
-                    return resp.json()
-            except Exception:
-                pass
-        elif not self._cffi_warned:
-            self._cffi_warned = True
-            print("curl-cffi not installed — usage API may be blocked by Cloudflare. "
-                  "Install with: pip install curl-cffi")
-
-        # Fallback: try curl subprocess
-        try:
-            result = subprocess.run(
-                ["curl", "-s", "-H", f"Cookie: sessionKey={session_key}",
-                 "-H", "Accept: application/json",
-                 "-H", f"User-Agent: {_HEADERS['User-Agent']}",
-                 "--max-time", "15", url],
-                capture_output=True, text=True, timeout=20
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return json.loads(result.stdout)
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-            pass
-
-        # Fallback: try urllib
-        try:
-            req = urllib.request.Request(url, headers=_HEADERS)
-            req.add_header("Cookie", f"sessionKey={session_key}")
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                if resp.status == 200:
-                    return json.loads(resp.read().decode())
-        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
-            pass
-
-        return None
-
-    def _api_get_oauth(self, url: str, oauth_token: str):
-        """Make an API GET request with OAuth Bearer token.
-
-        Used for Claude Code accounts. Same fallback chain as _api_get
-        but uses Authorization header instead of session cookie.
-        Returns parsed JSON or None on failure.
-        """
-        auth_headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {oauth_token}",
-        }
-
-        # Try curl-cffi first
-        if cffi_requests is not None:
-            try:
-                resp = cffi_requests.get(
-                    url, headers=auth_headers,
-                    impersonate="chrome", timeout=15,
-                )
-                if resp.status_code == 200:
-                    return resp.json()
-            except Exception:
-                pass
-
-        # Fallback: curl subprocess
-        try:
-            result = subprocess.run(
-                ["curl", "-s",
-                 "-H", f"Authorization: Bearer {oauth_token}",
-                 "-H", "Accept: application/json",
-                 "-H", f"User-Agent: {_HEADERS['User-Agent']}",
-                 "--max-time", "15", url],
-                capture_output=True, text=True, timeout=20
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return json.loads(result.stdout)
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-            pass
-
-        # Fallback: urllib
-        try:
-            req = urllib.request.Request(url, headers={**_HEADERS, **auth_headers})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                if resp.status == 200:
-                    return json.loads(resp.read().decode())
-        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
-            pass
-
-        return None
-
     def fetch_claude_api_usage(self, session_key=None, oauth_token=None):
-        """Fetch usage from Claude.ai API using session key or OAuth token."""
+        """Fetch usage from Claude.ai API using session key or OAuth token.
+
+        The document comes from the shared client; the mapping below is this
+        window's own and is unchanged.
+        """
         try:
-            getter = self._api_get_oauth if oauth_token else self._api_get
-            auth = oauth_token or session_key
-            orgs = getter(f"{_API_BASE}/organizations", auth)
-            if not orgs or not isinstance(orgs, list):
+            account = self._account(session_key=session_key, oauth_token=oauth_token)
+            document = self._client.fetch_document(account)
+            if document is None:
                 return None
-
-            # Find the claude_max org (not api org)
-            org_id = None
-            for org in orgs:
-                if 'claude_max' in org.get('capabilities', []):
-                    org_id = org.get('uuid')
-                    break
-            if not org_id:
-                org_id = orgs[0].get('uuid')
-
-            if not org_id:
-                return None
-
-            return self._fetch_org_usage(org_id, session_key=session_key, oauth_token=oauth_token)
+            return self._map_document(document)
         except Exception:
             return None
 
-    def _fetch_org_usage(self, org_id, session_key=None, oauth_token=None):
-        """Fetch usage for specific organization"""
-        try:
-            getter = self._api_get_oauth if oauth_token else self._api_get
-            auth = oauth_token or session_key
-            data = getter(f"{_API_BASE}/organizations/{org_id}/usage", auth)
-            if not data:
-                return None
+    @staticmethod
+    def _account(session_key=None, oauth_token=None) -> Account:
+        """Wrap a bare credential in the shared client's account shape.
 
-            five_hour = data.get("five_hour") or {}
-            seven_day = data.get("seven_day") or {}
+        The NAME matters: the client caches an organization uuid per
+        `(kind, name)`, and two accounts sharing a key would share a uuid. The
+        credential itself is the only identifier available at this call site and
+        it is unique per account, so it is used as the name — it never leaves the
+        object, whose `repr` omits it.
+        """
+        if oauth_token:
+            return Account(name=oauth_token, kind=KIND_CC, credential=oauth_token)
+        return Account(name=session_key or "", kind=KIND_WEB, credential=session_key or "")
 
-            session_pct = five_hour.get("utilization", 0) or 0
-            session_reset = five_hour.get("resets_at")
-            weekly_pct = seven_day.get("utilization", 0) or 0
-            weekly_reset = seven_day.get("resets_at")
+    def _map_document(self, data):
+        """Map the upstream document onto the fields this window renders."""
+        five_hour = data.get("five_hour") or {}
+        seven_day = data.get("seven_day") or {}
 
-            session_burn = self._calculate_burn_rate(session_pct, session_reset, 5)
-            weekly_burn = self._calculate_burn_rate(weekly_pct, weekly_reset, 7 * 24)
+        session_pct = five_hour.get("utilization", 0) or 0
+        session_reset = five_hour.get("resets_at")
+        weekly_pct = seven_day.get("utilization", 0) or 0
+        weekly_reset = seven_day.get("resets_at")
 
-            return {
-                "available": True,
-                "session_pct": session_pct,
-                "session_reset": session_reset,
-                "session_burn": session_burn,
-                "has_weekly": bool(data.get("seven_day")),
-                "weekly_pct": weekly_pct,
-                "weekly_reset": weekly_reset,
-                "weekly_burn": weekly_burn,
-                "source": "api",
-                "is_estimated": False,
-            }
-        except Exception:
-            return None
+        session_burn = self._calculate_burn_rate(session_pct, session_reset, 5)
+        weekly_burn = self._calculate_burn_rate(weekly_pct, weekly_reset, 7 * 24)
+
+        return {
+            "available": True,
+            "session_pct": session_pct,
+            "session_reset": session_reset,
+            "session_burn": session_burn,
+            "has_weekly": bool(data.get("seven_day")),
+            "weekly_pct": weekly_pct,
+            "weekly_reset": weekly_reset,
+            "weekly_burn": weekly_burn,
+            "source": "api",
+            "is_estimated": False,
+        }
 
     def _calculate_burn_rate(self, usage_pct, reset_time_str, window_hours):
         """Calculate burn rate based on time elapsed in window"""

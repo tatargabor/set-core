@@ -301,19 +301,32 @@ class UsageClient:
 
     # ---- public ---------------------------------------------------------
 
-    def fetch(self, account: Account) -> AccountUsage:
-        """One account's usage. Never raises for an upstream problem."""
+    def fetch_document(self, account: Account) -> Optional[Dict[str, Any]]:
+        """The raw usage document, with the organization already resolved.
+
+        Exists so a second reader can share the transport, the auth and the
+        organization cache without inheriting this module's interpretation of
+        the answer. The desktop Control Center is that reader: its mapping is a
+        shipped requirement with its own scenarios, so moving the plumbing must
+        not quietly move the meaning too.
+        """
         org = self._organization(account)
         if not org:
             logger.warning("account unreachable at organization lookup: kind=%s", account.kind)
-            return AccountUsage(account.name, account.kind, OUTCOME_UNREACHABLE, [], account.active)
-
+            return None
         document = self._transport(f"{API_BASE}/organizations/{org}/usage", account)
         if document is None:
             # The uuid may be the stale half. Drop it so the next poll re-resolves
             # rather than repeating a request that cannot succeed.
             self._org_cache.pop(self._cache_key(account), None)
             logger.warning("account unreachable at usage read: kind=%s", account.kind)
+            return None
+        return document if isinstance(document, dict) else None
+
+    def fetch(self, account: Account) -> AccountUsage:
+        """One account's usage. Never raises for an upstream problem."""
+        document = self.fetch_document(account)
+        if document is None:
             return AccountUsage(account.name, account.kind, OUTCOME_UNREACHABLE, [], account.active)
 
         usage = self._parse(account, document)

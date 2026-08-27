@@ -26,10 +26,10 @@
 
 ## 4. The Control Center delegates
 
-- [ ] 4.1 Record the Control Center's current strip output for the configured accounts — the values it renders, before any change [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
-- [ ] 4.2 Re-point `UsageWorker`'s API path at `lib/set_orch/usage/`, keeping the `QThread`, the signal shape and `fetch_local_usage` exactly as they are [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
-- [ ] 4.3 Re-measure the strip and show it matches 4.1 field by field; only then delete the moved code paths from `gui/workers/usage.py` [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
-- [ ] 4.4 Run the existing GUI tests that cover usage and the Chrome cookie path, and report the before/after counts [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
+- [x] 4.1 Record the Control Center's current strip output for the configured accounts — the values it renders, before any change [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
+- [x] 4.2 Re-point `UsageWorker`'s API path at `lib/set_orch/usage/`, keeping the `QThread`, the signal shape and `fetch_local_usage` exactly as they are [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
+- [x] 4.3 Re-measure the strip and show it matches 4.1 field by field; only then delete the moved code paths from `gui/workers/usage.py` [REQ: usage-is-read-from-the-upstream-account-api-never-estimated] **DONE — 10 fields per account, 6 accounts. Every field identical except `session_reset`, whose sub-second part differs on EVERY upstream answer: three consecutive calls through one code path returned `19:29:59.255555`, `.671668`, `.012699`. Identical to the second. The three OAuth accounts returned `None` before and after (their tokens expired 2026-04-06).**
+- [x] 4.4 Run the existing GUI tests that cover usage and the Chrome cookie path, and report the before/after counts [REQ: usage-is-read-from-the-upstream-account-api-never-estimated] **DONE — 7 failed / 56 passed / 1 skipped, with HEAD's file and with this one, and the FAILING SET is identical: all seven are `test_32_dual_progress_bars.py` asserting `usage_5h_bar`, an attribute the multi-account rebuild replaced with `account_widgets`. Pre-existing debt, not a regression.**
 
 ## 5. The strip
 

@@ -68,6 +68,25 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-93 — the Control Center draws 0 % for an account whose usage was never measured
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while moving the measurement out of the GUI for
+  `fleet-account-usage-bars`. Not a task in that change: its specs put the Control Center's own
+  rendering explicitly OUT OF SCOPE.
+- **measured:** running the shipped `UsageWorker.fetch_claude_api_usage` against the three
+  configured browser accounts, one of them answered `available: true, session_pct: 0,
+  has_weekly: false, weekly_pct: 0` — while the upstream document for that account carried
+  `five_hour: null` and `seven_day: null`. The `or 0` in `_fetch_org_usage`
+  (`gui/workers/usage.py`) turns *no figure* into *zero consumed*, and `update_usage_bars` then
+  paints an empty bar, which is the most confident mark on the strip.
+- **the direction it fails in:** reassuring. A quota nobody could measure reads as a quota nobody
+  has spent, on the account most likely to be the one in trouble.
+- **fixed when:** an account whose window the upstream did not fill renders a mark that says so
+  rather than an empty bar, and a test drives `_fetch_org_usage` with a null-window document and
+  asserts the two states are distinguishable. The headless module already keeps them apart
+  (`OUTCOME_UNMEASURED` in `lib/set_orch/usage/client.py`); the GUI's own mapping does not.
+
 ### B-92 — the project header's icon buttons align on the BASELINE, so one of them sits 8 px high
 
 - **state:** closed as no-longer-reproducible — the CAUSE was removed by `fa6d4162`, not by a
