@@ -59,6 +59,43 @@ _OPENER = "xdg-open"
 #: wave through a file whose entire purpose is to run a command.
 _LAUNCHER_SUFFIXES = (".desktop",)
 
+#: Suffixes whose desktop association RUNS the file, whatever its permissions.
+#:
+#: Measured 2026-08-27 on a running desktop, with 644 files and no executable bit
+#: anywhere: `harmless.jar` passed `refusal()` and its handler was
+#: `openjdk-7-java.desktop`, which executes it. A `.jar` is data by permission and
+#: a program by association, and the permission bit — the thing this module used
+#: to test — is a proxy for the wrong question.
+#:
+#: The control in that same measurement is worth keeping in view: `harmless.py`
+#: also passed, and its handler was an EDITOR. So the class is not "a file some
+#: program understands"; it is "a file whose handler runs it", and `.py` is
+#: correctly absent from this list.
+_ASSOCIATION_RUNS = (
+    # a runtime executes the file itself
+    ".jar", ".appimage", ".run", ".jnlp", ".msi", ".apk",
+    ".exe", ".com", ".bat", ".cmd", ".scr", ".ps1", ".vbs", ".vbe",
+    ".wsf", ".wsh", ".hta",
+    # an installer package — opening one is starting an install
+    ".deb", ".rpm", ".pkg", ".snap", ".flatpak", ".flatpakref",
+    # macro-ENABLED office formats. The `m` suffixes are the ones that exist to
+    # carry code; the ordinary `.docx`/`.xlsx` cannot, and are not refused.
+    ".docm", ".dotm", ".xlsm", ".xltm", ".xlam", ".xlsb",
+    ".pptm", ".potm", ".ppam", ".ppsm", ".sldm",
+)
+
+#: Suffixes whose association INTERPRETS the file at a `file://` origin.
+#:
+#: A milder severity and the same class: `harmless.html` reached
+#: `google-chrome.desktop` in the same measurement. Nothing is executed, but a
+#: local page can read this machine's files, and the text that named it was
+#: written by whatever an agent ran.
+#:
+#: `.svg` is deliberately NOT here even though it is XML a browser interprets.
+#: An image that opened before this change must still open — the widening is a
+#: widening of refusals, not a place to add ones nobody measured.
+_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml")
+
 
 class OpenRequest(BaseModel):
     """One absolute path, and nothing else.
@@ -80,12 +117,28 @@ def refusal(path: str) -> str | None:
     work" to the reader, and a guard that is one expression inside a route
     handler cannot be tested without a web server.
 
+    ## The rule is stated by the ACT, not by the permission bit
+
+    What RUNS a file is the desktop association, and the permission bit is only
+    one way to reach it. Measured 2026-08-27 (`B-89`): a 644 `.jar` with no
+    executable bit anywhere passed this function and reached a JVM. That the
+    `.desktop` suffix was already refused by name shows the class was understood
+    — the list was simply one item long.
+
+    The list is a FLOOR and never proof of completeness. Associations are
+    per-machine and per-user, so this cannot enumerate what a given desktop will
+    do, and it does not try: it refuses a fixed set from the path alone, which is
+    why the same input gives the same verdict on every machine and in every test.
+    **Nothing here asks the local desktop anything.** A guard that did would give
+    a different answer on every machine and could not be tested at all.
+
     The order is fixed and the resolution comes first:
 
         absolute → realpath → exists → file or directory → launcher suffix
+                 → association runs it → association interprets it
                  → executable bit (REGULAR FILES ONLY)
 
-    Two of those steps are the ones that would be got wrong:
+    Three of those steps are the ones that would be got wrong:
 
     - **`realpath` before judging.** A symlink is precisely how a harmless-looking
       name reaches an executable, so the suffix and mode checks run on the
@@ -95,6 +148,10 @@ def refusal(path: str) -> str | None:
       has its execute bits set, so a uniform check would refuse *every* directory
       while looking perfectly correct in review — and while passing any test
       written only against files.
+    - **The suffix rules come BEFORE the bit**, so the reason names the stronger
+      fact. *"Executable files are not opened"*, said about a file with no
+      executable bit, sends the reader to inspect permissions that are not the
+      cause — which is the whole reason a reason is returned at all.
     """
     if not path or not path.startswith("/"):
         return "path must be absolute"
@@ -108,11 +165,22 @@ def refusal(path: str) -> str | None:
     if not is_dir and not os.path.isfile(target):
         return "not a regular file or directory"
 
-    if target.lower().endswith(_LAUNCHER_SUFFIXES):
+    lowered = target.lower()
+    if lowered.endswith(_LAUNCHER_SUFFIXES):
         return "desktop entries are launchers, not documents"
 
+    for suffix in _ASSOCIATION_RUNS:
+        if lowered.endswith(suffix):
+            return (f"a {suffix} file is RUN by whatever the desktop associates with it, "
+                    "whatever its permissions say")
+
+    for suffix in _ASSOCIATION_INTERPRETS:
+        if lowered.endswith(suffix):
+            return (f"a {suffix} file opens as a local page that can read this "
+                    "machine's files")
+
     if not is_dir and os.access(target, os.X_OK):
-        return "executable files are not opened"
+        return "this file carries an executable bit, and executables are not opened"
 
     return None
 

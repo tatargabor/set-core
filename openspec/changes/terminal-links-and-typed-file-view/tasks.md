@@ -125,19 +125,19 @@
 
 ## 4b. The desktop guard — refuse by the act, not by the bit (B-89)
 
-- [ ] 4b.1 Restate `refusal()` in `lib/set_orch/api/desktop.py` by the ACT: keep every current
+- [x] 4b.1 Restate `refusal()` in `lib/set_orch/api/desktop.py` by the ACT: keep every current
   refusal and add the suffixes whose association commonly executes or interprets the file —
   `.jar`, `.appimage`, `.run`, `.jnlp`, `.msi`, installer packages, macro-carrying office
   formats, and `.html`/`.htm`/`.xhtml` for the `file://` origin [REQ: what-must-never-be-handed-over]
-- [ ] 4b.2 Make the answer name WHICH rule fired — an association refusal must not report
+- [x] 4b.2 Make the answer name WHICH rule fired — an association refusal must not report
   itself as an executable-bit refusal [REQ: what-must-never-be-handed-over]
-- [ ] 4b.3 Test a 644 `.jar`, `.html` and macro document with NO executable bit: each refused,
+- [x] 4b.3 Test a 644 `.jar`, `.html` and macro document with NO executable bit: each refused,
   each naming the association. This is the measurement that found B-89, held as a test
   [REQ: what-must-never-be-handed-over]
-- [ ] 4b.4 Test that an image, a video, a PDF and a plain document with no executable bit are
+- [x] 4b.4 Test that an image, a video, a PDF and a plain document with no executable bit are
   still handed over — the widening must refuse nothing that was already working
   [REQ: what-must-never-be-handed-over]
-- [ ] 4b.5 Assert the guard consults NO local desktop association: same input, same verdict,
+- [x] 4b.5 Assert the guard consults NO local desktop association: same input, same verdict,
   on any machine [REQ: what-must-never-be-handed-over]
 - [ ] 4b.6 Close `B-89` with the sha [REQ: what-must-never-be-handed-over]
 
@@ -223,7 +223,7 @@
 
 - [ ] AC-22: WHEN a person activates an absolute path under no registered checkout THEN it is handed to the desktop and nothing opens inside the dashboard [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-reader-activates-an-external-path]
 - [ ] AC-23: WHEN a person clicks a recognised reference without the modifier THEN the click is the terminal's and nothing opens [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: a-plain-click-still-belongs-to-the-terminal]
-- [ ] AC-24: WHEN a desktop reference names something the desktop would run or interpret THEN it is refused and nothing is started — this change widens that list and relaxes no part of it [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-desktop-guards-refuse-at-least-as-much-as-before]
+- [x] AC-24: WHEN a desktop reference names something the desktop would run or interpret THEN it is refused and nothing is started — this change widens that list and relaxes no part of it [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-desktop-guards-refuse-at-least-as-much-as-before]
 
 ### Activating a directory reveals it in the panel's structure
 
@@ -274,11 +274,11 @@
 
 ### What must never be handed over (B-89)
 
-- [ ] AC-54: WHEN the activated path names a file with an executable bit THEN it is refused and the answer names the reason [REQ: what-must-never-be-handed-over, scenario: an-executable-file]
-- [ ] AC-55: WHEN the activated path names a `.desktop` file THEN it is refused whatever its permissions are [REQ: what-must-never-be-handed-over, scenario: a-desktop-entry]
-- [ ] AC-56: WHEN the activated path names a `.jar`, `.appimage`, `.run`, `.jnlp` or installer package with NO executable bit THEN it is refused, naming the association rather than the permissions [REQ: what-must-never-be-handed-over, scenario: an-archive-a-runtime-executes]
-- [ ] AC-57: WHEN the activated path names an HTML file or a macro-carrying office document with no executable bit THEN it is refused [REQ: what-must-never-be-handed-over, scenario: a-document-that-carries-active-content]
-- [ ] AC-58: WHEN the activated path names an image, video, PDF or plain document not on the list THEN it is handed over exactly as before [REQ: what-must-never-be-handed-over, scenario: an-ordinary-file-is-still-handed-over]
-- [ ] AC-59: WHEN the activated path does not exist THEN it is refused and no handler starts [REQ: what-must-never-be-handed-over, scenario: a-path-that-is-not-there]
-- [ ] AC-60: WHEN the request carries a path that is not absolute THEN it is refused [REQ: what-must-never-be-handed-over, scenario: a-relative-path]
-- [ ] AC-61: WHEN the endpoint decides whether to refuse a path THEN it decides from the path alone, never from this machine's associations [REQ: what-must-never-be-handed-over, scenario: the-refusal-does-not-query-the-local-desktop]
+- [x] AC-54: WHEN the activated path names a file with an executable bit THEN it is refused and the answer names the reason [REQ: what-must-never-be-handed-over, scenario: an-executable-file]
+- [x] AC-55: WHEN the activated path names a `.desktop` file THEN it is refused whatever its permissions are [REQ: what-must-never-be-handed-over, scenario: a-desktop-entry]
+- [x] AC-56: WHEN the activated path names a `.jar`, `.appimage`, `.run`, `.jnlp` or installer package with NO executable bit THEN it is refused, naming the association rather than the permissions [REQ: what-must-never-be-handed-over, scenario: an-archive-a-runtime-executes]
+- [x] AC-57: WHEN the activated path names an HTML file or a macro-carrying office document with no executable bit THEN it is refused [REQ: what-must-never-be-handed-over, scenario: a-document-that-carries-active-content]
+- [x] AC-58: WHEN the activated path names an image, video, PDF or plain document not on the list THEN it is handed over exactly as before [REQ: what-must-never-be-handed-over, scenario: an-ordinary-file-is-still-handed-over]
+- [x] AC-59: WHEN the activated path does not exist THEN it is refused and no handler starts [REQ: what-must-never-be-handed-over, scenario: a-path-that-is-not-there]
+- [x] AC-60: WHEN the request carries a path that is not absolute THEN it is refused [REQ: what-must-never-be-handed-over, scenario: a-relative-path]
+- [x] AC-61: WHEN the endpoint decides whether to refuse a path THEN it decides from the path alone, never from this machine's associations [REQ: what-must-never-be-handed-over, scenario: the-refusal-does-not-query-the-local-desktop]

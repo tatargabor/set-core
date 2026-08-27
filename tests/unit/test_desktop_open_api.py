@@ -248,3 +248,104 @@ def test_the_guard_is_callable_without_a_web_server(tmp_path):
     assert desktop_module.refusal(str(doc)) is None
     assert desktop_module.refusal("") == "path must be absolute"
     assert desktop_module.refusal("rel/x") == "path must be absolute"
+
+
+# ─── B-89: the association, not the permission bit ───────────────────────────
+
+
+def test_a_644_archive_a_runtime_executes_is_refused(client, spawned, tmp_path):
+    """The measurement that found B-89, held as a test.
+
+    Measured 2026-08-27 on a running desktop: a `.jar` with mode 644 and no
+    executable bit anywhere passed this guard, and its handler was
+    `openjdk-7-java.desktop` — which runs it. Data by permission, a program by
+    association.
+    """
+    for name in ("harmless.jar", "installer.appimage", "setup.run",
+                 "launch.jnlp", "pack.msi", "app.deb", "sheet.xlsm"):
+        target = tmp_path / name
+        target.write_text("not really, but the handler does not read it either\n")
+        assert target.stat().st_mode & 0o111 == 0, "the point is that it is NOT executable"
+
+        res = post(client, str(target))
+
+        assert res.status_code == 400, name
+        detail = res.json()["detail"]
+        assert "RUN by whatever the desktop associates" in detail, f"{name}: {detail}"
+        # And the reason must NOT be the permission bit — a reader sent to
+        # inspect permissions that are not the cause looks at the wrong thing
+        # and concludes the guard is broken.
+        assert "executable bit" not in detail, f"{name}: {detail}"
+
+    # And the ORDER: a `.jar` that also carries the bit must still name the
+    # association, because that is the stronger fact and the one a reader can
+    # act on. Reporting the bit would send them to `chmod`, which fixes nothing.
+    both = tmp_path / "signed.jar"
+    both.write_text("x")
+    both.chmod(both.stat().st_mode | stat.S_IXUSR)
+    detail = post(client, str(both)).json()["detail"]
+    assert "RUN by whatever the desktop associates" in detail, detail
+    assert "executable bit" not in detail, detail
+    assert spawned == []
+
+
+def test_a_local_page_that_can_read_this_machine_is_refused(client, spawned, tmp_path):
+    """`.html` is the milder severity and the same class.
+
+    Nothing is executed — but the page opens at a `file://` origin that can read
+    local files, and the text that named it was written by whatever an agent ran.
+    """
+    for name in ("report.html", "index.htm", "page.xhtml"):
+        target = tmp_path / name
+        target.write_text("<p>hello</p>\n")
+
+        res = post(client, str(target))
+
+        assert res.status_code == 400, name
+        assert "local page" in res.json()["detail"], name
+    assert spawned == []
+
+
+def test_an_ordinary_file_is_still_handed_over(client, spawned, tmp_path):
+    """The widening must refuse NOTHING that was already working.
+
+    A guard that grows is only safe if the growth is measured in both
+    directions. These are the four kinds an agent actually prints the path of.
+    """
+    for name in ("shot.png", "clip.mp4", "report.pdf", "notes.docx", "plan.md",
+                 "diagram.svg", "script.py"):
+        target = tmp_path / name
+        target.write_text("x")
+
+        res = post(client, str(target))
+
+        assert res.status_code == 200, f"{name}: {res.json()}"
+    assert len(spawned) == 7
+
+
+def test_the_guard_asks_the_local_desktop_NOTHING(monkeypatch, tmp_path):
+    """Same input, same verdict, on every machine — asserted rather than assumed.
+
+    A guard that queried `xdg-mime` or looked for a handler would give a
+    different answer on every machine and per user, and could not be tested at
+    all. So the refusals are read off the PATH, and this test removes the two
+    ways this module could reach a subprocess and checks that every verdict is
+    unchanged.
+    """
+    import subprocess as real_subprocess
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("refusal() consulted something outside the path")
+
+    monkeypatch.setattr(desktop_module.subprocess, "run", forbidden)
+    monkeypatch.setattr(desktop_module.subprocess, "Popen", forbidden)
+    monkeypatch.setattr(desktop_module.shutil, "which", forbidden)
+    assert real_subprocess is not None  # the import above is the thing being blocked
+
+    jar = tmp_path / "harmless.jar"
+    jar.write_text("x")
+    doc = tmp_path / "notes.txt"
+    doc.write_text("x")
+
+    assert "RUN by whatever the desktop associates" in (desktop_module.refusal(str(jar)) or "")
+    assert desktop_module.refusal(str(doc)) is None
