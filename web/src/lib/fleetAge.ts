@@ -32,3 +32,24 @@ export function stalestSeconds(project: FleetProject | undefined): number | null
     .filter((n): n is number => typeof n === 'number')
   return seen.length > 0 ? Math.max(...seen) : null
 }
+
+/**
+ * The shortest time since any agent in this project moved.
+ *
+ * The MINIMUM, and it exists for the opposite question to `stalestSeconds`:
+ * *which projects am I working in right now*. One project can be both — an
+ * agent that moved seconds ago beside one still for an hour — so the two
+ * numbers are kept apart rather than reconciled. Sorting on one while the row
+ * displays the other is what would make the list look broken, and the reason
+ * the recency order renders both when they differ.
+ *
+ * `null` when nothing is known, for the same reason as its counterpart: no
+ * agents, or none of them reported a movement. Not zero, which would claim the
+ * project moved this second.
+ */
+export function freshestSeconds(project: FleetProject | undefined): number | null {
+  const seen = (project?.agents ?? [])
+    .map(a => a.last_movement_seconds)
+    .filter((n): n is number => typeof n === 'number')
+  return seen.length > 0 ? Math.min(...seen) : null
+}

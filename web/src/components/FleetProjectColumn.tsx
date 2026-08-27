@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, Bot, Clock, History, TriangleAlert } from 'lucide-react'
+import { Archive, Bot, Clock, ClockArrowDown, History, TriangleAlert } from 'lucide-react'
 
-import { age, stalestSeconds } from '../lib/fleetAge'
+import { age, freshestSeconds, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
 import type { FleetProject, FleetResponse } from '../lib/fleetTypes'
-import { type ColumnMode, buildColumnView, mergeByName } from '../lib/fleetColumnView'
+import { type ColumnMode, type ColumnSort, buildColumnView, mergeByName } from '../lib/fleetColumnView'
 import {
   type FleetArrangement,
   type FleetGroup,
@@ -175,11 +175,16 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
  * capability names — a framework that gained a module would otherwise keep
  * drawing the old four, and the row would be confidently out of date.
  */
-function ProjectFacts({ project }: { project: FleetProject | undefined }) {
+function ProjectFacts({ project, showFreshest }: { project: FleetProject | undefined; showFreshest?: boolean }) {
   if (!project) return null
   const standing = capabilityStanding(project.capabilities)
   const sources = extraSources(project.sources)
   const stalest = stalestSeconds(project)
+  // Only where it says something the stalest does not. A single-agent project —
+  // most of them — has one number, and rendering it twice would spend the row's
+  // scarcest resource on a repetition.
+  const freshest = showFreshest ? freshestSeconds(project) : null
+  const bothShown = freshest !== null && stalest !== null && freshest !== stalest
   if (standing.kind === 'none' && sources.length === 0 && stalest === null) return null
   // WRAPS rather than truncates. Measured at a 279 px column: the marks, the age
   // and the sources did not fit on one line and it was being cut mid-word — a
@@ -226,9 +231,14 @@ function ProjectFacts({ project }: { project: FleetProject | undefined }) {
         <span
           className="inline-flex items-center gap-1 text-xs text-fg-ghost tabular-nums shrink-0"
           data-fleet-project-stalest={stalest}
-          title="the longest any agent here has gone without moving"
+          data-fleet-project-freshest={bothShown ? freshest : undefined}
+          title={bothShown
+            ? 'the freshest movement here, then the longest any agent has gone without moving'
+            : 'the longest any agent here has gone without moving'}
         >
-          <Clock size={11} strokeWidth={1.75} />{age(stalest)}
+          <Clock size={11} strokeWidth={1.75} />
+          {bothShown && <span className="text-fg-muted">{age(freshest)}…</span>}
+          {age(stalest)}
         </span>
       )}
       {sources.length > 0 && (
@@ -298,6 +308,8 @@ interface RowProps {
   index?: number
   /** Last row of its list — no separator below it, so a block ends cleanly. */
   last?: boolean
+  /** Render the freshest movement beside the stalest — the recency order's key. */
+  showFreshest?: boolean
   dragging?: boolean
   dropTarget?: boolean
   menuOpen: boolean
@@ -415,7 +427,7 @@ function ProjectRow(p: RowProps) {
               </span>
             )}
           </span>
-          <ProjectFacts project={p.project} />
+          <ProjectFacts project={p.project} showFreshest={p.showFreshest} />
         </button>
         <button
           onClick={p.onMenu}
@@ -678,6 +690,14 @@ export default function FleetProjectColumn({
    * screen refuses everywhere else.
    */
   const [mode, setMode] = useState<ColumnMode>('arrangement')
+  /**
+   * Whether the flat list is read in the reader's own order or freshest-first.
+   *
+   * Not persisted, for the same reason `mode` is not: arriving at a column that
+   * has already re-ordered itself before the reader chose anything would make
+   * the arrangement — the thing they built by hand — look like it had changed.
+   */
+  const [sort, setSort] = useState<ColumnSort>('order')
   const [query, setQuery] = useState('')
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
@@ -815,8 +835,8 @@ export default function FleetProjectColumn({
    * mode, so narrowing the list can never make the header read calm.
    */
   const colView = useMemo(
-    () => buildColumnView(order, byName, { mode, query }),
-    [order, byName, mode, query],
+    () => buildColumnView(order, byName, { mode, query, sort }),
+    [order, byName, mode, query, sort],
   )
   const colHidden = colView.hiddenNoLive + colView.hiddenByFilter
   const firstWaiting = useMemo(
@@ -1043,7 +1063,17 @@ export default function FleetProjectColumn({
           keeps its own size next to it for the same reason. */}
       {/* ---------------------------------------------------------------- */}
       <div data-fleet-column-controls className="shrink-0 border-b border-surface-line px-2 py-1.5 space-y-1">
-        <div className="flex items-center gap-1.5">
+        {/* WRAPS, and the filter carries a floor rather than `min-w-0`.
+
+            Measured in the browser at the panel's own width, 185 px: the mode
+            toggle is 144, the sort button 27 and the gaps 12, which leaves the
+            filter 34 px of a 169 px row — a text input too narrow to read what
+            was typed into it, and it was already 34 px before the sort button
+            was added. `min-w-0` lets a flex child shrink to nothing, so the
+            row stayed one line by silently crushing the one control that needs
+            width. Wrapping spends a row of height instead, and only when the
+            panel is actually too narrow. */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <div className="inline-flex rounded border border-surface-line overflow-hidden text-xs shrink-0">
             {(['arrangement', 'live'] as ColumnMode[]).map(m => {
               const on = mode === m
@@ -1071,7 +1101,46 @@ export default function FleetProjectColumn({
               )
             })}
           </div>
-          <div className="relative flex-1 min-w-0">
+          {/* ---------------------------------------------------------- */}
+          {/* Freshest-first — "put the projects I am working in on top".
+
+              It sorts on the FRESHEST movement in each project, while the row's
+              clock keeps showing the STALEST agent, because those answer
+              different questions and the column exists for the second one. That
+              is also why a row whose two numbers differ renders both while this
+              is on: an order the reader cannot explain from the rows is an
+              order they stop trusting.
+
+              Clicking it from the group tree switches to the live list as well.
+              The tree is the arrangement — re-sorting it would either shuffle
+              rows inside groups or flatten what the reader built — and both
+              controls visibly flip, so nothing happens that is not on screen. */}
+          {/* ---------------------------------------------------------- */}
+          <button
+            type="button"
+            aria-pressed={sort === 'recent'}
+            data-fleet-column-sort={sort}
+            data-fleet-column-sort-active={colView.sorted ? 'on' : undefined}
+            onClick={() => {
+              const next = sort === 'recent' ? 'order' : 'recent'
+              setSort(next)
+              // Only when the tree is showing: with a filter typed the list is
+              // already flat, and the sort applies where the reader is.
+              if (next === 'recent' && !colView.flat) setMode('live')
+            }}
+            title={sort === 'recent'
+              ? 'Freshest first, to the minute — everything worked in during the last minute stays in your own order, so the top does not swap on every poll. Click to go back to your order.'
+              : 'Put the projects you are working in on top — ordered by the freshest agent movement, to the minute. Your arrangement is not changed.'}
+            aria-label="Order by the freshest agent movement"
+            className={`shrink-0 rounded border px-1.5 py-1 transition-colors ${
+              sort === 'recent'
+                ? 'border-surface-line bg-surface-raised text-fg-loud'
+                : 'border-surface-line text-fg-faint hover:text-fg-normal'
+            }`}
+          >
+            <ClockArrowDown size={13} strokeWidth={1.75} />
+          </button>
+          <div className="relative flex-1 min-w-[6rem]">
             <input
               type="text"
               value={query}
@@ -1097,6 +1166,15 @@ export default function FleetProjectColumn({
             sharpest on the screen — it drops whole projects. So it says what it
             dropped, split by cause, and one control puts the column back. The
             attention header above is unaffected by the mode by construction. */}
+        {/* A run of `—` at the bottom of a time-ordered list reads as "oldest",
+            and it is not: nobody measured those. So the tail is NAMED where the
+            reader is standing — the same rule as a hidden failure, applied to a
+            gap that would otherwise be read as a value. */}
+        {colView.sorted && colView.unmeasured > 0 && (
+          <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-unmeasured={colView.unmeasured}>
+            freshest first · {colView.unmeasured} unmeasured, last
+          </div>
+        )}
         {colHidden > 0 && (
           <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-hidden={colHidden}>
             {colHidden} project(s) not shown
@@ -1110,7 +1188,7 @@ export default function FleetProjectColumn({
             <button
               type="button"
               data-fleet-column-clear
-              onClick={() => { setMode('arrangement'); setQuery('') }}
+              onClick={() => { setMode('arrangement'); setQuery(''); setSort('order') }}
               className="underline underline-offset-2 hover:text-fg-normal"
             >
               show all
@@ -1169,7 +1247,7 @@ export default function FleetProjectColumn({
                 <button
                   type="button"
                   data-fleet-column-clear
-                  onClick={() => { setMode('arrangement'); setQuery('') }}
+                  onClick={() => { setMode('arrangement'); setQuery(''); setSort('order') }}
                   className="underline underline-offset-2 hover:text-fg-normal"
                 >
                   show all {colView.totalPresent}
@@ -1180,6 +1258,7 @@ export default function FleetProjectColumn({
                 key={r.name}
                 name={r.name}
                 last={i === colView.rows.length - 1}
+                showFreshest={colView.sorted}
                 project={r.project}
                 active={selected === r.name}
                 waitingKnown={waitingKnown}
