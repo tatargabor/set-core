@@ -8,7 +8,10 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { ancestorsOf, buildTree, desktopReference, fileReference, languageOf, fileToOpen, statusKind, terminalTarget } from '../../src/lib/fleetFiles'
+import {
+  ancestorsOf, buildListingIndex, buildTree, desktopReference, fileReference, languageOf,
+  fileToOpen, RECOGNISER_LIMITS, statusKind, terminalReferences, terminalTarget,
+} from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
   it('nests directories and keeps a stable order', () => {
@@ -239,18 +242,22 @@ describe('a path the file view cannot open', () => {
 describe('where a terminal token should be opened', () => {
   const root = '/home/x/proj'
   const wt = '/home/x/proj-wt-mobil'
+  const other = '/home/x/other'
   // The listing of the checkout the agent is standing in — that substitution is
   // the whole design, so every case below passes the worktree's own listing when
   // the agent is in a worktree.
-  const known = new Set(['src/app.ts', 'openspec/changes/a/spec.md'])
+  const paths = ['src/app.ts', 'openspec/changes/a/spec.md', 'src/app/items/[id]/page.tsx']
+  const known = new Set(paths)
+  const listing = buildListingIndex(paths)
+  const checkouts = [root, wt, other]
 
   it('opens a worktree file in the file view, and says WHICH checkout', () => {
     // The reported case, and its repair: the internal editor is still the
     // destination — it just reads the tree the agent is standing in.
     expect(terminalTarget('openspec/changes/a/spec.md', { root, cwd: wt, known }))
-      .toEqual({ kind: 'file', ref: { path: 'openspec/changes/a/spec.md' }, root: wt })
+      .toEqual({ kind: 'file', ref: { path: 'openspec/changes/a/spec.md' }, root: wt, confidence: 'high' })
     expect(terminalTarget('src/app.ts:12', { root, cwd: wt, known }))
-      .toEqual({ kind: 'file', ref: { path: 'src/app.ts', line: 12 }, root: wt })
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts', line: 12 }, root: wt, confidence: 'high' })
   })
 
   it('never answers with the project root for a worktree agent', () => {
@@ -261,46 +268,259 @@ describe('where a terminal token should be opened', () => {
     expect(target!.kind === 'file' && target!.root).toBe(wt)
   })
 
-  it('hands a DIRECTORY to the desktop, resolved against the same checkout', () => {
-    // No listing contains a directory, so the file view is not a destination.
-    expect(terminalTarget('openspec/changes/a/', { root, cwd: wt, known }))
-      .toEqual({ kind: 'desktop', path: '/home/x/proj-wt-mobil/openspec/changes/a' })
+  it('reveals a DIRECTORY in the panel rather than launching a file manager', () => {
+    // AC-25. No listing carries a directory as an entry, which is why every
+    // directory an agent printed used to be plain text or a desktop hand-over.
+    expect(terminalTarget('openspec/changes/a/', { root, cwd: wt, listing }))
+      .toEqual({ kind: 'directory', path: 'openspec/changes/a', root: wt, confidence: 'high' })
+    expect(terminalTarget('openspec/changes/a', { root, cwd: wt, listing }))
+      .toEqual({ kind: 'directory', path: 'openspec/changes/a', root: wt, confidence: 'high' })
   })
 
   it('opens a project file in the file view when the agent stands in the project', () => {
     expect(terminalTarget('src/app.ts', { root, cwd: root, known }))
-      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root })
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
     // And with no cwd reported at all — an older payload — the root is the base.
     expect(terminalTarget('src/app.ts', { root, known }))
-      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root })
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
   })
 
-  it('hands over a path of ANOTHER checkout, which the panel could not read', () => {
-    // An absolute path into the main tree, printed by a worktree agent. The
-    // file view reads one checkout at a time and this is not that one, so the
-    // desktop opens it — with the right content, which is the point.
-    expect(terminalTarget('/home/x/proj/src/app.ts', { root, cwd: wt, known }))
-      .toEqual({ kind: 'desktop', path: '/home/x/proj/src/app.ts' })
+  it('opens a file of ANOTHER checkout in the panel, naming that checkout', () => {
+    // AC-15 — the behaviour this change reverses. An absolute path into the
+    // main tree, printed by a worktree agent: the framework may READ it, so the
+    // framework opens it, and the answer carries which checkout it meant.
+    expect(terminalTarget('/home/x/proj/src/app.ts', { root, cwd: wt, listing, checkouts }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+    // AC-16 — and a second registered project is the same case.
+    expect(terminalTarget('/home/x/other/lib/x.py', { root, cwd: wt, listing, checkouts }))
+      .toEqual({ kind: 'file', ref: { path: 'lib/x.py' }, root: other, confidence: 'high' })
   })
 
-  it('hands over an in-project path the listing does not have', () => {
-    expect(terminalTarget('/home/x/proj/openspec/changes/a/', { root, cwd: root, known }))
-      .toEqual({ kind: 'desktop', path: '/home/x/proj/openspec/changes/a' })
+  it('is not fooled by a checkout whose name merely starts the same', () => {
+    // A worktree is exactly the string that looks like a sibling of its project,
+    // so the boundary test and the longest match are what keep them apart.
+    expect(terminalTarget('/home/x/proj-wt-mobil/src/app.ts', { root, cwd: root, listing, checkouts }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root: wt, confidence: 'high' })
+    expect(terminalTarget('/home/x/projector/src/app.ts', { root, cwd: root, listing, checkouts }))
+      .toEqual({ kind: 'desktop', path: '/home/x/projector/src/app.ts', confidence: 'high' })
+  })
+
+  it('still opens an in-project path the listing does not have', () => {
+    // The listing is not the boundary — the ENDPOINT is. A file under a checkout
+    // the endpoints serve is theirs to refuse or serve, and routing it to the
+    // desktop instead means a gitignored but perfectly readable file (a build
+    // output, a `.env`) can only be opened by launching something.
+    expect(terminalTarget('/home/x/proj/node_modules/pkg/index.js',
+                          { root, cwd: root, listing, checkouts }))
+      .toEqual({ kind: 'file', ref: { path: 'node_modules/pkg/index.js' }, root, confidence: 'high' })
   })
 
   it('hands over an absolute path outside the project', () => {
     expect(terminalTarget('/tmp/shot.png', { root, cwd: root, known }))
-      .toEqual({ kind: 'desktop', path: '/tmp/shot.png' })
+      .toEqual({ kind: 'desktop', path: '/tmp/shot.png', confidence: 'high' })
   })
 
   it('offers an absolute path with no project context, and refuses a relative one', () => {
-    expect(terminalTarget('/tmp/shot.png', {})).toEqual({ kind: 'desktop', path: '/tmp/shot.png' })
+    expect(terminalTarget('/tmp/shot.png', {}))
+      .toEqual({ kind: 'desktop', path: '/tmp/shot.png', confidence: 'high' })
     expect(terminalTarget('openspec/changes/a/', {})).toBeNull()
   })
 
   it('leaves prose alone wherever the agent stands', () => {
     expect(terminalTarget('és/vagy', { root, cwd: wt, known })).toBeNull()
     expect(terminalTarget('24/7', { root, cwd: root, known })).toBeNull()
+  })
+})
+
+/**
+ * THE CONFIDENCE TIER — the repair for 1 464 measured occurrences of an
+ * underline that answers *no such file or directory* when it is activated.
+ *
+ * The fail direction is what makes this normative rather than cosmetic: an
+ * underline that fails teaches the reader to distrust every underline on the
+ * screen, which spends the credibility of the links that do work. And the tier
+ * exists rather than a plain refusal because dropping the token loses `/tmp`
+ * and `~/bin/mytool`, which are real paths somebody may want.
+ */
+describe('how sure the recogniser is', () => {
+  const root = '/home/x/proj'
+  const known = new Set(['src/app.ts'])
+
+  it('draws nothing for a slash command or a web route', () => {
+    // AC-4. Two segments and no extension is not enough to underline.
+    for (const token of ['/opsx:ff', '/dd', '/api/v1/items', '/tmp']) {
+      const target = terminalTarget(token, { root, cwd: root, known })
+      expect(target === null || target.confidence === 'low').toBe(true)
+    }
+  })
+
+  it('keeps an extensionless path outside every checkout REACHABLE', () => {
+    // AC-47 — the half a plain refusal would have lost.
+    expect(terminalTarget('/tmp', { root, cwd: root, known }))
+      .toEqual({ kind: 'desktop', path: '/tmp', confidence: 'low' })
+    expect(terminalTarget('~/bin/mytool', { root, cwd: root, known, home: '/home/x' }))
+      .toEqual({ kind: 'desktop', path: '/home/x/bin/mytool', confidence: 'low' })
+  })
+
+  it('underlines an outside path that names a file', () => {
+    expect(terminalTarget('/tmp/run-4/shot.png', { root, cwd: root, known })?.confidence)
+      .toBe('high')
+  })
+
+  it('refuses a route parameter at ANY confidence', () => {
+    // AC-48. A token carrying brackets is not path-shaped here, so no modifier
+    // makes it a link.
+    expect(terminalTarget('/items/[id]', { root, cwd: root, known })).toBeNull()
+    expect(terminalTarget('/items/<id>', { root, cwd: root, known })).toBeNull()
+  })
+
+  it('opens a bracketed path the listing HAS — proof beats shape', () => {
+    // The other side of the rule above, and the reason it is stated as a rule:
+    // a Next.js dynamic route file carries brackets in its real name.
+    const listing = buildListingIndex(['src/app/items/[id]/page.tsx'])
+    expect(terminalTarget('src/app/items/[id]/page.tsx', { root, cwd: root, listing }))
+      .toEqual({
+        kind: 'file', ref: { path: 'src/app/items/[id]/page.tsx' }, root, confidence: 'high',
+      })
+  })
+})
+
+/**
+ * WHAT AN AGENT ACTUALLY WRITES AROUND A PATH.
+ *
+ * Measured over 30 session transcripts: of 249 distinct tokens naming a file
+ * that exists and left as plain text, 121 were lost to leftover markup alone.
+ */
+describe('the punctuation around a path', () => {
+  const root = '/home/x/proj'
+  const paths = ['docs/x.md', 'src/app.ts', 'src/lib/util.ts', 'test/lib/util.ts']
+  const listing = buildListingIndex(paths)
+  const where = { root, cwd: root, listing }
+
+  it('reads a path through markdown emphasis, backticks, or both', () => {
+    // AC-5
+    for (const token of ['**docs/x.md**', '`docs/x.md`', '**`docs/x.md`**', '`docs/x.md`**']) {
+      expect(terminalTarget(token, where))
+        .toEqual({ kind: 'file', ref: { path: 'docs/x.md' }, root, confidence: 'high' })
+    }
+  })
+
+  it('reads a path out of a table cell, keeping the line number', () => {
+    // AC-6 — the separator is punctuation, the `:12` is not.
+    expect(terminalTarget('docs/x.md:12|', where))
+      .toEqual({ kind: 'file', ref: { path: 'docs/x.md', line: 12 }, root, confidence: 'high' })
+  })
+
+  it('does not let a sentence full stop name a file that does not exist', () => {
+    // Measured: seven working links broke when the first candidate placed
+    // through the SHAPE rule while a later candidate was in the listing.
+    expect(terminalTarget('src/app.ts.', where))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+  })
+
+  it('does not let an over-stripped candidate name a directory', () => {
+    // A Next.js dynamic-route directory ends in `]`, which is also what a
+    // sentence leaves on a path. Stripping is right for the prose and wrong
+    // here, so every candidate is offered to the listing BEFORE any of them is
+    // allowed to place on its shape alone.
+    const routes = buildListingIndex(['src/app/items/[id]/page.tsx'])
+    expect(terminalTarget('src/app/items/[id]', { root, cwd: root, listing: routes }))
+      .toEqual({ kind: 'directory', path: 'src/app/items/[id]', root, confidence: 'high' })
+  })
+
+  it('drops the punctuation when NOTHING in the listing can settle it', () => {
+    // `<checkout>/.venv/bin/python:` — a real file the listing excludes, so no
+    // candidate can be proven. Measured: the trailing colon survived into the
+    // answer and the reference named nothing.
+    expect(terminalTarget('/home/x/proj/.venv/bin/python:',
+                          { root, cwd: root, listing, checkouts: [root] }))
+      .toEqual({ kind: 'file', ref: { path: '.venv/bin/python' }, root, confidence: 'high' })
+  })
+
+  it('refuses a glob, whose star is the thing that says it names no one file', () => {
+    expect(terminalTarget('`docs/inputs/2026-08-25-*`', where)).toBeNull()
+    expect(terminalTarget('src/**/*.ts', where)).toBeNull()
+  })
+
+  it('expands a home-relative token against the framework account', () => {
+    // AC-7 — and refuses it outright when no home was supplied, because the
+    // browser guessing a home links to a file belonging to somebody else.
+    expect(terminalTarget('~/proj/src/app.ts', { ...where, home: '/home/x', checkouts: [root] }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+    expect(terminalTarget('~/proj/src/app.ts', where)).toBeNull()
+  })
+
+  it('resolves a token that is a unique SUFFIX of one known file', () => {
+    // AC-8
+    expect(terminalTarget('src/lib/util.ts', where))
+      .toEqual({ kind: 'file', ref: { path: 'src/lib/util.ts' }, root, confidence: 'high' })
+    expect(terminalTarget('app.ts', where))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+  })
+
+  it('offers the matches when a token suffixes SEVERAL known files', () => {
+    // AC-9 — never picks one. A wrong file that opens looks exactly like a
+    // right one, and nothing on the screen says otherwise.
+    expect(terminalTarget('lib/util.ts', where)).toEqual({
+      kind: 'choice',
+      matches: [{ path: 'src/lib/util.ts' }, { path: 'test/lib/util.ts' }],
+      root,
+      confidence: 'high',
+    })
+  })
+
+  it('matches a suffix only on a path boundary', () => {
+    // `actions/dashboard.ts` must NOT resolve to `.../my-actions/dashboard.ts`.
+    // It still becomes a reference — the endpoint is what answers whether that
+    // file is there — but it must never name the wrong file, because a wrong
+    // file that opens looks exactly like a right one.
+    const other = buildListingIndex(['src/my-actions/dashboard.ts'])
+    expect(terminalTarget('actions/dashboard.ts', { root, cwd: root, listing: other }))
+      .toEqual({
+        kind: 'file', ref: { path: 'actions/dashboard.ts' }, root, confidence: 'high',
+      })
+  })
+
+  it('resolves a climbing relative token instead of naming nothing', () => {
+    // `'../lib/fleetFiles'` is an import specifier, and `<base>/../lib/...` is a
+    // string that names no file — every consumer of the answer compares strings.
+    expect(terminalTarget("'../lib/x.ts'", { root: '/home/x/proj', cwd: '/home/x/proj/web', known: new Set() }))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj/lib/x.ts', confidence: 'high' })
+  })
+})
+
+/**
+ * THE LIMITS — a bound nothing can test is a bound nobody will notice going
+ * wrong. An unbounded scan degrades exactly while an agent is producing output
+ * fastest, and a stuttering terminal is indistinguishable from a stalled agent.
+ */
+describe('what the recogniser refuses to spend', () => {
+  const root = '/home/x/proj'
+  const known = new Set(['src/app.ts'])
+  const where = { root, cwd: root, known }
+
+  it('finds the references on an ordinary row', () => {
+    const found = terminalReferences('see src/app.ts:12 and /tmp/shot.png now', where)
+    expect(found.map(r => r.token)).toEqual(['src/app.ts:12', '/tmp/shot.png'])
+    expect(found[0].index).toBe(4)
+  })
+
+  it('does not scan a row past the length limit AT ALL', () => {
+    // AC-49. Not scanned partly: a partial scan produces links whose columns are
+    // right and whose coverage is arbitrary, which is worse than none.
+    const row = 'x'.repeat(RECOGNISER_LIMITS.row) + ' src/app.ts'
+    expect(terminalReferences(row, where)).toEqual([])
+  })
+
+  it('stops after the reference limit for one row', () => {
+    const row = Array.from({ length: 30 }, () => '/tmp/shot.png').join(' ')
+    expect(terminalReferences(row, where).length).toBe(RECOGNISER_LIMITS.perRow)
+  })
+
+  it('skips a token longer than the token limit', () => {
+    const long = '/tmp/' + 'a'.repeat(RECOGNISER_LIMITS.token) + '.png'
+    expect(terminalReferences(long + ' src/app.ts', where).map(r => r.token))
+      .toEqual(['src/app.ts'])
   })
 })
 
