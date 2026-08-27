@@ -185,7 +185,8 @@ describe('a waiting agent, now that the producer measures it', () => {
     const { container } = render(<Fleet />)
     await waitFor(() => expect(container.querySelector('[data-fleet-attention]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-waiting="unreported"]')).toBeNull()
-    expect(container.textContent ?? '').toContain('0 waiting for an answer')
+    expect(container.querySelector('[data-fleet-chip="waiting-zero"]')!.getAttribute('aria-label'))
+      .toContain('0 waiting for an answer')
   })
 })
 
@@ -198,8 +199,8 @@ describe('a declaration the log refuted is shown, not swallowed', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-fleet-conflict-agent="1"]')).toBeTruthy()
     })
-    expect(container.querySelector('[data-fleet-jump="conflict"]')).toBeTruthy()
-    expect(container.textContent ?? '').toContain('1 contradicting declarations')
+    expect(container.querySelector('[data-fleet-jump="conflict"]')!.getAttribute('aria-label'))
+      .toContain('1 contradicting declarations')
   })
 
   it('counts from the data: a null field is not a contradiction and an empty string is not one either', async () => {

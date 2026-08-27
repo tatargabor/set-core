@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, Bot, Clock, History, TriangleAlert } from 'lucide-react'
+import { Archive, Bot, CircleDashed, Clock, ClockArrowDown, History, SearchX, TriangleAlert } from 'lucide-react'
 
-import { age, stalestSeconds } from '../lib/fleetAge'
+import { age, freshestSeconds, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
 import type { FleetProject, FleetResponse } from '../lib/fleetTypes'
-import { type ColumnMode, buildColumnView, mergeByName } from '../lib/fleetColumnView'
+import { type ColumnMode, type ColumnSort, buildColumnView, mergeByName } from '../lib/fleetColumnView'
 import {
   type FleetArrangement,
   type FleetGroup,
@@ -39,6 +39,7 @@ import {
   waitingReported,
 } from '../lib/fleetAttention'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
+import { Chip, Dot } from './Chip'
 
 /**
  * The project column — hand-ordered groups, parked section, attention header.
@@ -175,11 +176,16 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
  * capability names — a framework that gained a module would otherwise keep
  * drawing the old four, and the row would be confidently out of date.
  */
-function ProjectFacts({ project }: { project: FleetProject | undefined }) {
+function ProjectFacts({ project, showFreshest }: { project: FleetProject | undefined; showFreshest?: boolean }) {
   if (!project) return null
   const standing = capabilityStanding(project.capabilities)
   const sources = extraSources(project.sources)
   const stalest = stalestSeconds(project)
+  // Only where it says something the stalest does not. A single-agent project —
+  // most of them — has one number, and rendering it twice would spend the row's
+  // scarcest resource on a repetition.
+  const freshest = showFreshest ? freshestSeconds(project) : null
+  const bothShown = freshest !== null && stalest !== null && freshest !== stalest
   if (standing.kind === 'none' && sources.length === 0 && stalest === null) return null
   // WRAPS rather than truncates. Measured at a 279 px column: the marks, the age
   // and the sources did not fit on one line and it was being cut mid-word — a
@@ -226,9 +232,14 @@ function ProjectFacts({ project }: { project: FleetProject | undefined }) {
         <span
           className="inline-flex items-center gap-1 text-xs text-fg-ghost tabular-nums shrink-0"
           data-fleet-project-stalest={stalest}
-          title="the longest any agent here has gone without moving"
+          data-fleet-project-freshest={bothShown ? freshest : undefined}
+          title={bothShown
+            ? 'the freshest movement here, then the longest any agent has gone without moving'
+            : 'the longest any agent here has gone without moving'}
         >
-          <Clock size={11} strokeWidth={1.75} />{age(stalest)}
+          <Clock size={11} strokeWidth={1.75} />
+          {bothShown && <span className="text-fg-muted">{age(freshest)}…</span>}
+          {age(stalest)}
         </span>
       )}
       {sources.length > 0 && (
@@ -298,6 +309,8 @@ interface RowProps {
   index?: number
   /** Last row of its list — no separator below it, so a block ends cleanly. */
   last?: boolean
+  /** Render the freshest movement beside the stalest — the recency order's key. */
+  showFreshest?: boolean
   dragging?: boolean
   dropTarget?: boolean
   menuOpen: boolean
@@ -415,7 +428,7 @@ function ProjectRow(p: RowProps) {
               </span>
             )}
           </span>
-          <ProjectFacts project={p.project} />
+          <ProjectFacts project={p.project} showFreshest={p.showFreshest} />
         </button>
         <button
           onClick={p.onMenu}
@@ -678,6 +691,14 @@ export default function FleetProjectColumn({
    * screen refuses everywhere else.
    */
   const [mode, setMode] = useState<ColumnMode>('arrangement')
+  /**
+   * Whether the flat list is read in the reader's own order or freshest-first.
+   *
+   * Not persisted, for the same reason `mode` is not: arriving at a column that
+   * has already re-ordered itself before the reader chose anything would make
+   * the arrangement — the thing they built by hand — look like it had changed.
+   */
+  const [sort, setSort] = useState<ColumnSort>('order')
   const [query, setQuery] = useState('')
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
@@ -815,8 +836,8 @@ export default function FleetProjectColumn({
    * mode, so narrowing the list can never make the header read calm.
    */
   const colView = useMemo(
-    () => buildColumnView(order, byName, { mode, query }),
-    [order, byName, mode, query],
+    () => buildColumnView(order, byName, { mode, query, sort }),
+    [order, byName, mode, query, sort],
   )
   const colHidden = colView.hiddenNoLive + colView.hiddenByFilter
   const firstWaiting = useMemo(
@@ -914,25 +935,46 @@ export default function FleetProjectColumn({
           nested overflow container has been known to. */}
       {/* ---------------------------------------------------------------- */}
       <div data-fleet-attention className="shrink-0 border-b border-surface-line px-2 py-1.5 space-y-1">
+        {/* Marks and numbers, one line, no prose — see `Chip`. The order is
+            the order they matter in: somebody is blocked on an answer, then on
+            a person, then what was never looked at, then the anomalies, then
+            what is simply running.
+
+            The agent and project TOTALS are deliberately not here. They used to
+            be, alongside the screen header's own copy, with different filters
+            and no way to tell which was which (raised 2026-08-19); they are
+            stated once, up there, as one sentence carrying the relation between
+            the two numbers. */}
         <div className="flex items-center gap-2 flex-wrap">
           {waitingKnown ? (
             totals.waiting > 0 ? (
-              <button
-                data-fleet-jump="waiting"
+              <Chip
+                jump="waiting"
                 onClick={() => jump(firstWaiting)}
-                className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold hover:underline underline-offset-2 tabular-nums"
-              >
-                <span className="w-2 h-2 rounded-full bg-sky-300" />
-                {totals.waiting} waiting for an answer
-                <span className="text-fg-muted font-normal">→ first one</span>
-              </button>
+                tone="text-sky-300 font-semibold"
+                mark={<Dot cls="bg-sky-300" />}
+                count={totals.waiting}
+                title={`${totals.waiting} agent(s) waiting for an answer — jump to the first`}
+                label={`${totals.waiting} waiting for an answer, jump to the first`}
+              />
             ) : (
-              <span className="text-xs text-fg-muted tabular-nums">0 waiting for an answer</span>
+              /* A measured zero, drawn dim. It stays on the strip because the
+                 next branch is a DIFFERENT fact, and the two must not look
+                 alike. */
+              <Chip
+                jump="waiting-zero"
+                tone="text-fg-muted"
+                mark={<Dot cls="bg-fg-ghost" />}
+                count={0}
+                title="Nobody is waiting for an answer. Measured, not assumed."
+                label="0 waiting for an answer"
+              />
             )
           ) : (
             /* NOT a zero. Where the producer does not report this state at all,
-               a rendered `0 waiting for an answer` would be an answer nobody gave — the
-               false-absence class this screen exists for.
+               a rendered `0` would be an answer nobody gave — the false-absence
+               class this screen exists for. So the number is `?` and the mark is
+               hollow: it cannot be mistaken for the measured zero above.
 
                Measured 2026-08-19 (afternoon): the producer DOES report it now
                (`waiting: 1` in the envelope, `state: "waiting"` on an agent), so
@@ -940,98 +982,103 @@ export default function FleetProjectColumn({
                because the reason it exists has not changed: an older server, a
                partial answer, or a future field that stops being emitted all
                land here, and each of them is a gap rather than a zero. */
-            <span
-              data-fleet-waiting="unreported"
-              className="text-xs text-amber-400"
-              title="This answer carries no 'waiting for an answer' measurement. Not a zero — a missing measurement."
-            >
-              “waiting for an answer” — this answer does not measure it
-            </span>
+            <Chip
+              jump="waiting-unreported"
+              data={{ 'data-fleet-waiting': 'unreported' }}
+              tone="text-amber-400"
+              mark={<span className="w-2 h-2 rounded-full border border-amber-400 shrink-0" aria-hidden />}
+              count="?"
+              title="This answer carries no “waiting for an answer” measurement. Not a zero — a missing measurement."
+              label="waiting for an answer is not measured in this answer"
+            />
           )}
           {/* Task 7.14. In the header rather than only on the row, for the same
               reason the waiting count is: a hand-made order has no construction
               that keeps this visible, and a project awaiting a human is the one
               a reader could unblock in a minute. The jump has its own finder —
               `firstMatching` looks for an AGENT, and these projects usually
-              have none. */}
+              have none.
+
+              A SQUARE, where every agent-state mark is a circle: the shape
+              carries the difference between an agent that exists and work with
+              nobody on it, and with the words gone it is the only thing that
+              does. */}
           {totals.awaiting > 0 && (
-            <button
-              data-fleet-jump="awaiting"
+            <Chip
+              jump="awaiting"
               onClick={() => jump(firstAwaitingProject)}
-              className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:underline underline-offset-2 tabular-nums"
-              title="Work waiting for a human — even where no agent is running. A manual step, a stalled change, or work marked running whose process is gone."
-            >
-              <span className="w-2 h-2 bg-violet-300" />
-              {totals.awaiting} waiting for a human
-              <span className="text-fg-muted">→</span>
-            </button>
+              tone="text-violet-300"
+              mark={<span className="w-2 h-2 bg-violet-300 shrink-0" aria-hidden />}
+              count={totals.awaiting}
+              title="Work waiting for a human — even where no agent is running. A manual step, a stalled change, or work marked running whose process is gone. Jump to the first."
+              label={`${totals.awaiting} waiting for a human, jump to the first`}
+            />
           )}
-          {/* A zero here is only readable next to this. 37 of 41 projects had no
-              orchestration state at all on the day this was built, so a bare
-              `0 waiting for a human` would have described "we looked nowhere" as "there
-              is nothing". */}
+          {/* A zero next to this is only readable because of it. 37 of 41
+              projects had no orchestration state at all on the day this was
+              built, so a bare `0 waiting for a human` would have described "we
+              looked nowhere" as "there is nothing". The dashed ring is the
+              screen's mark for that everywhere else. */}
           {totals.unmeasured > 0 && (
-            <span
-              data-fleet-awaiting-unmeasured={totals.unmeasured}
-              className="text-xs text-fg-ghost tabular-nums"
+            <Chip
+              jump="unmeasured"
+              tone="text-fg-ghost"
+              mark={<CircleDashed size={13} strokeWidth={1.75} aria-hidden />}
+              count={totals.unmeasured}
               title="This many projects have no orchestration state at all, so nothing was looked at there. Not a zero — not measured."
-            >
-              {totals.unmeasured} projects not measured
-            </span>
+              label={`${totals.unmeasured} projects not measured`}
+            />
           )}
           {/* A contradiction the surface never shows is one nobody ever fixes.
               The measurement already won — `state` holds the log's answer — so
               this changes nothing the reader must act on, and that is exactly
               why it would otherwise never surface anywhere. */}
           {totals.conflicts > 0 && (
-            <button
-              data-fleet-jump="conflict"
+            <Chip
+              jump="conflict"
               onClick={() => jump(firstConflict)}
-              className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline underline-offset-2 tabular-nums"
-              title="This many agents' records declared a state their log contradicts. The measurement wins; the contradiction is on the producer's side."
-            >
-              <span aria-hidden>⚠</span>
-              {totals.conflicts} contradicting declarations
-              <span className="text-fg-muted">→</span>
-            </button>
+              tone="text-amber-400"
+              mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
+              count={totals.conflicts}
+              title="This many agents' records declared a state their log contradicts. The measurement wins; the contradiction is on the producer's side. Jump to the first."
+              label={`${totals.conflicts} contradicting declarations, jump to the first`}
+            />
           )}
           {totals.unknown > 0 && (
-            <button
-              data-fleet-jump="unknown"
+            <Chip
+              jump="unknown"
               onClick={() => jump(firstUnknown)}
-              className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline underline-offset-2 tabular-nums"
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              {totals.unknown} unknown
-              <span className="text-fg-muted">→</span>
-            </button>
+              tone="text-amber-400"
+              mark={<Dot cls="bg-amber-400" />}
+              count={totals.unknown}
+              title="This many agents are in an unknown state — jump to the first"
+              label={`${totals.unknown} in an unknown state, jump to the first`}
+            />
           )}
           {totals.working > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 tabular-nums">
-              {/* English, like every other string on this surface. It read
-                  `dolgozik` until 2026-08-20 — one Hungarian word beside
-                  `unknown` and `waiting for a human`, found by LOOKING at the
-                  screen rather than by any test, because a test asserting the
-                  wrong language passes exactly as well as one asserting the
-                  right one. */}
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />{totals.working} working
-            </span>
+            <Chip
+              jump="working"
+              tone="text-emerald-400"
+              mark={<Dot cls="bg-emerald-400" />}
+              count={totals.working}
+              title="This many agents are working"
+              label={`${totals.working} working`}
+            />
+          )}
+          {/* Arranged names discovery no longer returns — the one fact only this
+              column knows. It used to sit on a line of its own below the strip,
+              which is a second row of height for a number that is usually 0. */}
+          {missingCount > 0 && (
+            <Chip
+              jump="missing"
+              tone="text-amber-400"
+              mark={<SearchX size={13} strokeWidth={1.75} aria-hidden />}
+              count={missingCount}
+              title="Projects placed in this arrangement that the latest discovery did not return."
+              label={`${missingCount} arranged names missing`}
+            />
           )}
         </div>
-        {/* The agent and project totals used to live here AND in the screen's
-            header, with different filters and no way to tell which was which
-            (raised 2026-08-19). They are now stated once, in the header, as one
-            sentence that carries the relation between the two numbers. What
-            stays here is the thing only this column knows: arranged names that
-            discovery no longer finds. */}
-        {missingCount > 0 && (
-          <div
-            className="text-xs text-amber-400 tabular-nums truncate"
-            title="Projects placed in this arrangement that the latest discovery did not return."
-          >
-            {missingCount} arranged name(s) missing
-          </div>
-        )}
       </div>
 
       {/* ---------------------------------------------------------------- */}
@@ -1043,7 +1090,17 @@ export default function FleetProjectColumn({
           keeps its own size next to it for the same reason. */}
       {/* ---------------------------------------------------------------- */}
       <div data-fleet-column-controls className="shrink-0 border-b border-surface-line px-2 py-1.5 space-y-1">
-        <div className="flex items-center gap-1.5">
+        {/* WRAPS, and the filter carries a floor rather than `min-w-0`.
+
+            Measured in the browser at the panel's own width, 185 px: the mode
+            toggle is 144, the sort button 27 and the gaps 12, which leaves the
+            filter 34 px of a 169 px row — a text input too narrow to read what
+            was typed into it, and it was already 34 px before the sort button
+            was added. `min-w-0` lets a flex child shrink to nothing, so the
+            row stayed one line by silently crushing the one control that needs
+            width. Wrapping spends a row of height instead, and only when the
+            panel is actually too narrow. */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <div className="inline-flex rounded border border-surface-line overflow-hidden text-xs shrink-0">
             {(['arrangement', 'live'] as ColumnMode[]).map(m => {
               const on = mode === m
@@ -1071,7 +1128,55 @@ export default function FleetProjectColumn({
               )
             })}
           </div>
-          <div className="relative flex-1 min-w-0">
+          {/* ---------------------------------------------------------- */}
+          {/* Freshest-first — "put the projects I am working in on top".
+
+              It sorts on the FRESHEST movement in each project, while the row's
+              clock keeps showing the STALEST agent, because those answer
+              different questions and the column exists for the second one. That
+              is also why a row whose two numbers differ renders both while this
+              is on: an order the reader cannot explain from the rows is an
+              order they stop trusting.
+
+              Clicking it from the group tree switches to the live list as well.
+              The tree is the arrangement — re-sorting it would either shuffle
+              rows inside groups or flatten what the reader built — and both
+              controls visibly flip, so nothing happens that is not on screen. */}
+          {/* ---------------------------------------------------------- */}
+          <button
+            type="button"
+            aria-pressed={sort === 'recent'}
+            data-fleet-column-sort={sort}
+            data-fleet-column-sort-active={colView.sorted ? 'on' : undefined}
+            onClick={() => {
+              const next = sort === 'recent' ? 'order' : 'recent'
+              setSort(next)
+              // Only when the tree is showing: with a filter typed the list is
+              // already flat, and the sort applies where the reader is.
+              if (next === 'recent' && !colView.flat) setMode('live')
+            }}
+            /* The unmeasured tail lives HERE rather than on a line of its own.
+               A run of `—` at the bottom of a time-ordered list would read as
+               "oldest" and it is not — nobody measured those — but the reader
+               asked for the icon to speak for itself, and a hover costs no
+               space on a 185 px column. */
+            title={sort === 'recent'
+              ? `Freshest first — ordered by the age each row shows, so two rows reading the same age keep your own order.${
+                colView.unmeasured > 0
+                  ? ` The ${colView.unmeasured} at the end ${colView.unmeasured === 1 ? 'was' : 'were'} not measured at all — not measured as old.`
+                  : ''
+              } Click to go back to your order.`
+              : 'Put the projects you are working in on top — ordered by the freshest agent movement. Your arrangement is not changed.'}
+            aria-label="Order by the freshest agent movement"
+            className={`shrink-0 rounded border px-1.5 py-1 transition-colors ${
+              sort === 'recent'
+                ? 'border-surface-line bg-surface-raised text-fg-loud'
+                : 'border-surface-line text-fg-faint hover:text-fg-normal'
+            }`}
+          >
+            <ClockArrowDown size={13} strokeWidth={1.75} />
+          </button>
+          <div className="relative flex-1 min-w-[6rem]">
             <input
               type="text"
               value={query}
@@ -1093,30 +1198,6 @@ export default function FleetProjectColumn({
             )}
           </div>
         </div>
-        {/* Compaction the reader chose is still compaction, and this is the
-            sharpest on the screen — it drops whole projects. So it says what it
-            dropped, split by cause, and one control puts the column back. The
-            attention header above is unaffected by the mode by construction. */}
-        {colHidden > 0 && (
-          <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-hidden={colHidden}>
-            {colHidden} project(s) not shown
-            <span className="text-fg-ghost">
-              {' '}({[
-                colView.hiddenNoLive > 0 ? `${colView.hiddenNoLive} with no live session` : null,
-                colView.hiddenByFilter > 0 ? `${colView.hiddenByFilter} filtered out` : null,
-              ].filter(Boolean).join(', ')})
-            </span>
-            {' · '}
-            <button
-              type="button"
-              data-fleet-column-clear
-              onClick={() => { setMode('arrangement'); setQuery('') }}
-              className="underline underline-offset-2 hover:text-fg-normal"
-            >
-              show all
-            </button>
-          </div>
-        )}
       </div>
 
       {conflict && (
@@ -1169,7 +1250,7 @@ export default function FleetProjectColumn({
                 <button
                   type="button"
                   data-fleet-column-clear
-                  onClick={() => { setMode('arrangement'); setQuery('') }}
+                  onClick={() => { setMode('arrangement'); setQuery(''); setSort('order') }}
                   className="underline underline-offset-2 hover:text-fg-normal"
                 >
                   show all {colView.totalPresent}
@@ -1180,6 +1261,7 @@ export default function FleetProjectColumn({
                 key={r.name}
                 name={r.name}
                 last={i === colView.rows.length - 1}
+                showFreshest={colView.sorted}
                 project={r.project}
                 active={selected === r.name}
                 waitingKnown={waitingKnown}
@@ -1383,6 +1465,40 @@ export default function FleetProjectColumn({
         </>)}
       </div>
 
+      {/* Compaction the reader chose is still compaction, and this is the
+          sharpest on the screen — it drops whole projects. So it says what it
+          dropped, split by cause, and one control puts the column back. The
+          attention header above is unaffected by the mode by construction.
+
+          It sits BELOW the list rather than above it — the reader asked for
+          that, and the line was between the controls and the projects, pushing
+          the rows down on every narrowing. It is outside the scroll container,
+          not at the end of it: a note about what is missing that you have to
+          scroll to find is a note that can be missed, and this one is the
+          screen's own answer to "is that everything?". */}
+      {colHidden > 0 && (
+        <div
+          className="shrink-0 border-t border-surface-line px-2 py-1 text-xs text-fg-faint tabular-nums"
+          data-fleet-column-hidden={colHidden}
+        >
+          {colHidden} project(s) not shown
+          <span className="text-fg-ghost">
+            {' '}({[
+              colView.hiddenNoLive > 0 ? `${colView.hiddenNoLive} with no live session` : null,
+              colView.hiddenByFilter > 0 ? `${colView.hiddenByFilter} filtered out` : null,
+            ].filter(Boolean).join(', ')})
+          </span>
+          {' · '}
+          <button
+            type="button"
+            data-fleet-column-clear
+            onClick={() => { setMode('arrangement'); setQuery(''); setSort('order') }}
+            className="underline underline-offset-2 hover:text-fg-normal"
+          >
+            show all
+          </button>
+        </div>
+      )}
       {/* ------------------------------------------------------------ */}
       {/* Making a group. A prefix may SEED one; it is never stored.     */}
       {/* ------------------------------------------------------------ */}

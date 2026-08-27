@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, EyeOff, File as FileIcon, Maximize2, Minimize2, RefreshCw, Save, WrapText, X } from 'lucide-react'
+import {
+  ChevronDown, ChevronRight, EyeOff, File as FileIcon, Maximize2, Minimize2,
+  PanelLeftClose, PanelLeftOpen, RefreshCw, Save, WrapText, X,
+} from 'lucide-react'
 
 import { ancestorsOf, buildTree, languageOf, statusKind, type TreeNode } from '../lib/fleetFiles'
 import { classifyLoadFailure, type LoadFailure } from '../lib/buildFreshness'
@@ -34,8 +37,9 @@ import type { DockEdge } from '../lib/fleetDocks'
  * (`CLAUDE.md`, External Project Confidentiality), and this panel displays it
  * for as long as it is on screen and no longer.
  *
- * Two booleans DO persist: whether lines are wrapped, and whether ignored files
- * are shown. The line the rule draws is not "localStorage is forbidden" but
+ * Three booleans DO persist: whether lines are wrapped, whether ignored files
+ * are shown, and whether the file list is hidden. The line the rule draws is
+ * not "localStorage is forbidden" but
  * "a consumer's domain does not leave the framework's memory", and a flag about
  * this panel is not a consumer's domain. They are stored because the panel is
  * torn down for reasons that have nothing to do with the reader — docking it to
@@ -64,6 +68,7 @@ function remember(key: string, value: boolean): void {
 
 const WRAP_KEY = 'set-file-wrap'
 const IGNORED_KEY = 'set-file-ignored'
+const TREE_HIDDEN_KEY = 'set-file-tree-hidden'
 
 /** What the listing endpoint answers. */
 interface Listing {
@@ -303,6 +308,26 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     with a place to store it, not an oversight.
   */
   const [treeWidth, setTreeWidth] = useState(256)
+
+  /*
+    THE FILE LIST, OUT OF THE WAY — asked for on 2026-08-27.
+
+    The tree is a navigation aid. Once a file is open it keeps costing the width
+    the content is read in, and on a docked or narrow panel that is most of the
+    width there is. Hiding it is a decision about LAYOUT, not about data, so it
+    holds for whatever the right-hand side is showing — the editor today, any
+    other viewer this panel grows later.
+
+    Kept apart from `treeWidth` rather than folded into it: a list dragged down
+    to its minimum is still a list somebody wants, and collapsing by width would
+    spend the width they chose. Bringing it back restores exactly that number.
+
+    Remembered, for the reason the other two are: docking, enlarging and closing
+    all tear this panel down, and none of them is the reader asking for their
+    list back.
+  */
+  const [treeHidden, setTreeHidden] = useState(() => remembered(TREE_HIDDEN_KEY, false))
+  useEffect(() => { remember(TREE_HIDDEN_KEY, treeHidden) }, [treeHidden])
   useEffect(() => {
     let dead = false
     setListing(null)
@@ -474,6 +499,25 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   const openPath = opened.kind === 'none' ? null : opened.path
 
   /*
+    HIDING MAY NOT HIDE A FAILURE — `ui-quality.md`'s rule, applied to the
+    control that does the hiding.
+
+    Two of the tree's notices are the kind of thing that can sit behind a tidy
+    screen: a listing that FAILED, and a listing that carries no change marks at
+    all. Both render inside the list, so putting the list away would take them
+    with it and leave a panel that looks calm about something it never measured.
+    They travel to the toggle instead — colour is the alarm, the label is the
+    reason, the same split the terminal control already uses.
+  */
+  const treeAlarm: string | null = !treeHidden ? null
+    : listError != null ? `the files could not be listed: ${listError}`
+      : listing != null && listing.status == null
+        ? (listing.source === 'walk'
+            ? 'not a git repository — nothing in the file list says what is committed'
+            : 'the change marks could not be read — the list does not know what changed')
+        : null
+
+  /*
     THE STRUCTURE FOLLOWS THE OPEN FILE — reported 2026-08-26:
     *"ha egy filet megnyitok akkor a navigacio a file listaban oda kelllene
     alljon (koveti)"*.
@@ -574,6 +618,21 @@ export default function FleetFileView({ root, projectName, request, initial, onC
               onClick={onMaximise}
             />
           )}
+          {/* Layout, not data: it changes what the panel spends its width on
+              and nothing about what it holds. Hence its place beside `wrap`. */}
+          <IconButton
+            icon={treeHidden ? PanelLeftOpen : PanelLeftClose}
+            testId="file-tree-toggle"
+            active={treeHidden}
+            tone={treeAlarm ? 'amber' : undefined}
+            mark={{ 'data-fleet-file-tree-hidden': treeHidden ? 'on' : 'off' }}
+            label={treeAlarm
+              ? `bring the file list back — ${treeAlarm}`
+              : treeHidden
+                ? 'bring the file list back'
+                : 'hide the file list — whatever is open takes its width'}
+            onClick={() => setTreeHidden(v => !v)}
+          />
           <IconButton
             icon={WrapText}
             testId="file-wrap"
@@ -661,64 +720,71 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       )}
 
       <div className="flex-1 min-h-0 flex">
-        <div className="shrink-0 overflow-auto p-1"
-             style={{ width: `${treeWidth}px` }}
-             data-fleet-file-tree>
-          {listError && <div className="text-xs text-red-400 p-1">the files could not be listed: {listError}</div>}
-          {!listError && !listing && <div className="text-xs text-fg-ghost p-1">listing…</div>}
-          {listing && listing.files.length === 0 && (
-            <div className="text-xs text-fg-ghost p-1">
-              {listing.source === 'git'
-                ? 'this repository lists no files'
-                : 'this directory is not a git repository, and the walk found no files'}
-            </div>
-          )}
-          {tree.map(node => (
-            <Node key={node.path} node={node} depth={0} openPath={openPath}
-                  activeRef={revealRef}
-                  expanded={expanded} onToggle={p => setExpanded(prev => {
-                    const next = new Set(prev)
-                    if (next.has(p)) next.delete(p); else next.add(p)
-                    return next
-                  })} onOpen={openFile} />
-          ))}
-          {/*
-            A STATED ABSENCE, not an inferred calm.
+        {/*
+          The list and the divider leave TOGETHER. A splitter with nothing on
+          one side of it is a handle for resizing a panel that is not there —
+          it would still drag, still set `treeWidth`, and report nothing back.
+        */}
+        {!treeHidden && (<>
+          <div className="shrink-0 overflow-auto p-1"
+               style={{ width: `${treeWidth}px` }}
+               data-fleet-file-tree>
+            {listError && <div className="text-xs text-red-400 p-1">the files could not be listed: {listError}</div>}
+            {!listError && !listing && <div className="text-xs text-fg-ghost p-1">listing…</div>}
+            {listing && listing.files.length === 0 && (
+              <div className="text-xs text-fg-ghost p-1">
+                {listing.source === 'git'
+                  ? 'this repository lists no files'
+                  : 'this directory is not a git repository, and the walk found no files'}
+              </div>
+            )}
+            {tree.map(node => (
+              <Node key={node.path} node={node} depth={0} openPath={openPath}
+                    activeRef={revealRef}
+                    expanded={expanded} onToggle={p => setExpanded(prev => {
+                      const next = new Set(prev)
+                      if (next.has(p)) next.delete(p); else next.add(p)
+                      return next
+                    })} onOpen={openFile} />
+            ))}
+            {/*
+              A STATED ABSENCE, not an inferred calm.
 
-            When the listing carries no status map there is nothing to ask — the
-            directory is not a repository, or the read failed — and every row
-            renders unmarked. Unmarked rows are exactly what a clean project
-            looks like, so without this line the panel would report a
-            cleanliness it never measured. Same rule as `a gap is not a zero`,
-            reaching a tree instead of a number.
-          */}
-          {listing && listing.status == null && (
-            <div className="text-xs text-fg-ghost p-1 mt-1 border-t border-surface-line"
-                 data-fleet-file-nostatus={listing.source}>
-              {listing.source === 'walk'
-                ? 'not a git repository — nothing here says what is committed'
-                : 'the change marks could not be read — an unmarked row does not mean clean'}
-            </div>
-          )}
-          {/* And the other withheld thing, said where the reader is standing. */}
-          {listing && listing.status != null && !showIgnored && (
-            <div className="text-xs text-fg-ghost p-1 mt-1"
-                 data-fleet-file-ignored-hint="yes">
-              files this project ignores are not listed
-            </div>
-          )}
-        </div>
+              When the listing carries no status map there is nothing to ask — the
+              directory is not a repository, or the read failed — and every row
+              renders unmarked. Unmarked rows are exactly what a clean project
+              looks like, so without this line the panel would report a
+              cleanliness it never measured. Same rule as `a gap is not a zero`,
+              reaching a tree instead of a number.
+            */}
+            {listing && listing.status == null && (
+              <div className="text-xs text-fg-ghost p-1 mt-1 border-t border-surface-line"
+                   data-fleet-file-nostatus={listing.source}>
+                {listing.source === 'walk'
+                  ? 'not a git repository — nothing here says what is committed'
+                  : 'the change marks could not be read — an unmarked row does not mean clean'}
+              </div>
+            )}
+            {/* And the other withheld thing, said where the reader is standing. */}
+            {listing && listing.status != null && !showIgnored && (
+              <div className="text-xs text-fg-ghost p-1 mt-1"
+                   data-fleet-file-ignored-hint="yes">
+                files this project ignores are not listed
+              </div>
+            )}
+          </div>
 
-        <FleetSplitter
-          axis="x"
-          size={treeWidth}
-          grows="before"
-          min={120}
-          max={640}
-          label="file list width"
-          onDrag={setTreeWidth}
-          onCommit={setTreeWidth}
-        />
+          <FleetSplitter
+            axis="x"
+            size={treeWidth}
+            grows="before"
+            min={120}
+            max={640}
+            label="file list width"
+            onDrag={setTreeWidth}
+            onCommit={setTreeWidth}
+          />
+        </>)}
 
         <div className="flex-1 min-w-0 min-h-0" data-fleet-file-content>
           {opened.kind === 'none' && (

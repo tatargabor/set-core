@@ -322,11 +322,28 @@ def test_back_is_unavailable_at_the_beginning():
 # --------------------------------------------------------------------------- #
 
 def test_no_queue_record_carries_session_content():
-    """Identity, class, timestamps. Nothing a consumer wrote."""
+    """Identity, class, timestamps, and one derived number. Nothing a consumer wrote.
+
+    An EXHAUSTIVE set rather than a list of forbidden names, so a field added for
+    an unrelated reason has to be argued for here before it can ride along. That
+    is the whole value of this test, and it works: `recoverable_usd` failed it on
+    2026-08-27 and is listed below only after the question was asked.
+
+    Why that one is allowed: it is a USD figure derived from a token COUNT — a
+    size and a price, carrying nothing a consumer typed, named or built. The
+    boundary `CLAUDE.md` draws is persistence, and this queue is rebuilt from
+    live sources every cycle rather than saved, so the figure never reaches disk.
+
+    What would NOT be allowed here, for the next reader deciding: a cwd, a
+    branch, a session name, a file path, an excerpt, a tool argument, or a model
+    prompt — each of which names or quotes something inside a project that is
+    not this framework's.
+    """
     q, _ = _queue({1: 60.0})
     item = q.ordered()[0]
     assert set(vars(item)) == {
-        "pid", "project", "label", "source", "blocked_since", "blockage_point", "presented_count",
+        "pid", "project", "label", "source", "blocked_since", "blockage_point",
+        "presented_count", "recoverable_usd",
     }
 
 
@@ -387,3 +404,79 @@ def test_the_counts_say_whether_anything_has_been_counted_yet():
     q.update([_subject(1)], _result(_verdicts(**{"1": j.FINISHED})),
              states=_states(ages={1: 5}), now=NOW)
     assert q.counts.counted is True
+
+
+# --------------------------------------------------------------------------- #
+# ordered by the money still on the table
+# --------------------------------------------------------------------------- #
+#
+# Freshness was a stand-in for this cost, and it was blind twice: to the STAKE
+# (equal freshness, wildly unequal caches) and to the THRESHOLD (past expiry
+# there is nothing left to save). These hold both, plus the fallback that keeps
+# an unmeasured seat from being sorted as if it had been measured at zero.
+
+
+def _queue_with_money(money: dict[int, float | None], ages: dict[int, float]) -> Queue:
+    """A queue whose items carry a measured recoverable figure (or None)."""
+    subjects = [
+        j.Subject(pid=pid, project="p", state=agent_state.QUIET,
+                  label=f"a{pid}", recoverable_usd=money[pid])
+        for pid in money
+    ]
+    q = Queue()
+    q.update(subjects, _result(_verdicts(**{str(p): j.ASKING for p in money})),
+             states=_states(ages=ages), now=NOW)
+    return q
+
+
+def test_a_larger_stake_outranks_an_equally_fresh_smaller_one():
+    """Both blocked at the same moment; one holds thirteen times the cache."""
+    q = _queue_with_money({1: 0.14, 2: 1.86}, {1: 600.0, 2: 600.0})
+    assert [it.pid for it in q.ordered()] == [2, 1]
+
+
+def test_an_expired_cache_carries_no_urgency():
+    """Zero recoverable — the money is already spent, so hurrying buys nothing.
+
+    Note the freshness is INVERTED against the answer: pid 1 became blocked most
+    recently and still sorts last. Written that way on purpose, so the test fails
+    if the old freshness key is still in charge.
+    """
+    q = _queue_with_money({1: 0.0, 2: 0.9}, {1: 10.0, 2: 3600.0})
+    assert [it.pid for it in q.ordered()] == [2, 1]
+
+
+def test_an_unmeasured_seat_is_ranked_by_freshness_not_as_a_zero():
+    """A zero would sort it in with the already-expired, which is a claim about
+    a cache nobody looked at. It gets the old ordering instead, in its own tier."""
+    q = _queue_with_money({1: None, 2: None}, {1: 120.0, 2: 2400.0})
+    assert [it.pid for it in q.ordered()] == [1, 2]
+
+
+def test_a_measured_seat_outranks_an_unmeasured_one():
+    """Even a small measured stake beats an unknown, because the alternative is
+    inventing a figure for the unknown in order to compare them."""
+    q = _queue_with_money({1: None, 2: 0.05}, {1: 10.0, 2: 3600.0})
+    assert [it.pid for it in q.ordered()] == [2, 1]
+
+
+def test_an_expired_measured_seat_still_outranks_an_unmeasured_one():
+    """Zero is a measurement: it says there is nothing left to save HERE. An
+    unmeasured seat says nothing at all, and cannot be promoted past a fact."""
+    q = _queue_with_money({1: None, 2: 0.0}, {1: 10.0, 2: 3600.0})
+    assert [it.pid for it in q.ordered()] == [2, 1]
+
+
+def test_the_money_does_not_overrule_seenness_or_the_project():
+    """The new key slots BELOW the rules that were already there. A deferred
+    item must stay demoted however much money it holds, or `later` stops working
+    — which was itself a measured defect, fixed 2026-08-20."""
+    subjects = [
+        j.Subject(pid=1, project="p", state=agent_state.QUIET, label="a1", recoverable_usd=9.99),
+        j.Subject(pid=2, project="p", state=agent_state.QUIET, label="a2", recoverable_usd=0.01),
+    ]
+    q = Queue()
+    q.update(subjects, _result(_verdicts(**{"1": j.ASKING, "2": j.ASKING})),
+             states=_states(ages={1: 600.0, 2: 600.0}), now=NOW)
+    q.defer(1)
+    assert [it.pid for it in q.ordered()] == [2, 1]

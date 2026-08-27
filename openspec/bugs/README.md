@@ -67,7 +67,57 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-86 — a restored agent whose session gets claimed elsewhere stays alive as a record-less, log-less zombie
+> **Renumbered on 2026-08-27, and the reason is rule 3 above happening again.**
+> Five entries were written on a branch whose local copy of this file ended at
+> **B-82**, so they were issued **B-83 … B-87**. The remote had meanwhile issued
+> B-83 … B-92 to entirely different defects (an executable-bit file view, a
+> checkout-confined file view, link-shape filtering, a token cleaner, a directory
+> view, a binary refusal). Two sets of handles, ten collisions.
+>
+> The five are renumbered here to **B-93 … B-97**. The remote's numbers keep
+> theirs, because they were pushed first and are the ones anybody else can have
+> read. What cannot be fixed by editing this file is that three commit messages
+> quote the OLD numbers, so the mapping is recorded rather than left to be
+> reconstructed:
+>
+> | commit | says | means |
+> |---|---|---|
+> | `13362e5a` | B-83, B-84, B-85 | **B-93, B-94, B-95** |
+> | `0696d074` | B-86, B-87 | **B-96, B-97** |
+> | `c0c1201b` | B-86, B-87 | **B-96, B-97** |
+>
+> The lesson is narrower than "measure the file": the file was measured. It was
+> measured on a branch that had not fetched, so the measurement was of a stale
+> corpus — which is the same shape as measuring a proxy instead of the thing.
+> **Allocate a number after fetching, not after reading.**
+
+### B-98 — a fleet payload test's fake agent lacks `session_log`, so the whole payload builder raises
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while merging `origin/main`.
+- **measured:** on `origin/main` **alone**, in a detached worktree with nothing of
+  this session's work in it:
+
+  ```
+  $ PYTHONPATH=lib:modules/web/src:modules/example/src python3.12 -m pytest \
+      tests/unit/test_fleet_discovery.py::test_a_recorded_origin_outranks_ancestry_and_says_which_it_is -q
+  FAILED  ...  AttributeError: '_A' object has no attribute 'session_log'
+  lib/set_orch/api/fleet.py:114  in _cache_payload:  heat = read_cache_heat(agent.session_log)
+  ```
+
+  `_cache_payload` is new (`9437605d`); the test's local `_A` fake predates it and
+  was never extended, so `_agent_payload` raises before reaching the assertion.
+- **which way it fails:** it is loud in the suite and silent about its subject. The
+  test's own claim — a recorded origin outranks ancestry — is now **unmeasured**,
+  and has been since the cache-heat commit landed: a test that raises before its
+  first assertion is a dead test, and a dead test that also reports red is the one
+  people route around. Nothing else covers that precedence.
+- **fixed when:** `_A` carries a `session_log` (or `_cache_payload` tolerates a fake
+  that has none), the test passes, and mutating the origin precedence back to
+  ancestry makes it fail again — i.e. it measures its subject rather than merely
+  running.
+
+### B-96 — a restored agent whose session gets claimed elsewhere stays alive as a record-less, log-less zombie
 
 - **state:** open
 - **reported:** 2026-08-27 by the user — *"restore nem mukodott probaltam fleet-ben uj
@@ -110,7 +160,7 @@ consumer's name, path, or content.
   `--resume <S>`, so it knows what that agent was meant to be, and writing
   `no-session` throws away a fact it already had.
 
-### B-87 — the restore panel prints the current offer and the last result side by side, so they contradict each other
+### B-97 — the restore panel prints the current offer and the last result side by side, so they contradict each other
 
 - **state:** open
 - **reported:** 2026-08-27 by the user, same screenshot as B-86.
@@ -132,7 +182,7 @@ consumer's name, path, or content.
   offer is not readable as a statement about it. A screenshot of the same state
   shows a reader which is which without being told.
 
-### B-84 — `sac agents --json` prints the human listing, so the fleet reads "the bus could not be asked who exists"
+### B-94 — `sac agents --json` prints the human listing, so the fleet reads "the bus could not be asked who exists"
 
 - **state:** open
 - **reported:** 2026-08-27 by this session, from the fleet screen during the visual
@@ -161,7 +211,7 @@ consumer's name, path, or content.
   meant to honour `--json`, that is its bug; if the framework is calling a flag
   that never existed, the caller is wrong and should say so rather than warn.
 
-### B-85 — the dashboard's stderr log is unbounded and had reached 1.47 GB
+### B-95 — the dashboard's stderr log is unbounded and had reached 1.47 GB
 
 - **state:** open
 - **reported:** 2026-08-27 by this session, while looking for the cause of B-84.
@@ -183,7 +233,7 @@ consumer's name, path, or content.
   per-poll DEBUG lines demoted — and a fresh run over an hour grows the file by a
   bounded amount that somebody has actually measured.
 
-### B-83 — a waiter started through the `sac` PATH symlink is invisible to the waiters panel
+### B-93 — a waiter started through the `sac` PATH symlink is invisible to the waiters panel
 
 - **state:** open
 - **reported:** 2026-08-27 by this session, while capturing a real waiter as a
@@ -218,6 +268,195 @@ consumer's name, path, or content.
   returns it, and a shell whose command line merely contains the word still does
   not match. Resolve the symlink, or test the script rather than the spelling of
   the path — the identity is the file that runs, not the name it was reached by.
+
+### B-92 — the project header's icon buttons align on the BASELINE, so one of them sits 8 px high
+
+- **state:** closed as no-longer-reproducible — the CAUSE was removed by `fa6d4162`, not by a
+  fix aimed at this. Kept because the structure that produced it is still there.
+- **reported:** 2026-08-27 by the user, with a screenshot circling the file-view icon in the
+  project header — *"fejlécben a file ikon missalligned"*.
+- **measured:** on the bundle the user was looking at (`540349b2`), in Chromium:
+  `[data-fleet-files-open] svg` top **60**, `[data-fleet-columns] svg` top **68** — the file
+  icon sat **8 px** above the four layout glyphs beside it. The row is
+  `flex items-baseline`, and a `<button>` whose only child is an SVG has no text baseline, so
+  it aligns differently from the `<span class="flex">` the column glyphs live in. What made
+  the difference visible was the row's other content: a text label (`layout`) and a two-line
+  block, both of which put the row's baseline somewhere neither icon could meet.
+- **why it no longer shows:** `fa6d4162` (a parallel session, converting the header to icons
+  and numbers) removed the `layout` label. Measured after it, same page: delta **0**, and in
+  the rendered pixels the ink of every icon in that row centres on the same row — folder-tree
+  47..54, the glyphs 46..55, midpoint 50.5 for both.
+- **what is NOT fixed:** the row is still `items-baseline` and the file button is still a
+  text-less flex item of it. Any text put back into that row can reproduce this. An isolated
+  rig rebuilt from the same classes did NOT reproduce it, so the exact trigger is a
+  combination of that row's contents rather than the label alone — which is why this is
+  recorded rather than "fixed" with a change nobody can prove.
+- **fixed when:** the header's icon controls sit in one `items-center` group, so their
+  alignment to each other does not depend on what text shares the row.
+
+### B-91 — a rename test asserts a `carried` dict that gained a key three commits ago
+- **state:** open
+- **reported:** 2026-08-27 by this session, hit while adding the fleet tab's cache
+  field. Not caused by that work — see below.
+- **measured:** `tests/unit/test_fleet_api.py::test_a_rename_carries_the_record_and_the_layout`
+  asserts `answer["carried"] == {"record": 1, "docked": 1, "splits": 1}`; the
+  route now also returns `agent_order`, so the equality fails. Confirmed
+  pre-existing by running that one test against `git show HEAD:lib/set_orch/api/fleet.py`
+  copied over the working file — it fails identically, and the working diff at the
+  time touched only `_cache_payload` and its two call sites.
+- **cause:** `4ecac3a5` (agent tabs became hand-orderable) added `agent_order` to
+  the rename's `carried` report without updating the assertion that enumerates it.
+  The test uses `==` on the whole dict, so a fourth carried document is a failure
+  rather than a pass — which is the right choice for a test about *what a rename
+  carries*, and means the assertion is simply out of date.
+- **what would prove it fixed:** the assertion names all four carried documents
+  and the test passes; and a fifth carried document still fails it, so the
+  equality keeps doing its job.
+- **why it matters more than one red test:** the fleet unit file is where the
+  confidentiality guard lives (`test_the_session_record_never_reaches_the_payload`).
+  A file that is already red is a file where the next red goes unnoticed.
+
+### B-89 — the desktop guard measures the PERMISSION BIT, but what runs a file is the MIME handler
+
+- **state:** open
+- **reported:** 2026-08-27 by the user — *"ami necces továbbra is tool open pl xdg"* — and
+  measured the same hour.
+- **measured:** `desktop.py:114` refuses a path when `os.access(target, os.X_OK)`. That is a
+  proxy for "would this run", and the thing itself is the desktop's file association. On this
+  machine, with a 644 file and no executable bit anywhere:
+
+  ```
+  harmless.jar    guard: ÁTENGEDI  →  handler: openjdk-7-java.desktop
+  harmless.py     guard: ÁTENGEDI  →  handler: org.gnome.gedit.desktop
+  harmless.html   guard: ÁTENGEDI  →  handler: google-chrome.desktop
+  ```
+
+  A `.jar` is data by permission and a program by association — `xdg-open` hands it to a JVM
+  that executes it. `.appimage`, `.run`, `.jnlp`, `.msi` and a macro-carrying office document
+  are the same shape. `.html` is milder but not nothing: it opens at a `file://` origin, which
+  can read local files. The `.desktop` suffix is refused by name, which shows the author
+  already knew the class — the list was just one item long.
+
+  Scale, from the same 30-transcript corpus: after the pending change routes everything it
+  can into the internal viewer, **218 distinct tokens still reach `xdg-open`**, and 10 of them
+  carry a suffix whose handler runs or actively interprets the content.
+
+  The fail direction is the reason this is filed rather than noted: the guard reads as
+  complete (*"executable files are not opened"*), and a reader checking it will conclude the
+  route is safe. It is safe against one carrier out of several.
+- **fixed when:** a 644 `.jar` is refused by `refusal()` with a reason naming the association
+  rather than the bit, and a test asserts the refusal for a file with NO executable bit set.
+- **taken up as tasks 4b.1–4b.6 of `terminal-links-and-typed-file-view`** (2026-08-27,
+  `89663af7`), with a `desktop-open` spec delta. Deliberately not a change of its own: that
+  change rewrites what reaches this endpoint, and shipping it beside *"the desktop guards are
+  unchanged"* would leave a completeness claim standing over this hole. The entry stays open
+  until the tasks close it.
+
+### B-83 — a text file with the executable bit set opens NOWHERE
+
+- **state:** open
+- **reported:** 2026-08-27 by the user, ctrl-clicking a shell script in a fleet terminal —
+  screenshot showing `could not open <project>/scripts/gates/check-ko-log.sh: executable
+  files are not opened`.
+- **measured:** `desktop.py:114` refuses an executable, and that refusal is CORRECT — the
+  route it guards is `xdg-open`, which would *run* the file. The defect is that the token
+  reached that route at all: `terminalTarget` (`fleetFiles.ts:419`) hands anything the file
+  view did not claim to the desktop, and the file view never claims a path outside the
+  agent's own checkout. Over 30 session transcripts, **12 distinct tokens** named an existing
+  file that is plain UTF-8 text AND carries `+x` — every one of them refused at both ends.
+  The internal viewer only ever READS, so the executable bit is irrelevant to it.
+- **fixed when:** a `.sh`, `.mjs` or `.cjs` inside a known project opens in the file view on
+  ctrl-click, and `desktop.py:114` is still refusing the same path.
+
+### B-84 — the file view is confined to the agent's own checkout, so a file of another known project goes to the desktop
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while measuring B-83.
+- **measured:** `terminalTarget` resolves against ONE base (`cwd || root`) and consults ONE
+  listing. Anything else falls through to the desktop. Over 30 transcripts, of the 823
+  distinct tokens that reached the desktop route and name an existing path,
+  **125 are text files sitting under a registered project root** — the backend
+  (`files.py:_known_root`) would serve every one of them, because it accepts any registered
+  project or a worktree of one. The common shape is a worktree agent printing an absolute
+  path into the MAIN checkout. A further 204 text files are outside every registered root
+  (`/tmp/…/scratchpad`, `~/.local/share`, `~/.claude`) — those legitimately stay a desktop
+  hand-over unless the roots are widened, which is a separate decision.
+- **fixed when:** a token naming a file under any registered project (or a worktree of one)
+  opens in the file view, whichever checkout the agent is standing in.
+
+### B-85 — the absolute branch applies no shape filter, so every `/word` token becomes a link that fails on click
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, measuring the recogniser against real output.
+- **measured:** `desktopReference` returns immediately for anything starting with `/`
+  (`fleetFiles.ts:~330`) — `looksLikePath` guards the RELATIVE branch only. Over 30
+  transcripts: **395 distinct single-segment absolute tokens, 1464 occurrences**, none of
+  which is a filesystem path — a web app's routes, this framework's own slash commands
+  (`/opsx:ff`, `/dd`), and component names. Each is underlined and answers
+  `no such file or directory` when activated. Fail direction: it teaches the reader that
+  underlines in a terminal are unreliable, which costs the real links too.
+- **fixed when:** `/opsx:ff` and a single-segment route are plain text, while
+  `/home/<user>/x/y.ts` and `/tmp/run.log` still link.
+
+### B-86 — the token cleaner does not survive markdown, table cells, or `~`
+
+- **state:** open
+- **reported:** 2026-08-27 by this session.
+- **measured:** `unwrap` strips `([<'"` + backtick at the head and `)]>,.;:'"` + backtick at
+  the tail — not `*`, `|`, `{`, `}`. Of **249 distinct tokens that name a file which EXISTS
+  and were nonetheless rendered as plain text**, the causes are: **121** leftover markup
+  (``**`path`**`` bold, `` `path` `` inside bold, `path.md:12:|` from a table row),
+  **86** a directory, **21** a `~/…` path (the tilde is not in `looksLikePath`'s character
+  class and is never expanded), **15** a real file the listing does not carry because it is
+  gitignored, **5** a non-ASCII filename. Agents write markdown constantly, so this is the
+  single largest source of missed links.
+- **fixed when:** ``**`src/app.ts`**``, `docs/x.md:12:|` and `~/.claude/CLAUDE.md` all link
+  to the same file a bare token does.
+
+### B-87 — a directory cannot be opened in the file view at all
+
+- **state:** open
+- **reported:** 2026-08-27 by this session.
+- **measured:** the listing endpoint serves FILES, so no directory is ever in the known set,
+  and the panel has no notion of "reveal this directory". Every directory therefore reaches
+  `xdg-open`, which opens a desktop file manager beside the dashboard. Over 30 transcripts:
+  **431 distinct directory tokens, 209 of them under a registered project root** — where the
+  panel's own structure pane could expand and scroll to them instead.
+- **fixed when:** ctrl-clicking `openspec/changes/<name>/` expands that node in the structure
+  pane rather than opening a file manager.
+
+### B-90 — copying the fleet screen carries every visually-hidden sentence with it
+
+- **state:** closed (this commit).
+- **reported:** 2026-08-27 by the user, who pasted a Ctrl+C of the fleet terminal panel into
+  the chat: what arrived was 15 lines of tile-control explanations — *put this panel on the
+  left — it takes its space out of the grid*, *stop the agent — a separate, explicit act* —
+  none of which is on the screen, each preceded by the `￼` an SVG leaves behind.
+- **measured:** in Chromium against the running dashboard, selecting `[data-fleet-terminal-header]`
+  and reading `getSelection().toString()` yielded **668 characters, of which 4 were visible**
+  (`live`). The carrier is `sr-only`, which only CLIPS the text to a 1px box — it stays
+  selectable. 20 such spans render on the fleet screen; setting `user-select: none` on the 8
+  in that header took the same selection to 4.
+- **fixed when:** the same selection yields the visible text alone while the sentence stays in
+  the DOM and in the accessible name. Verified after the fix, same page, same range: **4
+  characters, `live`**, and over the whole document 0 of 20 hidden sentences appear in a
+  full-page selection. `SrOnly` (`web/src/components/SrOnly.tsx`) is now the only way this
+  screen renders hidden text; `tests/unit/srOnlyNotCopied.test.tsx` fails on a hand-written
+  `sr-only` span, and `tests/e2e/fleet-terminal.spec.ts` makes the browser measurement.
+
+### B-88 — a binary file has no view, only a refusal
+
+- **state:** open
+- **reported:** 2026-08-27 by the user — *"binárisra pedig képnézegetőt kellene csinálni,
+  mime type szerint"*.
+- **measured:** `files.py:395` answers `415 not a text file` for anything that is not UTF-8,
+  and `FleetFileView` renders that as a sentence. Screenshots are the case that matters:
+  agents write them constantly and print the path. Over 30 transcripts the desktop route
+  received **59 existing binary files**, 5 of them PNG. `MAX_BYTES` is 2 MiB, which a
+  full-page screenshot can exceed — the size refusal is separate from the type refusal and
+  must stay honest about which one fired.
+- **fixed when:** a PNG an agent printed opens as an image in the same panel, and a
+  non-renderable binary states its type and size rather than "not a text file".
 
 ### B-82 — the terminal replay ring buffer cuts at an arbitrary byte, so a tab switch can start mid-escape-sequence
 

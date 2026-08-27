@@ -4,6 +4,7 @@ import {
   ScrollText, Shrink, SquareTerminal,
 } from 'lucide-react'
 import type { DockEdge } from '../lib/fleetDocks'
+import SrOnly from './SrOnly'
 
 /**
  * The four docking controls, in reading order.
@@ -91,8 +92,12 @@ export function IconButton({ icon: Icon, label, active, tone, onClick, testId, m
         leave the text nowhere else: task 8.2 requires the reason a terminal
         cannot be offered to be STATED, and a tooltip is not a statement — it is
         a thing you have to already suspect in order to find.
+
+        `SrOnly` rather than a bare `sr-only` span because rendered-but-hidden
+        text is still SELECTABLE: copying the screen used to drag every one of
+        these sentences into the clipboard. See the component — B-90.
       */}
-      <span className="sr-only">{label}</span>
+      <SrOnly>{label}</SrOnly>
     </Tag>
   )
 }

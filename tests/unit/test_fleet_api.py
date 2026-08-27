@@ -374,6 +374,11 @@ def test_the_session_record_never_reaches_the_payload(monkeypatch):
         sources = ["process"]
         sources_missing = ["session-record", "registry"]
         kind = "interactive"
+        # Added 2026-08-27 with the cache field. The `_State` comment above names
+        # this exact drift: a hand-written stand-in gains an AttributeError the
+        # moment the real dataclass gains a field, and the product is correct
+        # while the test fails.
+        session_log = None
         record = {
             "sessionId": "s", "cwd": "/home/someone/private-consumer",
             "messagingSocketPath": "/run/user/1000/cc-socks/7.sock",
@@ -1343,3 +1348,80 @@ def test_no_agents_displayed_name_can_be_another_agents_terminal_label(monkeypat
     foreign = next(p for p in payloads if p["pid"] == 54272)
     assert foreign["name"] == "set-core-33 (pid 54272)" and foreign["name_collides"] is True
     assert next(p for p in payloads if p["pid"] == 43704)["name"] == "set-core-33"
+
+
+# --------------------------------------------------------------------------- #
+# the cache field — present when measured, ABSENT when not
+# --------------------------------------------------------------------------- #
+#
+# The absent case is the one that matters. A seat with no transcript rendered as
+# a zero-token expired cache reads as "cold, cheap to restart", which is the
+# opposite of "never measured" — and nothing about it looks wrong on screen.
+
+
+def _agent_with_transcript(tmp_path, *, tokens=141_403, minutes_ago=5):
+    """An agent whose session_log is a real transcript with one usage record."""
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+
+    when = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    log = tmp_path / "session.jsonl"
+    log.write_text(_json.dumps({
+        "timestamp": when.isoformat().replace("+00:00", "Z"),
+        "type": "assistant",
+        "message": {
+            "model": "claude-opus-5",
+            "usage": {
+                "cache_read_input_tokens": tokens - 1_403,
+                "cache_creation_input_tokens": 1_403,
+                "cache_creation": {"ephemeral_1h_input_tokens": 1_403,
+                                   "ephemeral_5m_input_tokens": 0},
+            },
+        },
+    }) + "\n", encoding="utf-8")
+    agent = _Agent(7)
+    agent.session_log = str(log)
+    return agent
+
+
+def test_a_measured_seat_carries_its_cache_state(tmp_path):
+    payload = fleet_api._agent_payload(_agent_with_transcript(tmp_path), _State(), {})
+    cache = payload["cache"]
+    assert cache["tokens"] == 141_403
+    assert cache["ttl_seconds"] == 3600
+    assert cache["model"] == "claude-opus-5"
+    assert cache["rewrite_usd"] == pytest.approx(1.414, abs=1e-3)
+    assert cache["cold"] is False
+    assert 0.0 < cache["cooled"] < 1.0
+
+
+def test_an_unmeasured_seat_omits_the_KEY_not_just_the_value(tmp_path):
+    """`"cache" not in payload`, never `payload["cache"] is None`.
+
+    An omitted key cannot be mistaken for a measured emptiness by a consumer
+    that forgot the convention — and there is no convention to forget.
+    """
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {})
+    assert "cache" not in payload
+
+
+def test_an_expired_cache_is_cold_and_still_carries_its_price(tmp_path):
+    """The price is what the tab shows once it is cold, so it must survive
+    expiry rather than being dropped with the countdown."""
+    agent = _agent_with_transcript(tmp_path, minutes_ago=180)
+    cache = fleet_api._agent_payload(agent, _State(), {})["cache"]
+    assert cache["cold"] is True
+    assert cache["cooled"] == 1.0
+    assert cache["seconds_remaining"] == 0.0
+    assert cache["rewrite_usd"] > 0
+
+
+def test_both_payload_builders_report_the_same_cache(tmp_path):
+    """The list payload and the single-agent route build their bodies
+    separately. Two computations of one fact is two chances to disagree, which
+    is why both call the same helper — asserted, because 'they call the same
+    helper' is exactly the kind of claim that stops being true."""
+    import inspect
+
+    source = inspect.getsource(fleet_api)
+    assert source.count("**_cache_payload(agent),") == 2

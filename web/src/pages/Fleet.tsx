@@ -42,13 +42,15 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Columns2, Columns3, Columns4, FolderTree, Square } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Layers, Minimize2, Presentation, Square, TriangleAlert } from 'lucide-react'
+import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
 import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
+import SrOnly from '../components/SrOnly'
 import {
   bandsOn, defaultDockSize, dockSplitKey, dockedBands, docksFor, loadDocks, remainingArea, saveDocks,
   withCollapsed, withDock,
@@ -72,6 +74,7 @@ import {
 } from '../lib/fleetStartLocations'
 import type { StartLocation } from '../lib/fleetStartLocations'
 import { blockUnexpectedFrom, declaredStanding, instructability, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
+import { mark as cacheMark, UNMEASURED_TITLE } from '../lib/fleetCacheHeat'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
 import FleetInstruct from '../components/FleetInstruct'
 import FleetWaiters from '../components/FleetWaiters'
@@ -168,7 +171,15 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   }
   if (agent.state === 'quiet') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap">
+      /* The caveat lives HERE, on the word it is about. It used to run across
+         the top of the landing screen as a sentence — explaining a state the
+         reader might not have on screen at all, above the thing they came to
+         look at. Beside the word, it is one hover away from whoever is
+         actually reading it. */
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap"
+        title="“quiet” does not mean nothing is happening — only that no tool call was open when the log was last flushed."
+      >
         <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
         quiet
       </span>
@@ -214,7 +225,7 @@ function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolea
     >
       <span aria-hidden>⚠</span>
       {compact ? (
-        <span className="sr-only">contradicting declaration</span>
+        <SrOnly>contradicting declaration</SrOnly>
       ) : (
         <span className="font-normal">
           declared: <span className="line-through">{declared}</span>
@@ -699,12 +710,20 @@ function AgentTabs({ agents, selected, onSelect, onMove }: {
     >
       {agents.map((a, i) => {
         const on = a.pid === selected
+        /* ONE computation per tab. The bar, the red name, the price and the
+           tooltip all read `heat`, so no second expression can disagree with
+           it about whether this seat is cold. */
+        const heat = cacheMark(a.cache)
         const why = [
           a.terminal_label ?? a.name ?? 'unnamed',
           a.state,
           a.branch ?? 'no branch',
           `pid ${a.pid}`,
           `last moved ${age(a.last_movement_seconds)} ago`,
+          /* The exact remaining time, size and cost. The bar answers "roughly
+             how far along"; a decision needs "8m, then $1.96", and reading a
+             tooltip is already an act of attention. */
+          heat.kind === 'unmeasured' ? UNMEASURED_TITLE : heat.title,
         ].join(' · ')
         /* The tab being dragged, and where it would land — the same two marks
            the project column draws, so the reader sees the move before
@@ -733,7 +752,7 @@ function AgentTabs({ agents, selected, onSelect, onMove }: {
               if (moved.current) { moved.current = false; return }
               onSelect(a.pid)
             }}
-            className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
+            className={`relative shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
               on
                 ? 'border-sky-400 text-fg-loud bg-surface-raised/60'
                 : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'
@@ -743,16 +762,48 @@ function AgentTabs({ agents, selected, onSelect, onMove }: {
                 survives at any width, while the word would be the first thing
                 a narrow strip truncated. The word is in the tooltip. */}
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAB_DOT[a.state] ?? 'bg-amber-400'}`} aria-hidden />
-            <span className="truncate max-w-[10rem]">
+            {/* The NAME goes red once the cache is cold — asked for 2026-08-27:
+                *"ha full piros mar a vonal véggi akkor a felirat is legyen piros
+                szinu ne csak fehér"*. Driven by the same `heat.kind` as the full
+                bar and the price, so the three cannot disagree about it. */}
+            <span className={`truncate max-w-[10rem]${heat.kind === 'cold' ? ' text-red-400' : ''}`}>
               {a.terminal_label ?? a.name ?? 'unnamed'}
             </span>
+            {/* The price, once it decides something. While the cache lives its
+                read cost is what the reader pays whatever they do; once it is
+                cold, $1.96 and $.15 are different decisions. */}
+            {heat.kind === 'cold' && heat.price && (
+              <span className="text-red-400 shrink-0 tabular-nums" data-fleet-tab-cache-price={heat.price}>
+                {heat.price}
+              </span>
+            )}
+            {/* A seat nothing was measured on. Amber, which on this strip
+                already means withheld-or-unknown — never the cold red, and
+                never silence. */}
+            {heat.kind === 'unmeasured' && (
+              <span className="text-amber-400 shrink-0" data-fleet-tab-cache="unmeasured"
+                    title={UNMEASURED_TITLE} aria-hidden>?</span>
+            )}
+            {/* The cooling bar: length is time, thickness is the stake. Sits on
+                the tab's bottom edge, under the selection border, so it never
+                competes with the state dot at the front. */}
+            {heat.kind !== 'unmeasured' && (
+              <span className="absolute left-1 right-1 bottom-0 flex items-end pointer-events-none"
+                    style={{ height: `${heat.thickness}px` }}
+                    data-fleet-tab-cache={heat.kind}
+                    data-fleet-tab-cache-fill={heat.fill.toFixed(3)}
+                    data-fleet-tab-cache-thickness={heat.thickness}
+                    aria-hidden>
+                <span className={`block h-full ${heat.colour}`} style={{ width: `${heat.fill * 100}%` }} />
+              </span>
+            )}
             {!a.binding_confirmed && (
               <span className="text-amber-400 shrink-0" title="The binding to the session log did not come from a record">?</span>
             )}
             {typeof a.declaration_ignored === 'string' && a.declaration_ignored !== '' && (
               <span className="text-amber-400 shrink-0" title="This agent declared a state the log refuted — open it to see which.">⚠</span>
             )}
-            <span className="sr-only">{why}</span>
+            <SrOnly>{why}</SrOnly>
           </button>
         )
       })}
@@ -1390,14 +1441,16 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
 
   if (!open) {
     return (
+      /* A control, so it is drawn as one — the words read as part of the
+         sentence the row makes, which is the same defect as the file view's
+         `files` before it became a glyph. */
       <button
         data-fleet-start="offer"
         onClick={() => { setLabel(suggest()); setOpen(true); setError(null) }}
-        className="text-xs text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline"
-        title="The framework starts it and holds it — this one will have a terminal in the browser."
-      >
-        + start an agent
-      </button>
+        aria-label="start an agent"
+        className="p-1 rounded border border-transparent text-sky-300 hover:text-sky-200 hover:border-surface-line shrink-0"
+        title="Start an agent here — the framework starts it and holds it, and this one will have a terminal in the browser."
+      ><CirclePlus size={13} strokeWidth={1.75} /></button>
     )
   }
 
@@ -2559,7 +2612,10 @@ export default function Fleet() {
 
   return (
     <div className="h-full flex flex-col" data-fleet-phase={data.agents === 0 ? 'answered-empty' : 'answered'}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
+      {/* Centred for the same reason as the project row below: this strip is
+          a title, an icon toggle and two chips, and only one of those four has
+          a text baseline to align to. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
         <span className="text-sm font-semibold text-fg-loud">Fleet</span>
         {/* The toggle. It starts and stops NOTHING — turning it on does not
             instruct, start or stop any agent, and turning it off returns the
@@ -2567,15 +2623,15 @@ export default function Fleet() {
         <button
           onClick={() => void togglePm(!pmOn)}
           data-fleet-pm-toggle={pmOn ? 'on' : 'off'}
-          className={`text-xs px-2 py-0.5 rounded border ${
+          aria-pressed={pmOn}
+          aria-label={`PM mode ${pmOn ? 'on' : 'off'}`}
+          className={`p-1 rounded border shrink-0 ${
             pmOn
-              ? 'border-sky-400/60 text-sky-300'
+              ? 'border-sky-400/60 bg-sky-400/10 text-sky-300'
               : 'border-surface-line text-fg-muted hover:text-fg-strong'
           }`}
           title="PM mode presents one agent at a time — whichever is waiting on you. It touches no agent, and leaving it restores this screen."
-        >
-          PM mode {pmOn ? 'on' : 'off'}
-        </button>
+        ><Presentation size={13} strokeWidth={1.75} /></button>
         {/*
           ONE count, and it says which projects it is counting — raised
           2026-08-19. The header said `12 agent · 6 projektben` while the column
@@ -2586,48 +2642,65 @@ export default function Fleet() {
           being read. The sentence now carries both numbers and their relation,
           and the column's duplicate is gone.
         */}
-        <span
-          className="text-xs text-fg-muted tabular-nums"
-          title="Agents discovered on this machine, and how many of the known projects are holding at least one."
-        >
-          {data.agents} agents in {populated.length} of {data.projects.length} projects
-        </span>
+        <Chip
+          jump="fleet-agents"
+          mark={<Bot size={13} strokeWidth={1.75} aria-hidden />}
+          count={data.agents}
+          title="Agents discovered on this machine."
+          label={`${data.agents} agents`}
+        />
+        {/* The RATIO stays one chip, and that is the whole point of it. The
+            header once said `12 agent · 6 projektben` while the column said
+            `12 agents · 41 projects`: the same screen, two numbers for
+            "projects", and nothing saying one counted the projects holding an
+            agent and the other every project known (raised 2026-08-19). Split
+            into two chips they would drift apart again; `10/53` carries the
+            relation in the value itself. */}
+        <Chip
+          jump="fleet-projects"
+          mark={<Folders size={13} strokeWidth={1.75} aria-hidden />}
+          count={`${populated.length}/${data.projects.length}`}
+          title="How many of the known projects are holding at least one agent."
+          label={`${populated.length} of ${data.projects.length} projects hold an agent`}
+        />
         {/* The per-state counts moved into the column's attention header, which
             is where the jump to the first one lives. Two places carrying the
             same count is one place too many: the copy nobody maintains is the
             one that drifts, and it is always the one being read. */}
-        {/* The caveat explains a state; with nothing in that state it is noise
-            at the top of the landing screen. Rendered from the data, so it can
-            never explain away a screen that has no agents on it. */}
-        {data.agents > 0 && (
-          <span className="text-xs text-fg-muted">
-            <span className="text-fg-strong">quiet</span> does not mean nothing is happening — only that no tool
-            call was open when the log was last flushed
-          </span>
-        )}
         {/* One cause, named once. A screen that can offer no terminal ANYWHERE
             has a single reason, and stating it per row would put 22 copies of it
             on the landing screen while still not saying it is one fact. `false`
             only — an absent key is not a `false`, and an older server that says
             nothing must not be reported as a dead owner. */}
         {data.owner_reachable === false && (
-          <span
-            data-fleet-owner="unreachable"
-            className="text-xs text-amber-400"
+          <Chip
+            jump="owner-unreachable"
+            data={{ 'data-fleet-owner': 'unreachable' }}
+            tone="text-amber-400"
+            mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
+            count="?"
             title="The owner service did not answer, so for no agent do we know whether the framework holds it. This does not mean none of them has a terminal."
-          >
-            the owner service is not answering — who holds the terminals is unknown, not absent
-          </span>
+            label="the owner service is not answering — who holds the terminals is unknown, not absent"
+          />
         )}
         {/* A refresh that failed after a good answer keeps the answer — and says
             how old it is. Replacing a true screen with an error would trade a
             stale measurement for no measurement, which is the worse of the two
             on the landing screen. */}
         {error && (
-          <span className="ml-auto text-xs text-amber-400" title={error}>
-            the refresh failed — this is the state measured at{' '}
-            {answeredAt ? new Date(answeredAt).toLocaleTimeString() : '—'}
-          </span>
+          /* The TIME is the number here — a stale screen is only readable if you
+             can see how stale. `?` where even that is unknown, because a missing
+             timestamp is not "just now". */
+          <Chip
+            className="ml-auto"
+            jump="refresh-failed"
+            tone="text-amber-400"
+            mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
+            count={answeredAt ? new Date(answeredAt).toLocaleTimeString() : '?'}
+            title={`The refresh failed (${error}) — this is the state measured at the time shown, not now.`}
+            label={`the refresh failed — this is the state measured at ${
+              answeredAt ? new Date(answeredAt).toLocaleTimeString() : 'an unknown time'}`}
+          />
         )}
       </div>
 
@@ -2772,9 +2845,25 @@ export default function Fleet() {
             <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
           ) : active ? (
             <>
-              <div className="flex items-baseline gap-2 px-0.5 flex-wrap">
+              {/* CENTRED, not baseline-aligned. Measured on the running screen:
+                  the items sat at 9, 11, 12, 0, 11, 7, 11 and 0 pixels from the
+                  row's top — an icon button has no text to put a baseline on,
+                  so `items-baseline` pinned it to the top while every chip
+                  floated at its own text baseline. With the words gone this row
+                  is glyphs and digits, and glyphs align by their box. */}
+              <div className="flex items-center gap-2 px-0.5 flex-wrap">
                 <span className="text-sm text-fg-loud">{active.name}</span>
-                <span className="text-xs text-fg-muted tabular-nums">{active.agents.length} agent</span>
+                <Chip
+                  jump="agent-count"
+                  mark={<Bot size={13} strokeWidth={1.75} aria-hidden />}
+                  count={active.agents.length}
+                  title={`${active.agents.length} agent(s) in this project`}
+                  label={`${active.agents.length} agents`}
+                />
+                {/* The path KEEPS its words. It is the only thing on this row
+                    that says WHICH checkout — a worktree and its host share a
+                    name — so there is no mark that could stand in for it. This
+                    is the line "text only where it is really needed" draws. */}
                 <span className="text-xs text-fg-ghost truncate">{active.root}</span>
                 <StartAgent
                   project={active}
@@ -2844,10 +2933,9 @@ export default function Fleet() {
                       ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
                       : 'border-transparent text-fg-ghost hover:text-fg-muted'
                   }`}
-                ><FolderTree size={14} strokeWidth={1.75} /></button>
+                ><FolderTree size={13} strokeWidth={1.75} /></button>
                 {active.agents.length > 1 && (
                   <span className="flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
-                    <span className="text-xs text-fg-ghost">layout</span>
                     {COLUMN_CHOICES.map(c => {
                       /* The icon SHOWS the arrangement — asked for 2026-08-19:
                          *"oszlop 1,2,3,4 helyett ikonok kellenek amin látszik
@@ -2874,7 +2962,7 @@ export default function Fleet() {
                               ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
                               : 'border-transparent text-fg-ghost hover:text-fg-muted'
                           }`}
-                        ><Glyph size={14} strokeWidth={1.75} /></button>
+                        ><Glyph size={13} strokeWidth={1.75} /></button>
                       )
                     })}
                   </span>
@@ -2887,32 +2975,51 @@ export default function Fleet() {
                 {focused && (
                   <span className="ml-auto flex items-baseline gap-2 shrink-0" data-fleet-focus-cover={hidden.length}>
                     {hidden.length > 0 && (
-                      <span className="text-xs text-fg-muted tabular-nums">
-                        {hidden.length} more agent(s) hidden
-                      </span>
+                      <Chip
+                        jump="focus-hidden"
+                        mark={<EyeOff size={13} strokeWidth={1.75} aria-hidden />}
+                        count={hidden.length}
+                        title={`${hidden.length} more agent(s) are covered by this full screen`}
+                        label={`${hidden.length} more agents hidden`}
+                      />
                     )}
                     {hiddenTally.unknown > 0 && (
-                      <span className="text-xs text-amber-400 tabular-nums" data-fleet-focus-hidden="unknown">
-                        {hiddenTally.unknown} unknown
-                      </span>
+                      <Chip
+                        data={{ 'data-fleet-focus-hidden': 'unknown' }}
+                        tone="text-amber-400"
+                        mark={<Dot cls="bg-amber-400" />}
+                        count={hiddenTally.unknown}
+                        title={`${hiddenTally.unknown} of the covered agents are in an unknown state`}
+                        label={`${hiddenTally.unknown} unknown, hidden by the full screen`}
+                      />
                     )}
                     {hiddenTally.waiting > 0 && (
-                      <span className="text-xs text-sky-300 font-semibold tabular-nums" data-fleet-focus-hidden="waiting">
-                        {hiddenTally.waiting} waiting for a person
-                      </span>
+                      <Chip
+                        data={{ 'data-fleet-focus-hidden': 'waiting' }}
+                        tone="text-sky-300 font-semibold"
+                        mark={<Dot cls="bg-sky-300" />}
+                        count={hiddenTally.waiting}
+                        title={`${hiddenTally.waiting} of the covered agents are waiting for a person`}
+                        label={`${hiddenTally.waiting} waiting for a person, hidden by the full screen`}
+                      />
                     )}
                     {hiddenTally.conflicts > 0 && (
-                      <span className="text-xs text-amber-400 tabular-nums" data-fleet-focus-hidden="conflicts">
-                        {hiddenTally.conflicts} contradicting record(s)
-                      </span>
+                      <Chip
+                        data={{ 'data-fleet-focus-hidden': 'conflicts' }}
+                        tone="text-amber-400"
+                        mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
+                        count={hiddenTally.conflicts}
+                        title={`${hiddenTally.conflicts} of the covered agents declared a state their log contradicts`}
+                        label={`${hiddenTally.conflicts} contradicting records, hidden by the full screen`}
+                      />
                     )}
                     <button
                       onClick={() => setFocus(active.name, null)}
                       data-fleet-focus-exit
-                      className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
-                    >
-                      ⤡ back to the grid
-                    </button>
+                      aria-label="back to the grid"
+                      title="Back to the grid — stop covering the other agents"
+                      className="p-1 rounded border border-transparent text-fg-muted hover:text-fg-strong shrink-0"
+                    ><Minimize2 size={13} strokeWidth={1.75} /></button>
                   </span>
                 )}
                 {/* Counted off the SAME list the strip renders. It said
@@ -2921,9 +3028,15 @@ export default function Fleet() {
                     cheapest form: the header would claim 3 tabs above a strip
                     holding 2, and the number is the part a reader believes. */}
                 {!focused && enlarged !== null && gridAgents.length > 1 && (
-                  <span className="ml-auto text-xs text-fg-ghost shrink-0 tabular-nums">
-                    {gridAgents.length - 1} as tabs — click one to switch
-                  </span>
+                  <Chip
+                    className="ml-auto"
+                    jump="as-tabs"
+                    tone="text-fg-ghost"
+                    mark={<Layers size={13} strokeWidth={1.75} aria-hidden />}
+                    count={gridAgents.length - 1}
+                    title={`${gridAgents.length - 1} agent(s) are strip tabs while this one is enlarged — click one to switch`}
+                    label={`${gridAgents.length - 1} as tabs, click one to switch`}
+                  />
                 )}
               </div>
               {/* Task 4.2 — a panel whose KIND this build does not have.

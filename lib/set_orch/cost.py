@@ -1,22 +1,56 @@
 """USD cost estimation for Anthropic API token usage.
 
-Rates per model (USD per million tokens, Anthropic pricing as of
-2026-Q1). Cache rates assume the default 5-minute TTL — if a project
-opts into 1-hour cache, multiply create by ~1.6x.
-
 Cost helps surface the actual financial impact of agent runs in the
 dashboard, where raw token counts hide the order-of-magnitude
 differences between input / output / cache-read / cache-create.
 
-Witnessed in micro-web-run-20260426-1704 contact-wizard-form: 9.8M
-"input" looks like a lot, but 95% of that was cache_read at $1.50/M
-— the actual cost was dominated by 240K output × $75/M (Opus) plus
-377K cache_create × $18.75/M.
+Witnessed in a consumer E2E run: 9.8M "input" looks like a lot, but
+95% of that was cache_read at a tenth of the input rate — the actual
+cost was dominated by 240K output plus 377K cache_create.
+
+## The table is a MEASUREMENT WITH A DATE, and it has already been wrong
+
+Every figure below was read from platform.claude.com on the date in
+``PRICES_VERIFIED_ON``. Before that pass this module priced Opus 4.5,
+4.6 and 4.7 at $15/$75 — **three times their actual price** — because
+those were the rates when it was written and nothing here recorded
+when that was. Three call sites displayed the inflated number.
+
+So: the multipliers and the per-model prices live here and only here,
+the verification date is a constant rather than prose, and the cache
+figures are DERIVED from the input price rather than typed in beside
+it — a hand-typed cache rate is a second place for the same fact to
+drift.
+
+## Two lookups, deliberately different
+
+``estimate_cost_usd`` and ``cost_breakdown`` keep their conservative
+fallback: they exist to put a rough number on a finished run, and a
+run that produced tokens did cost something, so a family guess beats
+a blank.
+
+``input_price_per_mtok`` has NO fallback and returns ``None`` for a
+model it does not know. It backs surfaces that offer the reader a
+figure to act on, where a guess derived from a different model's price
+is worse than an honest absence — see the fleet tab's cache mark,
+which shows tokens when this returns ``None``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+
+#: The date every figure below was read from platform.claude.com.
+#: Bump it only when the prices are actually re-read, never on an edit.
+PRICES_VERIFIED_ON = "2026-08-27"
+PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
+
+#: Prompt-cache pricing, as multipliers of a model's base input price.
+#: Verified on PRICES_VERIFIED_ON against the source above.
+CACHE_READ_MULTIPLIER = 0.1
+CACHE_WRITE_5M_MULTIPLIER = 1.25
+CACHE_WRITE_1H_MULTIPLIER = 2.0
 
 
 @dataclass(frozen=True)
@@ -25,31 +59,65 @@ class _Rates:
     input: float
     output: float
     cache_read: float
+    #: The FIVE-MINUTE cache write. The one-hour write is a different
+    #: multiplier; ask for it with `cache_write_1h`.
     cache_create: float
 
+    @property
+    def cache_write_1h(self) -> float:
+        return self.input * CACHE_WRITE_1H_MULTIPLIER
 
-# Rate table. Default fallback is conservative-Opus.
+
+def _rates(*, input: float, output: float) -> _Rates:
+    """Build a rate row, DERIVING the cache figures from the input price.
+
+    Typing the cache rates in by hand is how a table gains a row whose
+    cache price does not match its own input price. They are a fixed
+    multiple; make them one.
+    """
+    return _Rates(
+        input=input,
+        output=output,
+        cache_read=input * CACHE_READ_MULTIPLIER,
+        cache_create=input * CACHE_WRITE_5M_MULTIPLIER,
+    )
+
+
+# Rate table. Verified on PRICES_VERIFIED_ON.
 _RATES: dict[str, _Rates] = {
-    # Opus 4.x
-    "claude-opus-4-7": _Rates(input=15.00, output=75.00, cache_read=1.50, cache_create=18.75),
-    "claude-opus-4-6": _Rates(input=15.00, output=75.00, cache_read=1.50, cache_create=18.75),
-    "claude-opus-4-5": _Rates(input=15.00, output=75.00, cache_read=1.50, cache_create=18.75),
-    "claude-opus-4": _Rates(input=15.00, output=75.00, cache_read=1.50, cache_create=18.75),
-    # Sonnet 4.x
-    "claude-sonnet-4-6": _Rates(input=3.00, output=15.00, cache_read=0.30, cache_create=3.75),
-    "claude-sonnet-4-5": _Rates(input=3.00, output=15.00, cache_read=0.30, cache_create=3.75),
-    "claude-sonnet-4": _Rates(input=3.00, output=15.00, cache_read=0.30, cache_create=3.75),
-    # Haiku 4.x
-    "claude-haiku-4-5-20251001": _Rates(input=1.00, output=5.00, cache_read=0.10, cache_create=1.25),
-    "claude-haiku-4-5": _Rates(input=1.00, output=5.00, cache_read=0.10, cache_create=1.25),
-    "claude-haiku-4": _Rates(input=1.00, output=5.00, cache_read=0.10, cache_create=1.25),
-    # Bare alias fallbacks
-    "opus": _Rates(input=15.00, output=75.00, cache_read=1.50, cache_create=18.75),
-    "sonnet": _Rates(input=3.00, output=15.00, cache_read=0.30, cache_create=3.75),
-    "haiku": _Rates(input=1.00, output=5.00, cache_read=0.10, cache_create=1.25),
+    # Fable / Mythos 5
+    "claude-fable-5": _rates(input=10.00, output=50.00),
+    "claude-mythos-5": _rates(input=10.00, output=50.00),
+    # Opus 5 and the current 4.x line — all $5/$25, NOT the $15/$75 this
+    # table carried for them until 2026-08-27.
+    "claude-opus-5": _rates(input=5.00, output=25.00),
+    "claude-opus-4-8": _rates(input=5.00, output=25.00),
+    "claude-opus-4-7": _rates(input=5.00, output=25.00),
+    "claude-opus-4-6": _rates(input=5.00, output=25.00),
+    "claude-opus-4-5": _rates(input=5.00, output=25.00),
+    # Retired Opus — these really are $15/$75, which is why the stale
+    # figures above looked plausible for so long.
+    "claude-opus-4-1": _rates(input=15.00, output=75.00),
+    "claude-opus-4": _rates(input=15.00, output=75.00),
+    # Sonnet
+    "claude-sonnet-5": _rates(input=2.00, output=10.00),
+    "claude-sonnet-4-6": _rates(input=3.00, output=15.00),
+    "claude-sonnet-4-5": _rates(input=3.00, output=15.00),
+    "claude-sonnet-4": _rates(input=3.00, output=15.00),
+    # Haiku
+    "claude-haiku-4-5-20251001": _rates(input=1.00, output=5.00),
+    "claude-haiku-4-5": _rates(input=1.00, output=5.00),
+    "claude-haiku-4": _rates(input=1.00, output=5.00),
+    "claude-haiku-3-5": _rates(input=0.80, output=4.00),
+    # Bare alias fallbacks — the CURRENT member of each family, because a
+    # bare "opus" in a log is far more likely to be today's model than a
+    # retired one.
+    "opus": _rates(input=5.00, output=25.00),
+    "sonnet": _rates(input=2.00, output=10.00),
+    "haiku": _rates(input=1.00, output=5.00),
 }
 
-_DEFAULT_RATES = _RATES["claude-opus-4-7"]
+_DEFAULT_RATES = _RATES["claude-opus-5"]
 
 
 def _resolve_rates(model: str | None) -> _Rates:
@@ -138,3 +206,41 @@ def cost_breakdown(
     }
     parts["total"] = round(sum(parts.values()), 4)
     return parts
+
+
+def input_price_per_mtok(model: str | None) -> float | None:
+    """The model's base input price, or ``None`` if the table does not know it.
+
+    Deliberately without the family fallback ``_resolve_rates`` applies.
+    A caller that shows the reader a figure to act on — the fleet tab's
+    cache mark is the first — must be able to say "not priced" rather
+    than quote a number derived from a different model. Getting Opus 5's
+    cost from Opus 4.1's row would have been wrong by 3x.
+
+    Matches an exact id first, then the longest prefix, so a dated
+    snapshot resolves to its base id. A bare family alias is a table
+    entry like any other and does resolve; an unknown id does not.
+    """
+    if not model:
+        return None
+    m = model.lower().strip()
+    if m in _RATES:
+        return _RATES[m].input
+    matches = [k for k in _RATES if m.startswith(k)]
+    if matches:
+        return _RATES[max(matches, key=len)].input
+    return None
+
+
+def cache_rewrite_cost_usd(*, model: str | None, tokens: int, ttl_seconds: int) -> float | None:
+    """What rewriting ``tokens`` of expired cache costs on this model.
+
+    ``None`` when the model is not priced — the caller shows the token
+    count instead. The TTL selects the multiplier: an entry written for
+    an hour costs twice base input to rewrite, a five-minute one 1.25x.
+    """
+    price = input_price_per_mtok(model)
+    if price is None:
+        return None
+    multiplier = CACHE_WRITE_1H_MULTIPLIER if ttl_seconds > 300 else CACHE_WRITE_5M_MULTIPLIER
+    return round((tokens / 1_000_000.0) * price * multiplier, 4)
