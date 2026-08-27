@@ -38,6 +38,16 @@ async def lifespan(app: FastAPI):
         print(f"[SET] Service startup failed: {e}", flush=True)
         traceback.print_exc()
 
+    # Start the account-usage poller. It owns its own clock so that reading the
+    # endpoint never issues an upstream call — see lib/set_orch/usage/poller.py.
+    try:
+        from .usage import UsagePoller
+        app.state.usage_poller = UsagePoller()
+        app.state.usage_poller.start()
+    except Exception as e:
+        app.state.usage_poller = None
+        print(f"[SET] Usage poller startup failed: {e}", flush=True)
+
     # Start Discord bot if configured
     discord_bot = None
     try:
@@ -73,6 +83,12 @@ async def lifespan(app: FastAPI):
             await discord_bot.stop()
         except Exception:
             pass
+    try:
+        poller = getattr(app.state, "usage_poller", None)
+        if poller is not None:
+            poller.stop()
+    except Exception:
+        pass
     try:
         from .api.lifecycle import shutdown as service_shutdown
         await service_shutdown()

@@ -36,6 +36,7 @@ from .activity_detail import router as activity_detail_router
 from .lineages import router as lineages_router
 from .project_status import router as project_status_router
 from .status_follow import router as status_follow_router
+from .usage import router as usage_router
 
 # Unified router that combines all domain routers
 router = APIRouter()
@@ -46,6 +47,9 @@ router.include_router(fleet_router)
 # Also a `/api/fleet/...` family, and therefore also BEFORE the `/api/{project}/...`
 # routers below, for the same reason (CB-16).
 router.include_router(files_router)
+# `/api/usage/accounts` — before the `/api/{project}/...` families for the same
+# reason (CB-16): registered later, a project named "usage" would claim it.
+router.include_router(usage_router)
 # `/api/desktop/open` — before the `/api/{project}/...` families for the same
 # reason as the two above (CB-16): a two-segment route registered later would be
 # answered as a project named "desktop".

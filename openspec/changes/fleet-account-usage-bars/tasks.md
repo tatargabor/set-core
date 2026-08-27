@@ -1,28 +1,28 @@
 ## 1. The headless measurement module
 
-- [ ] 1.1 Create `lib/set_orch/usage/accounts.py`: discover usage-capable accounts from both credential stores, each carrying its auth kind, dropping entries with no usable credential [REQ: accounts-are-discovered-from-the-machine-s-configuration-with-their-auth-kind]
-- [ ] 1.2 Unit-test discovery against fixtures for: both stores populated, an entry with an empty credential, and neither store present — with fixture names and addresses that belong to no real person [REQ: accounts-are-discovered-from-the-machine-s-configuration-with-their-auth-kind]
-- [ ] 1.3 Create `lib/set_orch/usage/client.py`: the upstream read with the curl_cffi → curl → urllib fallback chain, cookie auth for one kind and bearer auth for the other, returning a typed record [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
-- [ ] 1.4 Cache the organization uuid per account for the process lifetime, and invalidate it once on a rejected usage call [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
-- [ ] 1.5 Parse the answer so a null window becomes `unmeasured`, never `0` — every window figure nullable, with the outcome stated per account and per window [REQ: a-reachable-account-with-no-measured-window-is-not-a-zero]
-- [ ] 1.6 Carry the upstream `severity` verbatim and any scoped window with its scope name; compute no band locally and synthesise no scope [REQ: severity-and-scoped-windows-come-from-upstream-not-from-a-local-threshold]
-- [ ] 1.7 Unit-test the parser against a recorded upstream answer with: a labelled-critical weekly window, a model-scoped window, and an account whose windows are both null [REQ: a-reachable-account-with-no-measured-window-is-not-a-zero]
-- [ ] 1.8 Assert in a test that the serialised record contains no credential substring, and that the module's log calls name counts and outcomes only [REQ: no-credential-leaves-the-measuring-process]
-- [ ] 1.9 Add a test that a failed read of one account does not remove the other accounts from the answer [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
+- [x] 1.1 Create `lib/set_orch/usage/accounts.py`: discover usage-capable accounts from both credential stores, each carrying its auth kind, dropping entries with no usable credential [REQ: accounts-are-discovered-from-the-machine-s-configuration-with-their-auth-kind]
+- [x] 1.2 Unit-test discovery against fixtures for: both stores populated, an entry with an empty credential, and neither store present — with fixture names and addresses that belong to no real person [REQ: accounts-are-discovered-from-the-machine-s-configuration-with-their-auth-kind]
+- [x] 1.3 Create `lib/set_orch/usage/client.py`: the upstream read with the curl_cffi → curl → urllib fallback chain, cookie auth for one kind and bearer auth for the other, returning a typed record [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
+- [x] 1.4 Cache the organization uuid per account for the process lifetime, and invalidate it once on a rejected usage call [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 1.5 Parse the answer so a null window becomes `unmeasured`, never `0` — every window figure nullable, with the outcome stated per account and per window [REQ: a-reachable-account-with-no-measured-window-is-not-a-zero]
+- [x] 1.6 Carry the upstream `severity` verbatim and any scoped window with its scope name; compute no band locally and synthesise no scope [REQ: severity-and-scoped-windows-come-from-upstream-not-from-a-local-threshold]
+- [x] 1.7 Unit-test the parser against a recorded upstream answer with: a labelled-critical weekly window, a model-scoped window, and an account whose windows are both null [REQ: a-reachable-account-with-no-measured-window-is-not-a-zero]
+- [x] 1.8 Assert in a test that the serialised record contains no credential substring, and that the module's log calls name counts and outcomes only [REQ: no-credential-leaves-the-measuring-process]
+- [x] 1.9 Add a test that a failed read of one account does not remove the other accounts from the answer [REQ: usage-is-read-from-the-upstream-account-api-never-estimated]
 
 ## 2. The poller
 
-- [ ] 2.1 Create `lib/set_orch/usage/poller.py`: refresh on a fixed interval, hold the last completed measurement with its `measured_at`, and keep serving it when a refresh fails [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
-- [ ] 2.2 Start and stop the poller in `server.py`'s `lifespan`, beside the watcher and the unified service [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
-- [ ] 2.3 Test that N reads between two polls issue zero upstream requests — by counting calls on a fake transport, not by timing [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
-- [ ] 2.4 Test that a failing refresh after a good one leaves the earlier figures and their original `measured_at` intact [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 2.1 Create `lib/set_orch/usage/poller.py`: refresh on a fixed interval, hold the last completed measurement with its `measured_at`, and keep serving it when a refresh fails [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 2.2 Start and stop the poller in `server.py`'s `lifespan`, beside the watcher and the unified service [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 2.3 Test that N reads between two polls issue zero upstream requests — by counting calls on a fake transport, not by timing [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 2.4 Test that a failing refresh after a good one leaves the earlier figures and their original `measured_at` intact [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
 
 ## 3. The endpoint
 
-- [ ] 3.1 Create `lib/set_orch/api/usage.py` with `GET /api/usage/accounts` answering from the poller; register it in `api/__init__.py` before the project routers [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
-- [ ] 3.2 Verify no route already claims `/api/usage/...` — check the registered path list on the built app, not by reading files [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
-- [ ] 3.3 API test: the response body carries no session key and no bearer token for any account state [REQ: no-credential-leaves-the-measuring-process]
-- [ ] 3.4 API test: an unconfigured machine answers an empty account list, distinct from an unreachable account [REQ: an-unmeasured-window-is-marked-never-drawn-as-an-empty-bar]
+- [x] 3.1 Create `lib/set_orch/api/usage.py` with `GET /api/usage/accounts` answering from the poller; register it in `api/__init__.py` before the project routers [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 3.2 Verify no route already claims `/api/usage/...` — check the registered path list on the built app, not by reading files [REQ: the-measurement-is-polled-and-every-answer-says-when-it-was-taken]
+- [x] 3.3 API test: the response body carries no session key and no bearer token for any account state [REQ: no-credential-leaves-the-measuring-process]
+- [x] 3.4 API test: an unconfigured machine answers an empty account list, distinct from an unreachable account [REQ: an-unmeasured-window-is-marked-never-drawn-as-an-empty-bar]
 
 ## 4. The Control Center delegates
 
