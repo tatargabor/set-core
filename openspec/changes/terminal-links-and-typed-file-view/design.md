@@ -224,6 +224,58 @@ reason to state them rather than let them be implicit: an unbounded scan degrade
 exactly the condition this screen is for — an agent producing output flat out — and a terminal
 that stutters while an agent works is indistinguishable from an agent that has stalled.
 
+### D10 — The desktop guard is restated by the ACT, and the widening ships HERE
+
+`B-89`, measured 2026-08-27: `refusal()` tests `os.access(target, os.X_OK)`, which is a proxy.
+What runs a file is the desktop association, and a 644 `.jar` with no executable bit anywhere
+reaches `openjdk-7-java.desktop`, which executes it. `.appimage`, `.run`, `.jnlp`, `.msi`, an
+installer package and a macro-carrying office document are the same shape; `.html` is milder
+and still opens at a `file://` origin that reads local files.
+
+**Why in this change rather than a change of its own.** Three reasons, in order of weight:
+
+1. This change rewrites what reaches that endpoint. Shipping it beside the sentence *"the
+   desktop guards are unchanged"* would leave a completeness claim standing over a hole
+   already measured — the exact failure this repository keeps paying for.
+2. The `desktop-open` capability is owned by `fleet-open-external-path`, which this change
+   already has to archive first (task 0.1). The base is therefore in place at exactly the
+   moment this delta needs it. A separate change would queue behind the same archive and
+   arrive later for no gain.
+3. It is small and self-contained: `refusal()` and its tests. It adds no route, no state, and
+   no fourth layer to a change that already has three.
+
+**The list is a floor, and the guard does NOT query the local desktop.** Associations are
+per-machine and per-user; a guard that asks them would give a different verdict on every
+machine and could not be tested. So the refusal list is fixed, honest about being incomplete,
+and fails toward not starting anything. And the refusal's WORDING names which rule fired —
+*"executable files are not opened"*, said about a file with no executable bit, sends the
+reader to inspect the wrong thing.
+
+### D11 — REJECTED for now: a second, read-only root set to drain the desktop route
+
+After the change, **218 distinct tokens still reach `xdg-open`, and 199 of them are text
+files** — scratchpad notes, `.jsonl` transcripts, logs — outside every registered project.
+Serving them from a second, read-only root set would nearly empty the riskiest route in the
+product, which is a real argument and the reason this is recorded rather than dismissed.
+
+Not now, for three reasons:
+
+- **It is a second definition of what the framework may read.** `files.py` deliberately has
+  ONE verdict (`_start_location_verdict`), and this repository has already paid for two
+  enumerations of "what this screen knows" drifting apart — twice, and once in this very file
+  pair. A second set is that risk taken on purpose.
+- **The largest target is consumer data.** `~/.claude/projects/**.jsonl` holds session
+  transcripts: partner names, order numbers, quoted business rules. Displaying them at runtime
+  is permitted (the boundary is persistence, not display), but a new surface that reads them
+  by default deserves its own confidentiality pass, not a paragraph inside a change about
+  links.
+- **This change already spans three layers.** Adding a fourth trades the thing that makes it
+  reviewable.
+
+Recorded so the next reader inherits the measurement rather than the conclusion: the number to
+beat is 199, and the question to answer first is whether ONE verdict can be widened rather
+than a second one introduced.
+
 ## Risks / Trade-offs
 
 - **`fleet-open-external-path` is not archived, and this change modifies its requirements** →

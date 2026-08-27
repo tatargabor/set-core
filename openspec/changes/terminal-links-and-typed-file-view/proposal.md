@@ -62,11 +62,22 @@ names the measurement that would prove it fixed.
   today; a renderable binary is served as bytes with its media type; anything else is a
   refusal that names the type and the size. The executable bit is not consulted, because
   reading is not running.
-- **The panel renders what it was given**: text in the editor, an image as an image, a PDF in
-  a viewer, and any other binary as a stated type and size with the desktop hand-over still
-  offered. Saving is offered for text only.
-- The desktop-open endpoint's refusals are **unchanged**. Fewer tokens reach it; none of its
-  guards is relaxed.
+- **The panel renders what it was given**: text in the editor, an image as an image, and any
+  other binary — a PDF included — as a stated type and size with the desktop hand-over still
+  offered. Saving is offered for text only. (A PDF is named and handed over rather than
+  embedded; the research behind that is in `design.md`.)
+- **The desktop-open endpoint's refusals are WIDENED, not relaxed.** Measured while writing
+  this change (`B-89`): the guard tests the permission bit, but what runs a file is the
+  desktop association — a 644 `.jar` passes `refusal()` and reaches a JVM that executes it.
+  The `.desktop` suffix was already refused by name, so the class was understood and the list
+  was simply one item long. The rule is restated by the ACT rather than by the bit, the list
+  gains the types an association commonly executes or interprets, and the refusal's wording
+  names which rule fired.
+
+  This is the one place the change touches `desktop.py`, and it is here rather than in a
+  change of its own for a reason worth stating: this change rewrites what reaches that
+  endpoint, and shipping it while asserting *"the desktop guards are unchanged"* would leave
+  a completeness claim standing over a hole somebody had already measured.
 
 **Not in this change**, and stated so the next reader does not read it as done: paths broken
 across a terminal line wrap (497 distinct tokens exceed 80 columns) stay unrecognised — the
@@ -82,6 +93,9 @@ put the same route in two places.
 
 ### Modified Capabilities
 
+- `desktop-open`: what must never be handed over — the refusal list is widened from the
+  permission bit to the file association, because a file with no executable bit can still be
+  a program its handler will run.
 - `terminal-file-links`: what counts as a reference (the absolute-branch shape test, markup
   and `~` handling, suffix resolution), and which destination it gets — the file view now
   covers every registered project and worktree, and a directory reaches the structure pane
@@ -89,7 +103,8 @@ put the same route in two places.
 - `project-file-access`: the content endpoint gains a typed answer — text, renderable binary
   with a media type, or a refusal naming the type and size — under the same confinement,
   the same `_known_root` verdict and the same size limit.
-- `fleet-file-view`: the panel gains a non-text view (image, PDF, stated-type binary), states
+- `fleet-file-view`: the panel gains a non-text view (image, and a stated type for every
+  other binary), states
   which of the two refusals fired, offers saving only for text, and can reveal a directory.
 
 ## Impact
@@ -104,7 +119,8 @@ put the same route in two places.
 - `web/src/components/FleetFileView.tsx` — the `Opened` union gains a binary arm; reveal.
 - `lib/set_orch/api/files.py` — `read_file` becomes type-aware; a byte-serving route for
   renderable binaries. `_known_root`, `_confine` and `MAX_BYTES` are untouched.
-- `lib/set_orch/api/desktop.py` — **unchanged**.
+- `lib/set_orch/api/desktop.py` — `refusal()` only: a wider list, stated by the act, with the
+  reason named in the answer. No new route, no change to what it does with a path it accepts.
 - Depends on `fleet-open-external-path`, whose requirements this change modifies and which is
   not yet archived. That change must archive first, or its deltas and these will disagree
   about what the base said.

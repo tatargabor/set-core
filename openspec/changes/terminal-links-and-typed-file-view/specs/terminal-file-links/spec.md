@@ -221,7 +221,7 @@ pointing the other way: the file is right and the reader's belief about it is no
 
 A person activating a recognised DESKTOP reference SHALL cause that path to be handed to the
 desktop's default application, through the framework's desktop-open capability and its
-refusals, none of which is relaxed by this change.
+refusals. This change relaxes none of them and widens one — see `desktop-open`.
 
 The dashboard SHALL NOT attempt to read or display such a path — the file endpoints refuse
 everything outside a registered checkout, so pretending otherwise would produce a panel that
@@ -240,10 +240,13 @@ a plain click does in the terminal is unchanged.
 - **WHEN** a person clicks a recognised reference without the activation modifier
 - **THEN** the click is the terminal's — focus, cursor, selection — and nothing opens
 
-#### Scenario: The desktop guards are unchanged
+#### Scenario: The desktop guards refuse at least as much as before
 
-- **WHEN** a desktop reference names an executable file or a desktop entry
-- **THEN** it is refused exactly as before this change, and nothing is started
+- **WHEN** a desktop reference names something the desktop would run or interpret — an
+  executable, a desktop entry, or a file whose association executes it despite carrying no
+  executable bit
+- **THEN** it is refused and nothing is started; this change widens that list and relaxes no
+  part of it
 
 ## ADDED Requirements
 
