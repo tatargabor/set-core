@@ -1,5 +1,11 @@
 /**
- * The usage strip on the screen — the three things no test of the RULE can see.
+ * The usage strip on the screen — the things no test of the RULE can see.
+ *
+ * The strip rests COMPACT: bars for the working accounts, and an icon-and-count
+ * for each state that has no bar. So every assertion below is made twice where
+ * it matters — once on the resting header, once on the opened detail — because
+ * a mark that only survives in one of them is a mark the reader will miss in the
+ * other.
  *
  *  - the header must render when the usage read fails or never returns. This is
  *    the whole reason the strip fetches its own data, and it is invisible to a
@@ -101,15 +107,33 @@ beforeEach(() => { vi.useRealTimers() })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('the strip on screen', () => {
-  it('draws one row per account', async () => {
+  it('draws one wordless mark per WORKING account while compact', async () => {
     installFetch(snapshot({
       accounts: [usageAccount(), usageAccount({ name: 'beta@example.invalid' })],
     }))
     const { container } = render(<FleetUsageStrip />)
 
     await waitFor(() => {
-      expect(container.querySelectorAll('[data-fleet-usage-account]').length).toBe(2)
+      expect(container.querySelectorAll('[data-fleet-usage-compact]').length).toBe(2)
     })
+    // No name, no percentage, no sentence — the request was bars only.
+    expect(container.textContent).not.toContain('alpha@example.invalid')
+    // But the subject is still recoverable, on the tooltip.
+    expect(container.querySelector('[data-fleet-usage-compact]')!.getAttribute('title'))
+      .toContain('alpha@example.invalid')
+  })
+
+  it('names every account once opened', async () => {
+    installFetch(snapshot({
+      accounts: [usageAccount(), usageAccount({ name: 'beta@example.invalid' })],
+    }))
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-toggle]')).toBeTruthy())
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    expect(container.querySelectorAll('[data-fleet-usage-account]').length).toBe(2)
+    expect(container.textContent).toContain('beta@example.invalid')
   })
 
   it('draws both stripes of a measured window', async () => {
@@ -125,7 +149,7 @@ describe('the strip on screen', () => {
     })
   })
 
-  it('marks a null window instead of drawing it at zero', async () => {
+  it('marks a null window instead of drawing it at zero, compact AND opened', async () => {
     installFetch(snapshot({
       accounts: [usageAccount({
         outcome: 'unmeasured',
@@ -134,10 +158,19 @@ describe('the strip on screen', () => {
     }))
     const { container } = render(<FleetUsageStrip />)
 
+    // Compact: a count, and no bar anywhere — an empty bar would read as
+    // "nothing consumed", which is the opposite of what is known.
     await waitFor(() => {
-      expect(container.querySelector('[data-fleet-usage-window="unmeasured"]')).toBeTruthy()
-      expect(container.querySelector('[data-fleet-usage-window="measured"]')).toBeNull()
+      expect(container.querySelector('[data-fleet-usage-unmeasured-count]')?.getAttribute(
+        'data-fleet-usage-unmeasured-count')).toBe('1')
     })
+    expect(container.querySelector('[data-fleet-usage-window="measured"]')).toBeNull()
+    expect(container.querySelector('[data-fleet-usage-compact]')).toBeNull()
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    expect(container.querySelector('[data-fleet-usage-window="unmeasured"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-usage-window="measured"]')).toBeNull()
   })
 
   it('says an account did not answer, distinguishably from one with no figures', async () => {
@@ -150,16 +183,20 @@ describe('the strip on screen', () => {
     }))
     const { container } = render(<FleetUsageStrip />)
 
+    // Two causes, two marks. Folded into one number the reader cannot tell an
+    // expired credential from a service that answered nothing.
     await waitFor(() => {
-      // The account that ANSWERED keeps a row; the silent one is named on the
-      // shared line, so the two states stay tellable apart without spending a
-      // row on an account that can never carry a figure.
-      const states = Array.from(container.querySelectorAll('[data-fleet-usage-state]'))
-        .map(el => el.getAttribute('data-fleet-usage-state'))
-      expect(states).toEqual(['unmeasured'])
       expect(container.querySelector('[data-fleet-usage-silent]')?.getAttribute(
         'data-fleet-usage-silent')).toBe('1')
     })
+    expect(container.querySelector('[data-fleet-usage-unmeasured-count]')?.getAttribute(
+      'data-fleet-usage-unmeasured-count')).toBe('1')
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    const states = Array.from(container.querySelectorAll('[data-fleet-usage-state]'))
+      .map(el => el.getAttribute('data-fleet-usage-state'))
+    expect(states).toEqual(['unmeasured'])
   })
 
   it('names one cause once, however many accounts share it', async () => {
@@ -176,13 +213,18 @@ describe('the strip on screen', () => {
     const { container } = render(<FleetUsageStrip />)
 
     await waitFor(() => {
-      const line = container.querySelector('[data-fleet-usage-silent]')!
-      expect(line.getAttribute('data-fleet-usage-silent')).toBe('3')
-      // Every name is still reachable — on the tooltip, not as three rows.
-      for (const name of ['a@example.invalid', 'b@example.invalid', 'c@example.invalid']) {
-        expect(line.getAttribute('title')).toContain(name)
-      }
+      expect(container.querySelector('[data-fleet-usage-silent]')?.getAttribute(
+        'data-fleet-usage-silent')).toBe('3')
     })
+    expect(container.querySelectorAll('[data-fleet-usage-compact]').length).toBe(0)
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    // Every name is still reachable — on the tooltip, not as three rows.
+    const line = container.querySelector('[data-fleet-usage-detail] [data-fleet-usage-silent]')!
+    for (const name of ['a@example.invalid', 'b@example.invalid', 'c@example.invalid']) {
+      expect(line.getAttribute('title')).toContain(name)
+    }
     expect(container.querySelectorAll('[data-fleet-usage-account]').length).toBe(0)
   })
 
@@ -203,15 +245,28 @@ describe('collapsing', () => {
     })],
   })
 
-  it('keeps the critical count visible once collapsed', async () => {
+  it('shows the critical count in the RESTING state, where the detail is hidden', async () => {
+    installFetch(critical)
+    const { container } = render(<FleetUsageStrip />)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-fleet-usage-open="collapsed"]')).toBeTruthy()
+    })
+    // The detail is not on screen, and the failure is.
+    expect(container.querySelector('[data-fleet-usage-account]')).toBeNull()
+    expect(container.querySelector('[data-fleet-usage-critical-count]')?.textContent).toContain('1')
+  })
+
+  it('keeps the critical count when the detail is opened and closed again', async () => {
     installFetch(critical)
     const { container } = render(<FleetUsageStrip />)
     await waitFor(() => expect(container.querySelector('[data-fleet-usage-toggle]')).toBeTruthy())
 
     fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+    expect(container.querySelector('[data-fleet-usage-critical-count]')).toBeTruthy()
 
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
     expect(container.querySelector('[data-fleet-usage-open="collapsed"]')).toBeTruthy()
-    expect(container.querySelector('[data-fleet-usage-account]')).toBeNull()
     expect(container.querySelector('[data-fleet-usage-critical-count]')?.textContent).toContain('1')
   })
 
@@ -225,14 +280,17 @@ describe('collapsing', () => {
     expect(container.querySelector('[data-fleet-usage-critical-count]')).toBeNull()
   })
 
-  it('spends the critical colour on nothing else', async () => {
+  it('spends the critical colour on nothing else, in either state', async () => {
     installFetch(snapshot())
     const { container } = render(<FleetUsageStrip />)
-    await waitFor(() => expect(container.querySelector('[data-fleet-usage-account]')).toBeTruthy())
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-compact]')).toBeTruthy())
 
-    const reds = Array.from(container.querySelectorAll('*')).filter(el =>
+    const reds = () => Array.from(container.querySelectorAll('*')).filter(el =>
       /(^|\s)(bg|text|border)-red-/.test(el.className?.toString?.() ?? ''))
-    expect(reds).toEqual([])
+    expect(reds()).toEqual([])
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+    expect(reds()).toEqual([])
   })
 })
 

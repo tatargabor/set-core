@@ -2,18 +2,21 @@
 
 ## Purpose
 
-Owns what the fleet screen draws from that measurement: a strip in the header, one row per
-account, two stripes per window — consumption above, elapsed time below — coloured by the
-severity the service itself states. It also owns what the strip must say when it knows
-nothing, and what a collapse may never hide.
+Owns what the fleet screen draws from that measurement: a mark on the header's own line —
+at rest the bars alone, two stripes per window, consumption above and elapsed time below,
+coloured by the severity the service itself states. It also owns what the mark must say when
+it knows nothing, and what compacting may never hide.
 
 ## IN SCOPE
 
-- A strip in the fleet header carrying one row per configured account
+- A mark on the fleet header's own line, at rest carrying BARS ONLY for the accounts that
+  answered with figures — no name, no percentage, no sentence
 - Two stripes per window — consumption and elapsed time — so "ahead of budget" reads without arithmetic
 - Colouring from the upstream severity, and a distinct mark for an unmeasured window
+- An icon and a count for every state that has no bar, so compacting the words cannot
+  compact away a failure with them
 - Saying how old the measurement is, and saying so where the reader is standing
-- Keeping a critical account visible when the strip is collapsed
+- A detail view, one click away, naming every account and every window
 
 ## OUT OF SCOPE
 
@@ -27,8 +30,20 @@ nothing, and what a collapse may never hide.
 
 ### Requirement: The strip belongs to the header, because the quota is not a per-agent fact
 
-The fleet screen SHALL draw account usage in its header, one row per account, and SHALL NOT attach
-a consumption mark to an agent tab or tile.
+The fleet screen SHALL draw account usage on its header's own line, and SHALL NOT attach a
+consumption mark to an agent tab or tile.
+
+At rest it SHALL carry one wordless mark per account that answered with figures — the bars and
+nothing else — and SHALL make each mark's account recoverable without navigating away. The
+accounts by name, and every window including any model-scoped one, SHALL be reachable in one step
+from that mark.
+
+The resting form is bars-only because a full row per account cost 97 px of the landing screen for
+six accounts, most of it spent restating what the bars already said. Asked for by the user on the
+built screen (2026-08-27): *"ez nagyon sok helyet elvisz ki kellene tenni csak a mukodo statusz
+barokat jobbra felul optimalizalva. szovegek nem kellenek"* — the same icons-and-numbers rule this
+header's chips already follow. What the words carried is not lost; it moves to the mark's own
+description and to the detail view.
 
 The reason is a measurement, not a layout preference. A per-tab mark would claim that this agent
 consumed this share, and that claim cannot be supported: of the 40 most recent session transcripts
@@ -37,10 +52,17 @@ the stored account entries carry no account identifier to join on at all. A mark
 out of 40 is not a coverage gap the reader can see — it looks exactly like 36 agents consuming
 nothing.
 
-#### Scenario: More than one account is configured
+#### Scenario: More than one account answered with figures
 
-- **WHEN** the machine holds several usage-capable accounts
-- **THEN** the header carries one row per account, each naming the account it stands for
+- **WHEN** the machine holds several usage-capable accounts and more than one answered
+- **THEN** the header carries one wordless mark per answering account, and each names the account
+  it stands for in its description rather than on the screen
+
+#### Scenario: The reader asks for the detail
+
+- **WHEN** the reader opens the detail from that mark
+- **THEN** every account is listed by name with every one of its windows, and the detail does not
+  displace the header or the screen below it
 
 #### Scenario: An agent tab is drawn
 
@@ -97,12 +119,14 @@ in exactly the cases where nothing is known, which inverts the meaning at the mo
 #### Scenario: A reachable account with a null window
 
 - **WHEN** an account answers but one of its windows carries no figure
-- **THEN** that window shows the unmeasured mark, and no bar is drawn for it
+- **THEN** that window shows the unmeasured mark, and no bar is drawn for it — at rest as a count,
+  and in the detail as a mark beside the window it belongs to
 
 #### Scenario: An unreachable account
 
 - **WHEN** an account could not be reached at all
-- **THEN** its row says so, distinguishably from an account whose windows were merely unmeasured
+- **THEN** it is reported under its own mark, counted separately from accounts whose windows were
+  merely unmeasured, so the two causes cannot be read as one
 
 #### Scenario: No accounts are configured
 
@@ -129,23 +153,32 @@ refresh-failed chip already carries.
 - **WHEN** a refresh fails after an earlier measurement succeeded
 - **THEN** the earlier figures stay on screen, marked with their age, rather than disappearing
 
-### Requirement: Collapsing the strip never hides a critical account
+### Requirement: The compact state never hides a failure
 
-Where the strip can be collapsed or reduced, a window whose severity is critical SHALL remain
-marked in the collapsed state, at the place the reader is standing.
+A window whose severity is critical SHALL be marked wherever the reader is standing — in the
+resting state as much as in the detail — and the same SHALL hold for an account that answered with
+no figures and for one that did not answer at all. Each of the three SHALL carry its own mark, so
+two different causes are never counted as one.
 
-Any layout that hides something creates a place a broken thing can sit while the screen looks calm.
-A tidy header that reports quiet it has not verified is worse than a crowded one that does not.
+This is the condition the compacting is allowed under, not a caveat to it. Any layout that hides
+something creates a place a broken thing can sit while the screen looks calm, and a tidy header
+reporting quiet it has not verified is worse than a crowded one that does not. Words may be
+compacted to icons and counts; a failure may not be compacted to nothing.
 
-#### Scenario: The strip is collapsed with a critical account present
+#### Scenario: A critical window with the detail closed
 
-- **WHEN** the reader collapses the strip and one account holds a critical window
-- **THEN** a mark stating that remains visible in the collapsed strip
+- **WHEN** the strip is at rest and one account holds a critical window
+- **THEN** a mark stating that is visible without opening anything
 
-#### Scenario: The strip is collapsed with nothing critical
+#### Scenario: Nothing is critical
 
-- **WHEN** the reader collapses the strip and no window is critical
-- **THEN** no critical mark is shown
+- **WHEN** no window is critical
+- **THEN** no critical mark is shown, in either state
+
+#### Scenario: An account with no figures and one that did not answer
+
+- **WHEN** one account answered with no figures and another did not answer at all
+- **THEN** each is counted under its own mark at rest, and the two counts are separate
 
 ### Requirement: The header renders whether or not the measurement arrived
 

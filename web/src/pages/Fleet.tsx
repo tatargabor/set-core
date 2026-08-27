@@ -2734,7 +2734,7 @@ export default function Fleet() {
       {/* Centred for the same reason as the project row below: this strip is
           a title, an icon toggle and two chips, and only one of those four has
           a text baseline to align to. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
+      <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
         <span className="text-sm font-semibold text-fg-loud">Fleet</span>
         {/* The toggle. It starts and stops NOTHING — turning it on does not
             instruct, start or stop any agent, and turning it off returns the
@@ -2811,7 +2811,6 @@ export default function Fleet() {
              can see how stale. `?` where even that is unknown, because a missing
              timestamp is not "just now". */
           <Chip
-            className="ml-auto"
             jump="refresh-failed"
             tone="text-amber-400"
             mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
@@ -2821,12 +2820,13 @@ export default function Fleet() {
               answeredAt ? new Date(answeredAt).toLocaleTimeString() : 'an unknown time'}`}
           />
         )}
-      </div>
 
-      {/* The account quota, directly under the header's counts. It fetches its
-          own snapshot, so a slow or failing usage read cannot delay anything
-          above or below it. */}
-      <FleetUsageStrip />
+        {/* The account quota, pushed right on the header's own line. Bars only at
+            rest — asked for by the user on the built screen, and the same
+            icons-and-numbers rule the chips above already follow. It fetches its
+            own snapshot, so a slow usage read cannot delay anything here. */}
+        <FleetUsageStrip />
+      </div>
 
       {/* The PM strip — under the header, ABOVE the panel, and it replaces
           nothing. The queue decides which agent the screen below is showing;

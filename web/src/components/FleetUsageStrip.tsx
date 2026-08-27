@@ -1,31 +1,50 @@
 /**
- * The account quota, on the fleet header — one row per account, two stripes per
- * window.
+ * The account quota, on the fleet header.
  *
  * The cache-heat marks on the tabs below say what a keystroke costs. This says
- * how much is left to spend at all, and until now it existed only in a separate
- * desktop window that nobody has open while watching the fleet. Measured
- * 2026-08-27: one account stood at 96 % of its 7-day window, labelled `critical`
- * by the service itself, and nothing on this screen could have said so.
+ * how much is left to spend at all, and until this shipped it existed only in a
+ * separate desktop window that nobody has open while watching the fleet.
+ * Measured 2026-08-27: one account stood at 96 % of its 7-day window, labelled
+ * `critical` by the service itself, and nothing on this screen could have said
+ * so.
  *
- * ## It fetches its own data, and that is deliberate
+ * ## Compact by default — and the reason is a measurement, not taste
  *
- * The header must render whether or not this measurement arrives. Holding the
- * snapshot here rather than in the page means a slow or failing usage request
- * cannot delay the counts, the project column, or the agent grid — the strip
- * simply says it has nothing yet.
+ * The first build put a full row per account under the header: names, labels,
+ * sentences, 97 px of landing screen for six accounts. The user looked at it and
+ * asked for the opposite (*"ez nagyon sok helyet elvisz ki kellene tenni csak a
+ * mukodo statusz barokat jobbra felul optimalizalva. szovegek nem kellenek"*) —
+ * the same request that turned this header's counts into icons and numbers on
+ * 2026-08-19.
  *
- * ## Collapsing must not hide a red account
+ * So the resting state is **bars only**, on the header's own line, pushed right:
+ * two stripes per account-wide window, no name, no percentage, no sentence. What
+ * the words carried lives on the tooltip, and the detail is one click away.
  *
- * Any layout that hides something creates a place a broken thing can sit while
- * the screen looks calm. So the collapsed strip keeps the critical count where
- * the reader is standing; only the detail folds away.
+ * ## What compacting may NOT do, and this is the load-bearing half
+ *
+ * Every layout that hides something creates a place a broken thing can sit while
+ * the screen looks calm. So the three not-a-number states do not vanish with the
+ * words — they become icons and counts, which is what the request asked for:
+ *
+ * - `⚠ n` — windows the SERVICE calls critical
+ * - `? n` — accounts that answered and carried no figures (never an empty bar:
+ *   that reads as "nothing consumed", which is the opposite of what is known)
+ * - `⊘ n` — accounts that did not answer at all, one cause named once
+ *
+ * ## It fetches its own data
+ *
+ * The header must render whether or not this measurement arrives, so a slow or
+ * failing usage read cannot delay the counts, the project column, or the grid.
  */
 
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Gauge, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Gauge, TriangleAlert, Unplug } from 'lucide-react'
 
-import { stripState, type AccountRow, type UsageSnapshot, type WindowMark } from '../lib/fleetUsageBars'
+import {
+  headlineWindows, rowTitle, stripState,
+  type AccountRow, type UsageSnapshot, type WindowMark,
+} from '../lib/fleetUsageBars'
 
 /** Every 30 s. The server polls its own upstream once a minute; this only reads. */
 const READ_INTERVAL_MS = 30_000
@@ -35,8 +54,13 @@ const READ_INTERVAL_MS = 30_000
  *
  * The pair is the measurement. 60 % consumed one hour into a five-hour window is
  * a problem and 60 % four hours in is not, and no single bar can say which.
+ *
+ * The stripes are 4 px with a 1 px gap. The first build drew them 3 px inside a
+ * 9 px box and they read on screen as ONE bar — which is exactly the single-bar
+ * reading this pair exists to replace. Found by looking at it; no assertion
+ * about fractions could have.
  */
-function WindowBar({ mark }: { mark: WindowMark }) {
+function WindowBar({ mark, compact }: { mark: WindowMark; compact?: boolean }) {
   if (mark.kind === 'unmeasured') {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-amber-400 shrink-0"
@@ -46,19 +70,15 @@ function WindowBar({ mark }: { mark: WindowMark }) {
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 shrink-0"
+    <span className={`inline-flex items-center shrink-0 ${compact ? '' : 'gap-1.5'}`}
           data-fleet-usage-window="measured"
           data-fleet-usage-critical={mark.critical ? 'yes' : undefined}
           data-fleet-usage-consumed={mark.consumed.toFixed(3)}
           data-fleet-usage-elapsed={mark.elapsed === null ? 'unknown' : mark.elapsed.toFixed(3)}
           title={mark.title}>
-      <span className="text-xs text-fg-muted tabular-nums">{mark.label}</span>
-      {/* 4 px stripes with a 1 px gap inside an 11 px box. The first build drew
-          them 3 px tall inside 9 px and they read on screen as ONE bar — the pair
-          IS the measurement, so a reader who cannot see two stripes is left with
-          the single-bar reading this strip exists to replace. Found by looking at
-          it; no assertion about fractions could have. */}
-      <span className="relative inline-block h-[11px] w-20 border border-surface-line align-middle">
+      {!compact && <span className="text-xs text-fg-muted tabular-nums">{mark.label}</span>}
+      <span className={`relative inline-block h-[11px] border border-surface-line align-middle ${
+        compact ? 'w-11' : 'w-20'}`}>
         {/* Consumed — the stripe whose colour the SERVICE chose. */}
         <span className={`absolute left-0 top-0 h-[4px] ${mark.tone}`}
               style={{ width: `${mark.consumed * 100}%` }} />
@@ -69,13 +89,29 @@ function WindowBar({ mark }: { mark: WindowMark }) {
                 style={{ width: `${mark.elapsed * 100}%` }} />
         )}
       </span>
-      <span className="text-xs text-fg-muted tabular-nums">
-        {Math.round(mark.consumed * 100)}%
-      </span>
+      {!compact && (
+        <span className="text-xs text-fg-muted tabular-nums">
+          {Math.round(mark.consumed * 100)}%
+        </span>
+      )}
     </span>
   )
 }
 
+/** One account's account-wide windows, wordless, with everything on the tooltip. */
+function CompactAccount({ row }: { row: AccountRow }) {
+  const windows = headlineWindows(row)
+  if (windows.length === 0) return null
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0"
+          data-fleet-usage-compact={row.name}
+          title={rowTitle(row)}>
+      {windows.map((w, i) => <WindowBar key={i} mark={w} compact />)}
+    </span>
+  )
+}
+
+/** The expanded form: the account named, every window drawn, the figures shown. */
 function Row({ row }: { row: AccountRow }) {
   return (
     <div className="flex items-center gap-3 flex-wrap"
@@ -94,9 +130,26 @@ function Row({ row }: { row: AccountRow }) {
   )
 }
 
+/** An icon and a count. No sentence — the sentence is the title. */
+function Mark({ icon, count, tone, title, label, mark }: {
+  icon: React.ReactNode; count: number; tone: string
+  title: string; label: string; mark: string
+}) {
+  if (count === 0) return null
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs tabular-nums shrink-0 ${tone}`}
+          {...{ [`data-fleet-usage-${mark}`]: String(count) }}
+          title={title} aria-label={label}>
+      {icon}{count}
+    </span>
+  )
+}
+
 export default function FleetUsageStrip() {
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null)
-  const [open, setOpen] = useState(true)
+  // Compact at rest. The detail is one click away, and nothing that is WRONG
+  // waits behind that click — the marks beside the bars carry it either way.
+  const [open, setOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -116,83 +169,83 @@ export default function FleetUsageStrip() {
 
   const state = stripState(snapshot, now)
 
+  // Nothing to draw yet. One muted glyph on the header's right — no sentence,
+  // and no space taken from the counts that ARE measured.
   if (state.kind !== 'ready') {
     return (
-      <div className="px-4 md:px-6 py-1 border-b border-surface-line shrink-0 flex items-center gap-2"
-           data-fleet-usage={state.kind}>
+      <span className="ml-auto inline-flex items-center gap-1 shrink-0"
+            data-fleet-usage={state.kind} title={state.note}
+            aria-label={state.note}>
         <Gauge size={13} strokeWidth={1.75} className="text-fg-ghost" aria-hidden />
-        <span className="text-xs text-fg-ghost">{state.note}</span>
-      </div>
+        <span className="text-xs text-fg-ghost">?</span>
+      </span>
     )
   }
 
-  // Split before rendering: an account that ANSWERED gets a row, and the ones
-  // that did not share a single line. Rows are what carry figures; a row with no
-  // figure and no possibility of one is a sentence, not a row.
-  const answering = state.rows.filter(r => r.state !== 'unreachable')
-  const silent = state.rows.filter(r => r.state === 'unreachable')
-
   return (
-    <div className="px-4 md:px-6 py-1 border-b border-surface-line shrink-0"
-         data-fleet-usage="ready"
-         data-fleet-usage-rows={state.rows.length}
-         data-fleet-usage-open={open ? 'open' : 'collapsed'}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <button type="button"
-                onClick={() => setOpen(!open)}
-                aria-pressed={open}
-                aria-label={`account usage ${open ? 'shown' : 'collapsed'}`}
-                title="Account quota — how much of each rolling window is spent."
-                className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-strong shrink-0"
-                data-fleet-usage-toggle={open ? 'open' : 'collapsed'}>
-          {open
-            ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden />
-            : <ChevronRight size={13} strokeWidth={1.75} aria-hidden />}
-          <Gauge size={13} strokeWidth={1.75} aria-hidden />
-          <span className="tabular-nums">{state.rows.length}</span>
-        </button>
+    <span className="ml-auto inline-flex items-center gap-3 shrink-0"
+          data-fleet-usage="ready"
+          data-fleet-usage-rows={state.rows.length}
+          data-fleet-usage-open={open ? 'open' : 'collapsed'}>
+      {/* The bars themselves — the working accounts, and only those. */}
+      {state.measuredRows.map(row => <CompactAccount key={`${row.kind}:${row.name}`} row={row} />)}
 
-        {/* Survives the collapse, because a hidden failure is the one thing
-            compacting must never produce. */}
-        {state.criticalCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-xs text-red-400 shrink-0"
-                data-fleet-usage-critical-count={state.criticalCount}
-                title={`${state.criticalCount} window(s) the service calls critical`}
-                aria-label={`${state.criticalCount} critical usage window(s)`}>
-            <TriangleAlert size={13} strokeWidth={1.75} aria-hidden />
-            {state.criticalCount}
-          </span>
-        )}
-
+      {/* The three states that have no bar. Icons and counts, so compacting the
+          words cannot compact away a failure with them. */}
+      <span className="inline-flex items-center gap-2 shrink-0">
+        <Mark mark="critical-count" count={state.criticalCount} tone="text-red-400"
+              icon={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
+              title={`${state.criticalCount} window(s) the service calls critical`}
+              label={`${state.criticalCount} critical usage window(s)`} />
+        <Mark mark="unmeasured-count" count={state.unmeasuredCount} tone="text-amber-400"
+              icon={<span aria-hidden>?</span>}
+              title={`${state.unmeasuredCount} account(s) answered and carried no figures — not measured, which is not the same as nothing consumed`}
+              label={`${state.unmeasuredCount} account(s) answered with no figures`} />
+        <Mark mark="silent" count={state.silentCount} tone="text-amber-400"
+              icon={<Unplug size={13} strokeWidth={1.75} aria-hidden />}
+              title={`${state.silentCount} account(s) did not answer — the credentials have most likely expired`}
+              label={`${state.silentCount} account(s) did not answer`} />
         {/* A stale screen is readable only if the reader can see how stale. */}
         {state.stale && (
-          <span className="text-xs text-amber-400 shrink-0"
+          <span className="text-xs text-amber-400 tabular-nums shrink-0"
                 data-fleet-usage-stale={state.measuredAt}
                 title={`This is the state measured at ${new Date(state.measuredAt).toLocaleString()}, not now.`}>
             {new Date(state.measuredAt).toLocaleTimeString()}
           </span>
         )}
+      </span>
 
-        {open && answering.length === 1 && <Row row={answering[0]} />}
-      </div>
+      <button type="button"
+              onClick={() => setOpen(!open)}
+              aria-pressed={open}
+              aria-label={`account usage detail ${open ? 'shown' : 'hidden'}`}
+              title="Account quota — how much of each rolling window is spent. Click for the accounts by name."
+              className="inline-flex items-center text-fg-muted hover:text-fg-strong shrink-0"
+              data-fleet-usage-toggle={open ? 'open' : 'collapsed'}>
+        {open
+          ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden />
+          : <ChevronRight size={13} strokeWidth={1.75} aria-hidden />}
+      </button>
 
-      {open && answering.length > 1 && (
-        <div className="mt-0.5 flex flex-col gap-0.5">
-          {answering.map(row => <Row key={`${row.kind}:${row.name}`} row={row} />)}
+      {/* The detail, on its own layer so it cannot push the header around. Every
+          account by name, every window including the model-scoped ones, and the
+          one line naming whatever could not be measured. */}
+      {open && (
+        <div className="absolute right-4 md:right-6 top-full mt-1 z-20 flex flex-col gap-0.5
+                        rounded border border-surface-line bg-surface-raised px-3 py-2 shadow-lg"
+             data-fleet-usage-detail={state.rows.length}>
+          {state.rows.filter(r => r.state !== 'unreachable').map(row => (
+            <Row key={`${row.kind}:${row.name}`} row={row} />
+          ))}
+          {state.silentCount > 0 && (
+            <div className="text-xs text-amber-400"
+                 data-fleet-usage-silent={state.silentCount}
+                 title={state.rows.filter(r => r.state === 'unreachable').map(r => r.name).join('\n')}>
+              {state.silentCount} account{state.silentCount > 1 ? 's' : ''} did not answer — the credentials have most likely expired
+            </div>
+          )}
         </div>
       )}
-
-      {/* ONE cause, named once — the same lesson the header's owner chip already
-          carries. Three expired credentials rendered as three identical
-          sentences, which is three copies of one fact taking three rows on the
-          landing screen. Found by looking at the built screen. */}
-      {open && silent.length > 0 && (
-        <div className="text-xs text-amber-400 mt-0.5"
-             data-fleet-usage-silent={silent.length}
-             title={`${silent.map(r => r.name).join('\n')}\n\nEach answered nothing — the stored credential has most likely expired.`}>
-          {silent.length} account{silent.length > 1 ? 's' : ''} did not answer — the credentials have most likely expired
-        </div>
-      )}
-    </div>
+    </span>
   )
 }

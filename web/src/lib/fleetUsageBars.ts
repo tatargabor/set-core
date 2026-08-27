@@ -90,6 +90,18 @@ export type WindowMark =
       title: string
     }
 
+/**
+ * The account-wide windows, in the order a reader expects them.
+ *
+ * The compact header mark carries these and nothing else: a model-scoped window
+ * is a narrower fact than the quota that stops the work, and putting it in the
+ * header would spend the same width on a smaller claim. It stays on the tooltip
+ * and in the expanded rows.
+ */
+export function headlineWindows(row: AccountRow): WindowMark[] {
+  return row.windows.filter(w => w.kind === 'measured' && !w.label.includes('('))
+}
+
 export interface AccountRow {
   name: string
   kind: string
@@ -103,7 +115,19 @@ export interface AccountRow {
 export type StripState =
   | { kind: 'unavailable'; note: string }
   | { kind: 'no-accounts'; note: string }
-  | { kind: 'ready'; rows: AccountRow[]; stale: boolean; measuredAt: string; criticalCount: number }
+  | {
+      kind: 'ready'
+      rows: AccountRow[]
+      stale: boolean
+      measuredAt: string
+      criticalCount: number
+      /** Accounts with at least one figure — the only ones the compact mark draws. */
+      measuredRows: AccountRow[]
+      /** Answered, and carried no figures. A count, never a bar. */
+      unmeasuredCount: number
+      /** Did not answer at all. A different count, for a different cause. */
+      silentCount: number
+    }
 
 /** How long each window group runs, when the server did not say. */
 const FALLBACK_SECONDS: Record<string, number> = { session: 5 * 3600, weekly: 7 * 24 * 3600 }
@@ -217,6 +241,25 @@ function rowFor(account: UsageAccount, now: number): AccountRow {
   }
 }
 
+/**
+ * One line naming everything about an account, for the compact mark's tooltip.
+ *
+ * The name has to go SOMEWHERE. Compacting to icons and numbers was asked for by
+ * the user (2026-08-27, on the built screen: *"ez nagyon sok helyet elvisz … csak
+ * a mukodo statusz barokat … szovegek nem kellenek"*), and the same request the
+ * header's chips already answer — but a mark whose subject cannot be recovered
+ * at all is a different thing from a compact one.
+ */
+export function rowTitle(row: AccountRow): string {
+  const windows = row.windows.map(w =>
+    w.kind === 'measured'
+      ? `${w.label}: ${Math.round(w.consumed * 100)}%`
+        + (w.elapsed === null ? '' : ` of a window ${Math.round(w.elapsed * 100)}% run`)
+        + (w.critical ? ' — critical' : '')
+      : `${w.label}: not measured`)
+  return [row.name, ...windows, row.note].filter(Boolean).join('\n')
+}
+
 /** How many windows the service called critical. Drives the collapsed mark. */
 export function criticalCount(snapshot: UsageSnapshot | null | undefined): number {
   if (!snapshot) return 0
@@ -255,11 +298,21 @@ export function stripState(
   // honest yardstick, and it comes from the server that owns the clock.
   const stale = Number.isNaN(measured) ? true : now - measured > interval
 
+  const rows = snapshot.accounts.map((a) => rowFor(a, now))
+
+  // The three groups are counted here rather than in the component, so the
+  // compact mark and the expanded rows cannot disagree about which account is in
+  // which state. An account that answered nothing gets a NUMBER, not a bar:
+  // drawing it would be the empty-bar reading this module exists to prevent, and
+  // dropping it entirely would hide a failure behind a tidier header.
   return {
     kind: 'ready',
-    rows: snapshot.accounts.map((a) => rowFor(a, now)),
+    rows,
     stale,
     measuredAt: snapshot.measured_at,
     criticalCount: criticalCount(snapshot),
+    measuredRows: rows.filter(r => r.state === 'measured'),
+    unmeasuredCount: rows.filter(r => r.state === 'unmeasured').length,
+    silentCount: rows.filter(r => r.state === 'unreachable').length,
   }
 }
