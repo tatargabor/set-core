@@ -1450,7 +1450,7 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
         aria-label="start an agent"
         className="p-1 rounded border border-transparent text-sky-300 hover:text-sky-200 hover:border-surface-line shrink-0"
         title="Start an agent here — the framework starts it and holds it, and this one will have a terminal in the browser."
-      ><CirclePlus size={14} strokeWidth={1.75} /></button>
+      ><CirclePlus size={13} strokeWidth={1.75} /></button>
     )
   }
 
@@ -2612,7 +2612,10 @@ export default function Fleet() {
 
   return (
     <div className="h-full flex flex-col" data-fleet-phase={data.agents === 0 ? 'answered-empty' : 'answered'}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
+      {/* Centred for the same reason as the project row below: this strip is
+          a title, an icon toggle and two chips, and only one of those four has
+          a text baseline to align to. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 md:px-6 py-2.5 border-b border-surface-line shrink-0">
         <span className="text-sm font-semibold text-fg-loud">Fleet</span>
         {/* The toggle. It starts and stops NOTHING — turning it on does not
             instruct, start or stop any agent, and turning it off returns the
@@ -2628,7 +2631,7 @@ export default function Fleet() {
               : 'border-surface-line text-fg-muted hover:text-fg-strong'
           }`}
           title="PM mode presents one agent at a time — whichever is waiting on you. It touches no agent, and leaving it restores this screen."
-        ><Presentation size={14} strokeWidth={1.75} /></button>
+        ><Presentation size={13} strokeWidth={1.75} /></button>
         {/*
           ONE count, and it says which projects it is counting — raised
           2026-08-19. The header said `12 agent · 6 projektben` while the column
@@ -2641,7 +2644,7 @@ export default function Fleet() {
         */}
         <Chip
           jump="fleet-agents"
-          mark={<Bot size={11} strokeWidth={1.75} aria-hidden />}
+          mark={<Bot size={13} strokeWidth={1.75} aria-hidden />}
           count={data.agents}
           title="Agents discovered on this machine."
           label={`${data.agents} agents`}
@@ -2655,7 +2658,7 @@ export default function Fleet() {
             relation in the value itself. */}
         <Chip
           jump="fleet-projects"
-          mark={<Folders size={11} strokeWidth={1.75} aria-hidden />}
+          mark={<Folders size={13} strokeWidth={1.75} aria-hidden />}
           count={`${populated.length}/${data.projects.length}`}
           title="How many of the known projects are holding at least one agent."
           label={`${populated.length} of ${data.projects.length} projects hold an agent`}
@@ -2674,7 +2677,7 @@ export default function Fleet() {
             jump="owner-unreachable"
             data={{ 'data-fleet-owner': 'unreachable' }}
             tone="text-amber-400"
-            mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+            mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
             count="?"
             title="The owner service did not answer, so for no agent do we know whether the framework holds it. This does not mean none of them has a terminal."
             label="the owner service is not answering — who holds the terminals is unknown, not absent"
@@ -2692,7 +2695,7 @@ export default function Fleet() {
             className="ml-auto"
             jump="refresh-failed"
             tone="text-amber-400"
-            mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+            mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
             count={answeredAt ? new Date(answeredAt).toLocaleTimeString() : '?'}
             title={`The refresh failed (${error}) — this is the state measured at the time shown, not now.`}
             label={`the refresh failed — this is the state measured at ${
@@ -2831,11 +2834,17 @@ export default function Fleet() {
             <AnsweredEmpty at={answeredAt} projects={data.projects.length} />
           ) : active ? (
             <>
-              <div className="flex items-baseline gap-2 px-0.5 flex-wrap">
+              {/* CENTRED, not baseline-aligned. Measured on the running screen:
+                  the items sat at 9, 11, 12, 0, 11, 7, 11 and 0 pixels from the
+                  row's top — an icon button has no text to put a baseline on,
+                  so `items-baseline` pinned it to the top while every chip
+                  floated at its own text baseline. With the words gone this row
+                  is glyphs and digits, and glyphs align by their box. */}
+              <div className="flex items-center gap-2 px-0.5 flex-wrap">
                 <span className="text-sm text-fg-loud">{active.name}</span>
                 <Chip
                   jump="agent-count"
-                  mark={<Bot size={11} strokeWidth={1.75} aria-hidden />}
+                  mark={<Bot size={13} strokeWidth={1.75} aria-hidden />}
                   count={active.agents.length}
                   title={`${active.agents.length} agent(s) in this project`}
                   label={`${active.agents.length} agents`}
@@ -2913,7 +2922,7 @@ export default function Fleet() {
                       ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
                       : 'border-transparent text-fg-ghost hover:text-fg-muted'
                   }`}
-                ><FolderTree size={14} strokeWidth={1.75} /></button>
+                ><FolderTree size={13} strokeWidth={1.75} /></button>
                 {active.agents.length > 1 && (
                   <span className="flex items-center gap-1 shrink-0" title="How many columns the agents are laid out in for this project — choosing one returns to the grid">
                     {COLUMN_CHOICES.map(c => {
@@ -2942,7 +2951,7 @@ export default function Fleet() {
                               ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
                               : 'border-transparent text-fg-ghost hover:text-fg-muted'
                           }`}
-                        ><Glyph size={14} strokeWidth={1.75} /></button>
+                        ><Glyph size={13} strokeWidth={1.75} /></button>
                       )
                     })}
                   </span>
@@ -2957,7 +2966,7 @@ export default function Fleet() {
                     {hidden.length > 0 && (
                       <Chip
                         jump="focus-hidden"
-                        mark={<EyeOff size={11} strokeWidth={1.75} aria-hidden />}
+                        mark={<EyeOff size={13} strokeWidth={1.75} aria-hidden />}
                         count={hidden.length}
                         title={`${hidden.length} more agent(s) are covered by this full screen`}
                         label={`${hidden.length} more agents hidden`}
@@ -2987,7 +2996,7 @@ export default function Fleet() {
                       <Chip
                         data={{ 'data-fleet-focus-hidden': 'conflicts' }}
                         tone="text-amber-400"
-                        mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+                        mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
                         count={hiddenTally.conflicts}
                         title={`${hiddenTally.conflicts} of the covered agents declared a state their log contradicts`}
                         label={`${hiddenTally.conflicts} contradicting records, hidden by the full screen`}
@@ -2999,7 +3008,7 @@ export default function Fleet() {
                       aria-label="back to the grid"
                       title="Back to the grid — stop covering the other agents"
                       className="p-1 rounded border border-transparent text-fg-muted hover:text-fg-strong shrink-0"
-                    ><Minimize2 size={14} strokeWidth={1.75} /></button>
+                    ><Minimize2 size={13} strokeWidth={1.75} /></button>
                   </span>
                 )}
                 {/* Counted off the SAME list the strip renders. It said
@@ -3012,7 +3021,7 @@ export default function Fleet() {
                     className="ml-auto"
                     jump="as-tabs"
                     tone="text-fg-ghost"
-                    mark={<Layers size={11} strokeWidth={1.75} aria-hidden />}
+                    mark={<Layers size={13} strokeWidth={1.75} aria-hidden />}
                     count={gridAgents.length - 1}
                     title={`${gridAgents.length - 1} agent(s) are strip tabs while this one is enlarged — click one to switch`}
                     label={`${gridAgents.length - 1} as tabs, click one to switch`}

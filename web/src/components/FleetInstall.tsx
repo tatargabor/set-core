@@ -196,7 +196,7 @@ export default function FleetInstall({ project, root, capabilities }: {
         jump="modules-unmeasured"
         data={{ 'data-fleet-modules': 'unmeasured' }}
         tone="text-amber-400"
-        mark={<CircleDashed size={11} strokeWidth={1.75} aria-hidden />}
+        mark={<CircleDashed size={13} strokeWidth={1.75} aria-hidden />}
         count="?"
         title={standing.note}
         label="modules not measured"
@@ -224,7 +224,7 @@ export default function FleetInstall({ project, root, capabilities }: {
         onClick={() => setOpen(v => !v)}
         data={{ 'data-fleet-modules': 'measured', 'data-fleet-modules-open': open ? 'on' : 'off' }}
         tone={standing.notConnected > 0 || standing.unknown > 0 ? 'text-fg-muted' : 'text-fg-ghost'}
-        mark={<Blocks size={11} strokeWidth={1.75} aria-hidden />}
+        mark={<Blocks size={13} strokeWidth={1.75} aria-hidden />}
         count={wrong > 0 ? wrong : standing.total}
         trailing={<span className="text-fg-ghost">{open ? '▾' : '▸'}</span>}
         title={`set-core modules here: ${summary || `all ${standing.total} connected`}. Click to install one that is missing.`}

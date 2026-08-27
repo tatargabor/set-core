@@ -166,7 +166,7 @@ export default function FleetWaiters({ compact }: { compact?: boolean }) {
         jump="waiters"
         onClick={() => setOpen(v => !v)}
         tone={orphans.length > 0 || undeterminable.length > 0 ? 'text-amber-400' : 'text-fg-muted'}
-        mark={<Hourglass size={11} strokeWidth={1.75} aria-hidden />}
+        mark={<Hourglass size={13} strokeWidth={1.75} aria-hidden />}
         count={orphans.length > 0 ? orphans.length : data.waiters.length}
         trailing={<>
           {undeterminable.length > 0 && <span className="text-amber-400">+{undeterminable.length}?</span>}

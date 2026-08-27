@@ -412,12 +412,14 @@ function TheRest({ project, entries, busy, onRun }: {
   const pick = (key: string, on: boolean) => setPicked(p => ({ ...p, [key]: on }))
 
   return (
-    <span className="mt-1 flex flex-col" data-fleet-restore-rest={entries.length}>
+    /* Not a column and not indented: the dialog it opens is `fixed`, so this
+       wrapper only ever holds the chip. */
+    <span className="inline-flex" data-fleet-restore-rest={entries.length}>
       <Chip
         jump="restore-rest"
         onClick={() => setOpen(true)}
         data={{ 'data-fleet-restore-rest-toggle': open ? 'open' : 'closed' }}
-        mark={<History size={11} strokeWidth={1.75} aria-hidden />}
+        mark={<History size={13} strokeWidth={1.75} aria-hidden />}
         count={entries.length}
         title={`${entries.length} session(s) recorded in this project that are not open — click to look at them`}
         label={`${entries.length} more recorded here, not open`}
@@ -585,8 +587,13 @@ export function RestoreForProject({ project, onRestored }: {
   )
 
   return (
+    /* A ROW of chips, with the result — a multi-line report — underneath it.
+       It used to be a plain column, which put `55 more recorded here` on a
+       second line of the project header and made the whole strip two rows tall
+       for two numbers. */
     <span className="inline-flex flex-col ml-4 pl-4 border-l border-surface-line"
           data-fleet-restore-project={project}>
+      <span className="inline-flex items-center gap-2">
       {comp.known && comp.entries.length === 0 ? (
         // The fleet WAS observed and nothing was open here — a MEASURED zero, so
         // it is drawn as one rather than left out: no earlier round is offered
@@ -597,7 +604,7 @@ export function RestoreForProject({ project, onRestored }: {
           jump="restore-empty"
           data={{ 'data-fleet-restore-composition-empty': String(comp.rest.length) }}
           tone="text-fg-ghost"
-          mark={<RotateCcw size={11} strokeWidth={1.75} aria-hidden />}
+          mark={<RotateCcw size={13} strokeWidth={1.75} aria-hidden />}
           count={0}
           title={`Nothing was open here when the fleet was last seen${observed ? ` (${observed} ago)` : ''} — so there is nothing to bring back. The count beside this is what is recorded but was not open.`}
           label={`Nothing was open here when the fleet was last seen${observed ? ` (${observed} ago)` : ''}`}
@@ -630,7 +637,7 @@ export function RestoreForProject({ project, onRestored }: {
           jump="restore-inert"
           data={{ 'data-fleet-restore-inert': String(offer.total) }}
           tone="text-fg-ghost"
-          mark={<RotateCcw size={11} strokeWidth={1.75} aria-hidden />}
+          mark={<RotateCcw size={13} strokeWidth={1.75} aria-hidden />}
           count={offer.total}
           title={`${offer.label}. Recorded here and already running — a session with a live process on it is never resumed, that would fork its conversation.`}
           label={offer.label}
@@ -644,13 +651,14 @@ export function RestoreForProject({ project, onRestored }: {
           jump="restore-unknown-composition"
           data={{ 'data-fleet-restore-unknown-composition': String(offer.total) }}
           tone="text-fg-ghost"
-          mark={<CircleDashed size={11} strokeWidth={1.75} aria-hidden />}
+          mark={<CircleDashed size={13} strokeWidth={1.75} aria-hidden />}
           count="?"
           title={comp.reason ?? ''}
           label={comp.reason ?? 'the composition is not known'}
         />
       )}
       {comp.known && <TheRest project={project} entries={comp.rest} busy={busy} onRun={run} />}
+      </span>
       {result}
     </span>
   )

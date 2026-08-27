@@ -1023,7 +1023,7 @@ export default function FleetProjectColumn({
             <Chip
               jump="unmeasured"
               tone="text-fg-ghost"
-              mark={<CircleDashed size={11} strokeWidth={1.75} aria-hidden />}
+              mark={<CircleDashed size={13} strokeWidth={1.75} aria-hidden />}
               count={totals.unmeasured}
               title="This many projects have no orchestration state at all, so nothing was looked at there. Not a zero — not measured."
               label={`${totals.unmeasured} projects not measured`}
@@ -1038,7 +1038,7 @@ export default function FleetProjectColumn({
               jump="conflict"
               onClick={() => jump(firstConflict)}
               tone="text-amber-400"
-              mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+              mark={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
               count={totals.conflicts}
               title="This many agents' records declared a state their log contradicts. The measurement wins; the contradiction is on the producer's side. Jump to the first."
               label={`${totals.conflicts} contradicting declarations, jump to the first`}
@@ -1072,7 +1072,7 @@ export default function FleetProjectColumn({
             <Chip
               jump="missing"
               tone="text-amber-400"
-              mark={<SearchX size={11} strokeWidth={1.75} aria-hidden />}
+              mark={<SearchX size={13} strokeWidth={1.75} aria-hidden />}
               count={missingCount}
               title="Projects placed in this arrangement that the latest discovery did not return."
               label={`${missingCount} arranged names missing`}
