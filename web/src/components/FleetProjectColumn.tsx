@@ -1128,8 +1128,17 @@ export default function FleetProjectColumn({
               // already flat, and the sort applies where the reader is.
               if (next === 'recent' && !colView.flat) setMode('live')
             }}
+            /* The unmeasured tail lives HERE rather than on a line of its own.
+               A run of `—` at the bottom of a time-ordered list would read as
+               "oldest" and it is not — nobody measured those — but the reader
+               asked for the icon to speak for itself, and a hover costs no
+               space on a 185 px column. */
             title={sort === 'recent'
-              ? 'Freshest first — ordered by the age each row shows, so two rows reading the same age keep your own order. Click to go back to it.'
+              ? `Freshest first — ordered by the age each row shows, so two rows reading the same age keep your own order.${
+                colView.unmeasured > 0
+                  ? ` The ${colView.unmeasured} at the end ${colView.unmeasured === 1 ? 'was' : 'were'} not measured at all — not measured as old.`
+                  : ''
+              } Click to go back to your order.`
               : 'Put the projects you are working in on top — ordered by the freshest agent movement. Your arrangement is not changed.'}
             aria-label="Order by the freshest agent movement"
             className={`shrink-0 rounded border px-1.5 py-1 transition-colors ${
@@ -1166,15 +1175,6 @@ export default function FleetProjectColumn({
             sharpest on the screen — it drops whole projects. So it says what it
             dropped, split by cause, and one control puts the column back. The
             attention header above is unaffected by the mode by construction. */}
-        {/* A run of `—` at the bottom of a time-ordered list reads as "oldest",
-            and it is not: nobody measured those. So the tail is NAMED where the
-            reader is standing — the same rule as a hidden failure, applied to a
-            gap that would otherwise be read as a value. */}
-        {colView.sorted && colView.unmeasured > 0 && (
-          <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-unmeasured={colView.unmeasured}>
-            freshest first · {colView.unmeasured} unmeasured, last
-          </div>
-        )}
         {colHidden > 0 && (
           <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-hidden={colHidden}>
             {colHidden} project(s) not shown
