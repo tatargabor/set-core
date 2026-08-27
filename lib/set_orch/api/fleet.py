@@ -436,15 +436,26 @@ def _record_roster(agents, owned: Optional[Dict[int, Dict[str, Any]]]) -> None:
         None if owned is None
         else {pid: str(a["label"]) for pid, a in owned.items() if a.get("label")}
     )
+    # The session the FRAMEWORK started each agent on, from the SAME answer the
+    # labels came from — one round trip, two facts. Without it the roster keyed
+    # an agent the framework had resumed as having no session at all, and said
+    # so in a reason line, while this very mapping held the answer. Measured
+    # 2026-08-27: `resumed_session` was present for that pid and dropped here.
+    sessions = (
+        None if owned is None
+        else {pid: str(a["resumed_session"]) for pid, a in owned.items()
+              if a.get("resumed_session")}
+    )
     if labels is None:
         # NOT flattened to an empty mapping. "The holder could not be asked" and
         # "the holder holds nothing" are different facts, and only the second one
         # means an agent has no framework name. Flattening them would let one
         # unreachable socket erase every recorded label — the names this record
-        # exists to keep.
+        # exists to keep. `sessions` carries the same distinction for the same
+        # reason, and is `None` in the same breath.
         logger.warning("fleet api: recording the roster without labels; the owner could not be asked")
     try:
-        roster.record(agents, labels=labels)
+        roster.record(agents, labels=labels, sessions=sessions)
     except Exception as exc:
         logger.warning("fleet api: roster not recorded (%s); the agent list is unaffected", exc)
 
@@ -1573,8 +1584,10 @@ def fleet_waiters() -> Dict[str, Any]:
     """
     waiters = fleet_instruct.live_waiters()
     if waiters is None:
-        # `/proc` could not be read. Not an empty list: "no waiters" is an
-        # invitation to install one, and "we could not look" is not.
+        # The process table could not be read — `/proc` on Linux, `ps` on macOS.
+        # Not an empty list: "no waiters" is an invitation to install one, and
+        # "we could not look" is not. Named by what it means rather than by one
+        # platform's mechanism, since the reader now has two.
         return {"measured": False, "reason": "the process table could not be read",
                 "waiters": [], "orphaned": [], "orphaned_count": 0}
 

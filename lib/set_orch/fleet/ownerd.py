@@ -139,10 +139,61 @@ def _resync(buf: bytes, drop: int) -> int:
     return i
 
 
-def default_socket_path() -> str:
-    """`$XDG_RUNTIME_DIR/set-agent-owner.sock` — the unit file's `%t` expansion."""
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-    return os.path.join(runtime, "set-agent-owner.sock")
+SOCKET_NAME = "set-agent-owner.sock"
+
+
+def _sun_path_max() -> int:
+    """The kernel's `sun_path` capacity on this platform.
+
+    `sun_path` is a fixed-size char array in `sockaddr_un` and the size differs
+    by platform. Exceeded, `bind()` fails with an errno that reads as a missing
+    directory — which sends the reader to check a directory that is present.
+
+    Resolved at call time, not frozen at import, for the same reason
+    `start_command()` is: it is a fact about the running machine, and a constant
+    computed once at import is a fact a test cannot vary without reaching inside
+    the module.
+    """
+    return 104 if sys.platform == "darwin" else 108
+
+
+def _runtime_dir() -> str:
+    """The directory the owner's control socket lives in, per platform.
+
+    Linux keeps `$XDG_RUNTIME_DIR`, falling back to `/run/user/<uid>` — the
+    expansion the systemd unit's `%t` already produces, so the service and this
+    resolver cannot disagree about where the socket is.
+
+    macOS has neither, so the framework's own per-user data directory is used.
+    Not `$TMPDIR`: it would fit the length limit, but it is per-session and
+    periodically cleaned, and a control socket that disappears on a schedule is a
+    fleet that stops answering for no visible reason.
+    """
+    if sys.platform == "darwin":
+        from ..paths import SET_TOOLS_DATA_DIR
+        return os.path.join(SET_TOOLS_DATA_DIR, "runtime")
+    return os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+
+
+def default_socket_path(*, create: bool = False) -> str:
+    """Where the owner listens, resolved the same way for the service and every client.
+
+    `create=True` is for the side that binds; a client asking where to connect
+    must not bring the directory into being as a side effect of looking.
+    """
+    directory = _runtime_dir()
+    if create:
+        os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, SOCKET_NAME)
+    encoded = len(path.encode("utf-8"))
+    limit = _sun_path_max()
+    if encoded >= limit:
+        raise OwnerError(
+            f"the owner's socket path is too long for this platform: {path} "
+            f"is {encoded} bytes and the limit is {limit}. "
+            "This is not a missing directory — the path itself cannot be bound."
+        )
+    return path
 
 
 def _agent_payload(agent: OwnedAgent, *, tail_len: int = 0, dropped: bool = False) -> Dict[str, Any]:
@@ -755,21 +806,41 @@ class OwnerDaemon:
 
     async def shutdown(self) -> None:
         if self._server is not None:
+            # Stop accepting, but do NOT wait here — see the ordering note below.
             self._server.close()
-            await self._server.wait_closed()
-        # `wait_closed()` answers about the LISTENING sockets, not about the
-        # handlers — on this runtime it returns with client coroutines still
-        # suspended on `readline()`. Whatever happens to them then happens after
-        # the loop is gone: the `finally` above runs from the garbage collector,
-        # so the unsubscribe is skipped and the close raises where nothing can
-        # catch it. Cancelling here runs each handler's cleanup while the loop
-        # is still alive, which is the only moment it can do its job.
+
+        # Cancelling the handlers runs each one's cleanup while the loop is
+        # still alive, which is the only moment it can do its job. Left to the
+        # runtime, the `finally` in the handler runs from the garbage collector
+        # after the loop is gone: the unsubscribe is skipped and the close
+        # raises where nothing can catch it.
+        #
+        # THE ORDER IS LOAD-BEARING, and it used to be the other way round. This
+        # awaited `wait_closed()` first, on the documented-at-the-time behaviour
+        # that it "answers about the LISTENING sockets, not about the handlers"
+        # and returns with client coroutines still suspended on `readline()`.
+        # That stopped being true in Python 3.12, where `wait_closed()` waits
+        # for the handlers and the connections as well — so it blocked on the
+        # very tasks the lines below exist to cancel, and the cancellation was
+        # never reached.
+        #
+        # Measured 2026-08-27 on Python 3.12.13: one attached client, `close()`
+        # then `wait_closed()`, and `wait_closed()` had not returned after four
+        # seconds. In production that is an owner that never exits cleanly while
+        # a terminal is open — killed by its service manager's stop timeout, with
+        # the drain detach and the socket unlink below never run.
         clients = list(self._clients)
         for task in clients:
             task.cancel()
         if clients:
             await asyncio.gather(*clients, return_exceptions=True)
             logger.debug("fleet owner: %d client handler(s) cancelled", len(clients))
+
+        # Now it can be awaited: the handlers are done and their transports are
+        # closed, so this returns on every version rather than only on the ones
+        # where it answered a narrower question.
+        if self._server is not None:
+            await self._server.wait_closed()
         for agent in self.owner.owned():
             self._detach_drain(agent.master_fd)
         try:
@@ -799,7 +870,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     health_cmd.add_argument("--socket", default=None, help="socket path")
 
     args = parser.parse_args(argv)
-    socket_path = args.socket or default_socket_path()
+    # Only `serve` brings the directory into being. `health` is a client, and a
+    # client that creates the runtime directory as a side effect of asking where
+    # the socket is makes "the owner is not running" indistinguishable from
+    # "nothing has ever run here".
+    socket_path = args.socket or default_socket_path(create=args.command == "serve")
 
     if args.command == "health":
         from .owner_client import OwnerClient, OwnerUnavailable

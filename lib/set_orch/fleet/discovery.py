@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from . import procsource
+
 logger = logging.getLogger(__name__)
 
 #: The runtime's per-session records. One file per live session, named by pid.
@@ -123,56 +125,51 @@ class ProjectEntry:
 # process state
 # --------------------------------------------------------------------------- #
 
-def _read(path: str) -> Optional[str]:
-    try:
-        with open(path, "r", errors="replace") as fh:
-            return fh.read()
-    except (OSError, PermissionError):
-        return None
-
-
 def _proc_argv(pid: int, proc_root: str = "/proc") -> List[str]:
-    raw = _read(os.path.join(proc_root, str(pid), "cmdline"))
-    if not raw:
-        return []
-    return [part for part in raw.split("\0") if part]
+    """This process's arguments, or `[]` when they could not be read.
+
+    `[]` for unreadable is the shape every caller here already relied on, and it
+    is kept: the one consumer is a flag test, and a flag is absent either way.
+    The source distinguishes the two — see `procsource` — for the callers that
+    act on the difference.
+    """
+    return procsource.argv(pid, root=proc_root) or []
 
 
 def _proc_cwd(pid: int, proc_root: str = "/proc") -> Optional[str]:
-    try:
-        return os.readlink(os.path.join(proc_root, str(pid), "cwd"))
-    except (OSError, PermissionError):
-        return None
+    return procsource.cwd(pid, root=proc_root)
 
 
 def _live_agent_pids(proc_root: str = "/proc") -> List[int]:
     """Every live process whose executable identity is the agent binary.
 
-    Identity, not substring: `comm` is what the kernel records as the program's
-    name. Matching command lines instead finds every shell that happens to have
-    the word in a path — 31 of them on the machine this was measured on.
+    Identity, not substring: matching command lines instead finds every shell
+    that happens to have the word in a path — 31 of them on the machine this was
+    measured on. Where the identity comes from is the source's business now; it
+    was `/proc/<pid>/comm` on one platform and nothing at all on the other, which
+    is what this change repaired.
+
+    An unreadable process table yields `[]` here — right for a listing, where an
+    empty screen is honest. `live_session_ids()` deliberately does NOT do this;
+    see its docstring for the caller that must not be told "nothing" by a reader
+    that could not look.
     """
-    found: List[int] = []
-    try:
-        entries = os.listdir(proc_root)
-    except OSError as exc:
-        logger.warning("fleet discovery: cannot read %s: %s", proc_root, exc)
-        return found
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        comm = _read(os.path.join(proc_root, entry, "comm"))
-        if comm is None or comm.strip() != AGENT_COMM:
-            continue
-        found.append(int(entry))
-    return found
+    return procsource.live_pids(AGENT_COMM, root=proc_root) or []
 
 
 def _classify_kind(pid: int, proc_root: str = "/proc") -> str:
     """Interactive session, or a one-shot subprocess the framework spawned (CB-8)."""
-    argv = _proc_argv(pid, proc_root)
+    return _kind_of(_proc_argv(pid, proc_root))
+
+
+def _kind_of(argv: Sequence[str]) -> str:
+    """The same test, applied to arguments already in hand.
+
+    Split out so the fleet-wide walk can read every argument vector in one go on
+    a platform where each read is a process spawn, without asking twice.
+    """
     for flag in NON_INTERACTIVE_FLAGS:
-        if flag in argv[1:]:
+        if flag in list(argv)[1:]:
             return "oneshot"
     return "interactive"
 
@@ -292,12 +289,22 @@ def discover_agents(
     registry = set(registry_pids or ())
     agents: List[Agent] = []
 
-    for pid in sorted(_live_agent_pids(proc_root)):
-        cwd = _proc_cwd(pid, proc_root)
+    # Read cwd and arguments for every candidate in ONE call each rather than two
+    # per agent. On `/proc` this is the same file reads in a different order; on a
+    # platform where each read is a process spawn it is the difference between
+    # three subprocesses per pass and two per agent. The batch answers for every
+    # pid it was asked about, with an unreadable one mapped to None individually —
+    # so a process that exits mid-pass costs its own row, not the whole reading.
+    pids = sorted(_live_agent_pids(proc_root))
+    cwds = procsource.cwds(pids, root=proc_root)
+    argvs = procsource.argvs(pids, root=proc_root) or {}
+
+    for pid in pids:
+        cwd = cwds.get(pid)
         if cwd is None:
             logger.debug("fleet discovery: pid %s has no readable cwd, skipping", pid)
             continue
-        kind = _classify_kind(pid, proc_root)
+        kind = _kind_of(argvs.get(pid, []))
         if kind != "interactive" and not include_oneshot:
             continue
 
@@ -338,22 +345,14 @@ def discover_agents(
 
 
 def _ppid(pid: int, proc_root: str = "/proc") -> Optional[int]:
-    """The parent pid, parsed the only way that is safe.
+    """The parent pid, or None when it could not be read.
 
-    `/proc/<pid>/stat` puts `comm` in parentheses in field 2, and a comm may
-    contain spaces and parentheses — so splitting the line on whitespace gets the
-    wrong field for any process whose name is unusual. The parse starts after the
-    LAST `)`, which is where the fixed-width fields begin.
+    The parse that makes this safe on `/proc` — start after the LAST `)`, because
+    field 2 is a `comm` in parentheses and a comm may contain spaces and
+    parentheses — now lives in the source's Linux backend, next to the platform
+    it is a fact about.
     """
-    try:
-        with open(os.path.join(proc_root, str(pid), "stat"), encoding="utf-8") as handle:
-            raw = handle.read()
-    except OSError:
-        return None
-    tail = raw[raw.rfind(")") + 2:].split()
-    if len(tail) < 2 or not tail[1].isdigit():
-        return None
-    return int(tail[1])
+    return procsource.ppid(pid, root=proc_root)
 
 
 def parent_seat(
@@ -386,8 +385,8 @@ def parent_seat(
     current = _ppid(pid, proc_root)
     depth = 0
     while current and current > 1 and depth < max_depth:
-        comm = _read(os.path.join(proc_root, str(current), "comm"))
-        if comm is not None and comm.strip() == AGENT_COMM:
+        comm = procsource.comm(current, root=proc_root)
+        if comm is not None and comm == AGENT_COMM:
             record = records.get(current) or {}
             return {
                 "seat": record.get("name"),
@@ -412,29 +411,26 @@ def live_session_ids(
 
     `None` means the question could not be answered, and it is a different value
     from the empty set on purpose. Every other reader in this module treats an
-    unreadable `/proc` as "no agents" and logs a warning, which is right for a
-    listing — an empty screen is honest when nothing can be seen.
+    unreadable process table as "no agents" and logs a warning, which is right
+    for a listing — an empty screen is honest when nothing can be seen.
 
     It is exactly wrong for the caller this exists for. Task 5.7 refuses to
     resume a session that something is already running, and there the empty set
-    means *go ahead*: an unreadable `/proc` would clear the way for a resume onto
-    a live session, which forks its conversation silently (design §6.1). So the
-    failure is surfaced rather than flattened, and the caller treats
-    undeterminable liveness as live.
+    means *go ahead*: a table that could not be read would clear the way for a
+    resume onto a live session, which forks its conversation silently (design
+    §6.1). So the failure is surfaced rather than flattened, and the caller
+    treats undeterminable liveness as live.
     """
-    try:
-        entries = os.listdir(proc_root)
-    except OSError as exc:
-        logger.warning("fleet discovery: cannot read %s: %s", proc_root, exc)
+    pids = procsource.live_pids(AGENT_COMM, root=proc_root)
+    if pids is None:
+        # The one place in this module that must NOT flatten to empty. Before the
+        # process source existed this function carried its own platform branch,
+        # because `/proc` does not exist on macOS and the walk below could only
+        # ever return None there — "liveness undeterminable", permanently, which
+        # the caller reads as "the session is live". Safe for a resume and
+        # useless for everything else.
         return None
-
-    live_pids = set()
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        comm = _read(os.path.join(proc_root, entry, "comm"))
-        if comm is not None and comm.strip() == AGENT_COMM:
-            live_pids.add(int(entry))
+    live_pids = set(pids)
 
     try:
         records = _load_session_records(record_dir)
@@ -456,8 +452,7 @@ def is_agent_process(pid: int, proc_root: str = "/proc") -> bool:
     name, and matching command lines finds every shell whose path happens to
     contain the word — 31 of them on the machine this was measured on.
     """
-    comm = _read(os.path.join(proc_root, str(pid), "comm"))
-    return comm is not None and comm.strip() == AGENT_COMM
+    return procsource.comm(pid, root=proc_root) == AGENT_COMM
 
 
 def discover_agent(

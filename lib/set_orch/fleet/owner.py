@@ -172,30 +172,32 @@ class AgentOwner:
         pid, master_fd = pty.fork()
         if pid == 0:  # pragma: no cover - executed in the forked child
             try:
-                os.chdir(cwd)
-                os.execvpe(
-                    "systemd-run",
-                    ["systemd-run", "--user", "--scope", "--collect", "--quiet",
-                     f"--unit={unit}", *argv],
-                    child_env,
-                )
+                # How the child becomes the agent is the platform's business, not
+                # this module's. It was `systemd-run` inline here until the
+                # backend split (design D1a) — the one systemd command that had
+                # escaped the scopes package, and the reason the macOS start path
+                # could not work however the rest of the port went.
+                scopes.child_exec(unit, argv, cwd, child_env)
             except BaseException:
                 os._exit(127)
 
         self._set_window(master_fd, rows, cols)
-        scope = scopes._await_unit(unit)
-        if scope is None:
+
+        # The guarantee this whole module rests on. Refuse rather than warn: an
+        # agent inside the dashboard's own lifetime would give the surface a
+        # survival promise that is simply false. `adopt` raises rather than
+        # returning a bad scope, so there is no state where this succeeded and
+        # the promise is absent.
+        try:
+            scope = scopes.adopt(unit, pid, cwd)
+        except scopes.ScopeError as exc:
             os.close(master_fd)
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
-            raise OwnerError(f"{unit} did not become active; the agent was not started")
-
-        # The guarantee this whole module rests on. Refuse rather than warn: a
-        # scope inside the service's cgroup would give the surface a survival
-        # promise that is simply false.
-        cgroup = scopes.assert_sibling(unit)
+            raise OwnerError(f"{exc}; the agent was not started") from exc
+        cgroup = scope.cgroup
         agent = OwnedAgent(
             label=label, unit=unit, pid=scope.pid, cwd=cwd,
             master_fd=master_fd, child_pid=pid, resumed_session=resumed_session,
@@ -552,7 +554,7 @@ def recover(
     the stop before it resumes; a scope that will not die aborts the recovery
     rather than proceeding into a fork.
     """
-    unit = scopes._as_scope(unit)
+    unit = scopes.as_unit_name(unit)
     _refuse_if_the_session_is_running(session_id)
     scope = scopes.get(unit)
     if scope is not None and not scopes.is_gone(unit):

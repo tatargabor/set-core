@@ -68,11 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-93 — the Control Center draws 0 % for an account whose usage was never measured
+### B-100 — the Control Center draws 0 % for an account whose usage was never measured
 
 - **state:** open
 - **reported:** 2026-08-27 by this session, while moving the measurement out of the GUI for
-  `fleet-account-usage-bars`. Not a task in that change: its specs put the Control Center's own
+  `fleet-account-usage-bars`. Filed as B-93 and renumbered on merge: a parallel session in the
+  same checkout had already published a different B-93. Two sessions numbering from the same
+  file is a collision the file cannot prevent on its own — the one that reached `origin` first
+  keeps the id. Not a task in that change: its specs put the Control Center's own
   rendering explicitly OUT OF SCOPE.
 - **measured:** running the shipped `UsageWorker.fetch_claude_api_usage` against the three
   configured browser accounts, one of them answered `available: true, session_pct: 0,
@@ -86,6 +89,237 @@ consumer's name, path, or content.
   rather than an empty bar, and a test drives `_fetch_org_usage` with a null-window document and
   asserts the two states are distinguishable. The headless module already keeps them apart
   (`OUTCOME_UNMEASURED` in `lib/set_orch/usage/client.py`); the GUI's own mapping does not.
+
+> **Renumbered on 2026-08-27, and the reason is rule 3 above happening again.**
+> Five entries were written on a branch whose local copy of this file ended at
+> **B-82**, so they were issued **B-83 … B-87**. The remote had meanwhile issued
+> B-83 … B-92 to entirely different defects (an executable-bit file view, a
+> checkout-confined file view, link-shape filtering, a token cleaner, a directory
+> view, a binary refusal). Two sets of handles, ten collisions.
+>
+> The five are renumbered here to **B-93 … B-97**. The remote's numbers keep
+> theirs, because they were pushed first and are the ones anybody else can have
+> read. What cannot be fixed by editing this file is that three commit messages
+> quote the OLD numbers, so the mapping is recorded rather than left to be
+> reconstructed:
+>
+> | commit | says | means |
+> |---|---|---|
+> | `13362e5a` | B-83, B-84, B-85 | **B-93, B-94, B-95** |
+> | `0696d074` | B-86, B-87 | **B-96, B-97** |
+> | `c0c1201b` | B-86, B-87 | **B-96, B-97** |
+>
+> The lesson is narrower than "measure the file": the file was measured. It was
+> measured on a branch that had not fetched, so the measurement was of a stale
+> corpus — which is the same shape as measuring a proxy instead of the thing.
+> **Allocate a number after fetching, not after reading.**
+
+### B-99 — the checkout guard blocks a merge commit and prints a remedy git itself refuses
+
+- **state:** fixed — `3bbc7ef6`.
+- **reported:** 2026-08-27 by this session, hitting it while committing a merge.
+- **measured:** `git merge origin/main` staged 60 paths — none of them staged by
+  any session, all of them put there by the merge — and the guard read the whole
+  set as another session's work:
+
+  ```
+  BLOCKED by set-hook-checkout-guard — this commit would carry work another
+  session in this checkout is holding.
+      git commit -- <path> <path> ...
+  $ git commit -m x -- base.txt
+  fatal: cannot do a partial commit during a merge.
+  ```
+
+- **which way it fails:** it is the shape that gets a guard bypassed rather than
+  obeyed. The refusal is correct-looking, and the only command it offers is one
+  git rejects, so the sole way forward is `--no-verify` — and a guard people learn
+  to `--no-verify` past is worse than an absent one, because it still reports that
+  it is holding. The blindness is not about merges specifically: the guard reasons
+  about *who staged a path*, and a merge stages paths with no session behind them.
+- **fixed when:** a merge, cherry-pick or revert commit passes, a pathspec-less
+  commit over a foreign staged path in the same repository is still refused once
+  the merge is finished, and git's own refusal of the partial commit is asserted
+  rather than assumed. All three held in `tests/unit/test_checkout_guard.py`;
+  both mutation directions (removing the exemption, making it unconditional) fail
+  the suite.
+
+### B-98 — a fleet payload test's fake agent lacks `session_log`, so the whole payload builder raises
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while merging `origin/main`.
+- **measured:** on `origin/main` **alone**, in a detached worktree with nothing of
+  this session's work in it:
+
+  ```
+  $ PYTHONPATH=lib:modules/web/src:modules/example/src python3.12 -m pytest \
+      tests/unit/test_fleet_discovery.py::test_a_recorded_origin_outranks_ancestry_and_says_which_it_is -q
+  FAILED  ...  AttributeError: '_A' object has no attribute 'session_log'
+  lib/set_orch/api/fleet.py:114  in _cache_payload:  heat = read_cache_heat(agent.session_log)
+  ```
+
+  `_cache_payload` is new (`9437605d`); the test's local `_A` fake predates it and
+  was never extended, so `_agent_payload` raises before reaching the assertion.
+- **which way it fails:** it is loud in the suite and silent about its subject. The
+  test's own claim — a recorded origin outranks ancestry — is now **unmeasured**,
+  and has been since the cache-heat commit landed: a test that raises before its
+  first assertion is a dead test, and a dead test that also reports red is the one
+  people route around. Nothing else covers that precedence.
+- **fixed when:** `_A` carries a `session_log` (or `_cache_payload` tolerates a fake
+  that has none), the test passes, and mutating the origin precedence back to
+  ancestry makes it fail again — i.e. it measures its subject rather than merely
+  running.
+
+### B-96 — a restored agent whose session gets claimed elsewhere stays alive as a record-less, log-less zombie
+
+- **state:** open
+- **reported:** 2026-08-27 by the user — *"restore nem mukodott probaltam fleet-ben uj
+  sessionben restolreolni"* — with a screenshot showing the restored tile empty.
+- **measured:** the owner log records the restore:
+
+  ```
+  21:29:15 fleet owner: started set-core-restored as set-agent-set-core-restored.scope
+           (pid 9289), resumed session <S>
+  ```
+
+  Twenty-seven seconds later a SECOND process (pid 9467) claimed the same session
+  `<S>` — the user's own terminal resuming it. The loser is pid 9289, and hours
+  later it is still there:
+
+  ```
+  $ ps -p 9289 -o args=
+  claude --dangerously-skip-permissions --resume <S>
+  $ ls ~/.claude/sessions/9289.json      ->  does not exist
+  ```
+
+  So it holds a pty, appears in `/api/fleet/agents` as an agent with
+  `session_id = null`, shows *"the log is readable and holds no conversation"*,
+  and the roster records it as `no-session:<project>/pid-9289` with
+  `not_resumable_reason: "no session id was ever recorded for this agent"` —
+  **un-restorable for ever.**
+- **the guard is NOT broken, and that is the point.** `owner._refuse_if_the_session_is_running`
+  was verified working the same day: recovering a session held by a live probe agent
+  was refused with the right message. The check runs BEFORE the start, and the
+  collision happens after it. Time-of-check to time-of-use, on a window the
+  framework does not own — the other claimant is a human's terminal.
+- **which way it fails:** silently, and it accumulates. Nothing errors, the restore
+  reports `started`, and the fleet gains an agent that can never be recovered and
+  never says why. Two live processes on one session is the design's own §6.1
+  failure, reached around the guard rather than through it.
+- **fixed when:** a restored agent that has not registered a session record within a
+  bounded window is reported as such on its tile and offered for stopping — and
+  the roster does not record a `no-session:` entry for a pid the framework itself
+  started with a KNOWN session id. Note the second half: the framework passed
+  `--resume <S>`, so it knows what that agent was meant to be, and writing
+  `no-session` throws away a fact it already had.
+
+### B-97 — the restore panel prints the current offer and the last result side by side, so they contradict each other
+
+- **state:** open
+- **reported:** 2026-08-27 by the user, same screenshot as B-86.
+- **measured:** the header reads, on one line:
+
+  ```
+  Restore 0 of 1 - 1 cannot be resumed        All 1 restored.
+  ```
+
+  `web/src/lib/fleetRoster.ts:238` builds the first from the CURRENT roster
+  (`restorable = resumable && !running`), and `:149` builds the second from the
+  RESULT of the last restore call. Two answers to two different questions at two
+  different times, rendered adjacent with nothing marking either.
+- **which way it fails:** the reader believes the more reassuring one. "All 1
+  restored" is what a person takes away, while the agent it refers to is the empty
+  tile below it. Same class as a deprecated value sitting beside its replacement —
+  the one the ui-quality rule was written after.
+- **fixed when:** the result carries its own time or is visibly a past act, and the
+  offer is not readable as a statement about it. A screenshot of the same state
+  shows a reader which is which without being told.
+
+### B-94 — `sac agents --json` prints the human listing, so the fleet reads "the bus could not be asked who exists"
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, from the fleet screen during the visual
+  check of the `macos-fleet-discovery` change. Not that change's defect: it is a
+  flag on an external CLI, not a process fact.
+- **measured:** `instruct` shells out for the bus roster and parses stdout as JSON.
+  The service log carries, on every listing:
+
+  ```
+  [WARNING] set_orch.fleet.instruct: fleet instruct: the bus roster did not parse:
+            Expecting value: line 1 column 1 (char 0)
+  ```
+
+  Run by hand, `sac agents --json` writes the **human** listing — aligned columns,
+  tree glyphs, prose — and exits 0. There is no JSON on stdout to parse. (The
+  output names third-party projects, so it is described here by shape and not
+  quoted; see External Project Confidentiality.)
+- **what it costs on the screen:** the agent tile shows *"we could not ask what
+  this agent says about itself"* and *"no input: the messaging bus could not be
+  asked who exists"* for an agent whose seat is in fact enrolled. False absence,
+  and the panel offers enrolment for something already enrolled.
+- **which way it fails:** safe in that nothing is acted on, useless in that the
+  state can never clear. Same shape as a permanent "undeterminable".
+- **fixed when:** with a live enrolled seat, the fleet listing reports the agent as
+  instructable and the WARNING stops appearing. Decide first WHERE: if the CLI is
+  meant to honour `--json`, that is its bug; if the framework is calling a flag
+  that never existed, the caller is wrong and should say so rather than warn.
+
+### B-95 — the dashboard's stderr log is unbounded and had reached 1.47 GB
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while looking for the cause of B-84.
+- **measured:**
+
+  ```
+  -rw-r--r--  1 <user> staff  1472625386  ~/Library/Logs/set-core/set-web.err
+  ```
+
+  1.47 GB, and the tail is DEBUG-level: one `module_install: no project
+  declaration` and one `fleet capabilities: 4 checked` line per poll, plus a
+  `watchfiles: rust notify timeout, continuing` roughly once a second. The launchd
+  plist redirects stderr to a fixed path with no rotation and no size cap.
+- **which way it fails:** silently, and then all at once. Nothing degrades until
+  the disk does, and the log carries working directories and project names, so it
+  is also a growing pile of exactly the content the confidentiality rule says must
+  not accumulate where it can leave the machine.
+- **fixed when:** the service's stderr is bounded — rotated, size-capped, or the
+  per-poll DEBUG lines demoted — and a fresh run over an hour grows the file by a
+  bounded amount that somebody has actually measured.
+
+### B-93 — a waiter started through the `sac` PATH symlink is invisible to the waiters panel
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while capturing a real waiter as a
+  baseline for the `macos-fleet-discovery` change. Not a task in that change: the
+  matcher is platform-independent and the change only moves where process facts
+  come from.
+- **measured:** `instruct.py:_is_waiter_argv` requires `argv[1].endswith("sac.mjs")`.
+  A waiter started as documented in the tool's own help (`sac wait <room>`) runs as:
+
+  ```
+  $ ps -p 47091 -o pid=,args=
+  47091 node /opt/homebrew/bin/sac wait scratch-portcheck
+
+  >>> instruct._is_waiter_argv(['node','/opt/homebrew/bin/sac','wait','scratch-portcheck'])
+  False
+  >>> instruct.live_waiters()          # while that waiter is alive
+  []
+  ```
+
+  `argv[1]` is the PATH symlink, which has no extension. The installed form —
+  `<node> <prefix>/bin/sac.mjs wait <rooms>`, baked in by `sac install` — does end
+  in `sac.mjs` and IS matched, which is why the panel works at all and why this
+  went unnoticed.
+- **the narrower statement, because the wider one is wrong:** the panel is not
+  blind to waiters. It is blind to waiters a human started by typing the command
+  the help text prints. Both forms run the same script.
+- **which way it fails:** false absence. A live waiter is reported as no waiter, so
+  the panel invites installing one that is already running, and `remove_waiter`
+  refuses that pid with *"this pid is not a waiter process"* — a true-sounding
+  reason that is not the real one.
+- **fixed when:** with a waiter started as `sac wait <room>`, `live_waiters()`
+  returns it, and a shell whose command line merely contains the word still does
+  not match. Resolve the symlink, or test the script rather than the spelling of
+  the path — the identity is the file that runs, not the name it was reached by.
 
 ### B-92 — the project header's icon buttons align on the BASELINE, so one of them sits 8 px high
 

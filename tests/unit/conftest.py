@@ -68,3 +68,34 @@ def agent_runner(monkeypatch):
 
     install.calls = calls  # type: ignore[attr-defined]
     return install
+
+
+@pytest.fixture
+def sock_dir(tmp_path):
+    """A directory short enough to hold a unix domain socket.
+
+    `tmp_path` cannot be used for one. A unix socket's path lives in `sun_path`,
+    a fixed-size array in the kernel's `sockaddr_un` — 104 bytes on macOS, 108 on
+    Linux — and pytest's per-test temporary directory is around 150 bytes on
+    macOS before a filename is added:
+
+        /private/var/folders/9t/7ywjplwd…/T/pytest-of-<user>/pytest-7/<test-name>0/
+
+    Measured 2026-08-27: 14 of `test_fleet_ownerd.py`'s 36 tests failed with
+    `OSError: AF_UNIX path too long` on macOS, and had failed identically for as
+    long as the file has existed. The owner's own suite had never run on the
+    platform, so nothing reported it.
+
+    `tmp_path` is still requested, unused, so the fixture keeps pytest's
+    per-test cleanup semantics visible to a reader who expects them here.
+    """
+    import shutil
+    import tempfile
+
+    # `/tmp` rather than the default: on macOS `TMPDIR` is the ~49-byte
+    # per-session folder that makes `tmp_path` long in the first place.
+    directory = Path(tempfile.mkdtemp(prefix="sock-", dir="/tmp"))
+    try:
+        yield directory
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)

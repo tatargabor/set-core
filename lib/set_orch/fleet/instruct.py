@@ -69,6 +69,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
+from . import procsource
 from . import state as agent_state
 
 logger = logging.getLogger(__name__)
@@ -413,27 +414,6 @@ class Waiter:
         return bool(self.session)
 
 
-def _proc_argv(pid: str, proc_root: str) -> List[str]:
-    try:
-        with open(os.path.join(proc_root, pid, "cmdline"), "rb") as fh:
-            raw = fh.read()
-    except (OSError, PermissionError):
-        return []
-    return [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
-
-
-def _proc_env(pid: str, proc_root: str, key: str) -> Optional[str]:
-    try:
-        with open(os.path.join(proc_root, pid, "environ"), "rb") as fh:
-            raw = fh.read()
-    except (OSError, PermissionError):
-        return None
-    for item in raw.split(b"\0"):
-        if item.startswith(key.encode() + b"="):
-            return item.split(b"=", 1)[1].decode("utf-8", "replace")
-    return None
-
-
 def _is_waiter_argv(argv: Sequence[str]) -> bool:
     """The structural test: `<node> …/sac.mjs wait […]`.
 
@@ -441,6 +421,13 @@ def _is_waiter_argv(argv: Sequence[str]) -> bool:
     which is the point. A command line that merely CONTAINS the words (a grep
     looking for waiters, this module's own test run, a shell snapshot) matches
     none of them. Task 9.14 asserts exactly that case.
+
+    ⚠ Known gap, registered as B-83 and deliberately NOT widened here: a waiter
+    started through the PATH symlink (`sac wait <room>`, the form the tool's own
+    help prints) has `argv[1] == "<prefix>/bin/sac"` and fails this test. The
+    form `sac install` bakes in ends in `sac.mjs` and matches, which is why the
+    panel works at all. Fixing it is a change to what counts as a waiter, not to
+    where process facts come from.
     """
     if len(argv) < 3:
         return False
@@ -449,38 +436,50 @@ def _is_waiter_argv(argv: Sequence[str]) -> bool:
     return argv[2] == "wait"
 
 
-def live_waiters(proc_root: str = "/proc") -> Optional[List[Waiter]]:
+#: The variable a waiter's own session identity is carried in. Named once
+#: because two functions read it and a typo in either is a silent "unknown".
+SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
+
+
+def live_waiters(proc_root: Optional[str] = None) -> Optional[List[Waiter]]:
     """Every waiter process on this machine, resolved to an identity.
 
-    None when `/proc` cannot be read at all — the caller must not read that as
-    "no waiters", because the two lead to opposite actions: no waiters is an
-    invitation to install one, an unreadable `/proc` is an invitation to do
+    None when the process table cannot be read AT ALL — the caller must not read
+    that as "no waiters", because the two lead to opposite actions: no waiters is
+    an invitation to install one, an unreadable table is an invitation to do
     nothing.
+
+    **One reader, both platforms.** There were two until the `macos-fleet-discovery`
+    change: a `/proc` walk and a `ps` walk, each with its own cwd and environment
+    lookups. The `ps` half worked and was verified, which is precisely why it was
+    worth consolidating — two implementations of "the working directory of a pid
+    on macOS" drift, and the one that drifts is the one nobody is looking at.
+    Where a fact comes from is now `procsource`'s business; this function is the
+    matching and nothing else.
+
+    `proc_root` still selects the `/proc` reader explicitly whatever the platform,
+    which is how a test drives it against a tree it built.
+
+    The cwd is looked up only for the pids that ALREADY matched. `lsof` over a
+    whole process table is a syscall sweep and this runs on the fleet's polling
+    path.
     """
-    try:
-        entries = os.listdir(proc_root)
-    except OSError as exc:
-        logger.warning("fleet instruct: cannot read %s: %s", proc_root, exc)
+    argvs = procsource.argvs(root=proc_root)
+    if argvs is None:
         return None
 
-    found: List[Waiter] = []
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        argv = _proc_argv(entry, proc_root)
-        if not _is_waiter_argv(argv):
-            continue
-        rooms = tuple(a for a in argv[3:] if not a.startswith("-"))
-        try:
-            cwd = os.readlink(os.path.join(proc_root, entry, "cwd"))
-        except OSError:
-            cwd = None
-        found.append(Waiter(
-            pid=int(entry),
-            session=_proc_env(entry, proc_root, "CLAUDE_CODE_SESSION_ID"),
-            cwd=cwd,
-            rooms=rooms,
-        ))
+    matched = {pid: argv for pid, argv in argvs.items() if _is_waiter_argv(argv)}
+    cwds = procsource.cwds(sorted(matched), root=proc_root)
+
+    found = [
+        Waiter(
+            pid=pid,
+            session=procsource.env_value(pid, SESSION_ENV, root=proc_root),
+            cwd=cwds.get(pid),
+            rooms=tuple(a for a in argv[3:] if not a.startswith("-")),
+        )
+        for pid, argv in sorted(matched.items())
+    ]
     logger.debug("fleet instruct: %d waiter processes", len(found))
     return found
 
@@ -540,14 +539,14 @@ def remove_waiter(
     because its session is alive" is information to show, not an error to
     swallow.
     """
-    argv = _proc_argv(str(pid), proc_root)
+    argv = procsource.argv(pid, root=proc_root) or []
     if not _is_waiter_argv(argv):
         logger.info("fleet instruct: refusing to remove pid %s — not a waiter", pid)
         return {"removed": False, "pid": pid, "reason": "this pid is not a waiter process"}
     if live_sessions is None:
         return {"removed": False, "pid": pid,
                 "reason": "session liveness could not be determined, so it is treated as alive"}
-    session = _proc_env(str(pid), proc_root, "CLAUDE_CODE_SESSION_ID")
+    session = procsource.env_value(pid, SESSION_ENV, root=proc_root)
     if not session:
         return {"removed": False, "pid": pid,
                 "reason": "this waiter's session cannot be determined, so it is treated as alive"}

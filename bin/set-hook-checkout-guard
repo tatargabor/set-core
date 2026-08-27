@@ -179,6 +179,35 @@ def uncommitted_paths(repo):
     return {line[3:] for line in out.splitlines() if line.strip()}
 
 
+def mid_sequencer(repo):
+    """Is a merge, cherry-pick or revert in progress?
+
+    Load-bearing for the commit check below, and the reason is not politeness:
+    git itself REFUSES a pathspec-limited commit while one of these is in flight
+    (`fatal: cannot do a partial commit during a merge`). So in this state the
+    guard's own remedy does not exist, and refusing leaves no legal way to
+    finish the operation — which is the shape that gets a guard bypassed with
+    `--no-verify` instead of obeyed.
+
+    The fail direction is acceptable because the index here is not a session's
+    staging: git refuses to START a merge over staged changes, so what is staged
+    mid-merge was put there by the merge. Measured 2026-08-27 in this repository:
+    a merge of `origin/main` staged 60 paths, none of them staged by any session,
+    and every remedy the refusal printed was rejected by git.
+
+    Checked by FILE rather than by parsing status: these markers are what git
+    itself branches on, and `git status` prose is localised.
+    """
+    out = run_git(repo, ["rev-parse", "--git-path", "MERGE_HEAD"])
+    if out is None:
+        return False
+    root = os.path.dirname(out.strip()) or "."
+    for marker in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"):
+        if os.path.exists(os.path.join(repo, root, marker)):
+            return True
+    return False
+
+
 def is_repo(repo):
     out = run_git(repo, ["rev-parse", "--is-inside-work-tree"])
     return out is not None and out.strip() == "true"
@@ -429,6 +458,10 @@ def handle_pre(payload, cmd, invocations, repo, session_id):
 
     for sub, args in verbs:
         if sub == "commit" and not has_pathspec(args, COMMIT_VALUE_OPTS):
+            # A merge/cherry-pick/revert commit cannot name paths at all, so the
+            # refusal below would have no remedy. See `mid_sequencer`.
+            if mid_sequencer(repo):
+                continue
             staged = staged_paths(repo)
             if staged is None:
                 return 0

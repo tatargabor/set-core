@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Launch Claude Code with a local Ollama model
+MODEL="${1:-qwen3:8b}"
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+export ANTHROPIC_API_KEY=""
+exec claude --model "$MODEL" --dangerously-skip-permissions "${@:2}"

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The agent owner — a job of its own, and that is the whole point.
+
+  Agents started from the fleet screen live on ptys this process holds. It is
+  deliberately NOT started by the dashboard: a process started by the dashboard
+  shares the dashboard's fate, which is the defect (CB-1) the owner exists to
+  remove. The installer places this file; nothing else will, and without it the
+  fleet screen's start control is dead.
+
+  Measured on macOS 2026-08-27: an agent forked onto a pty leads its own session
+  and survives `launchctl kickstart -k`, `kill -9` and `unload` of the job that
+  started it. A child sharing the job's session does not — so this job's own
+  restart takes nothing with it except the terminals it was holding, which end
+  with the pty master whatever the platform.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.set-core.agent-owner</string>
+  <!--
+    The wrapper, not the module file. `bin/set-agent-owner` execs
+    `python -m set_orch.fleet.ownerd`, and the `-m` is load-bearing: `ownerd.py`
+    uses package-relative imports and dies on `from . import scopes` when run as
+    a path. Measured 2026-08-27 — the first version of this plist named the file
+    and the job exited 1 on every launch, which reads from the fleet screen as
+    "the owner is not running" with no clue why. The systemd unit invokes the
+    same wrapper, so the two cannot drift.
+
+    No `--socket`: the systemd unit passes `%t/set-agent-owner.sock` because that
+    is what its `%t` expands to, and there is no macOS equivalent to hardcode.
+    Leaving it off lets the resolver in `ownerd.default_socket_path()` answer for
+    the platform, which is the one place that decision lives.
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__INSTALL_DIR__/set-agent-owner</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key><string>__SET_TOOLS_ROOT__/lib:__SET_TOOLS_ROOT__/modules/web</string>
+    <key>PATH</key><string>__INSTALL_DIR__:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__LOG_DIR__/set-agent-owner.log</string>
+  <key>StandardErrorPath</key><string>__LOG_DIR__/set-agent-owner.log</string>
+</dict>
+</plist>

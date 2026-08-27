@@ -106,6 +106,72 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
+/**
+ * A fleet-wide zero must not withdraw the selected project's own controls.
+ *
+ * The regression this locks: the landing screen branched on `data.agents === 0`
+ * alone and rendered the answered-empty panel INSTEAD of the project strip. The
+ * strip is where `+ start an agent` lives, so the one screen a reader reaches
+ * after a reboot — every agent gone — offered no way to start the first one.
+ * Reported 2026-08-27.
+ *
+ * Its own fetch stub rather than `installFetch`: `StartAgent` asks
+ * `/api/fleet/owner` on mount, and letting that consume a queue entry in the
+ * shared helper would shift the answers of the order-dependent tests above.
+ */
+describe('a fleet-wide zero is a fact, not a reason to hide the controls', () => {
+  function installFetchWithOwner(body: unknown) {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const u = String(url)
+      const answer = (v: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(v) } as unknown as Response)
+      if (u.includes('/api/fleet/layout')) {
+        return answer({ version: 1, groups: [], parked: [], ungrouped: [], missing: [] })
+      }
+      if (u.includes('/api/fleet/owner')) return answer({ available: true })
+      if (u.includes('/log')) return answer({ turns: [], total_read: 0, truncated: false })
+      return answer(body)
+    }))
+  }
+
+  it('keeps the project strip, and the way to start an agent, when nothing runs anywhere', async () => {
+    installFetchWithOwner(fleet([project('demo', []), project('other', [])]))
+    const { container } = render(<Fleet />)
+
+    // The control that was missing. This is the assertion that fails on the
+    // old build — there the whole strip was replaced.
+    await waitFor(() => {
+      expect(container.querySelector('[data-fleet-start="offer"]')).toBeTruthy()
+    })
+    // By its ACCESSIBLE NAME, not by its glyph. The control carried the words
+    // `+ start an agent` when this test was written; the icon pass replaced them
+    // with a `CirclePlus` and moved the words to `aria-label`. Asserting the
+    // rendered text would have made a legitimate presentation change look like
+    // the regression this test exists to catch — and asserting the icon would
+    // measure the glyph rather than whether a reader can start an agent.
+    expect(screen.getByLabelText(/start an agent/i)).toBeTruthy()
+
+    // The measurement is not the price of getting the controls back: the
+    // screen still says it LOOKED, and over how many projects, so "nothing
+    // here" cannot be read as "not asked yet".
+    expect(screen.getByText(/discovery found no running agent in this project/i)).toBeTruthy()
+    expect(screen.getByText(/nowhere else either/i)).toBeTruthy()
+    expect(screen.getByText(/over 2 known projects/i)).toBeTruthy()
+  })
+
+  it('still shows the answered-empty panel when there is no project to select', async () => {
+    installFetchWithOwner(fleet([]))
+    const { container } = render(<Fleet />)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-fleet-phase="answered-empty"]')).toBeTruthy()
+    })
+    expect(screen.getByText(/discovery ran/i)).toBeTruthy()
+    // Nothing is selected, so there is no strip to offer — and no false offer.
+    expect(container.querySelector('[data-fleet-start="offer"]')).toBeNull()
+  })
+})
+
 describe('task 7.11 — an unfinished answer is not an empty one', () => {
   it('says it is looking, and shows no count at all, before discovery answers', async () => {
     installFetch([never()])

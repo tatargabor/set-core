@@ -21,7 +21,9 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import socket
+import sys
 from typing import Any, Dict, List, Optional
 
 from .protocol import Request, Response
@@ -35,7 +37,25 @@ CONNECT_TIMEOUT = 2.0
 #: proceeding normally.
 READ_TIMEOUT = 30.0
 
-START_COMMAND = "systemctl --user start set-agent-owner.service"
+#: The service manager's name for the owner, shared with the units the installer
+#: places. One spelling, so the command the screen offers and the unit on disk
+#: cannot drift apart.
+SYSTEMD_UNIT = "set-agent-owner.service"
+LAUNCHD_LABEL = "com.set-core.agent-owner"
+
+
+def start_command() -> str:
+    """The command that starts the owner ON THIS MACHINE.
+
+    A function rather than a constant, and resolved at call time rather than at
+    import, because the thing it names is a property of the running machine. A
+    command borrowed from another platform's service manager is worse than no
+    command at all: it reads as an instruction, and following it produces an
+    error about an unknown tool that says nothing about the owner's actual state.
+    """
+    if sys.platform == "darwin":
+        return f"launchctl kickstart -k gui/{os.getuid()}/{LAUNCHD_LABEL}"
+    return f"systemctl --user start {SYSTEMD_UNIT}"
 
 
 class OwnerClientError(RuntimeError):
@@ -62,7 +82,7 @@ class OwnerClient:
             sock.close()
             raise OwnerUnavailable(
                 f"the agent owner is not running ({self.socket_path}: {exc.strerror}). "
-                f"Start it with `{START_COMMAND}` — the dashboard must not start it "
+                f"Start it with `{start_command()}` — the dashboard must not start it "
                 "itself, or it would die with the dashboard."
             ) from exc
         sock.settimeout(READ_TIMEOUT)
@@ -266,7 +286,7 @@ class OwnerStream:
         except OSError as exc:
             raise OwnerUnavailable(
                 f"the agent owner is not running ({self.socket_path}: {exc}). "
-                f"Start it with `{START_COMMAND}`."
+                f"Start it with `{start_command()}`."
             ) from exc
         self._frames = asyncio.Queue()
         # Started BEFORE the attach request, so the replayed screen — which the
