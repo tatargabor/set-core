@@ -67,6 +67,93 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-83 — a text file with the executable bit set opens NOWHERE
+
+- **state:** open
+- **reported:** 2026-08-27 by the user, ctrl-clicking a shell script in a fleet terminal —
+  screenshot showing `could not open <project>/scripts/gates/check-ko-log.sh: executable
+  files are not opened`.
+- **measured:** `desktop.py:114` refuses an executable, and that refusal is CORRECT — the
+  route it guards is `xdg-open`, which would *run* the file. The defect is that the token
+  reached that route at all: `terminalTarget` (`fleetFiles.ts:419`) hands anything the file
+  view did not claim to the desktop, and the file view never claims a path outside the
+  agent's own checkout. Over 30 session transcripts, **12 distinct tokens** named an existing
+  file that is plain UTF-8 text AND carries `+x` — every one of them refused at both ends.
+  The internal viewer only ever READS, so the executable bit is irrelevant to it.
+- **fixed when:** a `.sh`, `.mjs` or `.cjs` inside a known project opens in the file view on
+  ctrl-click, and `desktop.py:114` is still refusing the same path.
+
+### B-84 — the file view is confined to the agent's own checkout, so a file of another known project goes to the desktop
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, while measuring B-83.
+- **measured:** `terminalTarget` resolves against ONE base (`cwd || root`) and consults ONE
+  listing. Anything else falls through to the desktop. Over 30 transcripts, of the 823
+  distinct tokens that reached the desktop route and name an existing path,
+  **125 are text files sitting under a registered project root** — the backend
+  (`files.py:_known_root`) would serve every one of them, because it accepts any registered
+  project or a worktree of one. The common shape is a worktree agent printing an absolute
+  path into the MAIN checkout. A further 204 text files are outside every registered root
+  (`/tmp/…/scratchpad`, `~/.local/share`, `~/.claude`) — those legitimately stay a desktop
+  hand-over unless the roots are widened, which is a separate decision.
+- **fixed when:** a token naming a file under any registered project (or a worktree of one)
+  opens in the file view, whichever checkout the agent is standing in.
+
+### B-85 — the absolute branch applies no shape filter, so every `/word` token becomes a link that fails on click
+
+- **state:** open
+- **reported:** 2026-08-27 by this session, measuring the recogniser against real output.
+- **measured:** `desktopReference` returns immediately for anything starting with `/`
+  (`fleetFiles.ts:~330`) — `looksLikePath` guards the RELATIVE branch only. Over 30
+  transcripts: **395 distinct single-segment absolute tokens, 1464 occurrences**, none of
+  which is a filesystem path — a web app's routes, this framework's own slash commands
+  (`/opsx:ff`, `/dd`), and component names. Each is underlined and answers
+  `no such file or directory` when activated. Fail direction: it teaches the reader that
+  underlines in a terminal are unreliable, which costs the real links too.
+- **fixed when:** `/opsx:ff` and a single-segment route are plain text, while
+  `/home/<user>/x/y.ts` and `/tmp/run.log` still link.
+
+### B-86 — the token cleaner does not survive markdown, table cells, or `~`
+
+- **state:** open
+- **reported:** 2026-08-27 by this session.
+- **measured:** `unwrap` strips `([<'"` + backtick at the head and `)]>,.;:'"` + backtick at
+  the tail — not `*`, `|`, `{`, `}`. Of **249 distinct tokens that name a file which EXISTS
+  and were nonetheless rendered as plain text**, the causes are: **121** leftover markup
+  (``**`path`**`` bold, `` `path` `` inside bold, `path.md:12:|` from a table row),
+  **86** a directory, **21** a `~/…` path (the tilde is not in `looksLikePath`'s character
+  class and is never expanded), **15** a real file the listing does not carry because it is
+  gitignored, **5** a non-ASCII filename. Agents write markdown constantly, so this is the
+  single largest source of missed links.
+- **fixed when:** ``**`src/app.ts`**``, `docs/x.md:12:|` and `~/.claude/CLAUDE.md` all link
+  to the same file a bare token does.
+
+### B-87 — a directory cannot be opened in the file view at all
+
+- **state:** open
+- **reported:** 2026-08-27 by this session.
+- **measured:** the listing endpoint serves FILES, so no directory is ever in the known set,
+  and the panel has no notion of "reveal this directory". Every directory therefore reaches
+  `xdg-open`, which opens a desktop file manager beside the dashboard. Over 30 transcripts:
+  **431 distinct directory tokens, 209 of them under a registered project root** — where the
+  panel's own structure pane could expand and scroll to them instead.
+- **fixed when:** ctrl-clicking `openspec/changes/<name>/` expands that node in the structure
+  pane rather than opening a file manager.
+
+### B-88 — a binary file has no view, only a refusal
+
+- **state:** open
+- **reported:** 2026-08-27 by the user — *"binárisra pedig képnézegetőt kellene csinálni,
+  mime type szerint"*.
+- **measured:** `files.py:395` answers `415 not a text file` for anything that is not UTF-8,
+  and `FleetFileView` renders that as a sentence. Screenshots are the case that matters:
+  agents write them constantly and print the path. Over 30 transcripts the desktop route
+  received **59 existing binary files**, 5 of them PNG. `MAX_BYTES` is 2 MiB, which a
+  full-page screenshot can exceed — the size refusal is separate from the type refusal and
+  must stay honest about which one fired.
+- **fixed when:** a PNG an agent printed opens as an image in the same panel, and a
+  non-renderable binary states its type and size rather than "not a text file".
+
 ### B-82 — the terminal replay ring buffer cuts at an arbitrary byte, so a tab switch can start mid-escape-sequence
 
 - **state:** closed (`fba77d2c`) — the fix ships; it takes effect only when the owner
