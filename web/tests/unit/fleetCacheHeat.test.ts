@@ -168,6 +168,27 @@ describe('the figures a reader acts on', () => {
     expect(money(12.5)).toBe('$12.50')
   })
 
+  /**
+   * Measured on the running dashboard 2026-08-27: a seat holding 99 685 tokens
+   * priced at $0.9969 rendered as `$.00`. The leading zero was stripped from a
+   * string that no longer had one — the branch asked the raw value, the slice
+   * cut the rounded one, and they disagree exactly on [0.995, 1).
+   *
+   * The fail direction is what makes it worth a test rather than a tidy-up: a
+   * dollar of stake reads as nothing, on a screen whose whole job is to say how
+   * much money a cold cache costs.
+   */
+  it('does not eat the leading digit of a price that rounds up to a dollar', () => {
+    expect(money(0.9969)).toBe('$1.00')
+    expect(money(0.996)).toBe('$1.00')
+    // The neighbours either side must keep behaving.
+    expect(money(0.994)).toBe('$.99')
+    expect(money(0.999999)).toBe('$1.00')
+    // Not asserted: 0.995. Its binary representation sits just BELOW the
+    // decimal it is written as, so `toFixed(2)` yields '0.99' — a fact about
+    // IEEE-754, not about this formatter.
+  })
+
   it('groups token counts so the eye reads a magnitude', () => {
     expect(tokens(195_889)).toBe(`195${GROUP_SEPARATOR}889`)
     expect(tokens(1_044)).toBe(`1${GROUP_SEPARATOR}044`)

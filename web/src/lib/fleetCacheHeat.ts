@@ -131,9 +131,17 @@ function band(cooled: number): string {
   return 'bg-red-400'
 }
 
-/** `$1.96`, `$.15` — narrow, because it shares a tab with a name. */
+/**
+ * `$1.96`, `$.15` — narrow, because it shares a tab with a name.
+ *
+ * The leading zero is dropped from the ROUNDED string, never on the strength of
+ * the raw number. Asking `usd < 1` and then slicing `toFixed(2)` are two
+ * questions about two different values, and they disagree across [0.995, 1):
+ * $0.9969 became `$.00`, a dollar of stake rendered as nothing.
+ */
 export function money(usd: number): string {
-  return usd < 1 ? `$${usd.toFixed(2).slice(1)}` : `$${usd.toFixed(2)}`
+  const fixed = usd.toFixed(2)
+  return `$${fixed.startsWith('0.') ? fixed.slice(1) : fixed}`
 }
 
 /**
