@@ -49,6 +49,7 @@ import { COLUMN_CHOICES, readView, resolveColumns, resolveEnlarged, resolveFocus
 import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
+import SrOnly from '../components/SrOnly'
 import {
   bandsOn, defaultDockSize, dockSplitKey, dockedBands, docksFor, loadDocks, remainingArea, saveDocks,
   withCollapsed, withDock,
@@ -214,7 +215,7 @@ function Contradiction({ agent, compact }: { agent: FleetAgent; compact?: boolea
     >
       <span aria-hidden>⚠</span>
       {compact ? (
-        <span className="sr-only">contradicting declaration</span>
+        <SrOnly>contradicting declaration</SrOnly>
       ) : (
         <span className="font-normal">
           declared: <span className="line-through">{declared}</span>
@@ -752,7 +753,7 @@ function AgentTabs({ agents, selected, onSelect, onMove }: {
             {typeof a.declaration_ignored === 'string' && a.declaration_ignored !== '' && (
               <span className="text-amber-400 shrink-0" title="This agent declared a state the log refuted — open it to see which.">⚠</span>
             )}
-            <span className="sr-only">{why}</span>
+            <SrOnly>{why}</SrOnly>
           </button>
         )
       })}

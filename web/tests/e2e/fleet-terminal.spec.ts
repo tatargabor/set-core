@@ -156,3 +156,61 @@ test.describe('task 9.7 — the pre-answer state', () => {
     await expect(page.locator('[data-fleet-project]').first()).toBeVisible({ timeout: 20_000 })
   })
 })
+
+test.describe('B-90 — copying the screen must not carry the hidden sentences', () => {
+  /**
+   * Reported by pasting a Ctrl+C of the fleet screen into a chat. What arrived
+   * was the tile controls' `sr-only` explanations — *put this panel on the left
+   * …*, *stop the agent — a separate, explicit act* — none of which is on
+   * screen. `sr-only` only clips the text; it stays selectable.
+   *
+   * This assertion is here rather than in the unit suite for the reason the
+   * header of this file gives: jsdom has no layout and no real selection, so it
+   * can assert that the spans are MARKED unselectable and nothing about what a
+   * selection actually yields. Only a browser can measure the result.
+   */
+  test('a selection over the terminal header yields only what is visible', async ({ page, request }) => {
+    const started = await startAgent(request)
+    test.skip(started === null, 'the agent owner is not available on this machine')
+    try {
+      await page.goto('/')
+      await page.locator(`[data-fleet-project="${PROJECT_NAME}"]`).first().click()
+      const open = page.locator(`[data-fleet-terminal-open="${LABEL}"]`)
+      await expect(open).toBeVisible({ timeout: 20_000 })
+      await open.click()
+      await expect(page.locator('[data-fleet-terminal-phase="attached"]').first())
+        .toBeVisible({ timeout: 20_000 })
+
+      const measured = await page.evaluate(() => {
+        const el = document.querySelector('[data-fleet-terminal-header]')
+        if (!el) return null
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        const sel = window.getSelection()!
+        sel.removeAllRanges()
+        sel.addRange(range)
+        const selected = sel.toString()
+        sel.removeAllRanges()
+        return { selected, hidden: [...el.querySelectorAll('.sr-only')].map(s => s.textContent ?? '') }
+      })
+      expect(measured).not.toBeNull()
+
+      // The shape check first: a header with no hidden text at all would make
+      // the real assertion vacuously true, and it would stay green forever.
+      expect(measured!.hidden.length).toBeGreaterThan(0)
+
+      // The assertion. Not "shorter than before" — a length is a proxy. Every
+      // hidden sentence, by its own text, is absent from what the browser hands
+      // over.
+      for (const sentence of measured!.hidden) {
+        expect(measured!.selected).not.toContain(sentence)
+      }
+
+      // …and the visible half survived, because a selection that yields nothing
+      // would pass the loop above while breaking copy outright.
+      expect(measured!.selected).toContain('live')
+    } finally {
+      await request.post(`/api/fleet/agents/${LABEL}/stop`).catch(() => undefined)
+    }
+  })
+})

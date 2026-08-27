@@ -171,6 +171,25 @@ consumer's name, path, or content.
 - **fixed when:** ctrl-clicking `openspec/changes/<name>/` expands that node in the structure
   pane rather than opening a file manager.
 
+### B-90 — copying the fleet screen carries every visually-hidden sentence with it
+
+- **state:** closed (this commit).
+- **reported:** 2026-08-27 by the user, who pasted a Ctrl+C of the fleet terminal panel into
+  the chat: what arrived was 15 lines of tile-control explanations — *put this panel on the
+  left — it takes its space out of the grid*, *stop the agent — a separate, explicit act* —
+  none of which is on the screen, each preceded by the `￼` an SVG leaves behind.
+- **measured:** in Chromium against the running dashboard, selecting `[data-fleet-terminal-header]`
+  and reading `getSelection().toString()` yielded **668 characters, of which 4 were visible**
+  (`live`). The carrier is `sr-only`, which only CLIPS the text to a 1px box — it stays
+  selectable. 20 such spans render on the fleet screen; setting `user-select: none` on the 8
+  in that header took the same selection to 4.
+- **fixed when:** the same selection yields the visible text alone while the sentence stays in
+  the DOM and in the accessible name. Verified after the fix, same page, same range: **4
+  characters, `live`**, and over the whole document 0 of 20 hidden sentences appear in a
+  full-page selection. `SrOnly` (`web/src/components/SrOnly.tsx`) is now the only way this
+  screen renders hidden text; `tests/unit/srOnlyNotCopied.test.tsx` fails on a hand-written
+  `sr-only` span, and `tests/e2e/fleet-terminal.spec.ts` makes the browser measurement.
+
 ### B-88 — a binary file has no view, only a refusal
 
 - **state:** open
