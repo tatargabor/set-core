@@ -374,6 +374,10 @@ describe('waiters: only an orphan, only one at a time', () => {
     answerWith(200, { measured: true, reason: null, waiters: [], orphaned: [], orphaned_count: 0 })
     const { container } = render(<FleetWaiters />)
     await waitFor(() => expect(container.querySelector('[data-fleet-waiters="measured"]')).toBeTruthy())
-    expect(container.textContent).toMatch(/none orphaned/)
+    // A measured zero, said as one: the chip carries `0`, and the sentence
+    // that makes it a measurement rather than a silence is on `aria-label`.
+    const chip = container.querySelector('[data-fleet-jump="waiters"]')!
+    expect(chip.textContent).toContain('0')
+    expect(chip.getAttribute('aria-label')).toMatch(/none orphaned/)
   })
 })

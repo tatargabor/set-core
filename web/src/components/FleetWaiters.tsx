@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Hourglass } from 'lucide-react'
+import { Chip } from './Chip'
 
 import type { Waiter, WaitersResponse } from '../lib/fleetTypes'
 
@@ -156,18 +158,33 @@ export default function FleetWaiters({ compact }: { compact?: boolean }) {
 
   return (
     <div data-fleet-waiters="measured" data-fleet-waiters-orphaned={orphans.length}>
-      <button
+      {/* Mark and number — see `Chip`. The ORPHAN count is what the chip shows
+          when there is one: an orphan is the only waiter anybody acts on, and a
+          strip that shows the harmless total beside it would spend its one
+          number on the calmer fact. The colour carries which one it is. */}
+      <Chip
+        jump="waiters"
         onClick={() => setOpen(v => !v)}
-        className="text-xs text-fg-muted hover:text-fg-strong underline-offset-2 hover:underline"
-      >
-        {orphans.length > 0
-          ? <span className="text-amber-400">{orphans.length} orphaned waiter(s)</span>
-          : <span>{data.waiters.length} waiter(s), none orphaned</span>}
-        {undeterminable.length > 0 && (
-          <span className="text-amber-400"> · {undeterminable.length} undeterminable</span>
-        )}
-        <span className="text-fg-ghost"> {open ? '▾' : '▸'}</span>
-      </button>
+        tone={orphans.length > 0 || undeterminable.length > 0 ? 'text-amber-400' : 'text-fg-muted'}
+        mark={<Hourglass size={11} strokeWidth={1.75} aria-hidden />}
+        count={orphans.length > 0 ? orphans.length : data.waiters.length}
+        trailing={<>
+          {undeterminable.length > 0 && <span className="text-amber-400">+{undeterminable.length}?</span>}
+          <span className="text-fg-ghost">{open ? '▾' : '▸'}</span>
+        </>}
+        title={[
+          orphans.length > 0
+            ? `${orphans.length} orphaned waiter(s) of ${data.waiters.length}`
+            : `${data.waiters.length} waiter(s), none orphaned`,
+          undeterminable.length > 0 ? `${undeterminable.length} undeterminable` : null,
+        ].filter(Boolean).join(' · ')}
+        label={[
+          orphans.length > 0
+            ? `${orphans.length} orphaned waiters`
+            : `${data.waiters.length} waiters, none orphaned`,
+          undeterminable.length > 0 ? `${undeterminable.length} undeterminable` : null,
+        ].filter(Boolean).join(', ')}
+      />
 
       {open && (
         <ul className="mt-1 space-y-0.5 border-l border-surface-line pl-2">

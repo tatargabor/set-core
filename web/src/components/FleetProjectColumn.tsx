@@ -39,6 +39,7 @@ import {
   waitingReported,
 } from '../lib/fleetAttention'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
+import { Chip, Dot } from './Chip'
 
 /**
  * The project column — hand-ordered groups, parked section, attention header.
@@ -256,48 +257,6 @@ function ProjectFacts({ project, showFreshest }: { project: FleetProject | undef
     </span>
   )
 }
-
-// --------------------------------------------------------------------------- //
-// The attention header's chips
-// --------------------------------------------------------------------------- //
-
-/**
- * One attention fact: a mark, a number, and the sentence in the tooltip.
- *
- * The header used to spell each fact out — `1 waiting for an answer → first
- * one`, `49 projects not measured`. On a 185 px column that is a paragraph:
- * the phrases wrapped, so the header's HEIGHT moved every time a count changed
- * or a state appeared, and the list below it jumped with it. Asked for by the
- * user, twice: icons and numbers, text only where it is genuinely needed.
- *
- * Nothing is lost, because the mark is the meaning here and the prose only ever
- * restated it. What the prose carried that a mark cannot — *why* this is worth
- * looking at — is on `title` for a pointer and on `aria-label` for a reader
- * that has none. The marks keep their old shapes exactly: a circle is an agent
- * state, a square is work waiting on a person, and the anomalies (nothing was
- * measured, a declaration is contradicted) are the only ones drawn as glyphs.
- */
-function Chip({ mark, count, tone, title, label, onClick, jump, data }: {
-  mark: React.ReactNode
-  count: React.ReactNode
-  tone: string
-  title: string
-  label: string
-  onClick?: () => void
-  jump?: string
-  /** Extra markers this chip must keep carrying — `data-fleet-waiting`, say. */
-  data?: Record<string, string>
-}) {
-  const cls = `inline-flex items-center gap-1 text-xs tabular-nums shrink-0 ${tone}${
-    onClick ? ' hover:underline underline-offset-2' : ''}`
-  const body = <>{mark}{count}</>
-  return onClick
-    ? <button type="button" data-fleet-jump={jump} {...data} onClick={onClick} title={title} aria-label={label} className={cls}>{body}</button>
-    : <span data-fleet-chip={jump} {...data} title={title} aria-label={label} className={cls}>{body}</span>
-}
-
-/** A filled dot — every agent-state mark on this surface is one. */
-const Dot = ({ cls }: { cls: string }) => <span className={`w-2 h-2 rounded-full shrink-0 ${cls}`} aria-hidden />
 
 // --------------------------------------------------------------------------- //
 // One project

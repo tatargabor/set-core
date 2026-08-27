@@ -318,8 +318,8 @@ describe('the primary offer is the last composition', () => {
     // The age, because a composition from ten minutes ago and one from three
     // days ago deserve different confidence.
     expect(primary.textContent).toContain('open 10m ago')
-    expect(container.querySelector('[data-fleet-restore-rest]')?.textContent)
-      .toContain('21 more recorded here, not open')
+    expect(container.querySelector('[data-fleet-restore-rest] [data-fleet-jump]')
+      ?.getAttribute('aria-label')).toContain('21 more recorded here, not open')
   })
 
   it('posts exactly the composition keys, and no others', async () => {
@@ -355,7 +355,11 @@ describe('the primary offer is the last composition', () => {
     const { container } = render(<RestoreForProject project="proj" />)
     await waitFor(() => expect(
       container.querySelector('[data-fleet-restore-composition-empty]')).toBeTruthy())
-    expect(screen.getByText(/Nothing was open here when the fleet was last seen/)).toBeTruthy()
+    // A measured zero, drawn as one: the chip carries `0`, and the sentence
+    // that makes it a measurement rather than a silence is on `aria-label`.
+    const empty = document.querySelector('[data-fleet-restore-composition-empty]')!
+    expect(empty.textContent).toContain('0')
+    expect(empty.getAttribute('aria-label')).toMatch(/Nothing was open here when the fleet was last seen/)
     expect(container.querySelector('[data-fleet-restore-composition]')).toBeNull()
     // The two are still reachable — the record holding more than the
     // composition is information, not clutter.
@@ -369,8 +373,11 @@ describe('the primary offer is the last composition', () => {
     const { container } = render(<RestoreForProject project="proj" />)
     await waitFor(() => expect(
       container.querySelector('[data-fleet-restore-whole-list="2"]')).toBeTruthy())
-    expect(container.querySelector('[data-fleet-restore-unknown-composition]')?.textContent)
-      .toContain('does not say which of these were open')
+    // `?` where the counts are, and the reason on `aria-label`: the record
+    // could not say, which is neither a zero nor a silence.
+    const why = container.querySelector('[data-fleet-restore-unknown-composition]')!
+    expect(why.textContent).toContain('?')
+    expect(why.getAttribute('aria-label')).toContain('does not say which of these were open')
     expect(container.querySelector('[data-fleet-restore-composition]')).toBeNull()
   })
 })

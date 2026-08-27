@@ -1,4 +1,7 @@
 import { useCallback, useState } from 'react'
+import { Blocks, CircleDashed } from 'lucide-react'
+
+import { Chip } from './Chip'
 
 import {
   type Capability,
@@ -186,9 +189,18 @@ export default function FleetInstall({ project, root, capabilities }: {
   // report itself is missing — an absent measurement is not a connected project.
   if (standing.kind === 'unmeasured') {
     return (
-      <span className="text-xs text-amber-400" data-fleet-modules="unmeasured" title={standing.note}>
-        ⚠ modules not measured
-      </span>
+      /* `?`, not a zero and not a silence: an absent report is not a project
+         with no modules. The dashed ring is this screen's mark for unmeasured
+         everywhere else, so it is the mark here too. */
+      <Chip
+        jump="modules-unmeasured"
+        data={{ 'data-fleet-modules': 'unmeasured' }}
+        tone="text-amber-400"
+        mark={<CircleDashed size={11} strokeWidth={1.75} aria-hidden />}
+        count="?"
+        title={standing.note}
+        label="modules not measured"
+      />
     )
   }
   const caps = capabilities?.capabilities ?? []
@@ -199,18 +211,25 @@ export default function FleetInstall({ project, root, capabilities }: {
     standing.partial > 0 ? `${standing.partial} partial` : null,
     standing.unknown > 0 ? `${standing.unknown} unknown` : null,
   ].filter(Boolean).join(' · ')
+  // The number is what is WRONG when anything is, and the total only when
+  // nothing is. A chip showing `4` beside an amber mark would read as four
+  // problems; showing the total next to the faults would spend the one number
+  // on the reassuring half.
+  const wrong = standing.notConnected + standing.partial + standing.unknown
 
   return (
     <>
-      <button
+      <Chip
+        jump="modules"
         onClick={() => setOpen(v => !v)}
-        data-fleet-modules="measured"
-        data-fleet-modules-open={open ? 'on' : 'off'}
-        className={`text-xs shrink-0 ${standing.notConnected > 0 || standing.unknown > 0 ? 'text-fg-muted hover:text-fg-strong' : 'text-fg-ghost hover:text-fg-muted'}`}
-        title="What set-core modules this project has, and installing one that is missing"
-      >
-        {summary || `${standing.total} module(s) connected`} {open ? '▾' : '▸'}
-      </button>
+        data={{ 'data-fleet-modules': 'measured', 'data-fleet-modules-open': open ? 'on' : 'off' }}
+        tone={standing.notConnected > 0 || standing.unknown > 0 ? 'text-fg-muted' : 'text-fg-ghost'}
+        mark={<Blocks size={11} strokeWidth={1.75} aria-hidden />}
+        count={wrong > 0 ? wrong : standing.total}
+        trailing={<span className="text-fg-ghost">{open ? '▾' : '▸'}</span>}
+        title={`set-core modules here: ${summary || `all ${standing.total} connected`}. Click to install one that is missing.`}
+        label={summary || `${standing.total} modules connected`}
+      />
       {open && (
         <div className="basis-full mt-1.5 space-y-1.5" data-fleet-install-panel={project}>
           {caps.map(cap => (

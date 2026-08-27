@@ -145,8 +145,13 @@ describe('one agent alone, and what that covers', () => {
 
     await waitFor(() => expect(container.querySelector('[data-fleet-focus-cover]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-focus-cover]')!.getAttribute('data-fleet-focus-cover')).toBe('2')
-    expect(container.querySelector('[data-fleet-focus-hidden="unknown"]')!.textContent).toMatch(/1 unknown/)
-    expect(container.querySelector('[data-fleet-focus-hidden="waiting"]')!.textContent).toMatch(/1 waiting/)
+    // The count is the chip's text; what it is a count OF is on `aria-label`,
+    // so this asserts both rather than a phrase that no longer renders.
+    const marked = (k: string) => container.querySelector(`[data-fleet-focus-hidden="${k}"]`)!
+    expect(marked('unknown').textContent).toBe('1')
+    expect(marked('unknown').getAttribute('aria-label')).toMatch(/1 unknown/)
+    expect(marked('waiting').textContent).toBe('1')
+    expect(marked('waiting').getAttribute('aria-label')).toMatch(/1 waiting for a person/)
   })
 
   it('does not announce hidden states it does not have', async () => {

@@ -24,7 +24,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, History, RotateCcw, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleDashed, History, RotateCcw, TriangleAlert } from 'lucide-react'
+import { Chip } from './Chip'
 import {
   ageLabel, allBlocked, canRestore, composition, groupByLabel, offerFor,
   restoreOffer, summarise, turnSummary,
@@ -412,14 +413,15 @@ function TheRest({ project, entries, busy, onRun }: {
 
   return (
     <span className="mt-1 flex flex-col" data-fleet-restore-rest={entries.length}>
-      <button
+      <Chip
+        jump="restore-rest"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-strong"
-        data-fleet-restore-rest-toggle={open ? 'open' : 'closed'}
-      >
-        <History size={11} strokeWidth={1.75} />
-        {entries.length} more recorded here, not open
-      </button>
+        data={{ 'data-fleet-restore-rest-toggle': open ? 'open' : 'closed' }}
+        mark={<History size={11} strokeWidth={1.75} aria-hidden />}
+        count={entries.length}
+        title={`${entries.length} session(s) recorded in this project that are not open — click to look at them`}
+        label={`${entries.length} more recorded here, not open`}
+      />
 
       {/*
         A DIALOG, not a drop-down — asked for by the user 2026-08-26, with the
@@ -586,14 +588,20 @@ export function RestoreForProject({ project, onRestored }: {
     <span className="inline-flex flex-col ml-4 pl-4 border-l border-surface-line"
           data-fleet-restore-project={project}>
       {comp.known && comp.entries.length === 0 ? (
-        // The fleet WAS observed and nothing was open here. Said in words, and
-        // no earlier round is offered in its place — presenting agents the user
-        // had already closed as "what was open" is a false value in the acting
-        // direction, and it is the one this whole change removes.
-        <span className="text-xs text-fg-ghost" data-fleet-restore-composition-empty={comp.rest.length}>
-          Nothing was open here when the fleet was last seen
-          {observed ? ` (${observed} ago)` : ''}
-        </span>
+        // The fleet WAS observed and nothing was open here — a MEASURED zero, so
+        // it is drawn as one rather than left out: no earlier round is offered
+        // in its place either, because presenting agents the user had already
+        // closed as "what was open" is a false value in the acting direction,
+        // and it is the one this whole change removes.
+        <Chip
+          jump="restore-empty"
+          data={{ 'data-fleet-restore-composition-empty': String(comp.rest.length) }}
+          tone="text-fg-ghost"
+          mark={<RotateCcw size={11} strokeWidth={1.75} aria-hidden />}
+          count={0}
+          title={`Nothing was open here when the fleet was last seen${observed ? ` (${observed} ago)` : ''} — so there is nothing to bring back. The count beside this is what is recorded but was not open.`}
+          label={`Nothing was open here when the fleet was last seen${observed ? ` (${observed} ago)` : ''}`}
+        />
       ) : offer.actionable ? (
         <ArmedRestore
           project={project}
@@ -618,18 +626,29 @@ export function RestoreForProject({ project, onRestored }: {
         // would have skipped every one of them. The fact is still worth stating
         // — it is why the screen has nothing to restore — so it stays, as text
         // rather than as a button that would do nothing.
-        <span
-          className="text-xs text-fg-ghost"
-          data-fleet-restore-inert={offer.total}
-          title="Recorded here and already running. A session with a live process on it is never resumed — that would fork its conversation."
-        >
-          {offer.label}
-        </span>
+        <Chip
+          jump="restore-inert"
+          data={{ 'data-fleet-restore-inert': String(offer.total) }}
+          tone="text-fg-ghost"
+          mark={<RotateCcw size={11} strokeWidth={1.75} aria-hidden />}
+          count={offer.total}
+          title={`${offer.label}. Recorded here and already running — a session with a live process on it is never resumed, that would fork its conversation.`}
+          label={offer.label}
+        />
       )}
+      {/* Why the offer is the whole list rather than a composition. A `?` in
+          the same place the counts are, because that is what it is — the record
+          could not say — and the sentence is one hover away. */}
       {!comp.known && (
-        <span className="mt-0.5 text-xs text-fg-ghost" data-fleet-restore-unknown-composition={offer.total}>
-          {comp.reason}
-        </span>
+        <Chip
+          jump="restore-unknown-composition"
+          data={{ 'data-fleet-restore-unknown-composition': String(offer.total) }}
+          tone="text-fg-ghost"
+          mark={<CircleDashed size={11} strokeWidth={1.75} aria-hidden />}
+          count="?"
+          title={comp.reason ?? ''}
+          label={comp.reason ?? 'the composition is not known'}
+        />
       )}
       {comp.known && <TheRest project={project} entries={comp.rest} busy={busy} onRun={run} />}
       {result}

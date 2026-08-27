@@ -128,7 +128,9 @@ function installFetch(answer: { ok: boolean; status?: number; body: unknown }) {
   return stub
 }
 
-const openPanel = () => fireEvent.click(screen.getByTitle(/What set-core modules/))
+// By its MARKER, not by its words: the strip is marks and numbers now, and a
+// test anchored to a sentence breaks every time the sentence is edited.
+const openPanel = () => fireEvent.click(document.querySelector('[data-fleet-modules="measured"]')!)
 
 describe('the surface — what the reader is actually shown', () => {
   it('offers a preview on the not-connected module and not on the partial one', () => {

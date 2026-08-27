@@ -254,7 +254,7 @@ describe('a docked panel is not also a tab', () => {
     // Two agents, one docked, one enlarged: nothing left to tab between, so the
     // strip is not rendered at all — and the header does not claim one either.
     expect(container.querySelector('[data-fleet-agent-tab="1"]')).toBeNull()
-    expect(container.textContent).not.toMatch(/as tabs/i)
+    expect(container.querySelector('[data-fleet-chip="as-tabs"]')).toBeNull()
   })
 
   it('still lists the agents that ARE in the grid', async () => {
@@ -267,7 +267,9 @@ describe('a docked panel is not also a tab', () => {
       if (!container.querySelector('[data-fleet-agent-tabs]')) throw new Error('no strip')
     })
     expect(container.querySelector('[data-fleet-agent-tab="2"]')).not.toBeNull()
-    expect(container.textContent).toMatch(/1 as tabs/i)
+    // Marks and numbers on this strip now; the sentence is on `aria-label`.
+    expect(container.querySelector('[data-fleet-chip="as-tabs"]')!.getAttribute('aria-label'))
+      .toMatch(/1 as tabs/i)
   })
 })
 
@@ -350,6 +352,6 @@ describe('docking a panel that the grid was treating specially', () => {
       if (!container.querySelector('[data-tile-controls]')) throw new Error('no tiles')
     })
     // Enlarged means one card plus a tab strip — the strip's own hint is on screen.
-    expect(container.textContent).toMatch(/as tabs/i)
+    expect(container.querySelector('[data-fleet-chip="as-tabs"]')).not.toBeNull()
   })
 })
