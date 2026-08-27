@@ -26,7 +26,10 @@ writes the one-hour lifetime — measured, `ephemeral_1h_input_tokens` non-zero 
 
 **Goals:**
 
-- A reader glancing at the tab strip can tell which seats are still cheap to use and which are not.
+- A reader glancing at the screen — **in any view mode** — can tell which seats are still cheap to
+  use and which are not. *Widened 2026-08-27, after the user reported the mark was reachable only
+  by full-screening into the tabbed view; this line previously said "the tab strip", which named
+  a surface rather than the goal and was met while the goal was not.*
 - A reader deciding between two seats can see which one stands to lose more.
 - PM mode's ordering stops guessing at the cost it says it is following.
 - The absence of a measurement is visible as absence.
@@ -107,6 +110,36 @@ a mark that moves without its subject moving.
 
 Thickness wins because length is already spoken for by the cooling fraction, and the two do not
 interfere.
+
+### The mark hangs off the agent, not off the tab strip
+
+**Chosen:** every surface that presents an agent as a unit — its tab AND its tile header — draws the
+mark, from one `mark()` call.
+
+*Added 2026-08-27, from a defect rather than from foresight.* The first implementation put the mark
+on the tab strip only, which looked like the whole surface and is not: the strip is drawn in one
+view mode, and only where a project holds more than one agent. Measured on the day it was reported,
+across twelve live agents, the strip could carry a mark for **seven** — the other five, including
+every seat alone on its project, showed nothing at all.
+
+Two things this cost, both worth keeping because neither is visible from inside a passing suite:
+
+- **The unit tests for `mark()` were green throughout and could not have caught it.** They decide
+  what a cache state MEANS; the defect was in which surfaces ask. That is the mechanism-versus-result
+  split again, one layer up: every check verified that the mark is computed correctly, and none
+  asked where it is drawn.
+- **A test written against the tab passes VACUOUSLY on the case that matters.** A project with one
+  agent renders no `[data-fleet-agent-tab]` at all, so an assertion over tabs finds nothing and
+  reports success. The test for this now drives a single-agent project deliberately.
+
+**Rejected:** duplicating the mark's logic per surface. Two expressions are two chances to disagree
+— the same argument the single-condition decision below makes within one tab, which does not stop
+being true at the surface boundary.
+
+**Where the surfaces differ, they differ only in room, never in content.** The tile has space a tab
+does not, and spends it on saying the same fact unambiguously: the unmeasured mark reads `cache ?`
+there and a bare `?` on a tab, because the tile header already carries an amber `?` for an
+unconfirmed binding and two identical glyphs touching would be one mark with two meanings.
 
 ### One condition drives every cold mark
 
