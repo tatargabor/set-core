@@ -75,7 +75,26 @@ cooling inverts both: silence while healthy, a persistent mark once cold.
 
 ### Thickness carries the stake
 
-**Chosen:** bar thickness scales with cache size (1px–5px).
+**Chosen:** bar thickness scales with cache size (1px–5px), **logarithmically between
+20 000 tokens and 1 000 000**.
+
+*Revised 2026-08-27, after the implementation was looked at on the running dashboard.* This
+section originally specified a LINEAR scale against a fixed 200k ceiling, and the Open Question
+below left "fixed vs. scaled-to-the-fleet" unresolved. The measurement settled both, and it is
+recorded here because the unit tests were green throughout and could not have caught it: the
+fourteen live sessions on this machine held between 190 994 and 554 959 tokens, so **every
+real seat pinned the 200k ceiling and all five tabs drew at maximum thickness**. The tests
+asserted that 15k drew thinner than 195k — true, and over a range no seat occupies. That is the
+check-verifies-the-mechanism shape, not a wrong assertion.
+
+The bounds are chosen rather than picked: the ceiling is the model's **context window**, so full
+thickness means "as large as this can get"; the floor is where the stake stops mattering (20 000
+tokens is about twenty cents to rewrite). Checked against the real fleet, they produce four
+distinct thicknesses where the linear scale produced one and a 10k floor produced three.
+
+**Fixed range, not scaled to the fleet** — the Open Question below is answered: scaling to the
+current largest seat makes one tab's thickness change because a DIFFERENT tab changed, which is
+a mark that moves without its subject moving.
 **Rejected, with reasons worth keeping:**
 
 - *A shorter lane for a smaller cache* (the bar's track scaled by size). Ambiguous: a half-filled
@@ -163,7 +182,8 @@ does today. Rollback is reverting the commit; nothing is written, so nothing has
 - **Subagents.** They build their own caches and write their own transcripts. Excluded for now, on
   the grounds that a tab is what the reader types into — but a session whose subagents hold more
   cache than it does is not obviously reported correctly by this rule.
-- **Whether the strip should scale thickness to the fleet or to a fixed ceiling.** A fixed ceiling
-  (200k) is stable across polls but wastes the range when every seat is small; scaling to the
-  current maximum is more legible but makes a tab's thickness change when a different tab changes.
-  Starting fixed.
+- ~~**Whether the strip should scale thickness to the fleet or to a fixed ceiling.**~~
+  **ANSWERED 2026-08-27 by measurement, see "Thickness carries the stake" above:** fixed range,
+  and logarithmic rather than linear. The fixed ceiling was kept — a mark must not move because
+  a different tab moved — but 200k was measured to be *below* the whole live fleet, so the
+  ceiling became the context window and the scale became logarithmic.
