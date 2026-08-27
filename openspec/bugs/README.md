@@ -56,6 +56,7 @@ consumer's name, path, or content.
 ## Entry format
 
 ```markdown
+
 ### B-<n> — <one line, the defect, not the symptom>
 - **state:** open | closed (`<sha>`) | not-a-defect (why)
 - **reported:** <date> by <user | this session | peer agent>, <how>
@@ -168,7 +169,7 @@ consumer's name, path, or content.
 
 ### B-83 — a text file with the executable bit set opens NOWHERE
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `89cca954` + `2579f8aa`
 - **reported:** 2026-08-27 by the user, ctrl-clicking a shell script in a fleet terminal —
   screenshot showing `could not open <project>/scripts/gates/check-ko-log.sh: executable
   files are not opened`.
@@ -182,9 +183,16 @@ consumer's name, path, or content.
 - **fixed when:** a `.sh`, `.mjs` or `.cjs` inside a known project opens in the file view on
   ctrl-click, and `desktop.py:114` is still refusing the same path.
 
+- **closed with evidence, SEEN on the live screen 2026-08-27:** ctrl-clicking
+  `benchmark/evaluator/collect-results.sh` — mode 755 — in a fleet terminal opened it in the
+  internal editor, syntax-highlighted, with the structure pane expanded to it. The endpoint
+  no longer consults the executable bit at all (`files.py:read_file`), because reading
+  returns bytes and starts nothing; the guard that refuses to RUN a file stays on the desktop
+  route, where it belongs, and was widened rather than relaxed (see `B-89`).
+
 ### B-84 — the file view is confined to the agent's own checkout, so a file of another known project goes to the desktop
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `2579f8aa` + `00d11279`
 - **reported:** 2026-08-27 by this session, while measuring B-83.
 - **measured:** `terminalTarget` resolves against ONE base (`cwd || root`) and consults ONE
   listing. Anything else falls through to the desktop. Over 30 transcripts, of the 823
@@ -198,9 +206,16 @@ consumer's name, path, or content.
 - **fixed when:** a token naming a file under any registered project (or a worktree of one)
   opens in the file view, whichever checkout the agent is standing in.
 
+- **closed with evidence, SEEN on the live screen 2026-08-27:** an absolute path into a
+  SECOND registered project, ctrl-clicked in a set-core terminal, opened in the panel — and
+  the panel header read `files set-core · set-agent-comm · README.md`, naming the checkout it
+  was reading. The payload now ships each project's servable checkouts, derived from the same
+  verdict the file endpoints apply, so the browser routes without asking the server about any
+  path.
+
 ### B-85 — the absolute branch applies no shape filter, so every `/word` token becomes a link that fails on click
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `2579f8aa`
 - **reported:** 2026-08-27 by this session, measuring the recogniser against real output.
 - **measured:** `desktopReference` returns immediately for anything starting with `/`
   (`fleetFiles.ts:~330`) — `looksLikePath` guards the RELATIVE branch only. Over 30
@@ -212,9 +227,16 @@ consumer's name, path, or content.
 - **fixed when:** `/opsx:ff` and a single-segment route are plain text, while
   `/home/<user>/x/y.ts` and `/tmp/run.log` still link.
 
+- **closed with evidence:** over the same 30-transcript corpus, the **425** single-segment
+  absolute tokens that were underlined broken links are **0** — not one is still drawn as a
+  link. They are recognised at LOW confidence instead of dropped, so `/tmp` and
+  `~/bin/mytool` stay reachable on a held modifier while drawing nothing. SEEN on the live
+  screen 2026-08-27: on one row, `openspec/changes/<name>/` underlined and `/opsx:ff` beside
+  it plain.
+
 ### B-86 — the token cleaner does not survive markdown, table cells, or `~`
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `2579f8aa`
 - **reported:** 2026-08-27 by this session.
 - **measured:** `unwrap` strips `([<'"` + backtick at the head and `)]>,.;:'"` + backtick at
   the tail — not `*`, `|`, `{`, `}`. Of **249 distinct tokens that name a file which EXISTS
@@ -227,9 +249,15 @@ consumer's name, path, or content.
 - **fixed when:** ``**`src/app.ts`**``, `docs/x.md:12:|` and `~/.claude/CLAUDE.md` all link
   to the same file a bare token does.
 
+- **closed with evidence:** the single destructive strip is now a CANDIDATE LIST — the token
+  as written plus each progressively unwrapped variant — and the listing is consulted before
+  any candidate is allowed to place on its shape. Missed links over the corpus: **252 → 72**.
+  A `~/` token is expanded against the home the SERVER sends; with no home supplied it stays
+  text, because a browser guessing a home links to somebody else's file.
+
 ### B-87 — a directory cannot be opened in the file view at all
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `00d11279`
 - **reported:** 2026-08-27 by this session.
 - **measured:** the listing endpoint serves FILES, so no directory is ever in the known set,
   and the panel has no notion of "reveal this directory". Every directory therefore reaches
@@ -238,6 +266,12 @@ consumer's name, path, or content.
   panel's own structure pane could expand and scroll to them instead.
 - **fixed when:** ctrl-clicking `openspec/changes/<name>/` expands that node in the structure
   pane rather than opening a file manager.
+
+- **closed with evidence, SEEN on the live screen 2026-08-27:** ctrl-clicking
+  `openspec/changes/terminal-links-and-typed-file-view/` expanded `openspec` →
+  `openspec/changes` → that node, scrolled it into view and marked it, and opened NO file —
+  the editor pane still read *pick a file from the structure*. A reveal that finds nothing
+  says so rather than doing nothing silently.
 
 ### B-90 — copying the fleet screen carries every visually-hidden sentence with it
 
@@ -260,7 +294,7 @@ consumer's name, path, or content.
 
 ### B-88 — a binary file has no view, only a refusal
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `89cca954`
 - **reported:** 2026-08-27 by the user — *"binárisra pedig képnézegetőt kellene csinálni,
   mime type szerint"*.
 - **measured:** `files.py:395` answers `415 not a text file` for anything that is not UTF-8,
@@ -271,6 +305,13 @@ consumer's name, path, or content.
   must stay honest about which one fired.
 - **fixed when:** a PNG an agent printed opens as an image in the same panel, and a
   non-renderable binary states its type and size rather than "not a text file".
+
+- **closed with evidence, SEEN on the live screen 2026-08-27:** `assets/icon.png` opened in
+  the panel AS AN IMAGE, scaled to fit, stated as `image/png · 8.2 kB`, with no save control
+  and a `blob:` source the panel built itself from bytes the server served as an attachment
+  with `nosniff`. A PDF is named with its size and handed to the desktop rather than
+  embedded — GitLab serves PDFs as downloads, Gitea's embedded viewer is blocked by its own
+  `X-Frame-Options`, and a sandboxed frame may not render one at all.
 
 ### B-82 — the terminal replay ring buffer cuts at an arbitrary byte, so a tab switch can start mid-escape-sequence
 
@@ -501,6 +542,7 @@ consumer's name, path, or content.
   byte-identical before and after. Held by a test that snapshots the registry file's sha256
   around a dry-run init of an unregistered repo and asserts equality — with the positive
   control that a real init of the same repo does change it.
+
 ### B-77 — a lazy chunk that a redeploy removed leaves `loading the editor…` on screen for ever
 
 - **state:** closed (`133a1e1c`) for the file view; **the same shape is still open at four other lazy
@@ -1891,7 +1933,6 @@ consumer's name, path, or content.
   when it started. A restart followed by an immediate `curl` should then not be
   ambiguous.
 
-
 ### B-27 — one docking test fails about one full-suite run in ten, and passes alone
 
 - **state:** open
@@ -1943,7 +1984,6 @@ consumer's name, path, or content.
 - **fixed when:** a panel of N seatless agents carries the sentence once, every
   tile still says it cannot be typed into, and a test asserts BOTH — the count
   is one, and no tile is silent about its own state.
-
 
 ### B-30 — one unanswered owner poll unmounts the open terminal, which detaches it and costs a 64 KB replay
 
@@ -2028,7 +2068,6 @@ consumer's name, path, or content.
   wiring test renders the screen, so which half fails names which half is
   missing.
 
-
 ### B-31 — stopping set-web takes 91 s, so any restart is a 91 s hole in the dashboard
 
 - **state:** open
@@ -2082,7 +2121,6 @@ consumer's name, path, or content.
 - **fixed when:** `systemctl --user restart set-web` completes in single-digit
   seconds with terminals open, and the journal shows `Stopped` without the
   timeout — measured, not assumed, from the `Stopping…`/`Started` timestamps.
-
 
 ### B-32 — two agents that BOTH staged only their own paths still lose a commit to each other, because the index is shared
 
@@ -2224,7 +2262,6 @@ consumer's name, path, or content.
   `localhost:7400` in the browser, plus a unit test that renders `FleetPm` with a
   terminal-less presented agent and asserts the log rows are there.
 
-
 ### B-36 — an engine call without a change silently burns every pending answer
 
 - **state:** open
@@ -2302,7 +2339,6 @@ consumer's name, path, or content.
   instruction-shaped text does not change what the unit is told to do.
 - **belongs to:** the code shipped by `work-cycle-engine-apply-first`; it is a
   precondition for `work-cycle-question-outbound`, not a task inside it.
-
 
 ### B-39 — `mark_awaiting` silently fails on the ordinary file shape, and its failure empties the register
 
@@ -2576,7 +2612,6 @@ consumer's name, path, or content.
   hogy fog kinézni! layout ikonok"*). Done in the same commit — all four buttons
   render an SVG glyph and no digit, with the count kept in the label and in
   `data-fleet-columns`.
-
 
 ### B-0 — the right-hand panel left 59–73 % of the screen empty, and maximise stopped short of the bottom
 - **state:** closed (`c4f4842f`)

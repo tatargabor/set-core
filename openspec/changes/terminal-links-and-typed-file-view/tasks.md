@@ -1,6 +1,6 @@
 ## 0. Base the change on the spec it modifies
 
-- [ ] 0.1 Archive `fleet-open-external-path` first — this change's MODIFIED requirements are
+- [x] 0.1 Archive `fleet-open-external-path` first — this change's MODIFIED requirements are
   the ones that change introduced, so archiving in the other order makes both deltas disagree
   about what the base said. Its single open task (7.16, a browser check on a worktree link) is
   the same look this change performs in §7; do that look, close it, then archive
@@ -174,21 +174,56 @@
 
 ## 7. Look at it, and measure the result rather than the mechanism
 
-- [ ] 7.1 **LOOK AT IT in the browser** against the running dashboard: ctrl-click a `.sh` in a
+- [x] 7.1 **LOOK AT IT in the browser** against the running dashboard: ctrl-click a `.sh` in a
   terminal and see it open as text; ctrl-click a PNG an agent printed and see the image;
   ctrl-click a directory and see the tree reveal it; confirm `/opsx:ff` in the output carries
   no underline. If the browser cannot be reached this task stays OPEN and the commit says so
   [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 7.2 **LOOK AT IT for a cross-checkout link**: a worktree agent's absolute path into the
+- [x] 7.2 **LOOK AT IT for a cross-checkout link**: a worktree agent's absolute path into the
   main checkout opens in the panel, and the panel NAMES the checkout it is reading. This also
   closes `fleet-open-external-path` 7.16
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
-- [ ] 7.3 Run the full web unit suite and the Python suite, and compare failures as a SET DIFF
+- [x] 7.3 Run the full web unit suite and the Python suite, and compare failures as a SET DIFF
   against a baseline you actually ran — never against a remembered count
   [REQ: file-content-is-served-typed-by-its-bytes]
-- [ ] 7.4 Close `B-83`…`B-88` in `openspec/bugs/README.md` with the commit sha, each against
+- [x] 7.4 Close `B-83`…`B-88` in `openspec/bugs/README.md` with the commit sha, each against
   the "fixed when" check it already names. An entry is closed with evidence, never deleted
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
+
+### What §7 actually produced
+
+- **7.1 SEEN 2026-08-27.** A `.sh` of mode 755 ctrl-clicked in a fleet terminal opened in
+  the internal editor, syntax-highlighted. A relative directory ctrl-clicked revealed itself
+  in the structure pane, ancestors expanded and the node marked — no file manager started.
+  On the same row, `openspec/changes/<name>/` carried an underline and `/opsx:ff` beside it
+  carried none. **Looking at it found a defect no test could see:** the row text was taken
+  with `translateToString(true)`, which TRIMS, so every link's columns were shifted left by
+  the row's indent and the link sat on the wrong characters. All 69 lib tests and every
+  terminal test passed over it, because the emulator stub ignored the trim argument. Fixed in
+  `7fb9bd4f`; the stub now honours the flag and a test goes red with the trim restored.
+- **7.1, the typed panel, SEEN 2026-08-27 on the live dashboard.** A PNG opened as an image
+  scaled inside the panel, headed `image/png · 8.2 kB`, with no save control. The next file,
+  an `.icns`, produced the refusal in words — *"… is application/octet-stream, 61.0 kB —
+  there is no view for it here"* — with the desktop hand-over offered beneath it and no
+  editor behind it. Opening a text file after that brought the editor back, syntax
+  highlighted, with no image state left over. The terminals on that screen were LIVE agent
+  sessions, so the panel was driven from the structure pane rather than by typing into
+  somebody else's session; the terminal's own routing to this panel is what §7.1's first
+  paragraph and §7.2 already saw.
+- **7.2 SEEN 2026-08-27.** An absolute path into a SECOND registered checkout, ctrl-clicked
+  from a terminal standing in this one, opened in the panel — and the panel header named the
+  checkout it was reading. This is `fleet-open-external-path` 7.16, so that change is
+  unblocked for archive.
+- **7.3 MEASURED 2026-08-27.** Web: **73 files / 1133 tests pass**, `tsc -b` clean. Python:
+  a set diff against a baseline worktree at `9437605d`, run with the three import roots and
+  the session-end leak assertion — **0 leaks**, so the baseline ran its own code. Baseline
+  105 failure entries, now 104, and the single difference is
+  `test_paths.py::TestResolveProjectName::test_resolve_with_explicit_path`, which asserts
+  the checkout's DIRECTORY NAME (`assert 'set-core' == 'base'`) and therefore fails in any
+  worktree. Set diff otherwise empty: **no regression**.
+- **7.4 CLOSED with evidence.** `B-83`…`B-88` each carry the sha and the check their own
+  *fixed when* line named; none was deleted.
+- **0.1** `fleet-open-external-path` is archived, its 7.16 closed by §7.2 above.
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -210,19 +245,19 @@
 ### What the internal editor can open, opens in the internal editor
 
 - [x] AC-13: WHEN a person activates a relative path that is a file of the agent's worktree THEN the file view opens it, reading that worktree [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-the-agents-worktree]
-- [ ] AC-14: WHEN a person activates a shell script or other executable text file inside a served checkout THEN the file view opens it as text and the desktop route is not involved [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: an-executable-text-file]
+- [x] AC-14: WHEN a person activates a shell script or other executable text file inside a served checkout THEN the file view opens it as text and the desktop route is not involved [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: an-executable-text-file]
 - [x] AC-15: WHEN a worktree agent prints an absolute path into the main checkout and a person activates it THEN the file view opens the main checkout's file and names that checkout [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-the-main-checkout-printed-by-a-worktree-agent]
 - [x] AC-16: WHEN the activated path lies inside another registered project THEN the file view opens it and names that project [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-another-registered-project]
-- [ ] AC-17: WHEN the file view is reading a checkout other than the project root THEN the panel names that checkout [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: the-panel-names-the-checkout-it-is-reading]
-- [ ] AC-18: WHEN a file read from a worktree is edited and saved THEN it is written back to that worktree [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-save-goes-back-where-the-file-came-from]
-- [ ] AC-19: WHEN the activated reference names a path under no registered checkout THEN it is handed to the desktop, unchanged from today [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-path-under-no-known-checkout]
-- [ ] AC-20: WHEN the file endpoints are asked for a non-prunable worktree of a known project THEN they serve it with the same confinement, limits and refusals [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-worktree-of-a-known-project-may-be-read]
-- [ ] AC-21: WHEN the file endpoints are asked for a directory that is neither a known root nor a worktree of one THEN they refuse it [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: an-unrelated-directory-is-still-refused]
+- [x] AC-17: WHEN the file view is reading a checkout other than the project root THEN the panel names that checkout [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: the-panel-names-the-checkout-it-is-reading]
+- [x] AC-18: WHEN a file read from a worktree is edited and saved THEN it is written back to that worktree [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-save-goes-back-where-the-file-came-from]
+- [x] AC-19: WHEN the activated reference names a path under no registered checkout THEN it is handed to the desktop, unchanged from today [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-path-under-no-known-checkout]
+- [x] AC-20: WHEN the file endpoints are asked for a non-prunable worktree of a known project THEN they serve it with the same confinement, limits and refusals [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-worktree-of-a-known-project-may-be-read]
+- [x] AC-21: WHEN the file endpoints are asked for a directory that is neither a known root nor a worktree of one THEN they refuse it [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: an-unrelated-directory-is-still-refused]
 
 ### Activating a desktop reference hands it to the desktop
 
-- [ ] AC-22: WHEN a person activates an absolute path under no registered checkout THEN it is handed to the desktop and nothing opens inside the dashboard [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-reader-activates-an-external-path]
-- [ ] AC-23: WHEN a person clicks a recognised reference without the modifier THEN the click is the terminal's and nothing opens [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: a-plain-click-still-belongs-to-the-terminal]
+- [x] AC-22: WHEN a person activates an absolute path under no registered checkout THEN it is handed to the desktop and nothing opens inside the dashboard [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-reader-activates-an-external-path]
+- [x] AC-23: WHEN a person clicks a recognised reference without the modifier THEN the click is the terminal's and nothing opens [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: a-plain-click-still-belongs-to-the-terminal]
 - [x] AC-24: WHEN a desktop reference names something the desktop would run or interpret THEN it is refused and nothing is started — this change widens that list and relaxes no part of it [REQ: activating-a-desktop-reference-hands-it-to-the-desktop, scenario: the-desktop-guards-refuse-at-least-as-much-as-before]
 
 ### Activating a directory reveals it in the panel's structure

@@ -442,6 +442,41 @@ def test_a_worktree_file_is_read_from_the_worktree_not_from_main(wt_client, repo
     assert from_main.json()["content"] == "main branch\n"
 
 
+def test_a_save_goes_back_to_the_WORKTREE_it_came_from(wt_client, repo_with_worktree):
+    """Reading from a worktree and writing back to main would be a silent seam.
+
+    The read side is asserted above; this is the other half, and the two hide
+    each other if only one is checked — a write that landed in main would still
+    return 200, and the next read of the worktree would return the unchanged
+    text, which reads as "the save did not take" rather than "the save went
+    somewhere else". So the assertion is on BOTH checkouts: the worktree has the
+    new text and main still has its own.
+    """
+    main, wt = repo_with_worktree
+    before = _read(wt_client, wt, "src/app.ts")
+    r = wt_client.put("/api/fleet/files/content", json={
+        "root": str(wt), "path": "src/app.ts",
+        "content": "edited in the worktree\n", "identity": before["identity"],
+    })
+    assert r.status_code == 200, r.text
+    assert (wt / "src" / "app.ts").read_text() == "edited in the worktree\n"
+    assert (main / "src" / "app.ts").read_text() == "main branch\n"
+
+
+def test_a_worktree_read_obeys_the_SAME_cap(wt_client, repo_with_worktree, monkeypatch):
+    """Widening which checkouts may be read must not widen what may be read out.
+
+    The limits live on the shared route, so this asserts that the worktree took
+    that route rather than one of its own.
+    """
+    _, wt = repo_with_worktree
+    monkeypatch.setattr(files_module, "MAX_BYTES", 4)
+    r = wt_client.get("/api/fleet/files/content",
+                      params={"root": str(wt), "path": "openspec/plan.md"})
+    assert r.status_code == 413
+    assert r.json()["detail"]["reason"] == "too-large"
+
+
 def test_an_unrelated_directory_is_still_refused(wt_client, tmp_path):
     """Widening to worktrees must not widen to anything else."""
     stranger = tmp_path / "stranger"
