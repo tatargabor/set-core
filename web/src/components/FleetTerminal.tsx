@@ -875,7 +875,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       provideLinks(lineNumber, callback) {
         const row = term.buffer.active.getLine(lineNumber - 1)
         if (!row) { callback(undefined); return }
-        const text = row.translateToString(true)
+        /*
+          UNTRIMMED, and this is a correctness fix rather than a detail.
+
+          `translateToString(true)` strips the row's leading whitespace, so every
+          index the scan produces is relative to the TRIMMED string while xterm's
+          link range is a column in the real row. The link is therefore drawn —
+          and hit-tested — shifted LEFT by however much the row was indented.
+
+          Found by looking at the live screen: an agent's output is indented by
+          the runtime's own frame, so the underline sat beside the path and a
+          click on the path landed outside the link. Every unit test missed it
+          because the emulator stub ignores the trim argument and returns a row
+          with no indent at all — the measurement was of a row that does not
+          occur in the product.
+        */
+        const text = row.translateToString()
         const links: TerminalLink[] = []
         // The row scan, its limits and the verdicts all live in the lib, where
         // they are measurable without a browser. What is left here is the

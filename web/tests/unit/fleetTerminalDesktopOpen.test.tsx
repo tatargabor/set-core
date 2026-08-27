@@ -39,7 +39,16 @@ vi.mock('@xterm/xterm', () => ({
     cols = 120
     rows = 40
     // The one row this terminal has, handed to whatever provider asks.
-    buffer = { active: { getLine: () => ({ translateToString: () => line }) } }
+    /*
+      The stub HONOURS the trim flag, because that flag is where a real defect
+      lived: a row read trimmed produces indices relative to the trimmed string,
+      while xterm's link range is a column in the real row. A stub that ignores
+      the argument measures a row with no indent — which is not the row the
+      product ever sees, since the runtime frames its output with one.
+    */
+    buffer = { active: { getLine: () => ({
+      translateToString: (trim?: boolean) => (trim ? line.trim() : line),
+    }) } }
     open() { /* no DOM measurement in jsdom */ }
     loadAddon() { /* stubbed */ }
     focus() { /* no keyboard here */ }
@@ -285,6 +294,27 @@ describe('when the project IS known', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string))
       .toEqual({ path: '/tmp' })
+  })
+
+  it('puts the link on the REAL columns of an indented row', async () => {
+    /*
+      The runtime frames an agent's output, so the row an agent's path arrives on
+      is indented. A scan of the trimmed row produces indices relative to the
+      trimmed string, and xterm's range is a column in the real row — so the
+      underline lands beside the path and a click on the path misses the link.
+
+      Found by looking at the live screen. Every test before this one used a stub
+      that ignored the trim flag, so all of them measured a row with no indent.
+    */
+    const indent = '     '
+    line = `${indent}wrote src/app.ts today`
+    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: vi.fn() })
+
+    const found = links()
+    expect(found.map(l => l.text)).toEqual(['src/app.ts'])
+    // 1-based, and it must point at where the token really is.
+    expect(found[0].range.start.x).toBe(line.indexOf('src/app.ts') + 1)
+    expect(found[0].range.end.x).toBe(line.indexOf('src/app.ts') + 'src/app.ts'.length)
   })
 
   it('does nothing on a plain click, whatever KIND of reference it is', async () => {
