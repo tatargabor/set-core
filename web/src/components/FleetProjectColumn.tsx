@@ -1171,30 +1171,6 @@ export default function FleetProjectColumn({
             )}
           </div>
         </div>
-        {/* Compaction the reader chose is still compaction, and this is the
-            sharpest on the screen — it drops whole projects. So it says what it
-            dropped, split by cause, and one control puts the column back. The
-            attention header above is unaffected by the mode by construction. */}
-        {colHidden > 0 && (
-          <div className="text-xs text-fg-faint tabular-nums" data-fleet-column-hidden={colHidden}>
-            {colHidden} project(s) not shown
-            <span className="text-fg-ghost">
-              {' '}({[
-                colView.hiddenNoLive > 0 ? `${colView.hiddenNoLive} with no live session` : null,
-                colView.hiddenByFilter > 0 ? `${colView.hiddenByFilter} filtered out` : null,
-              ].filter(Boolean).join(', ')})
-            </span>
-            {' · '}
-            <button
-              type="button"
-              data-fleet-column-clear
-              onClick={() => { setMode('arrangement'); setQuery(''); setSort('order') }}
-              className="underline underline-offset-2 hover:text-fg-normal"
-            >
-              show all
-            </button>
-          </div>
-        )}
       </div>
 
       {conflict && (
@@ -1462,6 +1438,40 @@ export default function FleetProjectColumn({
         </>)}
       </div>
 
+      {/* Compaction the reader chose is still compaction, and this is the
+          sharpest on the screen — it drops whole projects. So it says what it
+          dropped, split by cause, and one control puts the column back. The
+          attention header above is unaffected by the mode by construction.
+
+          It sits BELOW the list rather than above it — the reader asked for
+          that, and the line was between the controls and the projects, pushing
+          the rows down on every narrowing. It is outside the scroll container,
+          not at the end of it: a note about what is missing that you have to
+          scroll to find is a note that can be missed, and this one is the
+          screen's own answer to "is that everything?". */}
+      {colHidden > 0 && (
+        <div
+          className="shrink-0 border-t border-surface-line px-2 py-1 text-xs text-fg-faint tabular-nums"
+          data-fleet-column-hidden={colHidden}
+        >
+          {colHidden} project(s) not shown
+          <span className="text-fg-ghost">
+            {' '}({[
+              colView.hiddenNoLive > 0 ? `${colView.hiddenNoLive} with no live session` : null,
+              colView.hiddenByFilter > 0 ? `${colView.hiddenByFilter} filtered out` : null,
+            ].filter(Boolean).join(', ')})
+          </span>
+          {' · '}
+          <button
+            type="button"
+            data-fleet-column-clear
+            onClick={() => { setMode('arrangement'); setQuery(''); setSort('order') }}
+            className="underline underline-offset-2 hover:text-fg-normal"
+          >
+            show all
+          </button>
+        </div>
+      )}
       {/* ------------------------------------------------------------ */}
       {/* Making a group. A prefix may SEED one; it is never stored.     */}
       {/* ------------------------------------------------------------ */}
