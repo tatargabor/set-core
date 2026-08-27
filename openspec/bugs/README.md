@@ -67,6 +67,71 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-86 — a restored agent whose session gets claimed elsewhere stays alive as a record-less, log-less zombie
+
+- **state:** open
+- **reported:** 2026-08-27 by the user — *"restore nem mukodott probaltam fleet-ben uj
+  sessionben restolreolni"* — with a screenshot showing the restored tile empty.
+- **measured:** the owner log records the restore:
+
+  ```
+  21:29:15 fleet owner: started set-core-restored as set-agent-set-core-restored.scope
+           (pid 9289), resumed session <S>
+  ```
+
+  Twenty-seven seconds later a SECOND process (pid 9467) claimed the same session
+  `<S>` — the user's own terminal resuming it. The loser is pid 9289, and hours
+  later it is still there:
+
+  ```
+  $ ps -p 9289 -o args=
+  claude --dangerously-skip-permissions --resume <S>
+  $ ls ~/.claude/sessions/9289.json      ->  does not exist
+  ```
+
+  So it holds a pty, appears in `/api/fleet/agents` as an agent with
+  `session_id = null`, shows *"the log is readable and holds no conversation"*,
+  and the roster records it as `no-session:<project>/pid-9289` with
+  `not_resumable_reason: "no session id was ever recorded for this agent"` —
+  **un-restorable for ever.**
+- **the guard is NOT broken, and that is the point.** `owner._refuse_if_the_session_is_running`
+  was verified working the same day: recovering a session held by a live probe agent
+  was refused with the right message. The check runs BEFORE the start, and the
+  collision happens after it. Time-of-check to time-of-use, on a window the
+  framework does not own — the other claimant is a human's terminal.
+- **which way it fails:** silently, and it accumulates. Nothing errors, the restore
+  reports `started`, and the fleet gains an agent that can never be recovered and
+  never says why. Two live processes on one session is the design's own §6.1
+  failure, reached around the guard rather than through it.
+- **fixed when:** a restored agent that has not registered a session record within a
+  bounded window is reported as such on its tile and offered for stopping — and
+  the roster does not record a `no-session:` entry for a pid the framework itself
+  started with a KNOWN session id. Note the second half: the framework passed
+  `--resume <S>`, so it knows what that agent was meant to be, and writing
+  `no-session` throws away a fact it already had.
+
+### B-87 — the restore panel prints the current offer and the last result side by side, so they contradict each other
+
+- **state:** open
+- **reported:** 2026-08-27 by the user, same screenshot as B-86.
+- **measured:** the header reads, on one line:
+
+  ```
+  Restore 0 of 1 - 1 cannot be resumed        All 1 restored.
+  ```
+
+  `web/src/lib/fleetRoster.ts:238` builds the first from the CURRENT roster
+  (`restorable = resumable && !running`), and `:149` builds the second from the
+  RESULT of the last restore call. Two answers to two different questions at two
+  different times, rendered adjacent with nothing marking either.
+- **which way it fails:** the reader believes the more reassuring one. "All 1
+  restored" is what a person takes away, while the agent it refers to is the empty
+  tile below it. Same class as a deprecated value sitting beside its replacement —
+  the one the ui-quality rule was written after.
+- **fixed when:** the result carries its own time or is visibly a past act, and the
+  offer is not readable as a statement about it. A screenshot of the same state
+  shows a reader which is which without being told.
+
 ### B-84 — `sac agents --json` prints the human listing, so the fleet reads "the bus could not be asked who exists"
 
 - **state:** open
