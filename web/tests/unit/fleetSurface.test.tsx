@@ -151,7 +151,11 @@ describe('task 7.11 — an unfinished answer is not an empty one', () => {
     expect(screen.getByText('demo-a1')).toBeTruthy()
 
     await act(async () => { await vi.advanceTimersByTimeAsync(5100) })
-    expect(screen.getByText(/the refresh failed/i)).toBeTruthy()
+    // The strip is marks and numbers; the sentence — and the fact that the
+    // measurement is OLD — is on `aria-label`, which is what a reader without a
+    // pointer gets.
+    expect(container.querySelector('[data-fleet-chip="refresh-failed"]')!.getAttribute('aria-label'))
+      .toMatch(/the refresh failed/i)
     // The agent is still on screen: trading a stale measurement for NO
     // measurement is the worse of the two on the landing screen.
     expect(screen.getByText('demo-a1')).toBeTruthy()

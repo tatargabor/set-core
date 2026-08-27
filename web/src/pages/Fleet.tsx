@@ -42,7 +42,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Layers, Minimize2, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Layers, Minimize2, Presentation, Square, TriangleAlert } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
@@ -171,7 +171,15 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   }
   if (agent.state === 'quiet') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap">
+      /* The caveat lives HERE, on the word it is about. It used to run across
+         the top of the landing screen as a sentence — explaining a state the
+         reader might not have on screen at all, above the thing they came to
+         look at. Beside the word, it is one hover away from whoever is
+         actually reading it. */
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap"
+        title="“quiet” does not mean nothing is happening — only that no tool call was open when the log was last flushed."
+      >
         <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
         quiet
       </span>
@@ -2612,15 +2620,15 @@ export default function Fleet() {
         <button
           onClick={() => void togglePm(!pmOn)}
           data-fleet-pm-toggle={pmOn ? 'on' : 'off'}
-          className={`text-xs px-2 py-0.5 rounded border ${
+          aria-pressed={pmOn}
+          aria-label={`PM mode ${pmOn ? 'on' : 'off'}`}
+          className={`p-1 rounded border shrink-0 ${
             pmOn
-              ? 'border-sky-400/60 text-sky-300'
+              ? 'border-sky-400/60 bg-sky-400/10 text-sky-300'
               : 'border-surface-line text-fg-muted hover:text-fg-strong'
           }`}
           title="PM mode presents one agent at a time — whichever is waiting on you. It touches no agent, and leaving it restores this screen."
-        >
-          PM mode {pmOn ? 'on' : 'off'}
-        </button>
+        ><Presentation size={14} strokeWidth={1.75} /></button>
         {/*
           ONE count, and it says which projects it is counting — raised
           2026-08-19. The header said `12 agent · 6 projektben` while the column
@@ -2631,48 +2639,65 @@ export default function Fleet() {
           being read. The sentence now carries both numbers and their relation,
           and the column's duplicate is gone.
         */}
-        <span
-          className="text-xs text-fg-muted tabular-nums"
-          title="Agents discovered on this machine, and how many of the known projects are holding at least one."
-        >
-          {data.agents} agents in {populated.length} of {data.projects.length} projects
-        </span>
+        <Chip
+          jump="fleet-agents"
+          mark={<Bot size={11} strokeWidth={1.75} aria-hidden />}
+          count={data.agents}
+          title="Agents discovered on this machine."
+          label={`${data.agents} agents`}
+        />
+        {/* The RATIO stays one chip, and that is the whole point of it. The
+            header once said `12 agent · 6 projektben` while the column said
+            `12 agents · 41 projects`: the same screen, two numbers for
+            "projects", and nothing saying one counted the projects holding an
+            agent and the other every project known (raised 2026-08-19). Split
+            into two chips they would drift apart again; `10/53` carries the
+            relation in the value itself. */}
+        <Chip
+          jump="fleet-projects"
+          mark={<Folders size={11} strokeWidth={1.75} aria-hidden />}
+          count={`${populated.length}/${data.projects.length}`}
+          title="How many of the known projects are holding at least one agent."
+          label={`${populated.length} of ${data.projects.length} projects hold an agent`}
+        />
         {/* The per-state counts moved into the column's attention header, which
             is where the jump to the first one lives. Two places carrying the
             same count is one place too many: the copy nobody maintains is the
             one that drifts, and it is always the one being read. */}
-        {/* The caveat explains a state; with nothing in that state it is noise
-            at the top of the landing screen. Rendered from the data, so it can
-            never explain away a screen that has no agents on it. */}
-        {data.agents > 0 && (
-          <span className="text-xs text-fg-muted">
-            <span className="text-fg-strong">quiet</span> does not mean nothing is happening — only that no tool
-            call was open when the log was last flushed
-          </span>
-        )}
         {/* One cause, named once. A screen that can offer no terminal ANYWHERE
             has a single reason, and stating it per row would put 22 copies of it
             on the landing screen while still not saying it is one fact. `false`
             only — an absent key is not a `false`, and an older server that says
             nothing must not be reported as a dead owner. */}
         {data.owner_reachable === false && (
-          <span
-            data-fleet-owner="unreachable"
-            className="text-xs text-amber-400"
+          <Chip
+            jump="owner-unreachable"
+            data={{ 'data-fleet-owner': 'unreachable' }}
+            tone="text-amber-400"
+            mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+            count="?"
             title="The owner service did not answer, so for no agent do we know whether the framework holds it. This does not mean none of them has a terminal."
-          >
-            the owner service is not answering — who holds the terminals is unknown, not absent
-          </span>
+            label="the owner service is not answering — who holds the terminals is unknown, not absent"
+          />
         )}
         {/* A refresh that failed after a good answer keeps the answer — and says
             how old it is. Replacing a true screen with an error would trade a
             stale measurement for no measurement, which is the worse of the two
             on the landing screen. */}
         {error && (
-          <span className="ml-auto text-xs text-amber-400" title={error}>
-            the refresh failed — this is the state measured at{' '}
-            {answeredAt ? new Date(answeredAt).toLocaleTimeString() : '—'}
-          </span>
+          /* The TIME is the number here — a stale screen is only readable if you
+             can see how stale. `?` where even that is unknown, because a missing
+             timestamp is not "just now". */
+          <Chip
+            className="ml-auto"
+            jump="refresh-failed"
+            tone="text-amber-400"
+            mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+            count={answeredAt ? new Date(answeredAt).toLocaleTimeString() : '?'}
+            title={`The refresh failed (${error}) — this is the state measured at the time shown, not now.`}
+            label={`the refresh failed — this is the state measured at ${
+              answeredAt ? new Date(answeredAt).toLocaleTimeString() : 'an unknown time'}`}
+          />
         )}
       </div>
 
