@@ -93,7 +93,7 @@ consumer's name, path, or content.
 
 ### B-99 — the checkout guard blocks a merge commit and prints a remedy git itself refuses
 
-- **state:** fixed, same day. Fix commit noted below.
+- **state:** fixed — `3bbc7ef6`.
 - **reported:** 2026-08-27 by this session, hitting it while committing a merge.
 - **measured:** `git merge origin/main` staged 60 paths — none of them staged by
   any session, all of them put there by the merge — and the guard read the whole
