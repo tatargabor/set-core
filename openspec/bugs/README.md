@@ -116,7 +116,7 @@ consumer's name, path, or content.
 
 ### B-89 — the desktop guard measures the PERMISSION BIT, but what runs a file is the MIME handler
 
-- **state:** open
+- **state:** CLOSED 2026-08-27 by `38a534c6`
 - **reported:** 2026-08-27 by the user — *"ami necces továbbra is tool open pl xdg"* — and
   measured the same hour.
 - **measured:** `desktop.py:114` refuses a path when `os.access(target, os.X_OK)`. That is a
@@ -147,8 +147,24 @@ consumer's name, path, or content.
 - **taken up as tasks 4b.1–4b.6 of `terminal-links-and-typed-file-view`** (2026-08-27,
   `89663af7`), with a `desktop-open` spec delta. Deliberately not a change of its own: that
   change rewrites what reaches this endpoint, and shipping it beside *"the desktop guards are
-  unchanged"* would leave a completeness claim standing over this hole. The entry stays open
-  until the tasks close it.
+  unchanged"* would leave a completeness claim standing over this hole.
+- **closed with evidence, `38a534c6`:** `refusal()` is restated by the ACT. A 644 `.jar`,
+  `.appimage`, `.run`, `.jnlp`, `.msi`, an installer package and a macro-ENABLED office
+  document are refused with a reason naming the association; `.html`, `.htm` and `.xhtml` are
+  refused as a local page that can read this machine's files. The suffix rules run BEFORE the
+  bit, so a `.jar` that also carries `+x` still names the association — the bit would send the
+  reader to `chmod`, which fixes nothing. Held by four tests, and each one goes red under a
+  mutation that removes its rule (the empty list, the missing `.html`, the bit check moved
+  first, an over-wide list that would catch `.docx`).
+- **what it did NOT become, stated because the list invites it:** `.py` stays allowed. Its
+  handler in the same measurement was an editor, so the class is *"a file whose handler runs
+  it"*, not *"a file some program understands"*. `.svg` stays allowed too — an image that
+  opened before this change must still open, and the widening is a widening of refusals, not
+  a place to add ones nobody measured.
+- **the list is a FLOOR.** Associations are per-machine and per-user; the guard asks the local
+  desktop nothing, and a test removes its access to `subprocess` and `shutil.which` to hold
+  that. Same input, same verdict, on every machine — which is also the only way it is
+  testable at all.
 
 ### B-83 — a text file with the executable bit set opens NOWHERE
 

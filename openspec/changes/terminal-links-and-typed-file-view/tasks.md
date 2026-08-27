@@ -139,7 +139,7 @@
   [REQ: what-must-never-be-handed-over]
 - [x] 4b.5 Assert the guard consults NO local desktop association: same input, same verdict,
   on any machine [REQ: what-must-never-be-handed-over]
-- [ ] 4b.6 Close `B-89` with the sha [REQ: what-must-never-be-handed-over]
+- [x] 4b.6 Close `B-89` with the sha [REQ: what-must-never-be-handed-over]
 
 ## 5. The panel — rendering by type
 
