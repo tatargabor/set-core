@@ -376,3 +376,67 @@ def test_a_dry_run_stages_nothing_so_it_is_not_a_sweep(alice, cmd):
     off. Found by probing whether the hook was live: the probe was chosen to be
     harmless and was refused anyway."""
     assert alice.check(cmd)[0] == ALLOW, cmd
+
+
+# --------------------------------------------------------------------------- #
+# a merge in progress — where the refusal's own remedy does not exist
+# --------------------------------------------------------------------------- #
+
+def _conflicted_merge(repo):
+    """Leave `repo` mid-merge with a resolved conflict staged.
+
+    A real merge rather than a hand-written `MERGE_HEAD`: the property under test
+    is git's refusal of a partial commit, and only a genuine merge state produces
+    it. The conflict is what forces a resolution to be staged, which is exactly
+    the index shape the guard used to read as another session's work.
+    """
+    git(repo, "checkout", "-q", "-b", "side")
+    (repo / "base.txt").write_text("side\n")
+    git(repo, "commit", "-qam", "side")
+    git(repo, "checkout", "-q", "main" if _has_branch(repo, "main") else "master")
+    (repo / "base.txt").write_text("main\n")
+    git(repo, "commit", "-qam", "main")
+    subprocess.run(["git", "merge", "side"], cwd=repo, capture_output=True, text=True)
+    (repo / "base.txt").write_text("resolved\n")
+    git(repo, "add", "base.txt")
+
+
+def _has_branch(repo, name):
+    out = subprocess.run(["git", "rev-parse", "--verify", "--quiet", name],
+                         cwd=repo, capture_output=True, text=True)
+    return out.returncode == 0
+
+
+def test_git_itself_refuses_the_remedy_the_guard_prints_during_a_merge(repo):
+    """The measurement the exemption rests on, held as a test rather than as a
+    sentence in a docstring. If git ever allowed a partial commit mid-merge, the
+    exemption would be unjustified — and this is the assertion that would notice.
+    """
+    _conflicted_merge(repo)
+    out = subprocess.run(["git", "commit", "-m", "x", "--", "base.txt"],
+                         cwd=repo, capture_output=True, text=True)
+    assert out.returncode != 0
+    assert "partial commit" in (out.stderr + out.stdout).lower()
+
+
+def test_a_merge_commit_is_allowed_even_though_it_names_no_paths(repo, alice):
+    """The index mid-merge was filled by the MERGE, not by a session. Measured
+    2026-08-27 in this repository: a merge of the remote staged 60 paths that no
+    session had staged, and every remedy the refusal printed was rejected by git —
+    the shape that gets a guard bypassed with `--no-verify` rather than obeyed."""
+    _conflicted_merge(repo)
+    rc, err = alice.check("git commit -m 'merge'")
+    assert rc == ALLOW, err
+
+
+def test_the_exemption_ends_with_the_merge(repo, alice, bob):
+    """The pair that keeps it narrow. Same repository, same foreign staged path,
+    the only difference being whether a merge is in flight — so a mutation that
+    made the exemption unconditional fails here rather than passing everywhere."""
+    _conflicted_merge(repo)
+    git(repo, "commit", "-qm", "merge")
+    (repo / "bob.txt").write_text("bob\n")
+    bob.run("git add bob.txt")
+    rc, err = alice.check("git commit -m x")
+    assert rc == REFUSE
+    assert "bob.txt" in err

@@ -91,6 +91,35 @@ consumer's name, path, or content.
 > corpus — which is the same shape as measuring a proxy instead of the thing.
 > **Allocate a number after fetching, not after reading.**
 
+### B-99 — the checkout guard blocks a merge commit and prints a remedy git itself refuses
+
+- **state:** fixed, same day. Fix commit noted below.
+- **reported:** 2026-08-27 by this session, hitting it while committing a merge.
+- **measured:** `git merge origin/main` staged 60 paths — none of them staged by
+  any session, all of them put there by the merge — and the guard read the whole
+  set as another session's work:
+
+  ```
+  BLOCKED by set-hook-checkout-guard — this commit would carry work another
+  session in this checkout is holding.
+      git commit -- <path> <path> ...
+  $ git commit -m x -- base.txt
+  fatal: cannot do a partial commit during a merge.
+  ```
+
+- **which way it fails:** it is the shape that gets a guard bypassed rather than
+  obeyed. The refusal is correct-looking, and the only command it offers is one
+  git rejects, so the sole way forward is `--no-verify` — and a guard people learn
+  to `--no-verify` past is worse than an absent one, because it still reports that
+  it is holding. The blindness is not about merges specifically: the guard reasons
+  about *who staged a path*, and a merge stages paths with no session behind them.
+- **fixed when:** a merge, cherry-pick or revert commit passes, a pathspec-less
+  commit over a foreign staged path in the same repository is still refused once
+  the merge is finished, and git's own refusal of the partial commit is asserted
+  rather than assumed. All three held in `tests/unit/test_checkout_guard.py`;
+  both mutation directions (removing the exemption, making it unconditional) fail
+  the suite.
+
 ### B-98 — a fleet payload test's fake agent lacks `session_log`, so the whole payload builder raises
 
 - **state:** open
