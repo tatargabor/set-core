@@ -47,7 +47,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import discovery
 
@@ -104,11 +104,19 @@ def _now() -> float:
 
 
 def _no_session_key(agent: Any) -> str:
-    """A stable key for an agent the runtime has no session id for.
+    """A key for an agent NO source knows a session id for.
 
-    Stable across sightings, so the same agent does not accumulate one entry per
-    discovery pass — derived from what does not change about it (its project and
-    its label), never from its pid.
+    ⚠ This docstring used to claim the key is "stable across sightings" and
+    derived "never from its pid". Both were false, and the tests below now hold
+    what is actually true: with no name it falls back to `pid-N`, and the key
+    CHANGES the moment the runtime supplies a name — so one agent could leave
+    more than one entry behind. Measured 2026-08-27: 4 of 8 stored entries were
+    of this kind, three of them one live session under successive pids.
+
+    The instability is not repaired here, because it does not need to be: an
+    entry of this kind can never be acted on, so it now lives only as long as its
+    agent is seen (see `record`). A key that changes simply produces one row
+    while the agent is around instead of a permanent pair.
     """
     label = str(getattr(agent, "name", None) or "") or f"pid-{getattr(agent, 'pid', '?')}"
     project = str(getattr(agent, "project_name", None) or getattr(agent, "cwd", "") or "?")
@@ -116,7 +124,9 @@ def _no_session_key(agent: Any) -> str:
 
 
 def _entry_from(agent: Any, *, now: float,
-                labels: Optional[Dict[int, str]] = None) -> Optional[Tuple[str, Dict[str, Any]]]:
+                labels: Optional[Dict[int, str]] = None,
+                sessions: Optional[Dict[int, str]] = None,
+                ) -> Optional[Tuple[str, Dict[str, Any]]]:
     """One roster entry from one discovered agent, or None if it must not be recorded.
 
     **The label comes from `labels` — what the FRAMEWORK holds — and never from
@@ -138,9 +148,16 @@ def _entry_from(agent: Any, *, now: float,
         # not sessions anyone is sitting at. Restoring one would resume a
         # subprocess as though it were a person's conversation.
         return None
-    session_id = getattr(agent, "session_id", None)
+    pid = getattr(agent, "pid", None)
+    # The runtime's record first, the framework's own start intent second — and
+    # never the other way round. They answer different questions: what the
+    # process is BOUND to now, versus what it was ASKED to resume. They can
+    # disagree, and the case that produced this defect is exactly one that does
+    # — an agent told to resume a session it could not claim. Where they
+    # disagree, the process's own answer is the one the reader is asking about.
+    session_id = getattr(agent, "session_id", None) or (sessions or {}).get(pid)
     key = str(session_id) if session_id else _no_session_key(agent)
-    held = (labels or {}).get(getattr(agent, "pid", None))
+    held = (labels or {}).get(pid)
     return key, {
         "session_id": str(session_id) if session_id else None,
         "label": str(held) if held else None,
@@ -253,10 +270,55 @@ def _prune(document: Dict[str, Any], *, now: float, retention: float) -> int:
     return dropped
 
 
+def _retire_unseen_sessionless(document: Dict[str, Any],
+                               seen: Set[Tuple[str, str]]) -> int:
+    """Drop every session-less entry this round did not see. Returns how many.
+
+    Such an entry can never be acted on — there is no session to resume, and
+    `read()` already reports it as unresumable. Its ONE stated purpose is the
+    prefix constant's: keep the roster from claiming a smaller fleet than exists
+    while an agent is live and unknown to the runtime. That purpose ends the
+    moment the agent stops being seen, and until now nothing ended it — the
+    entry sat out the full retention window as junk.
+
+    Measured 2026-08-27, before this existed: **8 entries, 4 of them
+    session-less**, and three of those four were one live session recorded under
+    successive pids. Each was created in the window before the runtime wrote its
+    per-pid record, superseded by a real entry when it did, and never removed.
+    One dead row per agent, presented as fleet history.
+
+    **The fail direction is what makes this permissible, and it is the whole
+    argument.** Nothing that could have been acted on is removed: the rows that
+    go are exactly the ones the read path marks unresumable for want of a session
+    id. And the key is derived rather than allocated, so an agent that is still
+    around reappears on the next sighting.
+
+    ⚠ Callers: this is for a WHOLE-FLEET write only. A partial write knows
+    nothing about what it did not look at, so removing on absence would delete
+    live agents' rows. `record` gates it on `full_sweep`, the same flag and the
+    same argument that already guards the round stamp.
+    """
+    retired = 0
+    for project, entries in document.get("projects", {}).items():
+        for key in [k for k in entries
+                    if k.startswith(NO_SESSION_KEY_PREFIX) and (project, k) not in seen]:
+            # Named, never silent: an entry that vanishes without a line is
+            # indistinguishable from one that was never written — the reason the
+            # age prune logs too.
+            logger.info(
+                "fleet roster: retiring %s from %s — no session id and not seen this round; "
+                "it could never have been restored", key, project,
+            )
+            del entries[key]
+            retired += 1
+    return retired
+
+
 def record(
     agents: Iterable[Any],
     *,
     labels: Optional[Dict[int, str]] = None,
+    sessions: Optional[Dict[int, str]] = None,
     path: Optional[str] = None,
     now: Optional[float] = None,
     retention: float = RETENTION_SECONDS,
@@ -268,6 +330,18 @@ def record(
     is passed IN rather than resolved here: this module is a document, and a
     document that opens a socket to the agent owner would make every write
     depend on a service being up. `None` means the holder could not be asked.
+
+    `sessions` maps pid -> the session the FRAMEWORK started that agent on, and
+    travels the same way for the same reason — same shape, same owner answer,
+    no second round trip. It fills a silence in the runtime's record and never
+    overrides one. `None` (could not ask) stays distinct from `{}` (asked, holds
+    nothing): the first is a gap in what is known, the second is a statement.
+
+    Measured 2026-08-27, and this is why it exists: an agent the framework had
+    started with `--resume <S>` was recorded with NO session id and the reason
+    *"no session id was ever recorded for this agent"* — while the owner was
+    reporting `resumed_session: <S>` for that same pid. The answer was reaching
+    the caller and being dropped on the way in.
 
     **`full_sweep` says whether `agents` is the WHOLE fleet.** Only a whole-fleet
     pass may move `last_round_at`, because the stamp's meaning is *"everything
@@ -292,13 +366,15 @@ def record(
         document = dict(EMPTY, projects={})
 
     added = updated = skipped = 0
+    seen: Set[Tuple[str, str]] = set()
     for agent in agents:
-        built = _entry_from(agent, now=now, labels=labels)
+        built = _entry_from(agent, now=now, labels=labels, sessions=sessions)
         if built is None:
             skipped += 1
             continue
         key, entry = built
         project = entry["project"] or entry["cwd"]
+        seen.add((str(project), key))
         entries = document["projects"].setdefault(str(project), {})
         existing = entries.get(key)
         if existing:
@@ -313,6 +389,7 @@ def record(
             entries[key] = entry
             added += 1
 
+    retired = _retire_unseen_sessionless(document, seen) if full_sweep else 0
     pruned = _prune(document, now=now, retention=retention)
     if full_sweep:
         # Stamped even when this round saw NOTHING. That is not an edge case to
@@ -328,10 +405,11 @@ def record(
         )
     _write_atomically(document, path)
     logger.debug(
-        "fleet roster: recorded %s added, %s updated, %s skipped, %s pruned -> %s",
-        added, updated, skipped, pruned, path,
+        "fleet roster: recorded %s added, %s updated, %s skipped, %s pruned, %s retired -> %s",
+        added, updated, skipped, pruned, retired, path,
     )
-    return {"added": added, "updated": updated, "skipped": skipped, "pruned": pruned}
+    return {"added": added, "updated": updated, "skipped": skipped,
+            "pruned": pruned, "retired": retired}
 
 
 def read(
@@ -374,7 +452,17 @@ def read(
         if log:
             resumable, reason = True, None
         elif not session_id:
-            resumable, reason = False, "no session id was ever recorded for this agent"
+            # Names BOTH sources on purpose. The previous wording — "no session
+            # id was ever recorded for this agent" — was a denial, and it was
+            # false for the one case that mattered: the framework HAD recorded
+            # one, at the moment it started the agent, and was reporting it
+            # elsewhere on the same screen. A reader acting on that line needs to
+            # know which two places were asked, because that is what tells them
+            # nothing is broken and what would change the answer.
+            resumable, reason = False, (
+                "no source knows a session for this agent — the runtime has no "
+                "record of it and the framework did not start it"
+            )
         else:
             resumable, reason = False, f"no transcript on disk for session {session_id}"
         entries.append({

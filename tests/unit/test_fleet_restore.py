@@ -600,7 +600,11 @@ def test_an_entry_with_no_transcript_says_so_rather_than_reading_as_empty(tmp_pa
     finally:
         fleet_api.roster.read = real
     assert gone["turns"] == [] and "no transcript on disk" in gone["problem"]
-    assert nameless["turns"] == [] and "no session id" in nameless["problem"]
+    # The wording changed with `roster-session-identity`: the old line —
+    # "no session id was ever recorded for this agent" — was a DENIAL, and false
+    # for an agent the framework had started on a known session. What this test
+    # asserts is unchanged: two different absences, two different sentences.
+    assert nameless["turns"] == [] and "no source knows a session" in nameless["problem"]
     assert gone["problem"] != nameless["problem"], "two absences, two sentences"
     # The sentence is the entry's own, so the panel and the row beside it cannot
     # disagree about why this conversation is not there.
