@@ -66,7 +66,13 @@
 - [x] 7.13 Python tests against a REAL git worktree: it can be listed, its file is read from it and not from main, an unrelated directory and a subdirectory are still refused [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
 - [x] 7.14 Vitest: the panel reads the worktree, says which checkout, says nothing for the project's own, and writes back to the checkout it read from [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
 - [x] 7.15 Mutation-prove it — guard back to `_known_roots` (2 killed), base swapped to root, file target's root swapped to root, request checkout ignored (3 killed), save root swapped, header marker removed [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
-- [ ] 7.16 **OPEN — look at a worktree agent's link in the browser.** Attempted 2026-08-26 and NOT completed, for a reason worth writing down rather than retrying blindly: the only worktree agent on the screen belongs to a live session whose output moves under the cursor between one tool call and the next, so a click aimed at a path lands a few lines off; and clicking around in somebody else's running terminal is itself a side effect. What IS measured: the endpoint serves the real worktree live (`GET /api/fleet/files?root=<project>-wt-<name>` → 30 121 files, `source: git`), the panel's read/write/marker behaviour is held by four unit tests, and the desktop half of the same route was seen working on the live screen earlier today. Nobody has yet SEEN a worktree file open in the internal editor [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
+- [x] 7.16 **DONE 2026-08-27 — SEEN.** Attempted 2026-08-26 and NOT completed, for a reason worth writing down rather than retrying blindly: the only worktree agent on the screen belongs to a live session whose output moves under the cursor between one tool call and the next, so a click aimed at a path lands a few lines off; and clicking around in somebody else's running terminal is itself a side effect. What IS measured: the endpoint serves the real worktree live (`GET /api/fleet/files?root=<project>-wt-<name>` → 30 121 files, `source: git`), the panel's read/write/marker behaviour is held by four unit tests, and the desktop half of the same route was seen working on the live screen earlier today. Nobody has yet SEEN a worktree file open in the internal editor [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
+
+  — **Closed by `terminal-links-and-typed-file-view` §7.2.** The obstacle described above was
+  real and was solved rather than retried: a link from a terminal standing in ONE checkout,
+  pointing at an absolute path in ANOTHER, was ctrl-clicked and opened in the panel, whose
+  header then named the checkout it was reading. So a checkout other than the agent's own
+  has now been SEEN opening in the internal editor.
 
 ## Acceptance Criteria (from spec scenarios)
 
