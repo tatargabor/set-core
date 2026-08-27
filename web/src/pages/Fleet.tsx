@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FleetProjectColumn from '../components/FleetProjectColumn'
 import { RestoreFromEmpty, RestoreForProject } from '../components/FleetRestore'
 import FleetPm from '../components/FleetPm'
+import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetSplitter from '../components/FleetSplitter'
 import {
   MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
@@ -2821,6 +2822,11 @@ export default function Fleet() {
           />
         )}
       </div>
+
+      {/* The account quota, directly under the header's counts. It fetches its
+          own snapshot, so a slow or failing usage read cannot delay anything
+          above or below it. */}
+      <FleetUsageStrip />
 
       {/* The PM strip — under the header, ABOVE the panel, and it replaces
           nothing. The queue decides which agent the screen below is showing;
