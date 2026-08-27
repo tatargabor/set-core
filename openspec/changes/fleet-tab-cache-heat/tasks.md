@@ -21,38 +21,38 @@
 
 ## 4. The mark on the tab
 
-- [ ] 4.1 Compute, per tab, one cooled fraction (0 when the request just started, 1 at the lifetime) and ONE `cold` boolean derived from it [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
-- [ ] 4.2 Render the bar filling from the leading edge with the cooled fraction, staying fully drawn past expiry [REQ: the-tab-marks-how-far-its-cache-has-cooled]
-- [ ] 4.3 Colour the bar in three bands by that same fraction [REQ: the-tab-marks-how-far-its-cache-has-cooled]
-- [ ] 4.4 Scale the bar's thickness with cache size against a fixed ceiling [REQ: the-mark-carries-the-stake-as-well-as-the-time]
-- [ ] 4.5 Drive the name's cold styling and the price's appearance from the SAME `cold` boolean as the full bar — no second computation [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
-- [ ] 4.6 Render the unmeasured mark — distinct from live and cold, with no bar and no price [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
-- [ ] 4.7 Put the remaining minutes, the token count and the cost in the hover title, for every state including unmeasured [REQ: the-exact-figures-are-reachable-without-acting]
+- [x] 4.1 Compute, per tab, one cooled fraction (0 when the request just started, 1 at the lifetime) and ONE `cold` boolean derived from it [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
+- [x] 4.2 Render the bar filling from the leading edge with the cooled fraction, staying fully drawn past expiry [REQ: the-tab-marks-how-far-its-cache-has-cooled]
+- [x] 4.3 Colour the bar in three bands by that same fraction [REQ: the-tab-marks-how-far-its-cache-has-cooled]
+- [x] 4.4 Scale the bar's thickness with cache size against a fixed ceiling [REQ: the-mark-carries-the-stake-as-well-as-the-time]
+- [x] 4.5 Drive the name's cold styling and the price's appearance from the SAME `cold` boolean as the full bar — no second computation [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
+- [x] 4.6 Render the unmeasured mark — distinct from live and cold, with no bar and no price [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
+- [x] 4.7 Put the remaining minutes, the token count and the cost in the hover title, for every state including unmeasured [REQ: the-exact-figures-are-reachable-without-acting]
 
 ## 5. Proving the marks
 
-- [ ] 5.1 Unit-test the fresh / partway / expired renderings, asserting the bar's fill and that it persists past expiry [REQ: the-tab-marks-how-far-its-cache-has-cooled]
-- [ ] 5.2 Unit-test that two tabs at equal cooling but different sizes render different thicknesses [REQ: the-mark-carries-the-stake-as-well-as-the-time]
-- [ ] 5.3 Unit-test that cold name, full bar and price appear and disappear together — and that no input makes them disagree [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
-- [ ] 5.4 Unit-test that an unmeasured tab renders neither as cold nor as live [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
-- [ ] 5.5 Unit-test that an unknown model shows tokens and no monetary figure [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
-- [ ] 5.6 Mutation-check the new tests: break the cooled fraction, the thickness scale and the `cold` condition in turn, confirm each break fails a test, and restore each with a verified diff [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
+- [x] 5.1 Unit-test the fresh / partway / expired renderings, asserting the bar's fill and that it persists past expiry [REQ: the-tab-marks-how-far-its-cache-has-cooled]
+- [x] 5.2 Unit-test that two tabs at equal cooling but different sizes render different thicknesses [REQ: the-mark-carries-the-stake-as-well-as-the-time]
+- [x] 5.3 Unit-test that cold name, full bar and price appear and disappear together — and that no input makes them disagree [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
+- [x] 5.4 Unit-test that an unmeasured tab renders neither as cold nor as live [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
+- [x] 5.5 Unit-test that an unknown model shows tokens and no monetary figure [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
+- [x] 5.6 Mutation-check the new tests: break the cooled fraction, the thickness scale and the `cold` condition in turn, confirm each break fails a test, and restore each with a verified diff [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
 
 ## 6. PM mode ordering
 
-- [ ] 6.1 Replace the freshness sort key in `attention.py` with recoverable money — size × (rewrite − read) while live, zero once cold [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
-- [ ] 6.2 Keep freshness as the ranking for items whose cache state was not measured, without assuming a size or age for them [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
-- [ ] 6.3 Preserve project exhaustion and demotion exactly as they are — this task changes the key, not the queue's other rules [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
-- [ ] 6.4 Unit-test: equal freshness with unequal stakes, live outranking cold regardless of blockage time, and unmeasured items still ordered by freshness [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
-- [ ] 6.5 Update `attention.py`'s docstring — it currently states the module asserts no cache lifetime, which this change makes false [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [x] 6.1 Replace the freshness sort key in `attention.py` with recoverable money — size × (rewrite − read) while live, zero once cold [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [x] 6.2 Keep freshness as the ranking for items whose cache state was not measured, without assuming a size or age for them [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [x] 6.3 Preserve project exhaustion and demotion exactly as they are — this task changes the key, not the queue's other rules [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [x] 6.4 Unit-test: equal freshness with unequal stakes, live outranking cold regardless of blockage time, and unmeasured items still ordered by freshness [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
+- [x] 6.5 Update `attention.py`'s docstring — it currently states the module asserts no cache lifetime, which this change makes false [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival]
 
 ## 7. Verification
 
-- [ ] 7.1 Run the Python unit suite and the web unit suite; compare failures against a baseline built per the `regression-baseline` skill, not against a remembered number [REQ: the-tab-marks-how-far-its-cache-has-cooled]
-- [ ] 7.2 `tsc -b --force` in `web/` and `pnpm build`, so port 7400 serves the change [REQ: the-tab-marks-how-far-its-cache-has-cooled]
-- [ ] 7.3 **MANDATORY VISUAL CHECK — look at it in the browser.** Open the running dashboard's fleet screen with Claude in Chrome and report what is actually on the strip: a fresh tab with no bar, a partly cooled tab, a cold tab with a red name and a price, and an unmeasured tab showing its mark. Structural counts do not satisfy this task. **If the browser cannot be reached, this task stays OPEN** — say so in the task, in the commit, and to the user [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
-- [ ] 7.4 While looking, judge the accepted risk in situ: count the red names on the real strip and report whether red still reads as "failed" beside them. Do not change it unilaterally — report it [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
-- [ ] 7.5 Verify against a seat that genuinely has no transcript that the strip shows the unmeasured mark and not a cold one [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
+- [x] 7.1 Run the Python unit suite and the web unit suite; compare failures against a baseline built per the `regression-baseline` skill, not against a remembered number [REQ: the-tab-marks-how-far-its-cache-has-cooled]
+- [x] 7.2 `tsc -b --force` in `web/` and `pnpm build`, so port 7400 serves the change [REQ: the-tab-marks-how-far-its-cache-has-cooled]
+- [ ] 7.3 **MANDATORY VISUAL CHECK — PARTLY DONE, STAYS OPEN.** Seen on the running dashboard 2026-08-27: a fresh tab with no visible bar (`fill 0.003`), a partly cooled tab in the emerald band (`0.218`), and one in the amber band (`0.600`) — the band change is legible at a glance. **NOT seen: the cold tab (red name + price) and the unmeasured mark.** Not a tooling failure — the two seats in those states (`tg-f9`, cold; `chrome`, unmeasured) are each the ONLY agent on their project, and the tab strip only renders where a project has several. Both are covered by unit tests, which is not the same thing. Re-check when a multi-agent project has a seat past its hour. **MANDATORY VISUAL CHECK — look at it in the browser.** Open the running dashboard's fleet screen with Claude in Chrome and report what is actually on the strip: a fresh tab with no bar, a partly cooled tab, a cold tab with a red name and a price, and an unmeasured tab showing its mark. Structural counts do not satisfy this task. **If the browser cannot be reached, this task stays OPEN** — say so in the task, in the commit, and to the user [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
+- [ ] 7.4 **OPEN — nothing to judge yet:** zero red names on the live strip, because no cold seat renders as a tab (see 7.3). While looking, judge the accepted risk in situ: count the red names on the real strip and report whether red still reads as "failed" beside them. Do not change it unilaterally — report it [REQ: a-cold-tab-says-so-in-more-than-one-way-and-the-ways-cannot-disagree]
+- [ ] 7.5 **OPEN for the same reason as 7.3** — the only unmeasured seat (`chrome`) is alone on its project, so no tab renders for it. Verify against a seat that genuinely has no transcript that the strip shows the unmeasured mark and not a cold one [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
 
 ## Acceptance Criteria (from spec scenarios)
 

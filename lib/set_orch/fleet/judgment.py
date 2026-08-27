@@ -134,6 +134,14 @@ class Subject:
     #: does not measure it keeps every agent: an unmeasured channel must not
     #: read as a missing one.
     reachable: bool = True
+    #: What answering this agent now still saves against letting its prompt
+    #: cache expire, in USD. `None` means it was not measured — which is not
+    #: zero, and the queue keeps the two apart.
+    #:
+    #: Measured by the caller for the same reason `state` is: this module and
+    #: the queue below it read no files, so a figure that comes from a
+    #: transcript arrives as an argument or not at all.
+    recoverable_usd: Optional[float] = None
 
 
 @dataclass(frozen=True)

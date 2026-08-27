@@ -221,3 +221,44 @@ def test_remaining_seconds_never_go_negative():
     h = _heat()
     assert h.seconds_remaining(NOW + timedelta(minutes=45)) == pytest.approx(900)
     assert h.seconds_remaining(NOW + timedelta(hours=5)) == 0.0
+
+
+def test_a_usage_record_behind_large_records_is_still_found(tmp_path):
+    """The defect the unit tests could not see, held as one.
+
+    Measured 2026-08-27 on a live 5.7 MB transcript: the session read as
+    UNMEASURED while carrying a perfectly good 489 488-token record. The records
+    nearest the end were large — a screenshot's base64, a big tool result — so
+    the first 64 KB chunk read backwards held only those, none with a `usage`
+    block, and the reader stopped there instead of continuing.
+
+    Every fixture above fits inside one chunk, so all nineteen of them passed
+    against the broken reader. This one does not fit, on purpose: the usage
+    record sits behind ~200 KB of oversized records, several of them individually
+    larger than the chunk.
+    """
+    lines = [_record(when=NOW, read=489_000, write=488)]
+    # Individually chunk-sized records, so a reader that returns the first
+    # non-empty chunk gets nothing but these.
+    lines += [json.dumps({"type": "user", "message": {"content": "x" * 70_000}})
+              for _ in range(3)]
+    path = _write(tmp_path, lines)
+
+    assert (tmp_path / "session.jsonl").stat().st_size > 200_000
+    heat = read_cache_heat(path)
+    assert heat is not None, "a record behind large ones must still be found"
+    assert heat.tokens == 489_488
+
+
+def test_a_single_record_larger_than_a_chunk_is_read_whole(tmp_path):
+    """A base64 screenshot is one line, and it can exceed the chunk on its own.
+
+    The line has to be reassembled across reads rather than being handed back in
+    pieces — a fragment does not parse as JSON, and silently skipping it would
+    lose the record it belongs to.
+    """
+    big = _record(when=NOW, read=140_000, write=1_403)
+    padded = json.dumps({"timestamp": NOW.isoformat(), "type": "user",
+                         "message": {"content": "y" * 150_000}})
+    path = _write(tmp_path, [big, padded])
+    assert read_cache_heat(path).tokens == 141_403

@@ -48,7 +48,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterator, Optional
 
 from ..cost import cache_rewrite_cost_usd
 
@@ -123,8 +123,20 @@ class CacheHeat:
         return self.cooled_fraction(now) >= 1.0
 
 
-def _tail_lines(path: str) -> list[str]:
-    """The file's lines, last first, without reading what comes before them."""
+def _tail_lines(path: str) -> Iterator[str]:
+    """The file's lines, last first, without reading what comes before them.
+
+    A GENERATOR over the whole tail window, not the first chunk that happens to
+    hold a line. Measured 2026-08-27 on a live 5.7 MB transcript: returning one
+    chunk's worth made a session with a perfectly good usage record read as
+    unmeasured, because the records nearest the end were large — a screenshot's
+    base64, a big tool result — and none of the few that fit in the first 64 KB
+    carried a `usage` block. The caller then gave up one record short.
+
+    That is the mechanism-versus-result shape: the chunked read did read
+    backwards, exactly as intended, and the answer was still wrong. The unit
+    tests could not see it because their fixtures fit inside one chunk.
+    """
     try:
         size = os.path.getsize(path)
     except OSError as exc:
@@ -132,31 +144,33 @@ def _tail_lines(path: str) -> list[str]:
         # and a consumer's project name must not reach a log line. Same rule
         # `db_safety.py` follows when it logs a URL's scheme and nothing else.
         logger.debug("cache heat: cannot stat transcript (%s)", type(exc).__name__)
-        return []
+        return
     if size == 0:
-        return []
+        return
 
     try:
         with open(path, "rb") as fh:
             read = 0
-            buf = b""
+            held = b""          # a possibly-truncated first line, carried back
             while read < size and read < _MAX_TAIL:
                 step = min(_CHUNK, size - read)
                 read += step
                 fh.seek(size - read)
-                buf = fh.read(step) + buf
-                # Every line but the first in `buf` is whole; the first may be
-                # truncated by the chunk boundary, so it is held back until the
-                # next step unless we have reached the start of the file.
+                buf = fh.read(step) + held
                 lines = buf.split(b"\n")
-                whole = lines if read >= size else lines[1:]
-                out = [ln.decode("utf-8", "replace") for ln in reversed(whole) if ln.strip()]
-                if out:
-                    return out
-            return []
+                # Every line but the first is whole. The first is only whole once
+                # the read has reached the start of the file.
+                if read >= size:
+                    held = b""
+                    whole = lines
+                else:
+                    held = lines[0]
+                    whole = lines[1:]
+                for raw in reversed(whole):
+                    if raw.strip():
+                        yield raw.decode("utf-8", "replace")
     except OSError as exc:
         logger.debug("cache heat: cannot read transcript (%s)", type(exc).__name__)
-        return []
 
 
 def _heat_from_record(record: dict) -> Optional[CacheHeat]:

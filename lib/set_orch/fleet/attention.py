@@ -13,12 +13,25 @@ acknowledge a dozen completion reports before reaching a real question. Under th
 freeze rule below they would sit *in front of* the questions rather than beside
 them.
 
-## Freshest first, which inverts the usual fairness rule
+## Ordered by the money still on the table, freshness where nothing was measured
 
-Ordering is by how recently the blockage began, newest first. The reason is a
-cost rather than a preference: an agent answered while its prompt cache is still
-warm resumes from it, and one answered much later re-reads its whole context.
-This module asserts no particular cache lifetime — it follows the direction.
+An agent answered while its prompt cache is still warm resumes from it; one
+answered later re-reads its whole context at twenty times the price. Ordering
+follows that cost directly: `cache size x (rewrite - read)` while the cache is
+live, zero once it has expired.
+
+**This used to be freshness, as a stand-in for exactly that cost, and the
+docstring said so — "asserts no particular cache lifetime, it follows the
+direction".** The direction was right and the proxy was blind twice. It cannot
+see the STAKE: two agents blocked for the same ten minutes may hold caches that
+differ more than tenfold, and on this machine live sessions ranged from 15k to
+196k tokens. And it cannot see the THRESHOLD: past the lifetime there is nothing
+left to save, so a long-blocked agent's position is no longer a cost question,
+while freshness kept ranking it as merely "oldest".
+
+Freshness remains, one tier down, for items whose cache was NOT measured. They
+are not given a stand-in figure: a zero would sort them with the already-expired
+and any positive guess would be a stake nobody measured.
 
 Starvation is the obvious price, and three things pay it: nothing leaves the
 queue except by being dealt with, what is queued is counted where the reader is
@@ -89,8 +102,17 @@ class Item:
     label: Optional[str] = None
     #: Which layer concluded it: `structural` (measured) or `model` (an opinion).
     source: str = "model"
-    #: Epoch at which the blockage began — what the ordering is by.
+    #: Epoch at which the blockage began. The FALLBACK ordering — see
+    #: `recoverable_usd`, which outranks it wherever a cache was measured.
     blocked_since: float = 0.0
+    #: What answering this agent now still saves, in USD, versus letting its
+    #: prompt cache expire first: cache size x (rewrite price - read price)
+    #: while the cache is live, zero once it has expired.
+    #:
+    #: `None` means the cache was NOT MEASURED — no transcript, no usage record —
+    #: which is not the same as zero. Zero says "nothing left to save here";
+    #: None says "we do not know", and those two must not sort together.
+    recoverable_usd: Optional[float] = None
     #: The point `resumed_since` measures from. An epoch, not a formatted time.
     blockage_point: Optional[float] = None
     #: How many times this item has been put in front of the reader without
@@ -212,6 +234,7 @@ class Queue:
                     source=verdict.source,
                     blocked_since=began,
                     blockage_point=began,
+                    recoverable_usd=subject.recoverable_usd,
                 )
             elif result.measured and pid in self._items:
                 # It stopped asking, and we MEASURED that. An unmeasured pass
@@ -487,10 +510,25 @@ def _ordered(items: Iterable[Item], current_project: Optional[str]) -> List[Item
     rank = {p: i for i, p in enumerate(sorted(freshest, key=lambda p: -freshest[p]))}
 
     def key(it: Item) -> Tuple:
+        # Money first, freshness where there is no money to speak of.
+        #
+        # A measured item sorts by what answering it now SAVES; an unmeasured one
+        # keeps the old freshness ordering. The two are kept in separate tiers
+        # rather than mixed, because there is no honest number to give an
+        # unmeasured item: a zero would sort it with the already-expired, and any
+        # positive stand-in would be a stake nobody measured.
+        #
+        # Within the measured tier, an expired cache scores zero and falls to the
+        # bottom of it — correctly. Past expiry the money is already spent, so
+        # answering that agent sooner buys nothing, and the item's urgency is no
+        # longer a cost question at all.
+        measured = it.recoverable_usd is not None
         return (
             1 if it.presented_count else 0,
             0 if it.project == current_project else 1,
             rank[it.project],
+            0 if measured else 1,
+            -(it.recoverable_usd or 0.0),
             -it.blocked_since,
         )
 

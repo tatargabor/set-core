@@ -118,8 +118,14 @@ def test_the_snapshot_shape_is_stable_and_carries_no_session_text(session):
         "enabled", "presented", "queued", "counts", "can_go_back", "can_go_forward",
         "pending_switch", "last_cycle", "last_error", "cycling",
     }
+    # Exhaustive, so a field added upstream has to be argued for here too — the
+    # snapshot is what leaves the machine, which makes it the second and last
+    # gate. `recoverable_usd` arrived 2026-08-27 with the cache-heat ordering: a
+    # USD figure derived from a token count, carrying nothing a consumer typed,
+    # and never written to disk (the queue is rebuilt each cycle, not saved).
     assert set(snap["presented"]) == {
-        "pid", "project", "label", "source", "blocked_since", "blockage_point", "presented_count",
+        "pid", "project", "label", "source", "blocked_since", "blockage_point",
+        "presented_count", "recoverable_usd",
     }
 
 

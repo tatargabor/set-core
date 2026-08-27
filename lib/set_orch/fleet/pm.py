@@ -31,12 +31,38 @@ from . import instruct as fleet_instruct
 from .owner_client import OwnerClient
 from . import judgment
 from .attention import Queue
+from .cache_heat import read_cache_heat
+from ..cost import (
+    CACHE_READ_MULTIPLIER, CACHE_WRITE_1H_MULTIPLIER, CACHE_WRITE_5M_MULTIPLIER,
+)
 from .discovery import discover_agents, discover_projects
 from .state import read_state
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["PmSession", "session"]
+
+
+def _recoverable_usd(session_log: Optional[str]) -> Optional[float]:
+    """What answering this agent now still saves, versus after its cache expires.
+
+    The difference between rewriting the cache (2x base input on a one-hour
+    entry) and reading it (0.1x) — so it is what the reader's promptness buys,
+    not what the session cost.
+
+    Zero once the cache has expired: past the lifetime the money is already
+    spent, and hurrying buys nothing. `None` when nothing was measured, and the
+    queue keeps that apart from zero — a zero would sort an unmeasured seat in
+    with the already-expired.
+    """
+    heat = read_cache_heat(session_log)
+    if heat is None or heat.rewrite_usd is None:
+        return None
+    if heat.is_cold():
+        return 0.0
+    read_share = heat.rewrite_usd * (CACHE_READ_MULTIPLIER / (
+        CACHE_WRITE_1H_MULTIPLIER if heat.ttl_seconds > 300 else CACHE_WRITE_5M_MULTIPLIER))
+    return round(heat.rewrite_usd - read_share, 4)
 
 
 class PmSession:
@@ -85,6 +111,11 @@ class PmSession:
                 session_log=a.session_log,
                 label=getattr(a, "name", None),
                 reachable=reachable(a),
+                # Measured HERE because this is the module that touches
+                # discovery, the model and the clock — the queue and the
+                # judgment layer below it read no files, so the figure has to
+                # arrive as an argument.
+                recoverable_usd=_recoverable_usd(a.session_log),
             )
             for a in agents
         ]

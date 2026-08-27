@@ -30,6 +30,8 @@ import type { AttentionAwaiting } from './fleetAttention'
 
 import type { CapabilityReport } from './fleetInstall'
 
+import type { CacheState } from './fleetCacheHeat'
+
 export interface FleetAgent {
   pid: number
   name: string | null
@@ -37,6 +39,15 @@ export interface FleetAgent {
   branch: string | null
   session_id: string | null
   binding_confirmed: boolean
+  /**
+   * What it costs to type into this seat right now.
+   *
+   * OPTIONAL, and the absence is a measurement rather than a default: the API
+   * omits the key entirely for a session with no transcript or no usage record.
+   * A zero-token expired cache would read as "cold, cheap to restart" — the
+   * opposite of "never measured" — so there is no zero to mistake for one.
+   */
+  cache?: CacheState
   sources: string[]
   kind: string
   /** `working` | `quiet` | `waiting` | `unknown`, and anything the producer adds later. */
