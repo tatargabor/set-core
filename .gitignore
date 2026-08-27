@@ -92,3 +92,8 @@ docs/integration/local/
 # The document belongs in ~/.local/share/set-core/, never in this repo.
 .roster-before-reboot.json
 **/.roster-before-reboot.json
+
+# Local-only model proxy experiments
+litellm-config.yaml
+test-local-model.sh
+local-proxy.py
