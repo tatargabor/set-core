@@ -59,8 +59,10 @@ const ROOT = '/home/x/proj'
 
 /** One file's content as the endpoint would answer it. */
 interface Fake { content: string; identity: string }
+/** A file the endpoint types by its BYTES rather than serving as text. */
+interface FakeBinary { media_type: string; bytes: number; raw: Uint8Array }
 
-let files: Record<string, Fake | { status: number; detail: string }>
+let files: Record<string, Fake | FakeBinary | { status: number; detail: unknown }>
 let writes: Array<Record<string, unknown>>
 /** Every `root=` the panel asked an endpoint for, in order. */
 let rootsAsked: string[]
@@ -68,6 +70,9 @@ let rootsAsked: string[]
 let listStatus: Record<string, string> | null
 /** Every `ignored=` the panel asked the listing for, in order. */
 let ignoredAsked: boolean[]
+/** Every Blob the panel built for a renderer, and every URL it released. */
+let createdBlobs: Blob[]
+let revokedUrls: string[]
 
 function server() {
   return vi.fn((url: string | URL, init?: RequestInit) => {
@@ -90,6 +95,20 @@ function server() {
         json: () => Promise.resolve({ identity: 'after-write', bytes: 1 }),
       } as Response)
     }
+    if (u.includes('/files/raw')) {
+      const path = decodeURIComponent(u.split('path=')[1] ?? '')
+      const entry = files[path]
+      if (!entry || !('raw' in entry)) {
+        return Promise.resolve({
+          ok: false, status: 415,
+          json: () => Promise.resolve({ detail: 'not served as bytes' }),
+        } as unknown as Response)
+      }
+      return Promise.resolve({
+        ok: true, status: 200,
+        blob: () => Promise.resolve(new Blob([entry.raw])),
+      } as unknown as Response)
+    }
     if (u.includes('/files/content')) {
       const path = decodeURIComponent(u.split('path=')[1] ?? '')
       const entry = files[path]
@@ -99,9 +118,20 @@ function server() {
       if ('status' in entry) {
         return Promise.resolve({ ok: false, status: entry.status, json: () => Promise.resolve({ detail: entry.detail }) } as Response)
       }
+      if ('raw' in entry) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({
+            path, kind: 'binary', media_type: entry.media_type, bytes: entry.bytes,
+          }),
+        } as Response)
+      }
       return Promise.resolve({
         ok: true, status: 200,
-        json: () => Promise.resolve({ path, content: entry.content, identity: entry.identity, bytes: entry.content.length }),
+        json: () => Promise.resolve({
+          path, kind: 'text', content: entry.content, identity: entry.identity,
+          bytes: entry.content.length,
+        }),
       } as Response)
     }
     return Promise.resolve({
@@ -126,10 +156,37 @@ beforeEach(() => {
     'a.ts': { content: 'one\ntwo\nthree\n', identity: 'id-a' },
     'b.ts': { content: 'other file\n', identity: 'id-b' },
     'empty.ts': { content: '', identity: 'id-empty' },
-    'huge.bin': { status: 413, detail: 'file is 9000000 bytes; this view serves at most 2097152' },
-    'logo.png': { status: 415, detail: 'not a text file' },
+    'huge.bin': {
+      status: 413,
+      detail: {
+        reason: 'too-large', bytes: 9000000, cap: 2097152,
+        message: 'file is 9000000 bytes; this view serves at most 2097152',
+      },
+    },
+    'report.pdf': {
+      status: 415,
+      detail: {
+        reason: 'no-view', media_type: 'application/pdf', bytes: 1258291,
+        message: 'application/pdf is not a type this view can show (1258291 bytes)',
+      },
+    },
+    'logo.png': { media_type: 'image/png', bytes: 6, raw: new Uint8Array([1, 2, 3, 4, 5, 6]) },
+    'clip.mp4': { media_type: 'video/mp4', bytes: 4, raw: new Uint8Array([9, 9, 9, 9]) },
+    'sub/deep/x.ts': { content: 'nested\n', identity: 'id-x' },
   }
   vi.stubGlobal('fetch', server())
+  /*
+    jsdom has no object-URL factory. Stubbed rather than skipped, because WHICH
+    type the panel puts on the Blob is the security decision under test: the
+    renderer must be handed the panel's choice, never a type a file's own bytes
+    could claim.
+  */
+  createdBlobs = []
+  vi.stubGlobal('URL', Object.assign(Object.create(URL), {
+    createObjectURL: (b: Blob) => { createdBlobs.push(b); return `blob:fake-${createdBlobs.length}` },
+    revokeObjectURL: (u: string) => { revokedUrls.push(u) },
+  }))
+  revokedUrls = []
   localStorage.clear()
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -168,20 +225,53 @@ describe('opening a file at a line', () => {
 })
 
 describe('a file that cannot be shown', () => {
-  it('states the reason where the content would be, naming the file', async () => {
+  it('states the reason where the content would be, naming the file and the cap', async () => {
     const { container } = view()
     await open(container, 'huge.bin')
     await waitFor(() => expect(container.querySelector('[data-fleet-file-refused="huge.bin"]')).toBeTruthy())
-    expect(container.textContent).toMatch(/huge\.bin cannot be shown/)
-    expect(container.textContent).toMatch(/9000000 bytes/)
+    expect(container.querySelector('[data-fleet-file-why="too-large"]')).toBeTruthy()
+    expect(container.textContent).toMatch(/huge\.bin is too large/)
+    expect(container.textContent).toMatch(/8\.6 MB/)
+    expect(container.textContent).toMatch(/at most 2\.0 MB/)
     // And NO editor: an empty editor for an unreadable file reads as an empty file.
     expect(screen.queryByTestId('monaco')).toBeNull()
   })
 
-  it('says "not a text file" rather than rendering nothing', async () => {
+  it('keeps the three reasons APART', async () => {
+    /*
+      *Too large*, *no view for this type* and *unreadable* send the reader to
+      three different places. A panel that collapsed them into one sentence
+      would send two of the three to the wrong one — and a large IMAGE refused
+      for its size must not be reported as a type with no view, because that
+      states a limit the framework does not have.
+    */
     const { container } = view()
-    await open(container, 'logo.png')
-    await waitFor(() => expect(container.textContent).toMatch(/not a text file/))
+    await open(container, 'report.pdf')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-why="no-view"]')).toBeTruthy())
+    expect(container.textContent).toMatch(/application\/pdf/)
+    expect(container.textContent).toMatch(/1\.2 MB/)
+    expect(container.textContent).not.toMatch(/too large/)
+  })
+
+  it('offers the desktop hand-over for a type it cannot draw, and only then', async () => {
+    // AC-42 and AC-52. A PDF is NAMED and handed over; no viewer is embedded.
+    const { container } = view()
+    await open(container, 'report.pdf')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-handover="report.pdf"]')).toBeTruthy())
+    expect(container.querySelector('embed, object, iframe')).toBeNull()
+
+    fireEvent.click(container.querySelector('[data-fleet-file-handover="report.pdf"]')!)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-handover-outcome="ok"]')).toBeTruthy())
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .find(c => String(c[0]).includes('/api/desktop/open'))
+    expect(JSON.parse(String((call![1] as RequestInit).body)))
+      .toEqual({ path: `${ROOT}/report.pdf` })
+
+    // And NOT offered where the hand-over is not the answer.
+    await open(container, 'huge.bin')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-why="too-large"]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-handover]')).toBeNull()
   })
 
   it('shows an EMPTY file as empty, which is not a failure', async () => {
@@ -524,5 +614,136 @@ describe('hiding the file list', () => {
     await waitFor(() => expect(container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
     fireEvent.click(toggle(container))
     expect(toggle(container).className).not.toContain('amber')
+  })
+})
+
+/**
+ * A FILE THAT IS NOT TEXT — the arm the panel grew for it.
+ *
+ * The failure this replaces was a refusal and nothing else: agents produce
+ * screenshots constantly and print the path, and the panel could only say *not
+ * a text file* about every one of them.
+ */
+describe('a binary the panel can draw', () => {
+  it('renders an image the panel FETCHED, with the type it chose itself', async () => {
+    const { container } = view()
+    await open(container, 'logo.png')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-shown="logo.png"]')).toBeTruthy())
+
+    const img = container.querySelector('img') as HTMLImageElement
+    expect(img).toBeTruthy()
+    // Never pointed at the endpoint: the bytes are fetched and wrapped here, so
+    // the type that reaches the renderer is the PANEL's choice and not
+    // something the file's own bytes could claim.
+    expect(img.getAttribute('src')).toMatch(/^blob:/)
+    expect(createdBlobs).toHaveLength(1)
+    expect(createdBlobs[0].type).toBe('image/png')
+    // Scaled to fit rather than to fill — a screenshot is routinely wider than
+    // this panel, and an overflowing image costs the reader two scrollbars.
+    expect(img.className).toMatch(/object-contain/)
+
+    // No save control: there is no editor behind an image, so a save would
+    // either do nothing or write back something nobody edited.
+    expect(container.querySelector('[data-fleet-file-save]')).toBeNull()
+    expect(screen.queryByTestId('monaco')).toBeNull()
+  })
+
+  it('refuses a type the PANEL does not draw, even when the endpoint offered it', async () => {
+    /*
+      The second gate, and the reason it is a second one rather than the same
+      one moved: the server's allow-list and the panel's must BOTH say yes
+      before a byte is drawn. Here the endpoint answers `video/mp4` — and
+      nothing is fetched, because this panel has no view for it.
+    */
+    const { container } = view()
+    await open(container, 'clip.mp4')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-why="no-view"]')).toBeTruthy())
+    expect(container.textContent).toMatch(/video\/mp4/)
+    expect(createdBlobs).toHaveLength(0)
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .some(c => String(c[0]).includes('/files/raw'))).toBe(false)
+  })
+
+  it('gives the editor back when the reader opens a text file next', async () => {
+    // AC-43 — and the object URL is RELEASED, which is the half nothing on
+    // screen would show: an un-revoked object URL keeps the whole file alive in
+    // the page for as long as the tab is open.
+    const { container } = view()
+    await open(container, 'logo.png')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-shown="logo.png"]')).toBeTruthy())
+
+    await open(container, 'a.ts')
+    await waitFor(() => expect(screen.getByTestId('monaco')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-shown]')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+    expect(revokedUrls).toContain('blob:fake-1')
+
+    fireEvent.change(screen.getByTestId('monaco'), { target: { value: 'edited\n' } })
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-save]')).toBeTruthy())
+  })
+
+  it('puts nothing of the project into browser storage on these paths', async () => {
+    // The confidentiality boundary is PERSISTENCE, not display. A path, a media
+    // type and a byte count are all consumer domain, and none of them may
+    // outlive the page.
+    const { container } = view()
+    await open(container, 'logo.png')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-shown="logo.png"]')).toBeTruthy())
+    await open(container, 'report.pdf')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-why="no-view"]')).toBeTruthy())
+
+    const stored = Object.keys(localStorage).map(k => `${k}=${localStorage.getItem(k)}`).join('|')
+    for (const secret of ['logo.png', 'report.pdf', 'image/png', 'application/pdf', ROOT]) {
+      expect(stored).not.toContain(secret)
+    }
+  })
+})
+
+/**
+ * REVEALING A DIRECTORY — a move in the structure, never a change of what is
+ * open. The panel already refuses to lose an unsaved edit, and a reveal that
+ * quietly closed a dirty file would be that same loss through a new door.
+ */
+describe('revealing a directory', () => {
+  it('expands it, marks it, and opens nothing', async () => {
+    const { container, rerender } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="a.ts"]')).toBeTruthy())
+    rerender(<FleetFileView root={ROOT} projectName="proj" onClose={() => {}}
+                            request={{ path: 'sub', reveal: true }} />)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-node-active="yes"]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-node-active="yes"]')
+      ?.getAttribute('data-fleet-file-node')).toBe('sub')
+    expect(screen.queryByTestId('monaco')).toBeNull()
+    expect(container.querySelector('[data-fleet-file-refused]')).toBeNull()
+  })
+
+  it('SAYS SO when the listing has nothing beneath it', async () => {
+    // Never a silent no-op: an activation that appears to do nothing is
+    // indistinguishable from a broken control.
+    const { container, rerender } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="a.ts"]')).toBeTruthy())
+    rerender(<FleetFileView root={ROOT} projectName="proj" onClose={() => {}}
+                            request={{ path: 'nowhere', reveal: true }} />)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-reveal-empty="nowhere"]')).toBeTruthy())
+    expect(container.textContent).toMatch(/may be excluding what it holds/)
+  })
+
+  it('leaves an unsaved edit and the open file exactly where they were', async () => {
+    const { container, rerender } = view()
+    await open(container, 'a.ts')
+    await waitFor(() => expect(screen.getByTestId('monaco')).toBeTruthy())
+    fireEvent.change(screen.getByTestId('monaco'), { target: { value: 'edited\n' } })
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-dirty="yes"]')).toBeTruthy())
+
+    rerender(<FleetFileView root={ROOT} projectName="proj" onClose={() => {}}
+                            request={{ path: 'sub', reveal: true }} />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="sub"]')).toBeTruthy())
+
+    // No question asked, nothing closed, nothing lost.
+    expect(container.querySelector('[data-fleet-file-ask]')).toBeNull()
+    expect((screen.getByTestId('monaco') as HTMLTextAreaElement).value).toBe('edited\n')
+    expect(container.querySelector('[data-fleet-file-open="a.ts"]')).toBeTruthy()
   })
 })

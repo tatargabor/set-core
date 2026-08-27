@@ -66,6 +66,33 @@ function remember(key: string, value: boolean): void {
   try { localStorage.setItem(key, value ? '1' : '0') } catch { /* a preference, not the panel */ }
 }
 
+/**
+ * The media types THIS PANEL will draw — its own list, not the server's.
+ *
+ * Deliberately a second list rather than a value read off the response, and the
+ * duplication is the design: the type that reaches a renderer is the panel's
+ * CHOICE, so a file whose bytes claim to be a document cannot become one by
+ * saying so. The server's allow-list still stands; these are two independent
+ * gates rather than one moved.
+ *
+ * The drift risk that usually condemns a second enumeration points the safe way
+ * here: both lists must agree before any byte is drawn, so a disagreement makes
+ * something fail to render — never something render that should not have.
+ *
+ * `image/svg+xml` is on neither list. An SVG is text, so it opens in the editor.
+ */
+const PANEL_RENDERS = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp',
+  'image/avif', 'image/tiff', 'image/x-icon', 'image/vnd.microsoft.icon',
+])
+
+/** A byte count as a person reads it. Nothing here is persisted anywhere. */
+function humanBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
 const WRAP_KEY = 'set-file-wrap'
 const IGNORED_KEY = 'set-file-ignored'
 const TREE_HIDDEN_KEY = 'set-file-tree-hidden'
@@ -98,7 +125,26 @@ type Opened =
   | { kind: 'none' }
   | { kind: 'loading'; path: string }
   | { kind: 'open'; path: string; text: string; identity: string; line?: number; lineBeyondEnd?: boolean }
-  | { kind: 'refused'; path: string; reason: string }
+  /** A binary the panel can DRAW. `url` is an object URL this panel owns. */
+  | { kind: 'shown'; path: string; mediaType: string; bytes: number; url: string }
+  /**
+   * Not shown, and WHY — the three reasons stay apart.
+   *
+   * *Too large*, *no view for this type* and *unreadable* send the reader to
+   * three different places, and a panel that collapsed them into one sentence
+   * sends two of the three to the wrong one. In particular a large image is
+   * refused for its SIZE, not for its type, and saying otherwise reports a limit
+   * the framework does not have.
+   */
+  | {
+      kind: 'refused'
+      path: string
+      reason: string
+      why: 'too-large' | 'no-view' | 'unreadable'
+      mediaType?: string
+      bytes?: number
+      cap?: number
+    }
 
 /** Where a save got to. `conflict` keeps the reader's text — see the header. */
 type SaveState =
@@ -380,18 +426,140 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     [listing],
   )
 
+  /**
+   * The object URL the image view is currently holding, so it can be released.
+   *
+   * A ref rather than state, because releasing it is cleanup and must happen
+   * whatever re-renders: an object URL that is never revoked keeps the whole
+   * file alive in the page for as long as the tab is open, and this panel is
+   * used to flick through files.
+   */
+  /**
+   * Handing a file the panel cannot draw to the reader's own desktop.
+   *
+   * The same endpoint the terminal uses, with the same guard: it refuses to
+   * hand over anything the desktop would RUN or interpret, and this change
+   * widens that list rather than relaxing it. What is offered here is only the
+   * case where the hand-over is the answer — a type this panel has no view for.
+   */
+  const [handOver_outcome, setHandOverOutcome] =
+    useState<{ ok: boolean; reason?: string } | null>(null)
+  const handOver = useCallback(async (rel: string) => {
+    setHandOverOutcome(null)
+    try {
+      const res = await fetch('/api/desktop/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: `${readRoot.replace(/\/+$/, '')}/${rel}` }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setHandOverOutcome({ ok: false, reason: String(body?.detail ?? `HTTP ${res.status}`) })
+        return
+      }
+      setHandOverOutcome({ ok: true })
+    } catch (e) {
+      setHandOverOutcome({ ok: false, reason: String((e as Error)?.message ?? e) })
+    }
+  }, [readRoot])
+
+  const objectUrl = useRef<string | null>(null)
+  const releaseObjectUrl = useCallback(() => {
+    if (objectUrl.current) { URL.revokeObjectURL(objectUrl.current); objectUrl.current = null }
+  }, [])
+  useEffect(() => releaseObjectUrl, [releaseObjectUrl])
+
+  /**
+   * Fetch a renderable file's BYTES and draw them — never by pointing an `<img>`
+   * at the endpoint.
+   *
+   * The whole security decision is in this order of operations, and each step
+   * matters:
+   *
+   *  - the response is served as an ATTACHMENT with `nosniff`, so a browser left
+   *    to itself renders nothing;
+   *  - the media type is checked against this panel's OWN list before anything
+   *    is drawn;
+   *  - and the `Blob` is constructed WITH THAT TYPE, so the type reaching the
+   *    renderer is the panel's choice rather than something the file's bytes
+   *    could claim.
+   *
+   * A local dashboard cannot buy a second origin — the isolation GitHub gets
+   * from `raw.githubusercontent.com` is not available — so this is what stands
+   * in its place.
+   */
+  const showBinary = useCallback(async (path: string, mediaType: string, bytes: number) => {
+    if (!PANEL_RENDERS.has(mediaType)) {
+      setOpened({
+        kind: 'refused', path, why: 'no-view', mediaType, bytes,
+        reason: `${mediaType} is not a type this panel can show`,
+      })
+      return
+    }
+    const r = await fetch(
+      `/api/fleet/files/raw?root=${encodeURIComponent(readRoot)}&path=${encodeURIComponent(path)}`)
+    if (!r.ok) {
+      const body = await r.json().catch(() => null)
+      setOpened({
+        kind: 'refused', path, why: r.status === 413 ? 'too-large' : 'no-view',
+        mediaType, bytes, reason: String(body?.detail ?? `HTTP ${r.status}`),
+      })
+      return
+    }
+    const raw = await r.blob()
+    const url = URL.createObjectURL(new Blob([raw], { type: mediaType }))
+    objectUrl.current = url
+    setOpened({ kind: 'shown', path, mediaType, bytes, url })
+    // An image counts in the remembered-file behaviour with no special case:
+    // the remembered value is a path, so nothing about that mechanism changes.
+    onOpened?.({ path })
+  }, [readRoot, onOpened])
+
   const load = useCallback(async (path: string, line?: number) => {
     setOpened({ kind: 'loading', path })
     setSave({ kind: 'idle' })
     // The mark follows the LAST act. Leaving a revealed directory marked while
     // a file opens would put two current positions on one list.
     setRevealed(null)
+    // Nothing of the previous file survives into the next one — the editor's
+    // text and the image's bytes both. Switching from an image back to a text
+    // file must give the editor and its save control back, with no state left.
+    releaseObjectUrl()
+    setText('')
+    setHandOverOutcome(null)
     try {
       const r = await fetch(
         `/api/fleet/files/content?root=${encodeURIComponent(readRoot)}&path=${encodeURIComponent(path)}`)
       const body = await r.json().catch(() => null)
       if (!r.ok) {
-        setOpened({ kind: 'refused', path, reason: String(body?.detail ?? `HTTP ${r.status}`) })
+        /*
+          The endpoint's typed refusal, kept typed.
+
+          `detail` is an object for the two refusals this panel has to tell
+          apart, and a plain string everywhere else (an older server, a 404, a
+          confinement refusal). Both are handled, because reading only one of
+          them would render `[object Object]` at exactly the moment the reader
+          needs a reason.
+        */
+        const detail: unknown = body?.detail
+        const typed = detail !== null && typeof detail === 'object'
+          ? detail as { reason?: string; message?: string; media_type?: string; bytes?: number; cap?: number }
+          : null
+        setOpened({
+          kind: 'refused',
+          path,
+          why: typed?.reason === 'too-large' ? 'too-large'
+            : typed?.reason === 'no-view' ? 'no-view'
+              : r.status === 415 ? 'no-view' : r.status === 413 ? 'too-large' : 'unreadable',
+          reason: String(typed?.message ?? detail ?? `HTTP ${r.status}`),
+          ...(typed?.media_type ? { mediaType: typed.media_type } : {}),
+          ...(typeof typed?.bytes === 'number' ? { bytes: typed.bytes } : {}),
+          ...(typeof typed?.cap === 'number' ? { cap: typed.cap } : {}),
+        })
+        return
+      }
+      if (body?.kind === 'binary') {
+        await showBinary(path, String(body.media_type ?? ''), Number(body.bytes ?? 0))
         return
       }
       const content = String(body.content ?? '')
@@ -408,9 +576,12 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       setText(content)
       onOpened?.(line === undefined ? { path } : { path, line })
     } catch (e) {
-      setOpened({ kind: 'refused', path, reason: String((e as Error)?.message ?? e) })
+      setOpened({
+        kind: 'refused', path, why: 'unreadable',
+        reason: String((e as Error)?.message ?? e),
+      })
     }
-  }, [readRoot, onOpened])
+  }, [readRoot, onOpened, releaseObjectUrl, showBinary])
 
   /* Somebody asked for a file — from the terminal, usually. An unsaved edit
      turns the request into a question rather than an action. */
@@ -880,8 +1051,84 @@ export default function FleetFileView({ root, projectName, request, initial, onC
           )}
           {opened.kind === 'loading' && <div className="p-2 text-xs text-fg-ghost">opening {opened.path}…</div>}
           {opened.kind === 'refused' && (
-            <div className="p-2 text-xs text-amber-400" data-fleet-file-refused={opened.path}>
-              {opened.path} cannot be shown: {opened.reason}
+            /*
+              THE THREE REASONS, KEPT APART.
+
+              A reader told *not a text file* about a file that was merely too
+              large goes looking for the wrong problem, and a reader told *too
+              large* about a PDF goes looking for a setting that would not help.
+              So the sentence names which one fired, and `data-fleet-file-why`
+              carries it for anything reading the screen rather than looking.
+
+              The hand-over is offered only where it is the answer: a type this
+              panel cannot draw is a type the reader's own desktop probably can.
+              For a file that is too large, or unreadable, it is not.
+            */
+            <div className="p-2 text-xs text-amber-400"
+                 data-fleet-file-refused={opened.path}
+                 data-fleet-file-why={opened.why}>
+              {opened.why === 'too-large' && (
+                <>
+                  {opened.path} is too large to show
+                  {opened.bytes !== undefined && ` — ${humanBytes(opened.bytes)}`}
+                  {opened.cap !== undefined && `, and this view serves at most ${humanBytes(opened.cap)}`}
+                </>
+              )}
+              {opened.why === 'no-view' && (
+                <>
+                  {opened.path} is {opened.mediaType ?? 'a type this panel has no view for'}
+                  {opened.bytes !== undefined && `, ${humanBytes(opened.bytes)}`}
+                  {' — there is no view for it here.'}
+                </>
+              )}
+              {opened.why === 'unreadable' && (
+                <>{opened.path} cannot be read: {opened.reason}</>
+              )}
+              {opened.why === 'no-view' && (
+                <button
+                  type="button"
+                  className="block mt-1 underline underline-offset-2 hover:text-fg-strong"
+                  data-fleet-file-handover={opened.path}
+                  onClick={() => { void handOver(opened.path) }}
+                >
+                  open it with this machine{String.fromCharCode(39)}s own application
+                </button>
+              )}
+              {handOver_outcome && (
+                <div className="mt-1 text-fg-muted" data-fleet-file-handover-outcome={handOver_outcome.ok ? 'ok' : 'failed'}>
+                  {handOver_outcome.ok
+                    ? 'handed to the desktop'
+                    : `could not hand it over: ${handOver_outcome.reason}`}
+                </div>
+              )}
+            </div>
+          )}
+          {opened.kind === 'shown' && (
+            /*
+              The image, scaled to FIT rather than to fill.
+
+              `object-contain` inside a box that owns the panel's remaining
+              space: a screenshot is routinely wider than this panel and taller
+              than the viewport, and an image that overflows takes the reader to
+              a scrollbar in both directions to see what they clicked on.
+
+              No save control, and that is not an omission — see the header note.
+              There is no editor behind this, so a save would either do nothing
+              or write back something the reader never edited.
+            */
+            <div className="h-full w-full flex flex-col min-h-0"
+                 data-fleet-file-shown={opened.path}
+                 data-fleet-file-media={opened.mediaType}>
+              <div className="px-2 py-1 text-xs text-fg-ghost shrink-0">
+                {opened.mediaType} · {humanBytes(opened.bytes)}
+              </div>
+              <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden p-2">
+                <img
+                  src={opened.url}
+                  alt={opened.path}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
             </div>
           )}
           {opened.kind === 'open' && (

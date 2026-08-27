@@ -104,22 +104,22 @@
 
 ## 4. The endpoint — a typed answer
 
-- [ ] 4.1 Rework `read_file` in `lib/set_orch/api/files.py` to decide by decode attempt, with
+- [x] 4.1 Rework `read_file` in `lib/set_orch/api/files.py` to decide by decode attempt, with
   a null-byte check, and never by extension or permission bits (D6)
   [REQ: file-content-is-served-typed-by-its-bytes]
-- [ ] 4.2 Return a media type and size on the non-text refusal, keeping the size refusal
+- [x] 4.2 Return a media type and size on the non-text refusal, keeping the size refusal
   distinguishable from the type refusal
   [REQ: file-content-is-served-typed-by-its-bytes]
-- [ ] 4.3 Add the raw byte route behind the SAME `_known_root` and `_confine` calls, serving
+- [x] 4.3 Add the raw byte route behind the SAME `_known_root` and `_confine` calls, serving
   only allow-listed non-executing media types, with `nosniff` and an ATTACHMENT
   `Content-Disposition` — the browser must never be asked to interpret the body (D5)
   [REQ: file-content-is-served-typed-by-its-bytes]
-- [ ] 4.4 Give the raw route its own higher size cap, and make each refusal name which cap
+- [x] 4.4 Give the raw route its own higher size cap, and make each refusal name which cap
   fired (D7) [REQ: file-content-is-served-typed-by-its-bytes]
-- [ ] 4.5 Test the hostile cases: a path escaping the root, a symlink to outside, a root that
+- [x] 4.5 Test the hostile cases: a path escaping the root, a symlink to outside, a root that
   is not registered, a media type off the allow-list, and an SVG (which must take the TEXT
   route, not the image route) [REQ: file-content-is-served-typed-by-its-bytes]
-- [ ] 4.6 Test that a shell script with `+x` is returned as text, and that `Makefile`, `.env`
+- [x] 4.6 Test that a shell script with `+x` is returned as text, and that `Makefile`, `.env`
   and a shebang file with no suffix are too
   [REQ: file-content-is-served-typed-by-its-bytes]
 
@@ -143,23 +143,23 @@
 
 ## 5. The panel — rendering by type
 
-- [ ] 5.1 Extend the `Opened` union in `FleetFileView.tsx` with a binary arm carrying the
+- [x] 5.1 Extend the `Opened` union in `FleetFileView.tsx` with a binary arm carrying the
   media type and size [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 5.2 Render an image by FETCHING the bytes, checking the media type against the panel's
+- [x] 5.2 Render an image by FETCHING the bytes, checking the media type against the panel's
   own allow-list, and building the object URL client-side — never by pointing an `<img>` at
   the endpoint. Scaled to fit the panel without overflowing it, with no save control
   [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 5.2b A PDF is named with its size and handed over, not embedded — the research behind
+- [x] 5.2b A PDF is named with its size and handed over, not embedded — the research behind
   this is in design.md's resolved open question
   [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 5.3 Render a stated-type binary as type + size, offering the desktop hand-over
+- [x] 5.3 Render a stated-type binary as type + size, offering the desktop hand-over
   [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 5.4 Keep the three refusals distinguishable in the panel's own wording — too large, no
+- [x] 5.4 Keep the three refusals distinguishable in the panel's own wording — too large, no
   view for this type, unreadable [REQ: what-cannot-be-shown-is-stated-in-the-panel]
-- [ ] 5.5 Test that switching from a binary back to a text file restores the editor and its
+- [x] 5.5 Test that switching from a binary back to a text file restores the editor and its
   save control, with no state left from the image view
   [REQ: the-panel-renders-a-file-by-its-type]
-- [ ] 5.6 Confirm nothing of a project reaches browser storage on the new paths — no bytes, no
+- [x] 5.6 Confirm nothing of a project reaches browser storage on the new paths — no bytes, no
   media type, no path [REQ: the-panel-renders-a-file-by-its-type]
 
 ## 6. The panel — revealing a directory
@@ -169,7 +169,7 @@
 - [x] 6.2 State it in the panel when the revealed directory has nothing beneath it in the
   current listing, mentioning that the listing may be excluding what it holds — never a silent
   no-op [REQ: a-directory-can-be-revealed-in-the-structure-pane]
-- [ ] 6.3 Test that a reveal leaves an unsaved edit and the open file untouched
+- [x] 6.3 Test that a reveal leaves an unsaved edit and the open file untouched
   [REQ: a-directory-can-be-revealed-in-the-structure-pane]
 
 ## 7. Look at it, and measure the result rather than the mechanism
@@ -233,44 +233,44 @@
 
 ### One file's content can be read, typed by its bytes
 
-- [ ] AC-28: WHEN a readable text file inside a served checkout is requested THEN the endpoint returns its content and a content identity [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-text-file-is-returned-with-its-identity]
-- [ ] AC-29: WHEN the requested file decodes as UTF-8 and has an executable bit THEN it is returned as text and the bit changes nothing [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-text-file-carrying-an-executable-bit]
-- [ ] AC-30: WHEN the requested file has no suffix or an unknown one and decodes as UTF-8 THEN it is returned as text [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-text-file-with-no-extension]
-- [ ] AC-31: WHEN the file does not decode and its media type is one served for rendering THEN the endpoint returns its bytes with that media type [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-renderable-binary-is-served-as-bytes]
-- [ ] AC-32: WHEN the file is neither decodable text nor renderable THEN the refusal names the media type and the size and returns no partial content [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-binary-that-cannot-be-rendered-names-its-type]
-- [ ] AC-33: WHEN the file is larger than the cap THEN the refusal states the size and the cap and is distinguishable from the type refusal [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-file-too-large-to-serve-is-refused-with-its-size]
-- [ ] AC-34: WHEN any of these answers is served THEN the path was confined by the same verdict and refusal as before [REQ: file-content-is-served-typed-by-its-bytes, scenario: the-confinement-is-unchanged]
+- [x] AC-28: WHEN a readable text file inside a served checkout is requested THEN the endpoint returns its content and a content identity [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-text-file-is-returned-with-its-identity]
+- [x] AC-29: WHEN the requested file decodes as UTF-8 and has an executable bit THEN it is returned as text and the bit changes nothing [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-text-file-carrying-an-executable-bit]
+- [x] AC-30: WHEN the requested file has no suffix or an unknown one and decodes as UTF-8 THEN it is returned as text [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-text-file-with-no-extension]
+- [x] AC-31: WHEN the file does not decode and its media type is one served for rendering THEN the endpoint returns its bytes with that media type [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-renderable-binary-is-served-as-bytes]
+- [x] AC-32: WHEN the file is neither decodable text nor renderable THEN the refusal names the media type and the size and returns no partial content [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-binary-that-cannot-be-rendered-names-its-type]
+- [x] AC-33: WHEN the file is larger than the cap THEN the refusal states the size and the cap and is distinguishable from the type refusal [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-file-too-large-to-serve-is-refused-with-its-size]
+- [x] AC-34: WHEN any of these answers is served THEN the path was confined by the same verdict and refusal as before [REQ: file-content-is-served-typed-by-its-bytes, scenario: the-confinement-is-unchanged]
 
 ### What cannot be shown is stated in the panel
 
-- [ ] AC-35: WHEN the endpoint refuses a file as too large, as a type with no view, or as unreadable THEN the panel states the reason where the content would be [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-the-endpoint-refused]
-- [ ] AC-36: WHEN the endpoint refuses a file for exceeding the size cap THEN the panel states that, naming the file, its size and the cap [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-the-endpoint-refused-as-too-large]
-- [ ] AC-37: WHEN the endpoint answers with a media type the panel has no view for THEN the panel states the type and size and offers the desktop hand-over [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-of-a-type-the-panel-cannot-render]
-- [ ] AC-38: WHEN an opened file has no content THEN the panel shows an empty file and says so [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: an-empty-file-is-not-a-failure]
+- [x] AC-35: WHEN the endpoint refuses a file as too large, as a type with no view, or as unreadable THEN the panel states the reason where the content would be [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-the-endpoint-refused]
+- [x] AC-36: WHEN the endpoint refuses a file for exceeding the size cap THEN the panel states that, naming the file, its size and the cap [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-the-endpoint-refused-as-too-large]
+- [x] AC-37: WHEN the endpoint answers with a media type the panel has no view for THEN the panel states the type and size and offers the desktop hand-over [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: a-file-of-a-type-the-panel-cannot-render]
+- [x] AC-38: WHEN an opened file has no content THEN the panel shows an empty file and says so [REQ: what-cannot-be-shown-is-stated-in-the-panel, scenario: an-empty-file-is-not-a-failure]
 
 ### The panel renders a file by its type
 
-- [ ] AC-39: WHEN the endpoint answers with text THEN the editor opens it with wrap, marker and save behaviour unchanged [REQ: the-panel-renders-a-file-by-its-type, scenario: a-text-file]
-- [ ] AC-40: WHEN the endpoint answers with an image media type THEN the panel displays it scaled to fit without overflowing, and offers no save control [REQ: the-panel-renders-a-file-by-its-type, scenario: an-image]
-- [ ] AC-41: WHEN the activated file is a shell script inside a served checkout THEN it opens in the editor as text, editable and saveable [REQ: the-panel-renders-a-file-by-its-type, scenario: a-shell-script]
-- [ ] AC-42: WHEN the endpoint refuses a file as a type the panel cannot render THEN the panel names type and size, offers the hand-over, and shows no editor [REQ: the-panel-renders-a-file-by-its-type, scenario: a-binary-with-no-view]
-- [ ] AC-43: WHEN the reader opens an image and then a text file THEN the editor returns with its save control and no image state remains [REQ: the-panel-renders-a-file-by-its-type, scenario: switching-from-a-binary-back-to-text]
+- [x] AC-39: WHEN the endpoint answers with text THEN the editor opens it with wrap, marker and save behaviour unchanged [REQ: the-panel-renders-a-file-by-its-type, scenario: a-text-file]
+- [x] AC-40: WHEN the endpoint answers with an image media type THEN the panel displays it scaled to fit without overflowing, and offers no save control [REQ: the-panel-renders-a-file-by-its-type, scenario: an-image]
+- [x] AC-41: WHEN the activated file is a shell script inside a served checkout THEN it opens in the editor as text, editable and saveable [REQ: the-panel-renders-a-file-by-its-type, scenario: a-shell-script]
+- [x] AC-42: WHEN the endpoint refuses a file as a type the panel cannot render THEN the panel names type and size, offers the hand-over, and shows no editor [REQ: the-panel-renders-a-file-by-its-type, scenario: a-binary-with-no-view]
+- [x] AC-43: WHEN the reader opens an image and then a text file THEN the editor returns with its save control and no image state remains [REQ: the-panel-renders-a-file-by-its-type, scenario: switching-from-a-binary-back-to-text]
 
 ### A directory can be revealed in the structure pane
 
-- [ ] AC-44: WHEN a directory of the opened checkout is revealed THEN its ancestors expand, the node scrolls into view and is marked, and no file opens [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: a-directory-that-has-files-beneath-it]
-- [ ] AC-45: WHEN the revealed directory has no files under it in the listing THEN the panel states that and mentions the listing may be excluding what it holds [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: a-directory-the-listing-has-nothing-beneath]
-- [ ] AC-46: WHEN a directory is revealed while the opened file has unsaved edits THEN the edits are untouched and the file stays open [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: revealing-does-not-disturb-an-unsaved-edit]
+- [x] AC-44: WHEN a directory of the opened checkout is revealed THEN its ancestors expand, the node scrolls into view and is marked, and no file opens [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: a-directory-that-has-files-beneath-it]
+- [x] AC-45: WHEN the revealed directory has no files under it in the listing THEN the panel states that and mentions the listing may be excluding what it holds [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: a-directory-the-listing-has-nothing-beneath]
+- [x] AC-46: WHEN a directory is revealed while the opened file has unsaved edits THEN the edits are untouched and the file stays open [REQ: a-directory-can-be-revealed-in-the-structure-pane, scenario: revealing-does-not-disturb-an-unsaved-edit]
 
 ### Added after the 2026-08-27 research pass
 
 - [x] AC-47: WHEN a person holds the modifier over a path-shaped token the framework could not place THEN it becomes activatable [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-low-confidence-token-while-the-modifier-is-held]
 - [x] AC-48: WHEN the token carries characters no path may hold, such as a route parameter's brackets THEN no modifier makes it a link [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-token-that-is-not-path-shaped-at-all]
 - [x] AC-49: WHEN a row, a token, or the reference count on a row exceeds the limits THEN recognition stops for that row [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-line-a-token-or-a-row-count-beyond-the-recognisers-limits]
-- [ ] AC-50: WHEN any byte response is served THEN it carries nosniff and an attachment disposition [REQ: file-content-is-served-typed-by-its-bytes, scenario: the-bytes-are-not-served-as-something-to-render]
-- [ ] AC-51: WHEN the determined media type is off the allow-list THEN no bytes are served and the answer is the naming refusal [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-media-type-off-the-allow-list]
-- [ ] AC-52: WHEN the activated file is a PDF THEN the panel names it with its size and offers the hand-over, embedding no viewer [REQ: the-panel-renders-a-file-by-its-type, scenario: a-pdf]
-- [ ] AC-53: WHEN the fetched bytes would be interpreted as a renderable document by a browser left to itself THEN nothing renders them [REQ: the-panel-renders-a-file-by-its-type, scenario: a-file-whose-bytes-claim-to-be-a-document]
+- [x] AC-50: WHEN any byte response is served THEN it carries nosniff and an attachment disposition [REQ: file-content-is-served-typed-by-its-bytes, scenario: the-bytes-are-not-served-as-something-to-render]
+- [x] AC-51: WHEN the determined media type is off the allow-list THEN no bytes are served and the answer is the naming refusal [REQ: file-content-is-served-typed-by-its-bytes, scenario: a-media-type-off-the-allow-list]
+- [x] AC-52: WHEN the activated file is a PDF THEN the panel names it with its size and offers the hand-over, embedding no viewer [REQ: the-panel-renders-a-file-by-its-type, scenario: a-pdf]
+- [x] AC-53: WHEN the fetched bytes would be interpreted as a renderable document by a browser left to itself THEN nothing renders them [REQ: the-panel-renders-a-file-by-its-type, scenario: a-file-whose-bytes-claim-to-be-a-document]
 
 ### What must never be handed over (B-89)
 

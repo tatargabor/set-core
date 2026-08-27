@@ -36,13 +36,14 @@ function, as starting an agent.
 
 import hashlib
 import logging
+import mimetypes
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from .fleet import _known_roots, _start_location_verdict
@@ -57,9 +58,44 @@ router = APIRouter()
 #: truncated AND says so — see `list_files`.
 MAX_FILES = 20_000
 
-#: The largest file this will serve or accept. Beyond it the answer is a refusal
-#: naming the size, never a truncated prefix: a prefix looks like a whole file.
+#: The largest file this will serve AS TEXT or accept as a write. Beyond it the
+#: answer is a refusal naming the size, never a truncated prefix: a prefix looks
+#: like a whole file.
 MAX_BYTES = 2 * 1024 * 1024
+
+#: The largest file the BYTE route will stream.
+#:
+#: A separate number because the two limits answer different questions, and one
+#: number would be wrong for one of them. `MAX_BYTES` exists because the editor
+#: holds the whole file in a string and a write sends it back; a byte stream does
+#: neither. Screenshots routinely exceed 2 MiB, and refusing one *as too large*
+#: from a route that only streams it would report a limit the framework does not
+#: actually have — the false-value shape, applied to a cap.
+MAX_RAW_BYTES = 32 * 1024 * 1024
+
+#: How much of a file is inspected to decide whether it is text at all.
+_SNIFF_BYTES = 8192
+
+#: The media types the byte route will serve, and therefore the ONLY types whose
+#: bytes can leave this machine into a page.
+#:
+#: An allow-list rather than a deny-list, because the failure direction of the
+#: two is not comparable: a type nobody thought of is refused here and served
+#: there. Everything on it is a raster image — a format a browser renders and
+#: does not execute.
+#:
+#: `image/svg+xml` is deliberately ABSENT, and its absence is not an oversight:
+#: an SVG is XML that can carry script, and it is also TEXT, so it decodes and
+#: never reaches this branch at all. It opens in the editor, which is the honest
+#: answer — an SVG in a repository is source.
+#:
+#: `application/pdf` is absent too. The panel names a PDF and hands it to the
+#: desktop rather than embedding a viewer (see the change's design), so serving
+#: its bytes would have no consumer and would only widen what can leave.
+_RENDERABLE_TYPES = {
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+    "image/avif", "image/tiff", "image/x-icon", "image/vnd.microsoft.icon",
+}
 
 #: Directories the non-git fallback never walks into. Kept short and boring —
 #: it is a fallback, not a second ignore-rule engine.
@@ -377,32 +413,198 @@ def list_files(root: str, ignored: bool = False) -> Dict[str, Any]:
     }
 
 
+def _media_type(target: Path) -> str:
+    """The media type of a file whose bytes are ALREADY KNOWN not to be text.
+
+    The extension participates only here, and only for that reason. It is not a
+    classifier for text and must never become one — `Makefile`, `.env` and a
+    shebang script with no suffix are all text with nothing useful in a name, and
+    a `.md` file may hold bytes that are not. The decode attempt is what answers
+    for the file actually on disk; this answers "what KIND of not-text".
+
+    `application/octet-stream` for anything unknown, which is an honest answer
+    and not a failure: the caller states the type it was given, and an unknown
+    type is simply not on the render allow-list.
+    """
+    guessed, _encoding = mimetypes.guess_type(target.name)
+    return guessed or "application/octet-stream"
+
+
+def _looks_binary(head: bytes) -> bool:
+    """Whether a NUL in the first block says this is not text.
+
+    Belt and braces beside the decode attempt, and it catches the case the
+    decode does not: UTF-16 and a sparse binary can both decode as UTF-8 into
+    something, and what they decode into is mojibake with embedded NULs. A file
+    half-rendered as mojibake looks like a file, and somebody will eventually
+    save it back over the real one.
+    """
+    return b"\x00" in head
+
+
 @router.get("/api/fleet/files/content")
 def read_file(root: str, path: str) -> Dict[str, Any]:
-    """One file's text, with the identity of the bytes actually served."""
+    """One file, TYPED BY ITS BYTES — text, a renderable binary, or a refusal.
+
+    ## The type is decided by the bytes, never by the name and never by the mode
+
+    Three rules, and each one is a defect this endpoint used to have:
+
+    - **the executable bit is not consulted.** Reading returns bytes and starts
+      nothing, so a shell script is text like any other text. The guard that
+      refuses to *run* a file belongs to the desktop hand-over route, which this
+      endpoint is not. Measured over 30 session transcripts: 12 distinct existing
+      files were plain UTF-8 AND executable, and were refused at both ends —
+      unopenable anywhere in the product.
+    - **the extension is not the classifier for text.** It participates only once
+      the bytes are known not to decode — see `_media_type`.
+    - **"not a text file" is not an answer.** A caller told only that cannot say
+      what the file IS, so it cannot draw an image, and it cannot tell a PDF from
+      a corrupt file. The answer now names the media type and the size.
+
+    ## The two caps are separate refusals and the answer says which fired
+
+    A reader told *not a text file* about a file that was merely too large goes
+    looking for the wrong problem. So the size refusal names the size and the cap,
+    the type refusal names the type and the size, and their statuses differ.
+
+    ## What a renderable binary gets, and why it is not the bytes
+
+    A description: kind, media type, size — and the caller then fetches
+    `/api/fleet/files/raw`. Base64 in this JSON would cost 33 % in size, push the
+    whole file through the JSON parser, and hand the caller a data URI to manage.
+    The bytes have their own route, behind the same two guards.
+    """
     project_root = _known_root(root)
     target = _confine(project_root, path)
     if not target.is_file():
         raise HTTPException(status_code=404, detail="no such file")
     size = target.stat().st_size
-    if size > MAX_BYTES:
+
+    with open(target, "rb") as handle:
+        head = handle.read(_SNIFF_BYTES)
+
+    text: Optional[str] = None
+    if not _looks_binary(head):
+        if size > MAX_BYTES:
+            # Refused as TEXT before the whole file is read. A file this large
+            # that turns out to be binary is still describable below, so the
+            # size refusal is only reached for something that could have been
+            # text — which is what makes it the right sentence to say.
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "reason": "too-large",
+                    "bytes": size,
+                    "cap": MAX_BYTES,
+                    "message": f"file is {size} bytes; this view serves at most {MAX_BYTES}",
+                },
+            )
+        data = target.read_bytes()
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = None
+        if text is not None:
+            return {
+                "path": path,
+                "kind": "text",
+                "content": text,
+                "identity": _identity(data),
+                "bytes": size,
+            }
+
+    media_type = _media_type(target)
+    if media_type in _RENDERABLE_TYPES and size <= MAX_RAW_BYTES:
+        return {
+            "path": path,
+            "kind": "binary",
+            "media_type": media_type,
+            "bytes": size,
+        }
+
+    over_cap = size > MAX_RAW_BYTES
+    raise HTTPException(
+        status_code=413 if over_cap else 415,
+        detail={
+            "reason": "too-large" if over_cap else "no-view",
+            "media_type": media_type,
+            "bytes": size,
+            "cap": MAX_RAW_BYTES if over_cap else None,
+            "message": (
+                f"file is {size} bytes; this view serves at most {MAX_RAW_BYTES}"
+                if over_cap else
+                f"{media_type} is not a type this view can show ({size} bytes)"
+            ),
+        },
+    )
+
+
+@router.get("/api/fleet/files/raw")
+def read_file_bytes(root: str, path: str) -> Response:
+    """The BYTES of one renderable file — behind the same two guards.
+
+    `_known_root` and `_confine` are called here, in this order, exactly as the
+    text route calls them. **The guard is the function, not the endpoint**, and
+    that is the question to ask of this route in review: which branch does it
+    take OVER, not which one does it add to. It takes over none — a path this
+    refuses is a path the text route refuses, for the same reason, from the same
+    two calls.
+
+    ## Nothing served here is ever handed to the browser as something to render
+
+    A local dashboard has ONE origin, and it holds the fleet screen, its
+    terminals and its write endpoint. The isolation a second origin would give —
+    the reason GitHub serves user content from `raw.githubusercontent.com`
+    entirely — is not available, so the substitute is that the response is never
+    renderable in the first place:
+
+    - `Content-Disposition: attachment`, so a browser left to itself downloads
+      rather than displays;
+    - `X-Content-Type-Options: nosniff`, so it does not re-decide the type from
+      the bytes;
+    - and the media type is checked against `_RENDERABLE_TYPES` BEFORE any byte
+      is read, so a file whose content claims to be a document cannot become one.
+
+    The caller fetches this, checks the type against its own allow-list, and
+    builds the renderable object itself — so the type that reaches a renderer is
+    the caller's choice rather than something a file's bytes could claim. Two
+    independent gates, not one moved.
+
+    No filename is put in the disposition. It would be the only place in this
+    module where consumer-supplied text reaches a response HEADER, and there is
+    nothing to gain: the caller already knows the path it asked for.
+    """
+    project_root = _known_root(root)
+    target = _confine(project_root, path)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="no such file")
+
+    media_type = _media_type(target)
+    if media_type not in _RENDERABLE_TYPES:
+        # Before the file is opened. A type off the list is not served in any
+        # form, so nothing about it reaches a page even as a length.
+        raise HTTPException(
+            status_code=415,
+            detail=f"{media_type} is not served as bytes",
+        )
+
+    size = target.stat().st_size
+    if size > MAX_RAW_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"file is {size} bytes; this view serves at most {MAX_BYTES}",
+            detail=f"file is {size} bytes; this route serves at most {MAX_RAW_BYTES}",
         )
-    data = target.read_bytes()
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        # No partial content, and no lossy decode. A file half-rendered as
-        # mojibake looks like a file, and somebody will eventually save it back.
-        raise HTTPException(status_code=415, detail="not a text file") from None
-    return {
-        "path": path,
-        "content": text,
-        "identity": _identity(data),
-        "bytes": size,
-    }
+
+    return Response(
+        content=target.read_bytes(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": "attachment",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 class WriteBody(BaseModel):

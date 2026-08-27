@@ -199,16 +199,52 @@ def test_a_file_over_the_cap_is_refused_with_its_size(client, project, monkeypat
     r = client.get("/api/fleet/files/content",
                    params={"root": str(root), "path": "src/app.ts"})
     assert r.status_code == 413
-    assert "24" in r.json()["detail"] and "4" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert detail["reason"] == "too-large"
+    assert detail["bytes"] == 24 and detail["cap"] == 4
+    # And the SENTENCE is still there for any reader that is not this panel.
+    assert "24" in detail["message"] and "4" in detail["message"]
 
 
-def test_a_binary_file_is_refused_rather_than_mangled(client, project):
+def test_a_binary_with_no_view_names_its_TYPE_and_size(client, project):
+    """The refusal that replaced *"not a text file"*.
+
+    A caller told only that cannot say what the file IS — it cannot draw it, and
+    it cannot tell a PDF from a corrupt file. Both of those are things a reader
+    standing in front of the panel wants to know, and neither is derivable from
+    the absence of text.
+    """
     root, _ = project
-    (root / "logo.bin").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
+    (root / "report.pdf").write_bytes(b"%PDF-1.4\n\x00\xff binary tail\n")
     r = client.get("/api/fleet/files/content",
-                   params={"root": str(root), "path": "logo.bin"})
+                   params={"root": str(root), "path": "report.pdf"})
     assert r.status_code == 415
-    assert "text" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert detail["reason"] == "no-view"
+    assert detail["media_type"] == "application/pdf"
+    assert detail["bytes"] > 0
+    assert "application/pdf" in detail["message"]
+
+
+def test_the_two_refusals_stay_distinguishable(client, project, monkeypatch):
+    """*Too large* and *no view for this type* send the reader to two places.
+
+    A panel that collapsed them into one sentence would send half its readers to
+    the wrong one — and in particular a large IMAGE is refused for its size, not
+    for its type, and saying otherwise reports a limit the framework does not
+    have.
+    """
+    root, _ = project
+    (root / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+    monkeypatch.setattr(files_module, "MAX_RAW_BYTES", 8)
+
+    r = client.get("/api/fleet/files/content",
+                   params={"root": str(root), "path": "shot.png"})
+    assert r.status_code == 413
+    detail = r.json()["detail"]
+    assert detail["reason"] == "too-large"
+    assert detail["media_type"] == "image/png", "the type is still named — it is not the cause"
+    assert detail["cap"] == 8
 
 
 def test_an_empty_file_is_not_a_failure(client, project):
@@ -623,3 +659,176 @@ def test_a_rename_does_not_invent_an_entry_for_its_ORIGIN(client, project):
     assert "my file.ts" not in status
     # And the record that follows the rename keeps its own code.
     assert status["src/zzz.ts"].strip() == "M"
+
+
+# ─── The typed answer, and the byte route ────────────────────────────────────
+
+
+def test_a_text_file_with_an_executable_bit_is_still_text(client, project):
+    """The bit is not consulted, because reading is not running.
+
+    Measured over 30 session transcripts: 12 distinct existing files were plain
+    UTF-8 AND carried `+x`, and were refused at BOTH ends — by the desktop route
+    because it would run them, and by this one because the token never reached
+    it. Unopenable anywhere in the product.
+    """
+    import stat as stat_mod
+
+    root, _ = project
+    script = root / "deploy.sh"
+    script.write_text("#!/bin/sh\necho hi\n")
+    script.chmod(script.stat().st_mode | stat_mod.S_IXUSR)
+
+    body = client.get("/api/fleet/files/content",
+                      params={"root": str(root), "path": "deploy.sh"}).json()
+    assert body["kind"] == "text"
+    assert body["content"] == "#!/bin/sh\necho hi\n"
+
+
+def test_text_with_no_useful_extension_is_still_text(client, project):
+    """`Makefile`, `.env`, and a shebang script with no suffix at all.
+
+    None of them has an extension worth asking about, and all three are text.
+    The decode attempt is the only test that answers for the file on disk — an
+    extension classifier would refuse every one of these while looking correct.
+    """
+    root, _ = project
+    (root / "Makefile").write_text("all:\n\techo hi\n")
+    (root / ".env").write_text("KEY=value\n")
+    (root / "runner").write_text("#!/usr/bin/env bash\necho hi\n")
+
+    for name in ("Makefile", ".env", "runner"):
+        body = client.get("/api/fleet/files/content",
+                          params={"root": str(root), "path": name}).json()
+        assert body["kind"] == "text", name
+        assert body["content"], name
+
+
+def test_an_svg_takes_the_TEXT_route(client, project):
+    """And it is not an omission from the image list — it is the answer.
+
+    An SVG is XML that can carry script, and it is also text: it decodes, so it
+    never reaches the binary branch at all. It opens in the editor, which is
+    honest — an SVG in a repository is source.
+    """
+    root, _ = project
+    (root / "icon.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>\n')
+    body = client.get("/api/fleet/files/content",
+                      params={"root": str(root), "path": "icon.svg"}).json()
+    assert body["kind"] == "text"
+    assert "<svg" in body["content"]
+
+
+def test_a_renderable_binary_is_DESCRIBED_and_its_bytes_have_their_own_route(client, project):
+    root, _ = project
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00\x01\x02" * 8
+    (root / "shot.png").write_bytes(png)
+
+    described = client.get("/api/fleet/files/content",
+                           params={"root": str(root), "path": "shot.png"}).json()
+    assert described["kind"] == "binary"
+    assert described["media_type"] == "image/png"
+    assert described["bytes"] == len(png)
+    assert "content" not in described, "no lossy decode, and no base64 in the JSON"
+
+    raw = client.get("/api/fleet/files/raw",
+                     params={"root": str(root), "path": "shot.png"})
+    assert raw.status_code == 200
+    assert raw.content == png
+    assert raw.headers["content-type"].startswith("image/png")
+
+
+def test_the_bytes_are_not_served_as_something_to_render(client, project):
+    """A local dashboard has ONE origin, so the response is never renderable.
+
+    The isolation a second origin would give — the reason GitHub serves user
+    content from a separate domain entirely — is not available here, and the
+    substitute is that a browser left to itself will not display this body.
+    """
+    root, _ = project
+    (root / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01")
+    raw = client.get("/api/fleet/files/raw",
+                     params={"root": str(root), "path": "shot.png"})
+    assert raw.headers["content-disposition"] == "attachment"
+    assert raw.headers["x-content-type-options"] == "nosniff"
+
+
+def test_a_media_type_off_the_allow_list_serves_NO_bytes(client, project):
+    """Not a truncated answer, not a length — nothing.
+
+    The check runs before the file is opened, so a type nobody thought of is
+    refused rather than served. An allow-list and a deny-list fail in
+    incomparable directions, and this is the one that fails toward silence.
+    """
+    root, _ = project
+    marker = b"PRIVATE-VALUE-DO-NOT-SERVE"
+    (root / "report.pdf").write_bytes(b"%PDF-1.4\n\x00" + marker)
+    (root / "icon.svg").write_bytes(b"<svg/>" + marker)
+    for name in ("report.pdf", "icon.svg"):
+        r = client.get("/api/fleet/files/raw", params={"root": str(root), "path": name})
+        assert r.status_code == 415, name
+        assert marker not in r.content, f"{name}: bytes reached the caller anyway"
+
+
+def test_the_byte_route_is_confined_exactly_like_the_text_route(client, project, tmp_path):
+    """The guard is the FUNCTION, not the endpoint — asserted, not assumed.
+
+    The question to ask of a new route beside a configurable protection is which
+    branch it takes OVER, not which one it adds to. This one takes over none:
+    every path the text route refuses, it refuses, from the same two calls.
+    """
+    root, outside = project
+    (outside / "secret.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00")
+
+    escape = client.get("/api/fleet/files/raw",
+                        params={"root": str(root), "path": "../outside/secret.png"})
+    assert escape.status_code == 403
+    assert escape.json()["detail"] == "access denied"
+
+    link = root / "shortcut.png"
+    link.symlink_to(outside / "secret.png")
+    through_link = client.get("/api/fleet/files/raw",
+                              params={"root": str(root), "path": "shortcut.png"})
+    assert through_link.status_code == 403
+    assert b"PNG" not in through_link.content
+
+    unregistered = client.get("/api/fleet/files/raw",
+                              params={"root": str(outside), "path": "secret.png"})
+    assert unregistered.status_code == 400
+
+    absolute = client.get("/api/fleet/files/raw",
+                          params={"root": str(root), "path": str(outside / "secret.png")})
+    assert absolute.status_code == 403
+
+
+def test_the_byte_route_has_its_own_cap_and_says_which_one_fired(client, project, monkeypatch):
+    """Two caps, because they answer different questions.
+
+    `MAX_BYTES` exists because the editor holds the whole file in a string and a
+    write sends it back. A byte stream does neither, and screenshots routinely
+    exceed 2 MiB — refusing one *as too large* from a route that only streams it
+    would report a limit the framework does not have.
+    """
+    root, _ = project
+    big = b"\x89PNG\r\n\x1a\n" + b"\x00" * 4096
+    (root / "shot.png").write_bytes(big)
+    monkeypatch.setattr(files_module, "MAX_BYTES", 8)
+
+    # Well over the TEXT cap, and served without complaint.
+    raw = client.get("/api/fleet/files/raw", params={"root": str(root), "path": "shot.png"})
+    assert raw.status_code == 200 and raw.content == big
+
+    monkeypatch.setattr(files_module, "MAX_RAW_BYTES", 8)
+    refused = client.get("/api/fleet/files/raw", params={"root": str(root), "path": "shot.png"})
+    assert refused.status_code == 413
+    assert str(len(big)) in refused.json()["detail"] and "8" in refused.json()["detail"]
+
+
+def test_a_utf16_file_does_not_reach_the_editor_as_mojibake(client, project):
+    """The NUL check, which the decode attempt alone does not catch."""
+    root, _ = project
+    (root / "notes.txt").write_bytes("hello".encode("utf-16-le"))
+    r = client.get("/api/fleet/files/content",
+                   params={"root": str(root), "path": "notes.txt"})
+    assert r.status_code == 415
+    assert r.json()["detail"]["reason"] == "no-view"
