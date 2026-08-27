@@ -97,6 +97,11 @@ consumer's name, path, or content.
   route is safe. It is safe against one carrier out of several.
 - **fixed when:** a 644 `.jar` is refused by `refusal()` with a reason naming the association
   rather than the bit, and a test asserts the refusal for a file with NO executable bit set.
+- **taken up as tasks 4b.1–4b.6 of `terminal-links-and-typed-file-view`** (2026-08-27,
+  `89663af7`), with a `desktop-open` spec delta. Deliberately not a change of its own: that
+  change rewrites what reaches this endpoint, and shipping it beside *"the desktop guards are
+  unchanged"* would leave a completeness claim standing over this hole. The entry stays open
+  until the tasks close it.
 
 ### B-83 — a text file with the executable bit set opens NOWHERE
 
