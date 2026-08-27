@@ -298,6 +298,20 @@ export interface FleetProject {
    * numbers, so the two stay distinguishable on screen.
    */
   capabilities?: CapabilityReport | null
+  /**
+   * WHERE THE FRAMEWORK MAY READ for this project — its root, and each
+   * non-prunable worktree of it.
+   *
+   * What the terminal's link recogniser uses to tell a reference it can open in
+   * the panel from one only the desktop can take. ROOTS and never listings: one
+   * consumer checkout lists 30 121 files, and the browser only needs to answer
+   * *is this absolute path inside something the endpoints would serve*.
+   *
+   * Optional because an older server does not send it, and the absence is not
+   * an empty set: with no list the recogniser falls back to the one checkout it
+   * has a listing for, which is what it did before this field existed.
+   */
+  checkouts?: string[]
 }
 
 export interface FleetResponse {
@@ -333,4 +347,14 @@ export interface FleetResponse {
    * not read `false` out of a missing key.
    */
   owner_reachable?: boolean
+  /**
+   * The home directory of the account the framework runs as, for `~/` in
+   * terminal output.
+   *
+   * Sent rather than guessed in the browser. A browser that guessed would link
+   * to a file belonging to somebody else's account, and it would do it silently
+   * — the reader sees a path that looks like theirs and opens something else.
+   * Absent on an older server, and a `~/` token then stays plain text.
+   */
+  home?: string
 }

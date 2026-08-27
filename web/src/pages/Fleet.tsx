@@ -997,7 +997,7 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed, projectRoot, knownFiles, onOpenFile }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed, projectRoot, knownFiles, onOpenFile, checkouts, home, onReveal }: {
   agent: FleetAgent
   open: boolean
   onToggle: () => void
@@ -1071,6 +1071,12 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   /** The files that project has — see `FleetTerminal`'s prop of the same name. */
   knownFiles?: ReadonlySet<string>
   onOpenFile?: (file: { path: string; line?: number }, root: string) => void
+  /** Every checkout the file endpoints serve — see `FleetTerminal`'s own note. */
+  checkouts?: readonly string[]
+  /** The framework account's home, for `~/` in this agent's output. */
+  home?: string
+  /** Reveal a directory in the file view, opening nothing. */
+  onReveal?: (path: string, root: string) => void
 }) {
   /**
    * B-30 — an OPEN terminal survives a poll the owner did not answer.
@@ -1356,6 +1362,9 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           knownFiles={knownFiles}
           agentCwd={agent.cwd ?? undefined}
           onOpenFile={onOpenFile}
+          checkouts={checkouts}
+          home={home}
+          onReveal={onReveal}
         />
       )}
     </div>
@@ -1881,6 +1890,19 @@ export default function Fleet() {
     if (band?.collapsed) collapseBand(PANEL_FILES, root, false)
   }, [docks, collapseBand, lastFile])
 
+  /**
+   * Reveal a DIRECTORY in the panel's structure pane. Nothing opens.
+   *
+   * Routed through `openFile` because everything about GETTING to the panel is
+   * the same act — open it if it is closed, un-tidy it if it is collapsed on a
+   * strip — and only what the panel then does with the request differs. A second
+   * path to the same panel would be a second place for those three steps to
+   * drift.
+   */
+  const revealDirectory = useCallback((root: string, path: string, from?: string) => {
+    openFile(root, { path, reveal: true, ...(from ? { from } : {}) })
+  }, [openFile])
+
   /** Close it: the panel stops existing, wherever it was. */
   const closeFiles = useCallback((root: string) => {
     setFilesOpen(prev => {
@@ -2073,6 +2095,25 @@ export default function Fleet() {
     a set stripped of those would be the same data with the caveat removed.
   */
   const [knownFiles, setKnownFiles] = useState<Record<string, ReadonlySet<string>>>({})
+
+  /*
+    EVERY checkout the file endpoints will serve, across every project.
+
+    Not just the active project's, and that is the point: an agent prints an
+    absolute path into a second project as readily as into its own, and the
+    framework may read both. What is NOT here is any listing of them — the
+    browser is told which checkouts exist and asks the server about no path,
+    because an endpoint answering "is there a file at X" for any path on the
+    machine is the oracle `files.py` exists to refuse.
+
+    An older server sends no `checkouts`, and the result is an empty list rather
+    than a guess: the recogniser then falls back to the one checkout it holds a
+    listing for, which is what it did before this field existed.
+  */
+  const allCheckouts = useMemo(
+    () => [...new Set((data?.projects ?? []).flatMap(p => p.checkouts ?? []))],
+    [data],
+  )
 
 
   /*
@@ -2565,6 +2606,9 @@ export default function Fleet() {
         projectRoot={active?.root}
         knownFiles={knownFiles[agent.cwd || active?.root || '']}
         onOpenFile={active?.root ? ((f, from) => openFile(active.root as string, { ...f, from })) : undefined}
+        checkouts={allCheckouts}
+        home={data?.home}
+        onReveal={active?.root ? ((path, from) => revealDirectory(active.root as string, path, from)) : undefined}
         enlarged
         open={openLogs.includes(agent.pid)}
         onToggle={() => toggleLog(active?.name ?? null, agent.pid, !openLogs.includes(agent.pid))}
@@ -3092,6 +3136,9 @@ export default function Fleet() {
                   projectRoot={active.root}
                   knownFiles={knownFiles[focused.cwd || active.root]}
                   onOpenFile={(f, from) => openFile(active.root, { ...f, from })}
+                  checkouts={allCheckouts}
+                  home={data.home}
+                  onReveal={(path, from) => revealDirectory(active.root, path, from)}
                   enlarged
                   focused
                   open={openLogs.includes(focused.pid)}
@@ -3203,6 +3250,9 @@ export default function Fleet() {
                     projectRoot={active.root}
                     knownFiles={knownFiles[a.cwd || active.root]}
                     onOpenFile={(f, from) => openFile(active.root, { ...f, from })}
+                    checkouts={allCheckouts}
+                    home={data.home}
+                    onReveal={(path, from) => revealDirectory(active.root, path, from)}
                     /*
                       No `wide` any more, and the reason it existed is now fixed
                       at its source. A tile that had opened something used to

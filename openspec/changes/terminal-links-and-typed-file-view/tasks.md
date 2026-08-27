@@ -34,7 +34,7 @@
 - [x] 1.4 Implement D3's three-tier rule: inside a known checkout → internal; ≥2 segments AND
   an extension → desktop; otherwise path-shaped but unplaceable → LOW CONFIDENCE; neither →
   text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
-- [ ] 1.4b Carry the tier out to the link decoration: a low-confidence link sets
+- [x] 1.4b Carry the tier out to the link decoration: a low-confidence link sets
   `ILink.decorations` so it draws no underline and no tooltip, and stays activatable only
   while the modifier is held
   [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
@@ -76,30 +76,30 @@
 
 ## 2. What the screen knows — the payload fields
 
-- [ ] 2.1 Add `home` to the fleet payload, from the framework account, with the type in
+- [x] 2.1 Add `home` to the fleet payload, from the framework account, with the type in
   `fleetTypes.ts` [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
-- [ ] 2.2 Add `FleetProject.checkouts` — the project root plus its non-prunable worktrees —
+- [x] 2.2 Add `FleetProject.checkouts` — the project root plus its non-prunable worktrees —
   DERIVED from `_start_location_verdict`, not enumerated beside it
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
-- [ ] 2.3 Test that `checkouts` and the file endpoints agree for a worktree: what the payload
+- [x] 2.3 Test that `checkouts` and the file endpoints agree for a worktree: what the payload
   lists, `_known_root` accepts; what it omits, it refuses. Two enumerations of "what this
   screen knows" have already drifted here once
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
 
 ## 3. The terminal — routing the activation
 
-- [ ] 3.1 Pass the known checkouts and the home into the link provider in `FleetTerminal.tsx`,
+- [x] 3.1 Pass the known checkouts and the home into the link provider in `FleetTerminal.tsx`,
   keeping the existing re-registration behaviour when a listing arrives
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
-- [ ] 3.2 Route an `internal` target to the file view with the checkout it resolved to; route
+- [x] 3.2 Route an `internal` target to the file view with the checkout it resolved to; route
   a `directory` target to the panel's reveal; leave `desktop` unchanged
   [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor]
-- [ ] 3.3 Confirm a path under no registered checkout still reaches the desktop route, and
+- [x] 3.3 Confirm a path under no registered checkout still reaches the desktop route, and
   that this change relaxes none of its refusals
   [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
-- [ ] 3.4 Test that a plain click (no modifier) still belongs to the terminal for every target
+- [x] 3.4 Test that a plain click (no modifier) still belongs to the terminal for every target
   kind, including low-confidence [REQ: activating-a-desktop-reference-hands-it-to-the-desktop]
-- [ ] 3.5 Present the ambiguous-suffix matches for the reader to choose from, opening nothing
+- [x] 3.5 Present the ambiguous-suffix matches for the reader to choose from, opening nothing
   until they do [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference]
 
 ## 4. The endpoint — a typed answer
@@ -164,9 +164,9 @@
 
 ## 6. The panel — revealing a directory
 
-- [ ] 6.1 Implement reveal: expand ancestors, scroll into view, mark the node, open no file
+- [x] 6.1 Implement reveal: expand ancestors, scroll into view, mark the node, open no file
   [REQ: a-directory-can-be-revealed-in-the-structure-pane]
-- [ ] 6.2 State it in the panel when the revealed directory has nothing beneath it in the
+- [x] 6.2 State it in the panel when the revealed directory has nothing beneath it in the
   current listing, mentioning that the listing may be excluding what it holds — never a silent
   no-op [REQ: a-directory-can-be-revealed-in-the-structure-pane]
 - [ ] 6.3 Test that a reveal leaves an unsaved edit and the open file untouched
@@ -197,22 +197,22 @@
 - [x] AC-1: WHEN the output contains a project-relative path followed by a colon and a number THEN the terminal treats it as a reference to that file at that line [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-path-with-a-line-number]
 - [x] AC-2: WHEN the output contains an absolute path inside any registered project or a worktree of one THEN it is treated as an internal reference [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: an-absolute-path-inside-a-checkout-the-framework-may-read]
 - [x] AC-3: WHEN the output contains an absolute path under no registered checkout THEN it is recognised as a desktop reference [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: an-absolute-path-under-no-known-checkout]
-- [ ] AC-4: WHEN the output contains `/opsx:ff`, `/dd` or a web route THEN it carries no underline and no tooltip in ordinary reading [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-single-segment-absolute-token]
+- [x] AC-4: WHEN the output contains `/opsx:ff`, `/dd` or a web route THEN it carries no underline and no tooltip in ordinary reading [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-single-segment-absolute-token]
 - [x] AC-5: WHEN a path appears inside backticks, bold markers, or both THEN the markers are stripped and the path is recognised [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-path-wrapped-in-markdown-emphasis]
 - [x] AC-6: WHEN the output contains `docs/x.md:12|` as a table cell THEN the separator is stripped and the reference is `docs/x.md` at line 12 [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-path-at-the-end-of-a-table-row]
 - [x] AC-7: WHEN a token begins with `~/` THEN it is resolved against the framework account's home and judged as absolute [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-home-relative-path]
 - [x] AC-8: WHEN exactly one listing path ends with the relative token on a path boundary THEN that file is what the reference names [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-that-uniquely-suffixes-one-known-file]
-- [ ] AC-9: WHEN two or more listing paths end with the token and the reader activates it THEN the matches are offered and none is opened until they choose [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-that-suffixes-more-than-one-known-file]
+- [x] AC-9: WHEN two or more listing paths end with the token and the reader activates it THEN the matches are offered and none is opened until they choose [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-that-suffixes-more-than-one-known-file]
 - [x] AC-10: WHEN the output contains a relative path naming a directory of a readable checkout THEN it is an internal reference to that directory [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-directory]
 - [x] AC-11: WHEN the output contains `and/or` or `24/7` THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: prose-that-merely-contains-a-slash]
 - [x] AC-12: WHEN a relative token appears with no project context THEN it is left as ordinary text [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-relative-token-with-no-project-context]
 
 ### What the internal editor can open, opens in the internal editor
 
-- [ ] AC-13: WHEN a person activates a relative path that is a file of the agent's worktree THEN the file view opens it, reading that worktree [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-the-agents-worktree]
+- [x] AC-13: WHEN a person activates a relative path that is a file of the agent's worktree THEN the file view opens it, reading that worktree [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-the-agents-worktree]
 - [ ] AC-14: WHEN a person activates a shell script or other executable text file inside a served checkout THEN the file view opens it as text and the desktop route is not involved [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: an-executable-text-file]
-- [ ] AC-15: WHEN a worktree agent prints an absolute path into the main checkout and a person activates it THEN the file view opens the main checkout's file and names that checkout [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-the-main-checkout-printed-by-a-worktree-agent]
-- [ ] AC-16: WHEN the activated path lies inside another registered project THEN the file view opens it and names that project [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-another-registered-project]
+- [x] AC-15: WHEN a worktree agent prints an absolute path into the main checkout and a person activates it THEN the file view opens the main checkout's file and names that checkout [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-the-main-checkout-printed-by-a-worktree-agent]
+- [x] AC-16: WHEN the activated path lies inside another registered project THEN the file view opens it and names that project [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-file-of-another-registered-project]
 - [ ] AC-17: WHEN the file view is reading a checkout other than the project root THEN the panel names that checkout [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: the-panel-names-the-checkout-it-is-reading]
 - [ ] AC-18: WHEN a file read from a worktree is edited and saved THEN it is written back to that worktree [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-save-goes-back-where-the-file-came-from]
 - [ ] AC-19: WHEN the activated reference names a path under no registered checkout THEN it is handed to the desktop, unchanged from today [REQ: what-the-internal-editor-can-open-opens-in-the-internal-editor, scenario: a-path-under-no-known-checkout]
@@ -227,9 +227,9 @@
 
 ### Activating a directory reveals it in the panel's structure
 
-- [ ] AC-25: WHEN a person activates a relative path naming a directory of the checkout THEN the file view opens with that node expanded and scrolled into view, and no desktop application launches [REQ: activating-a-directory-reveals-it-in-the-structure-pane, scenario: a-directory-of-the-agents-checkout]
-- [ ] AC-26: WHEN the activated directory has no files under it in the listing THEN the panel says so where the reader is standing [REQ: activating-a-directory-reveals-it-in-the-structure-pane, scenario: a-directory-with-nothing-beneath-it-in-the-listing]
-- [ ] AC-27: WHEN the activated directory lies under no registered checkout THEN it is handed to the desktop as today [REQ: activating-a-directory-reveals-it-in-the-structure-pane, scenario: a-directory-under-no-known-checkout]
+- [x] AC-25: WHEN a person activates a relative path naming a directory of the checkout THEN the file view opens with that node expanded and scrolled into view, and no desktop application launches [REQ: activating-a-directory-reveals-it-in-the-structure-pane, scenario: a-directory-of-the-agents-checkout]
+- [x] AC-26: WHEN the activated directory has no files under it in the listing THEN the panel says so where the reader is standing [REQ: activating-a-directory-reveals-it-in-the-structure-pane, scenario: a-directory-with-nothing-beneath-it-in-the-listing]
+- [x] AC-27: WHEN the activated directory lies under no registered checkout THEN it is handed to the desktop as today [REQ: activating-a-directory-reveals-it-in-the-structure-pane, scenario: a-directory-under-no-known-checkout]
 
 ### One file's content can be read, typed by its bytes
 
@@ -264,7 +264,7 @@
 
 ### Added after the 2026-08-27 research pass
 
-- [ ] AC-47: WHEN a person holds the modifier over a path-shaped token the framework could not place THEN it becomes activatable [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-low-confidence-token-while-the-modifier-is-held]
+- [x] AC-47: WHEN a person holds the modifier over a path-shaped token the framework could not place THEN it becomes activatable [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-low-confidence-token-while-the-modifier-is-held]
 - [x] AC-48: WHEN the token carries characters no path may hold, such as a route parameter's brackets THEN no modifier makes it a link [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-token-that-is-not-path-shaped-at-all]
 - [x] AC-49: WHEN a row, a token, or the reference count on a row exceeds the limits THEN recognition stops for that row [REQ: a-terminal-token-is-recognised-as-one-of-two-kinds-of-reference, scenario: a-line-a-token-or-a-row-count-beyond-the-recognisers-limits]
 - [ ] AC-50: WHEN any byte response is served THEN it carries nosniff and an attachment disposition [REQ: file-content-is-served-typed-by-its-bytes, scenario: the-bytes-are-not-served-as-something-to-render]

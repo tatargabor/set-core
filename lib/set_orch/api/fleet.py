@@ -502,6 +502,9 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     held_labels = {str(a["label"]) for a in (owned or {}).values() if a.get("label")}
 
     grouped: List[Dict[str, Any]] = []
+    # Resolved ONCE and handed to every checkout question below. The verdict
+    # would otherwise re-run a process scan per location.
+    known = _known_roots()
     for project in projects:
         members = [by_pid[pid] for pid in project.agent_pids if pid in by_pid]
         # Every entry here came from a source that named it, so the question is
@@ -540,6 +543,13 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             "capabilities": (fleet_caps.report_for_project(
                 project.root, capabilities=_framework_caps()).as_dict()
                 if project.root else None),
+            # WHERE THE FRAMEWORK MAY READ for this project — the root and its
+            # non-prunable worktrees. The terminal's link recogniser needs it to
+            # tell an internal reference from one only the desktop can open, and
+            # it must not ask the server per path: an endpoint answering "is
+            # there a file at X" for any path on the machine is the oracle
+            # `files.py:_DENIED` exists to refuse.
+            "checkouts": _servable_checkouts(project.root, known),
         })
 
     tally = _state_tally(states)
@@ -587,6 +597,10 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         "bus_reachable": seats is not None,
         "instructable": sum(
             1 for g in grouped for a in g["agents"] if a.get("instructable")),
+        # The framework account's home, for `~/` in terminal output. Sent rather
+        # than guessed in the browser: a wrong guess produces a link to a file
+        # belonging to somebody else's account, and it produces it silently.
+        "home": os.path.expanduser("~"),
     }
 
 
@@ -760,7 +774,12 @@ def _worktree_owner_root(cwd: str) -> Optional[str]:
     return os.path.realpath(root)
 
 
-def _start_location_verdict(cwd: str) -> tuple:
+def _start_location_verdict(
+    cwd: str,
+    roots: Optional[set] = None,
+    owner_root: Optional[str] = None,
+    locations: Optional[List[Dict[str, Any]]] = None,
+) -> tuple:
     """Whether an agent may be started in `cwd`, and which rule decided it.
 
     Two rules, and the second is deliberately not a prefix test:
@@ -778,14 +797,32 @@ def _start_location_verdict(cwd: str) -> tuple:
     Returns `(allowed, reason)` where reason is `root`, `worktree`, `prunable` or
     `unknown`. The reason is returned rather than logged here so that the caller
     logs one line for the decision it actually took.
+
+    ## The three optional arguments are values the caller ALREADY HOLDS
+
+    Each one replaces a lookup this function would otherwise repeat, and none of
+    them changes the rule — which is the point. A caller asking about one
+    location passes nothing and pays for everything, exactly as before. A caller
+    asking about a project's whole set of worktrees has already run the process
+    scan and the `git worktree list`, and re-running both per location cost a
+    measured **0.19 s → 0.50 s** on the fleet payload, on a machine with 53
+    projects and 47 worktrees.
+
+    They are arguments rather than a cache on purpose: a cache would answer a
+    question about the fleet from a snapshot taken at an unrelated moment, and
+    nothing at the call site would say so.
     """
-    roots = _known_roots()
+    if roots is None:
+        roots = _known_roots()
     if cwd in roots:
         return True, "root"
-    owner_root = _worktree_owner_root(cwd)
+    if owner_root is None:
+        owner_root = _worktree_owner_root(cwd)
     if owner_root is None or owner_root not in roots:
         return False, "unknown"
-    for location in list_worktree_locations(Path(owner_root)):
+    if locations is None:
+        locations = list_worktree_locations(Path(owner_root))
+    for location in locations:
         if os.path.realpath(location["path"]) != cwd:
             continue
         if location["prunable"]:
@@ -794,6 +831,52 @@ def _start_location_verdict(cwd: str) -> tuple:
     # Inside a known repository, but not one of its working trees — an ordinary
     # subdirectory. Refused, and this is the case a prefix test would have let in.
     return False, "unknown"
+
+
+def _servable_checkouts(root: str, roots: set) -> List[str]:
+    """Every checkout of ONE project the file endpoints will serve.
+
+    The project root, and each non-prunable worktree of it — which is exactly
+    the set `_known_root` in `files.py` accepts, because both ask
+    `_start_location_verdict`. DERIVED by calling that function rather than by
+    re-stating its rule here, and the difference is not stylistic: this
+    repository has already paid, on a live report, for two enumerations of *what
+    this screen knows* drifting apart. A second list would be that same bet
+    taken again, and it would look correct in review right up to the day the
+    verdict gains a case.
+
+    The browser is told these ROOTS and never a listing of them: one consumer
+    checkout lists 30 121 files, and there are dozens of projects. A few dozen
+    strings answer the only question the recogniser has — *is this absolute path
+    inside something the endpoints would serve* — and the endpoint remains the
+    guard for everything else.
+
+    A location git reports but that the verdict refuses (a prunable worktree) is
+    left OUT, and the reason it is safe to filter here is that the caller is not
+    showing this list to anybody: it routes a click. The place that shows
+    locations to a reader — `fleet_project_worktrees` — deliberately returns the
+    prunable ones so it can say why one is missing.
+    """
+    if not root:
+        return []
+    real = os.path.realpath(root)
+    found: List[str] = []
+    if _start_location_verdict(real, roots)[0]:
+        found.append(real)
+    try:
+        locations = list_worktree_locations(Path(real))
+    except Exception as exc:                      # never lose a project for it
+        logger.warning("fleet api: worktrees unreadable for %s: %s", real, type(exc).__name__)
+        return found
+    for location in locations:
+        candidate = os.path.realpath(location.get("path") or "")
+        if not candidate or candidate in found:
+            continue
+        # The owner and its location list are what we just resolved, so the
+        # verdict is asked to DECIDE rather than to look anything up again.
+        if _start_location_verdict(candidate, roots, real, locations)[0]:
+            found.append(candidate)
+    return found
 
 
 @router.get("/api/fleet/projects/{name}/worktrees")

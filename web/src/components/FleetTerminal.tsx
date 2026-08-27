@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
-import { terminalTarget, type FileRef } from '../lib/fleetFiles'
+import {
+  buildListingIndex, terminalReferences, type FileRef, type ListingIndex,
+} from '../lib/fleetFiles'
 import {
   type AttachedEvent,
   type CopyOutcome,
@@ -167,6 +169,31 @@ interface Props {
    * branch's copy of a file whose name exists in both.
    */
   onOpenFile?: (file: FileRef, root: string) => void
+  /**
+   * Every checkout the file endpoints will serve — each registered project's
+   * root, and each non-prunable worktree of one.
+   *
+   * What turns *the checkout this agent stands in* into *everything the
+   * framework may read*. Measured over 30 session transcripts: 125 distinct
+   * text files under a registered project root were handed to the desktop,
+   * because the recogniser consulted one checkout and gave everything else away.
+   *
+   * Absent — an older payload — and the recogniser falls back to the base
+   * checkout alone, which is exactly what it did before this prop existed.
+   */
+  checkouts?: readonly string[]
+  /** The framework account's home, for `~/`. Never guessed in the browser. */
+  home?: string
+  /**
+   * Reveal a DIRECTORY in the file view's structure pane.
+   *
+   * A separate act from opening a file, and it has to be: a reveal must not
+   * disturb what is open, and the panel already refuses to lose an unsaved edit.
+   * Measured: 431 distinct directory tokens reached the desktop route, 209 of
+   * them under a registered project root — each one opening a file manager
+   * window over the dashboard the reader was already looking at.
+   */
+  onReveal?: (path: string, root: string) => void
 }
 
 /** One link the emulator may draw and activate. xterm's `ILink`, structurally. */
@@ -174,6 +201,16 @@ interface TerminalLink {
   range: { start: { x: number; y: number }; end: { x: number; y: number } }
   text: string
   activate: (event: MouseEvent) => void
+  /**
+   * How the emulator DRAWS it — xterm's own per-link decorations.
+   *
+   * This is where the recogniser's confidence tier reaches the screen. A
+   * low-confidence reference draws nothing: no underline, no pointer cursor, so
+   * the reader sees prose. It stays activatable, because the activation gesture
+   * is a held modifier either way — which is the whole reason the tier can
+   * suppress the noise without removing the capability.
+   */
+  decorations?: { underline?: boolean; pointerCursor?: boolean }
 }
 
 /**
@@ -196,7 +233,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile, checkouts, home, onReveal }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   // Held in a ref because the effect below depends on `[label]` alone: the
   // handler is captured once, so a parent passing a fresh closure each render
@@ -250,6 +287,28 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
    * the reader has to read.
    */
   const [opened, setOpened] = useState<{ ok: boolean; path: string; reason?: string } | null>(null)
+  /**
+   * Several files end with the token the reader activated — so they choose.
+   *
+   * Never a guess. A wrong file that opens looks exactly like a right one and
+   * nothing on the screen says otherwise; and never a discard either, because
+   * that leaves the reader with nothing when the framework knew several answers.
+   */
+  const [choice, setChoice] = useState<{ matches: FileRef[]; root: string } | null>(null)
+
+  /*
+    The listing, INDEXED — built once per listing rather than once per token.
+
+    The suffix lookup and the directory set both need a structure over the whole
+    listing, and the listing runs to 20 000 paths. Building it inside the link
+    provider would rebuild it for every token of every rendered row, which is
+    the cost the recogniser's own limits exist to bound; this is the other half
+    of that bound and it belongs where the listing arrives.
+  */
+  const listing: ListingIndex | undefined = useMemo(
+    () => (knownFiles && knownFiles.size > 0 ? buildListingIndex(knownFiles) : undefined),
+    [knownFiles],
+  )
   const openedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (openedTimer.current) clearTimeout(openedTimer.current) }, [])
   /**
@@ -808,7 +867,9 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     const where = {
       ...(projectRoot ? { root: projectRoot } : {}),
       ...(agentCwd ? { cwd: agentCwd } : {}),
-      ...(open && knownFiles && knownFiles.size > 0 ? { known: knownFiles } : {}),
+      ...(open && listing ? { listing } : {}),
+      ...(open && checkouts && checkouts.length > 0 ? { checkouts } : {}),
+      ...(home ? { home } : {}),
     }
     const registration = term.registerLinkProvider({
       provideLinks(lineNumber, callback) {
@@ -816,20 +877,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         if (!row) { callback(undefined); return }
         const text = row.translateToString(true)
         const links: TerminalLink[] = []
-        // Whitespace-separated tokens, with the column kept, so the underline
-        // sits on the path and not on the sentence around it.
-        const re = /\S+/g
-        let m: RegExpExecArray | null
-        while ((m = re.exec(text)) !== null) {
-          const target = terminalTarget(m[0], where)
-          if (!target) continue
-          const token = m[0]
+        // The row scan, its limits and the verdicts all live in the lib, where
+        // they are measurable without a browser. What is left here is the
+        // translation into xterm's coordinates and gestures.
+        for (const { index, token, target } of terminalReferences(text, where)) {
           links.push({
             range: {
-              start: { x: m.index + 1, y: lineNumber },
-              end: { x: m.index + token.length, y: lineNumber },
+              start: { x: index + 1, y: lineNumber },
+              end: { x: index + token.length, y: lineNumber },
             },
             text: token,
+            // The tier, drawn. A low-confidence reference is prose until the
+            // reader holds the modifier — which is the same gesture that
+            // activates it, so nothing is unreachable.
+            decorations: target.confidence === 'low'
+              ? { underline: false, pointerCursor: false }
+              : { underline: true, pointerCursor: true },
             /*
               CTRL (or CMD), and a plain click deliberately does nothing here.
 
@@ -846,6 +909,16 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
             activate: (event: MouseEvent) => {
               if (!event.ctrlKey && !event.metaKey) return
               if (target.kind === 'file') { open?.(target.ref, target.root); return }
+              if (target.kind === 'directory') {
+                onReveal?.(target.path, target.root)
+                return
+              }
+              if (target.kind === 'choice') {
+                // Nothing opens. The matches are put on screen and the reader
+                // picks one — see `choice`.
+                setChoice({ matches: target.matches, root: target.root })
+                return
+              }
               void openExternal(target.path)
             },
           })
@@ -854,7 +927,8 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       },
     })
     return () => registration.dispose()
-  }, [projectRoot, knownFiles, agentCwd, onOpenFile, openExternal, phase.kind])
+  }, [projectRoot, listing, agentCwd, onOpenFile, onReveal, openExternal, checkouts, home,
+      phase.kind])
 
   const stop = useCallback(async () => {
     setStopping(true)
@@ -1094,6 +1168,39 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         would be an alarm nobody can read, which `ui-quality.md` counts as
         hiding a failure rather than compacting it.
       */}
+      {choice && (
+        <div
+          className="text-xs mb-1 text-amber-300"
+          data-fleet-terminal-choice
+        >
+          <div className="mb-0.5">
+            {choice.matches.length} files end with that path — choose one:
+          </div>
+          <ul className="space-y-0.5">
+            {choice.matches.map(match => (
+              <li key={match.path}>
+                <button
+                  type="button"
+                  className="underline break-all text-left hover:text-amber-200"
+                  data-fleet-terminal-choice-item={match.path}
+                  onClick={() => { onOpenFile?.(match, choice.root); setChoice(null) }}
+                >
+                  {match.path}{match.line === undefined ? '' : `:${match.line}`}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="mt-0.5 underline text-fg-muted hover:text-fg-strong"
+            data-fleet-terminal-choice-dismiss
+            onClick={() => setChoice(null)}
+          >
+            never mind
+          </button>
+        </div>
+      )}
+
       {opened && (
         <div
           className={`text-xs mb-1 break-all ${opened.ok ? 'text-emerald-400' : 'text-red-400'}`}

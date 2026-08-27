@@ -122,6 +122,19 @@ export interface FileRequest {
    * unchanged; only what it reads moves.
    */
   from?: string
+  /**
+   * REVEAL this directory rather than open a file: expand its ancestors, scroll
+   * the node into view, mark it, and leave what is open alone.
+   *
+   * A flag on the request rather than a second request channel, because getting
+   * to the panel is the same act either way — open it if it is closed, un-tidy
+   * it if it is collapsed. Only what the panel does on arrival differs.
+   *
+   * `path` then names a DIRECTORY. It is never remembered as the reader's last
+   * file: a reveal did not open anything, and reporting it as an opened file
+   * would restore a directory path into the editor next time the panel opens.
+   */
+  reveal?: boolean
 }
 
 export default function FleetFileView({ root, projectName, request, initial, onClose, onRequestHandled, onOpened, onDock, dockedEdge, maximised, onMaximise }: {
@@ -211,6 +224,15 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   const [text, setText] = useState('')
   const [save, setSave] = useState<SaveState>({ kind: 'idle' })
   const [ask, setAsk] = useState<FileRequest | null>(null)
+  /**
+   * A DIRECTORY the reader was sent to, or `null`.
+   *
+   * Kept apart from `opened` on purpose: a reveal is a move in the structure
+   * pane and not a change of what is open, so it must not be able to disturb an
+   * unsaved edit — the panel already refuses to lose one, and a reveal that
+   * quietly closed a dirty file would be that same loss through a new door.
+   */
+  const [revealed, setRevealed] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   /** Why the editor never arrived, when it never arrived — B-77. */
   const [editorFailure, setEditorFailure] = useState<LoadFailure | null>(null)
@@ -361,6 +383,9 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   const load = useCallback(async (path: string, line?: number) => {
     setOpened({ kind: 'loading', path })
     setSave({ kind: 'idle' })
+    // The mark follows the LAST act. Leaving a revealed directory marked while
+    // a file opens would put two current positions on one list.
+    setRevealed(null)
     try {
       const r = await fetch(
         `/api/fleet/files/content?root=${encodeURIComponent(readRoot)}&path=${encodeURIComponent(path)}`)
@@ -395,6 +420,12 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     // asked for, which reads as the panel being broken on arrival.
     if (!request || !request.path) return
     onRequestHandled?.()
+    if (request.reveal) {
+      // Never a question, whatever is unsaved: a reveal opens nothing, so there
+      // is nothing for the reader to lose and nothing to ask them about.
+      setRevealed(request.path.replace(/\/+$/, ''))
+      return
+    }
     if (dirty) { setAsk(request); return }
     void load(request.path, request.line)
     // `dirty` and `load` are deliberately not dependencies: this fires on a NEW
@@ -498,6 +529,27 @@ export default function FleetFileView({ root, projectName, request, initial, onC
 
   const openPath = opened.kind === 'none' ? null : opened.path
 
+  /**
+   * WHERE THE READER IS in the structure — the open file, or a revealed
+   * directory. One position and one mark, whichever act put them there.
+   */
+  const markedPath = revealed ?? openPath
+
+  /**
+   * A reveal that finds nothing SAYS so — never a silent no-op.
+   *
+   * The structure pane is built from a listing of FILES, so a directory holding
+   * nothing the listing carries has no node to expand or scroll to. A control
+   * that appears to do nothing is indistinguishable from a broken one, which is
+   * the whole reason this is a stated case rather than an early return.
+   *
+   * `listing === null` makes NO claim: the listing has not arrived, and saying
+   * "nothing here" on the strength of an answer nobody has yet is the shape
+   * this panel refuses everywhere else.
+   */
+  const revealFoundNothing = revealed !== null && listing !== null
+    && !listing.files.some(f => f === revealed || f.startsWith(revealed + '/'))
+
   /*
     HIDING MAY NOT HIDE A FAILURE — `ui-quality.md`'s rule, applied to the
     control that does the hiding.
@@ -537,8 +589,13 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   */
   const revealRef = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
-    if (!openPath) return
-    const ancestors = ancestorsOf(openPath)
+    if (!markedPath) return
+    // A FILE needs its ancestors open; a DIRECTORY needs its own node open too,
+    // which is what makes a reveal show what is inside rather than merely
+    // scroll to a closed folder.
+    const ancestors = revealed === null
+      ? ancestorsOf(markedPath)
+      : [...ancestorsOf(markedPath), markedPath]
     if (ancestors.length > 0) {
       setExpanded(prev => {
         const missing = ancestors.filter(a => !prev.has(a))
@@ -553,7 +610,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       revealRef.current?.scrollIntoView({ block: 'nearest' })
     })
     return () => cancelAnimationFrame(id)
-  }, [openPath])
+  }, [markedPath, revealed])
 
   return (
     <div className="flex flex-col h-full min-h-0" data-fleet-file-view={projectName}>
@@ -738,8 +795,25 @@ export default function FleetFileView({ root, projectName, request, initial, onC
                   : 'this directory is not a git repository, and the walk found no files'}
               </div>
             )}
+            {/*
+              A REVEAL THAT FOUND NOTHING, said where the reader is standing.
+
+              The structure is built from a listing of files, so a directory
+              with nothing the listing carries has no node — because it is
+              empty, or because the listing excludes what is in it. Both are
+              worth saying, and neither may be reported as the other: an
+              activation that appears to do nothing is indistinguishable from a
+              broken control.
+            */}
+            {revealFoundNothing && (
+              <div className="text-xs text-amber-300 p-1 mb-1 border-b border-surface-line"
+                   data-fleet-file-reveal-empty={revealed ?? undefined}>
+                nothing under {revealed} is in this listing — it may be empty, or the
+                listing may be excluding what it holds
+              </div>
+            )}
             {tree.map(node => (
-              <Node key={node.path} node={node} depth={0} openPath={openPath}
+              <Node key={node.path} node={node} depth={0} openPath={markedPath}
                     activeRef={revealRef}
                     expanded={expanded} onToggle={p => setExpanded(prev => {
                       const next = new Set(prev)

@@ -422,6 +422,47 @@ def test_a_subdirectory_of_a_known_root_is_still_refused(wt_client, repo_with_wo
     assert r.status_code == 400
 
 
+def test_the_payload_checkouts_and_the_endpoints_agree(wt_client, repo_with_worktree, tmp_path):
+    """What the screen SHIPS as readable and what the endpoints ACCEPT are one set.
+
+    The fleet payload now tells the browser which checkouts exist, so that the
+    terminal can route a path to the panel instead of to the desktop without
+    asking the server about it. That list is a second statement of something the
+    endpoints already decide — and this repository has paid, on a live report,
+    for exactly two such statements drifting apart (`files.py:_known_root`).
+
+    So the agreement is asserted in BOTH directions: everything the payload
+    lists, the listing endpoint serves; and something it omits, the endpoint
+    refuses. A test of only the first direction passes for a payload that lists
+    the entire filesystem.
+    """
+    main, wt = repo_with_worktree
+    known = {os.path.realpath(main)}
+    listed = fleet_module._servable_checkouts(str(main), known)
+
+    assert os.path.realpath(main) in listed
+    assert os.path.realpath(wt) in listed, "the worktree the agent stands in must be listed"
+
+    for checkout in listed:
+        r = wt_client.get("/api/fleet/files", params={"root": checkout})
+        assert r.status_code == 200, f"payload lists {checkout} but the endpoint refuses it"
+
+    stranger = tmp_path / "stranger"
+    stranger.mkdir()
+    assert str(stranger) not in listed
+    assert wt_client.get("/api/fleet/files", params={"root": str(stranger)}).status_code == 400
+
+
+def test_a_project_the_screen_does_not_know_lists_no_checkouts(repo_with_worktree):
+    """The empty answer is a real answer, and it is the one that fails safe.
+
+    A root outside the known set has no servable checkout — not its own root and
+    not its worktrees — so the browser is told about nothing it may not read.
+    """
+    main, _ = repo_with_worktree
+    assert fleet_module._servable_checkouts(str(main), set()) == []
+
+
 # ─── Path fidelity, the ignored flag, and status ─────────────────────────────
 
 

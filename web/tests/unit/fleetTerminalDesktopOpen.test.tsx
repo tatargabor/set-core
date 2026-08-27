@@ -192,37 +192,160 @@ describe('an out-of-project path in the output', () => {
 describe('when the project IS known', () => {
   const root = '/home/x/proj'
 
-  it('hands over a relative DIRECTORY, resolved against the root', async () => {
-    // The second report, 2026-08-26: an agent names the change directory it just
-    // finished. No listing ever contains it, so it was plain text.
+  it('REVEALS a relative directory in the panel instead of launching a file manager', async () => {
+    // The second report, 2026-08-26, and its answer has moved: an agent names
+    // the change directory it just finished, and opening a desktop file manager
+    // over the dashboard the reader is looking at is not what they asked for.
+    // Measured over 30 transcripts: 431 directory tokens went that way, 209 of
+    // them under a registered project root.
     line = 'A change kész: openspec/changes/mobil-nezet-reszponziv/ — 4/4 artefaktum'
-    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: vi.fn() })
+    const reveal = vi.fn()
+    await mount({
+      projectRoot: root, knownFiles: new Set(['src/app.ts']),
+      onOpenFile: vi.fn(), onReveal: reveal,
+    })
 
     const found = links()
     expect(found.map(l => l.text)).toEqual(['openspec/changes/mobil-nezet-reszponziv/'])
 
     click(found[0], { ctrl: true })
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string))
-      .toEqual({ path: '/home/x/proj/openspec/changes/mobil-nezet-reszponziv' })
+    expect(reveal).toHaveBeenCalledWith('openspec/changes/mobil-nezet-reszponziv', root)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('hands a worktree agent\'s DIRECTORY to the desktop, resolved against the worktree', async () => {
+  it('reveals a worktree agent\'s directory in ITS OWN checkout', async () => {
     // The live report, 2026-08-26: the dashboard resolved against the project
     // root and answered "no such file or directory" for a directory the agent
-    // was plainly looking at, one checkout over.
+    // was plainly looking at, one checkout over. The base is still the worktree
+    // — only the destination changed.
     line = '4 file(s): openspec/changes/mobil-nezet-reszponziv/'
+    const reveal = vi.fn()
     await mount({
       projectRoot: root,
       agentCwd: '/home/x/proj-wt-mobil',
       knownFiles: new Set(['src/app.ts']),
       onOpenFile: vi.fn(),
+      onReveal: reveal,
+    })
+
+    click(links()[0], { ctrl: true })
+    expect(reveal).toHaveBeenCalledWith(
+      'openspec/changes/mobil-nezet-reszponziv', '/home/x/proj-wt-mobil')
+  })
+
+  it('still hands a directory under NO known checkout to the desktop', async () => {
+    // AC-27. What the desktop keeps is exactly what the framework may not read,
+    // and this change widens what it may read without touching that boundary.
+    line = 'kimenet: /tmp/run-4/artifacts/'
+    const reveal = vi.fn()
+    await mount({
+      projectRoot: root, knownFiles: new Set(['src/app.ts']),
+      onOpenFile: vi.fn(), onReveal: reveal,
     })
 
     click(links()[0], { ctrl: true })
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string))
-      .toEqual({ path: '/home/x/proj-wt-mobil/openspec/changes/mobil-nezet-reszponziv' })
+      .toEqual({ path: '/tmp/run-4/artifacts' })
+    expect(reveal).not.toHaveBeenCalled()
+  })
+
+  it('opens a file of ANOTHER checkout in the panel, naming that checkout', async () => {
+    // AC-15. A worktree agent prints an absolute path into the main checkout.
+    // The framework may read it, so the framework opens it — measured: 125
+    // distinct text files under a registered root were handed to the desktop
+    // instead, where the reading guard on the server would have served them all.
+    line = 'lásd /home/x/proj/src/app.ts:12'
+    const openFile = vi.fn()
+    await mount({
+      projectRoot: root,
+      agentCwd: '/home/x/proj-wt-mobil',
+      knownFiles: new Set(['src/app.ts']),
+      checkouts: [root, '/home/x/proj-wt-mobil'],
+      onOpenFile: openFile,
+    })
+
+    click(links()[0], { ctrl: true })
+    expect(openFile).toHaveBeenCalledWith({ path: 'src/app.ts', line: 12 }, root)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('draws NOTHING on a low-confidence token, and still activates it', async () => {
+    // AC-4 and AC-47 together: the underline is what the tier suppresses, and
+    // the modifier is what keeps the capability. 1 464 measured occurrences of
+    // an underline that answers "no such file or directory" is what this is for.
+    line = 'futtasd: /opsx:ff és nézd meg a /tmp könyvtárat'
+    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: vi.fn() })
+
+    const found = links()
+    expect(found.map(l => l.text)).toEqual(['/tmp'])
+    expect(found[0].decorations).toEqual({ underline: false, pointerCursor: false })
+
+    click(found[0], { ctrl: true })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string))
+      .toEqual({ path: '/tmp' })
+  })
+
+  it('does nothing on a plain click, whatever KIND of reference it is', async () => {
+    /*
+      The gesture is one act for four destinations, and the refusal has to hold
+      for all four. A reader clicks in a terminal to focus it, to place a cursor,
+      to select — and a provider that opened on every click would satisfy every
+      assertion about which paths are recognised while taking the screen
+      somewhere nobody asked to go.
+
+      Checked per KIND rather than once, because each kind is a separate branch
+      of the same handler and three of them are new here.
+    */
+    const cases: Array<[string, string]> = [
+      ['a file', 'wrote src/app.ts'],
+      ['a directory', 'kész: openspec/changes/a/'],
+      ['a desktop path', 'kimenet /tmp/run-4/shot.png'],
+      ['a low-confidence path', 'nézd a /tmp könyvtárat'],
+      ['a choice', 'lásd lib/util.ts'],
+    ]
+    for (const [what, row] of cases) {
+      cleanup()
+      providers = []
+      socket = null
+      line = row
+      const openFile = vi.fn()
+      const reveal = vi.fn()
+      await mount({
+        projectRoot: root,
+        knownFiles: new Set(['src/app.ts', 'openspec/changes/a/spec.md',
+                             'src/lib/util.ts', 'test/lib/util.ts']),
+        onOpenFile: openFile, onReveal: reveal,
+      })
+      const found = links()
+      expect(found.length, `${what}: nothing was recognised, so the click proves nothing`)
+        .toBeGreaterThan(0)
+      click(found[0], { ctrl: false })
+      expect(openFile, what).not.toHaveBeenCalled()
+      expect(reveal, what).not.toHaveBeenCalled()
+      expect(fetchMock, what).not.toHaveBeenCalled()
+      expect(document.querySelector('[data-fleet-terminal-choice]'), what).toBeNull()
+    }
+  })
+
+  it('offers the matches when a token suffixes several files, and opens none', async () => {
+    // AC-9. Never a guess and never a discard — the reader chooses.
+    line = 'lásd lib/util.ts'
+    const openFile = vi.fn()
+    await mount({
+      projectRoot: root,
+      knownFiles: new Set(['src/lib/util.ts', 'test/lib/util.ts']),
+      onOpenFile: openFile,
+    })
+
+    click(links()[0], { ctrl: true })
+    expect(openFile).not.toHaveBeenCalled()
+    const offered = await screen.findAllByRole('button', { name: /lib\/util\.ts/ })
+    expect(offered.map(b => b.textContent)).toEqual(['src/lib/util.ts', 'test/lib/util.ts'])
+
+    offered[1].click()
+    expect(openFile).toHaveBeenCalledWith({ path: 'test/lib/util.ts' }, root)
   })
 
   it('opens a worktree agent\'s FILE in the file view, naming the worktree', async () => {
