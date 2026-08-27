@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -131,7 +132,19 @@ def test_the_marker_would_have_been_found_if_it_had_leaked(tmp_path, caplog):
 # --------------------------------------------------------------------------- #
 
 def _inotify_fds() -> int:
-    """How many inotify instances THIS process holds."""
+    """How many file watchers THIS process holds — on either platform.
+
+    The PROPERTY under test is platform-independent: the fleet read path must
+    allocate no watchers, so its cost cannot grow with the agent count. The
+    primitive is not. Linux allocates inotify instances; macOS allocates kqueues,
+    and has neither `/proc/self/fd` nor `libc.so.6` to count them with.
+
+    Both counts were failing on macOS before this — as errors about a missing
+    shared library, which reads as a broken test rather than as an unmeasured
+    property. Two entries of a failure debt that nobody could act on.
+    """
+    if sys.platform == "darwin":
+        return _kqueue_fds()
     count = 0
     for name in os.listdir("/proc/self/fd"):
         try:
@@ -140,6 +153,17 @@ def _inotify_fds() -> int:
         except OSError:
             continue
     return count
+
+
+def _kqueue_fds() -> int:
+    """The macOS counterpart, from `lsof`'s own TYPE column."""
+    import subprocess
+    try:
+        out = subprocess.run(["lsof", "-p", str(os.getpid())],
+                             capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return -1
+    return sum(1 for line in out.splitlines() if line.split()[4:5] == ["KQUEUE"])
 
 
 def test_the_instrument_can_allocate_a_watcher_at_all():
@@ -156,6 +180,26 @@ def test_the_instrument_can_allocate_a_watcher_at_all():
     So one unit is allocated by hand and checked to succeed before any zero
     below is believed.
     """
+    if sys.platform == "darwin":
+        # Stronger than the Linux check below, and deliberately so: it verifies
+        # that the COUNTER SEES an allocation, not merely that one succeeds. A
+        # counter that reports zero because it cannot see is the same false zero
+        # the note above is about, arrived at from the other side.
+        import select
+
+        before = _kqueue_fds()
+        if before < 0:
+            pytest.skip("lsof could not be run; every count here would be a false zero")
+        watcher = select.kqueue()
+        try:
+            assert _kqueue_fds() == before + 1, (
+                "the watcher counter cannot see an allocation it was shown; "
+                "every zero below would be a false zero rather than a measurement"
+            )
+        finally:
+            watcher.close()
+        return
+
     import ctypes
 
     libc = ctypes.CDLL("libc.so.6", use_errno=True)
