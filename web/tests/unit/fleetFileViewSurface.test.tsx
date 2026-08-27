@@ -449,3 +449,80 @@ describe('the five things the reader could not see', () => {
     expect(container.querySelector('[data-fleet-file-node="other/y.ts"]')).toBeTruthy()
   })
 })
+
+/**
+ * THE FILE LIST, PUT AWAY — asked for on 2026-08-27.
+ *
+ * The list is a navigation aid that keeps charging the reader 256 px of the
+ * width the content is read in. Hiding it is a layout decision, so it holds for
+ * whatever the right-hand side shows, and the divider has to leave with it — a
+ * splitter with nothing on one side still drags and still sets a width nobody
+ * can see.
+ */
+describe('hiding the file list', () => {
+  const toggle = (c: HTMLElement) => c.querySelector('[data-fleet-file-tree-hidden]')!
+
+  it('takes the list AND its divider away, and gives the width back', async () => {
+    const { container } = view({ request: { path: 'a.ts' } })
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-splitter]')).toBeTruthy()
+
+    fireEvent.click(toggle(container))
+
+    expect(container.querySelector('[data-fleet-file-tree]')).toBeNull()
+    expect(container.querySelector('[data-fleet-splitter]')).toBeNull()
+    // The content is still there — this hides the list, not the file.
+    expect(screen.getByTestId('monaco')).toBeTruthy()
+    expect(toggle(container).getAttribute('data-fleet-file-tree-hidden')).toBe('on')
+  })
+
+  it('brings it back at the width it had, not at the default', async () => {
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
+    const before = (container.querySelector('[data-fleet-file-tree]') as HTMLElement).style.width
+
+    fireEvent.click(toggle(container))
+    fireEvent.click(toggle(container))
+
+    const after = (container.querySelector('[data-fleet-file-tree]') as HTMLElement).style.width
+    expect(after).toBe(before)
+  })
+
+  it('remembers the answer across the remount that docking and enlarging cause', async () => {
+    const first = view()
+    await waitFor(() => expect(first.container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
+    fireEvent.click(toggle(first.container))
+    cleanup()
+
+    const { container } = view()
+    await waitFor(() => expect(toggle(container)).toBeTruthy())
+    expect(container.querySelector('[data-fleet-file-tree]')).toBeNull()
+  })
+
+  /*
+    ui-quality's rule, and the only reason this feature needed a test beyond
+    "it disappears": every layout that hides something creates a place a broken
+    thing can sit while the screen looks fine. Both of the tree's own notices
+    live INSIDE the tree.
+  */
+  it('carries the "no change marks" notice out to the control that hid it', async () => {
+    listStatus = null
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-nostatus]')).toBeTruthy())
+
+    fireEvent.click(toggle(container))
+
+    expect(container.querySelector('[data-fleet-file-nostatus]')).toBeNull()
+    // Colour is the alarm — a reader must not have to hover to learn of it.
+    expect(toggle(container).className).toContain('amber')
+    // and the reason travels with it.
+    expect(toggle(container).getAttribute('title')).toMatch(/change marks|not a git repository/)
+  })
+
+  it('says nothing alarming when there was nothing to say', async () => {
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
+    fireEvent.click(toggle(container))
+    expect(toggle(container).className).not.toContain('amber')
+  })
+})
