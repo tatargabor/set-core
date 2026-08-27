@@ -157,14 +157,16 @@ describe('the live mode', () => {
     // `idle-tail` has no agent and is awaiting a human: precisely the row the
     // live view removes, and precisely the one whose alarm must survive it.
     await waitFor(() => expect(header().querySelector('[data-fleet-jump="awaiting"]')).toBeTruthy())
-    expect(header().querySelector('[data-fleet-jump="awaiting"]')!.textContent).toContain('1 waiting for a human')
+    expect(header().querySelector('[data-fleet-jump="awaiting"]')!.getAttribute('aria-label'))
+      .toContain('1 waiting for a human')
 
     fireEvent.click(bar.querySelector('[data-fleet-column-mode="live"]')!)
     await waitFor(() => expect(container.querySelector('[data-fleet-column-flat]')).toBeTruthy())
     expect(flatNames(container)).not.toContain('idle-tail')
 
     // The row is gone from the list; the alarm it raised is not.
-    expect(header().querySelector('[data-fleet-jump="awaiting"]')!.textContent).toContain('1 waiting for a human')
+    expect(header().querySelector('[data-fleet-jump="awaiting"]')!.getAttribute('aria-label'))
+      .toContain('1 waiting for a human')
     expect(header().querySelector('[data-fleet-jump="waiting"]')).toBeTruthy()
   })
 

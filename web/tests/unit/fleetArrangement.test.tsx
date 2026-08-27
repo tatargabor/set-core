@@ -150,7 +150,10 @@ describe('the waiting count — a state the producer does not report is not a ze
       expect(container.querySelector('[data-fleet-jump="waiting"]')).toBeTruthy()
     })
     expect(container.querySelector('[data-fleet-waiting="unreported"]')).toBeNull()
-    expect(container.querySelector('[data-fleet-jump="waiting"]')!.textContent).toMatch(/1 waiting for an answer/)
+    // The strip is marks and numbers now; the sentence lives on `aria-label`,
+    // which is also what a reader without a pointer gets.
+    expect(container.querySelector('[data-fleet-jump="waiting"]')!.getAttribute('aria-label'))
+      .toMatch(/1 waiting for an answer/)
   })
 
   /**
@@ -166,7 +169,8 @@ describe('the waiting count — a state the producer does not report is not a ze
       expect(container.querySelector('[data-fleet-attention]')).toBeTruthy()
     })
     expect(container.querySelector('[data-fleet-waiting="unreported"]')).toBeNull()
-    expect(container.querySelector('[data-fleet-attention]')!.textContent).toMatch(/0 waiting for an answer/)
+    expect(container.querySelector('[data-fleet-chip="waiting-zero"]')!.getAttribute('aria-label'))
+      .toMatch(/0 waiting for an answer/)
   })
 })
 
@@ -176,12 +180,14 @@ describe('nothing compacted may hide a state', () => {
     const { container } = render(<Fleet />)
     const header = await waitFor(() => {
       const el = container.querySelector('[data-fleet-attention]') as HTMLElement
-      expect(el.textContent).toMatch(/unknown/)
+      expect(el.querySelector('[data-fleet-jump="unknown"]')).toBeTruthy()
       return el
     })
     // Two agents in an undetermined state: one inside a COLLAPSED group, one
     // inside the parked section. Neither row is on screen; both are counted.
-    expect(header.textContent).toMatch(/2 unknown/)
+    expect(header.querySelector('[data-fleet-jump="unknown"]')!.getAttribute('aria-label'))
+      .toMatch(/2 in an unknown state/)
+    expect(header.querySelector('[data-fleet-jump="unknown"]')!.textContent).toBe('2')
     expect(container.querySelector('[data-fleet-project="hidden"]')).toBeNull()
     expect(container.querySelector('[data-fleet-project="felretett"]')).toBeNull()
   })
@@ -465,7 +471,8 @@ describe('a discovered project the arrangement places nowhere', () => {
     })
     expect(within(block).getByText('sehol')).toBeTruthy()
     // And it is counted, so the header cannot read calm while it is there.
-    expect(container.querySelector('[data-fleet-attention]')!.textContent).toMatch(/1 unknown/)
+    expect(container.querySelector('[data-fleet-jump="unknown"]')!.getAttribute('aria-label'))
+      .toMatch(/1 in an unknown state/)
   })
 })
 

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, Bot, Clock, ClockArrowDown, History, TriangleAlert } from 'lucide-react'
+import { Archive, Bot, CircleDashed, Clock, ClockArrowDown, History, SearchX, TriangleAlert } from 'lucide-react'
 
 import { age, freshestSeconds, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
@@ -256,6 +256,48 @@ function ProjectFacts({ project, showFreshest }: { project: FleetProject | undef
     </span>
   )
 }
+
+// --------------------------------------------------------------------------- //
+// The attention header's chips
+// --------------------------------------------------------------------------- //
+
+/**
+ * One attention fact: a mark, a number, and the sentence in the tooltip.
+ *
+ * The header used to spell each fact out — `1 waiting for an answer → first
+ * one`, `49 projects not measured`. On a 185 px column that is a paragraph:
+ * the phrases wrapped, so the header's HEIGHT moved every time a count changed
+ * or a state appeared, and the list below it jumped with it. Asked for by the
+ * user, twice: icons and numbers, text only where it is genuinely needed.
+ *
+ * Nothing is lost, because the mark is the meaning here and the prose only ever
+ * restated it. What the prose carried that a mark cannot — *why* this is worth
+ * looking at — is on `title` for a pointer and on `aria-label` for a reader
+ * that has none. The marks keep their old shapes exactly: a circle is an agent
+ * state, a square is work waiting on a person, and the anomalies (nothing was
+ * measured, a declaration is contradicted) are the only ones drawn as glyphs.
+ */
+function Chip({ mark, count, tone, title, label, onClick, jump, data }: {
+  mark: React.ReactNode
+  count: React.ReactNode
+  tone: string
+  title: string
+  label: string
+  onClick?: () => void
+  jump?: string
+  /** Extra markers this chip must keep carrying — `data-fleet-waiting`, say. */
+  data?: Record<string, string>
+}) {
+  const cls = `inline-flex items-center gap-1 text-xs tabular-nums shrink-0 ${tone}${
+    onClick ? ' hover:underline underline-offset-2' : ''}`
+  const body = <>{mark}{count}</>
+  return onClick
+    ? <button type="button" data-fleet-jump={jump} {...data} onClick={onClick} title={title} aria-label={label} className={cls}>{body}</button>
+    : <span data-fleet-chip={jump} {...data} title={title} aria-label={label} className={cls}>{body}</span>
+}
+
+/** A filled dot — every agent-state mark on this surface is one. */
+const Dot = ({ cls }: { cls: string }) => <span className={`w-2 h-2 rounded-full shrink-0 ${cls}`} aria-hidden />
 
 // --------------------------------------------------------------------------- //
 // One project
@@ -934,25 +976,46 @@ export default function FleetProjectColumn({
           nested overflow container has been known to. */}
       {/* ---------------------------------------------------------------- */}
       <div data-fleet-attention className="shrink-0 border-b border-surface-line px-2 py-1.5 space-y-1">
+        {/* Marks and numbers, one line, no prose — see `Chip`. The order is
+            the order they matter in: somebody is blocked on an answer, then on
+            a person, then what was never looked at, then the anomalies, then
+            what is simply running.
+
+            The agent and project TOTALS are deliberately not here. They used to
+            be, alongside the screen header's own copy, with different filters
+            and no way to tell which was which (raised 2026-08-19); they are
+            stated once, up there, as one sentence carrying the relation between
+            the two numbers. */}
         <div className="flex items-center gap-2 flex-wrap">
           {waitingKnown ? (
             totals.waiting > 0 ? (
-              <button
-                data-fleet-jump="waiting"
+              <Chip
+                jump="waiting"
                 onClick={() => jump(firstWaiting)}
-                className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold hover:underline underline-offset-2 tabular-nums"
-              >
-                <span className="w-2 h-2 rounded-full bg-sky-300" />
-                {totals.waiting} waiting for an answer
-                <span className="text-fg-muted font-normal">→ first one</span>
-              </button>
+                tone="text-sky-300 font-semibold"
+                mark={<Dot cls="bg-sky-300" />}
+                count={totals.waiting}
+                title={`${totals.waiting} agent(s) waiting for an answer — jump to the first`}
+                label={`${totals.waiting} waiting for an answer, jump to the first`}
+              />
             ) : (
-              <span className="text-xs text-fg-muted tabular-nums">0 waiting for an answer</span>
+              /* A measured zero, drawn dim. It stays on the strip because the
+                 next branch is a DIFFERENT fact, and the two must not look
+                 alike. */
+              <Chip
+                jump="waiting-zero"
+                tone="text-fg-muted"
+                mark={<Dot cls="bg-fg-ghost" />}
+                count={0}
+                title="Nobody is waiting for an answer. Measured, not assumed."
+                label="0 waiting for an answer"
+              />
             )
           ) : (
             /* NOT a zero. Where the producer does not report this state at all,
-               a rendered `0 waiting for an answer` would be an answer nobody gave — the
-               false-absence class this screen exists for.
+               a rendered `0` would be an answer nobody gave — the false-absence
+               class this screen exists for. So the number is `?` and the mark is
+               hollow: it cannot be mistaken for the measured zero above.
 
                Measured 2026-08-19 (afternoon): the producer DOES report it now
                (`waiting: 1` in the envelope, `state: "waiting"` on an agent), so
@@ -960,98 +1023,103 @@ export default function FleetProjectColumn({
                because the reason it exists has not changed: an older server, a
                partial answer, or a future field that stops being emitted all
                land here, and each of them is a gap rather than a zero. */
-            <span
-              data-fleet-waiting="unreported"
-              className="text-xs text-amber-400"
-              title="This answer carries no 'waiting for an answer' measurement. Not a zero — a missing measurement."
-            >
-              “waiting for an answer” — this answer does not measure it
-            </span>
+            <Chip
+              jump="waiting-unreported"
+              data={{ 'data-fleet-waiting': 'unreported' }}
+              tone="text-amber-400"
+              mark={<span className="w-2 h-2 rounded-full border border-amber-400 shrink-0" aria-hidden />}
+              count="?"
+              title="This answer carries no “waiting for an answer” measurement. Not a zero — a missing measurement."
+              label="waiting for an answer is not measured in this answer"
+            />
           )}
           {/* Task 7.14. In the header rather than only on the row, for the same
               reason the waiting count is: a hand-made order has no construction
               that keeps this visible, and a project awaiting a human is the one
               a reader could unblock in a minute. The jump has its own finder —
               `firstMatching` looks for an AGENT, and these projects usually
-              have none. */}
+              have none.
+
+              A SQUARE, where every agent-state mark is a circle: the shape
+              carries the difference between an agent that exists and work with
+              nobody on it, and with the words gone it is the only thing that
+              does. */}
           {totals.awaiting > 0 && (
-            <button
-              data-fleet-jump="awaiting"
+            <Chip
+              jump="awaiting"
               onClick={() => jump(firstAwaitingProject)}
-              className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:underline underline-offset-2 tabular-nums"
-              title="Work waiting for a human — even where no agent is running. A manual step, a stalled change, or work marked running whose process is gone."
-            >
-              <span className="w-2 h-2 bg-violet-300" />
-              {totals.awaiting} waiting for a human
-              <span className="text-fg-muted">→</span>
-            </button>
+              tone="text-violet-300"
+              mark={<span className="w-2 h-2 bg-violet-300 shrink-0" aria-hidden />}
+              count={totals.awaiting}
+              title="Work waiting for a human — even where no agent is running. A manual step, a stalled change, or work marked running whose process is gone. Jump to the first."
+              label={`${totals.awaiting} waiting for a human, jump to the first`}
+            />
           )}
-          {/* A zero here is only readable next to this. 37 of 41 projects had no
-              orchestration state at all on the day this was built, so a bare
-              `0 waiting for a human` would have described "we looked nowhere" as "there
-              is nothing". */}
+          {/* A zero next to this is only readable because of it. 37 of 41
+              projects had no orchestration state at all on the day this was
+              built, so a bare `0 waiting for a human` would have described "we
+              looked nowhere" as "there is nothing". The dashed ring is the
+              screen's mark for that everywhere else. */}
           {totals.unmeasured > 0 && (
-            <span
-              data-fleet-awaiting-unmeasured={totals.unmeasured}
-              className="text-xs text-fg-ghost tabular-nums"
+            <Chip
+              jump="unmeasured"
+              tone="text-fg-ghost"
+              mark={<CircleDashed size={11} strokeWidth={1.75} aria-hidden />}
+              count={totals.unmeasured}
               title="This many projects have no orchestration state at all, so nothing was looked at there. Not a zero — not measured."
-            >
-              {totals.unmeasured} projects not measured
-            </span>
+              label={`${totals.unmeasured} projects not measured`}
+            />
           )}
           {/* A contradiction the surface never shows is one nobody ever fixes.
               The measurement already won — `state` holds the log's answer — so
               this changes nothing the reader must act on, and that is exactly
               why it would otherwise never surface anywhere. */}
           {totals.conflicts > 0 && (
-            <button
-              data-fleet-jump="conflict"
+            <Chip
+              jump="conflict"
               onClick={() => jump(firstConflict)}
-              className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline underline-offset-2 tabular-nums"
-              title="This many agents' records declared a state their log contradicts. The measurement wins; the contradiction is on the producer's side."
-            >
-              <span aria-hidden>⚠</span>
-              {totals.conflicts} contradicting declarations
-              <span className="text-fg-muted">→</span>
-            </button>
+              tone="text-amber-400"
+              mark={<TriangleAlert size={11} strokeWidth={1.75} aria-hidden />}
+              count={totals.conflicts}
+              title="This many agents' records declared a state their log contradicts. The measurement wins; the contradiction is on the producer's side. Jump to the first."
+              label={`${totals.conflicts} contradicting declarations, jump to the first`}
+            />
           )}
           {totals.unknown > 0 && (
-            <button
-              data-fleet-jump="unknown"
+            <Chip
+              jump="unknown"
               onClick={() => jump(firstUnknown)}
-              className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline underline-offset-2 tabular-nums"
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              {totals.unknown} unknown
-              <span className="text-fg-muted">→</span>
-            </button>
+              tone="text-amber-400"
+              mark={<Dot cls="bg-amber-400" />}
+              count={totals.unknown}
+              title="This many agents are in an unknown state — jump to the first"
+              label={`${totals.unknown} in an unknown state, jump to the first`}
+            />
           )}
           {totals.working > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 tabular-nums">
-              {/* English, like every other string on this surface. It read
-                  `dolgozik` until 2026-08-20 — one Hungarian word beside
-                  `unknown` and `waiting for a human`, found by LOOKING at the
-                  screen rather than by any test, because a test asserting the
-                  wrong language passes exactly as well as one asserting the
-                  right one. */}
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />{totals.working} working
-            </span>
+            <Chip
+              jump="working"
+              tone="text-emerald-400"
+              mark={<Dot cls="bg-emerald-400" />}
+              count={totals.working}
+              title="This many agents are working"
+              label={`${totals.working} working`}
+            />
+          )}
+          {/* Arranged names discovery no longer returns — the one fact only this
+              column knows. It used to sit on a line of its own below the strip,
+              which is a second row of height for a number that is usually 0. */}
+          {missingCount > 0 && (
+            <Chip
+              jump="missing"
+              tone="text-amber-400"
+              mark={<SearchX size={11} strokeWidth={1.75} aria-hidden />}
+              count={missingCount}
+              title="Projects placed in this arrangement that the latest discovery did not return."
+              label={`${missingCount} arranged names missing`}
+            />
           )}
         </div>
-        {/* The agent and project totals used to live here AND in the screen's
-            header, with different filters and no way to tell which was which
-            (raised 2026-08-19). They are now stated once, in the header, as one
-            sentence that carries the relation between the two numbers. What
-            stays here is the thing only this column knows: arranged names that
-            discovery no longer finds. */}
-        {missingCount > 0 && (
-          <div
-            className="text-xs text-amber-400 tabular-nums truncate"
-            title="Projects placed in this arrangement that the latest discovery did not return."
-          >
-            {missingCount} arranged name(s) missing
-          </div>
-        )}
       </div>
 
       {/* ---------------------------------------------------------------- */}
