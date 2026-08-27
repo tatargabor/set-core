@@ -66,6 +66,29 @@
 - [x] 7.6 **A price of $1.00 rendered as `$.00`.** Measured on the running dashboard: `consumer-b-1`, 99 685 tokens at `rewrite_usd = 0.9969`, drew `$.00` on its tab. `money()` asked `usd < 1` of the **raw** value and then sliced the leading character off the **rounded** string, and the two disagree across `[0.995, 1)`: `(0.9969).toFixed(2)` is `"1.00"`, and `.slice(1)` ate the `1`. The fail direction is why it mattered — a dollar of stake read as nothing, on a strip whose only job is to say what a cold cache costs. Fixed by deciding the branch on the rounded string it actually cuts. Proven by a test run against the UNFIXED source first (`expected '$.00' to be '$1.00'`), then green; re-verified on the running screen after `pnpm build` — the tab now reads `consumer-b-1 $1.00` [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
 - [x] 7.7 Not asserted, and said out loud rather than left implicit: `money(0.995)` yields `$.99`, because 0.995's binary representation sits just below the decimal it is written as. That is IEEE-754, not this formatter, and a test asserting otherwise would be a test about floats [REQ: prices-come-from-one-dated-table-and-a-missing-price-degrades-to-tokens]
 
+## 8. The mark on the tile header
+
+Reported by the user 2026-08-27, with two screenshots: *"nem latszik a normal grid-es
+ablak title-ben csak ha fullscrenelem és a tabokban nézem"*. The same root cause as the
+gap 7.3 hit from the other side — the mark was bound to the tab strip rather than to the
+agent, and the strip is drawn in one view mode only.
+
+- [x] 8.1 Draw the cache mark in the tile header from the SAME `mark()` call the tab uses — no second computation, so the two surfaces cannot disagree [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+- [x] 8.2 Render the cooling bar on the tile header's bottom edge, with the same fill, band and thickness the tab draws [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+- [x] 8.3 Turn the tile header's name red and show the rewrite price beside it once cold, and neither while live [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+- [x] 8.4 Render the unmeasured mark on the tile header, and keep it visually apart from the binding-not-confirmed marker that already sits beside the name — the collision reported in 7.4 becomes live on this surface. **Done by giving the cache mark a WORD the tab has no room for: `cache ?` rather than a bare `?`.** Verified live on the one seat that carries both, which reads `unnamed ? ● unknown cache ? —`: the bare `?` belongs to the name, the labelled one to the cache, and the state word sits between them [REQ: a-tab-with-no-measurement-is-marked-unknown-never-cold]
+- [x] 8.5 Carry the same figures in the tile header's hover title as the tab's [REQ: the-exact-figures-are-reachable-without-acting]
+- [x] 8.6 Unit-test the tile header's live / cold / unmeasured renderings, and that a seat alone on its project — one that draws no tab strip at all — still shows its mark [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+- [x] 8.7 Unit-test that tab and tile header agree: no input makes one cold while the other is live [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+- [x] 8.8 Mutation-check: **3 mutants, 3 caught** — the name's cold condition inverted (2 tests failed), the bar's fill forced to 1 (2 failed), the price's render condition forced false (1 failed). Two things worth keeping, because both produced a reassuring result that meant nothing:
+  - **A mutant that was never applied still printed a pass.** The bar-fill pattern occurred TWICE (the tab draws the same expression), the script aborted on the ambiguity, and the harness went on to print the next run's `8 passed` as though it were the mutant's. A mutation harness must say *"not applied"* loudly, not fall through to the next line.
+  - **A surviving mutant found a weak assertion, not a weak mutation.** Inverting the name's cold condition failed nothing, because the test asked whether the header contained anything with `.text-red-400` — and the PRICE beside the name is red too. The assertion now names the element. A fourth mutant was discarded rather than counted: adding `hidden` to the price is not a mutation under jsdom, which has no layout, so `querySelector` and `textContent` find it either way [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+- [x] 8.9 **MANDATORY VISUAL CHECK — DONE 2026-08-27, in the grid view the report came from.** All three states seen, no tab strip involved:
+  - **cold** — `consumer-a-1`: red name, `$1.95` beside the state, and a full-width `bg-red-400` bar across the header (`fill 1.000`, track 1468 px, bar 1468 px)
+  - **live** — `consumer-a-2`: white name, no price, an emerald bar at `fill 0.219` (321 px of 1468)
+  - **unmeasured** — the `chrome` seat, which is ALONE on its project and therefore draws no tab strip at all: `cache ?` in amber, no bar element, no price, title `prompt cache not measured — this seat has no transcript to read`
+  - The hover titles carry the figures on every tile, e.g. `prompt cache warm for 47m — 173 896 tokens, then $1.74 to rewrite` [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN the last assistant record of a session's transcript carries a usage block with cache figures THEN the session's cache state names that record's timestamp, the sum of its cache read and cache creation tokens, and the lifetime that record wrote [REQ: a-sessions-prompt-cache-state-is-read-from-the-transcript-it-already-writes, scenario: a-session-that-has-made-a-request]
@@ -89,6 +112,9 @@
 - [x] AC-19: WHEN one agent became blocked two minutes ago and another forty minutes ago, and neither agent's cache state could be measured THEN the two-minute-old blockage is presented first [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival, scenario: a-fresh-blockage-outranks-an-old-one]
 - [x] AC-20: WHEN more than one project holds queued items the reader has not seen yet THEN every unseen item of the presented item's project is offered before an unseen item of another project [REQ: the-queue-is-ordered-by-freshness-of-the-blockage-not-by-arrival, scenario: a-project-is-exhausted-before-the-next-one-is-entered]
 
+- [x] AC-21: WHEN the reader is in a view that draws no tab strip THEN each agent's tile header carries its cache mark, with the same cooling, stake and cost the tab would have shown [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip, scenario: the-grid-view]
+- [x] AC-22: WHEN a project holds exactly one agent, so no tab strip is drawn for it THEN that agent's cache mark is still presented on its tile header [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip, scenario: a-seat-alone-on-its-project]
+- [x] AC-23: WHEN the same agent is presented as a tab and as a tile header THEN both marks are derived from one computation, so neither can be cold while the other is live [REQ: the-mark-belongs-to-the-agent-not-to-the-tab-strip, scenario: the-two-surfaces-cannot-disagree]
 
 **How each was verified (2026-08-27).** AC-1…AC-4 by the Python reader's fixture
 tests (`tests/unit/test_fleet_cache_heat.py`); AC-5…AC-14 by the web unit tests
@@ -99,4 +125,7 @@ is the one state the live fleet did not hold at the time of the check, and rests
 on its unit test. AC-15 by `PRICES_VERIFIED_ON = "2026-08-27"` in
 `lib/set_orch/cost.py`, shape-asserted at `tests/unit/test_cost_metrics.py:401`.
 AC-16 by inspection (task 3.3). AC-17…AC-20 by
-`tests/unit/test_fleet_attention_queue.py`.
+`tests/unit/test_fleet_attention_queue.py`. AC-21…AC-23 by
+`web/tests/unit/fleetTileCacheMark.test.tsx` **and** on the running dashboard's grid view
+(task 8.9) — AC-22 against the one live seat that is genuinely alone on its project, which is
+the case the reported defect lived in and the one a tab-based test passes vacuously.

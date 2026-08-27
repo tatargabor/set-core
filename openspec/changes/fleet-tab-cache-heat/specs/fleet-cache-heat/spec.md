@@ -2,7 +2,8 @@
 
 - Reading a session's prompt-cache state from the native transcript it already writes
 - Exposing that state on the fleet agent record, in a shape that can say "unknown"
-- Marking cooling, stake, and rewrite cost on the agent tab
+- Marking cooling, stake, and rewrite cost on the agent tab **and on the agent's tile header**,
+  so the mark is reachable in every view mode rather than only where a tab strip is drawn
 - One dated table for the price multipliers and per-model input prices
 
 ## OUT OF SCOPE
@@ -145,6 +146,37 @@ one whose cost is unknown. Saying so is the only honest option.
 
 - **WHEN** an agent's record carries no cache state
 - **THEN** its tab shows an unmeasured marking, with no bar and no cost
+
+### Requirement: The mark belongs to the agent, not to the tab strip
+
+Every surface that presents an agent as a unit — its tab AND its tile header — SHALL carry the same
+cache mark, computed from the same single condition. A reader SHALL NOT have to change view mode to
+learn what a session's cache costs.
+
+The tab strip is drawn only in the tabbed view, and only where a project holds more than one agent.
+A mark that lives solely on it is therefore absent for a reader in the grid view, and absent for
+every seat that is alone on its project — which was measured, not predicted: of twelve live agents
+on 2026-08-27, the strip could show a mark for seven.
+
+Where the tile header has more room than a tab, it SHALL spend it on the same facts rather than on
+different ones. The mark may be drawn larger; it may not say more, or less.
+
+#### Scenario: The grid view
+
+- **WHEN** the reader is in a view that draws no tab strip
+- **THEN** each agent's tile header carries its cache mark, with the same cooling, stake and cost
+  the tab would have shown
+
+#### Scenario: A seat alone on its project
+
+- **WHEN** a project holds exactly one agent, so no tab strip is drawn for it
+- **THEN** that agent's cache mark is still presented on its tile header
+
+#### Scenario: The two surfaces cannot disagree
+
+- **WHEN** the same agent is presented as a tab and as a tile header
+- **THEN** both marks are derived from one computation, so neither can be cold while the other is
+  live
 
 ### Requirement: The exact figures are reachable without acting
 

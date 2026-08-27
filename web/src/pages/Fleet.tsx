@@ -1150,6 +1150,22 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
   */
   const [instructOpen, setInstructOpen] = useState(false)
   /*
+    ONE computation, shared with the tab. Reported by the user 2026-08-27 with
+    two screenshots: the mark was visible only after full-screening into the
+    tabbed view — *"nem latszik a normal grid-es ablak title-ben csak ha
+    fullscrenelem és a tabokban nézem"*.
+
+    The cause was that the mark hung off the tab strip rather than off the
+    agent, and the strip is drawn in one view mode only, and only where a
+    project holds several agents. Measured the same day: of twelve live agents,
+    the strip could carry a mark for seven.
+
+    `cacheMark` is the same function `AgentTabs` calls, so the two surfaces
+    cannot disagree about whether a seat is cold — the single-condition rule
+    that requirement already imposes WITHIN a tab, applied ACROSS surfaces.
+  */
+  const heat = cacheMark(agent.cache)
+  /*
     WHERE THE TERMINAL'S STATUS ROW LANDS — asked for 2026-08-22: *"egy sorba
     kerüljön a csempe ikonja és a layout ikon"*.
 
@@ -1206,7 +1222,11 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           wrapping row, a long name pushed the icons onto a second line — a
           title bar that moves is not a title bar. The left half wraps; the
           right half never does. */}
-      <div className="flex items-start gap-2" data-fleet-tile-head={agent.pid}>
+      <div className="relative flex items-start gap-2" data-fleet-tile-head={agent.pid}
+           /* The same figures the tab puts in its tooltip — remaining minutes,
+              size and rewrite cost — so changing view mode changes nothing about
+              what is reachable, only about how much room it has. */
+           title={heat.kind === 'unmeasured' ? UNMEASURED_TITLE : heat.title}>
       {/*
         NO WRAP once the terminal's row shares this line — found by LOOKING,
         2026-08-22, on the three-agent screen the merge was asked for: with the
@@ -1225,7 +1245,12 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
         after this pass, and nothing would re-run to notice.
       */}
       <div className={`flex-1 min-w-0 flex items-baseline gap-2 ${terminalOpen ? 'flex-nowrap overflow-hidden' : 'flex-wrap'}`}>
-        <span className="text-sm text-fg-strong min-w-0 truncate">
+        {/* Cold turns the name red here for the same reason it does on the tab,
+            and by the same condition. A ternary rather than an appended class:
+            `text-fg-strong` and `text-red-400` set the same property, so which
+            one wins would be decided by stylesheet order rather than by this
+            expression — a mark that is right by luck. */}
+        <span className={`text-sm min-w-0 truncate ${heat.kind === 'cold' ? 'text-red-400' : 'text-fg-strong'}`}>
           {/* The name the OWNER gave it wins over the one derived from the
               session id. Measured 2026-08-19: the tile said `set-core-9a` for
               an agent the owner holds as `set-core-0906`, so matching a tile
@@ -1246,6 +1271,24 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           )}
         </span>
         <StateLine agent={agent} />
+        {/* The cache group rides AFTER the state line, not beside the name,
+            because the name already carries the binding-not-confirmed marker —
+            an amber `?`. Two amber question marks touching would be one glyph
+            with two meanings, separable only by tooltip. Reported as latent on
+            the tab strip (task 7.4); this surface is where it would have become
+            live, so the two are held apart here by position AND by wording. */}
+        {heat.kind === 'cold' && heat.price && (
+          <span className="text-xs text-red-400 shrink-0 tabular-nums" data-fleet-tile-cache-price={heat.price}>
+            {heat.price}
+          </span>
+        )}
+        {/* The tile has room a tab does not, and it spends it on the SAME fact
+            said unambiguously: `cache ?` cannot be mistaken for the bare `?`
+            three words to its left. */}
+        {heat.kind === 'unmeasured' && (
+          <span className="text-xs text-amber-400 shrink-0 whitespace-nowrap"
+                data-fleet-tile-cache="unmeasured" title={UNMEASURED_TITLE}>cache ?</span>
+        )}
         {/* The declared block rides BESIDE the measured state and never instead
             of it — task 3.5. The case this exists for is the disagreement:
             measured `quiet` with the agent declaring itself blocked, which the
@@ -1299,6 +1342,24 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
              nothing, which this screen's own rule calls worse than none. */
           onInstruct={instructability(agent).kind !== 'no' ? () => setInstructOpen(o => !o) : undefined}
         />
+        {/* The cooling bar, on the header's bottom edge — the tile's equivalent
+            of the tab's. Length is time, thickness is the stake, and both come
+            from the same `heat` the name and the price read, so this cannot be
+            full while the name is not red.
+
+            Spans the whole header rather than sitting inline: in the grid view
+            the tile IS the unit, and a bar across its head is scannable down a
+            column of tiles the way the tab's is across a strip. */}
+        {heat.kind !== 'unmeasured' && (
+          <span className="absolute left-0 right-0 -bottom-px flex items-end pointer-events-none"
+                style={{ height: `${heat.thickness}px` }}
+                data-fleet-tile-cache={heat.kind}
+                data-fleet-tile-cache-fill={heat.fill.toFixed(3)}
+                data-fleet-tile-cache-thickness={heat.thickness}
+                aria-hidden>
+            <span className={`block h-full ${heat.colour}`} style={{ width: `${heat.fill * 100}%` }} />
+          </span>
+        )}
       </div>
 
       <Purpose agent={agent} />
