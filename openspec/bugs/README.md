@@ -67,6 +67,37 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-89 — the desktop guard measures the PERMISSION BIT, but what runs a file is the MIME handler
+
+- **state:** open
+- **reported:** 2026-08-27 by the user — *"ami necces továbbra is tool open pl xdg"* — and
+  measured the same hour.
+- **measured:** `desktop.py:114` refuses a path when `os.access(target, os.X_OK)`. That is a
+  proxy for "would this run", and the thing itself is the desktop's file association. On this
+  machine, with a 644 file and no executable bit anywhere:
+
+  ```
+  harmless.jar    guard: ÁTENGEDI  →  handler: openjdk-7-java.desktop
+  harmless.py     guard: ÁTENGEDI  →  handler: org.gnome.gedit.desktop
+  harmless.html   guard: ÁTENGEDI  →  handler: google-chrome.desktop
+  ```
+
+  A `.jar` is data by permission and a program by association — `xdg-open` hands it to a JVM
+  that executes it. `.appimage`, `.run`, `.jnlp`, `.msi` and a macro-carrying office document
+  are the same shape. `.html` is milder but not nothing: it opens at a `file://` origin, which
+  can read local files. The `.desktop` suffix is refused by name, which shows the author
+  already knew the class — the list was just one item long.
+
+  Scale, from the same 30-transcript corpus: after the pending change routes everything it
+  can into the internal viewer, **218 distinct tokens still reach `xdg-open`**, and 10 of them
+  carry a suffix whose handler runs or actively interprets the content.
+
+  The fail direction is the reason this is filed rather than noted: the guard reads as
+  complete (*"executable files are not opened"*), and a reader checking it will conclude the
+  route is safe. It is safe against one carrier out of several.
+- **fixed when:** a 644 `.jar` is refused by `refusal()` with a reason naming the association
+  rather than the bit, and a test asserts the refusal for a file with NO executable bit set.
+
 ### B-83 — a text file with the executable bit set opens NOWHERE
 
 - **state:** open
