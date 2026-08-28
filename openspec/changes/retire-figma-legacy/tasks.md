@@ -12,10 +12,14 @@
 
 ## 3. Delete the dead carriers, each proven absent first
 
-- [ ] 3.1 Run the proving grep for the fetch script and paste its output into the commit message: `grep -rn "fetch-figma-design" --exclude-dir=.git . | grep -v "^./openspec/changes/archive/" | grep -v "^./scripts/fetch-figma-design.py"` must be EMPTY. If it is not, stop and report — do not delete [REQ: scope-based-source-file-matching]
-- [ ] 3.2 Delete `scripts/fetch-figma-design.py` [REQ: scope-based-source-file-matching]
-- [ ] 3.3 Run the proving grep for the fixture: `grep -rn "figma-raw/TEST\|fixtures/figma" --include="*.py" --include="*.sh" --include="*.ts" --include="*.js" --exclude-dir=.git .` must be EMPTY. A glob-based reader would not appear here — that is what step 5.2 covers [REQ: ui-primitive-exclusion]
-- [ ] 3.4 Delete `tests/fixtures/figma-raw/TEST/sources/` (4 `.tsx`/`.ts` files) and any directory left empty by it [REQ: ui-primitive-exclusion]
+- [x] 3.1 Run the proving grep for the fetch script and paste its output into the commit message. **The grep as planned was wrong and is corrected here:** its `^./openspec/...` filters never matched, because `grep -rn <pattern> .` prints paths WITHOUT the `./` prefix. It over-reported rather than under-reported, so nothing was hidden — but a filter that silently matches nothing is exactly the shape that hides a finding in the other direction. The grep that actually proves the point asks about CODE, not prose:
+  ```
+  grep -rn "fetch-figma-design\|fetch_figma_design" --include="*.py" --include="*.sh" --include="*.ts" --include="*.js" --include="*.tsx" --include="*.yaml" --include="*.yml" --include="*.toml" --include="*.json" --exclude-dir=.git . | grep -v "^scripts/fetch-figma-design.py:"
+  ```
+  **Measured: EMPTY.** Also checked: no `console_scripts` entry in `pyproject.toml`, no symlink in `bin/` [REQ: scope-based-source-file-matching]
+- [x] 3.2 Delete `scripts/fetch-figma-design.py` [REQ: scope-based-source-file-matching]
+- [x] 3.3 Run the proving grep for the fixture: `grep -rn "figma-raw/TEST\|fixtures/figma" --include="*.py" --include="*.sh" --include="*.ts" --include="*.js" --exclude-dir=.git .` must be EMPTY. **Measured: EMPTY.** A glob-based reader would not appear here — that is what step 5.2 covers [REQ: ui-primitive-exclusion]
+- [x] 3.4 Delete `tests/fixtures/figma-raw/TEST/sources/` (4 `.tsx`/`.ts` files) and any directory left empty by it — the whole `tests/fixtures/figma-raw/` tree is gone. **Found while doing this, NOT acted on (out of scope):** `tests/fixtures/design-snapshot.md` is a second zero-reference orphan in the same directory (`grep -rn "fixtures/design-snapshot"` is empty). It is not named in this change's proposal or specs, so it stays — reported to the user instead of swept in [REQ: ui-primitive-exclusion]
 - [ ] 3.5 Commit the two deletions with the proving greps quoted, pathspec-limited [REQ: scope-based-source-file-matching]
 
 ## 4. Correct the presentation's stale claim
