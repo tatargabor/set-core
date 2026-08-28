@@ -25,12 +25,14 @@ import {
   setCollapsed,
   toPutBody,
 } from '../lib/fleetLayout'
+import { WaitThresholdsContext, useWaitThresholds } from '../lib/fleetWaitThresholds'
 import {
   type AttentionProject,
   type Tally,
   EMPTY_TALLY,
   UNKNOWN,
   WAITING,
+  inputWaitTone,
   firstAwaiting,
   firstMatching,
   firstWith,
@@ -121,8 +123,61 @@ function Grip() {
  * away from it.
  */
 function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?: boolean; waitingKnown: boolean }) {
+  const thresholds = useWaitThresholds()
+  // The LONGEST wait under this row, resolved on every render — the wait grows
+  // between polls, and a tone frozen at fetch time sits stale on screen for
+  // exactly as long as the poll interval.
+  const tone = inputWaitTone(t.worstInputWaitSeconds, thresholds)
   return (
     <span className="inline-flex items-center gap-2 text-xs tabular-nums shrink-0">
+      {/* WAITING FOR A PERSON, with the age of the longest wait.
+          First in the row on purpose: it is the only counter here that is a
+          request addressed to the reader.
+
+          The colour is the escalation the user asked for on 2026-08-28 —
+          unmarked under 15 s, amber from 15 s, red from 3 minutes — and it rides
+          on the group header as well as the project row, because a collapsed
+          group is exactly where a four-minute wait can sit while the screen
+          looks calm. */}
+      {(t.input > 0 || t.prompt > 0) && (
+        <span
+          data-fleet-input-wait={t.input + t.prompt}
+          data-fleet-input-wait-tone={tone ?? 'none'}
+          className={`inline-flex items-center gap-1 ${
+            tone === 'red' ? 'text-rose-400 font-semibold'
+              : tone === 'amber' ? 'text-amber-400 font-semibold'
+                : 'text-fg-muted'
+          }`}
+          title={
+            t.worstInputWaitSeconds === null
+              ? 'waiting for you — how long was not measured'
+              : `waiting for you — the longest here has been waiting ${age(t.worstInputWaitSeconds)}. `
+                + 'This tracks the SESSION, not the person: it stays amber while somebody is typing an answer.'
+          }
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            tone === 'red' ? 'bg-rose-400' : tone === 'amber' ? 'bg-amber-400' : 'bg-fg-muted'
+          }`} />
+          {t.input + t.prompt}
+          {/* The duration, not only the count. A count says somebody is waiting;
+              the age is what decides whether it is this reader's next move. */}
+          {t.worstInputWaitSeconds !== null && (
+            <span className="font-normal">{age(t.worstInputWaitSeconds)}</span>
+          )}
+        </span>
+      )}
+      {/* A background command is running: the prompt is free and yet nobody is
+          waiting. Drawn hollow — the shape says "not a request", so it cannot be
+          mistaken for the marker above at a glance. */}
+      {t.background > 0 && (
+        <span
+          data-fleet-background={t.background}
+          className="inline-flex items-center gap-1 text-fg-muted"
+          title="a backgrounded command is still running — the prompt is free, but nobody is waiting for you"
+        >
+          <span className="w-1.5 h-1.5 rounded-full border border-fg-muted" />{t.background}
+        </span>
+      )}
       {waitingKnown && t.waiting > 0 && (
         <span className="inline-flex items-center gap-1 text-sky-300 font-semibold" title="waiting for an answer">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />{t.waiting}
@@ -133,9 +188,16 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{t.working}
         </span>
       )}
+      {/* UNKNOWN is no longer amber, and the swap is deliberate (2026-08-28).
+          Amber now means "waiting for you", and one hue carrying two meanings
+          makes the reader ask which one a mark is — the cost `ui-quality.md`
+          exists to avoid. The state keeps its own weight through a DASHED
+          outline, which is a different shape and not merely a paler colour. */}
       {t.unknown > 0 && (
-        <span className="inline-flex items-center gap-1 text-amber-400" title="unknown state">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{t.unknown}
+        <span className="inline-flex items-center gap-1 text-fg-muted"
+              data-fleet-unknown={t.unknown}
+              title="unknown state — the log could not be read, which is not the same as quiet">
+          <span className="w-1.5 h-1.5 rounded-full border border-dashed border-fg-muted" />{t.unknown}
         </span>
       )}
       {/* Task 7.14 — work waiting for a HUMAN, with or without an agent. A
@@ -286,6 +348,11 @@ function useRosterCount(project: string): number {
   return useContext(RosterCounts).get(project) ?? 0
 }
 
+/* The escalation thresholds come from `fleetWaitThresholds` — one context for
+   this column AND for the agent tiles, because a threshold threaded into one
+   subtree and not the other is a screen whose row and tile disagree about when
+   a wait became urgent. */
+
 /**
  * Which group holds this project, or `null` for parked / ungrouped / orphaned.
  *
@@ -342,10 +409,44 @@ function RosterMark({ project, running }: { project: string; running: number }) 
   )
 }
 
+/**
+ * The row's own colour, from the longest wait inside it.
+ *
+ * The user asked for this on 2026-08-28, and the reason is a measurement of
+ * how the screen is read rather than a preference: *"a projekt kártya háttere
+ * lenne színezve, jobban látszik mint az agent darab és perc"* — a 6 px dot
+ * and a two-character age are a small target in a column of forty rows, and
+ * the eye has to land on each one to find the one that is waiting.
+ *
+ * Two things keep it from becoming the noisy version of itself:
+ *
+ *  - the tint is FAINT (`/10`, `/15`) and carried mostly by a left edge bar.
+ *    A saturated row would compete with the selected row's own background —
+ *    the one piece of state the reader sets by hand — and would drown the text
+ *    it is supposed to make findable;
+ *  - only `amber` and `red` tint. A wait under 15 s is not a request yet, and
+ *    a column where every row is coloured has told the reader nothing.
+ */
+function toneRow(tone: string | null, active: boolean): string {
+  if (tone === 'red') {
+    return active
+      ? 'border-rose-400/60 bg-rose-500/20 border-l-2 border-l-rose-400'
+      : 'border-transparent bg-rose-500/15 hover:bg-rose-500/25 border-l-2 border-l-rose-400'
+  }
+  if (tone === 'amber') {
+    return active
+      ? 'border-amber-400/60 bg-amber-500/15 border-l-2 border-l-amber-400'
+      : 'border-transparent bg-amber-500/10 hover:bg-amber-500/20 border-l-2 border-l-amber-400'
+  }
+  return ''
+}
+
 function ProjectRow(p: RowProps) {
   const t = p.project
     ? tallyOf([p.name], new Map([[p.name, p.project as AttentionProject]]))
     : EMPTY_TALLY
+  const tone = inputWaitTone(t.worstInputWaitSeconds, useWaitThresholds())
+  const toned = toneRow(tone, p.active)
   return (
     <div
       data-drag-item
@@ -372,10 +473,11 @@ function ProjectRow(p: RowProps) {
           out — and a boundary that vanishes during a reorder is worse than
           none, since reordering is when you most need to see the rows. */}
       <div
+        data-fleet-row-tone={tone && toned ? tone : undefined}
         className={`flex items-center gap-1 rounded border transition-colors ${
-          p.active
+          toned || (p.active
             ? 'border-surface-line bg-surface-raised'
-            : `border-transparent hover:bg-surface-raised/50 ${p.last ? '' : 'border-b-surface-edge/70'}`
+            : `border-transparent hover:bg-surface-raised/50 ${p.last ? '' : 'border-b-surface-edge/70'}`)
         } ${p.dragging ? 'opacity-50' : ''}`}
       >
         {p.handle ? (
@@ -543,6 +645,17 @@ interface GroupProps {
 function GroupBlock(p: GroupProps) {
   const t = tallyOf(p.group.projects, p.byName as ReadonlyMap<string, AttentionProject>)
   const open = !p.group.collapsed || p.forcedOpen
+  // The header carries the tint only while the group is CLOSED. Open, the rows
+  // inside carry their own, and a tinted frame around tinted rows says the same
+  // thing twice; closed, this bar is the only thing standing between a
+  // four-minute wait and a screen that looks calm.
+  // The hook is called UNCONDITIONALLY and the openness decides the value.
+  // Written the other way round first — `open ? null : inputWaitTone(…, useWaitThresholds())` —
+  // which is a hook inside a branch: the hook count changes the moment somebody
+  // collapses a group, and React throws on the render after the click. The
+  // suite did not catch it, because none of its cases toggles one.
+  const thresholds = useWaitThresholds()
+  const groupTone = open ? null : inputWaitTone(t.worstInputWaitSeconds, thresholds)
   const list = useRef<HTMLDivElement | null>(null)
   const reorder = useReorder((from, to) => p.onMoveProject(p.group.id, from, to), list, p.group.order.length)
   const found = useMemo(() => new Set(p.group.projects), [p.group.projects])
@@ -555,7 +668,13 @@ function GroupBlock(p: GroupProps) {
       data-fleet-group-collapsed={p.group.collapsed ? 'true' : 'false'}
       className={`rounded border border-surface-edge/60 bg-surface-panel/50 ${p.groupDropTarget ? 'outline outline-1 outline-sky-400' : ''} ${p.groupDragging ? 'opacity-50' : ''}`}
     >
-      <div className="flex items-center gap-1 px-0.5 py-0.5">
+      <div
+        data-fleet-group-tone={groupTone === 'red' || groupTone === 'amber' ? groupTone : undefined}
+        className={`flex items-center gap-1 px-0.5 py-0.5 rounded ${
+          groupTone === 'red' ? 'bg-rose-500/15 border-l-2 border-l-rose-400'
+            : groupTone === 'amber' ? 'bg-amber-500/10 border-l-2 border-l-amber-400' : ''
+        }`}
+      >
         {p.groupHandle ? (
           <button
             {...p.groupHandle}
@@ -921,6 +1040,7 @@ export default function FleetProjectColumn({
 
   return (
     <RosterCounts.Provider value={rosterCounts}>
+    <WaitThresholdsContext.Provider value={data?.input_wait_thresholds ?? null}>
     <div
       className="shrink-0 border-r border-surface-line flex flex-col min-h-0"
       // `w-72` was the fixed width before the divider existed; it survives as
@@ -1549,6 +1669,7 @@ export default function FleetProjectColumn({
         )}
       </div>
     </div>
+    </WaitThresholdsContext.Provider>
     </RosterCounts.Provider>
   )
 }

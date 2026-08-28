@@ -204,7 +204,10 @@ describe('nothing compacted may hide a state', () => {
     // The counter is on the closed header, not only in the global total. A
     // total tells the reader that something is wrong somewhere; this tells them
     // which closed box to open.
-    expect(within(group).getByTitle('unknown state').textContent).toMatch(/1/)
+    // Matched on the PREFIX: the marker's title gained its explanation when
+    // `unknown` moved off amber (2026-08-28), and an exact-string query would
+    // have failed on a screen that got better rather than worse.
+    expect(within(group).getByTitle(/^unknown state/).textContent).toMatch(/1/)
   })
 
   it('marks the parked section with its own count while it stays closed', async () => {
@@ -216,7 +219,7 @@ describe('nothing compacted may hide a state', () => {
       return el as HTMLElement
     })
     expect(parked.getAttribute('data-fleet-parked-open')).toBe('false')
-    expect(within(parked).getByTitle('unknown state').textContent).toMatch(/1/)
+    expect(within(parked).getByTitle(/^unknown state/).textContent).toMatch(/1/)
   })
 
   it('jumps into a collapsed group, opening it rather than scrolling past it', async () => {

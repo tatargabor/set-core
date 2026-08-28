@@ -1,12 +1,34 @@
-"""What an agent is doing — read from its session log, never from a status field.
+"""What an agent is doing — the log says what it is stopped on, the record says whether it runs.
 
-Tasks 3.1/3.2/3.3/3.6 of the `fleet-view` change.
+Tasks 3.1/3.2/3.3/3.6 of the `fleet-view` change, and the attention axis of
+`fleet-input-attention`.
 
-Why the log and not the record: the runtime writes a `status` into each session
-record, and it looks authoritative. Measured 2026-08-18 across 23 live sessions,
-the age of that field had a **median of 11 hours and a maximum of 83**, with 7
-sessions over a day stale. It is a declaration about a moment that has passed.
-The log's mtime is the moment itself.
+⚠ **This file used to say "never from a status field", and that is now wrong in
+one direction. The correction is kept here rather than deleted, because the way
+it was wrong is the useful part.** Measured 2026-08-18 across 23 live sessions,
+the record's `status` had a median age of **11 hours**, and it was read as
+STALE. It was not: the runtime writes the record only when the status CHANGES,
+so an `idle` stamp eleven hours old is an eleven-hour WAIT, correctly recorded.
+The proxy — age of the field — was measured instead of the thing: whether the
+value is true.
+
+Re-measured 2026-08-28 on runtime 2.1.251, both directions:
+
+- `statusUpdatedAt` equalled the last log ENTRY's own timestamp in **10 of 10**
+  live sessions holding a log;
+- the log file's **mtime** was up to **90 minutes** later than any entry it held
+  in **2 of those 10** — the file is rewritten without new entries, so mtime
+  OVER-reports movement;
+- a pty probe measured `idle → busy` at **0.6 s**, `busy → shell` when the agent
+  backgrounded a command, and `shell → busy → idle` at the turn's end, each stamp
+  landing within **0.2 s** of the change.
+
+So the division of labour is: **the log decides working-versus-not** (an
+outstanding `tool_use` is structural, and which tool it is cannot be read
+anywhere else), and **the record decides whether a person is needed and since
+when** — the difference between a finished turn, a finished turn with a
+background command still running, and a permission prompt. Neither is
+authoritative over the other's question.
 
 Working is defined structurally rather than by a label: a `tool_use` block in
 the tail with no matching `tool_result` means a call is outstanding, so the
@@ -23,7 +45,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
@@ -67,6 +89,148 @@ ASKING = "asking"
 #: A tool joins this set when its outstanding call means a person is being
 #: asked, never because its name sounds like it might be.
 QUESTION_TOOLS = frozenset({"AskUserQuestion", "ExitPlanMode"})
+
+
+# --------------------------------------------------------------------------- #
+# The ATTENTION axis — is a person needed here, and for how long
+#
+# A second axis rather than more `state` values, deliberately. Every existing
+# reader of `state` — the tally, the header, the PM queue's candidate selection —
+# stays correct, and a reader that has not learned this axis renders nothing
+# rather than something wrong.
+# --------------------------------------------------------------------------- #
+
+#: The runtime's own four-value status, verbatim. Measured 2026-08-28 in the
+#: binary of runtime 2.1.251: the validator accepts exactly
+#: `["busy","shell","idle","waiting"]` and rejects anything else.
+STATUS_BUSY = "busy"
+STATUS_SHELL = "shell"
+STATUS_IDLE = "idle"
+STATUS_WAITING = "waiting"
+
+#: Something is running: the model's turn is in flight.
+ATTENTION_WORKING = "working"
+#: The prompt is free, but a backgrounded command is still running.
+#:
+#: This is what `shell` MEANS, and it is the value this whole axis exists for.
+#: Measured 2026-08-28 from the runtime binary, whose own expression is
+#: `base === "idle" && hasRunningBackgroundBash ? "shell" : base`, with the
+#: predicate `Object.values(tasks).some(t => t.type === "local_bash" && !done(t))`.
+#: Confirmed live by a pty probe: the probe agent backgrounded `sleep 25`, ended
+#: its turn, and the record went `busy → shell` and back to `busy → idle` when
+#: the command finished.
+ATTENTION_BACKGROUND = "background"
+#: Waiting for a PERSON, with nothing running. The class a reader acts on.
+ATTENTION_INPUT = "input"
+#: Stopped at a permission prompt or a worker request — blocked on a person by
+#: construction, so it does not need elapsed time to be believed.
+ATTENTION_PROMPT = "prompt"
+#: The record could not answer. NEVER `input`: see `attention_of`.
+ATTENTION_UNMEASURED = "unmeasured"
+
+#: Every class this build knows. A list, not an if/else chain, so a class added
+#: later shows up as uncounted rather than vanishing — the same discipline the
+#: API's state tally already uses.
+ATTENTION_CLASSES = (
+    ATTENTION_WORKING,
+    ATTENTION_BACKGROUND,
+    ATTENTION_INPUT,
+    ATTENTION_PROMPT,
+    ATTENTION_UNMEASURED,
+)
+
+#: Status -> class. The mapping is data so that an unrecognised status cannot
+#: fall through into a neighbour: `attention_of` looks the value up and reports
+#: `unmeasured` on a miss, naming the value it did not know.
+_STATUS_ATTENTION = {
+    STATUS_BUSY: ATTENTION_WORKING,
+    STATUS_SHELL: ATTENTION_BACKGROUND,
+    STATUS_IDLE: ATTENTION_INPUT,
+    STATUS_WAITING: ATTENTION_PROMPT,
+}
+
+#: When an input wait starts being marked, and when it turns loud. Declared HERE
+#: and carried to the surface in the API envelope, because a threshold written
+#: once in Python and once in TypeScript is two thresholds that drift silently —
+#: a screen colouring at 20 s beside a count colouring at 15 s reports two
+#: different fleets.
+INPUT_WAIT_AMBER_SECONDS = 15.0
+INPUT_WAIT_RED_SECONDS = 180.0
+
+TONE_PLAIN = "plain"
+TONE_AMBER = "amber"
+TONE_RED = "red"
+
+
+def tone_for(seconds: Optional[float]) -> Optional[str]:
+    """Which band an input wait of `seconds` falls in.
+
+    `None` in, `None` out: an unmeasured wait has no tone, and a zero would
+    place it in the calmest band — the false-absence direction this screen
+    refuses everywhere.
+    """
+    if seconds is None:
+        return None
+    if seconds >= INPUT_WAIT_RED_SECONDS:
+        return TONE_RED
+    if seconds >= INPUT_WAIT_AMBER_SECONDS:
+        return TONE_AMBER
+    return TONE_PLAIN
+
+
+def attention_of(record: Optional[Dict]) -> str:
+    """The attention class the runtime's record supports, or `unmeasured`.
+
+    A missing record, a record without a `status` key, and a status this build
+    does not recognise all return `unmeasured` — never `input`. Measured
+    2026-08-28 and unchanged since 2026-08-18: a headless run
+    (`entrypoint: "sdk-cli"`) registers a record with **no `status` key at all**,
+    so reading absence as idle would report a working orchestration agent as a
+    person's problem.
+    """
+    if not record:
+        return ATTENTION_UNMEASURED
+    status = record.get("status")
+    if not status or not isinstance(status, str):
+        # An absent key and an empty value are the same answer here — nobody
+        # wrote a status down — and neither is worth a warning. A NON-empty
+        # value this build does not know is a different thing entirely, and it
+        # gets one below.
+        return ATTENTION_UNMEASURED
+    known = _STATUS_ATTENTION.get(status)
+    if known is None:
+        # Named, not swallowed. A renamed status in a future runtime shows up
+        # here as a log line with the value in it, rather than as a fleet that
+        # quietly went calm.
+        logger.warning(
+            "fleet state: session record carries a status this build does not know: %r", status
+        )
+        return ATTENTION_UNMEASURED
+    return known
+
+
+def _status_age(record: Optional[Dict], reference: float) -> Optional[float]:
+    """How long the record's CURRENT status has held, in seconds.
+
+    From `statusUpdatedAt`, which the runtime writes only when the status
+    changes — so the stamp is the age of the STATE, not of the observation.
+    Measured 2026-08-28 across 10 live sessions holding a log: the stamp equalled
+    the last log entry's own timestamp in 10 of 10, while the log file's **mtime**
+    was up to 90 minutes later than any entry in 2 of the 10, because the file is
+    rewritten without new entries. The stamp is the precise instrument here and
+    the mtime is the noisy one — which is the reverse of what this module assumed
+    until this measurement.
+    """
+    if not record:
+        return None
+    stamp = record.get("statusUpdatedAt")
+    if not isinstance(stamp, (int, float)) or stamp <= 0:
+        return None
+    age = reference - (stamp / 1000.0)
+    if age < 0:
+        # A clock that disagrees with itself is not a negative wait.
+        return 0.0
+    return age
 
 
 @dataclass
@@ -116,6 +280,22 @@ class AgentState:
     #: surface, because the same sentence means different things depending on
     #: which end of the conversation it came from.
     excerpt_from: Optional[str] = None
+    #: Is a person needed here — see the ATTENTION axis above. Defaults to
+    #: `unmeasured`, so an agent nothing could be read for never arrives at the
+    #: surface claiming to be waiting for somebody.
+    attention: str = ATTENTION_UNMEASURED
+    #: How long this session has been waiting for a person with nothing running,
+    #: in seconds. Set only for `input` and `prompt`; `None` everywhere else —
+    #: including for a working agent, whose zero would sort it with the fresh
+    #: waits rather than out of the question entirely.
+    input_wait_seconds: Optional[float] = None
+    #: The record's status verbatim (`busy` / `shell` / `idle` / `waiting`), or
+    #: None. Carried uninterpreted so the surface can show what was actually
+    #: read when the derived class surprises somebody.
+    runtime_status: Optional[str] = None
+    #: True when a backgrounded command is running — the case that looks idle
+    #: and is not waiting for anybody.
+    background_running: bool = False
 
 
 def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
@@ -423,6 +603,54 @@ def resumed_since(session_log: Optional[str], since: Optional[str]) -> str:
     return NOT_RESUMED
 
 
+def _compose_attention(
+    state: AgentState, record: Optional[Dict], reference: float
+) -> AgentState:
+    """Fill the ATTENTION axis on a state the log already decided.
+
+    The division of labour, which is the design rather than a detail of it:
+
+    - the **log** answers *what is this session stopped on* — an outstanding
+      call, and whether it is a question. That is the more specific claim
+      wherever it exists, so `asking` and `working` are never overturned here;
+    - the **record** answers *is this loop running, and since when*. That is the
+      only source for the difference between a turn that ended, a turn that
+      ended while a background command runs, and a session held at a permission
+      prompt.
+
+    The two compose. A record that contradicts the log loses the STATE and keeps
+    its contribution to the axis, because the disagreement is worth showing and
+    a dropped fact is not.
+    """
+    status = record.get("status") if record else None
+    background = status == STATUS_SHELL
+
+    if state.state == ASKING:
+        # Measured: a question tool is open. No record can make that not so.
+        attention = ATTENTION_PROMPT
+        wait = _status_age(record, reference)
+        if wait is None:
+            # The record said nothing; how long the question has been open is
+            # the honest fallback, and it is measured from the log.
+            wait = state.tool_elapsed
+    elif state.state == WORKING:
+        attention = ATTENTION_WORKING
+        wait = None
+    else:
+        attention = attention_of(record)
+        wait = _status_age(record, reference) if attention in (
+            ATTENTION_INPUT, ATTENTION_PROMPT
+        ) else None
+
+    return replace(
+        state,
+        attention=attention,
+        input_wait_seconds=wait,
+        runtime_status=status if isinstance(status, str) else None,
+        background_running=background,
+    )
+
+
 def _apply_declared_wait(state: AgentState, record: Optional[Dict]) -> AgentState:
     """Add *waiting for a person* to a quiet state, from the runtime's record.
 
@@ -448,6 +676,17 @@ def _apply_declared_wait(state: AgentState, record: Optional[Dict]) -> AgentStat
     quiet.) An mtime cross-check does not work either: **22 of 22** logs had
     moved since their status stamp, so it rejects everything, including that
     true positive.
+
+    Re-measured 2026-08-28 on runtime 2.1.251, and the second half now has a
+    cause: **10 of 10** stamps equalled the last log entry's own timestamp, while
+    **2 of 10** log files carried an mtime up to 90 minutes later than any entry
+    inside them. The mtime moves without the session moving. That is why this
+    module keeps `last_movement_age` as the age of the FILE and takes the input
+    wait from `statusUpdatedAt` instead — see `_status_age`.
+
+    This function still only promotes `quiet → waiting`. The four-value status is
+    read on the separate attention axis (`_compose_attention`), so nothing that
+    consumes `state` had to learn a new name to stay correct.
 
     What is left is the contradiction test above, and it is the one that fires on
     the real staleness: a record still saying `busy` while the log shows no
@@ -480,50 +719,73 @@ def read_state(
     exists and holds no parsable entry is not the same as a log that is absent,
     and neither is the same as an agent that has finished its turn.
     """
-    if session_log is None:
-        return AgentState(state=UNKNOWN, reason="no session log is bound to this agent")
-    if not os.path.exists(session_log):
-        return AgentState(state=UNKNOWN, reason="the bound session log does not exist")
-
     reference = now if now is not None else time.time()
+
+    def measured(state: AgentState) -> AgentState:
+        """Every exit goes through here.
+
+        A return that skips the attention axis is an agent rendered with no
+        class at all — which the surface would draw as *unmeasured* while the
+        record sitting right there could have answered. One funnel, so a path
+        added later cannot forget.
+        """
+        return _compose_attention(state, record, reference)
+
+    if session_log is None:
+        return measured(
+            AgentState(state=UNKNOWN, reason="no session log is bound to this agent")
+        )
+    if not os.path.exists(session_log):
+        return measured(
+            AgentState(state=UNKNOWN, reason="the bound session log does not exist")
+        )
+
     try:
         movement = max(0.0, reference - os.path.getmtime(session_log))
     except OSError as exc:
         logger.warning("fleet state: cannot stat %s: %s", session_log, exc)
-        return AgentState(state=UNKNOWN, reason="the session log could not be stat'ed")
+        return measured(
+            AgentState(state=UNKNOWN, reason="the session log could not be stat'ed")
+        )
 
     lines = _tail(session_log)
     if lines is None:
-        return AgentState(
-            state=UNKNOWN,
-            last_movement_age=movement,
-            reason="the session log could not be read",
+        return measured(
+            AgentState(
+                state=UNKNOWN,
+                last_movement_age=movement,
+                reason="the session log could not be read",
+            )
         )
 
     excerpt, excerpt_from = _last_text(lines)
 
     outstanding, saw_entry = _outstanding_calls(lines)
     if not saw_entry:
-        return AgentState(
-            state=UNKNOWN,
-            last_movement_age=movement,
-            reason="the session log holds no parsable entry",
-            # Carried even here: a log with no parsable ENTRY can still hold a
-            # readable line, and the excerpt is the one thing that helps a
-            # reader work out why the state could not be measured.
-            excerpt=excerpt,
-            excerpt_from=excerpt_from,
+        return measured(
+            AgentState(
+                state=UNKNOWN,
+                last_movement_age=movement,
+                reason="the session log holds no parsable entry",
+                # Carried even here: a log with no parsable ENTRY can still hold
+                # a readable line, and the excerpt is the one thing that helps a
+                # reader work out why the state could not be measured.
+                excerpt=excerpt,
+                excerpt_from=excerpt_from,
+            )
         )
 
     if not outstanding:
-        return _apply_declared_wait(
-            AgentState(
-                state=QUIET,
-                last_movement_age=movement,
-                excerpt=excerpt,
-                excerpt_from=excerpt_from,
-            ),
-            record,
+        return measured(
+            _apply_declared_wait(
+                AgentState(
+                    state=QUIET,
+                    last_movement_age=movement,
+                    excerpt=excerpt,
+                    excerpt_from=excerpt_from,
+                ),
+                record,
+            )
         )
 
     ordered = sorted(
@@ -539,30 +801,39 @@ def read_state(
     asking = [m for m in ordered if m.get("name") in QUESTION_TOOLS]
     if asking:
         blocking = asking[0]
-        return AgentState(
-            state=ASKING,
-            last_movement_age=movement,
-            tool=blocking.get("name"),
-            tool_elapsed=_age_seconds(blocking.get("timestamp"), reference),
-            other_tools=[m.get("name") for m in ordered if m is not blocking and m.get("name")],
-            # A record saying `waiting` AGREES with this state, so there is no
-            # contradiction to carry — unlike the working case below.
-            excerpt=excerpt,
-            excerpt_from=excerpt_from,
+        return measured(
+            AgentState(
+                state=ASKING,
+                last_movement_age=movement,
+                tool=blocking.get("name"),
+                tool_elapsed=_age_seconds(blocking.get("timestamp"), reference),
+                other_tools=[
+                    m.get("name") for m in ordered if m is not blocking and m.get("name")
+                ],
+                # A record saying `waiting` AGREES with this state, so there is
+                # no contradiction to carry — unlike the working case below.
+                excerpt=excerpt,
+                excerpt_from=excerpt_from,
+            )
         )
 
     first = ordered[0]
-    # A record that says `waiting` while a call is outstanding is describing a
-    # moment that has passed. The measurement wins; the disagreement is carried
-    # rather than dropped.
-    ignored = "waiting" if (record or {}).get("status") == WAITING else None
-    return AgentState(
-        state=WORKING,
-        declaration_ignored=ignored,
-        last_movement_age=movement,
-        tool=first.get("name"),
-        tool_elapsed=_age_seconds(first.get("timestamp"), reference),
-        other_tools=[m.get("name") for m in ordered[1:] if m.get("name")],
-        excerpt=excerpt,
-        excerpt_from=excerpt_from,
+    # A record claiming the prompt is FREE while a call is outstanding is
+    # describing a moment that has passed. The measurement wins; the
+    # disagreement is carried rather than dropped, and the value it disagreed
+    # with is named — `waiting` was the only one named until 2026-08-28, which
+    # made the far more common `idle` disagreement invisible.
+    declared = (record or {}).get("status")
+    ignored = declared if declared in (STATUS_WAITING, STATUS_IDLE, STATUS_SHELL) else None
+    return measured(
+        AgentState(
+            state=WORKING,
+            declaration_ignored=ignored,
+            last_movement_age=movement,
+            tool=first.get("name"),
+            tool_elapsed=_age_seconds(first.get("timestamp"), reference),
+            other_tools=[m.get("name") for m in ordered[1:] if m.get("name")],
+            excerpt=excerpt,
+            excerpt_from=excerpt_from,
+        )
     )

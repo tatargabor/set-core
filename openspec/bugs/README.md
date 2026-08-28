@@ -68,6 +68,26 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-102 — `last_movement_seconds` is read from a log file that is rewritten without new entries
+
+- **state:** open
+- **reported:** 2026-08-28 by this session, while measuring the runtime session record for
+  `fleet-input-attention`. Not a task in that change: its specs put every other consumer of
+  the log's mtime explicitly out of scope, and this one is a defect in a field that shipped
+  long before it.
+- **measured:** for each live session, the log's `mtime` compared with the timestamp of the
+  newest ENTRY inside it. **2 of 10** logs had an mtime **90 min** and **58 min** later than
+  any entry they held; the record's `statusUpdatedAt` matched the newest entry in **10 of 10**.
+  So the file is rewritten (a `file-history-snapshot` line appears at the tail of one of them)
+  while the conversation has not moved. Every surface that reads `last_movement_seconds` — the
+  project row's "stalest agent here", the freshest/stalest pair, the tile — therefore reports a
+  session as having moved up to an hour and a half more recently than it did. Fail direction is
+  the reassuring one: a stopped session looks fresh.
+- **fixed when:** `last_movement_seconds` comes from the newest entry the tail actually holds
+  (or the record's stamp), a unit test holds the measured shape — mtime touched now, newest
+  entry an hour old, reported movement an hour — and the fleet screen's stalest column stops
+  disagreeing with the same session's own last log line.
+
 ### B-101 — a LIVE spec describes a function that was deleted four months ago
 
 - **state:** open

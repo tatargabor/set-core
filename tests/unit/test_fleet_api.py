@@ -1425,3 +1425,50 @@ def test_both_payload_builders_report_the_same_cache(tmp_path):
 
     source = inspect.getsource(fleet_api)
     assert source.count("**_cache_payload(agent),") == 2
+
+
+# --------------------------------------------------------------------------- #
+# The attention axis in the envelope — `fleet-input-attention`
+# --------------------------------------------------------------------------- #
+
+def test_the_agent_payload_carries_the_attention_axis():
+    payload = fleet_api._agent_payload(
+        _Agent(7),
+        _State(attention="input", input_wait_seconds=240.0, runtime_status="idle"),
+        {},
+    )
+    assert payload["attention"] == "input"
+    assert payload["input_wait_seconds"] == 240.0
+    assert payload["runtime_status"] == "idle"
+    assert payload["background_running"] is False
+
+
+def test_an_unmeasured_agent_carries_a_null_duration_rather_than_a_zero():
+    """A zero would sort with the fresh waits and colour with the calm ones. The
+    key is present and null, which is the shape that lets the surface tell "not
+    waiting" from "we could not look"."""
+    payload = fleet_api._agent_payload(_Agent(7), _State(), {})
+    assert payload["attention"] == "unmeasured"
+    assert payload["input_wait_seconds"] is None
+    assert "input_wait_seconds" in payload
+
+
+def test_the_attention_tally_counts_every_class_and_names_what_it_could_not():
+    states = {
+        1: _State(attention="working"),
+        2: _State(attention="input", input_wait_seconds=20.0),
+        3: _State(attention="input", input_wait_seconds=400.0),
+        4: _State(attention="background"),
+        5: _State(attention="hibernating"),   # a class no bucket counts
+    }
+    tally = fleet_api._attention_tally(states)
+    assert tally["working"] == 1 and tally["input"] == 2 and tally["background"] == 1
+    assert tally["unbucketed"] == 1
+    # The MAXIMUM, not an average: one busy agent must not vouch for a fleet
+    # whose others have stopped.
+    assert tally["worst_input_wait_seconds"] == 400.0
+
+
+def test_the_worst_wait_is_absent_when_nobody_is_waiting():
+    tally = fleet_api._attention_tally({1: _State(attention="working")})
+    assert tally["worst_input_wait_seconds"] is None

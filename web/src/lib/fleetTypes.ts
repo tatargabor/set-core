@@ -70,6 +70,24 @@ export interface FleetAgent {
    * one nobody ever fixes.
    */
   declaration_ignored?: string | null
+  /**
+   * The ATTENTION axis — is a person needed here.
+   *
+   * `working` | `background` | `input` | `prompt` | `unmeasured`, measured from
+   * the runtime's own session record rather than from the log. Optional because
+   * a server that predates it sends nothing, and a missing field means *not
+   * measured* rather than any particular class.
+   */
+  attention?: string | null
+  /**
+   * How long this session has been waiting for a person with NOTHING running.
+   * `null` is not zero — see `fleetAttention.inputWaitTone`.
+   */
+  input_wait_seconds?: number | null
+  /** The record's status verbatim: `busy` | `shell` | `idle` | `waiting`. */
+  runtime_status?: string | null
+  /** A backgrounded command is running — the prompt is free, nobody is waiting. */
+  background_running?: boolean | null
   /** See `Population`. Absent on an older server, which is `unknown`, not `foreign`. */
   population?: Population | string | null
   /** The framework scope, present only for `orphaned` — what `recover` stops. */
@@ -338,6 +356,14 @@ export interface FleetResponse {
    */
   unbucketed?: number
   projects: FleetProject[]
+  /**
+   * When an input wait turns amber and when it turns red, in seconds.
+   *
+   * Sent by the server so both sides escalate at the same moment; the client
+   * still does the arithmetic every render, because the wait grows between
+   * polls. Absent on an older server, and then the client's own constants apply.
+   */
+  input_wait_thresholds?: { amber_seconds?: number | null; red_seconds?: number | null }
   quiet_means: string
   /**
    * Whether the owner service answered at all. Stated once at the top rather

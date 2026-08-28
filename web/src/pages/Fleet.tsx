@@ -69,7 +69,8 @@ import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../l
 import type { LabelMemory } from '../lib/fleetTerminal'
 import { buildActs, speakerLabel, speakerOf } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
-import { tally } from '../lib/fleetAttention'
+import { ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, inputWaitTone, tally } from '../lib/fleetAttention'
+import { WaitThresholdsContext, useWaitThresholds } from '../lib/fleetWaitThresholds'
 import {
   defaultLocation, fetchStartLocations, locationLabel, offerable, selectorWorthShowing,
 } from '../lib/fleetStartLocations'
@@ -105,7 +106,93 @@ import type { Speaker } from '../lib/fleetConversation'
   in two places — the tile and the compact row — and a size supplied by the
   caller is a second copy that drifts the moment one caller is restyled.
 */
+/**
+ * What typing at this session now would do — the question the reader is really
+ * asking of the fleet.
+ *
+ * The user's own framing, 2026-08-28: a message written into a working session
+ * is *pointless*. It is not lost — the runtime queues it — but nothing happens
+ * until the turn ends, and the difference is exactly what the four-value status
+ * can answer and the log cannot.
+ */
+function Queues({ queued }: { queued: boolean }) {
+  return (
+    <span
+      className="text-fg-ghost font-normal"
+      data-fleet-write-effect={queued ? 'queued' : 'now'}
+      title={queued
+        ? 'A message sent now is queued — it is picked up when the current work ends.'
+        : 'The prompt is free: a message sent now is acted on immediately.'}
+    >
+      {queued ? '· queues' : '· acts now'}
+    </span>
+  )
+}
+
+/**
+ * How long a person has been waited for, coloured by the escalation.
+ *
+ * The tooltip carries the one caveat that cannot be measured away: the status
+ * tracks the SESSION LOOP, not the person. Somebody standing at the keyboard
+ * typing an answer keeps the wait growing, because typing is not submitting.
+ */
+function WaitFor({ seconds }: { seconds: number | null | undefined }) {
+  const tone = inputWaitTone(seconds, useWaitThresholds())
+  if (tone === null) return null
+  return (
+    <span
+      data-fleet-wait-tone={tone}
+      className={`tabular-nums font-normal ${
+        tone === 'red' ? 'text-rose-400' : tone === 'amber' ? 'text-amber-400' : 'text-fg-muted'
+      }`}
+      title={'How long this session has been waiting, from the runtime\'s own record. '
+        + 'It tracks the SESSION, not the person — it keeps growing while somebody is typing an answer.'}
+    >
+      {age(seconds as number)}
+    </span>
+  )
+}
+
 function StateLine({ agent }: { agent: FleetAgent }) {
+  // The prompt is free but a backgrounded command is still running. From the
+  // log this is indistinguishable from a finished turn — no call outstanding —
+  // and it is the case the whole attention axis was added for: nobody is
+  // waiting, so the row must not ask for anybody.
+  if (agent.state === 'quiet' && agent.attention === ATT_BACKGROUND) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap"
+        data-fleet-attention={ATT_BACKGROUND}
+        title="A backgrounded command is still running. The prompt is free, but nobody is waiting for you."
+      >
+        <span className="w-1.5 h-1.5 rounded-full border border-fg-muted shrink-0" />
+        background command
+        <Queues queued />
+      </span>
+    )
+  }
+  // The turn ended and nothing is running: this session is waiting for input,
+  // and it is the only class where writing to it is acted on immediately.
+  if (agent.state === 'quiet' && agent.attention === ATT_INPUT) {
+    const tone = inputWaitTone(agent.input_wait_seconds, null)
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap ${
+          tone === 'red' ? 'text-rose-400 font-semibold'
+            : tone === 'amber' ? 'text-amber-400 font-semibold' : 'text-fg-muted'
+        }`}
+        data-fleet-attention={ATT_INPUT}
+        title="Measured from the runtime's own record: the turn ended and nothing is running."
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+          tone === 'red' ? 'bg-rose-400' : tone === 'amber' ? 'bg-amber-400' : 'bg-fg-muted'
+        }`} />
+        waiting for input
+        <WaitFor seconds={agent.input_wait_seconds} />
+        <Queues queued={false} />
+      </span>
+    )
+  }
   if (agent.state === 'working') {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 whitespace-nowrap">
@@ -115,6 +202,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
           <span className="text-fg-muted tabular-nums">{age(agent.tool_elapsed_seconds)}</span>
         )}
         {agent.other_tools.length > 0 && <span className="text-fg-muted">+{agent.other_tools.length}</span>}
+        <Queues queued />
       </span>
     )
   }
@@ -139,6 +227,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     return (
       <span
         className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold whitespace-nowrap"
+        data-fleet-attention={ATT_PROMPT}
         title={why ?? 'The session is waiting for a person. What for was not written down by the runtime — the state is measured either way.'}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-sky-300 shrink-0" />
@@ -146,6 +235,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
         {why
           ? <span className="text-fg-muted font-normal truncate max-w-[16rem]">{why}</span>
           : <span className="text-fg-ghost font-normal">(what for was not written down)</span>}
+        <WaitFor seconds={agent.input_wait_seconds} />
       </span>
     )
   }
@@ -159,6 +249,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
     return (
       <span
         className="inline-flex items-center gap-1.5 text-xs text-sky-300 font-semibold whitespace-nowrap"
+        data-fleet-attention={ATT_PROMPT}
         title={`This agent has ${agent.tool ?? 'a question tool'} open — it is stopped in front of a person. Measured from the session log, not declared.`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse shrink-0" />
@@ -179,10 +270,14 @@ function StateLine({ agent }: { agent: FleetAgent }) {
          actually reading it. */
       <span
         className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap"
-        title="“quiet” does not mean nothing is happening — only that no tool call was open when the log was last flushed."
+        data-fleet-attention={agent.attention ?? 'none'}
+        title={'“quiet” does not mean nothing is happening — only that no tool call was open when the log '
+          + 'was last flushed. Whether this session is waiting for you could NOT be measured: its runtime '
+          + 'record carried no status (a headless run does not write one).'}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-surface-line shrink-0" />
         quiet
+        <span className="text-fg-ghost font-normal">· wait unmeasured</span>
       </span>
     )
   }
@@ -2841,6 +2936,11 @@ export default function Fleet() {
         />
       )}
 
+      {/* One source for the escalation thresholds, wrapping BOTH the project
+          column's counters and every agent tile: threading the value into one
+          subtree and not the other is a screen whose row and tile disagree
+          about when a wait became urgent. */}
+      <WaitThresholdsContext.Provider value={data?.input_wait_thresholds ?? null}>
       <div
         className="flex-1 flex min-h-0"
         ref={shellRef}
@@ -3492,6 +3592,8 @@ export default function Fleet() {
           ))}
         </div>
         </div>
-      </div>    </div>
+      </div>
+      </WaitThresholdsContext.Provider>
+    </div>
   )
 }

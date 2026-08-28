@@ -52,6 +52,7 @@ from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet.cache_heat import read_cache_heat
 from ..fleet import layout as fleet_layout
+from ..fleet import state as attention_state
 from ..fleet import roster
 from ..fleet import restore as fleet_restore
 from ..fleet.discovery import live_session_ids as fleet_live_session_ids
@@ -232,6 +233,25 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # rather than dropped: a contradiction the surface cannot see is one
         # nobody will ever fix.
         "declaration_ignored": state.declaration_ignored,
+        # The ATTENTION axis — is a person needed here, and since when.
+        #
+        # A second axis beside `state`, not a replacement: `state` says what the
+        # session is stopped ON (measured from the log), this says whether its
+        # loop is RUNNING (measured from the runtime's record). A client that
+        # has not learned this field keeps rendering `state` correctly.
+        #
+        # `attention` is never absent — an agent nothing could be read for is
+        # `unmeasured`, which is a value and not a gap. `input_wait_seconds` IS
+        # null whenever nobody is waiting or the record carried no stamp: a zero
+        # would place a genuinely long wait in the calmest band.
+        "attention": state.attention,
+        "input_wait_seconds": state.input_wait_seconds,
+        # The record's status verbatim, so the surface can show what was read
+        # when the derived class surprises somebody.
+        "runtime_status": state.runtime_status,
+        # A backgrounded command is running: the prompt is free and yet nobody
+        # is waiting. The one case that looks idle and is not.
+        "background_running": state.background_running,
         # The last thing said in this session — task 7.3, so the tile answers
         # "what is going on" without being opened.
         #
@@ -382,6 +402,11 @@ def _declared_payload(session_id, seats) -> Dict[str, Any]:
 #: silence. `tests/unit/test_fleet_state_tally.py` holds the arithmetic.
 STATE_BUCKETS = ("working", "unknown", "waiting", "asking", "quiet")
 
+#: The attention classes the envelope counts. Same discipline as `STATE_BUCKETS`
+#: — a list plus an `unbucketed` counter, so a class added to the measurement
+#: layer shows up as uncounted rather than disappearing from the header.
+ATTENTION_BUCKETS = attention_state.ATTENTION_CLASSES
+
 
 def _state_tally(states: Dict[Any, Any]) -> Dict[str, int]:
     """How many agents are in each state, plus how many are in none of them.
@@ -399,6 +424,29 @@ def _state_tally(states: Dict[Any, Any]) -> Dict[str, int]:
         else:
             unbucketed += 1
     counts["unbucketed"] = unbucketed
+    return counts
+
+
+def _attention_tally(states: Dict[Any, Any]) -> Dict[str, int]:
+    """How many agents need a person, and how long the longest has been waiting.
+
+    `worst_input_wait_seconds` is the MAXIMUM rather than an average: one busy
+    agent must not vouch for a fleet whose others have stopped, and a mean of a
+    four-minute wait and a five-second one is a number nobody is waiting.
+    """
+    counts = {name: 0 for name in ATTENTION_BUCKETS}
+    unbucketed = 0
+    worst: Any = None
+    for st in states.values():
+        if st.attention in counts:
+            counts[st.attention] += 1
+        else:
+            unbucketed += 1
+        wait = st.input_wait_seconds
+        if wait is not None and (worst is None or wait > worst):
+            worst = wait
+    counts["unbucketed"] = unbucketed
+    counts["worst_input_wait_seconds"] = worst
     return counts
 
 
@@ -572,6 +620,14 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
             unbucketed, sorted({s.state for s in states.values()} - set(STATE_BUCKETS)),
         )
 
+    attention = _attention_tally(states)
+    if attention["unbucketed"]:
+        logger.warning(
+            "fleet: %d agent(s) hold an attention class no bucket counts: %s",
+            attention["unbucketed"],
+            sorted({s.attention for s in states.values()} - set(ATTENTION_BUCKETS)),
+        )
+
     awaiting_total = sum(g["awaiting"]["total"] for g in grouped)
     awaiting_unmeasured = sum(1 for g in grouped if g["awaiting"]["source_missing"])
 
@@ -596,6 +652,19 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         # log was observed ~25s stale while its session was actively working.
         # The surface must not present `quiet` as "nothing is happening".
         "quiet_means": "no outstanding tool call as of the session log's last flush",
+        # The ATTENTION axis, counted the same way `state` is: one key per
+        # class plus an `unbucketed` counter, and the LONGEST input wait in the
+        # fleet so the header can carry what the project rows escalate.
+        "attention": attention,
+        # The two numbers that decide the escalation, sent rather than duplicated
+        # in the client. The client still does the arithmetic every render — a
+        # wait grows between polls, and a tone resolved at fetch time would sit
+        # stale on screen for exactly as long as the poll interval, which on a
+        # three-minute threshold is where it matters most.
+        "input_wait_thresholds": {
+            "amber_seconds": attention_state.INPUT_WAIT_AMBER_SECONDS,
+            "red_seconds": attention_state.INPUT_WAIT_RED_SECONDS,
+        },
         # Said once at the top rather than repeated as a reason on every row: a
         # screen that cannot offer a terminal ANYWHERE has one cause, and naming
         # it once is the difference between "no terminals" and "we could not ask".
@@ -1383,6 +1452,11 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "unknown_reason": state.reason,
         "waiting_for": state.waiting_for,
         "declaration_ignored": state.declaration_ignored,
+        # The attention axis, same fields and same meanings as the listing.
+        "attention": state.attention,
+        "input_wait_seconds": state.input_wait_seconds,
+        "runtime_status": state.runtime_status,
+        "background_running": state.background_running,
         # Repeated from the listing on purpose: a caller polling this endpoint
         # alone would otherwise have no way to learn that a quiet agent may be
         # mid-turn, and would present `quiet` as "nothing is happening".

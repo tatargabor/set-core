@@ -40,6 +40,22 @@ export interface AttentionAgent {
   state: string
   /** Present where the record's declared state was refuted by the log. */
   declaration_ignored?: string | null
+  /**
+   * Is a person needed here — the ATTENTION axis, measured from the runtime's
+   * own session record rather than from the log.
+   *
+   * Optional because a server that predates it sends nothing, and a missing
+   * field must read as *not measured* rather than as any particular class.
+   */
+  attention?: string | null
+  /**
+   * How long this session has been waiting for a person with nothing running.
+   *
+   * `null` is not zero. Null says nobody is waiting, or the record carried no
+   * stamp; zero would say *waiting, just now* and would sort and colour with
+   * the calm ones.
+   */
+  input_wait_seconds?: number | null
 }
 
 /**
@@ -86,6 +102,94 @@ export const QUIET = 'quiet'
  */
 export const ASKING = 'asking'
 
+/* -------------------------------------------------------------------------- *
+ * The ATTENTION axis — see `set_orch/fleet/state.py` for the measurements.
+ * -------------------------------------------------------------------------- */
+
+/** Something is running: the model's turn is in flight. */
+export const ATT_WORKING = 'working'
+/** The prompt is free, but a backgrounded command is still running. */
+export const ATT_BACKGROUND = 'background'
+/** Waiting for a PERSON with nothing running — the class a reader acts on. */
+export const ATT_INPUT = 'input'
+/** Stopped at a permission prompt or a worker request. */
+export const ATT_PROMPT = 'prompt'
+/** The record could not answer. NEVER rendered as any of the four above. */
+export const ATT_UNMEASURED = 'unmeasured'
+
+/**
+ * When an input wait starts being marked, and when it turns loud.
+ *
+ * These two numbers also live in `set_orch/fleet/state.py`, which sends them in
+ * the envelope (`input_wait_thresholds`). These constants are the FALLBACK for
+ * a server that does not send them, and a unit test asserts the two sides carry
+ * the same values — a threshold written twice is two thresholds, and they drift
+ * without anything failing.
+ */
+export const INPUT_WAIT_AMBER_SECONDS = 15
+export const INPUT_WAIT_RED_SECONDS = 180
+
+export type InputWaitTone = 'plain' | 'amber' | 'red'
+
+export interface InputWaitThresholds {
+  amber_seconds?: number | null
+  red_seconds?: number | null
+}
+
+/**
+ * Which band an input wait falls in — resolved on every render, not at fetch.
+ *
+ * The wait grows between polls. A tone computed on the server would sit stale on
+ * screen for exactly as long as the poll interval, and on the three-minute
+ * threshold that is where it matters most.
+ *
+ * `null` in, `null` out. A missing duration has no tone; substituting zero would
+ * put an unmeasured wait in the calmest band, which is the false-absence
+ * direction this screen refuses everywhere.
+ */
+export function inputWaitTone(
+  seconds: number | null | undefined,
+  thresholds?: InputWaitThresholds | null,
+): InputWaitTone | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null
+  const amber = typeof thresholds?.amber_seconds === 'number'
+    ? thresholds.amber_seconds : INPUT_WAIT_AMBER_SECONDS
+  const red = typeof thresholds?.red_seconds === 'number'
+    ? thresholds.red_seconds : INPUT_WAIT_RED_SECONDS
+  if (seconds >= red) return 'red'
+  if (seconds >= amber) return 'amber'
+  return 'plain'
+}
+
+/**
+ * Does this agent's class mean a person is being waited for?
+ *
+ * `background` is deliberately excluded and it is the whole point of the axis:
+ * a session whose turn ended while a command runs in the background looks idle
+ * from the log and is waiting for nobody.
+ */
+export function waitsForAPerson(agent: AttentionAgent): boolean {
+  return agent.attention === ATT_INPUT || agent.attention === ATT_PROMPT
+}
+
+/**
+ * The LONGEST wait in a set of agents, or null when nobody is waiting.
+ *
+ * The maximum rather than an average or the freshest: one busy agent must not
+ * vouch for a project whose others have stopped, and the mean of a four-minute
+ * wait and a five-second one is a number nobody is waiting.
+ */
+export function worstInputWait(agents: readonly AttentionAgent[]): number | null {
+  let worst: number | null = null
+  for (const a of agents) {
+    if (!waitsForAPerson(a)) continue
+    const w = a.input_wait_seconds
+    if (typeof w !== 'number' || !Number.isFinite(w)) continue
+    if (worst === null || w > worst) worst = w
+  }
+  return worst
+}
+
 export interface Tally {
   agents: number
   working: number
@@ -111,13 +215,30 @@ export interface Tally {
   awaiting: number
   /** Projects whose orchestration state could not be read at all. */
   unmeasured: number
+  /* --- the ATTENTION axis, counted beside `state` and never mixed into it --- */
+  /** Waiting for a person with nothing running. */
+  input: number
+  /** Stopped at a permission prompt or a worker request. */
+  prompt: number
+  /** The prompt is free, but a backgrounded command is running. */
+  background: number
+  /** An attention class no counter above knows — the same guard as `unbucketed`. */
+  attentionUnbucketed: number
+  /** The LONGEST input wait in this set, or null when nobody is waiting. */
+  worstInputWaitSeconds: number | null
 }
 
-export const EMPTY_TALLY: Tally = { agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, quiet: 0, unbucketed: 0, conflicts: 0, awaiting: 0, unmeasured: 0 }
+export const EMPTY_TALLY: Tally = {
+  agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, quiet: 0, unbucketed: 0,
+  conflicts: 0, awaiting: 0, unmeasured: 0,
+  input: 0, prompt: 0, background: 0, attentionUnbucketed: 0, worstInputWaitSeconds: null,
+}
 
 export function tally(projects: readonly AttentionProject[]): Tally {
   let agents = 0, working = 0, unknown = 0, waiting = 0, asking = 0, quiet = 0, unbucketed = 0
   let conflicts = 0, awaiting = 0, unmeasured = 0
+  let input = 0, prompt = 0, background = 0, attentionUnbucketed = 0
+  let worstInputWaitSeconds: number | null = null
   for (const p of projects) {
     // Counted from the DATA, like everything else here: `total` is what the
     // producer computed from its own lists, and `source_missing` is the only
@@ -141,9 +262,24 @@ export function tally(projects: readonly AttentionProject[]): Tally {
       // Counted from the DATA, never from a declaration that conflicts exist.
       // An empty string is not a conflict; a missing key is not one either.
       if (typeof a.declaration_ignored === 'string' && a.declaration_ignored !== '') conflicts += 1
+      // The attention axis. A server that does not send the field contributes
+      // to nothing here — an absent class is not `unmeasured`, it is silence,
+      // and counting silence as a measurement is what makes a zero unreadable.
+      if (a.attention === ATT_INPUT) input += 1
+      else if (a.attention === ATT_PROMPT) prompt += 1
+      else if (a.attention === ATT_BACKGROUND) background += 1
+      else if (a.attention === ATT_WORKING || a.attention === ATT_UNMEASURED) { /* counted by name below */ }
+      else if (typeof a.attention === 'string' && a.attention !== '') attentionUnbucketed += 1
+      const w = worstInputWait([a])
+      if (w !== null && (worstInputWaitSeconds === null || w > worstInputWaitSeconds)) {
+        worstInputWaitSeconds = w
+      }
     }
   }
-  return { agents, working, unknown, waiting, asking, quiet, unbucketed, conflicts, awaiting, unmeasured }
+  return {
+    agents, working, unknown, waiting, asking, quiet, unbucketed, conflicts, awaiting, unmeasured,
+    input, prompt, background, attentionUnbucketed, worstInputWaitSeconds,
+  }
 }
 
 export function tallyOf(names: readonly string[], byName: ReadonlyMap<string, AttentionProject>): Tally {
