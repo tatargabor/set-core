@@ -88,6 +88,40 @@ consumer's name, path, or content.
   entry an hour old, reported movement an hour — and the fleet screen's stalest column stops
   disagreeing with the same session's own last log line.
 
+### B-104 — the docs, an agent rule, a LIVE spec and the public site all instruct people to run `set-design-sync`, which does not exist
+
+- **state:** open
+- **reported:** 2026-08-28 by this session, while correcting one presentation slide as part of
+  `retire-figma-legacy`. Recorded as its own entry rather than as a note under B-101: a finding
+  filed inside a CLOSED bug is a finding nobody will look for.
+- **measured:** the command does not exist in any form — `git ls-files | grep -i "design.sync"`
+  is empty, `find . -name "*design-sync*"` (untracked included) is empty, there is no
+  `console_scripts` entry, nothing named it in `bin/`, and nothing on `PATH` answers to it.
+  Meanwhile 11 LIVE files instruct the reader to run it (42 tracked files mention it; the rest
+  are archived changes, which are history and correctly keep the old name):
+
+  | file | what it does with the name |
+  |---|---|
+  | `openspec/specs/design-integration-docs/spec.md:11,14` | **a LIVE spec** requiring the docs to describe `run set-design-sync` |
+  | `.claude/rules/design-bridge.md:38` | **an agent rule** stating it generates `design-system.md` pre-orchestration |
+  | `.claude/skills/set/write-spec/SKILL.md` | a live skill |
+  | `docs/www/index.html:778,948,1153` | **the public site — line 1153 is a COPY BUTTON for the command** |
+  | `docs/guide/{README,design-integration,orchestration,sentinel,writing-specs}.md`, `docs/learn/journey.md`, `docs/roadmap.md` | prose instructions |
+
+- **it was replaced, not lost** — which is what makes the fix concrete rather than a deletion:
+  `375b8701` (2026-04-18, *"replace Figma pipeline with v0-only design source (BREAKING)"*)
+  swapped it for `modules/web/bin/set-design-import` and `set-design-hygiene`. The tool moved
+  into the web module and changed name; the documentation never followed.
+- **why this outranks B-101 even though it is the same class:** B-101's stale spec was read by
+  agents and by a peer tracing provenance. This one is read by **a person evaluating set-core**,
+  and the public site gives them a button that copies a command their shell will reject with
+  `command not found`. The fail direction is toward a first-run failure by someone with no way
+  to know the docs are wrong.
+- **fixed when:** the 11 live carriers name the tool that exists (`set-design-import` /
+  `set-design-hygiene`) or drop the step, `grep -rn "set-design-sync"` returns only archived
+  changes and this register, and the site's copy button copies a command that runs. Check the
+  claim the same way it was found: run what the docs tell you to run.
+
 ### B-103 — the repo's own regression-baseline recipe manufactures a false diff every time it runs
 
 - **state:** open
