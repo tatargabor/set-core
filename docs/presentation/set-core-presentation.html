@@ -2317,11 +2317,11 @@ footer {
   font-size: 0.7em;
 }
 ;color:#e2e8f0;background-color:#0f172a;background-image:none;" data-marpit-pagination-total="54">
-<h1 id="spec--figma-design">Spec + Figma Design</h1>
+<h1 id="spec--design-reference">Spec + Design Reference</h1>
 <p><img src="../images/auto/cli/spec-preview.png" alt="" style="width:480px;" /> <img src="../images/auto/figma/storefront-design.png" alt="" style="width:480px;" /></p>
 <p><strong>Left:</strong> Markdown spec — the business requirements<br />
-<strong>Right:</strong> Figma Make design — the visual blueprint</p>
-<p>The <code>set-design-sync</code> tool extracts design tokens (colors, fonts, spacing) from Figma into <code>design-system.md</code> — agents read this before implementation.</p>
+<strong>Right:</strong> the visual design reference this demo was built from</p>
+<p>Design tokens (colors, fonts, spacing) live in a <strong>committed</strong> <code>design-system.md</code>, and the dispatcher passes each agent the part matching its scope.</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="13" data-paginate="true" data-background-color="#0f172a" data-color="#e2e8f0" data-class="section-divider" data-theme="default" data-style="section {
   font-family: 'Inter', 'Segoe UI', sans-serif;
@@ -10608,9 +10608,10 @@ burn unlimited tokens.</p></div><div class="bespoke-marp-note" data-index="10" t
 A spec is not a sketch — it's a detailed requirements document.
 We have an interactive spec writer (/set:write-spec) that walks through
 the project-type-specific sections.</p></div><div class="bespoke-marp-note" data-index="11" tabindex="0"><p>SPEAKER_NOTES:
-Figma Make is a simple design tool. set-design-sync extracts tokens
-and visual descriptions, which the dispatcher distributes to each agent
-based on their scope.</p></div><div class="bespoke-marp-note" data-index="13" tabindex="0"><p>SPEAKER_NOTES:
+The screenshot on the right came from a design tool, but nothing in the
+pipeline talks to one: the design reference is generated once, committed,
+and consumed from the repository. The dispatcher distributes the matching
+part to each agent based on their scope.</p></div><div class="bespoke-marp-note" data-index="13" tabindex="0"><p>SPEAKER_NOTES:
 This is not a toy example — a real Next.js application with Prisma ORM,
 Playwright E2E tests, admin panel. We use this as a regression test
 before every major release.</p></div><div class="bespoke-marp-note" data-index="14" tabindex="0"><p>SPEAKER_NOTES:

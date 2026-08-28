@@ -2749,12 +2749,12 @@ footer {
   font-size: 0.7em;
 }
 ;color:#e2e8f0;background-color:#0f172a;background-image:none;" data-marpit-pagination-total="54">
-<h1 id="spec--figma-design">Spec + Figma Design</h1>
+<h1 id="spec--design-reference">Spec + design reference</h1>
 
 <p><img src="../images/auto/cli/spec-preview.png" alt="" style="width:480px;" /> <img src="../images/auto/figma/storefront-design.png" alt="" style="width:480px;" /></p>
 <p><strong>Bal:</strong> Markdown spec -- az üzleti követelmények<br />
-<strong>Jobb:</strong> Figma Make design -- a vizuális terv</p>
-<p>A <code>set-design-sync</code> eszköz a Figma-ból kinyeri a design tokeneket (színek, fontok, spacing) és <code>design-system.md</code>-be írja -- az ágensek ezt olvassák implementáció előtt.</p>
+<strong>Jobb:</strong> a vizuális design reference, amiből ez a demó készült</p>
+<p>A design tokenek (színek, fontok, spacing) egy <strong>commitolt</strong> <code>design-system.md</code>-ben élnek, és a dispatcher mindegyik agentnek a scope-jához illő részt adja át.</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="13" data-paginate="true" data-background-color="#0f172a" data-color="#e2e8f0" data-class="section-divider" data-theme="default" data-style="section {
   font-family: 'Inter', 'Segoe UI', sans-serif;
@@ -12556,9 +12556,10 @@ mint végtelen tokent égetni.</p></div><div class="bespoke-marp-note" data-inde
 A spec nem egy vázlat -- ez egy részletes követelményrendszer.
 Van interaktív spec-író eszközünk is (/set:write-spec) ami végigkérdezi
 a projekt típusra specifikus részleteket.</p></div><div class="bespoke-marp-note" data-index="11" tabindex="0"><p>A bemenet két része: markdown spec és Figma design</p><p>SPEAKER_NOTES:
-A Figma Make egy egyszerű design eszköz. A set-design-sync kiolvassa belőle
-a tokeneket és vizuális leírásokat, amiket a dispatcher az egyes ágenseknek
-scope-szerint szétoszt.</p></div><div class="bespoke-marp-note" data-index="13" tabindex="0"><p>SPEAKER_NOTES:
+A jobb oldali képernyőkép egy design toolból származik, de a pipeline
+egyikkel sem beszél: a design reference egyszer generálódik, bekerül a
+repóba, és onnan fogyasztja a rendszer. A dispatcher az egyes agenteknek
+scope-szerint osztja szét a rájuk tartozó részt.</p></div><div class="bespoke-marp-note" data-index="13" tabindex="0"><p>SPEAKER_NOTES:
 Ez nem egy toy example -- valós Next.js alkalmazás Prisma ORM-mel,
 Playwright E2E tesztekkel, admin panellel. Ezt használjuk regressziós
 tesztként minden major release előtt.</p></div><div class="bespoke-marp-note" data-index="14" tabindex="0"><p>SPEAKER_NOTES:

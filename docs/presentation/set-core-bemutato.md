@@ -340,21 +340,22 @@ a projekt típusra specifikus részleteket.
 
 ---
 
-# Spec + Figma Design
+# Spec + design reference
 
-<!-- A bemenet két része: markdown spec és Figma design -->
+<!-- A bemenet két része: markdown spec és a vizuális design reference -->
 
 ![w:480](../images/auto/cli/spec-preview.png) ![w:480](../images/auto/figma/storefront-design.png)
 
 **Bal:** Markdown spec -- az üzleti követelmények
-**Jobb:** Figma Make design -- a vizuális terv
+**Jobb:** a vizuális design reference, amiből ez a demó készült
 
-A `set-design-sync` eszköz a Figma-ból kinyeri a design tokeneket (színek, fontok, spacing) és `design-system.md`-be írja -- az ágensek ezt olvassák implementáció előtt.
+A design tokenek (színek, fontok, spacing) egy **commitolt** `design-system.md`-ben élnek, és a dispatcher mindegyik agentnek a scope-jához illő részt adja át.
 
 <!-- SPEAKER_NOTES:
-A Figma Make egy egyszerű design eszköz. A set-design-sync kiolvassa belőle
-a tokeneket és vizuális leírásokat, amiket a dispatcher az egyes ágenseknek
-scope-szerint szétoszt.
+A jobb oldali képernyőkép egy design toolból származik, de a pipeline
+egyikkel sem beszél: a design reference egyszer generálódik, bekerül a
+repóba, és onnan fogyasztja a rendszer. A dispatcher az egyes agenteknek
+scope-szerint osztja szét a rájuk tartozó részt.
 -->
 
 ---

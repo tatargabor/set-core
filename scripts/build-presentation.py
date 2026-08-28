@@ -293,10 +293,10 @@ def build_en(output_path):
         ("The spec is the sprint backlog.", AMBER, True),
     ])
 
-    content_slide(prs, "Spec + Figma Design",
+    content_slide(prs, "Spec + Design Reference",
                   two_images=(CLI_IMG / "spec-preview.png",
                               Path(ROOT / "docs/images/auto/figma/storefront-design.png")),
-                  note="set-design-sync extracts Figma tokens → design-system.md → agents read before implementation")
+                  note="design tokens live in a committed design-system.md → the dispatcher passes each agent the part matching its scope")
 
     # ── 6. E2E Demo ──
     section_slide(prs, "E2E Demo: MiniShop", "Building a webshop from a spec — live")

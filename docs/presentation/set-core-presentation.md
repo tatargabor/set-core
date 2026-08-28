@@ -321,19 +321,20 @@ the project-type-specific sections.
 
 ---
 
-# Spec + Figma Design
+# Spec + Design Reference
 
 ![w:480](../images/auto/cli/spec-preview.png) ![w:480](../images/auto/figma/storefront-design.png)
 
 **Left:** Markdown spec — the business requirements
-**Right:** Figma Make design — the visual blueprint
+**Right:** the visual design reference this demo was built from
 
-The `set-design-sync` tool extracts design tokens (colors, fonts, spacing) from Figma into `design-system.md` — agents read this before implementation.
+Design tokens (colors, fonts, spacing) live in a **committed** `design-system.md`, and the dispatcher passes each agent the part matching its scope.
 
 <!-- SPEAKER_NOTES:
-Figma Make is a simple design tool. set-design-sync extracts tokens
-and visual descriptions, which the dispatcher distributes to each agent
-based on their scope.
+The screenshot on the right came from a design tool, but nothing in the
+pipeline talks to one: the design reference is generated once, committed,
+and consumed from the repository. The dispatcher distributes the matching
+part to each agent based on their scope.
 -->
 
 ---
