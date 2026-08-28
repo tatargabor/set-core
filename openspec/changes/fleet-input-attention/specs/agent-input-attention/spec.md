@@ -167,6 +167,19 @@ nothing.
 - **WHEN** a group is collapsed and one agent inside it has been waiting for input for 5 minutes
 - **THEN** the group header SHALL carry the red escalation
 
+#### Scenario: One waiting agent is enough, whatever the others are doing
+
+- **WHEN** a project holds two working agents and one that has been waiting 5 minutes
+- **THEN** the row SHALL carry the red escalation
+- **AND** the working agents SHALL be counted from the attention axis, so a session whose
+  loop is running but whose log holds no open call is still counted as working
+
+#### Scenario: A wait with no measured age is amber, never silent
+
+- **WHEN** an agent's class is `input` and the record carried no timestamp
+- **THEN** the tone SHALL be amber
+- **AND** it SHALL NOT resolve to no tone at all
+
 #### Scenario: The row itself carries the colour, not only its marker
 
 - **WHEN** a project's longest wait is past a threshold

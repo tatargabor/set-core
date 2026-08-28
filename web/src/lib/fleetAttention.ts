@@ -162,6 +162,28 @@ export function inputWaitTone(
 }
 
 /**
+ * The tone a whole set of agents deserves — the STRONGEST one present.
+ *
+ * The user's rule, 2026-08-28: *"ha egy várakozó is van akkor kell a szín, a
+ * legerősebb szín, azaz ha van piros az, ha sárga az"*. So the maximum wait
+ * decides, and one waiting agent is enough — a project is never left uncoloured
+ * because its other agents are busy.
+ *
+ * The case worth naming is a wait whose AGE was not measured: the record said
+ * the prompt is free but carried no stamp. It resolves to **amber**, never to
+ * nothing. Somebody is waiting either way, and silence is the one answer that
+ * is certainly wrong.
+ */
+export function escalationTone(
+  t: Pick<Tally, 'input' | 'prompt' | 'worstInputWaitSeconds'>,
+  thresholds?: InputWaitThresholds | null,
+): InputWaitTone | null {
+  if (t.input + t.prompt === 0) return null
+  if (t.worstInputWaitSeconds === null) return 'amber'
+  return inputWaitTone(t.worstInputWaitSeconds, thresholds)
+}
+
+/**
  * Does this agent's class mean a person is being waited for?
  *
  * `background` is deliberately excluded and it is the whole point of the axis:
@@ -224,6 +246,26 @@ export interface Tally {
   background: number
   /** An attention class no counter above knows — the same guard as `unbucketed`. */
   attentionUnbucketed: number
+  /**
+   * The session's loop is RUNNING, measured from the runtime's record.
+   *
+   * Kept apart from `working`, which counts `state === 'working'` — an
+   * outstanding tool call in the LOG. The two are not the same set, and the gap
+   * between them is what made this counter necessary: measured 2026-08-28, two
+   * live sessions were `busy` in the record and `quiet` in the log at the same
+   * instant, because the runtime flushes a turn's entries in batches. Counted by
+   * `state` alone, a working project rendered with NO counter at all — no green,
+   * no tone — which reads as "nothing is happening here".
+   */
+  attWorking: number
+  /** Agents whose class could not be measured at all. */
+  attUnmeasured: number
+  /**
+   * Did ANY agent carry an attention class? A server that predates the axis
+   * sends none, and then the state counters are the only truth there is.
+   * Without this the row would silently render zeros for every class.
+   */
+  attentionReported: boolean
   /** The LONGEST input wait in this set, or null when nobody is waiting. */
   worstInputWaitSeconds: number | null
 }
@@ -232,12 +274,14 @@ export const EMPTY_TALLY: Tally = {
   agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, quiet: 0, unbucketed: 0,
   conflicts: 0, awaiting: 0, unmeasured: 0,
   input: 0, prompt: 0, background: 0, attentionUnbucketed: 0, worstInputWaitSeconds: null,
+  attWorking: 0, attUnmeasured: 0, attentionReported: false,
 }
 
 export function tally(projects: readonly AttentionProject[]): Tally {
   let agents = 0, working = 0, unknown = 0, waiting = 0, asking = 0, quiet = 0, unbucketed = 0
   let conflicts = 0, awaiting = 0, unmeasured = 0
   let input = 0, prompt = 0, background = 0, attentionUnbucketed = 0
+  let attWorking = 0, attUnmeasured = 0, attentionReported = false
   let worstInputWaitSeconds: number | null = null
   for (const p of projects) {
     // Counted from the DATA, like everything else here: `total` is what the
@@ -265,10 +309,12 @@ export function tally(projects: readonly AttentionProject[]): Tally {
       // The attention axis. A server that does not send the field contributes
       // to nothing here — an absent class is not `unmeasured`, it is silence,
       // and counting silence as a measurement is what makes a zero unreadable.
+      if (typeof a.attention === 'string' && a.attention !== '') attentionReported = true
       if (a.attention === ATT_INPUT) input += 1
       else if (a.attention === ATT_PROMPT) prompt += 1
       else if (a.attention === ATT_BACKGROUND) background += 1
-      else if (a.attention === ATT_WORKING || a.attention === ATT_UNMEASURED) { /* counted by name below */ }
+      else if (a.attention === ATT_WORKING) attWorking += 1
+      else if (a.attention === ATT_UNMEASURED) attUnmeasured += 1
       else if (typeof a.attention === 'string' && a.attention !== '') attentionUnbucketed += 1
       const w = worstInputWait([a])
       if (w !== null && (worstInputWaitSeconds === null || w > worstInputWaitSeconds)) {
@@ -279,6 +325,7 @@ export function tally(projects: readonly AttentionProject[]): Tally {
   return {
     agents, working, unknown, waiting, asking, quiet, unbucketed, conflicts, awaiting, unmeasured,
     input, prompt, background, attentionUnbucketed, worstInputWaitSeconds,
+    attWorking, attUnmeasured, attentionReported,
   }
 }
 

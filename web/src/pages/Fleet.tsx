@@ -69,7 +69,7 @@ import { offerWithRemembered, rememberTerminalLabels, terminalOffer } from '../l
 import type { LabelMemory } from '../lib/fleetTerminal'
 import { buildActs, speakerLabel, speakerOf } from '../lib/fleetConversation'
 import { OWNERSHIP_NOTE, cardClasses, ownershipOf } from '../lib/fleetCardStyle'
-import { ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, inputWaitTone, tally } from '../lib/fleetAttention'
+import { ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, ATT_WORKING, inputWaitTone, tally } from '../lib/fleetAttention'
 import { WaitThresholdsContext, useWaitThresholds } from '../lib/fleetWaitThresholds'
 import {
   defaultLocation, fetchStartLocations, locationLabel, offerable, selectorWorthShowing,
@@ -258,6 +258,25 @@ function StateLine({ agent }: { agent: FleetAgent }) {
         {agent.tool_elapsed_seconds !== null && (
           <span className="text-fg-muted tabular-nums font-normal">{age(agent.tool_elapsed_seconds)}</span>
         )}
+      </span>
+    )
+  }
+  // A quiet log with a RUNNING loop. Measured 2026-08-28: two live sessions were
+  // `busy` in the runtime's record and `quiet` in the log at the same instant,
+  // because a turn's entries are flushed in batches. This branch used to fall
+  // through to the one below and print "wait unmeasured" — a measured state
+  // rendered as an unmeasured one, and the calmer reading won.
+  if (agent.state === 'quiet' && agent.attention === ATT_WORKING) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-emerald-400 whitespace-nowrap"
+        data-fleet-attention={ATT_WORKING}
+        title="The runtime's record says this session's loop is running. Its log shows no open tool call, which only means the last flush landed between calls."
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+        working
+        <span className="text-fg-muted font-normal">no open call</span>
+        <Queues queued />
       </span>
     )
   }

@@ -32,7 +32,7 @@ import {
   EMPTY_TALLY,
   UNKNOWN,
   WAITING,
-  inputWaitTone,
+  escalationTone,
   firstAwaiting,
   firstMatching,
   firstWith,
@@ -127,7 +127,10 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
   // The LONGEST wait under this row, resolved on every render — the wait grows
   // between polls, and a tone frozen at fetch time sits stale on screen for
   // exactly as long as the poll interval.
-  const tone = inputWaitTone(t.worstInputWaitSeconds, thresholds)
+  // The STRONGEST tone in this set, and never silence while somebody waits —
+  // a wait whose age the record did not stamp resolves to amber rather than to
+  // nothing (`escalationTone`).
+  const tone = escalationTone(t, thresholds)
   return (
     <span className="inline-flex items-center gap-2 text-xs tabular-nums shrink-0">
       {/* WAITING FOR A PERSON, with the age of the longest wait.
@@ -183,9 +186,20 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
           <span className="w-1.5 h-1.5 rounded-full bg-sky-300" />{t.waiting}
         </span>
       )}
-      {t.working > 0 && (
-        <span className="inline-flex items-center gap-1 text-emerald-400" title="working">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{t.working}
+      {/* WORKING, counted from the ATTENTION axis where the server reports it.
+          Measured 2026-08-28 and it is the reason this is not `t.working`: two
+          live sessions were `busy` in the runtime's record and `quiet` in the
+          log at the same instant, because a turn's entries are flushed in
+          batches. Counted by the log's state alone, that project rendered with
+          NO counter at all — no green, no tone — which reads as "nothing is
+          happening here", and it is what made the colour disappear from a row
+          whose agents were very much alive. */}
+      {(t.attentionReported ? t.attWorking : t.working) > 0 && (
+        <span className="inline-flex items-center gap-1 text-emerald-400"
+              data-fleet-working={t.attentionReported ? t.attWorking : t.working}
+              title="working — the session's loop is running">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          {t.attentionReported ? t.attWorking : t.working}
         </span>
       )}
       {/* UNKNOWN is no longer amber, and the swap is deliberate (2026-08-28).
@@ -445,7 +459,7 @@ function ProjectRow(p: RowProps) {
   const t = p.project
     ? tallyOf([p.name], new Map([[p.name, p.project as AttentionProject]]))
     : EMPTY_TALLY
-  const tone = inputWaitTone(t.worstInputWaitSeconds, useWaitThresholds())
+  const tone = escalationTone(t, useWaitThresholds())
   const toned = toneRow(tone, p.active)
   return (
     <div
@@ -655,7 +669,7 @@ function GroupBlock(p: GroupProps) {
   // collapses a group, and React throws on the render after the click. The
   // suite did not catch it, because none of its cases toggles one.
   const thresholds = useWaitThresholds()
-  const groupTone = open ? null : inputWaitTone(t.worstInputWaitSeconds, thresholds)
+  const groupTone = open ? null : escalationTone(t, thresholds)
   const list = useRef<HTMLDivElement | null>(null)
   const reorder = useReorder((from, to) => p.onMoveProject(p.group.id, from, to), list, p.group.order.length)
   const found = useMemo(() => new Set(p.group.projects), [p.group.projects])

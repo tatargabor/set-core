@@ -215,6 +215,50 @@ describe('the escalation on the project row', () => {
     expect(el.querySelector('[data-fleet-input-wait]')).toBeNull()
   })
 
+  it('keeps the colour when one agent waits and the others are working', async () => {
+    // The user's report, 2026-08-28: *"set-core piros eltűnt pedig a második
+    // agent maradt várakozó"*. The row must never go quiet because its busy
+    // agents outnumber the waiting one.
+    const el = await column(fleet([
+      project('visible', [
+        agent(1, 'busy1', { attention: 'working', runtime_status: 'busy' }),
+        agent(2, 'busy2', { attention: 'working', runtime_status: 'busy' }),
+        agent(3, 'waits', { attention: 'input', input_wait_seconds: 300 }),
+      ]),
+    ]))
+    await waitFor(() => {
+      expect(el.querySelector('[data-fleet-row-tone="red"]')).toBeTruthy()
+    })
+    // And the busy pair is counted as working, from the RECORD — their logs
+    // show no open call, so the state-based counter would have shown nothing.
+    expect(el.querySelector('[data-fleet-working]')!.getAttribute('data-fleet-working')).toBe('2')
+  })
+
+  it('is amber, not silent, when a waiting agent has no measured age', async () => {
+    const el = await column(fleet([
+      project('visible', [agent(1, 'a', { attention: 'input', input_wait_seconds: null })]),
+    ]))
+    await waitFor(() => {
+      expect(el.querySelector('[data-fleet-row-tone="amber"]')).toBeTruthy()
+    })
+  })
+
+  it('shows a busy session as working even when its log holds no open call', async () => {
+    install(fleet([project('visible', [
+      agent(1, 'a', { state: 'quiet', attention: 'working', runtime_status: 'busy' }),
+    ])]))
+    const { container } = render(<Fleet />)
+    const line = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-attention="working"]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    expect(line.textContent).toMatch(/working/)
+    // NOT the sentence that shipped first, which called a measured state
+    // unmeasured and let the calmer reading win.
+    expect(line.textContent).not.toMatch(/wait unmeasured/)
+  })
+
   it('does not mark a project whose agents carry no class at all', async () => {
     const el = await column(fleet([project('visible', [agent(1, 'plain')])]))
     await waitFor(() => expect(el).toBeTruthy())

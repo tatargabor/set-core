@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, ATT_UNMEASURED, ATT_WORKING,
   EMPTY_TALLY, INPUT_WAIT_AMBER_SECONDS, INPUT_WAIT_RED_SECONDS,
-  inputWaitTone, tally, waitsForAPerson, worstInputWait,
+  escalationTone, inputWaitTone, tally, waitsForAPerson, worstInputWait,
   type AttentionAgent,
 } from '../../src/lib/fleetAttention'
 
@@ -138,5 +138,59 @@ describe('the two sides carry the same thresholds', () => {
     expect(red).not.toBeNull()
     expect(Number(amber![1])).toBe(INPUT_WAIT_AMBER_SECONDS)
     expect(Number(red![1])).toBe(INPUT_WAIT_RED_SECONDS)
+  })
+})
+
+describe('escalationTone — the strongest colour present, and never silence', () => {
+  const set = (input: number, prompt: number, worst: number | null) =>
+    ({ input, prompt, worstInputWaitSeconds: worst })
+
+  it('takes the strongest: red beats amber beats plain', () => {
+    expect(escalationTone(set(2, 0, 400))).toBe('red')
+    expect(escalationTone(set(2, 0, 45))).toBe('amber')
+    expect(escalationTone(set(2, 0, 5))).toBe('plain')
+  })
+
+  it('colours a project where ONE agent waits and the others are busy', () => {
+    // The user's report, 2026-08-28: the colour vanished from a project whose
+    // second agent was still waiting. One waiter is enough.
+    expect(escalationTone(set(1, 0, 300))).toBe('red')
+  })
+
+  it('is amber, never nothing, when the wait has no measured age', () => {
+    // The record said the prompt is free but carried no stamp. Somebody is
+    // waiting either way, and silence is the one answer that is certainly wrong.
+    expect(escalationTone(set(1, 0, null))).toBe('amber')
+  })
+
+  it('is null only when nobody is waiting', () => {
+    expect(escalationTone(set(0, 0, null))).toBeNull()
+    expect(escalationTone(set(0, 0, 9999))).toBeNull()
+  })
+
+  it('counts a permission prompt as a waiter too', () => {
+    expect(escalationTone(set(0, 1, 200))).toBe('red')
+  })
+})
+
+describe('working is counted from the record, not only from an open tool call', () => {
+  it('counts a busy session whose log shows no open call', () => {
+    // Measured 2026-08-28: two live sessions were `busy` in the record and
+    // `quiet` in the log at the same instant — a turn's entries are flushed in
+    // batches. Counted by state alone, that project rendered with no counter
+    // at all, which reads as "nothing is happening here".
+    const t = tally([{ name: 'p', agents: [
+      agent({ state: 'quiet', attention: ATT_WORKING }),
+      agent({ state: 'quiet', attention: ATT_WORKING }),
+    ] }])
+    expect(t.working).toBe(0)        // the log's answer, unchanged
+    expect(t.attWorking).toBe(2)     // the record's answer
+    expect(t.attentionReported).toBe(true)
+  })
+
+  it('says the axis was not reported when no agent carries a class', () => {
+    const t = tally([{ name: 'p', agents: [agent({ state: 'working' })] }])
+    expect(t.attentionReported).toBe(false)
+    expect(t.attWorking).toBe(0)
   })
 })

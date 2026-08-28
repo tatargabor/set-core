@@ -57,6 +57,13 @@
 - [x] 7.4 **VISUAL CHECK — open the fleet screen in the browser and LOOK at the project menu**: a working session green, a waiting one amber with its duration, one past 3 minutes red, one with a background command not amber at all. If the browser cannot be reached, this task stays OPEN and is said so in the commit [REQ: the-project-menu-shows-the-worst-wait-it-contains]
 - [x] 7.5 Cross-check the screen against a live measurement of the same PIDs' records at that moment — the screen and `~/.claude/sessions/*.json` must agree on each session's class [REQ: the-runtime-records-status-is-read-as-a-measurement-of-the-session-loop]
 
+## 8. The colour vanished on a live screen — reported by the user, same day
+
+- [x] 8.1 Count *working* from the ATTENTION axis on the project row, not from `state`: two live sessions were `busy` in the record and `quiet` in the log at the same instant, so the row rendered NO counter at all [REQ: four-statuses-map-to-four-distinct-attention-classes]
+- [x] 8.2 Render a quiet-log/running-loop session as **working** on the tile, instead of falling through to `wait unmeasured` — a measured state printed as an unmeasured one [REQ: four-statuses-map-to-four-distinct-attention-classes]
+- [x] 8.3 `escalationTone`: the STRONGEST tone present, one waiter is enough, and a wait with no measured age resolves to amber rather than to silence — the user's rule: *"ha egy várakozó is van akkor kell a szín, a legerősebb szín"* [REQ: the-project-menu-shows-the-worst-wait-it-contains]
+- [x] 8.4 Tests for all three, including a project with two working agents and one waiter [REQ: the-project-menu-shows-the-worst-wait-it-contains]
+
 ## Evidence — what was actually run (2026-08-28)
 
 - **the measurement layer:** `.venv/bin/python -m pytest tests/unit/test_fleet_input_attention.py
@@ -85,6 +92,10 @@
   The live fleet held no wait between 15 s and 3 min, so the amber band was rendered a second
   time with one duration rewritten in flight (47 s) — the row and its bar came out amber, and it
   is clearly separable from red at a glance.
+- **8.x, after the user's report:** the same screen re-rendered and looked at again — the
+  `set-core` row now carries the amber tint with `1 37s` AND a green `1` for the working
+  agent beside it, and the tile reads `working · no open call` instead of `wait unmeasured`.
+  Web suite **1219 passed**.
 - **7.5, the cross-check:** the screen's classes against `~/.claude/sessions/*.json` at the same
   moment — **9 of 9 agree**, and the two input waits differ from the records' own stamps by
   **3 s**, which is the poll's age and not a disagreement.
@@ -104,6 +115,8 @@
 - [x] AC-11: WHEN an agent is `background` for 10 minutes THEN no input-wait tone is resolved [REQ: the-escalation-thresholds-are-declared-once-and-carried-to-the-surface, scenario: a-background-busy-agent-never-escalates]
 - [x] AC-12: WHEN a collapsed group holds an agent waiting 5 minutes THEN its header carries red [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: a-collapsed-group-carries-its-worst-wait]
 - [x] AC-13: WHEN a project holds a 4-minute waiter and a 5-second waiter THEN the row carries red [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: the-project-row-takes-the-maximum-not-the-freshest]
+- [x] AC-19: WHEN a project holds two working agents and one waiting 5 minutes THEN the row carries red, and the working pair is counted from the attention axis [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: one-waiting-agent-is-enough-whatever-the-others-are-doing]
+- [x] AC-20: WHEN an agent's class is `input` with no timestamp THEN the tone is amber, never absent [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: a-wait-with-no-measured-age-is-amber-never-silent]
 - [x] AC-18: WHEN a project's longest wait is past a threshold THEN the row's own background and edge carry that tone, and a row below the first threshold stays untinted [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: the-row-itself-carries-the-colour-not-only-its-marker]
 - [x] AC-14: WHEN a state could not be measured THEN its marker differs from an input-wait marker by shape, not only hue [REQ: amber-means-waiting-for-you-and-nothing-else, scenario: an-unmeasured-agent-is-not-amber]
 - [x] AC-15: WHEN the class is `working` or `background` THEN the state line says a message would be queued [REQ: the-surface-says-whether-typing-there-would-be-acted-on, scenario: a-working-session-says-a-message-would-queue]
