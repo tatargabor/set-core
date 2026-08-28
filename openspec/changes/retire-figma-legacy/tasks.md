@@ -1,13 +1,13 @@
 ## 1. Baseline before anything is deleted
 
-- [ ] 1.1 Record the pre-change figma inventory verbatim: `git ls-files | grep -i figma` — expect 12 files. Save the list; step 5.1 diffs against it [REQ: source-file-discovery-from-figma-raw-directory]
-- [ ] 1.2 Build a test-failure baseline per the repo's regression-baseline procedure (set of failing test ids, NOT a count — this repo carries pre-existing failure debt that makes a count meaningless). Save the id set [REQ: source-file-discovery-from-figma-raw-directory]
-- [ ] 1.3 Record the pre-change `openspec validate --strict` result for the whole repo, so step 5.3 compares against a measured baseline rather than an assumed clean one [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 1.1 Record the pre-change figma inventory verbatim: `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` — 12 files. **The change's own five files match `figma` too** (the change is named `retire-figma-legacy`), so the raw grep returns 17 and the number drifts as the change moves through archive; the filter is what makes 12→8 a stable measurement rather than a moving one. Save the list; step 5.1 diffs against it [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 1.2 Build a test-failure baseline per the repo's regression-baseline procedure (set of failing test ids, NOT a count — this repo carries pre-existing failure debt that makes a count meaningless). Save the id set. **Measured:** isolated worktree at HEAD, `FIRSTPARTY LEAK: 0` (proven by the error text naming `base/lib/set_orch/api/__init__.py`), **116 failure entries**, `91 failed, 4477 passed, 21 errors` [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 1.3 Record the pre-change `openspec validate --strict` result for the whole repo, so step 5.3 compares against a measured baseline rather than an assumed clean one. **Measured:** `316 passed, 146 failed (462 items)` — and `figma-source-dispatch` is in the PASSING set, which is the defect in one line: it validates cleanly as a live contract [REQ: source-file-discovery-from-figma-raw-directory]
 
 ## 2. Withdraw the capability
 
-- [ ] 2.1 Delete `openspec/specs/figma-source-dispatch/` (spec.md and the directory). The delta spec in this change is what records the removal; the archive step later moves it into place [REQ: source-file-discovery-from-figma-raw-directory]
-- [ ] 2.2 Verify nothing else references the capability name: `grep -rn "figma-source-dispatch" --exclude-dir=.git .` returns only this change's own files and the archived `2026-03-15-design-fidelity-bridge` files [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 2.1 Delete `openspec/specs/figma-source-dispatch/` (spec.md and the directory). The delta spec in this change is what records the removal; the archive step later moves it into place [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 2.2 Verify nothing else references the capability name: `grep -rn "figma-source-dispatch" --exclude-dir=.git .` returns only this change's own files and the archived `2026-03-15-design-fidelity-bridge` files. **Measured:** every hit is a change document, the archive, or the bug register — zero live code references [REQ: source-file-discovery-from-figma-raw-directory]
 - [ ] 2.3 Commit the spec removal on its own, with a pathspec-limited commit (another session works in this checkout) [REQ: source-file-discovery-from-figma-raw-directory]
 
 ## 3. Delete the dead carriers, each proven absent first
@@ -28,7 +28,7 @@
 
 ## 5. Verify the removal did not take anything with it
 
-- [ ] 5.1 `git ls-files | grep -i figma` returns exactly 8 files: the 6 archived change documents and the 2 presentation PNGs. Diff against the 1.1 inventory and confirm the 4 that left are the intended ones [REQ: total-output-budget-of-300-lines]
+- [ ] 5.1 `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` returns exactly 8 files: the 6 archived change documents and the 2 presentation PNGs. Diff against the 1.1 inventory and confirm the 4 that left are the intended ones [REQ: total-output-budget-of-300-lines]
 - [ ] 5.2 Re-run the test suite and diff the failing-test-id SET against the 1.2 baseline. Unchanged set is the pass condition. A smaller count is not evidence — a fixture deleted out from under a glob-based reader turns a pass into an ERROR, which is what this catches [REQ: total-output-budget-of-300-lines]
 - [ ] 5.3 `openspec validate --strict` across the repo is no worse than the 1.3 baseline [REQ: total-output-budget-of-300-lines]
 - [ ] 5.4 Confirm the presentation still builds its slide: `scripts/build-presentation.py` resolves `docs/images/auto/figma/storefront-design.png` and the file exists [REQ: shared-data-files-always-included]
@@ -66,7 +66,7 @@ other way would be an acceptance test for the thing this change withdraws.
 
 ### Total output budget of 300 lines
 
-- [ ] AC-8: WHEN `git ls-files | grep -i figma` is run after the change THEN it returns exactly 8 files (6 archive + 2 presentation PNGs), and the test failure-id set is identical to the pre-change baseline [REQ: total-output-budget-of-300-lines, scenario: budget-exceeded]
+- [ ] AC-8: WHEN `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` is run after the change THEN it returns exactly 8 files (6 archive + 2 presentation PNGs), and the test failure-id set is identical to the pre-change baseline [REQ: total-output-budget-of-300-lines, scenario: budget-exceeded]
 
 ### Shared data files always included
 
