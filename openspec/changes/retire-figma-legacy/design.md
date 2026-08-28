@@ -9,7 +9,7 @@ look identical from a filename and are not:
 | group | files | what it actually is |
 |---|---|---|
 | dead | `openspec/specs/figma-source-dispatch/spec.md`, `scripts/fetch-figma-design.py`, `tests/fixtures/figma-raw/TEST/sources/*.tsx` (4) | published or shipped, zero implementation, zero references |
-| history | 6 files under `openspec/changes/archive/2026-03-15-*` | the record of **why** the Figma MCP path was rejected |
+| history | 4 figma-named files in two archived changes under `openspec/changes/archive/2026-03-15-*` | the record of **why** the Figma MCP path was rejected |
 | live | `docs/images/auto/figma/{product-detail,storefront}-design.png` | build input for the presentation, referenced from `scripts/build-presentation.py:298` |
 
 The report that started this came from outside the repo — a peer session in another project
@@ -147,7 +147,7 @@ Order matters only for reviewability, not correctness:
 1. Spec removal (the delta already written) — the contract change.
 2. Dead carrier deletions, each preceded by its proving grep.
 3. Presentation text correction.
-4. Verification: `git ls-files | grep -i figma` returns exactly 8 files (6 archive + 2 PNG),
+4. Verification: `git ls-files | grep -i figma`, minus this change's own files, returns exactly 6 (4 archive + 2 PNG),
    the test failure set is unchanged, `openspec validate --strict` no worse than baseline.
 5. Archive, then confirm `openspec/specs/figma-source-dispatch/` is gone.
 6. Close `B-101` in `openspec/bugs/README.md` with the commit sha.

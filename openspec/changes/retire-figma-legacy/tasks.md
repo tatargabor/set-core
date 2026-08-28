@@ -8,7 +8,7 @@
 
 - [x] 2.1 Delete `openspec/specs/figma-source-dispatch/` (spec.md and the directory). The delta spec in this change is what records the removal; the archive step later moves it into place [REQ: source-file-discovery-from-figma-raw-directory]
 - [x] 2.2 Verify nothing else references the capability name: `grep -rn "figma-source-dispatch" --exclude-dir=.git .` returns only this change's own files and the archived `2026-03-15-design-fidelity-bridge` files. **Measured:** every hit is a change document, the archive, or the bug register — zero live code references [REQ: source-file-discovery-from-figma-raw-directory]
-- [ ] 2.3 Commit the spec removal on its own, with a pathspec-limited commit (another session works in this checkout) [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 2.3 Commit the spec removal on its own, with a pathspec-limited commit (another session works in this checkout). **Done: `5848af48`** [REQ: source-file-discovery-from-figma-raw-directory]
 
 ## 3. Delete the dead carriers, each proven absent first
 
@@ -20,7 +20,7 @@
 - [x] 3.2 Delete `scripts/fetch-figma-design.py` [REQ: scope-based-source-file-matching]
 - [x] 3.3 Run the proving grep for the fixture: `grep -rn "figma-raw/TEST\|fixtures/figma" --include="*.py" --include="*.sh" --include="*.ts" --include="*.js" --exclude-dir=.git .` must be EMPTY. **Measured: EMPTY.** A glob-based reader would not appear here — that is what step 5.2 covers [REQ: ui-primitive-exclusion]
 - [x] 3.4 Delete `tests/fixtures/figma-raw/TEST/sources/` (4 `.tsx`/`.ts` files) and any directory left empty by it — the whole `tests/fixtures/figma-raw/` tree is gone. **Found while doing this, NOT acted on (out of scope):** `tests/fixtures/design-snapshot.md` is a second zero-reference orphan in the same directory (`grep -rn "fixtures/design-snapshot"` is empty). It is not named in this change's proposal or specs, so it stays — reported to the user instead of swept in [REQ: ui-primitive-exclusion]
-- [ ] 3.5 Commit the two deletions with the proving greps quoted, pathspec-limited [REQ: scope-based-source-file-matching]
+- [x] 3.5 Commit the two deletions with the proving greps quoted, pathspec-limited. **Done: `1aae12fd`** (−859 lines) [REQ: scope-based-source-file-matching]
 
 ## 4. Correct the presentation's stale claim
 
@@ -32,11 +32,11 @@
 
 ## 5. Verify the removal did not take anything with it
 
-- [ ] 5.1 `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` returns exactly 8 files: the 6 archived change documents and the 2 presentation PNGs. Diff against the 1.1 inventory and confirm the 4 that left are the intended ones [REQ: total-output-budget-of-300-lines]
-- [ ] 5.2 Re-run the test suite and diff the failing-test-id SET against the 1.2 baseline. Unchanged set is the pass condition. A smaller count is not evidence — a fixture deleted out from under a glob-based reader turns a pass into an ERROR, which is what this catches [REQ: total-output-budget-of-300-lines]
-- [ ] 5.3 `openspec validate --strict` across the repo is no worse than the 1.3 baseline [REQ: total-output-budget-of-300-lines]
-- [ ] 5.4 Confirm the presentation still builds its slide: `scripts/build-presentation.py` resolves `docs/images/auto/figma/storefront-design.png` and the file exists [REQ: shared-data-files-always-included]
-- [ ] 5.5 Confirm the archive was NOT touched: the 6 files under `openspec/changes/archive/2026-03-15-*` are unchanged in `git status` and still contain the MCP-instability finding [REQ: shared-data-files-always-included]
+- [x] 5.1 `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` returns exactly **6** files: **4** archived change documents and the 2 presentation PNGs. Diff against the 1.1 inventory and confirm the **6** that left are the intended ones (1 spec + 1 script + 4 fixtures). **Corrected here after measuring:** the plan said 8 and "6 archived change files". That 6 was inherited from the peer's report, where it counted the two PNGs as archive — it was never measured on this side. The archive holds **4** figma-named files: `design-fidelity-bridge/specs/figma-source-dispatch/spec.md` and three under `figma-direct-fetch/`. 12 − 6 removed = 6 remaining, and the arithmetic only closes with the measured number [REQ: total-output-budget-of-300-lines]
+- [x] 5.2 Re-run the test suite and diff the failing-test-id SET against the 1.2 baseline. Unchanged set is the pass condition. A smaller count is not evidence — a fixture deleted out from under a glob-based reader turns a pass into an ERROR, which is what this catches. **Measured: 116 → 115, and the ONE difference is a false positive of the baseline method, not a result of this change.** `test_paths.py::TestResolveProjectName::test_resolve_with_explicit_path` asserts the checkout's DIRECTORY NAME (`assert name == repo_root.name`); the baseline worktree is called `base`, so it fails there and passes here — `AssertionError: assert 'set-core' == 'base'`. Every other entry is identical, so the regression set is empty. Filed as B-102: the repo's own baseline recipe manufactures this diff every time and the skill does not warn about it [REQ: total-output-budget-of-300-lines]
+- [x] 5.3 `openspec validate --strict` across the repo is no worse than the 1.3 baseline. **Measured: `316 passed, 146 failed (462)` → `315 passed, 146 failed (461)`.** Exactly one item left, and it left the PASSING set — the withdrawn spec. Zero new failures (`comm -13` on the two failing sets is empty) [REQ: total-output-budget-of-300-lines]
+- [x] 5.4 Confirm the presentation still builds its slide: `scripts/build-presentation.py` resolves `docs/images/auto/figma/storefront-design.png` and the file exists. **Measured:** exists, 215 777 bytes; `py_compile` on the edited script passes [REQ: shared-data-files-always-included]
+- [x] 5.5 Confirm the archive was NOT touched: the two archived changes under `openspec/changes/archive/2026-03-15-{figma-direct-fetch,design-fidelity-bridge}/` (3 + 8 = 11 files, of which 4 are figma-named) are unchanged and still contain the MCP-instability finding (`figma-direct-fetch/proposal.md:5` — 13 frames vs 3 frames of prose, four seconds apart). **Measured:** all five commits of this change contain ZERO files under `openspec/changes/archive/`; the archive's last touch remains `8e36f6f9` [REQ: shared-data-files-always-included]
 
 ## 6. Close the loop
 
@@ -51,27 +51,27 @@ other way would be an acceptance test for the thing this change withdraws.
 
 ### Source file discovery from figma-raw directory
 
-- [ ] AC-1: WHEN a project contains `docs/figma-raw/<key>/sources/` THEN nothing in set-core discovers it — no tracked file defines or calls `design_sources_for_dispatch()`, verified by `grep -rn "design_sources_for_dispatch" --exclude-dir=.git .` returning only archived change documents [REQ: source-file-discovery-from-figma-raw-directory, scenario: sources-directory-exists-with-files]
-- [ ] AC-2: WHEN a project has no `docs/figma-raw/` directory THEN no code path notices or reports it, because no such code path exists — `lib/design/` is absent from `git ls-files` [REQ: source-file-discovery-from-figma-raw-directory, scenario: no-figma-raw-directory-exists]
+- [x] AC-1: WHEN a project contains `docs/figma-raw/<key>/sources/` THEN nothing in set-core discovers it — no tracked file defines or calls `design_sources_for_dispatch()`, verified by `grep -rn "design_sources_for_dispatch" --exclude-dir=.git .` returning only archived change documents [REQ: source-file-discovery-from-figma-raw-directory, scenario: sources-directory-exists-with-files]
+- [x] AC-2: WHEN a project has no `docs/figma-raw/` directory THEN no code path notices or reports it, because no such code path exists — `lib/design/` is absent from `git ls-files` [REQ: source-file-discovery-from-figma-raw-directory, scenario: no-figma-raw-directory-exists]
 
 ### UI primitive exclusion
 
-- [ ] AC-3: WHEN the tree is searched for the shadcn primitive fixture `src__components__ui__button.tsx` THEN it is not found — the fixture directory is deleted and no test references it [REQ: ui-primitive-exclusion, scenario: shadcn-button-tsx-excluded]
+- [x] AC-3: WHEN the tree is searched for the shadcn primitive fixture `src__components__ui__button.tsx` THEN it is not found — the fixture directory is deleted and no test references it [REQ: ui-primitive-exclusion, scenario: shadcn-button-tsx-excluded]
 
 ### Scope-based source file matching
 
-- [ ] AC-4: WHEN a change's scope text mentions "product" THEN no Figma source matching runs anywhere in dispatch — `scripts/fetch-figma-design.py` is deleted and has no caller [REQ: scope-based-source-file-matching, scenario: scope-mentions-product-and-card]
-- [ ] AC-5: WHEN a change's scope text mentions "cart" THEN the same holds; the fixtures `src__app__Cart.tsx` and `src__app__data__mockData.ts` are no longer in the tree [REQ: scope-based-source-file-matching, scenario: scope-mentions-cart]
-- [ ] AC-6: WHEN scope text contains only infrastructure terms THEN there is no matcher to return empty and no exit code to check — the requirement is withdrawn, not weakened [REQ: scope-based-source-file-matching, scenario: no-keyword-matches]
+- [x] AC-4: WHEN a change's scope text mentions "product" THEN no Figma source matching runs anywhere in dispatch — `scripts/fetch-figma-design.py` is deleted and has no caller [REQ: scope-based-source-file-matching, scenario: scope-mentions-product-and-card]
+- [x] AC-5: WHEN a change's scope text mentions "cart" THEN the same holds; the fixtures `src__app__Cart.tsx` and `src__app__data__mockData.ts` are no longer in the tree [REQ: scope-based-source-file-matching, scenario: scope-mentions-cart]
+- [x] AC-6: WHEN scope text contains only infrastructure terms THEN there is no matcher to return empty and no exit code to check — the requirement is withdrawn, not weakened [REQ: scope-based-source-file-matching, scenario: no-keyword-matches]
 
 ### Source file content output format
 
-- [ ] AC-7: WHEN the presentation deck is read THEN it no longer asserts a Figma design pipeline — the corrected slide text in both decks and in `scripts/build-presentation.py` describes a design reference, while both image references still resolve [REQ: source-file-content-output-format, scenario: two-files-matched]
+- [x] AC-7: WHEN the presentation deck is read THEN it no longer asserts a Figma design pipeline — the corrected slide text in both decks and in `scripts/build-presentation.py` describes a design reference, while both image references still resolve [REQ: source-file-content-output-format, scenario: two-files-matched]
 
 ### Total output budget of 300 lines
 
-- [ ] AC-8: WHEN `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` is run after the change THEN it returns exactly 8 files (6 archive + 2 presentation PNGs), and the test failure-id set is identical to the pre-change baseline [REQ: total-output-budget-of-300-lines, scenario: budget-exceeded]
+- [x] AC-8: WHEN `git ls-files | grep -i figma | grep -v '^openspec/changes/retire-figma-legacy/'` is run after the change THEN it returns exactly 6 files (4 archive + 2 presentation PNGs), and the test failure-id set is identical to the pre-change baseline [REQ: total-output-budget-of-300-lines, scenario: budget-exceeded]
 
 ### Shared data files always included
 
-- [ ] AC-9: WHEN the archive is inspected after the change THEN all 6 files under `openspec/changes/archive/2026-03-15-*` are byte-identical to their pre-change state, and the presentation build still resolves `docs/images/auto/figma/storefront-design.png` [REQ: shared-data-files-always-included, scenario: product-page-scope-with-mockdata]
+- [x] AC-9: WHEN the archive is inspected after the change THEN all 11 files of the two archived changes under `openspec/changes/archive/2026-03-15-{figma-direct-fetch,design-fidelity-bridge}/` are byte-identical to their pre-change state, and the presentation build still resolves `docs/images/auto/figma/storefront-design.png` [REQ: shared-data-files-always-included, scenario: product-page-scope-with-mockdata]

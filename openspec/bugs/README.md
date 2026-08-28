@@ -88,6 +88,35 @@ consumer's name, path, or content.
   entry an hour old, reported movement an hour — and the fleet screen's stalest column stops
   disagreeing with the same session's own last log line.
 
+### B-103 — the repo's own regression-baseline recipe manufactures a false diff every time it runs
+
+- **state:** open
+- **reported:** 2026-08-28 by this session, while running the `regression-baseline` procedure as
+  a task of `retire-figma-legacy`. Not a task in that change: it is a defect in the measuring
+  instrument, not in what was being measured. Filed as B-102 and renumbered on the spot — a
+  parallel session in this checkout had already taken that id. Second time this has happened
+  (see B-100); two sessions numbering from one file is a collision the file cannot prevent.
+- **measured:** `tests/unit/test_paths.py::TestResolveProjectName::test_resolve_with_explicit_path`
+  asserts the checkout's DIRECTORY NAME — `repo_root = Path(__file__).resolve().parents[2]`, then
+  `assert resolve_project_name(str(repo_root)) == repo_root.name`. The skill's recipe creates the
+  baseline worktree at a path whose last segment is `base`, so the test fails there and passes in
+  the working tree: `AssertionError: assert 'set-core' == 'base'`. Measured today: baseline 116
+  failure entries, working tree 115, and that one entry is the whole difference.
+- **why it matters more than one line of diff:** the set diff is the ONLY check this repo trusts
+  for a regression, precisely because the failure counts are meaningless against its debt. An
+  instrument that always produces one spurious entry trains the reader to look at a non-empty
+  diff and say "that one is fine" — and the next real single-test regression arrives looking
+  exactly like it. Same class as the measurement being inside the corpus it measures: the
+  procedure's own artifact shows up as a finding about the code.
+- **fail direction:** toward waving a regression through, which is the expensive direction.
+- **fixed when:** the baseline can be run without a spurious entry — either the skill's recipe
+  names the worktree after the repo (`.../set-core` rather than `.../base`), or the test stops
+  asserting the directory name, or the skill documents this single entry as expected. The first
+  is the smallest and keeps the test's original intent (it exists because a hard-coded home path
+  once made it pass for the wrong reason). Verify by running the recipe twice and getting an
+  EMPTY diff on an unchanged tree — which is the property a baseline is supposed to have and
+  currently does not.
+
 ### B-101 — a LIVE spec describes a function that was deleted four months ago
 
 - **state:** open
@@ -115,8 +144,8 @@ consumer's name, path, or content.
   (`Spec + Figma Design`, note `set-design-sync extracts Figma tokens`).
 - **fixed when:** `openspec/specs/figma-source-dispatch/` is gone via an OpenSpec change (this
   removes a published capability, so it carries a spec delta and does not go in as a direct
-  commit), the two dead carriers are deleted, `git ls-files | grep -i figma` returns only the
-  6 archive entries plus the 2 presentation PNGs, and `openspec validate --strict` stays no
+  commit), the two dead carriers are deleted, `git ls-files | grep -i figma`, minus the change's own
+  files, returns only the 4 archived figma-named entries plus the 2 presentation PNGs, and `openspec validate --strict` stays no
   worse than its pre-change baseline.
 
 ### B-100 — the Control Center draws 0 % for an account whose usage was never measured

@@ -35,7 +35,7 @@ four-file test fixture, both with zero live references.
 Both of these look like Figma leftovers and are not. Naming them here is the point of the
 change, because the obvious next step after "retire the Figma legacy" is to delete them.
 
-- **The 6 archived change files stay** (`openspec/changes/archive/2026-03-15-figma-direct-fetch/*`,
+- **The 4 archived figma-named change files stay** (in two archived changes totalling 11 files) (`openspec/changes/archive/2026-03-15-figma-direct-fetch/*`,
   `openspec/changes/archive/2026-03-15-design-fidelity-bridge/specs/figma-source-dispatch/spec.md`).
   They are the only record of **why** the Figma MCP path was dropped — instability, auth
   failures, and the same MCP producing radically different output four seconds apart. That
