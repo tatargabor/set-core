@@ -108,7 +108,17 @@ export const ASKING = 'asking'
 
 /** Something is running: the model's turn is in flight. */
 export const ATT_WORKING = 'working'
-/** The prompt is free, but a backgrounded command is still running. */
+/**
+ * Waiting for a person, AND a backgrounded command is still running.
+ *
+ * ⚠ Read as "not waiting for anybody" in the first version, for an hour, on
+ * 2026-08-28. The runtime's own expression is `base === "idle" &&
+ * hasRunningBackgroundBash ? "shell" : base` — the base is IDLE — and its idle
+ * notification says `notify(R === "idle" || R === "shell", R === "busy")`. A
+ * command the agent LAUNCHED is not the agent working: a dev server runs for
+ * hours and the person is needed the whole time. Reported from the live screen:
+ * a session waited 20 minutes with a question on it and carried no colour.
+ */
 export const ATT_BACKGROUND = 'background'
 /** Waiting for a PERSON with nothing running — the class a reader acts on. */
 export const ATT_INPUT = 'input'
@@ -136,7 +146,7 @@ export const INPUT_WAIT_RED_SECONDS = 180
  * two hours renders red forever, and the forty-second wait the reader is
  * actually working with never surfaces.
  */
-export const INPUT_WAIT_PARKED_SECONDS = 900
+export const INPUT_WAIT_PARKED_SECONDS = 2700
 
 export type InputWaitTone = 'plain' | 'amber' | 'red' | 'parked'
 
@@ -199,12 +209,13 @@ export function escalationTone(
 /**
  * Does this agent's class mean a person is being waited for?
  *
- * `background` is deliberately excluded and it is the whole point of the axis:
- * a session whose turn ended while a command runs in the background looks idle
- * from the log and is waiting for nobody.
+ * All three waiting classes, `background` included — see the correction on it.
+ * Only `working` means nobody is needed.
  */
 export function waitsForAPerson(agent: AttentionAgent): boolean {
-  return agent.attention === ATT_INPUT || agent.attention === ATT_PROMPT
+  return agent.attention === ATT_INPUT
+    || agent.attention === ATT_PROMPT
+    || agent.attention === ATT_BACKGROUND
 }
 
 /**
@@ -358,9 +369,16 @@ export function tally(
       if (typeof a.attention === 'string' && a.attention !== '') attentionReported = true
       const asleep = isParked(a, thresholds)
       if (asleep) parked += 1
-      if (a.attention === ATT_INPUT) { if (!asleep) input += 1 }
+      // `background` is counted BOTH as a waiter and as a background marker:
+      // the wait is what the reader acts on, the background command is why the
+      // session may look busy. Two facts, and dropping either one loses a
+      // reason the row looks the way it does.
+      if (a.attention === ATT_BACKGROUND) {
+        background += 1
+        if (!asleep) input += 1
+      }
+      else if (a.attention === ATT_INPUT) { if (!asleep) input += 1 }
       else if (a.attention === ATT_PROMPT) { if (!asleep) prompt += 1 }
-      else if (a.attention === ATT_BACKGROUND) background += 1
       else if (a.attention === ATT_WORKING) attWorking += 1
       else if (a.attention === ATT_UNMEASURED) attUnmeasured += 1
       else if (typeof a.attention === 'string' && a.attention !== '') attentionUnbucketed += 1

@@ -204,15 +204,23 @@ describe('the escalation on the project row', () => {
     })
   })
 
-  it('does not mark a project whose only agent has a command running in the background', async () => {
+  it('marks a project whose agent waits WITH a background command running', async () => {
+    // ⚠ This test asserted the opposite for an hour on 2026-08-28 — that such a
+    // project must NOT be marked. Reported from the live screen: a session had
+    // been waiting 20 minutes with a question on it and carried no colour,
+    // because a `dev` server was still up. A command the agent launched is not
+    // the agent working.
     const el = await column(fleet([
-      project('visible', [agent(1, 'bg', { attention: 'background', background_running: true })]),
+      project('visible', [agent(1, 'bg', {
+        attention: 'background', background_running: true, input_wait_seconds: 1200,
+      })]),
     ]))
     await waitFor(() => {
       expect(el.querySelector('[data-fleet-background]')).toBeTruthy()
     })
-    // The one case that looks idle and is waiting for nobody.
-    expect(el.querySelector('[data-fleet-input-wait]')).toBeNull()
+    // It waits, it escalates, AND the background command is still named.
+    expect(el.querySelector('[data-fleet-input-wait]')).toBeTruthy()
+    expect(el.querySelector('[data-fleet-row-tone="red"]')).toBeTruthy()
   })
 
   it('keeps the colour when one agent waits and the others are working', async () => {
@@ -333,9 +341,12 @@ describe('the agent tile says what would happen if you typed', () => {
     expect(el.getAttribute('data-fleet-write-effect')).toBe('queued')
   })
 
-  it('a session with a background command queues, and is not called waiting', async () => {
+  it('a session with a background command is WAITING, and a message is acted on now', async () => {
+    // ⚠ Asserted the reverse for an hour on 2026-08-28 — `not.toMatch(/waiting/)`
+    // and `write-effect="queued"`. Both were wrong: the runtime's base status
+    // there is `idle`, so the prompt is free.
     install(fleet([project('visible', [
-      agent(1, 'a', { attention: 'background', background_running: true }),
+      agent(1, 'a', { attention: 'background', background_running: true, input_wait_seconds: 1200 }),
     ])]))
     const { container } = render(<Fleet />)
     const line = await waitFor(() => {
@@ -343,9 +354,9 @@ describe('the agent tile says what would happen if you typed', () => {
       expect(el).toBeTruthy()
       return el as HTMLElement
     })
-    expect(line.textContent).toMatch(/background command/)
-    expect(line.textContent).not.toMatch(/waiting/)
-    expect(line.querySelector('[data-fleet-write-effect="queued"]')).toBeTruthy()
+    expect(line.textContent).toMatch(/waiting for input/)
+    expect(line.textContent).toMatch(/bg command/)
+    expect(line.querySelector('[data-fleet-write-effect="now"]')).toBeTruthy()
   })
 
   it('an unmeasured session says so rather than claiming nobody is waiting', async () => {

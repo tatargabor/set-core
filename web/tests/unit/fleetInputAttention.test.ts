@@ -57,12 +57,17 @@ describe('inputWaitTone', () => {
 })
 
 describe('who is actually waiting', () => {
-  it('counts input and prompt, and never background', () => {
+  it('counts all three waiting classes, and only working is not one', () => {
     expect(waitsForAPerson(agent({ attention: ATT_INPUT }))).toBe(true)
     expect(waitsForAPerson(agent({ attention: ATT_PROMPT }))).toBe(true)
-    // The whole point of the axis: a turn that ended while a command runs in
-    // the background is waiting for nobody, and looks identical from the log.
-    expect(waitsForAPerson(agent({ attention: ATT_BACKGROUND }))).toBe(false)
+    // ⚠ This line asserted `false` for an hour on 2026-08-28, on the reasoning
+    // that "a turn that ended while a command runs in the background is waiting
+    // for nobody". The runtime disagrees and always did: its status is computed
+    // as `base === "idle" && hasBackgroundBash ? "shell" : base`, and its idle
+    // notification fires for `idle || shell`. A dev server is not the agent
+    // working. The wrong expectation is kept here because the direction is the
+    // lesson: it made a screen calm about a session waiting 20 minutes.
+    expect(waitsForAPerson(agent({ attention: ATT_BACKGROUND }))).toBe(true)
     expect(waitsForAPerson(agent({ attention: ATT_WORKING }))).toBe(false)
     expect(waitsForAPerson(agent({ attention: ATT_UNMEASURED }))).toBe(false)
     expect(waitsForAPerson(agent())).toBe(false)
@@ -78,10 +83,15 @@ describe('worstInputWait', () => {
   })
 
   it('ignores agents nobody is waiting on, whatever their duration says', () => {
+    // `working` only. A parked background wait is excluded for being parked,
+    // not for being background — the 9000 s here is past the parked threshold.
     expect(worstInputWait([
       agent({ attention: ATT_BACKGROUND, input_wait_seconds: 9000 }),
       agent({ attention: ATT_WORKING, input_wait_seconds: 9000 }),
     ])).toBeNull()
+    expect(worstInputWait([
+      agent({ attention: ATT_BACKGROUND, input_wait_seconds: 200 }),
+    ])).toBe(200)
   })
 
   it('is null for an empty set and for a waiting agent with no duration', () => {
@@ -99,7 +109,9 @@ describe('the tally carries the axis without disturbing the states', () => {
       agent({ attention: ATT_BACKGROUND }),
       agent({ attention: 'hibernating' }),
     ] }])
-    expect(t.input).toBe(2)
+    // The background agent is counted BOTH ways: as a waiter (what the reader
+    // acts on) and as a background marker (why it may look busy).
+    expect(t.input).toBe(3)
     expect(t.prompt).toBe(1)
     expect(t.background).toBe(1)
     expect(t.attentionUnbucketed).toBe(1)
@@ -196,10 +208,13 @@ describe('working is counted from the record, not only from an open tool call', 
 })
 
 describe('the escalation goes cold, not louder', () => {
-  it('is parked past 15 minutes, and red just before it', () => {
-    expect(inputWaitTone(899)).toBe('red')
-    expect(inputWaitTone(900)).toBe('parked')
+  it('is parked past 45 minutes, and red just before it', () => {
+    expect(inputWaitTone(2699)).toBe('red')
+    expect(inputWaitTone(2700)).toBe('parked')
     expect(inputWaitTone(7200)).toBe('parked')
+    // 20 minutes is LIVE. The threshold shipped at 15 minutes and hid a session
+    // the user had been waiting on for exactly that long.
+    expect(inputWaitTone(20 * 60)).toBe('red')
   })
 
   it('leaves a parked wait out of the worst, so it cannot own the row', () => {

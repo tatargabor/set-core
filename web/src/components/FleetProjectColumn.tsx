@@ -185,14 +185,17 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
           <span className="w-1.5 h-1.5 rotate-45 border border-fg-ghost" />{t.parked}
         </span>
       )}
-      {/* A background command is running: the prompt is free and yet nobody is
-          waiting. Drawn hollow — the shape says "not a request", so it cannot be
-          mistaken for the marker above at a glance. */}
+      {/* A command the agent LAUNCHED is still running. Drawn hollow, beside
+          the waiting marker rather than instead of it: these sessions are
+          counted as waiting too (see `ATT_BACKGROUND`), and this only says why
+          one of them may look busy. The first version used it INSTEAD, and a
+          session waiting 20 minutes carried no colour because a dev server was
+          up. */}
       {t.background > 0 && (
         <span
           data-fleet-background={t.background}
           className="inline-flex items-center gap-1 text-fg-muted"
-          title="a backgrounded command is still running — the prompt is free, but nobody is waiting for you"
+          title="a command this agent launched (a dev server, a monitor) is still running — it is still waiting for you"
         >
           <span className="w-1.5 h-1.5 rounded-full border border-fg-muted" />{t.background}
         </span>

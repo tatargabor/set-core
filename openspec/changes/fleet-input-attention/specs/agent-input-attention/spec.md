@@ -61,15 +61,23 @@ still running), `idle` → **input** (waiting for a person, nothing running), `w
 verbatim when present).
 
 `shell` is kept apart from both neighbours deliberately. Measured in runtime 2.1.251, it is
-computed as `base === "idle" && a background bash is running`, so it is the only value that
-answers the question this capability exists for: the session is not working, and it is also
-not waiting for anybody.
+computed as `base === "idle" && a background bash is running` — the BASE is idle, so the turn
+has ended and the prompt is free, while a command the agent launched is still alive.
 
-#### Scenario: A backgrounded command is not a person waiting
+⚠ **`background` is a WAITING class, and the first version of this requirement said the
+opposite.** It read *"the session is not working, and it is also not waiting for anybody"*, and
+the surface therefore stayed silent for a session that had been waiting **20 minutes** with a
+question on screen, because a `dev` server was up. The evidence against it was already in hand
+when it was written: the runtime's own idle notification fires for `R === "idle" || R ===
+"shell"` and only `busy` counts as busy. The slip is a category one worth naming — *a command
+the agent launched* was treated as *the agent working*.
+
+#### Scenario: A backgrounded command does not silence the wait
 
 - **WHEN** a session's record says `shell`
 - **THEN** the attention class SHALL be `background`
-- **AND** it SHALL NOT be counted or rendered as waiting for input
+- **AND** it SHALL be counted and rendered as waiting for a person, with its duration
+- **AND** the running background command SHALL be named beside it, not instead of it
 
 #### Scenario: A permission prompt names what it is waiting for
 
@@ -193,7 +201,7 @@ nothing.
 
 ### Requirement: A wait past fifteen minutes goes cold, not louder
 
-The framework SHALL treat an input wait of **900 seconds or more** as **parked** — counted,
+The framework SHALL treat an input wait of **2700 seconds or more** as **parked** — counted,
 carried, and excluded from the escalation — and the surface SHALL mark it with a distinct cold
 shape rather than with amber or red.
 
@@ -206,6 +214,13 @@ másikat, amit használok"*.
 A two-hour wait and a forty-second wait are not the same fact at two volumes. The first is
 abandoned: nobody is standing on it. A mark that shouts for two hours teaches the reader to
 stop looking, which is how a screen loses the one signal it exists to carry.
+
+⚠ **The threshold is bracketed, not measured, and it has already moved once.** It shipped at
+900 s (15 minutes) as a guess, and the next screen the user looked at held a session waiting
+**20 minutes** that they expected to be coloured — so the guess was wrong in the direction that
+hides work. The other end is their own description of an abandoned one: *"már be van állva,
+mondjuk fél napja, vagy 1 órája"*. Live at 20 minutes, abandoned by an hour: 45 minutes sits
+between them, and the number is a choice that stays visible as one.
 
 #### Scenario: The abandoned wait does not own the row
 

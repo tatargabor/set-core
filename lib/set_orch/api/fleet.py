@@ -249,8 +249,9 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # The record's status verbatim, so the surface can show what was read
         # when the derived class surprises somebody.
         "runtime_status": state.runtime_status,
-        # A backgrounded command is running: the prompt is free and yet nobody
-        # is waiting. The one case that looks idle and is not.
+        # A backgrounded command is running. NOT a reason to stay silent: the
+        # prompt is free either way, so a person is still needed — see the
+        # correction on `ATTENTION_BACKGROUND`.
         "background_running": state.background_running,
         # When a PERSON last wrote into this session, in seconds.
         #
@@ -453,6 +454,9 @@ def _attention_tally(states: Dict[Any, Any]) -> Dict[str, int]:
         wait = st.input_wait_seconds
         if wait is None:
             continue
+        # `background` is a WAITING class — the prompt is free, the person is
+        # needed, a command the agent launched is still running. It counts here
+        # exactly like `input`.
         # A parked wait is counted, never summed into the live ones. It is a
         # different fact — nobody is coming for it — and letting it into `worst`
         # is exactly what made the oldest session own the row forever.

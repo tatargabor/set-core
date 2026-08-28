@@ -110,15 +110,25 @@ STATUS_WAITING = "waiting"
 
 #: Something is running: the model's turn is in flight.
 ATTENTION_WORKING = "working"
-#: The prompt is free, but a backgrounded command is still running.
+#: Waiting for a person, AND a backgrounded command is still running.
 #:
-#: This is what `shell` MEANS, and it is the value this whole axis exists for.
-#: Measured 2026-08-28 from the runtime binary, whose own expression is
-#: `base === "idle" && hasRunningBackgroundBash ? "shell" : base`, with the
-#: predicate `Object.values(tasks).some(t => t.type === "local_bash" && !done(t))`.
-#: Confirmed live by a pty probe: the probe agent backgrounded `sleep 25`, ended
-#: its turn, and the record went `busy → shell` and back to `busy → idle` when
-#: the command finished.
+#: ⚠ **This class was read as "not waiting for anybody" for exactly one hour on
+#: 2026-08-28, and the correction is kept here because the evidence was already
+#: in hand when the mistake was made.** The runtime's own expression is
+#: `base === "idle" && hasRunningBackgroundBash ? "shell" : base` — the base is
+#: **idle**, so the prompt IS free and the turn HAS ended. The runtime's own
+#: idle notification agrees explicitly: `notify(R === "idle" || R === "shell",
+#: R === "busy")`. Both halves of that line were measured before the first
+#: version shipped; the first half was read and the second was not.
+#:
+#: What went wrong is a category slip worth naming: *a command the agent
+#: launched* was treated as *the agent working*. A dev server or a monitor runs
+#: for hours, and the person is needed the whole time. Reported from the live
+#: screen: a session had been waiting **20 minutes** with a question on screen
+#: and carried no colour at all, because a `dev` server was still up.
+#:
+#: So it is a WAITING class, and the background command is carried beside it as
+#: a separate fact rather than as a reason to stay silent.
 ATTENTION_BACKGROUND = "background"
 #: Waiting for a PERSON, with nothing running. The class a reader acts on.
 ATTENTION_INPUT = "input"
@@ -137,6 +147,14 @@ ATTENTION_CLASSES = (
     ATTENTION_INPUT,
     ATTENTION_PROMPT,
     ATTENTION_UNMEASURED,
+)
+
+#: The classes that mean a PERSON is needed. `background` belongs here — see the
+#: correction on it above — and `working` never does.
+ATTENTION_WAITING_CLASSES = (
+    ATTENTION_INPUT,
+    ATTENTION_PROMPT,
+    ATTENTION_BACKGROUND,
 )
 
 #: Status -> class. The mapping is data so that an unrecognised status cannot
@@ -172,7 +190,16 @@ INPUT_WAIT_RED_SECONDS = 180.0
 #: input **0.2** and **9.5** minutes ago. Past this threshold the mark goes cold
 #: rather than louder, which frees red for the band where somebody really is
 #: waiting on the reader.
-INPUT_WAIT_PARKED_SECONDS = 900.0
+#:
+#: **The NUMBER is not measured; it is bracketed by two reports from the user,
+#: and it moved once already.** It shipped at 900 s (15 min) as a guess, and the
+#: next screen the user looked at carried a session waiting **20 minutes** that
+#: they expected to be coloured — so 900 was too aggressive, and the guess was
+#: wrong in the direction that hides work. The other end comes from their own
+#: description of an abandoned one: *"már be van állva, mondjuk fél napja, vagy
+#: 1 órája"*. So: live at 20 minutes, abandoned by an hour. 45 minutes sits
+#: between them and is honest about being a choice rather than a measurement.
+INPUT_WAIT_PARKED_SECONDS = 2700.0
 
 TONE_PARKED = "parked"
 
@@ -720,9 +747,14 @@ def _compose_attention(
         wait = None
     else:
         attention = attention_of(record)
-        wait = _status_age(record, reference) if attention in (
-            ATTENTION_INPUT, ATTENTION_PROMPT
-        ) else None
+        # Every waiting class gets a duration, `background` included. For it the
+        # stamp is the moment the turn ended and the command went to the
+        # background, which is exactly when the person started being needed.
+        wait = (
+            _status_age(record, reference)
+            if attention in ATTENTION_WAITING_CLASSES
+            else None
+        )
 
     return replace(
         state,

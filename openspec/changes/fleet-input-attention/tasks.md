@@ -74,6 +74,12 @@
 - [x] 9.6 Fix `_apply_declared_wait`, which built a fresh `AgentState` and so dropped every field already measured — the tile's excerpt among them, for the one state a reader most wants context on [REQ: a-measured-question-outranks-the-record]
 - [x] 9.7 Tests on both sides, including the user's exact scenario: one agent abandoned two hours, one waiting forty seconds [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder]
 
+## 10. `background` was read as "waiting for nobody" — reported from the live screen
+
+- [x] 10.1 Make `background` a WAITING class: it gets a duration, it escalates, it is counted with the waiters, and the background command is named BESIDE the wait rather than instead of it [REQ: four-statuses-map-to-four-distinct-attention-classes]
+- [x] 10.2 Move the parked threshold from 15 to 45 minutes: the reported case was a session waiting 20 minutes, which the first threshold would have parked and hidden anyway [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder]
+- [x] 10.3 Rewrite the four tests that encoded the wrong belief, keeping the wrong expectation quoted in each — the direction is the lesson, and a test is where it stays visible [REQ: four-statuses-map-to-four-distinct-attention-classes]
+
 ## Evidence — what was actually run (2026-08-28)
 
 - **the measurement layer:** `.venv/bin/python -m pytest tests/unit/test_fleet_input_attention.py
@@ -102,6 +108,10 @@
   The live fleet held no wait between 15 s and 3 min, so the amber band was rendered a second
   time with one duration rewritten in flight (47 s) — the row and its bar came out amber, and it
   is clearly separable from red at a glance.
+- **10.x, after the third report:** looked at the live screen again — the `set-promo` row, a
+  session waiting **45 minutes with a background command running**, now carries the red tint,
+  `1 45m`, and the hollow background marker beside it. It was colourless before this fix, which
+  is exactly what was reported for a 20-minute wait. Python 29 + web 1228 passed.
 - **9.x, after the second report:** re-rendered and looked at with the user's exact case forced
   (one agent 2 h, one 40 s): the row carries the **amber** of the forty-second wait plus a cold
   `◇ 1` for the parked one, and the tile reads `parked 2h · you: 2h`. Live measurement at the

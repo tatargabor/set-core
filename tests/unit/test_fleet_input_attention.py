@@ -67,20 +67,27 @@ def test_each_runtime_status_maps_to_its_own_class(tmp_path, status, expected):
     assert st.runtime_status == status
 
 
-def test_a_backgrounded_command_is_not_a_person_waiting(tmp_path):
-    """AC-3, and the reason this whole axis exists.
+def test_a_backgrounded_command_IS_a_person_waiting(tmp_path):
+    """The correction of 2026-08-28, and the wrong version is quoted because the
+    direction is the lesson.
 
-    `shell` is computed by the runtime as `idle AND a background bash is
-    running`. A session in it looks exactly like a finished turn from the log —
-    no call outstanding — and writing to it is not what it needs.
+    This test used to assert `input_wait_seconds is None`, on the reasoning that
+    a session with a background command is "not waiting for anybody". The
+    runtime's own expression says otherwise, and it was already in hand:
+    `base === "idle" && hasRunningBackgroundBash ? "shell" : base` — the BASE is
+    idle — and `notify(R === "idle" || R === "shell", R === "busy")`.
+
+    A command the agent LAUNCHED is not the agent working. A dev server runs for
+    hours, and the person is needed the whole time. Reported from the live
+    screen: a session waited 20 minutes with a question on it and carried no
+    colour, because a `dev` server was still up.
     """
     st = read_state(_finished_turn(tmp_path), now=NOW, record=_record("shell", age_seconds=600))
     assert st.attention == S.ATTENTION_BACKGROUND
     assert st.background_running is True
-    # The duration is deliberately absent: it is not waiting for anybody, so a
-    # number here would be rendered as a wait by any caller that trusts the field.
-    assert st.input_wait_seconds is None
-    assert S.tone_for(st.input_wait_seconds) is None
+    # It waits, it has an age, and it escalates like any other wait.
+    assert st.input_wait_seconds == pytest.approx(600, abs=1)
+    assert S.tone_for(st.input_wait_seconds) == S.TONE_RED
 
 
 def test_a_permission_prompt_carries_its_reason_verbatim(tmp_path):
@@ -285,15 +292,21 @@ def test_a_wait_past_the_parked_threshold_goes_cold_rather_than_louder():
     waiting 129.9 minutes had had no human input for 129.9 minutes, while the two
     the user was working with had human input 0.2 and 9.5 minutes ago.
     """
-    assert S.tone_for(890) == S.TONE_RED
-    assert S.tone_for(900) == S.TONE_PARKED
+    assert S.tone_for(2690) == S.TONE_RED
+    assert S.tone_for(2700) == S.TONE_PARKED
     assert S.tone_for(7200) == S.TONE_PARKED
+    # 20 minutes is LIVE — the user's own report is what moved this number, and
+    # the wrong value hid a session that had been waiting exactly that long.
+    assert S.tone_for(20 * 60) == S.TONE_RED
     # And the band below is untouched — parking must not swallow a live wait.
     assert S.tone_for(200) == S.TONE_RED
 
 
-def test_the_parked_threshold_is_fifteen_minutes():
-    assert S.INPUT_WAIT_PARKED_SECONDS == 900
+def test_the_parked_threshold_is_forty_five_minutes():
+    """Bracketed rather than measured: live at 20 minutes (the user's report),
+    abandoned by an hour (their own description). It shipped at 15 minutes and
+    was wrong in the direction that hides work."""
+    assert S.INPUT_WAIT_PARKED_SECONDS == 2700
 
 
 # --------------------------------------------------------------------------- #
@@ -354,3 +367,18 @@ def test_no_human_entry_in_the_tail_is_UNKNOWN_not_never(tmp_path):
 def _epoch(ts: str) -> float:
     import datetime
     return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+
+
+def test_a_background_wait_parks_like_any_other(tmp_path):
+    """Nothing special about it past the threshold either — a dev server left up
+    overnight is an abandoned wait, not a permanent alarm."""
+    st = read_state(_finished_turn(tmp_path), now=NOW, record=_record("shell", age_seconds=7200))
+    assert S.tone_for(st.input_wait_seconds) == S.TONE_PARKED
+
+
+def test_only_working_is_not_a_wait():
+    """The one class that means a person is NOT needed."""
+    assert S.ATTENTION_WORKING not in S.ATTENTION_WAITING_CLASSES
+    assert set(S.ATTENTION_WAITING_CLASSES) == {
+        S.ATTENTION_INPUT, S.ATTENTION_PROMPT, S.ATTENTION_BACKGROUND,
+    }

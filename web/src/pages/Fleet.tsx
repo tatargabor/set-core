@@ -155,20 +155,37 @@ function WaitFor({ seconds }: { seconds: number | null | undefined }) {
 
 function StateLine({ agent }: { agent: FleetAgent }) {
   const thresholds = useWaitThresholds()
-  // The prompt is free but a backgrounded command is still running. From the
-  // log this is indistinguishable from a finished turn — no call outstanding —
-  // and it is the case the whole attention axis was added for: nobody is
-  // waiting, so the row must not ask for anybody.
+  // Waiting for a person, with a command the agent launched still running.
+  //
+  // It renders as a WAIT with a background note, not as its own calm state.
+  // The first version had it the other way round and stayed silent for a
+  // session that had been waiting 20 minutes with a question on screen, because
+  // a `dev` server was up — the runtime's own base status there is `idle`.
   if (agent.state === 'quiet' && agent.attention === ATT_BACKGROUND) {
+    const tone = inputWaitTone(agent.input_wait_seconds, thresholds)
+    const parked = tone === 'parked'
     return (
       <span
-        className="inline-flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap"
+        className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap ${
+          tone === 'red' ? 'text-rose-400 font-semibold'
+            : tone === 'amber' ? 'text-amber-400 font-semibold'
+              : parked ? 'text-fg-ghost' : 'text-fg-muted'
+        }`}
         data-fleet-attention={ATT_BACKGROUND}
-        title="A backgrounded command is still running. The prompt is free, but nobody is waiting for you."
+        data-fleet-parked={parked ? 'true' : undefined}
+        title="The turn ended and the prompt is free, so a person is needed — but a command this agent launched (a dev server, a monitor) is still running, which is why it can look busy."
       >
-        <span className="w-1.5 h-1.5 rounded-full border border-fg-muted shrink-0" />
-        background command
-        <Queues queued />
+        <span className={`shrink-0 ${
+          parked ? 'w-1.5 h-1.5 rotate-45 border border-fg-ghost'
+            : `w-1.5 h-1.5 rounded-full ${
+              tone === 'red' ? 'bg-rose-400' : tone === 'amber' ? 'bg-amber-400' : 'bg-fg-muted'}`
+        }`} />
+        {parked ? 'parked' : 'waiting for input'}
+        <WaitFor seconds={agent.input_wait_seconds} />
+        <span className="text-fg-ghost font-normal" title="a command this agent launched is still running">
+          · bg command
+        </span>
+        <Queues queued={false} />
       </span>
     )
   }
