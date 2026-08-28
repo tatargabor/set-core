@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ATT_BACKGROUND, ATT_INPUT, ATT_PROMPT, ATT_UNMEASURED, ATT_WORKING,
-  EMPTY_TALLY, INPUT_WAIT_AMBER_SECONDS, INPUT_WAIT_RED_SECONDS,
+  EMPTY_TALLY, INPUT_WAIT_AMBER_SECONDS, INPUT_WAIT_PARKED_SECONDS, INPUT_WAIT_RED_SECONDS,
   escalationTone, inputWaitTone, tally, waitsForAPerson, worstInputWait,
   type AttentionAgent,
 } from '../../src/lib/fleetAttention'
@@ -192,5 +192,58 @@ describe('working is counted from the record, not only from an open tool call', 
     const t = tally([{ name: 'p', agents: [agent({ state: 'working' })] }])
     expect(t.attentionReported).toBe(false)
     expect(t.attWorking).toBe(0)
+  })
+})
+
+describe('the escalation goes cold, not louder', () => {
+  it('is parked past 15 minutes, and red just before it', () => {
+    expect(inputWaitTone(899)).toBe('red')
+    expect(inputWaitTone(900)).toBe('parked')
+    expect(inputWaitTone(7200)).toBe('parked')
+  })
+
+  it('leaves a parked wait out of the worst, so it cannot own the row', () => {
+    // The user's report, 2026-08-28: a project whose oldest agent had waited
+    // two hours rendered red forever, and the 40-second wait they were working
+    // with never surfaced.
+    expect(worstInputWait([
+      agent({ attention: ATT_INPUT, input_wait_seconds: 7200 }),
+      agent({ attention: ATT_INPUT, input_wait_seconds: 40 }),
+    ])).toBe(40)
+  })
+
+  it('counts parked apart and never sums it into the live waiters', () => {
+    const t = tally([{ name: 'p', agents: [
+      agent({ attention: ATT_INPUT, input_wait_seconds: 7200 }),
+      agent({ attention: ATT_INPUT, input_wait_seconds: 40 }),
+    ] }])
+    expect(t.parked).toBe(1)
+    expect(t.input).toBe(1)
+    expect(t.worstInputWaitSeconds).toBe(40)
+    expect(escalationTone(t)).toBe('amber')
+  })
+
+  it('a project holding ONLY parked waits gets no tone at all', () => {
+    const t = tally([{ name: 'p', agents: [
+      agent({ attention: ATT_INPUT, input_wait_seconds: 7200 }),
+    ] }])
+    expect(t.parked).toBe(1)
+    expect(t.input).toBe(0)
+    expect(escalationTone(t)).toBeNull()
+  })
+
+  it('honours a parked threshold sent by the server', () => {
+    expect(inputWaitTone(400, { parked_seconds: 300 })).toBe('parked')
+  })
+
+  it('agrees with the Python source on the parked threshold', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), '..', 'lib/set_orch/fleet/state.py'), 'utf8',
+    )
+    const parked = src.match(/^INPUT_WAIT_PARKED_SECONDS = ([\d.]+)$/m)
+    expect(parked).not.toBeNull()
+    expect(Number(parked![1])).toBe(INPUT_WAIT_PARKED_SECONDS)
   })
 })

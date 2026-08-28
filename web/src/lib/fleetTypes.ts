@@ -88,6 +88,14 @@ export interface FleetAgent {
   runtime_status?: string | null
   /** A backgrounded command is running — the prompt is free, nobody is waiting. */
   background_running?: boolean | null
+  /**
+   * When a PERSON last wrote into this session, in seconds.
+   *
+   * A different question from how long the agent has waited, and the one that
+   * separates *the agent I am working with* from *the one I let go*. `null`
+   * means the bounded tail held no human entry — NOT "never".
+   */
+  last_human_input_seconds?: number | null
   /** See `Population`. Absent on an older server, which is `unknown`, not `foreign`. */
   population?: Population | string | null
   /** The framework scope, present only for `orphaned` — what `recover` stops. */
@@ -363,7 +371,12 @@ export interface FleetResponse {
    * still does the arithmetic every render, because the wait grows between
    * polls. Absent on an older server, and then the client's own constants apply.
    */
-  input_wait_thresholds?: { amber_seconds?: number | null; red_seconds?: number | null }
+  input_wait_thresholds?: {
+    amber_seconds?: number | null
+    red_seconds?: number | null
+    /** Past this a wait is ABANDONED rather than urgent, and goes cold. */
+    parked_seconds?: number | null
+  }
   quiet_means: string
   /**
    * Whether the owner service answered at all. Stated once at the top rather

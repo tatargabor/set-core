@@ -252,6 +252,13 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # A backgrounded command is running: the prompt is free and yet nobody
         # is waiting. The one case that looks idle and is not.
         "background_running": state.background_running,
+        # When a PERSON last wrote into this session, in seconds.
+        #
+        # A different question from how long the agent has been waiting, and the
+        # one that separates *the agent I am working with* from *the one I let
+        # go*. `null` means the bounded tail held no human entry — NOT "never",
+        # and the surface must not render it as neglect.
+        "last_human_input_seconds": state.last_human_input_age,
         # The last thing said in this session — task 7.3, so the tile answers
         # "what is going on" without being opened.
         #
@@ -437,15 +444,26 @@ def _attention_tally(states: Dict[Any, Any]) -> Dict[str, int]:
     counts = {name: 0 for name in ATTENTION_BUCKETS}
     unbucketed = 0
     worst: Any = None
+    parked = 0
     for st in states.values():
         if st.attention in counts:
             counts[st.attention] += 1
         else:
             unbucketed += 1
         wait = st.input_wait_seconds
-        if wait is not None and (worst is None or wait > worst):
+        if wait is None:
+            continue
+        # A parked wait is counted, never summed into the live ones. It is a
+        # different fact — nobody is coming for it — and letting it into `worst`
+        # is exactly what made the oldest session own the row forever.
+        if wait >= attention_state.INPUT_WAIT_PARKED_SECONDS:
+            parked += 1
+            continue
+        if worst is None or wait > worst:
             worst = wait
     counts["unbucketed"] = unbucketed
+    counts["parked"] = parked
+    #: The longest LIVE wait — parked ones excluded by construction.
     counts["worst_input_wait_seconds"] = worst
     return counts
 
@@ -664,6 +682,11 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         "input_wait_thresholds": {
             "amber_seconds": attention_state.INPUT_WAIT_AMBER_SECONDS,
             "red_seconds": attention_state.INPUT_WAIT_RED_SECONDS,
+            # Past this, a wait is ABANDONED rather than urgent, and goes cold
+            # instead of louder. Without it the oldest session owns the loudest
+            # mark permanently, and the wait the reader is actually working with
+            # never surfaces.
+            "parked_seconds": attention_state.INPUT_WAIT_PARKED_SECONDS,
         },
         # Said once at the top rather than repeated as a reason on every row: a
         # screen that cannot offer a terminal ANYWHERE has one cause, and naming
@@ -1457,6 +1480,7 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "input_wait_seconds": state.input_wait_seconds,
         "runtime_status": state.runtime_status,
         "background_running": state.background_running,
+        "last_human_input_seconds": state.last_human_input_age,
         # Repeated from the listing on purpose: a caller polling this endpoint
         # alone would otherwise have no way to learn that a quiet agent may be
         # mid-turn, and would present `quiet` as "nothing is happening".

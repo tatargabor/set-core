@@ -157,6 +157,25 @@ _STATUS_ATTENTION = {
 INPUT_WAIT_AMBER_SECONDS = 15.0
 INPUT_WAIT_RED_SECONDS = 180.0
 
+#: When a wait stops being a request and becomes an ABANDONED one.
+#:
+#: The escalation is deliberately NOT monotonic in age, and the reason is a
+#: report from the live screen on 2026-08-28: *"set-core piros eltűnt … ha egy
+#: várakozó is van akkor kell a szín"* — and, one step further, a project whose
+#: oldest session has been waiting two hours renders red forever, so the
+#: forty-second wait the reader is actually working with never surfaces.
+#:
+#: A two-hour wait and a forty-second wait are not the same fact at two volumes.
+#: The first is *abandoned*; nobody is coming for it. Measured the same day on
+#: the live fleet: the session waiting **129.9 minutes** had also had no human
+#: input for 129.9 minutes, while the two the user was working with had human
+#: input **0.2** and **9.5** minutes ago. Past this threshold the mark goes cold
+#: rather than louder, which frees red for the band where somebody really is
+#: waiting on the reader.
+INPUT_WAIT_PARKED_SECONDS = 900.0
+
+TONE_PARKED = "parked"
+
 TONE_PLAIN = "plain"
 TONE_AMBER = "amber"
 TONE_RED = "red"
@@ -165,12 +184,18 @@ TONE_RED = "red"
 def tone_for(seconds: Optional[float]) -> Optional[str]:
     """Which band an input wait of `seconds` falls in.
 
+    Rises to red and then goes COLD — see `INPUT_WAIT_PARKED_SECONDS`. A band
+    table that only ever climbs hands the loudest mark to the most neglected
+    session, permanently.
+
     `None` in, `None` out: an unmeasured wait has no tone, and a zero would
     place it in the calmest band — the false-absence direction this screen
     refuses everywhere.
     """
     if seconds is None:
         return None
+    if seconds >= INPUT_WAIT_PARKED_SECONDS:
+        return TONE_PARKED
     if seconds >= INPUT_WAIT_RED_SECONDS:
         return TONE_RED
     if seconds >= INPUT_WAIT_AMBER_SECONDS:
@@ -296,6 +321,14 @@ class AgentState:
     #: True when a backgrounded command is running — the case that looks idle
     #: and is not waiting for anybody.
     background_running: bool = False
+    #: Seconds since a PERSON last wrote into this session, or None when the
+    #: tail holds no human entry.
+    #:
+    #: `None` is not "never": the tail is bounded, so a session that has been
+    #: producing tool traffic for hours can push its last human message out of
+    #: view. It means *not seen in what we read*, and the surface must not
+    #: render it as neglect.
+    last_human_input_age: Optional[float] = None
 
 
 def _tail(path: str, limit: int = TAIL_BYTES) -> Optional[List[str]]:
@@ -373,6 +406,55 @@ def _last_text(lines: List[str], limit: int = EXCERPT_CHARS) -> tuple[Optional[s
                 text = text[: limit - 1].rstrip() + "\u2026"
             return text, ("agent" if role == "assistant" else "user")
     return None, None
+
+
+def _last_human_input(lines: List[str], now: float) -> Optional[float]:
+    """Seconds since a person last wrote into this session.
+
+    The signal that separates *the agent I am working with* from *the one I let
+    go*, and it is a different question from how long the agent has been
+    waiting. Measured on the live fleet 2026-08-28: 0.2, 9.5 and 129.9 minutes
+    across three sessions whose waits said far less about which one mattered.
+
+    A "human entry" is a `user` entry carrying TEXT. A tool result is also a
+    `user` entry and is not a person — reading those as human input would make
+    every busy agent look freshly attended, which is the reassuring direction.
+    A `<command-name>` wrapper is a slash command the person typed, so it counts.
+
+    Read from the same bounded tail as everything else, so it costs no extra
+    I/O. Returns None when the tail holds no human entry at all.
+    """
+    for line in reversed(lines):
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("type") != "user" or entry.get("isSidechain"):
+            continue
+        # A tool result wears the user's clothes. It is the agent's own traffic.
+        if entry.get("toolUseResult") is not None:
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+        if not isinstance(blocks, list):
+            continue
+        has_text = any(
+            isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)
+            and b.get("text").strip()
+            for b in blocks
+        )
+        if not has_text:
+            continue
+        age = _age_seconds(entry.get("timestamp"), now)
+        if age is not None:
+            return age
+    return None
 
 
 def _outstanding_calls(lines: List[str]) -> tuple[Dict[str, dict], bool]:
@@ -699,9 +781,14 @@ def _apply_declared_wait(state: AgentState, record: Optional[Dict]) -> AgentStat
     if record.get("status") != WAITING:
         return state
     waiting_for = record.get("waitingFor")
-    return AgentState(
+    # `replace`, not a fresh AgentState. Building a new one here dropped every
+    # field the caller had already measured — the tile's excerpt among them — so
+    # an agent waiting for a person, the one case a reader most wants context
+    # for, was the one rendered with none. Found 2026-08-28 while adding a field
+    # that would have been silently dropped the same way.
+    return replace(
+        state,
         state=WAITING,
-        last_movement_age=state.last_movement_age,
         waiting_for=str(waiting_for) if waiting_for else None,
     )
 
@@ -759,6 +846,7 @@ def read_state(
         )
 
     excerpt, excerpt_from = _last_text(lines)
+    human_age = _last_human_input(lines, reference)
 
     outstanding, saw_entry = _outstanding_calls(lines)
     if not saw_entry:
@@ -766,6 +854,7 @@ def read_state(
             AgentState(
                 state=UNKNOWN,
                 last_movement_age=movement,
+                last_human_input_age=human_age,
                 reason="the session log holds no parsable entry",
                 # Carried even here: a log with no parsable ENTRY can still hold
                 # a readable line, and the excerpt is the one thing that helps a
@@ -781,6 +870,7 @@ def read_state(
                 AgentState(
                     state=QUIET,
                     last_movement_age=movement,
+                    last_human_input_age=human_age,
                     excerpt=excerpt,
                     excerpt_from=excerpt_from,
                 ),
@@ -805,6 +895,7 @@ def read_state(
             AgentState(
                 state=ASKING,
                 last_movement_age=movement,
+                last_human_input_age=human_age,
                 tool=blocking.get("name"),
                 tool_elapsed=_age_seconds(blocking.get("timestamp"), reference),
                 other_tools=[
@@ -830,6 +921,7 @@ def read_state(
             state=WORKING,
             declaration_ignored=ignored,
             last_movement_age=movement,
+            last_human_input_age=human_age,
             tool=first.get("name"),
             tool_elapsed=_age_seconds(first.get("timestamp"), reference),
             other_tools=[m.get("name") for m in ordered[1:] if m.get("name")],

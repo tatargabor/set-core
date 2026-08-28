@@ -128,12 +128,22 @@ export const ATT_UNMEASURED = 'unmeasured'
  */
 export const INPUT_WAIT_AMBER_SECONDS = 15
 export const INPUT_WAIT_RED_SECONDS = 180
+/**
+ * Past this, a wait is ABANDONED rather than urgent — see `tone_for` in
+ * `set_orch/fleet/state.py` for the measurement. The escalation rises to red
+ * and then goes cold, because a monotonic one hands the loudest mark to the
+ * most neglected session permanently: a project whose oldest agent has waited
+ * two hours renders red forever, and the forty-second wait the reader is
+ * actually working with never surfaces.
+ */
+export const INPUT_WAIT_PARKED_SECONDS = 900
 
-export type InputWaitTone = 'plain' | 'amber' | 'red'
+export type InputWaitTone = 'plain' | 'amber' | 'red' | 'parked'
 
 export interface InputWaitThresholds {
   amber_seconds?: number | null
   red_seconds?: number | null
+  parked_seconds?: number | null
 }
 
 /**
@@ -156,6 +166,9 @@ export function inputWaitTone(
     ? thresholds.amber_seconds : INPUT_WAIT_AMBER_SECONDS
   const red = typeof thresholds?.red_seconds === 'number'
     ? thresholds.red_seconds : INPUT_WAIT_RED_SECONDS
+  const parked = typeof thresholds?.parked_seconds === 'number'
+    ? thresholds.parked_seconds : INPUT_WAIT_PARKED_SECONDS
+  if (seconds >= parked) return 'parked'
   if (seconds >= red) return 'red'
   if (seconds >= amber) return 'amber'
   return 'plain'
@@ -201,15 +214,36 @@ export function waitsForAPerson(agent: AttentionAgent): boolean {
  * vouch for a project whose others have stopped, and the mean of a four-minute
  * wait and a five-second one is a number nobody is waiting.
  */
-export function worstInputWait(agents: readonly AttentionAgent[]): number | null {
+export function worstInputWait(
+  agents: readonly AttentionAgent[],
+  thresholds?: InputWaitThresholds | null,
+): number | null {
+  const parked = typeof thresholds?.parked_seconds === 'number'
+    ? thresholds.parked_seconds : INPUT_WAIT_PARKED_SECONDS
   let worst: number | null = null
   for (const a of agents) {
     if (!waitsForAPerson(a)) continue
     const w = a.input_wait_seconds
     if (typeof w !== 'number' || !Number.isFinite(w)) continue
+    // A parked wait is left out by construction. Letting it in is precisely
+    // what made the oldest session own the row's colour forever.
+    if (w >= parked) continue
     if (worst === null || w > worst) worst = w
   }
   return worst
+}
+
+/** Is this agent's wait past the point where nobody is coming for it? */
+export function isParked(
+  agent: AttentionAgent,
+  thresholds?: InputWaitThresholds | null,
+): boolean {
+  if (!waitsForAPerson(agent)) return false
+  const w = agent.input_wait_seconds
+  if (typeof w !== 'number' || !Number.isFinite(w)) return false
+  const parked = typeof thresholds?.parked_seconds === 'number'
+    ? thresholds.parked_seconds : INPUT_WAIT_PARKED_SECONDS
+  return w >= parked
 }
 
 export interface Tally {
@@ -266,23 +300,35 @@ export interface Tally {
    * Without this the row would silently render zeros for every class.
    */
   attentionReported: boolean
-  /** The LONGEST input wait in this set, or null when nobody is waiting. */
+  /** The longest LIVE input wait in this set — parked ones excluded. */
   worstInputWaitSeconds: number | null
+  /**
+   * Waits nobody is coming for — past `INPUT_WAIT_PARKED_SECONDS`.
+   *
+   * Counted apart from `input`/`prompt` and never summed into them: it is a
+   * different fact, and mixing the two is what made a two-hour-old question
+   * outshout the forty-second one the reader was working with.
+   */
+  parked: number
 }
 
 export const EMPTY_TALLY: Tally = {
   agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, quiet: 0, unbucketed: 0,
   conflicts: 0, awaiting: 0, unmeasured: 0,
   input: 0, prompt: 0, background: 0, attentionUnbucketed: 0, worstInputWaitSeconds: null,
-  attWorking: 0, attUnmeasured: 0, attentionReported: false,
+  attWorking: 0, attUnmeasured: 0, attentionReported: false, parked: 0,
 }
 
-export function tally(projects: readonly AttentionProject[]): Tally {
+export function tally(
+  projects: readonly AttentionProject[],
+  thresholds?: InputWaitThresholds | null,
+): Tally {
   let agents = 0, working = 0, unknown = 0, waiting = 0, asking = 0, quiet = 0, unbucketed = 0
   let conflicts = 0, awaiting = 0, unmeasured = 0
   let input = 0, prompt = 0, background = 0, attentionUnbucketed = 0
   let attWorking = 0, attUnmeasured = 0, attentionReported = false
   let worstInputWaitSeconds: number | null = null
+  let parked = 0
   for (const p of projects) {
     // Counted from the DATA, like everything else here: `total` is what the
     // producer computed from its own lists, and `source_missing` is the only
@@ -310,13 +356,15 @@ export function tally(projects: readonly AttentionProject[]): Tally {
       // to nothing here — an absent class is not `unmeasured`, it is silence,
       // and counting silence as a measurement is what makes a zero unreadable.
       if (typeof a.attention === 'string' && a.attention !== '') attentionReported = true
-      if (a.attention === ATT_INPUT) input += 1
-      else if (a.attention === ATT_PROMPT) prompt += 1
+      const asleep = isParked(a, thresholds)
+      if (asleep) parked += 1
+      if (a.attention === ATT_INPUT) { if (!asleep) input += 1 }
+      else if (a.attention === ATT_PROMPT) { if (!asleep) prompt += 1 }
       else if (a.attention === ATT_BACKGROUND) background += 1
       else if (a.attention === ATT_WORKING) attWorking += 1
       else if (a.attention === ATT_UNMEASURED) attUnmeasured += 1
       else if (typeof a.attention === 'string' && a.attention !== '') attentionUnbucketed += 1
-      const w = worstInputWait([a])
+      const w = worstInputWait([a], thresholds)
       if (w !== null && (worstInputWaitSeconds === null || w > worstInputWaitSeconds)) {
         worstInputWaitSeconds = w
       }
@@ -325,12 +373,19 @@ export function tally(projects: readonly AttentionProject[]): Tally {
   return {
     agents, working, unknown, waiting, asking, quiet, unbucketed, conflicts, awaiting, unmeasured,
     input, prompt, background, attentionUnbucketed, worstInputWaitSeconds,
-    attWorking, attUnmeasured, attentionReported,
+    attWorking, attUnmeasured, attentionReported, parked,
   }
 }
 
-export function tallyOf(names: readonly string[], byName: ReadonlyMap<string, AttentionProject>): Tally {
-  return tally(names.map(n => byName.get(n)).filter((p): p is AttentionProject => Boolean(p)))
+export function tallyOf(
+  names: readonly string[],
+  byName: ReadonlyMap<string, AttentionProject>,
+  thresholds?: InputWaitThresholds | null,
+): Tally {
+  return tally(
+    names.map(n => byName.get(n)).filter((p): p is AttentionProject => Boolean(p)),
+    thresholds,
+  )
 }
 
 /**

@@ -191,6 +191,59 @@ nothing.
 - **WHEN** a project holds one agent waiting 4 minutes and one waiting 5 seconds
 - **THEN** the project row SHALL carry the red escalation
 
+### Requirement: A wait past fifteen minutes goes cold, not louder
+
+The framework SHALL treat an input wait of **900 seconds or more** as **parked** — counted,
+carried, and excluded from the escalation — and the surface SHALL mark it with a distinct cold
+shape rather than with amber or red.
+
+The escalation is deliberately NOT monotonic in age, and the reason came from the live screen
+rather than from theory. A project whose oldest session has been waiting two hours renders red
+forever, so the forty-second wait the reader is actually working with never surfaces — the
+user's words on 2026-08-28: *"mindig egy pirosat látnék … és soha nem látnám egyébként a
+másikat, amit használok"*.
+
+A two-hour wait and a forty-second wait are not the same fact at two volumes. The first is
+abandoned: nobody is standing on it. A mark that shouts for two hours teaches the reader to
+stop looking, which is how a screen loses the one signal it exists to carry.
+
+#### Scenario: The abandoned wait does not own the row
+
+- **WHEN** a project holds one agent waiting two hours and one waiting forty seconds
+- **THEN** the row's escalation SHALL be the amber of the forty-second wait
+- **AND** the two-hour wait SHALL be counted as parked, separately
+
+#### Scenario: A project holding only parked waits is counted, not coloured
+
+- **WHEN** every waiting agent in a project is past the parked threshold
+- **THEN** the row SHALL carry no escalation tone
+- **AND** the parked count SHALL still be shown, so the wait is not hidden
+
+### Requirement: When a person last wrote here is measured, and it is not the wait
+
+The framework SHALL measure, from the session log, how long ago a PERSON last wrote into each
+session, and SHALL carry it as a value distinct from the input wait. A tool result SHALL NOT
+count as human input, and an absent answer SHALL mean *not seen in the bounded tail*, never
+*never*.
+
+This is the signal that separates *the agent I am working with* from *the one I let go*, and
+it is not the same as how long the agent has been waiting. Measured on the live fleet
+2026-08-28: 0.2, 9.5 and 129.9 minutes across three sessions whose waits said far less about
+which one mattered. It measures typed messages only — opening a session or clicking on it is
+not attention, which is exactly the case the user described.
+
+#### Scenario: Tool traffic is not a person
+
+- **WHEN** the log's newest `user` entry is a tool result and the newest human message is an
+  hour old
+- **THEN** the reported human-input age SHALL be one hour
+
+#### Scenario: No human entry in the tail is unknown, not neglect
+
+- **WHEN** the bounded tail holds no human entry at all
+- **THEN** the reported human-input age SHALL be absent
+- **AND** it SHALL NOT be rendered as a long silence
+
 ### Requirement: Amber means waiting for you, and nothing else
 
 The surface SHALL use amber only for an input wait past the first threshold, and SHALL render

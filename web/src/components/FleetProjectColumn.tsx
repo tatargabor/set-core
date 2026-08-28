@@ -169,6 +169,22 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
           )}
         </span>
       )}
+      {/* PARKED — a wait nobody is coming for (past 15 minutes).
+          Counted, never coloured. It is here rather than hidden because a
+          forgotten question is still a question; it is COLD rather than red
+          because a mark that shouts for two hours teaches the reader to stop
+          looking, and it was taking the colour away from the wait they were
+          actually working with. A DIAMOND, so it cannot be read as one of the
+          round state dots at a glance. */}
+      {t.parked > 0 && (
+        <span
+          data-fleet-parked={t.parked}
+          className="inline-flex items-center gap-1 text-fg-ghost"
+          title="waiting for a person for over 15 minutes — counted, but not treated as urgent: nobody is standing on it"
+        >
+          <span className="w-1.5 h-1.5 rotate-45 border border-fg-ghost" />{t.parked}
+        </span>
+      )}
       {/* A background command is running: the prompt is free and yet nobody is
           waiting. Drawn hollow — the shape says "not a request", so it cannot be
           mistaken for the marker above at a glance. */}
@@ -456,10 +472,11 @@ function toneRow(tone: string | null, active: boolean): string {
 }
 
 function ProjectRow(p: RowProps) {
+  const thresholds = useWaitThresholds()
   const t = p.project
-    ? tallyOf([p.name], new Map([[p.name, p.project as AttentionProject]]))
+    ? tallyOf([p.name], new Map([[p.name, p.project as AttentionProject]]), thresholds)
     : EMPTY_TALLY
-  const tone = escalationTone(t, useWaitThresholds())
+  const tone = escalationTone(t, thresholds)
   const toned = toneRow(tone, p.active)
   return (
     <div
@@ -657,7 +674,8 @@ interface GroupProps {
 }
 
 function GroupBlock(p: GroupProps) {
-  const t = tallyOf(p.group.projects, p.byName as ReadonlyMap<string, AttentionProject>)
+  const groupThresholds = useWaitThresholds()
+  const t = tallyOf(p.group.projects, p.byName as ReadonlyMap<string, AttentionProject>, groupThresholds)
   const open = !p.group.collapsed || p.forcedOpen
   // The header carries the tint only while the group is CLOSED. Open, the rows
   // inside carry their own, and a tinted frame around tinted rows says the same
@@ -668,8 +686,7 @@ function GroupBlock(p: GroupProps) {
   // which is a hook inside a branch: the hook count changes the moment somebody
   // collapses a group, and React throws on the render after the click. The
   // suite did not catch it, because none of its cases toggles one.
-  const thresholds = useWaitThresholds()
-  const groupTone = open ? null : escalationTone(t, thresholds)
+  const groupTone = open ? null : escalationTone(t, groupThresholds)
   const list = useRef<HTMLDivElement | null>(null)
   const reorder = useReorder((from, to) => p.onMoveProject(p.group.id, from, to), list, p.group.order.length)
   const found = useMemo(() => new Set(p.group.projects), [p.group.projects])
@@ -962,7 +979,10 @@ export default function FleetProjectColumn({
   // in the one number the reader trusts at a glance.
   const present = useMemo(() => order.filter(n => byName.has(n)), [order, byName])
   const missingCount = order.length - present.length
-  const totals = useMemo(() => tallyOf(order, byName as ReadonlyMap<string, AttentionProject>), [order, byName])
+  const totals = useMemo(
+    () => tallyOf(order, byName as ReadonlyMap<string, AttentionProject>, data?.input_wait_thresholds),
+    [order, byName, data?.input_wait_thresholds],
+  )
   /**
    * The rows the CURRENT way of looking leaves. `totals` above is deliberately
    * NOT derived from this: the attention header counts the whole order in every
@@ -1047,9 +1067,9 @@ export default function FleetProjectColumn({
     view.parkedOrder.length,
   )
 
-  const parkedTally = tallyOf(view.parked, byName as ReadonlyMap<string, AttentionProject>)
+  const parkedTally = tallyOf(view.parked, byName as ReadonlyMap<string, AttentionProject>, data?.input_wait_thresholds)
   const ungroupedQuiet = view.ungrouped.filter(n => (byName.get(n)?.agents.length ?? 0) === 0)
-  const ungroupedTally = tallyOf(view.ungrouped, byName as ReadonlyMap<string, AttentionProject>)
+  const ungroupedTally = tallyOf(view.ungrouped, byName as ReadonlyMap<string, AttentionProject>, data?.input_wait_thresholds)
   const parkedFound = useMemo(() => new Set(view.parked), [view.parked])
 
   return (

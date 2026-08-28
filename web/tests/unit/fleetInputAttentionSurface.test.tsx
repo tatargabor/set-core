@@ -259,6 +259,49 @@ describe('the escalation on the project row', () => {
     expect(line.textContent).not.toMatch(/wait unmeasured/)
   })
 
+  it('a two-hour wait no longer owns the row — the 40-second one is visible', async () => {
+    // The user's report, 2026-08-28: *"mindig egy pirosat látnék … és soha nem
+    // látnám egyébként a másikat, amit használok"*.
+    const el = await column(fleet([
+      project('visible', [
+        agent(1, 'abandoned', { attention: 'input', input_wait_seconds: 7200 }),
+        agent(2, 'mine', { attention: 'input', input_wait_seconds: 40 }),
+      ]),
+    ]))
+    await waitFor(() => {
+      expect(el.querySelector('[data-fleet-input-wait-tone="amber"]')).toBeTruthy()
+    })
+    // One live waiter, one parked — counted apart, and only the live one colours.
+    expect(el.querySelector('[data-fleet-input-wait]')!.getAttribute('data-fleet-input-wait')).toBe('1')
+    expect(el.querySelector('[data-fleet-parked]')!.getAttribute('data-fleet-parked')).toBe('1')
+    expect(el.querySelector('[data-fleet-row-tone="amber"]')).toBeTruthy()
+  })
+
+  it('a project holding only an abandoned wait is counted, not coloured', async () => {
+    const el = await column(fleet([
+      project('visible', [agent(1, 'abandoned', { attention: 'input', input_wait_seconds: 7200 })]),
+    ]))
+    await waitFor(() => {
+      expect(el.querySelector('[data-fleet-parked]')).toBeTruthy()
+    })
+    expect(el.querySelector('[data-fleet-row-tone]')).toBeNull()
+    expect(el.querySelector('[data-fleet-input-wait]')).toBeNull()
+  })
+
+  it('the parked tile says so, and says when a person last wrote there', async () => {
+    install(fleet([project('visible', [
+      agent(1, 'a', { attention: 'input', input_wait_seconds: 7200, last_human_input_seconds: 7800 }),
+    ])]))
+    const { container } = render(<Fleet />)
+    const line = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-parked="true"]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    expect(line.textContent).toMatch(/parked/)
+    expect(line.textContent).toMatch(/you:/)
+  })
+
   it('does not mark a project whose agents carry no class at all', async () => {
     const el = await column(fleet([project('visible', [agent(1, 'plain')])]))
     await waitFor(() => expect(el).toBeTruthy())

@@ -268,3 +268,89 @@ def test_the_thresholds_are_the_numbers_the_user_asked_for():
     15 seconds to notice, 3 minutes to shout."""
     assert S.INPUT_WAIT_AMBER_SECONDS == 15
     assert S.INPUT_WAIT_RED_SECONDS == 180
+
+
+# --------------------------------------------------------------------------- #
+# the escalation goes COLD, not louder — the abandoned wait
+# --------------------------------------------------------------------------- #
+
+def test_a_wait_past_the_parked_threshold_goes_cold_rather_than_louder():
+    """The user's report, 2026-08-28, and it is a design finding rather than a
+    styling one.
+
+    A project whose oldest session has waited two hours renders red forever, so
+    the forty-second wait the reader is actually working with never surfaces. A
+    two-hour wait and a forty-second wait are not the same fact at two volumes:
+    the first is abandoned. Measured the same day on the live fleet, the session
+    waiting 129.9 minutes had had no human input for 129.9 minutes, while the two
+    the user was working with had human input 0.2 and 9.5 minutes ago.
+    """
+    assert S.tone_for(890) == S.TONE_RED
+    assert S.tone_for(900) == S.TONE_PARKED
+    assert S.tone_for(7200) == S.TONE_PARKED
+    # And the band below is untouched — parking must not swallow a live wait.
+    assert S.tone_for(200) == S.TONE_RED
+
+
+def test_the_parked_threshold_is_fifteen_minutes():
+    assert S.INPUT_WAIT_PARKED_SECONDS == 900
+
+
+# --------------------------------------------------------------------------- #
+# when a PERSON last wrote here
+# --------------------------------------------------------------------------- #
+
+def _log(tmp_path, entries) -> str:
+    path = tmp_path / "human.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def _human(ts: str, text: str = "csináld meg"):
+    return {"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}}
+
+
+def _tool_result(ts: str):
+    """A tool result wears the user's clothes — and is not a person."""
+    return {"type": "user", "timestamp": ts, "toolUseResult": {"stdout": "ok"},
+            "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+
+
+def _agent_says(ts: str, text: str = "kész"):
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+
+
+def test_the_human_signal_is_the_last_person_entry(tmp_path):
+    log = _log(tmp_path, [
+        _human("2026-08-28T10:00:00.000Z"),
+        _agent_says("2026-08-28T10:30:00.000Z"),
+    ])
+    st = read_state(log, now=_epoch("2026-08-28T11:00:00.000Z"), record=_record("idle", age_seconds=1))
+    assert st.last_human_input_age == pytest.approx(3600, abs=2)
+
+
+def test_a_tool_result_is_not_a_person(tmp_path):
+    """The reassuring direction: reading tool traffic as human input would make
+    every busy agent look freshly attended, which is exactly the session a
+    reader could safely ignore."""
+    log = _log(tmp_path, [
+        _human("2026-08-28T10:00:00.000Z"),
+        _tool_result("2026-08-28T10:59:00.000Z"),
+    ])
+    st = read_state(log, now=_epoch("2026-08-28T11:00:00.000Z"), record=_record("idle", age_seconds=1))
+    assert st.last_human_input_age == pytest.approx(3600, abs=2)
+
+
+def test_no_human_entry_in_the_tail_is_UNKNOWN_not_never(tmp_path):
+    """The tail is bounded, so a session producing tool traffic for hours can
+    push its last human message out of view. `None` means *not seen in what we
+    read* — rendering it as neglect would be a claim nobody measured."""
+    log = _log(tmp_path, [_agent_says("2026-08-28T10:59:00.000Z")])
+    st = read_state(log, now=_epoch("2026-08-28T11:00:00.000Z"), record=_record("idle", age_seconds=1))
+    assert st.last_human_input_age is None
+
+
+def _epoch(ts: str) -> float:
+    import datetime
+    return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()

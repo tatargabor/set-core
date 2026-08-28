@@ -154,6 +154,7 @@ function WaitFor({ seconds }: { seconds: number | null | undefined }) {
 }
 
 function StateLine({ agent }: { agent: FleetAgent }) {
+  const thresholds = useWaitThresholds()
   // The prompt is free but a backgrounded command is still running. From the
   // log this is indistinguishable from a finished turn — no call outstanding —
   // and it is the case the whole attention axis was added for: nobody is
@@ -174,21 +175,37 @@ function StateLine({ agent }: { agent: FleetAgent }) {
   // The turn ended and nothing is running: this session is waiting for input,
   // and it is the only class where writing to it is acted on immediately.
   if (agent.state === 'quiet' && agent.attention === ATT_INPUT) {
-    const tone = inputWaitTone(agent.input_wait_seconds, null)
+    const tone = inputWaitTone(agent.input_wait_seconds, thresholds)
+    const parked = tone === 'parked'
     return (
       <span
         className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap ${
           tone === 'red' ? 'text-rose-400 font-semibold'
-            : tone === 'amber' ? 'text-amber-400 font-semibold' : 'text-fg-muted'
+            : tone === 'amber' ? 'text-amber-400 font-semibold'
+              : parked ? 'text-fg-ghost' : 'text-fg-muted'
         }`}
         data-fleet-attention={ATT_INPUT}
-        title="Measured from the runtime's own record: the turn ended and nothing is running."
+        data-fleet-parked={parked ? 'true' : undefined}
+        title={parked
+          ? 'Waiting for a person for over 15 minutes. Counted, but not treated as urgent — nobody is standing on it, and a mark that shouts for two hours takes the colour away from the wait you are actually working with.'
+          : "Measured from the runtime's own record: the turn ended and nothing is running."}
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-          tone === 'red' ? 'bg-rose-400' : tone === 'amber' ? 'bg-amber-400' : 'bg-fg-muted'
+        <span className={`shrink-0 ${
+          parked ? 'w-1.5 h-1.5 rotate-45 border border-fg-ghost'
+            : `w-1.5 h-1.5 rounded-full ${
+              tone === 'red' ? 'bg-rose-400' : tone === 'amber' ? 'bg-amber-400' : 'bg-fg-muted'}`
         }`} />
-        waiting for input
+        {parked ? 'parked' : 'waiting for input'}
         <WaitFor seconds={agent.input_wait_seconds} />
+        {/* When a PERSON last wrote here — the signal that separates the agent
+            you are working with from the one you let go. Shown on the parked
+            branch, where it is the fact that decides whether to go back. */}
+        {parked && typeof agent.last_human_input_seconds === 'number' && (
+          <span className="text-fg-ghost font-normal"
+                title="when a person last wrote into this session">
+            · you: {age(agent.last_human_input_seconds)}
+          </span>
+        )}
         <Queues queued={false} />
       </span>
     )

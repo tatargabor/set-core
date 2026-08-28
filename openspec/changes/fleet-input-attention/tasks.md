@@ -64,6 +64,16 @@
 - [x] 8.3 `escalationTone`: the STRONGEST tone present, one waiter is enough, and a wait with no measured age resolves to amber rather than to silence — the user's rule: *"ha egy várakozó is van akkor kell a szín, a legerősebb szín"* [REQ: the-project-menu-shows-the-worst-wait-it-contains]
 - [x] 8.4 Tests for all three, including a project with two working agents and one waiter [REQ: the-project-menu-shows-the-worst-wait-it-contains]
 
+## 9. The oldest wait owned the row forever — reported by the user, same day
+
+- [x] 9.1 `INPUT_WAIT_PARKED_SECONDS = 900` and a `parked` tone: the band table rises to red and then goes COLD [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder]
+- [x] 9.2 Exclude parked waits from `worstInputWait` and from the API's `worst_input_wait_seconds`; count them apart on both sides [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder]
+- [x] 9.3 A cold DIAMOND marker on the row, the group header and the tile — a different shape, not a paler colour [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder]
+- [x] 9.4 Measure `last_human_input_age` from the log tail: the newest `user` entry carrying TEXT, tool results excluded, absent means not-seen-in-the-tail [REQ: when-a-person-last-wrote-here-is-measured-and-it-is-not-the-wait]
+- [x] 9.5 Carry it in the API and show it on the parked tile — the fact that decides whether to go back [REQ: when-a-person-last-wrote-here-is-measured-and-it-is-not-the-wait]
+- [x] 9.6 Fix `_apply_declared_wait`, which built a fresh `AgentState` and so dropped every field already measured — the tile's excerpt among them, for the one state a reader most wants context on [REQ: a-measured-question-outranks-the-record]
+- [x] 9.7 Tests on both sides, including the user's exact scenario: one agent abandoned two hours, one waiting forty seconds [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder]
+
 ## Evidence — what was actually run (2026-08-28)
 
 - **the measurement layer:** `.venv/bin/python -m pytest tests/unit/test_fleet_input_attention.py
@@ -92,6 +102,11 @@
   The live fleet held no wait between 15 s and 3 min, so the amber band was rendered a second
   time with one duration rewritten in flight (47 s) — the row and its bar came out amber, and it
   is clearly separable from red at a glance.
+- **9.x, after the second report:** re-rendered and looked at with the user's exact case forced
+  (one agent 2 h, one 40 s): the row carries the **amber** of the forty-second wait plus a cold
+  `◇ 1` for the parked one, and the tile reads `parked 2h · you: 2h`. Live measurement at the
+  same moment: `parked: 1`, `worst_input_wait_seconds: null` for the project whose only waiter
+  had been idle 143 minutes — it no longer colours anything. Python 27 + web 1228 passed.
 - **8.x, after the user's report:** the same screen re-rendered and looked at again — the
   `set-core` row now carries the amber tint with `1 37s` AND a green `1` for the working
   agent beside it, and the tile reads `working · no open call` instead of `wait unmeasured`.
@@ -115,6 +130,10 @@
 - [x] AC-11: WHEN an agent is `background` for 10 minutes THEN no input-wait tone is resolved [REQ: the-escalation-thresholds-are-declared-once-and-carried-to-the-surface, scenario: a-background-busy-agent-never-escalates]
 - [x] AC-12: WHEN a collapsed group holds an agent waiting 5 minutes THEN its header carries red [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: a-collapsed-group-carries-its-worst-wait]
 - [x] AC-13: WHEN a project holds a 4-minute waiter and a 5-second waiter THEN the row carries red [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: the-project-row-takes-the-maximum-not-the-freshest]
+- [x] AC-21: WHEN a project holds one agent waiting two hours and one waiting forty seconds THEN the row carries the amber of the forty-second wait and the two-hour one is counted as parked [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder, scenario: the-abandoned-wait-does-not-own-the-row]
+- [x] AC-22: WHEN every waiting agent in a project is past the parked threshold THEN the row carries no tone and the parked count is still shown [REQ: a-wait-past-fifteen-minutes-goes-cold-not-louder, scenario: a-project-holding-only-parked-waits-is-counted-not-coloured]
+- [x] AC-23: WHEN the newest `user` entry is a tool result and the newest human message is an hour old THEN the reported human-input age is one hour [REQ: when-a-person-last-wrote-here-is-measured-and-it-is-not-the-wait, scenario: tool-traffic-is-not-a-person]
+- [x] AC-24: WHEN the bounded tail holds no human entry THEN the human-input age is absent, not a long silence [REQ: when-a-person-last-wrote-here-is-measured-and-it-is-not-the-wait, scenario: no-human-entry-in-the-tail-is-unknown-not-neglect]
 - [x] AC-19: WHEN a project holds two working agents and one waiting 5 minutes THEN the row carries red, and the working pair is counted from the attention axis [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: one-waiting-agent-is-enough-whatever-the-others-are-doing]
 - [x] AC-20: WHEN an agent's class is `input` with no timestamp THEN the tone is amber, never absent [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: a-wait-with-no-measured-age-is-amber-never-silent]
 - [x] AC-18: WHEN a project's longest wait is past a threshold THEN the row's own background and edge carry that tone, and a row below the first threshold stays untinted [REQ: the-project-menu-shows-the-worst-wait-it-contains, scenario: the-row-itself-carries-the-colour-not-only-its-marker]
