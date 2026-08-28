@@ -119,7 +119,7 @@ consumer's name, path, or content.
 
 ### B-101 — a LIVE spec describes a function that was deleted four months ago
 
-- **state:** open
+- **state:** closed (`5848af48`, `1aae12fd`, `466c1be7`, `d1fbf6ba`; archived as `2026-08-28-retire-figma-legacy`)
 - **reported:** 2026-08-28 by a peer agent from another project over the cross-session
   socket, while tracing the provenance of this repo's Figma legacy. Not a task in any open
   change: nothing open touches the design pipeline.
@@ -142,11 +142,32 @@ consumer's name, path, or content.
   `set-core-bemutato.md:347` embed it. Deleting them breaks the presentation build. Their own
   defect is different and smaller: the slide still asserts a dropped mechanism
   (`Spec + Figma Design`, note `set-design-sync extracts Figma tokens`).
-- **fixed when:** `openspec/specs/figma-source-dispatch/` is gone via an OpenSpec change (this
-  removes a published capability, so it carries a spec delta and does not go in as a direct
-  commit), the two dead carriers are deleted, `git ls-files | grep -i figma`, minus the change's own
-  files, returns only the 4 archived figma-named entries plus the 2 presentation PNGs, and `openspec validate --strict` stays no
-  worse than its pre-change baseline.
+- **fixed / verified 2026-08-28**, through the OpenSpec change `retire-figma-legacy` (it
+  withdraws a published capability, so it carried a spec delta rather than going in as a
+  direct commit):
+  - `openspec/specs/figma-source-dispatch/` no longer exists — not as a directory, not as an
+    empty file. `openspec archive` performed the removal itself:
+    `Retiring …: all requirements removed. Totals: + 0, ~ 0, - 6, → 0`.
+  - both dead carriers deleted (−859 lines), each preceded by a proving grep restricted to
+    code file types, whose EMPTY output was the licence to delete.
+  - inventory 12 → 6 (4 archived figma-named files + the 2 presentation PNGs); the 6 that left
+    are exactly the intended ones.
+  - `openspec validate --all --strict`: `316 passed / 146 failed (462)` → `315 / 146 (461)`.
+    One item left, and it left the PASSING set. Zero new failures.
+  - test failure-id SET: 116 → 115, the single difference being B-103's instrument artifact,
+    not this change.
+- **two things this cost that the next reader should not re-learn:**
+  - **Do not delete the spec by hand before archiving.** With the file already gone, archive
+    reads the delta as `create`, discards all six REMOVED requirements as "nothing to remove",
+    and aborts on an empty spec. The archive step IS the removal mechanism.
+  - **An all-REMOVED delta needs `retire_capabilities: true` in the change's `.openspec.yaml`.**
+    The CLI names it in its own error text, but no schema instruction mentions it up front.
+- **found while fixing, deliberately NOT swept in:** `set-design-sync` — the tool the
+  presentation slide credited — does not exist in this repository at all
+  (`git ls-files | grep design-sync` is empty; not on `PATH`), yet 10+ documentation files
+  describe it. The slide was corrected as part of this change; the other documents were left
+  alone and are a separate finding. `tests/fixtures/design-snapshot.md` is a second
+  zero-reference orphan beside the deleted fixture, also left alone.
 
 ### B-100 — the Control Center draws 0 % for an account whose usage was never measured
 

@@ -40,8 +40,10 @@
 
 ## 6. Close the loop
 
-- [ ] 6.1 Archive the change, then verify `openspec/specs/figma-source-dispatch/` does not exist — neither as a directory nor as an empty file. An all-REMOVED delta must delete the spec, not write an empty one [REQ: source-file-discovery-from-figma-raw-directory]
-- [ ] 6.2 Close `B-101` in `openspec/bugs/README.md` with the commit sha and the 5.1 file count as evidence. Closed with evidence, never deleted [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 6.1 Archive the change, then verify `openspec/specs/figma-source-dispatch/` does not exist — neither as a directory nor as an empty file. An all-REMOVED delta must delete the spec, not write an empty one. **The design named this as a risk and it fired, twice, in two different ways — both worth keeping:**
+  - **Deleting the spec by hand BEFORE archiving breaks the archive.** With the file already gone, archive reports `figma-source-dispatch: create`, discards all six deltas as `6 REMOVED requirement(s) ignored for new spec (nothing to remove)`, and aborts on an empty spec. The archive step is the mechanism that removes the spec — task 2.1 must NOT pre-empt it. The file was restored from `2de96fc5` for the archive to consume.
+  - **An all-REMOVED delta needs `retire_capabilities: true` in the change's `.openspec.yaml`.** Without it archive refuses: `This change removes the last requirement 'figma-source-dispatch' has.` The CLI names the fix in its own error, which is why this cost minutes rather than a wrong workaround — but nothing in the schema instructions mentions the flag up front [REQ: source-file-discovery-from-figma-raw-directory]
+- [x] 6.2 Close `B-101` in `openspec/bugs/README.md` with the commit sha and the 5.1 file count as evidence. Closed with evidence, never deleted. **Done:** state `closed`, five commit shas, the archive's own `- 6, → 0` line, both validate figures and the 12 → 6 inventory. Two reusable lessons recorded there (do not pre-delete the spec; `retire_capabilities: true`), plus the two out-of-scope findings left standing [REQ: source-file-discovery-from-figma-raw-directory]
 
 ## Acceptance Criteria (from spec scenarios)
 
