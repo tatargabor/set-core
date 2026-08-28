@@ -68,6 +68,37 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-101 — a LIVE spec describes a function that was deleted four months ago
+
+- **state:** open
+- **reported:** 2026-08-28 by a peer agent from another project over the cross-session
+  socket, while tracing the provenance of this repo's Figma legacy. Not a task in any open
+  change: nothing open touches the design pipeline.
+- **measured:** `openspec/specs/figma-source-dispatch/spec.md` is a LIVE capability spec whose
+  every scenario names `design_sources_for_dispatch()`. That function was removed by
+  `openspec/changes/archive/2026-04-27-v0-only-design-pipeline/tasks.md:113` (task 7.5), and
+  `lib/design/` no longer exists at all — `git ls-files | grep 'lib/design/'` returns nothing.
+  The spec's own Purpose line reads `TBD — restored after delta-sync structural cleanup`, which
+  names the carrier: the code left, a structural delta-sync put the spec back, and it has stood
+  as a live contract ever since. Same shape as the false-value class in
+  `.claude/rules/evidence-discipline.md` — the system still publishes something it stopped
+  standing behind, and it reads as current to anyone who opens `openspec/specs/`.
+- **two dead carriers found with it, both zero-reference:** `scripts/fetch-figma-design.py`
+  (700 lines; `grep -rn 'fetch-figma-design'` finds only its own docstring and archived
+  changes) and `tests/fixtures/figma-raw/TEST/sources/*.tsx` (4 files; no `.py`/`.sh`/`.ts`
+  file references them — the test that used them tested the deleted function).
+- **NOT part of this, and the correction worth keeping:** `docs/images/auto/figma/*.png` look
+  like dead Figma leftovers and are not. `scripts/build-presentation.py:298` passes
+  `storefront-design.png` to a slide, and `docs/presentation/set-core-presentation.md:326` /
+  `set-core-bemutato.md:347` embed it. Deleting them breaks the presentation build. Their own
+  defect is different and smaller: the slide still asserts a dropped mechanism
+  (`Spec + Figma Design`, note `set-design-sync extracts Figma tokens`).
+- **fixed when:** `openspec/specs/figma-source-dispatch/` is gone via an OpenSpec change (this
+  removes a published capability, so it carries a spec delta and does not go in as a direct
+  commit), the two dead carriers are deleted, `git ls-files | grep -i figma` returns only the
+  6 archive entries plus the 2 presentation PNGs, and `openspec validate --strict` stays no
+  worse than its pre-change baseline.
+
 ### B-100 — the Control Center draws 0 % for an account whose usage was never measured
 
 - **state:** open
