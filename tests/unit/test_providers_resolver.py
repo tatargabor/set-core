@@ -452,3 +452,48 @@ def test_the_model_is_translated_to_a_cli_id_on_the_way_out():
     if declared is not None:
         unmapped = [m for m in declared.models if m not in _MODEL_MAP]
         assert not unmapped, f"catalogue names with no CLI id: {unmapped}"
+
+
+# --------------------------------------------------------------------------- #
+# B-116 — an alias variable the provider does NOT declare is unset, not inherited
+# --------------------------------------------------------------------------- #
+
+def test_alias_keys_a_provider_does_not_declare_are_unset_not_inherited(tmp_path):
+    """A provider that declares no aliases must STRIP all four alias variables.
+
+    Both start paths build the child's environment from the ambient one, so an
+    `ANTHROPIC_DEFAULT_OPUS_MODEL` exported by an unrelated session would
+    otherwise ride into a launch on a provider that never declared it, and a
+    subagent would send an Anthropic id at this provider's endpoint — B-115's
+    symptom through a path B-115's fix does not close.
+    """
+    cfg = make(tmp_path)  # fixture glm declares no model_aliases
+    plan = res.resolve(provider="glm", model="glm-5.3", config=cfg)
+    for key in res.MODEL_ALIASES.values():
+        assert key in plan.unset
+
+
+def test_an_emitted_alias_key_is_delivered_and_not_also_unset(tmp_path):
+    """The other direction of the same rule: an emitted alias is env, not unset.
+
+    If an emitted key were also unset, a caller that applies `unset` AFTER
+    `env` — or set-glm's survival guard, which compares the two — would strip
+    the alias the provider just declared.
+    """
+    from dataclasses import replace
+
+    base = make(tmp_path)
+    with_aliases = replace(base.providers["glm"],
+                           model_aliases={"sonnet": "glm-5.3-flash"})
+    cfg = cfgmod.ProvidersConfig(
+        providers={"anthropic": base.providers["anthropic"], "glm": with_aliases},
+        default_provider=base.default_provider, default_model=base.default_model,
+        projects={}, source=base.source,
+    )
+    plan = res.resolve(provider="glm", model="glm-5.3-flash", config=cfg)
+    assert plan.env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "glm-5.3-flash"
+    assert "ANTHROPIC_DEFAULT_SONNET_MODEL" not in plan.unset
+    # the three NOT declared are still stripped
+    for key in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                "ANTHROPIC_DEFAULT_FABLE_MODEL"):
+        assert key in plan.unset

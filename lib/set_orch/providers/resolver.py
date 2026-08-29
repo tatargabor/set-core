@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from .config import MODEL_ALIASES, Credential, Provider, ProvidersConfig, load
 from .errors import (
@@ -319,8 +319,10 @@ def resolve(
     # by hand, so the targets are checked against that provider's own catalogue
     # at load time. Hand-written variables are accepted unvalidated, and the only
     # symptom of a typo is one subagent quietly answering from a fallback.
+    emitted: Set[str] = set()
     for alias, target in sorted(declared.model_aliases.items()):
         env[MODEL_ALIASES[alias]] = target
+        emitted.add(MODEL_ALIASES[alias])
     if credential is not None:
         env["ANTHROPIC_BASE_URL"] = credential.base_url
         env["ANTHROPIC_AUTH_TOKEN"] = credential.token
@@ -336,7 +338,24 @@ def resolve(
         provider=chosen,
         model=chosen_model,
         env=env,
-        unset=FOREIGN_KEYS,
+        # An alias variable this provider does not declare is removed from the
+        # child exactly like a foreign credential — B-116. Both start paths build
+        # the child's environment from the AMBIENT environment (`bin/set-glm`
+        # from `os.environ`, the owner from a caller-supplied mapping), so an
+        # exported `ANTHROPIC_DEFAULT_OPUS_MODEL` from an unrelated session would
+        # otherwise survive into a launch on a provider that declares no `opus`
+        # alias, and a subagent would send an Anthropic id at this endpoint —
+        # B-115's symptom, through a path B-115's fix does not close. The rule is
+        # the same one FOREIGN_KEYS carries: what reaches the child is decided by
+        # the configuration and the request, never by the calling shell.
+        # Invariants this relies on: MODEL_ALIASES values are unique and
+        # disjoint from FOREIGN_KEYS, and a key the provider hand-wrote in its
+        # own `env` is a DELIBERATE declaration — it is excluded here, or a
+        # caller applying unset-first would strip what the configuration
+        # declared (measured by review, 2026-08-29).
+        unset=FOREIGN_KEYS
+        + tuple(k for k in MODEL_ALIASES.values()
+                if k not in emitted and k not in declared.env),
         args=declared.args,
         provenance=provenance,
     )
