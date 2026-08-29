@@ -800,6 +800,13 @@ export function FollowControl({ field }: { field: string }) {
 export type ResolvedRole =
   | { kind: 'id' | 'path' | 'duration-seconds' | 'count' }
   | { kind: 'progress' | 'limit'; partner: string; partnerValue: number }
+  /**
+   * A declared stage order. `stages` is the project's own process, in the project's own order,
+   * and it is READ — never derived from the values present. An order computed from the data
+   * loses exactly the empty stage the producer asked to keep, and makes the process a function
+   * of whatever filter the reader happens to have applied.
+   */
+  | { kind: 'stage-order'; stages: string[] }
 
 /** The declaration for one answer, exactly as the project sent it. Never interpreted here. */
 const RoleCtx = createContext<Record<string, unknown>>({})
@@ -858,6 +865,21 @@ export function resolveRole(
     return null
   }
   if (!isPlainObject(declared) || !owner) return null
+  if ('stageOrder' in declared) {
+    // All or nothing. A partial order — the valid entries kept, the bad ones dropped — renders
+    // as a complete process quietly missing stages, which is a false value rather than a gap,
+    // and the producer is told nothing. Duplicates go the same way: two groups under one name
+    // leave a reader unable to tell which one holds their row.
+    const raw = declared.stageOrder
+    if (!Array.isArray(raw) || raw.length === 0) return null
+    const stages: string[] = []
+    for (const stage of raw) {
+      if (typeof stage !== 'string' || !stage.trim()) return null
+      stages.push(stage.trim())
+    }
+    if (new Set(stages).size !== stages.length) return null
+    return { kind: 'stage-order', stages }
+  }
   const form = 'progressOf' in declared ? 'progress' : 'limitOf' in declared ? 'limit' : null
   if (!form) return null
   const partner = declared[form === 'progress' ? 'progressOf' : 'limitOf']

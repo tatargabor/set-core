@@ -23,6 +23,7 @@
  */
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { stageGroups, unmatchedCount, type StageGroup } from '../lib/stageGroups'
 import {
   ACTIONS_KEY,
   ActionCtx,
@@ -42,7 +43,9 @@ import {
   flattenUniformObjects,
   isPlainObject,
   partitionKeys,
+  resolveRole,
   useDeprecation,
+  useRoles,
 } from './statusShape'
 
 /**
@@ -653,6 +656,30 @@ export function StatusTable(
     r => Array.isArray(r[ACTIONS_KEY]) && (r[ACTIONS_KEY] as unknown[]).length > 0,
   )
 
+  /**
+   * The declared stage order, if the project declared one for a column of this table.
+   *
+   * This is the FIRST declaration `StatusTable` reads for itself — every other role reaches the
+   * tree through the `renderValue` closure, because until now no declaration affected anything
+   * above a single cell. An order does: it governs the sequence of rows and what the reader is
+   * told about stages holding nothing.
+   *
+   * Resolved against the first row that carries the column, and it must be resolved against a
+   * row rather than in the abstract because `resolveRole`'s contract is per-value. Any row will
+   * do — a stage order that varied with the value would be derived from the data, which is the
+   * one thing it must never be.
+   */
+  const roles = useRoles()
+  const stageColumn = useMemo(() => {
+    for (const col of dataCols) {
+      const owner = rows.find(r => r[col] !== undefined)
+      if (!owner) continue
+      const role = resolveRole(roles, owner, col)
+      if (role && role.kind === 'stage-order') return { col, stages: role.stages }
+    }
+    return null
+  }, [roles, rows, dataCols.join(' ')])
+
   // Every one of these is memory only. Persisting a facet selection would write the
   // project's own vocabulary into browser storage or the address bar — see the file header.
   const [search, setSearch] = useState('')
@@ -764,8 +791,21 @@ export function StatusTable(
         })
       }
     }
+    if (stageColumn && !sort) {
+      // Only when the reader has not sorted: an explicit sort is their decision and outranks
+      // the delivered arrangement, exactly as it does without a declaration.
+      const rank = new Map(stageColumn.stages.map((s, i) => [s, i]))
+      idx = [...idx].sort((a, b) => {
+        // Anything outside the declared order ranks after everything in it — but it is never
+        // left to READ as a final stage: the strip above the table marks it, which is the half
+        // that stops a mis-keyed value passing for finished work.
+        const ra = rank.get(cellText(rows[a][stageColumn.col])) ?? Number.MAX_SAFE_INTEGER
+        const rb = rank.get(cellText(rows[b][stageColumn.col])) ?? Number.MAX_SAFE_INTEGER
+        return ra - rb
+      })
+    }
     return idx
-  }, [controls, rows, cols, search, picked, sort])
+  }, [controls, rows, cols, search, picked, sort, stageColumn])
 
   const clearAll = () => { setSearch(''); setPicked({}) }
 
@@ -1106,6 +1146,23 @@ export function StatusTable(
 
   return (
     <div className="space-y-1" ref={outerBox}>
+      {stageColumn && (
+        <StageStrip
+          groups={stageGroups(
+            // `indices`, NOT `visibleIndices`. Counting the rendered slice would let a stage
+            // whose every row fell past ROW_CAP report as EMPTY — turning an honest cap into a
+            // false absence, on the exact guarantee this strip exists to provide.
+            indices,
+            i => {
+              const raw = rows[i][stageColumn.col]
+              return raw === null || raw === undefined ? null : cellText(raw)
+            },
+            stageColumn.stages,
+          )}
+          column={stageColumn.col}
+        />
+      )}
+
       {/* The count line. Unfiltered it says exactly what it always said — a count of ROWS,
           never of "items", because the key above it names someone else's domain. Filtered,
           it is the one place that has to state what is NOT on screen. */}
@@ -1317,3 +1374,64 @@ export function StatusTable(
 }
 
 export default StatusTable
+
+/**
+ * The declared process, stated above the table it orders.
+ *
+ * This is the carrier for the two guarantees a table cannot express by itself. A table has no
+ * row for a stage holding nothing, so without this strip an empty stage is simply absent —
+ * indistinguishable from a process that never had one, which is the whole defect. And a value
+ * outside the declared order needs to be marked where the READER is standing, not only where
+ * its rows happen to sit; `ui-quality.md` makes that the rule that outranks the rest.
+ *
+ * Rendered as a strip rather than as in-table section headers deliberately. The table already
+ * flows its rows into side-by-side column groups when it is narrow, and interleaving headers
+ * into that would rebuild the layout engine for every existing consumer to deliver a guarantee
+ * this states more plainly. The spec is explicit that the rendering choice is the framework's:
+ * columns, a grouped list, or one ordered column all satisfy it.
+ *
+ * Nothing here is coloured to carry meaning. The unmatched group is marked by being a distinct,
+ * labelled region — structure a restyle cannot drop — and amber marks it as *outside the
+ * declared process*, never as an error. An unmatched value is legitimate producer data, and may
+ * be the first sight of a stage the declaration has not caught up with. Red stays for broken.
+ */
+function StageStrip({ groups, column }: { groups: StageGroup[]; column: string }) {
+  const stray = unmatchedCount(groups)
+  return (
+    <div
+      className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs"
+      data-testid="stage-strip"
+      aria-label={`declared stages for ${column}`}
+    >
+      <span className="text-fg-faint" title="the project's own process, in the order it declared — never derived from the rows">
+        {column}:
+      </span>
+      {groups.map((g, i) => (
+        <span
+          key={g.stage === null ? `__none__${i}` : `${g.stage}`}
+          data-stage={g.stage ?? ''}
+          data-declared={g.declared ? 'true' : 'false'}
+          data-count={g.count}
+          className={
+            g.declared
+              ? `px-1.5 py-0.5 rounded border ${g.count === 0
+                  ? 'bg-surface-raised/40 border-border text-fg-faint'
+                  : 'bg-surface-raised border-border text-fg'}`
+              : 'px-1.5 py-0.5 rounded border border-amber-700 bg-amber-950/40 text-amber-300'
+          }
+          title={g.declared
+            ? (g.count === 0 ? 'declared by the project, holding nothing' : 'declared by the project')
+            : 'outside the declared process — not an error, and not necessarily wrong'}
+        >
+          {g.stage === null ? '(no value)' : g.stage} {g.count}
+          {!g.declared && <span className="ml-1" aria-hidden="true">⚑</span>}
+        </span>
+      ))}
+      {stray > 0 && (
+        <span className="text-amber-500/90" data-testid="stage-strip-unmatched">
+          {stray} row{stray === 1 ? '' : 's'} outside the declared order
+        </span>
+      )}
+    </div>
+  )
+}

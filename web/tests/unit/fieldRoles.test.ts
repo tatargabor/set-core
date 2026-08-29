@@ -101,3 +101,54 @@ describe('humanDuration', () => {
     expect(humanDuration(NaN)).toBe('NaN')
   })
 })
+
+describe('resolveRole — a declared stage order', () => {
+  const ORDER = ['planned', 'specified', 'done']
+
+  it('carries the declared order through, in order', () => {
+    expect(resolveRole({ lane: { stageOrder: ORDER } }, { lane: 'planned' }, 'lane'))
+      .toEqual({ kind: 'stage-order', stages: ORDER })
+  })
+
+  it('resolves regardless of which value the row happens to carry', () => {
+    // The declaration is the process; the value is one row's position in it. If the resolved
+    // order varied with the value, the process would be a function of the reader's filter.
+    const a = resolveRole({ lane: { stageOrder: ORDER } }, { lane: 'done' }, 'lane')
+    const b = resolveRole({ lane: { stageOrder: ORDER } }, { lane: 'planned' }, 'lane')
+    expect(a).toEqual(b)
+  })
+
+  it('resolves even when the row carries a value outside the order', () => {
+    // Otherwise the mis-keyed row is exactly the one that loses its process.
+    expect(resolveRole({ lane: { stageOrder: ORDER } }, { lane: 'tesztelés' }, 'lane'))
+      .toEqual({ kind: 'stage-order', stages: ORDER })
+  })
+
+  it('trims the declared names without disturbing their order', () => {
+    expect(resolveRole({ lane: { stageOrder: [' planned ', 'done'] } }, { lane: 'x' }, 'lane'))
+      .toEqual({ kind: 'stage-order', stages: ['planned', 'done'] })
+  })
+
+  it.each([
+    ['a string, not an array', 'planned,done'],
+    ['empty', []],
+    ['a non-string member', ['planned', 3]],
+    ['an empty member', ['planned', '']],
+    ['a whitespace-only member', ['planned', '  ']],
+    ['a null member', ['planned', null]],
+    ['an object, not an array', { 0: 'planned' }],
+    ['a duplicate name', ['planned', 'planned']],
+  ])('yields no role at all when the order is %s', (_label, bad) => {
+    // All or nothing: a salvaged partial order renders as a complete process quietly missing
+    // stages, which is a false value. An absent role is a gap, and a gap is the honest outcome.
+    expect(resolveRole({ lane: { stageOrder: bad } }, { lane: 'planned' }, 'lane')).toBeNull()
+  })
+
+  it('does not disturb the other declared forms', () => {
+    const display = { lane: { stageOrder: ORDER }, done: { progressOf: 'total' } }
+    const owner = { lane: 'planned', done: 8, total: 43 }
+    expect(resolveRole(display, owner, 'lane')).toEqual({ kind: 'stage-order', stages: ORDER })
+    expect(resolveRole(display, owner, 'done'))
+      .toEqual({ kind: 'progress', partner: 'total', partnerValue: 43 })
+  })
+})
