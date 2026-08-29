@@ -68,6 +68,53 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-108 — a unit does everything right and then does not commit: the engine's own run-state exclusion turns a silently-ignored directory into a hard `git add` failure
+
+- **state:** open
+- **reported:** 2026-08-29 by this session, from the first REAL work unit ever driven from
+  the fleet screen (`work-cycle-run-visibility` task 7.4). Not a task in that change: the
+  defect is in the engine's commit path, not in the screen that started the run.
+- **measured:** the run finished with `verdict: GROUP_DONE`, `gate: passed` and the product
+  correct on disk (`docs/work-cycle-proof/NOTE.md` = `group one ran`), and then recorded
+  `commit: {committed: false, reason: "git add failed"}`. Reproduced with the engine's own
+  argv (`engine.py:426`), run as a subprocess so no agent-side hook could interfere:
+
+  ```
+  git -C <tree> add -A -- . :(exclude)set/runtime/work-cycle
+  → exit 1
+    The following paths are ignored by one of your .gitignore files:
+    set/runtime
+  ```
+
+  The mechanism, isolated by varying only the pathspec on the same tree:
+
+  | pathspec | exit |
+  |---|---|
+  | `-- .` (no exclude) | **0** — an ignored directory is skipped silently |
+  | `-- . :(exclude)set/runtime/work-cycle` | **1** |
+  | `-- . :(exclude)set/runtime` | **1** |
+  | `-- . :(exclude)set` | **0** |
+
+  So an `:(exclude)` pathspec pointing *inside* a gitignored directory makes git treat that
+  directory as explicitly named, and the silent skip becomes a hard error. The exclusion
+  exists to keep the engine's run state out of the project's history — and it is the run
+  state's own directory, created by the first run, that then breaks that run's commit.
+- **who it hits:** any adopting project whose runtime area is gitignored. That is set-core
+  itself (`.gitignore:69 /set/*`), and it is the shape the engine's own design recommends.
+  It cannot appear before the first run, which is why every unit test passed: the failing
+  condition is *created by* the thing under test.
+- **fail direction — the expensive one:** everything reports success. Verdict green, gate
+  green, product on disk. Only the commit field says otherwise, and it says
+  `git add failed`, which names the command and not the cause. The work stays uncommitted in
+  the tree, and a later reader sees a change with no commits and concludes the unit did
+  nothing. Same class as B-105 and B-107: a true statement about the symptom, pointing away
+  from the cause.
+- **second, smaller defect in the same line:** `CommitOutcome(False, reason="git add failed")`
+  discards git's stderr, which said exactly what was wrong. The reason must carry the cause.
+- **fixed when:** a unit run in a project whose run-state directory is gitignored records a
+  commit sha, AND a deliberately broken `git add` records git's own message. A test that only
+  proves the exclusion string is present proves the mechanism, not the result.
+
 ### B-107 — an engine-side refusal never reaches the caller; the scope's wording does
 
 - **state:** open (partially addressed — see below)
