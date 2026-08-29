@@ -16,7 +16,8 @@ from set_orch.providers.errors import (
 )
 
 ANTHROPIC_MODELS = ["haiku", "sonnet", "opus", "sonnet-1m", "opus-1m",
-                    "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m"]
+                    "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m",
+                    "fable"]
 
 
 def make(tmp_path, **over):
@@ -253,7 +254,7 @@ def test_the_derived_regex_is_byte_identical_to_the_literal_it_replaced():
     from set_orch.config import MODEL_NAME_RE
     assert MODEL_NAME_RE == (
         r"^(haiku|sonnet|opus|sonnet-1m|opus-1m"
-        r"|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m)$"
+        r"|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m|fable)$"
     )
 
 
@@ -436,22 +437,54 @@ def test_the_model_is_translated_to_a_cli_id_on_the_way_out():
     catalogue name straight through, which would have sent `--model opus-1m`.
     """
     from set_orch.subprocess_utils import _MODEL_MAP
-    from set_orch.providers import config
 
-    assert _bare_plan(model="opus-1m").launch_args(
+    assert _bare_plan(provider="anthropic", model="opus-1m").launch_args(
     )[-1] == "claude-opus-4-6[1m]"
-    assert _bare_plan(model="opus").launch_args()[-1] == "claude-opus-4-6"
+    assert _bare_plan(provider="anthropic", model="opus").launch_args(
+    )[-1] == "claude-opus-4-6"
 
-    # An unmapped name passes through — a provider whose catalogue holds real
-    # ids needs no second mapping table.
+    # An unmapped name passes through — for anthropic that means a name the CLI
+    # resolves natively (`fable`, measured 2026-08-29: no unrecognized_model and
+    # a attempted call on an unreachable endpoint, while `sonnet-1m` was refused
+    # under its own name), and for a real-id catalogue no second table is needed.
+    assert _bare_plan(provider="anthropic", model="fable").launch_args(
+    )[-1] == "fable"
     assert _bare_plan(model="glm-5.3-flash").launch_args()[-1] == "glm-5.3-flash"
 
-    # The anchor that matters: if the declared catalogue ever gains a short name
-    # the map does not know, this says so instead of shipping it raw to the CLI.
-    declared = config.load().providers.get("anthropic")
-    if declared is not None:
-        unmapped = [m for m in declared.models if m not in _MODEL_MAP]
-        assert not unmapped, f"catalogue names with no CLI id: {unmapped}"
+
+def test_the_translation_does_not_run_for_a_provider_the_map_was_not_written_for():
+    """B-118 — the short-name map is an ANTHROPIC-catalogue artifact.
+
+    A different provider whose catalogue legitimately contains a map key
+    (`sonnet` as a real tier name) must receive that name untouched: translating
+    it would send `claude-sonnet-4-6` at that provider's endpoint — a wrong
+    value delivered silently, which the method's own docstring calls worse than
+    none. `resolve()`'s catalogue check makes this unreachable for a plan it
+    built (a glm catalogue never lists `sonnet`); the gate exists so the
+    delivery layer cannot turn a coherent declaration into a cross-vendor pair.
+    """
+    assert _bare_plan(provider="glm", model="sonnet").launch_args(
+    )[-1] == "sonnet"
+
+
+def test_the_catalogue_and_the_translation_map_are_coherent():
+    """B-118's anchor, HERMETIC — the fixture, never the machine's live config.
+
+    The previous version of this anchor called `config.load()`: on a machine
+    whose config had no anthropic provider it silently asserted nothing, and on
+    THIS machine it went red the day the operator added `fable` to the live
+    catalogue — real signal, but measured through the wrong instrument. The
+    invariant is: every name in the FRAMEWORK's anthropic catalogue either has
+    a CLI id in `_MODEL_MAP` or is resolved natively by the CLI. `fable` is the
+    second kind, by measurement; anything else appearing without a mapping is
+    what this assertion exists to say so about.
+    """
+    from set_orch.subprocess_utils import _MODEL_MAP
+
+    cli_native = {"fable"}
+    unmapped = [m for m in ANTHROPIC_MODELS
+                if m not in _MODEL_MAP and m not in cli_native]
+    assert not unmapped, f"catalogue names with no CLI id: {unmapped}"
 
 
 # --------------------------------------------------------------------------- #

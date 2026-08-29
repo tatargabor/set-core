@@ -41,6 +41,12 @@ logger = logging.getLogger(__name__)
 ANTHROPIC_MODEL_NAMES: tuple[str, ...] = (
     "haiku", "sonnet", "opus", "sonnet-1m", "opus-1m",
     "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m",
+    # `fable` — CLI-native: measured 2026-08-29 with an unreachable endpoint,
+    # `--model fable` in a clean environment produced no unrecognized_model and
+    # attempted the call, while `--model sonnet-1m` was refused under its own
+    # name. It is therefore deliberately NOT in subprocess_utils._MODEL_MAP —
+    # pass-through is the correct delivery, and B-118's anchor accepts it.
+    "fable",
 )
 
 # Single source of truth for the validator regex covering every short model name
