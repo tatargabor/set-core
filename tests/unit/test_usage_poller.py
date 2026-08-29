@@ -109,3 +109,133 @@ def test_a_refresh_reports_the_measured_outcome():
     poller.refresh()
 
     assert poller.snapshot()["accounts"][0]["outcome"] == OUTCOME_MEASURED
+
+
+# ---- sources --------------------------------------------------------------
+
+from set_orch.usage.poller import UsageSource  # noqa: E402
+
+
+class StaticSource:
+    """A source whose discover/client behaviour the test pins per case."""
+
+    def __init__(self, name, accounts=None, fail_discovery=False, client=None):
+        self.name = name
+        self._accounts = accounts or []
+        self._fail = fail_discovery
+        self.client = client
+
+    def discover(self):
+        if self._fail:
+            raise RuntimeError("store vanished")
+        return self._accounts
+
+
+class OkClient:
+    def __init__(self, names):
+        self.names = names
+
+    def fetch_all(self, accounts):
+        return [SimpleUsage(n) for n in self.names]
+
+
+class SimpleUsage:
+    def __init__(self, name):
+        self.name = name
+        self.kind = "web"
+        self.outcome = "measured"
+        self.windows = []
+        self.active = False
+
+    def to_dict(self):
+        return {"name": self.name, "kind": self.kind, "outcome": self.outcome,
+                "active": self.active, "windows": self.windows}
+
+
+def test_two_sources_both_reach_the_snapshot():
+    sources = [
+        UsageSource(discover=lambda: [Account(name="a", kind=KIND_WEB, credential="t")],
+                   client=OkClient(["a"])),
+        UsageSource(discover=lambda: [Account(name="b", kind=KIND_WEB, credential="t")],
+                   client=OkClient(["b"])),
+    ]
+    poller = UsagePoller(interval=3600, sources=sources)
+
+    poller.refresh()
+
+    names = [a["name"] for a in poller.snapshot()["accounts"]]
+    assert names == ["a", "b"]
+    assert poller.snapshot()["last_error"] is None
+
+
+def test_one_source_raising_does_not_remove_the_other_sources_accounts():
+    sources = [
+        UsageSource(discover=StaticSource("dead", fail_discovery=True).discover,
+                   client=OkClient([])),
+        UsageSource(discover=lambda: [Account(name="b", kind=KIND_WEB, credential="t")],
+                   client=OkClient(["b"])),
+    ]
+    poller = UsagePoller(interval=3600, sources=sources)
+
+    poller.refresh()
+    snap = poller.snapshot()
+
+    assert [a["name"] for a in snap["accounts"]] == ["b"]
+    assert snap["last_error"] == "RuntimeError"
+    assert snap["measured_at"] is not None, "the surviving source still stamps a fresh time"
+
+
+def test_one_source_raising_keeps_that_sources_previous_figures():
+    healthy = UsageSource(discover=lambda: [Account(name="b", kind=KIND_WEB, credential="t")],
+                          client=OkClient(["b"]))
+    flaky_accounts = [Account(name="a", kind=KIND_WEB, credential="t")]
+    flaky = StaticSource("flaky", accounts=flaky_accounts, client=OkClient(["a"]))
+    sources = [UsageSource(discover=flaky.discover, client=flaky.client), healthy]
+    poller = UsagePoller(interval=3600, sources=sources)
+
+    poller.refresh()
+    good = poller.snapshot()
+
+    flaky._fail = True
+    poller.refresh()
+    after = poller.snapshot()
+
+    names = [a["name"] for a in after["accounts"]]
+    assert names == ["a", "b"], "the flaky source keeps its last measured accounts"
+    assert after["measured_at"] >= good["measured_at"]
+
+
+def test_every_source_raising_keeps_the_timestamp_of_the_last_measurement():
+    flaky = StaticSource("flaky", accounts=[Account(name="a", kind=KIND_WEB, credential="t")],
+                         client=OkClient(["a"]))
+    poller = UsagePoller(interval=3600,
+                         sources=[UsageSource(discover=flaky.discover, client=flaky.client)])
+
+    poller.refresh()
+    good = poller.snapshot()
+
+    flaky._fail = True
+    poller.refresh()
+    after = poller.snapshot()
+
+    assert after["accounts"] == good["accounts"]
+    assert after["measured_at"] == good["measured_at"], "a true-but-old measurement beats none"
+    assert after["last_error"] == "RuntimeError"
+
+
+def test_the_default_source_list_contains_no_provider_backed_source():
+    """The guard against a GLM default sneaking into the poller.
+
+    A default here would make every existing poller test read this machine's
+    real provider configuration, which carries a live credential.
+    """
+    from set_orch.usage import default_sources
+
+    poller = UsagePoller(interval=3600, client=UsageClient(transport=CountingTransport()),
+                         discover=lambda: [])
+    assert len(poller._sources) == 1
+    assert poller._sources[0].discover() == []
+
+    sources = default_sources()
+    assert len(sources) == 2
+    assert all(not hasattr(s, "credential") for s in sources)

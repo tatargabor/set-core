@@ -41,8 +41,8 @@ async def lifespan(app: FastAPI):
     # Start the account-usage poller. It owns its own clock so that reading the
     # endpoint never issues an upstream call — see lib/set_orch/usage/poller.py.
     try:
-        from .usage import UsagePoller
-        app.state.usage_poller = UsagePoller()
+        from .usage import UsagePoller, default_sources
+        app.state.usage_poller = UsagePoller(sources=default_sources())
         app.state.usage_poller.start()
     except Exception as e:
         app.state.usage_poller = None

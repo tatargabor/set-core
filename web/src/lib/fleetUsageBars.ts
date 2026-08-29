@@ -136,12 +136,28 @@ const FALLBACK_SECONDS: Record<string, number> = { session: 5 * 3600, weekly: 7 
 const WINDOW_LABEL: Record<string, string> = { session: '5h', weekly: '7d' }
 
 /**
+ * A label for a window whose group is not in the table, derived from the
+ * length the server reported — so an upstream that adds a window shape does
+ * not have its label render as a raw group string. `null` when the length is
+ * unknown too: then there is nothing honest to print short.
+ */
+function labelFromSeconds(seconds: number | null): string | null {
+  if (!seconds) return null
+  if (seconds % (7 * 24 * 3600) === 0) return `${seconds / (7 * 24 * 3600)}w`
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`
+  if (seconds % 60 === 0) return `${seconds / 60}m`
+  return `${seconds}s`
+}
+
+/**
  * Severity → colour, and the mapping is one-way on purpose.
  *
- * The percentage does NOT get a vote: the service already banded these figures,
- * and a second threshold chosen here would drift the day theirs moved. Measured
- * 2026-08-27, a 96 % weekly window arrived labelled `critical` without anybody
- * in this repo picking 96.
+ * The percentage does NOT get a vote: the measurement already banded these
+ * figures — by the service where the service states a band, and at measurement
+ * for the source that states none (see `glm-usage-source`) — and a second
+ * threshold chosen here would be a third opinion. Measured 2026-08-27, a 96 %
+ * weekly window arrived labelled `critical` without anybody in this repo
+ * picking 96.
  *
  * ⚠ `bg-red-400` is this strip's critical colour and is spent on nothing else
  * here — no border, no hover, no decoration.
@@ -183,7 +199,10 @@ function scopeSuffix(window: UsageWindow): string {
 }
 
 function windowLabel(window: UsageWindow): string {
-  return `${WINDOW_LABEL[window.group] ?? window.group}${scopeSuffix(window)}`
+  const known = WINDOW_LABEL[window.group]
+    ?? labelFromSeconds(window.window_seconds)
+    ?? window.group
+  return `${known}${scopeSuffix(window)}`
 }
 
 /** What one window draws. A window with no figure is marked, never filled. */
@@ -260,7 +279,7 @@ export function rowTitle(row: AccountRow): string {
   return [row.name, ...windows, row.note].filter(Boolean).join('\n')
 }
 
-/** How many windows the service called critical. Drives the collapsed mark. */
+/** How many windows the measurement reported critical. Drives the collapsed mark. */
 export function criticalCount(snapshot: UsageSnapshot | null | undefined): number {
   if (!snapshot) return 0
   return snapshot.accounts.reduce(

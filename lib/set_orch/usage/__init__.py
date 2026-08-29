@@ -23,7 +23,8 @@ Two rules run through all three modules and are worth stating once:
 """
 
 from .accounts import Account, discover_accounts
-from .poller import DEFAULT_INTERVAL_SECONDS, UsagePoller
+from .glm import KIND_GLM, GlmUsageClient, discover_glm_account
+from .poller import DEFAULT_INTERVAL_SECONDS, UsagePoller, UsageSource
 from .client import (
     AccountUsage,
     UsageClient,
@@ -31,13 +32,32 @@ from .client import (
     WindowScope,
 )
 
+
+def default_sources() -> list:
+    """The sources this machine measures: the Claude accounts, then GLM.
+
+    Injected at the server rather than defaulted in `UsagePoller`, so a bare
+    constructor — every existing test — stays hermetic and never reads this
+    machine's provider configuration, which carries a live credential.
+    """
+    return [
+        UsageSource(discover=discover_accounts, client=UsageClient()),
+        UsageSource(discover=discover_glm_account, client=GlmUsageClient()),
+    ]
+
+
 __all__ = [
     "Account",
     "discover_accounts",
+    "KIND_GLM",
+    "GlmUsageClient",
+    "discover_glm_account",
     "AccountUsage",
     "UsageClient",
     "UsageWindow",
     "WindowScope",
     "UsagePoller",
+    "UsageSource",
+    "default_sources",
     "DEFAULT_INTERVAL_SECONDS",
 ]

@@ -27,7 +27,9 @@
  * the screen looks calm. So the three not-a-number states do not vanish with the
  * words — they become icons and counts, which is what the request asked for:
  *
- * - `⚠ n` — windows the SERVICE calls critical
+ * - `⚠ n` — windows reported critical (by their service, or banded at
+ *   measurement for the source that states none — the screen does not know
+ *   which, so it claims neither)
  * - `? n` — accounts that answered and carried no figures (never an empty bar:
  *   that reads as "nothing consumed", which is the opposite of what is known)
  * - `⊘ n` — accounts that did not answer at all, one cause named once
@@ -36,6 +38,8 @@
  *
  * The header must render whether or not this measurement arrives, so a slow or
  * failing usage read cannot delay the counts, the project column, or the grid.
+ * The same read runs again immediately after a confirmed purge, so the removed
+ * rows leave the screen on the act, not on the next poll.
  */
 
 import { useEffect, useState } from 'react'
@@ -79,7 +83,7 @@ function WindowBar({ mark, compact }: { mark: WindowMark; compact?: boolean }) {
       {!compact && <span className="text-xs text-fg-muted tabular-nums">{mark.label}</span>}
       <span className={`relative inline-block h-[11px] border border-surface-line align-middle ${
         compact ? 'w-11' : 'w-20'}`}>
-        {/* Consumed — the stripe whose colour the SERVICE chose. */}
+        {/* Consumed — the stripe whose colour the measurement chose. */}
         <span className={`absolute left-0 top-0 h-[4px] ${mark.tone}`}
               style={{ width: `${mark.consumed * 100}%` }} />
         {/* Elapsed — the only figure computed in the browser, because it moves
@@ -151,6 +155,11 @@ export default function FleetUsageStrip() {
   // waits behind that click — the marks beside the bars carry it either way.
   const [open, setOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  // A confirmed purge bumps this, which re-runs the read effect: the removed
+  // rows leave the screen on the act, not on the next poll.
+  const [purgeTick, setPurgeTick] = useState(0)
+  const [purging, setPurging] = useState(false)
+  const [purgeError, setPurgeError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -165,7 +174,7 @@ export default function FleetUsageStrip() {
     read()
     const t = setInterval(read, READ_INTERVAL_MS)
     return () => { cancelled = true; clearInterval(t) }
-  }, [])
+  }, [purgeTick])
 
   const state = stripState(snapshot, now)
 
@@ -182,6 +191,37 @@ export default function FleetUsageStrip() {
     )
   }
 
+  // The purge offer. Only the accounts the measurement could not reach are
+  // named — the server re-checks that guard against ITS current snapshot, so a
+  // screen that has gone stale cannot delete a healthy credential. The wording
+  // says "did not answer", never "expired": unreachable is also what a network
+  // failure looks like, and the confirmation is the human decision that stands
+  // in for that missing knowledge.
+  const silentRows = state.rows.filter(r => r.state === 'unreachable')
+  const purge = () => {
+    if (silentRows.length === 0 || purging) return
+    const names = silentRows.map(r => r.name)
+    const confirmed = window.confirm(
+      `Remove ${names.length} account${names.length > 1 ? 's' : ''} that did not answer?\n\n`
+      + names.join('\n')
+      + '\n\nTheir stored credentials will be deleted from this machine.',
+    )
+    if (!confirmed) return
+    setPurging(true)
+    setPurgeError(null)
+    fetch('/api/usage/accounts/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accounts: silentRows.map(r => ({ kind: r.kind, name: r.name })),
+      }),
+    })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      .then(() => setPurgeTick(t => t + 1))
+      .catch(() => setPurgeError('the purge did not go through — nothing was refreshed'))
+      .finally(() => setPurging(false))
+  }
+
   return (
     <span className="ml-auto inline-flex items-center gap-3 shrink-0"
           data-fleet-usage="ready"
@@ -195,7 +235,7 @@ export default function FleetUsageStrip() {
       <span className="inline-flex items-center gap-2 shrink-0">
         <Mark mark="critical-count" count={state.criticalCount} tone="text-red-400"
               icon={<TriangleAlert size={13} strokeWidth={1.75} aria-hidden />}
-              title={`${state.criticalCount} window(s) the service calls critical`}
+              title={`${state.criticalCount} window(s) over the critical threshold`}
               label={`${state.criticalCount} critical usage window(s)`} />
         <Mark mark="unmeasured-count" count={state.unmeasuredCount} tone="text-amber-400"
               icon={<span aria-hidden>?</span>}
@@ -203,7 +243,7 @@ export default function FleetUsageStrip() {
               label={`${state.unmeasuredCount} account(s) answered with no figures`} />
         <Mark mark="silent" count={state.silentCount} tone="text-amber-400"
               icon={<Unplug size={13} strokeWidth={1.75} aria-hidden />}
-              title={`${state.silentCount} account(s) did not answer — the credentials have most likely expired`}
+              title={`${state.silentCount} account(s) did not answer — a dead credential looks the same as a network failure from here`}
               label={`${state.silentCount} account(s) did not answer`} />
         {/* A stale screen is readable only if the reader can see how stale. */}
         {state.stale && (
@@ -240,8 +280,22 @@ export default function FleetUsageStrip() {
           {state.silentCount > 0 && (
             <div className="text-xs text-amber-400"
                  data-fleet-usage-silent={state.silentCount}
-                 title={state.rows.filter(r => r.state === 'unreachable').map(r => r.name).join('\n')}>
-              {state.silentCount} account{state.silentCount > 1 ? 's' : ''} did not answer — the credentials have most likely expired
+                 title={silentRows.map(r => r.name).join('\n')}>
+              {state.silentCount} account{state.silentCount > 1 ? 's' : ''} did not answer
+              <button type="button" onClick={purge} disabled={purging}
+                      className="ml-2 underline decoration-dotted text-fg-muted hover:text-fg-strong
+                                 disabled:opacity-50 shrink-0"
+                      data-fleet-usage-purge={purging ? 'busy' : 'ready'}
+                      aria-label="remove the accounts that did not answer, and their stored credentials"
+                      title="Remove these accounts from this machine. Their stored credentials will be deleted.">
+                {purging ? 'purging…' : 'purge'}
+              </button>
+              {purgeError && (
+                <span className="ml-2 text-red-400" data-fleet-usage-purge-error="yes"
+                      title={purgeError}>
+                  {purgeError}
+                </span>
+              )}
             </div>
           )}
         </div>

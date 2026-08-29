@@ -325,3 +325,153 @@ describe('the header does not wait for this', () => {
     for (const mark of marks) expect(strip!.contains(mark)).toBe(true)
   })
 })
+
+describe('the GLM account and the purge offer', () => {
+  const threeAccounts = () => snapshot({
+    accounts: [
+      usageAccount({ name: 'alpha@example.invalid' }),
+      usageAccount({
+        name: 'GLM', kind: 'glm',
+        windows: [
+          usageWindow({ group: 'session', kind: 'CREDIT_LIMIT', window_seconds: 5 * 3600 }),
+          usageWindow({ group: 'weekly', kind: 'CREDIT_LIMIT', window_seconds: 7 * 24 * 3600 }),
+        ],
+      }),
+      usageAccount({ name: 'dead@example.invalid', outcome: 'unreachable', windows: [] }),
+    ],
+  })
+
+  it('shows the GLM bars beside the Claude bars while compact', async () => {
+    installFetch(threeAccounts())
+    const { container } = render(<FleetUsageStrip />)
+
+    await waitFor(() => {
+      const compact = container.querySelectorAll('[data-fleet-usage-compact]')
+      expect(compact.length).toBe(2)
+      expect(compact[1].getAttribute('data-fleet-usage-compact')).toBe('GLM')
+    })
+  })
+
+  it('names GLM as a provider row in the detail', async () => {
+    installFetch(threeAccounts())
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-toggle]')).toBeTruthy())
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    const rows = container.querySelectorAll('[data-fleet-usage-account]')
+    expect(rows.length).toBe(2)
+    expect(rows[1].getAttribute('data-fleet-usage-account')).toBe('GLM')
+    // The windows are labelled by their span, the way the Claude windows are.
+    expect(rows[1].textContent).toContain('5h')
+    expect(rows[1].textContent).toContain('7d')
+  })
+
+  it('does not describe the critical band as the service\'s', async () => {
+    // With GLM behind the same strip, set-core bands one source itself, so the
+    // old wording — "windows the service calls critical" — was true of one
+    // source and false of the other.
+    installFetch(snapshot({
+      accounts: [usageAccount({
+        windows: [usageWindow({ group: 'weekly', utilization: 96, severity: 'critical' })],
+      })],
+    }))
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-critical-count]')).toBeTruthy())
+
+    const title = container.querySelector('[data-fleet-usage-critical-count]')!.getAttribute('title')!
+    expect(title).not.toContain('service')
+    expect(title).toContain('critical threshold')
+  })
+
+  it('offers the purge exactly where the unanswered accounts are counted', async () => {
+    installFetch(threeAccounts())
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-silent]')).toBeTruthy())
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    expect(container.querySelector('[data-fleet-usage-purge]')).toBeTruthy()
+  })
+
+  it('offers no purge when every account answered', async () => {
+    installFetch(snapshot())
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-compact]')).toBeTruthy())
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    expect(container.querySelector('[data-fleet-usage-purge]')).toBeNull()
+  })
+
+  it('confirms by name before anything is deleted', async () => {
+    installFetch(threeAccounts())
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-silent]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-purge]')!)
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    const message = confirm.mock.calls[0][0] ?? ''
+    expect(message).toContain('dead@example.invalid')
+    expect(message).toContain('deleted')
+    // Declined: no POST was issued.
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([u]) => String(u).includes('/purge'))).toBe(false)
+    confirm.mockRestore()
+  })
+
+  it('refreshes the strip right after a confirmed purge', async () => {
+    const reads: string[] = []
+    const stub = vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/usage/accounts/purge')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ results: [], removed: 1, refused: 0 }),
+        } as Response)
+      }
+      if (u.includes('/api/usage/accounts')) {
+        reads.push(String((init as RequestInit | undefined)?.method ?? 'GET'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(threeAccounts()) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+    })
+    vi.stubGlobal('fetch', stub)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-silent]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+    const readsBefore = reads.length
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-purge]')!)
+
+    await waitFor(() => expect(reads.length).toBeGreaterThan(readsBefore))
+    expect(reads[reads.length - 1]).toBe('GET')
+  })
+
+  it('says what failed and keeps the state when the purge does not go through', async () => {
+    const stub = vi.fn((url: string) => {
+      const u = String(url)
+      if (u.includes('/api/usage/accounts/purge')) {
+        return Promise.reject(new Error('network down'))
+      }
+      if (u.includes('/api/usage/accounts')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(threeAccounts()) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+    })
+    vi.stubGlobal('fetch', stub)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { container } = render(<FleetUsageStrip />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-silent]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-usage-toggle]')!)
+
+    fireEvent.click(container.querySelector('[data-fleet-usage-purge]')!)
+
+    await waitFor(() => expect(container.querySelector('[data-fleet-usage-purge-error]')).toBeTruthy())
+    // The silent count is still on screen: a failed purge removed nothing.
+    expect(container.querySelector('[data-fleet-usage-silent]')).toBeTruthy()
+  })
+})

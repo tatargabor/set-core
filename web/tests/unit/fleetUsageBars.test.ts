@@ -254,3 +254,65 @@ describe('the collapsed strip', () => {
     expect(criticalCount(null)).toBe(0)
   })
 })
+
+describe('a GLM account beside the Claude accounts', () => {
+  const glmWindow = (over: Partial<UsageWindow> = {}): UsageWindow => window({
+    group: 'session', kind: 'CREDIT_LIMIT', ...over,
+  })
+
+  it('draws a GLM account as another row beside the Claude accounts', () => {
+    const state = stripState(snapshot({
+      accounts: [
+        account(),
+        account({ name: 'GLM', kind: 'glm', windows: [glmWindow()] }),
+      ],
+    }), NOW)
+
+    if (state.kind !== 'ready') throw new Error('ready')
+    expect(state.rows.map(r => `${r.kind}:${r.name}`)).toEqual([
+      'web:alpha@example.invalid', 'glm:GLM',
+    ])
+    expect(state.measuredRows.length).toBe(2)
+  })
+
+  it('labels a window whose group is unknown by the span its seconds state', () => {
+    // A window shape z.ai might add; the table has no name for it, so the
+    // length the server reported becomes the label instead of a raw group.
+    const mark = markWindow(glmWindow({ group: 'unit3x1', window_seconds: 3600 }), NOW)
+
+    expect(mark.label.startsWith('1h')).toBe(true)
+  })
+
+  it('keeps the label on the table for the two known groups', () => {
+    expect(markWindow(glmWindow()).label.startsWith('5h')).toBe(true)
+    expect(markWindow(glmWindow({ group: 'weekly', window_seconds: 7 * 24 * 3600 }))
+      .label.startsWith('7d')).toBe(true)
+  })
+
+  it('draws no elapsed stripe when the window length is unknown', () => {
+    const mark = markWindow(glmWindow({ group: 'unit9x9', window_seconds: null }), NOW)
+
+    if (mark.kind !== 'measured') throw new Error('measured')
+    expect(mark.elapsed).toBeNull()
+  })
+
+  it('colours a GLM window by the severity the server reported', () => {
+    // The banding happened at measurement (glm-usage-source); the screen's rule
+    // is unchanged — take the severity the record carries, nothing else.
+    expect(toneFor('critical')).toBe('bg-red-400')
+    expect(markWindow(glmWindow({ severity: 'critical' })).kind === 'measured'
+      && (markWindow(glmWindow({ severity: 'critical' })) as { tone?: string }).tone
+        === 'bg-red-400').toBe(true)
+  })
+
+  it('counts a GLM critical window in the critical mark', () => {
+    const state = snapshot({
+      accounts: [account({
+        name: 'GLM', kind: 'glm',
+        windows: [glmWindow({ group: 'weekly', severity: 'critical' })],
+      })],
+    })
+
+    expect(criticalCount(state)).toBe(1)
+  })
+})
