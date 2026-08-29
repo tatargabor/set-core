@@ -68,6 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-126 — the rename route's `carried` answer grew `agent_order` and its test still asserts the old exact dict
+- **state:** OPEN — found while implementing `fleet-agent-stage-tree`, and NOT caused by it: fails identically with the change's edits to `api/fleet.py` stashed.
+- **reported:** 2026-08-29 by this session, via `.venv/bin/python -m pytest tests/unit/test_fleet_api.py -q`
+- **measured:** `tests/unit/test_fleet_api.py::test_a_rename_carries_the_record_and_the_layout` fails at HEAD (`e02133ff`): `assert answer["carried"] == {"record": 1, "docked": 1, "splits": 1}` gets `{'record': 1, 'docked': 1, 'splits': 1, 'agent_order': 0}` — the route began reporting that it also carried the per-project agent order, and the exact-equality assertion was not updated.
+- **fail direction:** test-stricter-than-product. The product's extra key is information, not breakage; the stale assertion makes the suite red on a correct route, which trains whoever runs it to ignore that file's failures.
+- **what would prove it fixed:** that test passing on a tree where the only difference from HEAD is the test (or route) edit, with the full `test_fleet_api.py` green around it.
+- **note:** it is a pre-existing failure of the kind the `regression-baseline` skill exists to set-diff against — it must not be counted against any current change.
+
 ### B-125 — `set-web` could not start at all, and nothing noticed for four hours because the running process predated the break
 - **state:** CLOSED (2026-08-29, this session) — the entry stays; measurement and fix below.
 - **reported:** 2026-08-29 by this session, on the first restart of the service in four hours

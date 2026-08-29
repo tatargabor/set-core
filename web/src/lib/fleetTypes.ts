@@ -244,6 +244,32 @@ export interface FleetAgent {
       fraction: number | null
     }
   } | null
+  /**
+   * Where this agent sits in its work's FLOW — which stages the flow has, and
+   * which one it is on. Two sources, and `source` says whose vocabulary the
+   * strip is speaking: `derived` (the project's own `openspec/changes/` tree —
+   * the OpenSpec lifecycle, read off artifacts that physically exist) or
+   * `declared` (the producer's own stage order through the status contract,
+   * which replaces the derived one wholesale for that project).
+   *
+   * `state: 'gap'` is a NAMED gap, and `reason` is the name: `nothing-started`
+   * (no change in flight anywhere), `join-failed` (work exists but this agent
+   * could not be matched to its own), `no-flow` (no tree and no declaration),
+   * `no-position` (the joined change backs no artifact). A gap must never be
+   * rendered as calm, and `nothing-started` must never be rendered as a
+   * failure — the two are different sentences about the agent.
+   *
+   * `outside` — the position was resolved but the flow does not declare it.
+   * Carried and marked, never dropped.
+   */
+  stage?: {
+    state: 'resolved' | 'gap'
+    flow: string[] | null
+    position: string | null
+    reason: 'nothing-started' | 'join-failed' | 'no-flow' | 'no-position' | null
+    source: 'derived' | 'declared' | null
+    outside: boolean
+  }
 }
 
 /**

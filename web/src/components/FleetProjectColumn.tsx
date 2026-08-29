@@ -42,6 +42,8 @@ import {
 } from '../lib/fleetAttention'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
 import { Chip, Dot } from './Chip'
+import { AgentStageStrip } from './AgentStageStrip'
+import type { FleetAgent } from '../lib/fleetTypes'
 
 /**
  * The project column — hand-ordered groups, parked section, attention header.
@@ -404,6 +406,14 @@ interface RowProps {
   active: boolean
   waitingKnown: boolean
   onSelect: () => void
+  /**
+   * Select one of this project's agents FROM THE ROW — the tree shortcut.
+   * Present whenever the shell can focus an agent; the sub-rows render only
+   * when it is, so a shell that never passes it sees today's screen exactly.
+   */
+  onSelectAgent?: (project: string, pid: number) => void
+  /** The focused agent of the SELECTED project, so the sub-row can say so. */
+  focusedPid?: number | null
   handle?: Record<string, unknown>
   /** Position in the STORED list — what a drop on this row means. */
   index?: number
@@ -615,7 +625,58 @@ function ProjectRow(p: RowProps) {
           )}
         </div>
       )}
+      {/* The TREE — one indented sub-row per live agent, the shortcut and the
+          stage strip. Only the SELECTED project's agents render (D5: the tree
+          follows the selection), which keeps a 40-project column from becoming
+          a 200-row one — and a sub-row is a DOM child of its project row, so
+          any filter that hides the project hides the agents with it, by
+          construction rather than by a second filter to keep in step.
+          Suppressed for agent-less projects: a tree of empty nodes is noise. */}
+      {p.active && p.onSelectAgent && (p.project?.agents?.length ?? 0) > 0 && (
+        <div data-fleet-agent-rows={p.name} className="mt-0.5 mb-1 ml-6 mr-1 space-y-px">
+          {p.project!.agents.map(a => (
+            <AgentSubRow key={a.pid} agent={a} project={p.name}
+                         focused={p.focusedPid === a.pid}
+                         onSelectAgent={p.onSelectAgent!} />
+          ))}
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * One agent under its project — the tree's leaf.
+ *
+ * A BUTTON, not a row with a click handler: keyboard reachability is not a
+ * nicety here, it is the same act the tiles offer and a tree that only a
+ * pointer can use is a second-class shortcut. Indented by the row's own
+ * margin, one visual step down in weight (`text-fg-muted` under the row's
+ * `text-fg-strong`), so the subtree reads without a guide line.
+ */
+function AgentSubRow({ agent, project, focused, onSelectAgent }: {
+  agent: FleetAgent
+  project: string
+  focused: boolean
+  onSelectAgent: (project: string, pid: number) => void
+}) {
+  return (
+    <button
+      type="button"
+      data-fleet-agent-row={agent.pid}
+      data-fleet-agent-row-focused={focused ? 'true' : undefined}
+      onClick={() => onSelectAgent(project, agent.pid)}
+      title={agent.name ? `open ${agent.name}` : `open agent ${agent.pid}`}
+      className={`group flex w-full items-center gap-1.5 rounded px-1.5 py-0.5 text-left transition-colors ${
+        focused ? 'bg-surface-raised' : 'hover:bg-surface-raised/50'
+      }`}
+    >
+      <span aria-hidden className="text-xs text-fg-ghost leading-none select-none shrink-0">└</span>
+      <span className={`text-xs truncate flex-1 min-w-0 ${focused ? 'text-fg-strong' : 'text-fg-muted'}`}>
+        {agent.name ?? `pid ${agent.pid}`}
+      </span>
+      <AgentStageStrip stage={agent.stage} />
+    </button>
   )
 }
 
@@ -660,6 +721,8 @@ interface GroupProps {
   waitingKnown: boolean
   selected: string | null
   onSelect: (name: string) => void
+  onSelectAgent?: (project: string, pid: number) => void
+  focusedPid?: number | null
   onMoveProject: (groupId: string, from: number, to: number) => void
   onAssign: (project: string, target: Target) => void
   onToggle: (collapsed: boolean) => void
@@ -775,6 +838,8 @@ function GroupBlock(p: GroupProps) {
                 active={p.selected === name}
                 waitingKnown={p.waitingKnown}
                 onSelect={() => p.onSelect(name)}
+                onSelectAgent={p.onSelectAgent}
+                focusedPid={p.selected === name ? p.focusedPid : null}
                 handle={handleAttrs(reorder.handlers, i, `${p.group.id}:${name}`, `order of ${name} within the group ${p.group.name}`)}
                 dragging={reorder.dragFrom === i}
                 dropTarget={reorder.dragFrom !== null && reorder.dragTo === i && reorder.dragFrom !== i}
@@ -809,11 +874,21 @@ export default function FleetProjectColumn({
   data,
   selected,
   onSelect,
+  onSelectAgent,
+  focusedPid,
   width,
 }: {
   data: FleetResponse
   selected: string | null
   onSelect: (name: string) => void
+  /**
+   * Focus one of a project's agents from its row in the tree. Optional on
+   * purpose: a shell that does not pass it gets the column as it was — the
+   * sub-rows simply do not render, and nothing else about the row changes.
+   */
+  onSelectAgent?: (project: string, pid: number) => void
+  /** The focused agent of the selected project, for the sub-row's own mark. */
+  focusedPid?: number | null
   /**
    * The column's width in px, owned by the shell that renders the divider.
    *
@@ -1423,6 +1498,8 @@ export default function FleetProjectColumn({
                 active={selected === r.name}
                 waitingKnown={waitingKnown}
                 onSelect={() => onSelect(r.name)}
+                onSelectAgent={onSelectAgent}
+                focusedPid={focusedPid}
                 menuOpen={menuFor === r.name}
                 onMenu={() => setMenuFor(menuFor === r.name ? null : r.name)}
                 groups={view.groups}
@@ -1449,6 +1526,8 @@ export default function FleetProjectColumn({
               waitingKnown={waitingKnown}
               selected={selected}
               onSelect={onSelect}
+              onSelectAgent={onSelectAgent}
+              focusedPid={focusedPid}
               onMoveProject={(gid, from, to) => void save(moveProject(view, gid, from, to))}
               onAssign={(project, target) => void save(assign(view, project, target))}
               onToggle={collapsed => {
@@ -1503,6 +1582,8 @@ export default function FleetProjectColumn({
                     active={selected === name}
                     waitingKnown={waitingKnown}
                     onSelect={() => onSelect(name)}
+                    onSelectAgent={onSelectAgent}
+                    focusedPid={focusedPid}
                     handle={handleAttrs(ungroupedReorder.handlers, i, `ungrouped:${name}`, `order of ${name} among the ungrouped`)}
                     dragging={ungroupedReorder.dragFrom === i}
                     dropTarget={ungroupedReorder.dragFrom !== null && ungroupedReorder.dragTo === i && ungroupedReorder.dragFrom !== i}
@@ -1555,6 +1636,8 @@ export default function FleetProjectColumn({
                 active={selected === name}
                 waitingKnown={waitingKnown}
                 onSelect={() => onSelect(name)}
+                onSelectAgent={onSelectAgent}
+                focusedPid={focusedPid}
                 menuOpen={menuFor === name}
                 onMenu={() => setMenuFor(menuFor === name ? null : name)}
                 groups={view.groups}
@@ -1601,6 +1684,8 @@ export default function FleetProjectColumn({
                       active={selected === name}
                       waitingKnown={waitingKnown}
                       onSelect={() => onSelect(name)}
+                      onSelectAgent={onSelectAgent}
+                      focusedPid={focusedPid}
                       handle={handleAttrs(parkedReorder.handlers, i, `parked:${name}`, `order of ${name} among the parked`)}
                       dragging={parkedReorder.dragFrom === i}
                       dropTarget={parkedReorder.dragFrom !== null && parkedReorder.dragTo === i && parkedReorder.dragFrom !== i}

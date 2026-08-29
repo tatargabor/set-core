@@ -2400,6 +2400,23 @@ export default function Fleet() {
   }, [])
 
   /**
+   * The TREE shortcut — clicking an agent's sub-row in the project column.
+   *
+   * Deliberately the SAME two acts as selecting a tile by hand: select the
+   * project, then enlarge that agent. Going through `setEnlarged` rather than
+   * poking the stored view directly is the whole point — one code path owns
+   * the exclusivity rules (a maximised file view stands down, the memory is
+   * refreshed), so a tree click cannot produce a state a tile click could not.
+   * And because the enlarged pid is remembered per project and resolved
+   * against the live answer on return, leaving and coming back restores the
+   * same agent without this handler doing anything extra.
+   */
+  const focusAgentFromTree = useCallback((project: string, pid: number) => {
+    setSelected(project)
+    setEnlarged(project, pid)
+  }, [setEnlarged])
+
+  /**
    * A DOCKED band's size before it was maximised, so it can be put back.
    *
    * Asked for 2026-08-22: *"a teljes képernyő kell akkor is ha ki van téve 4
@@ -3217,6 +3234,8 @@ export default function Fleet() {
           data={data}
           selected={active?.name ?? null}
           onSelect={name => setSelected(name)}
+          onSelectAgent={focusAgentFromTree}
+          focusedPid={enlarged}
           width={projectWidth}
         />
 

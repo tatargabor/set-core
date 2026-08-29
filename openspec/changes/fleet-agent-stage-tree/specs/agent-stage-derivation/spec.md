@@ -125,5 +125,8 @@ field unchanged, and a consumer reading the payload without the new field SHALL 
 #### Scenario: Nothing derived is persisted
 
 - **WHEN** a stage is resolved from a consumer project's tree or declared answer
-- **THEN** no value derived from that resolution is written to any file, cache, or log that
-  outlives the request
+- **THEN** no value derived from that resolution is written to any file, log, or store that
+  outlives the process — with ONE named exception: a bounded in-memory memo on the
+  session→change inference, keyed on the record's own fingerprint and holding only the inferred
+  change-name slug for seconds, on the same precedent as the status contract's in-memory answer
+  cache

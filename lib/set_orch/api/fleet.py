@@ -49,6 +49,7 @@ from ..fleet.discovery import (
 from ..fleet import scopes as fleet_scopes
 from ..fleet import instruct as fleet_instruct
 from ..fleet import purpose as fleet_purpose
+from ..fleet import stage as fleet_stage
 from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet.cache_heat import read_cache_heat
@@ -66,6 +67,8 @@ from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
 )
 from .helpers import _load_projects, list_worktree_locations
+from .project_status import _cached_query
+from ..project_status import resolve_status_config as _status_config
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +140,8 @@ def _cache_payload(agent) -> Dict[str, Any]:
 def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = None,
                    seats: Optional[Dict[str, Any]] = None,
                    purposes: Optional[List[Any]] = None,
-                   descendants: Optional[Dict[str, List[int]]] = None) -> Dict[str, Any]:
+                   descendants: Optional[Dict[str, List[int]]] = None,
+                   declared: Optional[tuple] = None) -> Dict[str, Any]:
     # Three values, not two, and the third is why this is not a boolean. A
     # terminal exists only for a process the framework started and still holds
     # (task 5.2), so:
@@ -356,7 +360,49 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         "purpose": (purposes and
                     (lambda p: p.as_dict() if p else None)(
                         fleet_purpose.purpose_for_pid(purposes, agent.pid))) or None,
+        # Where this agent sits in its work's FLOW — the derived OpenSpec
+        # lifecycle, or the project's declared one, joined through the agent's
+        # own session. An unresolvable case is a NAMED gap on the field, never
+        # a fabricated stage and never a silently absent key that would read
+        # as "nothing running". Read per request from the project's tree and
+        # the contract's answer; nothing here is written down.
+        "stage": fleet_stage.resolve_stage(
+            agent.project_root, purposes, agent.pid, agent.session_id,
+            agent.session_log, declared=declared,
+        ).as_dict(),
     }
+
+
+def _declared_stage_axis(project_root: Optional[str]) -> Optional[tuple]:
+    """The project's declared flow, from its own contract answers — or `None`.
+
+    Asked per project per poll, but answered through the contract's own
+    short-lived cache, so a declared command's subprocess does not re-run
+    inside the TTL. Every failure mode is `None`, which the stage resolver
+    reads as "use the derived flow" — a broken or absent contract must never
+    blank the fleet's stages, and must never take the fleet endpoint down.
+    Logs a shape, never a value: what a project declares is its own vocabulary.
+    """
+    if not project_root:
+        return None
+    try:
+        cfg = _status_config(project_root)
+    except Exception as exc:  # a broken registry of one project must not blank the rest
+        logger.debug("fleet stage: contract config unreadable (%s)", type(exc).__name__)
+        return None
+    if cfg is None or not cfg.commands:
+        return None
+    results = []
+    for name in cfg.commands:
+        if name in cfg.on_demand:
+            continue  # too expensive to ask automatically — by the project's own word
+        try:
+            results.append(_cached_query(Path(project_root), name, cfg, False))
+        except Exception as exc:
+            logger.debug("fleet stage: contract answer failed (%s)", type(exc).__name__)
+    if not results:
+        return None
+    return fleet_stage.declared_axis_from_results(results)
 
 
 #: What the framework installs, read once per process. It is derived from THIS
@@ -618,13 +664,18 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         if not members and not project.sources:
             continue
         purposes = fleet_purpose.read_purposes(project.root) if project.root else []
+        # The project's declared flow, asked ONCE for the project — the answer
+        # is the same for every agent under it, and the cache it rides on is
+        # per project too.
+        declared = _declared_stage_axis(project.root)
         grouped.append({
             "name": project.name,
             "root": project.root,
             "sources": project.sources,
             "archived": project.archived,
             "agents": [_disambiguate(
-                           _agent_payload(a, states[a.pid], owned, seats, purposes, descendants),
+                           _agent_payload(a, states[a.pid], owned, seats, purposes,
+                                          descendants, declared=declared),
                            held_labels)
                        for a in members],
             # Task 7.14. What is waiting for a HUMAN here, independent of who is

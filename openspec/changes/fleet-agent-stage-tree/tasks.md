@@ -1,30 +1,30 @@
 ## 1. Layer 1 — stage derivation module
 
-- [ ] 1.1 Create `lib/set_orch/fleet/stage.py`: resolve flow + position from a project's `openspec/changes/` tree per the design mapping (archive → design → apply → verify → proposal; artifact-less directory = no position), reusing `read_progress` for task counts; logging carries shapes/counts only, never stage values or project identifiers [REQ: the-framework-derives-a-default-openspec-stage-for-every-agent]
-- [ ] 1.2 Session→change join: work-cycle record first (`read_purposes`), session-record inference second; no single-active-change guessing; explicit gap when neither resolves [REQ: the-stage-is-joined-to-the-agent-through-its-session]
-- [ ] 1.3 Declared override: read `stageOrder` for the stage field from the project's project-status answer (existing validation, all-or-nothing); declared flow replaces derived per project; malformed declaration falls back to derived [REQ: a-producer-declared-flow-replaces-the-derived-flow]
-- [ ] 1.4 Gap semantics: every unresolvable case yields an explicit gap value, distinguishable from a resolved position and from nothing-started; no fabricated stages [REQ: a-gap-is-reported-never-filled]
-- [ ] 1.5 Unit tests for the derivation mapping table (each row of the design's mapping, plus artifact-less dir and no-tree project), written against the mapping table before the resolver is wired anywhere [REQ: the-framework-derives-a-default-openspec-stage-for-every-agent]
-- [ ] 1.6 Unit tests: two agents on two changes resolve independently; join survives a pid change with the same session id [REQ: the-stage-is-joined-to-the-agent-through-its-session]
-- [ ] 1.7 Unit tests: declared flow replaces derived; stray value kept with outside marker; malformed declaration (non-list, empty, blank member, duplicate) → derived fallback, never a partial declared flow [REQ: a-producer-declared-flow-replaces-the-derived-flow]
-- [ ] 1.8 Unit tests: gap shape in every unresolvable case; assert the gap value is NOT equal to any stage position and NOT equal to the nothing-started value [REQ: a-gap-is-reported-never-filled]
+- [x] 1.1 Create `lib/set_orch/fleet/stage.py`: resolve flow + position from a project's `openspec/changes/` tree per the design mapping (archive → design → apply → verify → proposal; artifact-less directory = no position), reusing `read_progress` for task counts; logging carries shapes/counts only, never stage values or project identifiers [REQ: the-framework-derives-a-default-openspec-stage-for-every-agent]
+- [x] 1.2 Session→change join: work-cycle record first (`read_purposes`), session-record inference second; no single-active-change guessing; explicit gap when neither resolves [REQ: the-stage-is-joined-to-the-agent-through-its-session]
+- [x] 1.3 Declared override: read `stageOrder` for the stage field from the project's project-status answer (existing validation, all-or-nothing); declared flow replaces derived per project; malformed declaration falls back to derived [REQ: a-producer-declared-flow-replaces-the-derived-flow]
+- [x] 1.4 Gap semantics: every unresolvable case yields an explicit gap value, distinguishable from a resolved position and from nothing-started; no fabricated stages [REQ: a-gap-is-reported-never-filled]
+- [x] 1.5 Unit tests for the derivation mapping table (each row of the design's mapping, plus artifact-less dir and no-tree project), written against the mapping table before the resolver is wired anywhere [REQ: the-framework-derives-a-default-openspec-stage-for-every-agent]
+- [x] 1.6 Unit tests: two agents on two changes resolve independently; join survives a pid change with the same session id [REQ: the-stage-is-joined-to-the-agent-through-its-session]
+- [x] 1.7 Unit tests: declared flow replaces derived; stray value kept with outside marker; malformed declaration (non-list, empty, blank member, duplicate) → derived fallback, never a partial declared flow [REQ: a-producer-declared-flow-replaces-the-derived-flow]
+- [x] 1.8 Unit tests: gap shape in every unresolvable case; assert the gap value is NOT equal to any stage position and NOT equal to the nothing-started value [REQ: a-gap-is-reported-never-filled]
 
 ## 2. Layer 1 — payload exposure
 
-- [ ] 2.1 Add the resolved stage to `_agent_payload` in `lib/set_orch/api/fleet.py` as an additive field; agents without a resolution keep every existing field byte-identical [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
-- [ ] 2.2 Verify no derived value is persisted: run the payload path over a fixture project and assert no file under the runtime/state dirs changed (sha256 before/after) [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
-- [ ] 2.3 Regression test on the payload route: existing payload tests pass unchanged with the field present; absent-resolution agents omit only the resolved shape [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
+- [x] 2.1 Add the resolved stage to `_agent_payload` in `lib/set_orch/api/fleet.py` as an additive field; agents without a resolution keep every existing field byte-identical [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
+- [x] 2.2 Verify no derived value is persisted: run the payload path over a fixture project and assert no file under the runtime/state dirs changed (sha256 before/after) [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
+- [x] 2.3 Regression test on the payload route: existing payload tests pass unchanged with the field present; absent-resolution agents omit only the resolved shape [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
 
 ## 3. Web — tree and strip
 
-- [ ] 3.1 Extend `web/src/lib/fleetTypes.ts` with the stage field's type (flow, position, gap variants) matching the payload tests [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
-- [ ] 3.2 Extend `buildColumnView` to emit agent sub-rows under each project row, honouring query/live-mode filtering and zero-live-agent suppression [REQ: each-project-row-can-expand-to-indented-agent-sub-rows]
-- [ ] 3.3 Render indented, visually subordinate sub-rows in `FleetProjectColumn` (selected project expanded by default) [REQ: each-project-row-can-expand-to-indented-agent-sub-rows]
-- [ ] 3.4 Wire sub-row click to `writeView(project, {enlarged: pid})` so selection and per-project restore behave exactly like tile selection [REQ: clicking-an-agent-sub-row-selects-that-agent]
-- [ ] 3.5 Build the compact stage-strip sub-row component consuming the payload's flow + position: completed/current/pending styles from unclaimed hues, empty state, gap state, amber/⚑ strays; legible at sub-row height with no hover dependency [REQ: each-agent-sub-row-renders-its-stage-as-a-compact-strip]
-- [ ] 3.6 Web unit tests: filtering hides sub-rows with the project row; no orphaned sub-rows; click focuses the agent and survives leave/return [REQ: clicking-an-agent-sub-row-selects-that-agent]
-- [ ] 3.7 Web unit tests for the strip: mid-flow agent renders done/running/pending per position; nothing-started, gap, and stray each render their distinct state; a non-OpenSpec declared flow renders its own stage names in declared order [REQ: each-agent-sub-row-renders-its-stage-as-a-compact-strip]
-- [ ] 3.8 Stash-and-rerun the new Python and web tests: each fails on its assertion against reverted code and passes restored; name the two `.pyc`/restore traps in the run notes if hit [REQ: the-framework-derives-a-default-openspec-stage-for-every-agent]
+- [x] 3.1 Extend `web/src/lib/fleetTypes.ts` with the stage field's type (flow, position, gap variants) matching the payload tests [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
+- [x] 3.2 Extend `buildColumnView` to emit agent sub-rows under each project row, honouring query/live-mode filtering and zero-live-agent suppression [REQ: each-project-row-can-expand-to-indented-agent-sub-rows]
+- [x] 3.3 Render indented, visually subordinate sub-rows in `FleetProjectColumn` (selected project expanded by default) [REQ: each-project-row-can-expand-to-indented-agent-sub-rows]
+- [x] 3.4 Wire sub-row click to `writeView(project, {enlarged: pid})` so selection and per-project restore behave exactly like tile selection [REQ: clicking-an-agent-sub-row-selects-that-agent]
+- [x] 3.5 Build the compact stage-strip sub-row component consuming the payload's flow + position: completed/current/pending styles from unclaimed hues, empty state, gap state, amber/⚑ strays; legible at sub-row height with no hover dependency [REQ: each-agent-sub-row-renders-its-stage-as-a-compact-strip]
+- [x] 3.6 Web unit tests: filtering hides sub-rows with the project row; no orphaned sub-rows; click focuses the agent and survives leave/return [REQ: clicking-an-agent-sub-row-selects-that-agent]
+- [x] 3.7 Web unit tests for the strip: mid-flow agent renders done/running/pending per position; nothing-started, gap, and stray each render their distinct state; a non-OpenSpec declared flow renders its own stage names in declared order [REQ: each-agent-sub-row-renders-its-stage-as-a-compact-strip]
+- [x] 3.8 Stash-and-rerun the new Python and web tests: each fails on its assertion against reverted code and passes restored; name the two `.pyc`/restore traps in the run notes if hit [REQ: the-framework-derives-a-default-openspec-stage-for-every-agent]
 
 ## 4. Verification
 
