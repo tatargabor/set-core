@@ -1,5 +1,7 @@
 ## IN SCOPE
 
+- Carrying an identified requester through to the record, rather than the name of the surface
+  that relayed the start
 - What a finished work unit leaves behind: its origin, the agent session that ran it, and the
   session's own stream.
 - Where that material lives, and the guarantee that reading it needs no running process.
@@ -24,6 +26,13 @@ SHALL record that fact rather than a default that reads like a declaration.
 - **WHEN** a unit is started with a declared origin
 - **THEN** the unit record carries that origin verbatim
 - **AND** it is readable from the record alone, without the starting process
+
+#### Scenario: The origin is the requester, not the surface that relayed it
+
+- **WHEN** a unit is started on behalf of an identified requester
+- **THEN** the record carries that requester
+- **AND** it does not carry a constant naming the surface, mechanism, or route that relayed
+  the request, which would be the same value for every run
 
 #### Scenario: No origin was declared
 

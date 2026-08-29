@@ -84,6 +84,14 @@ SHALL be shown as stale, distinguishably from a live one.
 - **THEN** it is shown as stale
 - **AND** it is not shown as running
 
+#### Scenario: A live claim whose process identifier could not be confirmed
+
+- **WHEN** a record claims a live run and the process holding that identifier cannot be
+  confirmed to be the agent
+- **THEN** the surface says which question was answered — that a process holds the identifier,
+  not that the run is alive
+- **AND** it does not render it as an ordinary running run
+
 #### Scenario: A run set aside for a person
 
 - **WHEN** a run was set aside because a person must answer

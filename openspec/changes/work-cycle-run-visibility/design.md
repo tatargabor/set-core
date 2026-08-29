@@ -15,6 +15,21 @@ change is scoped the way it is rather than as "build a work-cycle screen":
 | 3 | the agent stream is consumed and dropped — `run_agent_session` is called with no `on_event` | `cli.py:369` |
 | 4 | the unit record persists neither the session id nor `--started-by` | `engine.py:470` |
 
+**Measured after the first draft, and it moved work out of this change.** Half of "read the
+run state" is already built, and specifying it again would have produced a second reader of one
+state — the thing the engine's own contract forbids:
+
+- `lib/set_orch/fleet/purpose.py` `read_purposes()` already walks every unit record for a
+  project, computes `finished | running | stale` **with pid verification** (`pid_unverified`
+  marks a pid held by something that is not an agent, because pids are recycled), carries the
+  verdict verbatim, and joins the task file's progress. It crosses the D10 seam by reading the
+  JSON rather than importing, with `RUN_STATE_REL` kept as a deliberate second copy.
+- `lib/set_orch/fleet/awaiting.py` already parses the engine's awaiting marker, with a second
+  copy of the regex and `tests/unit/test_fleet_awaiting.py` failing when the copies diverge.
+
+So the surface work is **extension**, not construction: `Purpose` lacks gate, commit,
+set-aside, origin and session, and nothing exposes the runs of a project as a list.
+
 Two constraints from the repository's own rules bind the design rather than decorate it. The
 engine may not be imported by `set_orch` (engine design D10), so the surface reaches it by
 running its command — which is exactly why measurement 2 is a blocker rather than a nuisance.
@@ -114,15 +129,40 @@ Note what this does **not** claim: `started_by` is a caller's assertion the fram
 verify. The record keeps it as a declaration, and the surface must render it as one — the same
 distinction the fleet screen already draws between a `recorded` and an `ancestry` parent.
 
-### D5 — The screen reads the record; it does not shell out to learn state
+⚠ **And the origin must be the requester, not the surface.** Measured: the route passes
+`--started-by fleet-surface` as a **literal** (`fleet.py:1562`), the same string for every run
+the screen starts, while the requesting agent travels separately to the owner as
+`requested_by` — which lives only as long as the owner does. So persisting `started_by` alone
+would satisfy every test in this change and still leave *which agent started this* unanswerable
+the moment the owner restarts, which is the question the change exists for. The route passes
+the requester through into the engine's own flag; the constant becomes a fallback used only
+when no requester was given.
 
-Rendering runs from `set/runtime/work-cycle/<change>/*.json` is what the engine's own contract
-promises ("readable without a running engine or service"). The API reads those files. The only
-thing the surface *executes* is the start.
+### D5 — Records are READ; the plan is asked for and cached
 
-*Alternative considered:* run `set-work-cycle status` per project on every poll. Rejected — a
-process per tile per poll, and it makes rendering depend on the very command whose absence D1
-exists to handle.
+Two different questions, and the first draft of this design answered them with one rule and got
+the second one wrong.
+
+**What a run did** comes from `set/runtime/work-cycle/<change>/*.json`, read directly. That is
+what the engine's contract promises ("readable without a running engine or service"), it needs
+no import, and `fleet/purpose.py` already does it — so this half is extending an existing reader
+with the fields it does not yet carry.
+
+**What is runnable, and why not** cannot be read that way. It requires the engine's plan —
+parsing the task file, resolving `<!-- depends: -->`, and selecting the next group — and all of
+that lives in `set_workcycle`, which `set_orch` may not import (D10). So the surface **runs
+`set-work-cycle status --json`** and caches the answer, refreshing it on a start, on a finish,
+and on a task-file change rather than per poll.
+
+*Alternatives considered.* **A third copy of the group resolver in `set_orch`** — rejected. The
+second-copy pattern is established here (`RUN_STATE_REL`, the awaiting regex) and it works
+because those copies are a constant and a regex, each guarded by a test that fails on
+divergence. A dependency resolver with a fail-closed default and cycle detection is not that
+kind of copy; two of them would disagree in exactly the case that matters. **Shelling out on
+every poll** — rejected for the reason the framework already wrote down at `fleet.py:1631`: a
+process per tile per poll. **Making the whole screen depend on the command** — rejected: the
+run list must render when the engine is not installed, which is also what makes D1's failure
+mode survivable.
 
 ### D6 — A work unit is a first-class inhabitant of the project's dock, not a second terminal system
 
@@ -147,6 +187,18 @@ rules?* It does not need to. A unit runs as a full agent session in the project'
 project's `CLAUDE.md`, its rules and its hooks load the way they do for any session. The
 declaration in D7 exists only for material that is **not** picked up that way.
 
+### D9 — New record fields cross the D10 seam as a guarded second copy
+
+Every field added to the unit record has to be read on the other side of a boundary that forbids
+importing. The established answer here is a second copy plus a test that fails when the copies
+diverge, and this change follows it rather than inventing a third mechanism: the reader gains
+the fields, and the divergence test gains them too.
+
+*Alternative considered:* a shared schema module both sides import. Rejected for this change —
+it would be a new package sitting under both, and the dependency-direction test that guards D10
+exists precisely to keep that surface from growing quietly. Worth revisiting if the field list
+keeps growing; not worth it for five fields.
+
 ## Risks / Trade-offs
 
 - **Two sessions in `owner.py` at once (measured, live).** → One narrow function taking the
@@ -165,6 +217,10 @@ declaration in D7 exists only for material that is **not** picked up that way.
 - **The screen grows a fourth thing to show and pushes the failures behind a tab.** → The
   spec's marker requirement, which is the project's own UI rule: anything hidden that is wrong
   is marked where the reader is standing.
+- **A cached plan goes stale and the screen offers a start that the engine then refuses.** →
+  The refusal is already specified to surface where the person acted, so the failure is visible
+  rather than silent; the cache is an optimisation over a correct refusal, never a substitute
+  for one.
 - **A green suite proves nothing about the screen.** → The spec carries the browser check as a
   requirement, and an unreachable browser leaves it open rather than substituting a count.
 
