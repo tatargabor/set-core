@@ -96,6 +96,16 @@ function humanBytes(n: number): string {
 const WRAP_KEY = 'set-file-wrap'
 const IGNORED_KEY = 'set-file-ignored'
 const TREE_HIDDEN_KEY = 'set-file-tree-hidden'
+/*
+  All three keys are deliberately BROWSER-GLOBAL — one flag decides every
+  project, decided 2026-08-29 (B-127). These are preferences about THIS PANEL,
+  not about any project: wrap, whether ignored files are of interest, and how
+  much width the list deserves are layout answers that follow the reader, and a
+  flag remembered per project would re-ask all three on every switch. The cost
+  of the choice — hiding the list here hides it everywhere — is paid for by
+  saying the hidden state in the content pane, never leaving it to be inferred
+  from an empty panel.
+*/
 
 /** What the listing endpoint answers. */
 interface Listing {
@@ -591,6 +601,16 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     // asked for, which reads as the panel being broken on arrival.
     if (!request || !request.path) return
     onRequestHandled?.()
+    /*
+      A request names a place in the structure, and the mark it leaves — the
+      active row, or the reveal mark — renders only in the list. With the list
+      hidden the whole reveal ran against nothing: expanded ancestors, a scroll
+      to a ref that was never mounted, and a panel that looked untouched
+      (B-128). Un-hiding is not overriding a reader's choice — a request IS the
+      reader asking to be shown where they are, which is exactly what the
+      hidden pane cannot do.
+    */
+    setTreeHidden(hidden => (hidden ? false : hidden))
     if (request.reveal) {
       // Never a question, whatever is unsaved: a reveal opens nothing, so there
       // is nothing for the reader to lose and nothing to ask them about.
@@ -1035,6 +1055,19 @@ export default function FleetFileView({ root, projectName, request, initial, onC
           {opened.kind === 'none' && (
             <div className="p-2 text-xs text-fg-ghost">
               pick a file from the structure.
+              {/*
+                THE HIDDEN LIST, SAID WHERE THE READER IS STANDING — B-127.
+                With the list hidden, nothing open, and no alarm, this pane used
+                to be bare: one line of help over empty space next to a
+                truncation badge, which is the composition that was reported as
+                "too many files broke the panel". A hidden state nobody can see
+                is the false-absence shape applied to a layout control.
+              */}
+              {treeHidden && (
+                <span className="block mt-1" data-fleet-file-list-hidden="yes">
+                  the file list is hidden — the panel-list button in the header brings it back.
+                </span>
+              )}
               {/*
                 Ctrl-clicking a path in a terminal is offered, and this says what
                 is KNOWN about it rather than promising it: while an agent's own

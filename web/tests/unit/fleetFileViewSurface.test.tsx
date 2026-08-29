@@ -578,6 +578,32 @@ describe('hiding the file list', () => {
     expect(after).toBe(before)
   })
 
+  it('says the list is hidden where the reader is standing, instead of bare empty', async () => {
+    // B-127: hidden + nothing open + no alarm used to render one help line over
+    // empty space — read as "too many files broke the panel".
+    const { container } = view()
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
+    fireEvent.click(toggle(container))
+    expect(container.querySelector('[data-fleet-file-list-hidden]')).toBeTruthy()
+  })
+
+  it('un-hides when a request arrives — a reveal against a hidden pane is a silent no-op', async () => {
+    // B-128: the reveal expanded ancestors and scrolled a ref that was never
+    // mounted, and the panel looked untouched.
+    files = { 'deep/nest/x.ts': { content: 'x\n', identity: 'id-x' } }
+    const { container, rerender } = render(
+      <FleetFileView root={ROOT} projectName="proj" onClose={() => {}} />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
+    fireEvent.click(toggle(container))
+    expect(container.querySelector('[data-fleet-file-tree]')).toBeNull()
+
+    rerender(<FleetFileView root={ROOT} projectName="proj" onClose={() => {}}
+                            request={{ path: 'deep/nest/x.ts' }} />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-node="deep/nest/x.ts"]'))
+      .toBeTruthy())
+    expect(toggle(container).getAttribute('data-fleet-file-tree-hidden')).toBe('off')
+  })
+
   it('remembers the answer across the remount that docking and enlarging cause', async () => {
     const first = view()
     await waitFor(() => expect(first.container.querySelector('[data-fleet-file-tree]')).toBeTruthy())
