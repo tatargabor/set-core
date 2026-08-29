@@ -60,6 +60,7 @@ from ..fleet import restore as fleet_restore
 from ..fleet.discovery import live_session_ids as fleet_live_session_ids
 from ..fleet.layout import LayoutConflict
 from ..providers import config as providers_config
+from ..providers.resolver import resolve as providers_resolve
 from ..providers.errors import ProviderError
 from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
@@ -1117,7 +1118,7 @@ def fleet_owner() -> Dict[str, Any]:
 
 
 @router.get("/api/fleet/providers")
-def fleet_providers() -> Dict[str, Any]:
+def fleet_providers(project: Optional[str] = None) -> Dict[str, Any]:
     """The declared catalogue — names, models, and whether a credential is set.
 
     **What this route may NOT return, and the reason is the whole design.** No
@@ -1146,7 +1147,31 @@ def fleet_providers() -> Dict[str, Any]:
         cfg = providers_config.load()
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # What a start naming NOTHING would actually resolve to for this project.
+    #
+    # ⚠ Computed HERE, by the same resolver the start uses, rather than
+    # re-derived by the screen. Found by looking at the running dashboard: the
+    # screen's own preview said `anthropic · opus (machine default)` for a
+    # project whose override sends it to `glm` — a confident, plausible, wrong
+    # statement about which account the start would spend against, in the one
+    # place this whole change exists to make visible. A client that models
+    # precedence models it from what it can SEE, and it cannot see the
+    # override; the only fix that stays fixed is not to model it there.
+    #
+    # `None` when it cannot be resolved — an incomplete configuration must not
+    # stop the catalogue from being listed, and a gap here is rendered as one.
+    resolved: Optional[Dict[str, Any]] = None
+    try:
+        plan = providers_resolve(project=project)
+        resolved = {"provider": plan.provider, "model": plan.model,
+                    "provenance": dict(plan.provenance)}
+    except ProviderError as exc:
+        logger.info("fleet api: no resolvable default for %s: %s", project or "-", exc)
+
     return {
+        "project": project,
+        "resolved": resolved,
         "default_provider": cfg.default_provider,
         "default_model": cfg.default_model,
         "providers": [

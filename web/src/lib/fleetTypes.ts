@@ -1,3 +1,5 @@
+import type { AgentProvider } from './fleetProviders'
+
 /**
  * The shapes `/api/fleet/agents` answers with.
  *
@@ -50,6 +52,16 @@ export interface FleetAgent {
   cache?: CacheState
   sources: string[]
   kind: string
+  /**
+   * Which provider this agent RUNS ON, as the owner recorded it at the start.
+   *
+   * OPTIONAL, and the absence is a measurement rather than a default: a server
+   * that predates this sends nothing, and `recorded: false` inside it means
+   * nobody wrote it down. Neither may be rendered as the machine default —
+   * that would be a claim about which account is being billed, and it would be
+   * indistinguishable from a measured one.
+   */
+  provider?: AgentProvider
   /** `working` | `quiet` | `waiting` | `unknown`, and anything the producer adds later. */
   state: string
   tool: string | null

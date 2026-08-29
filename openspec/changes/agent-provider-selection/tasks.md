@@ -73,14 +73,14 @@
 
 ## 8. The screen
 
-- [ ] 8.1 Add provider and model selects to the fleet start form, fed by the catalogue endpoint [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
-- [ ] 8.2 Show, in the start offer, the resolved provider and model and the level that supplied each [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
-- [ ] 8.3 Offer a provider with no configured credential as unusable rather than omitting it, and say why [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
-- [ ] 8.4 Mark a running agent whose credential came from a project override, where the agent is listed [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
-- [ ] 8.5 Render an unrecorded provider as unrecorded, visually distinct from the default [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
-- [ ] 8.6 Web unit tests for 8.1–8.5, asserting on rendered state rather than on wording alone [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
-- [ ] 8.7 Build the web bundle so the served dashboard carries these changes [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
-- [ ] 8.8 OPEN THE SCREEN IN A BROWSER and look at it: the start form with its selects, a project with an override, a provider with no credential, and a running agent's provider marker. Write down what was seen. If the browser cannot be reached, this task stays open and says so — a passing suite does not close it [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
+- [x] 8.1 Add provider and model selects to the fleet start form, fed by the catalogue endpoint [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
+- [x] 8.2 Show, in the start offer, the resolved provider and model and the level that supplied each [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
+- [x] 8.3 Offer a provider with no configured credential as unusable rather than omitting it, and say why [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
+- [x] 8.4 Mark a running agent whose credential came from a project override, where the agent is listed [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
+- [x] 8.5 Render an unrecorded provider as unrecorded, visually distinct from the default [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
+- [x] 8.6 Web unit tests for 8.1–8.5, asserting on rendered state rather than on wording alone [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
+- [x] 8.7 Build the web bundle so the served dashboard carries these changes [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
+- [x] 8.8 OPEN THE SCREEN IN A BROWSER and look at it: the start form with its selects, a project with an override, a provider with no credential, and a running agent's provider marker. Write down what was seen. If the browser cannot be reached, this task stays open and says so — a passing suite does not close it [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided]
 
 ## 9. Closing out
 

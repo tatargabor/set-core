@@ -23,7 +23,7 @@ from set_orch.api import fleet as fleet_api
 from set_orch.api.fleet import StartAgentBody
 from set_orch.fleet.owner_client import OwnerClientError, OwnerUnavailable
 from set_orch.providers.config import Credential, Provider, ProvidersConfig
-from set_orch.providers.errors import ConfigError
+from set_orch.providers.errors import ConfigError, UnknownProvider
 from set_orch.fleet import state as attention_state
 
 SECRET = "sk-do-not-let-this-out-0123456789"
@@ -260,3 +260,52 @@ def test_a_listed_agent_reports_its_provider_or_admits_it_has_none():
     assert row_known["provider"]["provenance"]["provider"] == "request"
     assert row_unknown["provider"]["recorded"] is False
     assert row_unknown["provider"]["provider"] is None
+
+
+def test_the_catalogue_resolves_the_project_default_with_its_own_resolver(monkeypatch):
+    """Found by LOOKING at the running dashboard, not by any test here.
+
+    The screen was deriving the preview from what it could see — and it cannot
+    see a project override, which lives in a file only the owner reads. It said
+    `anthropic · opus (machine default)` for a project whose override sends it
+    to `glm`: a confident, plausible, wrong statement about which account the
+    start would spend against, in the one place this change exists to make
+    visible. The fix is not a better client-side model; it is not having one.
+    """
+    monkeypatch.setattr(fleet_api.providers_config, "load", lambda: _config())
+    asked = {}
+
+    def _resolve(**kw):
+        asked.update(kw)
+        from set_orch.providers.resolver import LaunchPlan
+        return LaunchPlan(provider="glm", model="glm-4.5-air", env={"X": "1"},
+                          unset=(), args=(),
+                          provenance={"provider": "project", "model": "project"})
+
+    monkeypatch.setattr(fleet_api, "providers_resolve", _resolve)
+    answer = fleet_api.fleet_providers(project="some-project")
+
+    assert asked == {"project": "some-project"}
+    assert answer["resolved"]["provider"] == "glm"
+    assert answer["resolved"]["provenance"]["provider"] == "project"
+    # The ENVIRONMENT never travels — only the names and the levels.
+    assert "env" not in answer["resolved"]
+    assert "X" not in str(answer["resolved"])
+
+
+def test_an_unresolvable_default_is_a_gap_and_not_a_missing_catalogue(monkeypatch):
+    """A configuration too incomplete to resolve still LISTS.
+
+    Refusing the whole catalogue here would take away the screen's only way to
+    say what exists — and the reader would see "no providers" for a machine
+    that declares three.
+    """
+    monkeypatch.setattr(fleet_api.providers_config, "load", lambda: _config())
+
+    def _boom(**kw):
+        raise UnknownProvider("no provider requested and no 'default.provider' declared")
+
+    monkeypatch.setattr(fleet_api, "providers_resolve", _boom)
+    answer = fleet_api.fleet_providers()
+    assert answer["resolved"] is None
+    assert len(answer["providers"]) == 3

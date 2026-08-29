@@ -76,6 +76,11 @@ import {
   defaultLocation, fetchStartLocations, locationLabel, offerable, selectorWorthShowing,
 } from '../lib/fleetStartLocations'
 import type { StartLocation } from '../lib/fleetStartLocations'
+import {
+  fetchProviderCatalogue, levelLabel, modelsFor, offerableProviders,
+  previewResolution, providerMark,
+} from '../lib/fleetProviders'
+import type { ProviderCatalogue } from '../lib/fleetProviders'
 import { blockUnexpectedFrom, declaredStanding, instructability, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
 import { mark as cacheMark, UNMEASURED_TITLE } from '../lib/fleetCacheHeat'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
@@ -1454,6 +1459,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           </span>
         )}
         <Contradiction agent={agent} />
+        <ProviderMarker agent={agent} />
         {/* Both directions of the same relation: 7.8 upwards (who started this
             one) and 7.18 downwards (who runs under it). */}
         <Lineage agent={agent} canJumpSeat={canJumpSeat} onJumpSeat={onJumpSeat} />
@@ -1610,6 +1616,12 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
   const [locations, setLocations] = useState<StartLocation[] | null>(null)
   const [locationsFailed, setLocationsFailed] = useState(false)
   const [cwd, setCwd] = useState(project.root)
+  // `null` here means COULD NOT ASK, never "no providers declared" — the same
+  // distinction the locations above draw, and for the same reason.
+  const [catalogue, setCatalogue] = useState<ProviderCatalogue | null>(null)
+  const [catalogueFailed, setCatalogueFailed] = useState(false)
+  const [provider, setProvider] = useState<string | null>(null)
+  const [model, setModel] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1619,6 +1631,18 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
       .catch(e => { if (!cancelled) setOwner({ available: false, reason: String(e?.message ?? e) }) })
     return () => { cancelled = true }
   }, [])
+
+  // Asked when the form opens, for the same reason the locations are.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetchProviderCatalogue(project.name).then(answer => {
+      if (cancelled) return
+      setCatalogueFailed(answer === null)
+      setCatalogue(answer)
+    })
+    return () => { cancelled = true }
+  }, [open, project.name])
 
   // Asked when the form opens, not on every poll: a `git worktree list` per
   // project on the fleet's polling path would be paid by every reader for a
@@ -1674,6 +1698,8 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
     )
   }
 
+  const preview = previewResolution(catalogue, provider, model)
+
   return (
     <form
       data-fleet-start="form"
@@ -1687,7 +1713,15 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
         fetch('/api/fleet/agents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label: name, cwd: cwd || project.root }),
+          // Only what was CHOSEN travels. Sending the previewed default would
+          // record it as `request` provenance — a level nobody selected, which
+          // then reads on the screen as a deliberate choice.
+          body: JSON.stringify({
+            label: name,
+            cwd: cwd || project.root,
+            ...(provider ? { provider } : {}),
+            ...(model ? { model } : {}),
+          }),
         })
           .then(async r => {
             if (!r.ok) {
@@ -1725,6 +1759,75 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
           ))}
         </select>
       )}
+      {/* 8.1 / 8.3. Every declared provider is offered; the unusable ones are
+          DISABLED with the reason rather than omitted, because a provider that
+          is missing from the list and one that does not exist look identical. */}
+      {catalogue && (
+        <select
+          data-fleet-start="provider"
+          value={provider ?? ''}
+          onChange={e => { setProvider(e.target.value || null); setModel(null) }}
+          aria-label="provider to start the agent on"
+          /* ⚠ CAPPED, and it is not cosmetic. A select sizes itself to its
+             LONGEST option, and the longest one here is a sentence explaining
+             why a provider is unusable — so the closed control grew to ~370px
+             and pushed `start` to the far edge of the viewport. Found by
+             looking at the screen; every test was green. Same shape a peer
+             measured on this screen the same morning, where a column grew to
+             its longest sentence and slid the start button out of reach. */
+          className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong max-w-[11rem]"
+        >
+          <option value="">provider: default</option>
+          {offerableProviders(catalogue).map(p => (
+            <option key={p.name} value={p.name} disabled={p.disabledReason !== null}
+                    title={p.disabledReason ?? undefined}>
+              {p.name}{p.disabledReason ? ' — ' + p.disabledReason : ''}
+            </option>
+          ))}
+        </select>
+      )}
+      {catalogue && modelsFor(catalogue, preview.provider).length > 0 && (
+        <select
+          data-fleet-start="model"
+          value={model ?? ''}
+          onChange={e => setModel(e.target.value || null)}
+          aria-label="model to start the agent on"
+          className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong"
+        >
+          <option value="">model: default</option>
+          {modelsFor(catalogue, preview.provider).map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+      )}
+      {/* 8.2. The frame, before the click — with the LEVEL that supplies each
+          half, so a start on somebody else's account is visible rather than
+          discoverable afterwards from a bill. */}
+      {catalogue && (
+        <span
+          data-fleet-start="resolved"
+          className="text-xs text-fg-muted whitespace-nowrap"
+          /* The levels move into the tooltip when both say the same thing. On
+             screen `(machine default / machine default)` wrapped onto a second
+             line and said one word twice — it is a distinction only when the
+             two halves DIFFER, which is exactly when a start is spending
+             somebody else's budget. */
+          title={`Provider from ${levelLabel(preview.providerLevel)}, model from ${levelLabel(preview.modelLevel)}.`}
+        >
+          → {preview.provider ?? 'no provider'} · {preview.model ?? 'no model'}
+          <span className="text-fg-ghost">
+            {' '}({preview.providerLevel === preview.modelLevel
+              ? levelLabel(preview.providerLevel)
+              : `${levelLabel(preview.providerLevel)} / ${levelLabel(preview.modelLevel)}`})
+          </span>
+        </span>
+      )}
+      {catalogueFailed && (
+        <span data-fleet-start="catalogue-unread" className="text-xs text-amber-400"
+              title="The provider catalogue could not be read. This is not the same as a machine that declares none — the start will use whatever the owner resolves.">
+          providers could not be read — the owner will resolve
+        </span>
+      )}
       <button type="submit" disabled={busy} className="text-xs text-sky-300 hover:underline disabled:opacity-50">
         {busy ? 'starting…' : 'start'}
       </button>
@@ -1740,6 +1843,53 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
     </form>
   )
 }
+
+/**
+ * Which provider a running agent is on — tasks 8.4 and 8.5.
+ *
+ * Three renderings, because they are three facts and the layout must not let
+ * one wear another's clothes:
+ *
+ *  - **unrecorded** — amber, and it SAYS unrecorded. Nobody wrote down what
+ *    this agent runs on. The machine default's name here would be a claim about
+ *    which account is being billed, indistinguishable from a measured one.
+ *  - **project key** — amber and marked, because it is the case where the cost
+ *    lands somewhere other than the reader expects and is invisible in every
+ *    other way: same label, same terminal, same transcript.
+ *  - **plain** — muted, and it still names the provider. An agent whose frame
+ *    is never stated is one whose cost and quality the next reader assigns to
+ *    the wrong frame.
+ *
+ * ⚠ Amber is already this screen's "look at this" colour, and it is used here
+ * for the two cases that need looking at — never for the ordinary one.
+ */
+function ProviderMarker({ agent }: { agent: FleetAgent }) {
+  const mark = providerMark(agent.provider)
+  // ⚠ Three tones, not two, and the split moved after LOOKING at the screen.
+  // `unrecorded` was amber, and every agent on a live machine is unrecorded
+  // until it is started through this — so three tiles out of three shouted in
+  // the colour this screen reserves for "something is wrong". A colour every
+  // row wears means nothing, and the one case that genuinely needs it — a
+  // credential from a project override, where the bill lands elsewhere — could
+  // no longer stand out. Unrecorded stays STATED and stays distinct; it just
+  // stops claiming to be a fault.
+  const tone =
+    mark.kind === 'override' ? 'text-amber-400'
+    : mark.kind === 'unrecorded' ? 'text-fg-ghost'
+    : 'text-fg-muted'
+  return (
+    <span
+      data-fleet-provider={mark.kind}
+      data-fleet-provider-pid={agent.pid}
+      className={`text-xs shrink-0 whitespace-nowrap ${tone}`}
+      title={mark.title}
+    >
+      {mark.kind === 'override' ? <span aria-hidden>⚠ </span> : null}
+      {mark.text}
+    </span>
+  )
+}
+
 
 /**
  * The state before discovery has answered — task 7.11, first half.
