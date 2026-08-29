@@ -190,7 +190,21 @@ def assert_env_survived(
         key for key, value in (resolved or {}).items()
         if child_env.get(key) != value
     ]
-    lost += [f"{key} (should have been removed)" for key in (unset or ()) if key in child_env]
+    # ⚠ `unset` means "cleared BEFORE `env` is applied" (see `LaunchPlan` and the
+    # order in `build_child_env`) — it does NOT mean "absent from the child". A
+    # provider that carries a credential necessarily re-supplies the very keys
+    # `FOREIGN_KEYS` strips, so demanding their absence here contradicted the
+    # rule directly above and refused EVERY start on such a provider. Measured
+    # 2026-08-29 on the fleet screen, after the two rules had been written to one
+    # function without a case where they overlap.
+    #
+    # Excluding the re-supplied keys loses no coverage, which is the only reason
+    # it is safe to narrow a guard: a key in `resolved` is still checked by the
+    # first rule, and more strictly — its exact value, not its mere absence.
+    lost += [
+        f"{key} (should have been removed)" for key in (unset or ())
+        if key in child_env and key not in (resolved or {})
+    ]
     if lost:
         # The NAMES, not the values: a resolved environment carries credentials,
         # and this message reaches a log and an HTTP answer.

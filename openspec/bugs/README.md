@@ -68,6 +68,43 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-113 — the pre-fork survival guard refuses EVERY start on a provider that carries a credential, because it reads `unset` as "absent from the child"
+- **state:** CLOSED (2026-08-29) — the entry stays; the measurement is below
+- **reported:** 2026-08-29 by the user, from the fleet screen, with a screenshot: a start
+  named `set-core-glmtest` on `glm` / `glm-5.3-flash` returned
+  *"did not start: the resolved environment did not survive into the child:
+  ANTHROPIC_AUTH_TOKEN (should have been removed), ANTHROPIC_BASE_URL (should have been
+  removed)"*.
+- **measured:** `assert_env_survived()` held two rules that contradict each other for any
+  provider needing a credential. `LaunchPlan` and `build_child_env` define `unset` as
+  *removed FIRST, then `env` applied on top*; the guard instead required every `unset` key to
+  be ABSENT from the child. `resolver.FOREIGN_KEYS` strips `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` unconditionally, and the glm plan supplies two
+  of those three — so the overlap is not an edge case, it is every credentialled provider.
+  Reproduced deterministically before the fix:
+
+  ```
+  keys in BOTH unset and env: ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']
+  guard: REFUSED -> ... ANTHROPIC_AUTH_TOKEN (should have been removed), ...
+  ```
+
+- **why 49 caught mutations and a full green suite could not see it:** the fixture in
+  `tests/unit/test_fleet_owner_provider.py` uses `unset=("ANTHROPIC_API_KEY",)`, which does
+  not overlap its own `env`. The real constant necessarily does. **A fixture that avoids the
+  overlap cannot fail on it** — the tests exercised the mechanism and were silent about the
+  case, and no mutation could reach a branch the fixture never entered.
+- **the direction it fails in:** loudly and totally, which is the only reason it was cheap.
+  A refusal naming its reason reached the person who acted, and nothing started on the wrong
+  account. The same contradiction resolved the other way — treating a leftover as acceptable —
+  would have been the silent-spend defect B-110 (provider) exists for.
+- **fixed when / CLOSED by:** the removal check excludes keys `resolved` re-supplies. Coverage
+  is not lost by narrowing, which is the argument that makes it safe to weaken a guard at all:
+  a key in `resolved` is still checked by the first rule and **more strictly** — its exact
+  value rather than its mere absence. Held by two tests, both of which fail against the old
+  line: one on the contradiction itself (and asserting that a NON-re-supplied leftover, and a
+  re-supplied key carrying the ambient value, are both still refused), one anchored on the real
+  `FOREIGN_KEYS` so the fixture cannot drift away from the constant again.
+
 ### B-112 — a change carries no record of its own verification, so verified and never-verified are indistinguishable once the run is gone
 - **state:** open
 - **reported:** 2026-08-29 by a consumer project's session over the runtime channel — not as a set-core bug, but as the reason they dropped a `verified` stage from their release board: verification "leaves no artifact today, so it is not measurable", and the label would lie in the reassuring direction. Verified here before entering, and the true statement is narrower and worse than the one relayed.

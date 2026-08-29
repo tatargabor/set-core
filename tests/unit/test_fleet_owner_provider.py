@@ -151,6 +151,57 @@ def test_the_guard_compares_against_the_env_about_to_be_used(monkeypatch):
     assert_env_survived({}, {})                                  # nothing resolved, nothing to lose
 
 
+def test_a_key_the_provider_re_supplies_is_not_required_absent():
+    """`unset` means "cleared BEFORE `env` is applied", never "absent from the child".
+
+    Measured 2026-08-29 from a real refusal on the fleet screen: EVERY glm start
+    failed, because `FOREIGN_KEYS` strips `ANTHROPIC_AUTH_TOKEN` and
+    `ANTHROPIC_BASE_URL` unconditionally and the glm plan then supplies both — so
+    the guard demanded a key be absent that the plan requires present. The two
+    rules in this one function contradicted each other for any provider that
+    carries a credential, which is every provider that needs one.
+
+    Why no test saw it: the fixture in this file uses
+    `unset=("ANTHROPIC_API_KEY",)`, which does not overlap its `env`. The real
+    constant necessarily does. A fixture that avoids the overlap cannot fail on it.
+
+    Narrowing the removal check loses NO coverage: a key present in `resolved` is
+    still checked by the first rule, and more strictly — exact value, not mere
+    absence.
+    """
+    resolved = {"ANTHROPIC_AUTH_TOKEN": "glm-token",
+                "ANTHROPIC_BASE_URL": "https://gw.invalid"}
+    unset = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
+    child = dict(resolved)
+
+    assert_env_survived(resolved, child, unset)          # must NOT raise
+
+    # The removal half still bites for a key the plan does NOT re-supply.
+    with pytest.raises(EnvironmentNotDelivered):
+        assert_env_survived(resolved, child | {"ANTHROPIC_API_KEY": "leftover"}, unset)
+
+    # And a re-supplied key carrying the AMBIENT value is still caught — this is
+    # the case the removal check existed for, and it stays covered.
+    with pytest.raises(EnvironmentNotDelivered):
+        assert_env_survived(resolved, child | {"ANTHROPIC_AUTH_TOKEN": "ambient"}, unset)
+
+
+def test_the_real_foreign_keys_overlap_a_credentialled_env(monkeypatch):
+    """Anchored on the REAL constant, so the fixture cannot drift away from it again.
+
+    The assertion that matters is the first one: if `FOREIGN_KEYS` ever stops
+    overlapping a provider env, this test says so instead of going quietly green
+    on a case that no longer exists.
+    """
+    from set_orch.providers.resolver import FOREIGN_KEYS
+
+    env = {"ANTHROPIC_AUTH_TOKEN": "t", "ANTHROPIC_BASE_URL": "https://u.invalid"}
+    assert set(FOREIGN_KEYS) & set(env), "fixture drifted from the real constant"
+
+    child = owner_mod.build_child_env(env=env, unset=FOREIGN_KEYS)
+    assert_env_survived(env, child, FOREIGN_KEYS)
+
+
 # --------------------------------------------------------------------------- #
 # 6.5 / 6.6 — provider and model across the socket, resolved on the owner's side
 # --------------------------------------------------------------------------- #
