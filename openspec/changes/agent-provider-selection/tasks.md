@@ -2,31 +2,31 @@
 
 - [x] 1.1 Re-measure independently whether the context-window environment variable alone is necessary and sufficient for the alternative provider: a fresh session, a prompt large enough to exceed the default window, and the same four variants (neither variable, each alone, both). Record the four outcomes with their evidence in this change. Until this passes, no artifact may call the parameter a finding — the existing claim is single-sourced [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
 - [x] 1.2 Confirm the gateway-prefix rejection independently: request a prefixed model name against the provider's endpoint and record the exact error, so the pre-launch refusal is validated against a real response rather than a remembered one [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
-- [ ] 1.3 Record a baseline of the test suite before touching anything, using the repository's set-diff recipe, so a later regression claim is a comparison rather than a recollection [REQ: one-resolver-serves-every-caller]
+- [x] 1.3 Record a baseline of the test suite before touching anything, using the repository's set-diff recipe, so a later regression claim is a comparison rather than a recollection. MEASURED in a detached worktree at `8834682c` (a worktree, not a stash — the shared tree carries another session's uncommitted work): `tests/unit` gives **91 failed, 4491 passed, 21 errors** — a SET of 112 failing node ids, captured to compare against, not a count to remember [REQ: one-resolver-serves-every-caller]
 
 ## 2. The configuration file
 
-- [ ] 2.1 Define and document the `providers.json` shape: providers, their endpoint, credential, model catalogue and launch parameters, plus the `active` default and the per-project overrides [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
-- [ ] 2.2 Implement the reader in `lib/set_orch/providers/`, resolving the path through `XDG_CONFIG_HOME` with the `~/.config/set-core/` default [REQ: the-provider-configuration-has-one-machine-level-home]
-- [ ] 2.3 Refuse to read the file when its mode grants any permission beyond the owner's; report the file and its mode [REQ: the-provider-configuration-has-one-machine-level-home]
-- [ ] 2.4 Fail with the specific fault on an absent, malformed, or incomplete declaration — never as an empty configuration, never onto a built-in default [REQ: an-absent-or-unreadable-configuration-fails-loudly-and-never-falls-back]
-- [ ] 2.5 Validate a declaration's required fields and name both the provider and the missing field [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
-- [ ] 2.6 Implement the per-project override lookup, keyed by project, read only from the central file [REQ: a-per-project-override-may-replace-the-provider-the-model-or-both]
-- [ ] 2.7 Assert in a test that `set-project init` writes no provider configuration into a consumer tree and plans none [REQ: the-provider-configuration-has-one-machine-level-home]
-- [ ] 2.8 Unit tests for 2.2–2.6, including a test that adding a model to a catalogue changes nothing but data [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
+- [x] 2.1 Define and document the `providers.json` shape: providers, their endpoint, credential, model catalogue and launch parameters, plus the `active` default and the per-project overrides [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
+- [x] 2.2 Implement the reader in `lib/set_orch/providers/`, resolving the path through `XDG_CONFIG_HOME` with the `~/.config/set-core/` default [REQ: the-provider-configuration-has-one-machine-level-home]
+- [x] 2.3 Refuse to read the file when its mode grants any permission beyond the owner's; report the file and its mode [REQ: the-provider-configuration-has-one-machine-level-home]
+- [x] 2.4 Fail with the specific fault on an absent, malformed, or incomplete declaration — never as an empty configuration, never onto a built-in default [REQ: an-absent-or-unreadable-configuration-fails-loudly-and-never-falls-back]
+- [x] 2.5 Validate a declaration's required fields and name both the provider and the missing field [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
+- [x] 2.6 Implement the per-project override lookup, keyed by project, read only from the central file [REQ: a-per-project-override-may-replace-the-provider-the-model-or-both]
+- [x] 2.7 Assert in a test that `set-project init` writes no provider configuration into a consumer tree and plans none [REQ: the-provider-configuration-has-one-machine-level-home]
+- [x] 2.8 Unit tests for 2.2–2.6, including a test that adding a model to a catalogue changes nothing but data [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
 
 ## 3. The resolver
 
-- [ ] 3.1 Implement the three-level precedence with the hybrid merge: credential and endpoint resolved together as one unit, model resolved as an independent field [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint]
-- [ ] 3.2 Refuse a level that supplies a credential without its endpoint, or an endpoint without its credential, naming the project and the incomplete pair [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint]
-- [ ] 3.3 Return per-field provenance alongside the resolved values, and make a non-default credential identifiable from the result without exposing the credential [REQ: the-resolver-reports-where-every-resolved-value-came-from]
-- [ ] 3.4 Turn `MODEL_NAME_RE` into a per-provider catalogue check; today's regex becomes the Anthropic provider's list [REQ: model-names-are-validated-against-the-resolved-provider-s-own-catalogue]
-- [ ] 3.5 Add a test asserting every model name valid before this change is still valid for the Anthropic provider [REQ: model-names-are-validated-against-the-resolved-provider-s-own-catalogue]
-- [ ] 3.6 Implement the three pre-fork refusals — missing credential, model outside the resolved provider's catalogue, gateway-prefixed model name — each naming its own cause [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
-- [ ] 3.7 Assert in a test that no refusal path ever yields a different provider than the one requested [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
-- [ ] 3.8 Remove inherited credentials and endpoints belonging to other providers from the produced environment, unconditionally, including when the resolved provider is the default one [REQ: inherited-credentials-for-other-providers-are-removed-from-the-launched-environment]
-- [ ] 3.9 Split the resolver's public surface into two separately named exits: one returning the catalogue with no credential field in its type, one returning the launch environment. No single function with a redaction flag [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
-- [ ] 3.10 Unit tests for 3.1–3.9, each proved by stash-and-rerun so a test that passes without its fix is caught [REQ: one-resolver-serves-every-caller]
+- [x] 3.1 Implement the three-level precedence with the hybrid merge: credential and endpoint resolved together as one unit, model resolved as an independent field [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint]
+- [x] 3.2 Refuse a level that supplies a credential without its endpoint, or an endpoint without its credential, naming the project and the incomplete pair [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint]
+- [x] 3.3 Return per-field provenance alongside the resolved values, and make a non-default credential identifiable from the result without exposing the credential [REQ: the-resolver-reports-where-every-resolved-value-came-from]
+- [x] 3.4 Turn `MODEL_NAME_RE` into a per-provider catalogue check; today's regex becomes the Anthropic provider's list [REQ: model-names-are-validated-against-the-resolved-provider-s-own-catalogue]
+- [x] 3.5 Add a test asserting every model name valid before this change is still valid for the Anthropic provider [REQ: model-names-are-validated-against-the-resolved-provider-s-own-catalogue]
+- [x] 3.6 Implement the three pre-fork refusals — missing credential, model outside the resolved provider's catalogue, gateway-prefixed model name — each naming its own cause [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
+- [x] 3.7 Assert in a test that no refusal path ever yields a different provider than the one requested [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
+- [x] 3.8 Remove inherited credentials and endpoints belonging to other providers from the produced environment, unconditionally, including when the resolved provider is the default one [REQ: inherited-credentials-for-other-providers-are-removed-from-the-launched-environment]
+- [x] 3.9 Split the resolver's public surface into two separately named exits: one returning the catalogue with no credential field in its type, one returning the launch environment. No single function with a redaction flag [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
+- [x] 3.10 Unit tests for 3.1–3.9, each proved by stash-and-rerun so a test that passes without its fix is caught [REQ: one-resolver-serves-every-caller]
 
 ## 4. `bin/set-glm` becomes a caller
 

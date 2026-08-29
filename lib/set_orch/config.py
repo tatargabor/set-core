@@ -25,10 +25,27 @@ logger = logging.getLogger(__name__)
 # Single source of truth for the validator regex covering every short
 # model name accepted by set-core. Defined here so model_config.py and
 # the per-key validators can share it.
-MODEL_NAME_RE: str = (
-    r"^(haiku|sonnet|opus|sonnet-1m|opus-1m"
-    r"|opus-4-6|opus-4-7|opus-4-6-1m|opus-4-7-1m)$"
+#: The Anthropic provider's model catalogue, as DATA. It used to exist only
+#: inside the regex below, which made it a closed allowlist nothing could read:
+#: measured 2026-08-29, `glm-5.3` and `glm-5.3-flash` fail `MODEL_NAME_RE`, so an
+#: alternative provider's names did not hit a missing entry, they hit a wall.
+#:
+#: The provider layer (`set_orch.providers`) validates each model against ITS OWN
+#: provider's catalogue, and this tuple is the one it uses for Anthropic — so the
+#: two cannot drift. The regex below is DERIVED from it and its string is
+#: unchanged, which is what keeps every previously valid name valid.
+#:
+#: Order is preserved deliberately: the derived pattern is asserted byte-for-byte
+#: against the literal this replaced, and reordering would break that check for a
+#: reason that has nothing to do with behaviour.
+ANTHROPIC_MODEL_NAMES: tuple[str, ...] = (
+    "haiku", "sonnet", "opus", "sonnet-1m", "opus-1m",
+    "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m",
 )
+
+# Single source of truth for the validator regex covering every short model name
+# set-core accepts for the Anthropic provider. Derived, never hand-maintained.
+MODEL_NAME_RE: str = r"^(" + "|".join(ANTHROPIC_MODEL_NAMES) + r")$"
 
 # Default model assignment for every orchestration touch point.
 # `agent` is the per-change agent that runs ralph/claude inside a
