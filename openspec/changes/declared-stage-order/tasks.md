@@ -45,9 +45,9 @@
 
 ## 8. Looking at it — required, not optional
 
-- [ ] 8.1 Open the running dashboard in the browser against a fixture declaring a stage order, and LOOK at the table: bands in declared order, an empty band visible with its zero, an undeclared value present and marked [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
-- [ ] 8.2 Look at a fixture with more rows than `ROW_CAP` across several bands and confirm the counts read honestly beside the stated remainder [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
-- [ ] 8.3 If the browser cannot be reached, leave 8.1 and 8.2 OPEN and say so in the commit and to the user — never substitute a structural count or a green suite for having looked [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
+- [x] 8.1 Open the running dashboard in the browser against a fixture declaring a stage order, and LOOK at the table: bands in declared order, an empty band visible with its zero, an undeclared value present and marked [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
+- [x] 8.2 Look at a fixture with more rows than `ROW_CAP` across several bands and confirm the counts read honestly beside the stated remainder [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
+- [x] 8.3 If the browser cannot be reached, leave 8.1 and 8.2 OPEN and say so in the commit and to the user — never substitute a structural count or a green suite for having looked [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
 
 ## 9. Closing the loop
 
