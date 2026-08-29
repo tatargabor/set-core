@@ -343,11 +343,27 @@ in `web/src` was English**. Two things made it expensive rather than trivial:
   a string the source does not say yet is a test for a screen nobody built. Translate a file and
   its tests in the same commit, and say in the commit which files are still untranslated.
 
-⚠ **NOT settled, and deliberately left open rather than decided quietly: commit messages.**
-Measured the same day — **40 of the last 40 are Hungarian**, and the repository is public, so
-they are published too. The user named "the program language and the `.md` files"; commit
-messages were not named, and converting a history is a different act from writing the next
-message. Ask before changing the practice; do not drift either way.
+**SETTLED 2026-08-29 by the user: commit messages are ENGLISH from now on.** This paragraph
+used to say the question was deliberately left open, and it is now closed in the English
+direction — the user's words were *"tell agents here in the project to switch to english"*, and
+the consumer side is switching in the same round.
+
+**What changes:** every commit message written from now on, in this repo and in every public
+`set-*` repo. Same for anything else an agent writes that lands in the repository or in a
+published artifact — a PR body, a tag message, a release note.
+
+**What does NOT change, and both halves are load-bearing:**
+
+- **History is NOT rewritten.** Measured 2026-08-29: 38 of the last 40 subjects carry Hungarian
+  diacritics, out of **2641 commits total**. Converting a history is a different act from writing
+  the next message; a mass rewrite would break every sha reference in the bug register, the living
+  record and the archived changes, for no reader's benefit. So expect a mixed log — deliberate,
+  not drift.
+- **The three exceptions above still hold.** A verbatim quote of the user stays verbatim, inside
+  an English message; `docs/howitworks/hu/` stays translated; the Hungarian-consumer test fixtures
+  stay Hungarian. A commit message quoting the user says what was actually said.
+- **The domain word stays.** The consumer's business vocabulary is not a technical term to
+  translate — that rule is unaffected by which language the surrounding sentence is in.
 
 ## External Project Confidentiality
 
