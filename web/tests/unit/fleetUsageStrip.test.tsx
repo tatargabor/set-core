@@ -475,3 +475,20 @@ describe('the GLM account and the purge offer', () => {
     expect(container.querySelector('[data-fleet-usage-silent]')).toBeTruthy()
   })
 })
+
+describe('the compact label', () => {
+  it('puts the identifying label before each account\'s bars while compact', async () => {
+    installFetch(snapshot({
+      accounts: [
+        usageAccount({ name: 'alpha@beta.invalid' }),
+        usageAccount({ name: 'GLM', kind: 'glm' }),
+      ],
+    }))
+    const { container } = render(<FleetUsageStrip />)
+
+    await waitFor(() => {
+      const labels = Array.from(container.querySelectorAll('[data-fleet-usage-compact-label]'))
+      expect(labels.map(l => l.textContent)).toEqual(['beta', 'GLM'])
+    })
+  })
+})

@@ -261,6 +261,28 @@ function rowFor(account: UsageAccount, now: number): AccountRow {
 }
 
 /**
+ * The few characters that go before an account's compact bars, so the pairs can
+ * be told apart without opening the detail.
+ *
+ * The 2026-08-27 request was bars only, and it stands for words and numbers —
+ * but three same-shaped pairs are three facts the reader cannot attribute, and
+ * on 2026-08-29 the user asked for a word, an icon or a letter before them.
+ * For an email, the domain's first label is what actually distinguishes
+ * accounts (`gmail`, `itline`); the shared local part distinguishes nothing.
+ * Anything else is the name itself, capped.
+ */
+export function shortLabel(name: string): string {
+  const at = name.lastIndexOf('@')
+  if (at >= 0 && at < name.length - 1) {
+    return name
+      .slice(at + 1)
+      .split('.')[0]
+      .slice(0, 12)
+  }
+  return name.slice(0, 12)
+}
+
+/**
  * One line naming everything about an account, for the compact mark's tooltip.
  *
  * The name has to go SOMEWHERE. Compacting to icons and numbers was asked for by

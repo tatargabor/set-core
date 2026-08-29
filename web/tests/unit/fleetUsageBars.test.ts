@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import {
   criticalCount,
   elapsedFraction,
+  shortLabel,
   markWindow,
   stripState,
   toneFor,
@@ -314,5 +315,22 @@ describe('a GLM account beside the Claude accounts', () => {
     })
 
     expect(criticalCount(state)).toBe(1)
+  })
+})
+
+describe('the compact label before the bars', () => {
+  it('uses the domain label of an email, which is what distinguishes accounts', () => {
+    expect(shortLabel('tatar.gabor@gmail.com')).toBe('gmail')
+    expect(shortLabel('info@tgholsters.hu')).toBe('tgholsters')
+    expect(shortLabel('tatar.gabor@itline.hu')).toBe('itline')
+  })
+
+  it('keeps a provider name as itself, capped', () => {
+    expect(shortLabel('GLM')).toBe('GLM')
+    expect(shortLabel('a-very-long-account-name')).toBe('a-very-long-')
+  })
+
+  it('falls back to the name when there is nothing after the at-sign', () => {
+    expect(shortLabel('weird@')).toBe('weird@')
   })
 })
