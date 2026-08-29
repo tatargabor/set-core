@@ -69,8 +69,7 @@ consumer's name, path, or content.
 ## Open
 
 ### B-115 — a subagent under a provider-switched parent keeps the parent's ENDPOINT and its own ANTHROPIC model name, and the gateway answers anyway
-- **state:** open — measured, not fixed. Raised by the user's question ("subagents will also work?")
-  while closing B-114.
+- **state:** CLOSED (2026-08-29, `efd2c0f1`) — the entry stays; the measurement and the decision are below. Raised by the user's question ("subagents will also work?") while closing B-114.
 - **measured 2026-08-29, two probes against the live GLM endpoint:**
 
   | probe | model sent | result |
@@ -105,9 +104,46 @@ consumer's name, path, or content.
   the way `resolve()` refuses an unknown model. A cross-vendor pair must not reach the
   gateway; the design's own rule is that a level supplying a credential supplies its endpoint,
   and no launch silently falls back to another frame.
-- **not fixed here on purpose:** this is a design decision about where role-model resolution
-  belongs, not a defect with an obvious patch, and it crosses the resolver's declared scope
-  boundary.
+- **CLOSED by a validated `model_aliases` block** (`efd2c0f1`), declared per provider and
+  checked at load time against that provider's own catalogue. Each entry becomes one
+  `ANTHROPIC_DEFAULT_<ALIAS>_MODEL` variable, which is the only carrier that reaches a Task
+  subagent: it chooses inside the running CLI, after launch, so no argv can reach it.
+  **Proven, not assumed** — pointing the sonnet alias at a name that does not exist produced
+  `unrecognized_model {"model": "<that name>"}` with `duration_api_ms: 0`, so the alias was
+  rewritten and no call was made. Verified cross-project: an agent started on glm in a
+  DIFFERENT project received all four variables plus `--model` and the endpoint.
+
+  The validation is the point of a block rather than raw variables: setting them by hand
+  accepts any string, and the only symptom of a typo is one subagent quietly answering from a
+  fallback.
+
+- **The model choice, decided 2026-08-29 from measurement rather than instinct — and it
+  REVERSED the first answer.** The map was initially set to `glm-5.3` for every alias, on the
+  user's rule that a weak model must not be used. Researching the two models changed it:
+
+  | | DeepSWE v1.1 | modality | Coding Plan quota |
+  |---|---|---|---|
+  | GLM-5.2 (previous flagship) | 46.2 | — | — |
+  | GLM-5.3-Flash | 63.4 | **multimodal** (video/image/file) | **3x** |
+  | GLM-5.3 | 66.9 | **text only** | 1x |
+
+  So: **main agent on `glm-5.3`** (strongest reasoning, and its work is text), **subagents on
+  `glm-5.3-flash`** — fan-out is exactly where a 3x quota matters, the gap is ~5%, and Flash
+  is the only one of the two that can SEE an image. Putting `gui-tester` on text-only
+  `glm-5.3` would have broken the repo's own rule that a UI change is not done until somebody
+  looked at the screen. Flash is also not the "weak model" the original rule guarded against:
+  it beats the previous flagship by 17 points.
+
+  ⚠ **The friend-reported claim was half right and the wording mattered.** It was reported as
+  a *concurrency* limit that is smaller for `glm-5.3`. z.ai publishes **no per-model
+  concurrency limit** — concurrency is dynamic, ranked Max > Pro > Lite, and raised off-peak.
+  What is documented is a **quota** difference (3x, plus 50% points off-peak). The practical
+  effect is the same but the two fail differently: a quota limit throttles the day, a
+  concurrency cap throttles one fan-out.
+
+- **The two levers are separate, which is what made the split clean:** `default_model` governs
+  the PRIMARY agent, `model_aliases` governs SUBAGENTS. Not measured: the account's plan tier
+  (Lite ~80 / Pro ~400 / Max ~1600 prompts per 5 h), which decides how much the 3x is worth.
 
 ### B-114 — the resolved MODEL reaches the record, the API and the tile, and never the child's command line
 - **state:** CLOSED (2026-08-29) — the entry stays; the measurement is below
