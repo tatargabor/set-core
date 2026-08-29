@@ -44,7 +44,7 @@ export function AgentStageStrip({ stage }: { stage: FleetAgent['stage'] }) {
       return (
         <span data-fleet-stage="empty" data-testid="fleet-stage-empty"
               title="nothing started — no change is in flight here"
-              className="inline-flex shrink-0 items-center px-1 text-xs text-fg-ghost" aria-label="nothing started">
+              className="inline-flex shrink-0 items-center px-1 text-xs text-fg-muted" aria-label="nothing started">
           —
         </span>
       )
@@ -66,8 +66,15 @@ export function AgentStageStrip({ stage }: { stage: FleetAgent['stage'] }) {
   const flow = stage.flow ?? []
   const currentIndex = stage.outside ? -1 : flow.indexOf(stage.position ?? '')
   return (
+    // Full sub-row width, left-aligned — the strip IS the second line of the
+    // sub-row, and a pipeline reads left to right. Measured in the browser at
+    // the column's own width: a right-aligned wrapped variant broke the flow
+    // into a ragged stack, which is the opposite of at-a-glance. Done and
+    // pending are plain COLOURED TEXT rather than chips for the same reason —
+    // five boxed chips do not fit the column, five words do; only the running
+    // stage keeps a box, because it is the one worth a second look.
     <span data-fleet-stage="strip" data-testid="fleet-stage-strip" data-fleet-stage-source={stage.source ?? undefined}
-          className="inline-flex shrink-0 items-center gap-0.5 flex-wrap max-w-[60%] justify-end">
+          className="inline-flex -mr-1 items-center gap-x-[3px] gap-y-0.5 flex-wrap min-w-0">
       {flow.map((name, i) => {
         const state = i < currentIndex ? 'done' : i === currentIndex ? 'running' : 'pending'
         return (
@@ -76,9 +83,9 @@ export function AgentStageStrip({ stage }: { stage: FleetAgent['stage'] }) {
                 title={state === 'done' ? `${name} — done`
                   : state === 'running' ? `${name} — where this agent is now`
                     : `${name} — not reached yet`}
-                className={`rounded px-1 text-xs leading-4 whitespace-nowrap ${
-                  state === 'done' ? 'bg-teal-400/10 text-teal-300'
-                    : state === 'running' ? 'bg-indigo-400/25 text-indigo-100 ring-1 ring-indigo-300/60 font-medium'
+                className={`text-xs leading-4 whitespace-nowrap ${
+                  state === 'done' ? 'text-teal-300'
+                    : state === 'running' ? 'rounded bg-indigo-400/25 px-0.5 text-indigo-100 ring-1 ring-indigo-300/60 font-medium'
                       : 'text-fg-ghost'
                 }`}>
             {name}

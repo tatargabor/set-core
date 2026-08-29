@@ -633,7 +633,7 @@ function ProjectRow(p: RowProps) {
           construction rather than by a second filter to keep in step.
           Suppressed for agent-less projects: a tree of empty nodes is noise. */}
       {p.active && p.onSelectAgent && (p.project?.agents?.length ?? 0) > 0 && (
-        <div data-fleet-agent-rows={p.name} className="mt-0.5 mb-1 ml-6 mr-1 space-y-px">
+        <div data-fleet-agent-rows={p.name} className="mt-0.5 mb-1 ml-3 mr-1 space-y-px">
           {p.project!.agents.map(a => (
             <AgentSubRow key={a.pid} agent={a} project={p.name}
                          focused={p.focusedPid === a.pid}
@@ -660,22 +660,34 @@ function AgentSubRow({ agent, project, focused, onSelectAgent }: {
   focused: boolean
   onSelectAgent: (project: string, pid: number) => void
 }) {
+  const resolved = agent.stage?.state === 'resolved'
   return (
+    // TWO lines by design — the user said it outright: a sub-row *"nem egy sor,
+    // nagyobb magasságot is felvehet"*. Line 1 is the agent; line 2, only when
+    // a flow is resolved, is the pipeline itself, left-aligned under the name.
+    // The first rendering squeezed both onto one line and the strip wrapped
+    // into a ragged right-aligned stack — measured in the browser, then fixed
+    // here rather than argued with.
     <button
       type="button"
       data-fleet-agent-row={agent.pid}
       data-fleet-agent-row-focused={focused ? 'true' : undefined}
       onClick={() => onSelectAgent(project, agent.pid)}
       title={agent.name ? `open ${agent.name}` : `open agent ${agent.pid}`}
-      className={`group flex w-full items-center gap-1.5 rounded px-1.5 py-0.5 text-left transition-colors ${
+      className={`group flex w-full flex-col items-stretch gap-0.5 rounded px-1 py-0.5 text-left transition-colors ${
         focused ? 'bg-surface-raised' : 'hover:bg-surface-raised/50'
       }`}
     >
-      <span aria-hidden className="text-xs text-fg-ghost leading-none select-none shrink-0">└</span>
-      <span className={`text-xs truncate flex-1 min-w-0 ${focused ? 'text-fg-strong' : 'text-fg-muted'}`}>
-        {agent.name ?? `pid ${agent.pid}`}
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span aria-hidden className="text-xs text-fg-ghost leading-none select-none shrink-0">└</span>
+        <span className={`text-xs truncate flex-1 min-w-0 ${focused ? 'text-fg-strong' : 'text-fg-muted'}`}>
+          {agent.name ?? `pid ${agent.pid}`}
+        </span>
+        {/* The one-line marks (empty, gap) ride beside the name; a resolved
+            flow gets its own line below rather than competing with the name. */}
+        {!resolved && <AgentStageStrip stage={agent.stage} />}
       </span>
-      <AgentStageStrip stage={agent.stage} />
+      {resolved && <AgentStageStrip stage={agent.stage} />}
     </button>
   )
 }

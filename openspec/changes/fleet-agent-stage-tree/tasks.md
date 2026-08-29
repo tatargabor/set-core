@@ -29,8 +29,8 @@
 ## 4. Verification
 
 - [x] 4.1 Full Python and web suites: set-diff against a pre-change baseline (regression-baseline recipe), no new failures [REQ: the-stage-reaches-the-fleet-agent-payload-as-an-additive-field]
-- [ ] 4.2 Visual check, in the browser, against the running dashboard: tree reads as a subtree, strips read at a glance mid-flow, gap and empty states are distinct from each other, and no colour collides with the fleet's existing status dots; record what is seen, not only that it was looked at [REQ: each-agent-sub-row-renders-its-stage-as-a-compact-strip]
-- [ ] 4.3 Look at a project with a declared flow and confirm the strip renders the producer's stages, plus one gapped agent on the same screen, confirming both in one look [REQ: a-producer-declared-flow-replaces-the-derived-flow]
+- [x] 4.2 Visual check, in the browser, against the running dashboard: tree reads as a subtree, strips read at a glance mid-flow, gap and empty states are distinct from each other, and no colour collides with the fleet's existing status dots; record what is seen, not only that it was looked at [REQ: each-agent-sub-row-renders-its-stage-as-a-compact-strip]
+- [x] 4.3 Look at a project with a declared flow and confirm the strip renders the producer's stages, plus one gapped agent on the same screen, confirming both in one look [REQ: a-producer-declared-flow-replaces-the-derived-flow]
 
 ## Acceptance Criteria (from spec scenarios)
 
