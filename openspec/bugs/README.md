@@ -68,6 +68,36 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-105 — the fleet's work-unit start builds an argv the owner cannot resolve, and reports it as started
+
+- **state:** open
+- **reported:** 2026-08-29 by this session, while measuring how far the work-cycle engine is
+  from being startable from the screen. Not a task in `work-cycle-engine-apply-first`: the
+  route and the console script both shipped there and both are correct in isolation — the
+  defect is in the seam between them and only exists on an installed machine.
+- **measured:** `POST /api/fleet/units` builds `argv[0] = "set-work-cycle"`
+  (`lib/set_orch/api/fleet.py:1509` `ENGINE_COMMAND`), the owner passes it to
+  `os.execvpe` through `child_env = dict(os.environ)` (`lib/set_orch/fleet/owner.py:162`,
+  `lib/set_orch/fleet/scopes/_systemd.py:169`), and the owner's own PATH does not contain it:
+
+  ```
+  $ tr '\0' '\n' < /proc/<owner-pid>/environ | grep ^PATH=
+  PATH=~/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+  $ env -i PATH=<that> sh -c 'command -v set-work-cycle'   # empty
+  ```
+
+  The console script exists **only inside the repo's venv** (`.venv/bin/set-work-cycle`);
+  `~/.local/bin` holds the other `set-*` tools (`set-work`, `set-orch-core`) but not this one,
+  and the `set-web` unit pins the same PATH (`Environment=PATH=…`, no venv).
+  ⚠ **Fail direction is the reassuring one.** The route answers `200` with a label, a pid and
+  `engine_argv`, because the failure happens in the forked child *after* the scope is claimed —
+  so the screen would show a started work unit whose process exited 127 immediately.
+- **fixed when:** the engine command resolves from the owner's environment on a machine where
+  the framework is installed — `env -i PATH=<owner PATH> sh -c 'command -v set-work-cycle'`
+  prints a path — and a test asserts the seam rather than either side of it (resolve
+  `ENGINE_COMMAND` with `shutil.which` under the owner's env, or have the route emit an
+  absolute interpreter-relative path). A start whose child cannot exec must not answer `200`.
+
 ### B-102 — `last_movement_seconds` is read from a log file that is rewritten without new entries
 
 - **state:** open
