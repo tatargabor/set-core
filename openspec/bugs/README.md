@@ -68,7 +68,7 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-105 — the fleet's work-unit start builds an argv the owner cannot resolve, and reports it as started
+### B-105 — the fleet's work-unit start names an engine command the owner cannot resolve, and the refusal blames the scope
 
 - **state:** open
 - **reported:** 2026-08-29 by this session, while measuring how far the work-cycle engine is
@@ -88,15 +88,33 @@ consumer's name, path, or content.
 
   The console script exists **only inside the repo's venv** (`.venv/bin/set-work-cycle`);
   `~/.local/bin` holds the other `set-*` tools (`set-work`, `set-orch-core`) but not this one,
-  and the `set-web` unit pins the same PATH (`Environment=PATH=…`, no venv).
-  ⚠ **Fail direction is the reassuring one.** The route answers `200` with a label, a pid and
-  `engine_argv`, because the failure happens in the forked child *after* the scope is claimed —
-  so the screen would show a started work unit whose process exited 127 immediately.
+  and the `set-web` unit pins the same PATH (`Environment=PATH=…`, no venv). So the route
+  cannot start a unit on this machine at all.
+
+  ⚠ **This entry first claimed the route answers `200` with a label and a pid. Measured, and
+  it does not** — the correction is kept because the wrong prediction is the reusable part.
+  Probed directly with the owner's PATH:
+
+  ```
+  $ env -i PATH=<owner PATH> XDG_RUNTIME_DIR=... systemd-run --user --scope --collect \
+      --quiet --unit=set-b105-probe.scope set-work-cycle --help
+  Failed to find executable set-work-cycle: No such file or directory   # exit 1
+  $ systemctl --user show set-b105-probe.scope -p ActiveState -p LoadState
+  LoadState=not-found   ActiveState=inactive
+  ```
+
+  No scope registers, so `await_unit` spins its full 40 × 0.1 s and `adopt` raises
+  `ScopeError("<unit> did not become active")`, which the owner re-raises as
+  `OwnerError(… "; the agent was not started")` and the route turns into a **409**. The real
+  defect is therefore narrower and of a class this repo already names: **the failure is
+  attributed to the wrong cause.** The caller waits four seconds and is told the scope did not
+  become active — a true sentence about the symptom that points away from the missing command,
+  which is the one thing a reader could act on.
 - **fixed when:** the engine command resolves from the owner's environment on a machine where
   the framework is installed — `env -i PATH=<owner PATH> sh -c 'command -v set-work-cycle'`
-  prints a path — and a test asserts the seam rather than either side of it (resolve
-  `ENGINE_COMMAND` with `shutil.which` under the owner's env, or have the route emit an
-  absolute interpreter-relative path). A start whose child cannot exec must not answer `200`.
+  prints a path — **and** an unresolvable command is refused by name before a scope is claimed,
+  with a test that holds the measured shape: unresolvable command → refusal naming the command
+  and the environment, no four-second wait, and no `did not become active` in the message.
 
 ### B-102 — `last_movement_seconds` is read from a log file that is rewritten without new entries
 
