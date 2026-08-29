@@ -68,18 +68,18 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-110 — the dashboard watcher recursively watches every project ROOT, so 45 projects cost 176 687 inotify watches and 2.5 cores at idle
+### B-110 — the dashboard watcher recursively watches every project ROOT, so 45 projects cost 176 687 inotify watches and a quarter of a core at idle
 - **state:** open
 - **reported:** 2026-08-29 by the user, from an htop screenshot showing `cli_entry.py serve --port 7400` at the top of the CPU list
 - **measured:** `lib/set_orch/watcher.py:181-183` adds `self.project_path` (the project ROOT) to `watch_dirs`, and `watchfiles.awatch` is recursive by default, so the whole tree is watched — `node_modules`, `.git`, `.next`, `.venv` included. On this machine, one `set-web` process at idle:
   - `45` inotify instances, **`176 687` watches total** (sum of `^inotify wd:` lines across `/proc/<pid>/fdinfo/*`) — 34 % of `fs.inotify.max_user_watches` (524 288) held by a single process
-  - **252 CPU ticks / 10 s = 2.5 cores** steady state, with no orchestration running (`/proc/<pid>/stat` fields 14+15, sampled 10 s apart)
+  - **22–26 % of one core** steady state, with no orchestration running — three consecutive 10 s samples of `/proc/<pid>/stat` fields 14+15 gave `252`, `220`, `264` ticks, i.e. 2.2–2.6 s of CPU per 10 s of wall clock
   - `45` `notify-rs inotify` threads — exactly one per entry in `projects.json` (45 projects)
   - the per-instance counts match the trees one-to-one: `find <root> -type d | wc -l` gives `11 373` for this repo against `11 374` watches on its fd, and `33 756` for the largest registered project against `34 440`
   - the churn is visible in the log: `watchfiles.main: all changes filtered out` on `.git/index.lock` files inside worktrees of E2E runs that finished in April
   - the cost is not only CPU: a trivial `GET /api/projects` takes `0.73 s` while the event loop is saturated
   - **18 of the 45 registered projects are finished E2E runs** (38 GB under the runs directory), so most of the watch budget is spent on trees nothing will ever write to again
-- **fixed when:** with the same 45 projects registered, `set-web` at idle holds **under 5 000** inotify watches total and burns **under 10 ticks / 10 s**, while a state-file change in a live project still reaches a connected WebSocket client. Two independent parts: (a) stop watching the project root recursively — watch the state/log directories, and give the root a non-recursive watch or a `watch_filter` that excludes `node_modules`, `.git`, `.next`, `.venv`, `dist`, `build`; (b) do not start a watcher for a project whose orchestration is finished.
+- **fixed when:** with the same 45 projects registered, `set-web` at idle holds **under 5 000** inotify watches total and burns **under 2 % of one core** (20 ticks / 10 s), while a state-file change in a live project still reaches a connected WebSocket client. Two independent parts: (a) stop watching the project root recursively — watch the state/log directories, and give the root a non-recursive watch or a `watch_filter` that excludes `node_modules`, `.git`, `.next`, `.venv`, `dist`, `build`; (b) do not start a watcher for a project whose orchestration is finished.
 - **note on the fail direction:** it fails toward *silence*, which is why it survived. Nothing errors, the dashboard answers 200, and the only symptom is a machine that feels slow — so the cost is charged to every other process on the box rather than to the feature that incurs it.
 
 ### B-109 — three tracked files block every push: a consumer project's name in a spec, and two absolute home paths
