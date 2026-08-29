@@ -137,6 +137,35 @@ class OwnerClient:
     def health(self) -> Dict[str, Any]:
         return self.request("health")
 
+    def has_feature(self, name: str) -> bool:
+        """Whether the owner ON THE OTHER END declares it understands `name`.
+
+        Absence is the answer, and it must be read as "no": only an owner new
+        enough to know the question can answer it, and an older one drops what
+        it does not understand without a word.
+        """
+        return name in set(self.health().get("features") or ())
+
+    def require_feature(self, name: str, *, because: str) -> None:
+        """Refuse before sending a parameter an older owner would drop.
+
+        Offered as a method rather than folded into `start` because the CALLER
+        owns the judgement: what a dropped parameter costs differs per parameter.
+        A dropped provider bills another account; a dropped origin writes a false
+        record. Both deserve a refusal, and neither should be decided here on
+        behalf of a call site this module cannot see.
+
+        The message names an OPERATOR's act, because that is the remedy — a
+        caller cannot fix it by asking for something else.
+        """
+        if not self.has_feature(name):
+            raise OwnerClientError(
+                f"the agent owner service is older than this request and would "
+                f"silently drop {because}; restart it "
+                "(systemctl --user restart set-agent-owner) and try again",
+                "owner-too-old",
+            )
+
     def list_agents(self) -> List[Dict[str, Any]]:
         return self.request("list")
 
@@ -183,13 +212,8 @@ class OwnerClient:
             #
             # Fail closed, and name the remedy: an operator restarts a service,
             # which is a different act from choosing another provider.
-            if "provider-selection" not in set(self.health().get("features") or ()):
-                raise OwnerClientError(
-                    "the agent owner service is older than this request and would "
-                    "ignore the provider silently; restart it "
-                    "(systemctl --user restart set-agent-owner) and try again",
-                    "owner-too-old",
-                )
+            self.require_feature("provider-selection",
+                                 because="the provider and model")
         if provider:
             params["provider"] = provider
         if model:

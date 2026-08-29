@@ -74,7 +74,15 @@ DEFAULT_AGENT_ARGV = ("claude", "--dangerously-skip-permissions")
 
 #: What this owner understands, sent in `health`. Add a name here when a start
 #: gains a parameter an older owner would silently drop.
-FEATURES = frozenset({"provider-selection"})
+#:
+#: `unit-origin` covers `requested_by`, which a run's record turns into
+#: `started_by`. Measured 2026-08-29 at a peer's request: the parameter landed on
+#: 08-19 (`7f582c87`) and the owner running today understands it, so this is not
+#: a live defect — it is the same trap one layer along, and the reason to name it
+#: now is that its silent loss writes a FALSE record rather than an empty one.
+#: The design distinguishes "no origin was declared" from "the origin is
+#: unknown"; a dropped parameter produces the first while the second is true.
+FEATURES = frozenset({"provider-selection", "unit-origin"})
 
 #: Resolution refusals, as KINDS rather than as prose. A caller that has to grep
 #: the sentence to tell "you named a provider that does not exist" from "this

@@ -662,3 +662,43 @@ def test_this_owner_declares_the_capability_it_implements(monkeypatch, tmp_path)
     daemon = ownerd_mod.OwnerDaemon(str(tmp_path / "o.sock"), owner=_FakeOwner())
     health = _run(daemon._do_health({}))
     assert "provider-selection" in health["features"]
+
+
+def test_the_feature_guard_is_reusable_and_names_what_would_be_dropped(monkeypatch):
+    """One door, so a second parameter does not grow a second guard that drifts.
+
+    Asked for by the concurrent change, which passes `requested_by` and would
+    have the same silent loss — with a worse shape: a dropped origin does not
+    leave the record EMPTY, it makes the record say no origin was declared,
+    which the design deliberately distinguishes from "unknown". A false value,
+    not a gap.
+    """
+    client = OwnerClient.__new__(OwnerClient)
+    monkeypatch.setattr(OwnerClient, "health",
+                        lambda self: {"ok": True, "features": ["provider-selection"]})
+
+    client.require_feature("provider-selection", because="the provider")  # declared
+    with pytest.raises(OwnerClientError) as exc:
+        client.require_feature("unit-origin", because="who asked for the unit")
+    assert exc.value.kind == "owner-too-old"
+    assert "who asked for the unit" in str(exc.value)
+    assert "restart" in str(exc.value)
+
+
+def test_this_owner_declares_every_parameter_a_caller_may_send(monkeypatch, tmp_path):
+    """The list and the code that reads it must not drift apart.
+
+    Held as a test rather than as a convention because the failure is silent in
+    exactly one direction: a parameter honoured but NOT declared makes every
+    caller refuse against a perfectly capable owner, and a parameter declared
+    but not honoured is B-110 with extra steps.
+    """
+    daemon = ownerd_mod.OwnerDaemon(str(tmp_path / "o.sock"), owner=_FakeOwner())
+    features = set(_run(daemon._do_health({}))["features"])
+    assert features == {"provider-selection", "unit-origin"}
+
+    import inspect
+    src = inspect.getsource(ownerd_mod.OwnerDaemon._do_start)
+    # Each declared feature names a parameter this handler actually reads.
+    assert 'params.get("provider")' in src
+    assert 'params.get("requested_by")' in src
