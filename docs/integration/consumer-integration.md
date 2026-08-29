@@ -2337,3 +2337,28 @@ that pursues it will delete evidence and may reach for the parser patterns next.
 the declared order, vocabulary closed. Stage keys were already English by the producer's own F4
 reasoning. Their change is at proposal + four delta specs + design; `tasks.md` next, with an
 adversarial review before it.
+
+### The check that prohibition lacked — borrowed from the producer, who wrote it before building the detector
+
+The section above forbids translating a parser pattern and then names no check, which is the
+defect this repo keeps writing rules about. The producer closed that gap on their side and the
+shape transfers, so it is recorded here rather than re-derived later.
+
+Their language-policy gate does not exist yet — they verified that before writing its
+specification, which is the only cheap moment to get a detector's *target definition* right. It
+targets **prose written for the model**, never a character class. Four negative cases must NOT
+fire, and every one of them is a thing a naive grep flags:
+
+1. frozen schema markers (the wire format above),
+2. verbatim quote blocks together with their attribution lines,
+3. a domain word inside an English sentence — *the wanted form, not a leftover*,
+4. anything in the client-facing layer: their manual, release notes, replies to reported bugs.
+
+One positive case must fire: a Hungarian sentence in a rules page with no quote marking. And the
+gate reports the **visible / held-out gap** rather than a bare green — a detector scored only on
+the cases its author could think of is measuring its author.
+
+**If set-core ever builds the same check** — and the 24 quote-carrying files under `web/src` are
+the reason it would be tempting — this is the target definition to start from, not a diacritics
+grep. The failure direction is the expensive one: a grep's false positives look like work to do,
+and clearing them deletes evidence before anyone reaches the parser patterns.
