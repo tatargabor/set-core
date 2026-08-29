@@ -70,7 +70,7 @@ consumer's name, path, or content.
 
 ### B-111 — a question addressed to a person is written onto the blank line above the task, so the surface reports that nothing is pending
 
-- **state:** CLOSED (2026-08-29, `<this commit>`) — the entry stays; the measurement is below
+- **state:** CLOSED (2026-08-29, `92313420`) — the entry stays; the measurement is below
 - **reported:** 2026-08-29 by this session, from the third real work unit driven from the
   fleet screen (`work-cycle-run-visibility` task 7.4). Not a task in that change: the defect
   is in the engine's connector, not in the screen.
@@ -121,7 +121,7 @@ consumer's name, path, or content.
   says nothing is pending; the group is offered as runnable. Press start again and a second
   unit asks the same question in different words. This is the engine's own
   `answer released but never delivered` finding, one layer along.
-- **fixed (`<this commit>`):** the indent group is `[ \t]*`, and `mark_awaiting` now refuses
+- **fixed (`92313420`):** the indent group is `[ \t]*`, and `mark_awaiting` now refuses
   to write at all when the line it resolved is not a task line — a write that produces no
   marker must not report success. Mutation-tested: restoring `\s*` fails the new test, and
   the refusal guard fires independently; restore verified byte-identical by sha256. 85 tests
