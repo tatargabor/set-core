@@ -56,7 +56,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from .config import Credential, Provider, ProvidersConfig, load
+from .config import MODEL_ALIASES, Credential, Provider, ProvidersConfig, load
 from .errors import (
     IncompleteCredential, MissingCredential, UnknownModel, UnknownProvider,
 )
@@ -310,6 +310,17 @@ def resolve(
 
     # -- the environment ------------------------------------------------ #
     env: Dict[str, str] = dict(declared.env)
+    # The alias map, as environment. A subagent declared `model: sonnet` chooses
+    # its model INSIDE the running CLI, so nothing this framework puts on a
+    # command line can reach it — B-115. What it does inherit is the process
+    # environment, which is why the map is delivered this way and not as argv.
+    #
+    # Emitted from the DECLARATION rather than written into the provider's `env`
+    # by hand, so the targets are checked against that provider's own catalogue
+    # at load time. Hand-written variables are accepted unvalidated, and the only
+    # symptom of a typo is one subagent quietly answering from a fallback.
+    for alias, target in sorted(declared.model_aliases.items()):
+        env[MODEL_ALIASES[alias]] = target
     if credential is not None:
         env["ANTHROPIC_BASE_URL"] = credential.base_url
         env["ANTHROPIC_AUTH_TOKEN"] = credential.token

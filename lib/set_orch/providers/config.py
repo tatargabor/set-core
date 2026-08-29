@@ -36,7 +36,8 @@ working tree is removed by a `reset --hard` and republished by a careless `add`.
             "base_url": "https://api.z.ai/api/anthropic"
           },
           "env": {"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000"},
-          "args": ["--autocompact", "700k"]
+          "args": ["--autocompact", "700k"],
+          "model_aliases": {"sonnet": "glm-5.3", "haiku": "glm-5.3"}
         }
       },
       "projects": {
@@ -65,6 +66,15 @@ Both keys are REQUIRED on every declaration. An omitted key is an unfinished
 declaration and is refused by name, rather than defaulted into whichever
 behaviour happens to be safer to code.
 
+**`model_aliases` is how a SUBAGENT reaches the right model.** A subagent
+declared `model: sonnet` chooses inside the running CLI, after launch, so no
+argv this framework builds can reach it — the process environment is the only
+carrier. Each entry becomes one `ANTHROPIC_DEFAULT_<ALIAS>_MODEL` variable.
+Targets are checked against this provider's own catalogue at load time, because
+setting those variables by hand accepts any string and fails silently: measured
+2026-08-29, an invalid target produced nothing but one `unrecognized_model` line
+inside a single subagent's output.
+
 **`env` and `args` are DATA.** They are the measured launch parameters, and they
 live here so that adding a model, or correcting a parameter, costs no framework
 change and no redeploy. The values shipped for the alternative provider were
@@ -80,7 +90,7 @@ import json
 import logging
 import os
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -123,6 +133,23 @@ class Credential:
     base_url: str
 
 
+#: The model ALIASES a Claude Code process resolves in-process, and the
+#: environment variable that redirects each one. This is the whole reason a
+#: `model_aliases` block can work at all: a subagent defined with
+#: `model: sonnet` picks its model INSIDE the running CLI, after launch, so no
+#: argv this framework builds can reach it — but the environment it inherits can.
+#: Measured 2026-08-29 against Claude Code 2.1.251 by pointing the sonnet alias
+#: at a name that does not exist: the CLI reported
+#: `unrecognized_model {"model": "<that name>"}` and made no API call, which is
+#: the proof the alias was rewritten rather than ignored.
+MODEL_ALIASES: Dict[str, str] = {
+    "haiku": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "sonnet": "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "opus": "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "fable": "ANTHROPIC_DEFAULT_FABLE_MODEL",
+}
+
+
 @dataclass(frozen=True)
 class Provider:
     """One declared provider: how to reach it, and what it will answer to."""
@@ -143,6 +170,11 @@ class Provider:
     #: Measured launch parameters, as data.
     env: Dict[str, str]
     args: Tuple[str, ...]
+    #: alias -> one of this provider's OWN models. Declared per provider rather
+    #: than per project, because it is a statement about that provider's
+    #: catalogue, not about a piece of work. Empty means "this provider answers
+    #: to the aliases directly", which is true of `anthropic` and of nothing else.
+    model_aliases: Dict[str, str] = field(default_factory=dict)
 
     def is_usable(self) -> bool:
         """Whether an agent can actually be started on this provider right now."""
@@ -252,6 +284,32 @@ def _provider(name: str, raw: object, source: Path) -> Provider:
     if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
         raise ConfigError(f"{where}: 'args' must be a list of strings")
 
+    # `model_aliases` is validated at LOAD time, against this provider's own
+    # catalogue, because the alternative is silent. Setting the underlying
+    # environment variable by hand accepts any string at all — measured: a
+    # deliberately invalid name was taken without complaint, and the only symptom
+    # was a `unrecognized_model` line inside one subagent's output. A refusal
+    # naming the file and the catalogue is the whole point of declaring it here
+    # rather than writing the variables directly.
+    aliases = raw.get("model_aliases", {})
+    if not isinstance(aliases, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in aliases.items()
+    ):
+        raise ConfigError(f"{where}: 'model_aliases' must be an object of alias -> model name")
+    for alias, target in aliases.items():
+        if alias not in MODEL_ALIASES:
+            raise ConfigError(
+                f"{where}: 'model_aliases' names {alias!r}, which is not an alias the CLI "
+                f"resolves. Known aliases: {', '.join(sorted(MODEL_ALIASES))}"
+            )
+        if target not in models:
+            raise ConfigError(
+                f"{where}: 'model_aliases.{alias}' is {target!r}, which is not in this "
+                f"provider's own catalogue ({', '.join(models)}). An alias may only point at "
+                f"a model this provider actually serves — pointing it elsewhere is the "
+                f"cross-provider pair this design refuses everywhere else."
+            )
+
     return Provider(
         name=name,
         models=tuple(models),
@@ -260,6 +318,7 @@ def _provider(name: str, raw: object, source: Path) -> Provider:
         credential=_credential(raw["credential"], where),
         env={k: str(v) for k, v in env.items()},
         args=tuple(args),
+        model_aliases={k: str(v) for k, v in aliases.items()},
     )
 
 

@@ -218,3 +218,88 @@ def test_resolving_does_not_create_or_modify_any_file(tmp_path):
     resolver.resolve(provider="glm", model="glm-5.3", config=cfgmod.load(p))
     after = {q: (q.stat().st_mtime_ns, q.stat().st_size) for q in p.parent.iterdir()}
     assert before == after
+
+
+# --------------------------------------------------------------------------- #
+# model_aliases — B-115's mechanism, validated at load time
+# --------------------------------------------------------------------------- #
+
+def _cfg_with(aliases, models=("glm-5.3", "glm-5.3-flash"), tmp=None):
+    import json
+    from set_orch.providers.config import load
+    raw = {
+        "version": 1,
+        "default": {"provider": "glm"},
+        "providers": {
+            "glm": {
+                "models": list(models),
+                "requires_credential": False,
+                "credential": None,
+                "default_model": models[0],
+                "env": {},
+                "args": [],
+                "model_aliases": aliases,
+            }
+        },
+    }
+    p = tmp / "providers.json"
+    p.write_text(json.dumps(raw))
+    # 0600 or `load` refuses on permissions before it ever parses. Without this
+    # the alias tests below raise ConfigError for the WRONG reason and a bare
+    # `pytest.raises(ConfigError)` would have gone green on it — which is why
+    # each one asserts the message content, not just the type.
+    os.chmod(p, 0o600)
+    return load(path=p)
+
+
+def test_model_aliases_load_and_reach_the_resolved_env(tmp_path):
+    """The map is delivered as ENVIRONMENT, which is the only carrier that works.
+
+    A subagent declared `model: sonnet` picks its model inside the running CLI,
+    after launch, so no argv this framework builds can reach it (B-115). The
+    process environment is what it does inherit.
+    """
+    from set_orch.providers import resolver
+
+    cfg = _cfg_with({"sonnet": "glm-5.3", "haiku": "glm-5.3-flash"}, tmp=tmp_path)
+    assert cfg.providers["glm"].model_aliases == {"sonnet": "glm-5.3", "haiku": "glm-5.3-flash"}
+
+    plan = resolver.resolve(provider="glm", model=None, config=cfg)
+    assert plan.env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "glm-5.3"
+    assert plan.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "glm-5.3-flash"
+    # An alias nobody declared is not invented.
+    assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in plan.env
+
+
+def test_an_alias_pointing_outside_the_provider_s_catalogue_is_REFUSED(tmp_path):
+    """This refusal is the entire reason for the block instead of raw env vars.
+
+    Setting `ANTHROPIC_DEFAULT_SONNET_MODEL` by hand accepts any string at all —
+    measured 2026-08-29 with a deliberately invalid name, which the CLI took
+    without complaint and reported only as `unrecognized_model` inside one
+    subagent's own output. Declaring it here means a typo is a load-time error
+    naming the file, not a subagent quietly answering from a fallback.
+    """
+    from set_orch.providers.config import ConfigError
+
+    with pytest.raises(ConfigError) as exc:
+        _cfg_with({"sonnet": "claude-sonnet-4-6"}, tmp=tmp_path)
+    assert "claude-sonnet-4-6" in str(exc.value)
+    assert "catalogue" in str(exc.value)
+
+
+def test_an_unknown_alias_name_is_REFUSED(tmp_path):
+    """Only aliases the CLI actually resolves may be declared; anything else
+    would be written into an environment variable nothing reads."""
+    from set_orch.providers.config import ConfigError
+
+    with pytest.raises(ConfigError) as exc:
+        _cfg_with({"turbo": "glm-5.3"}, tmp=tmp_path)
+    assert "turbo" in str(exc.value)
+
+
+def test_a_provider_declaring_no_aliases_emits_none(tmp_path):
+    from set_orch.providers import resolver
+    cfg = _cfg_with({}, tmp=tmp_path)
+    plan = resolver.resolve(provider="glm", model=None, config=cfg)
+    assert not [k for k in plan.env if k.startswith("ANTHROPIC_DEFAULT_")]
