@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+#
+# set-glm — Claude Code a z.ai GLM modelljein, a mért paraméterekkel.
+#
+# Miért nem elég egy `ANTHROPIC_BASE_URL=… claude`: a CLI nem ismeri a GLM
+# context-ablakát, ezért ~200k-ra vág, és a hosszú prompt vagy `Prompt is too long`-gal
+# hasal el, vagy — rosszabb — NÉMÁN compact-hurokba fut. Mérve 2026-08-29 (wpc-pont,
+# apply-cycle): 9,5 perc, három egymást követő compact, NULLA megírt sor, majd a CLI
+# saját üzenete: „Autocompact is thrashing". Kívülről ez „lassú modell"-nek látszik.
+#
+# A három beállítás, ami ezt megoldja, és a mérés, ami eldöntötte (ugyanaz a ~250k
+# tokenes prompt, négy változatban):
+#
+#   csak `--autocompact 700k` ....................... Prompt is too long, input=0
+#   MAX_CONTEXT_TOKENS + DISABLE_…_ENFORCEMENT ...... OK, input_tokens=524 731
+#   csak `CLAUDE_CODE_MAX_CONTEXT_TOKENS` ........... OK   ← szükséges ÉS elégséges
+#   csak `…_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT`  Prompt is too long
+#
+# A második env-et ezért NEM állítjuk be: a fölös env csak elfedi, mi hat.
+#
+# Használat:
+#   set-glm -p "prompt"                    egyszeri hívás
+#   set-glm -p "…" --output-format json    strukturált kimenet
+#   set-glm                                interaktív session GLM-en
+#   set-glm --check                        konfiguráció + élő próbahívás, futtatás nélkül
+#   set-glm --print-env                    a beállított env kiírása (a token MASZKOLVA)
+#
+# Konfiguráció (első találat nyer):
+#   1. a folyamat env-je (GLM_TOKEN, GLM_MODEL, …)
+#   2. ./.env a MOSTANI repóban          — projekt-szintű
+#   3. ~/.config/set-core/glm.env        — gépszintű, ez a hordozható hely
+#
+set -euo pipefail
+
+readonly GLM_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/set-core/glm.env"
+
+# ── Mért alapértékek — ne írd át mérés nélkül ────────────────────────────────
+# endpoint: a z.ai NATÍV Anthropic-endpointja (nem OpenRouter, nem LiteLLM)
+readonly DEFAULT_BASE_URL="https://api.z.ai/api/anthropic"
+# 900k: a mért ~1M ablak alatt, hogy a CLI ne vágjon
+readonly DEFAULT_CONTEXT_TOKENS="900000"
+# 700k: a mért 800 016 elfogadott input token alatt
+readonly DEFAULT_AUTOCOMPACT="700k"
+
+die() { printf '\033[31mset-glm: %s\033[0m\n' "$*" >&2; exit 1; }
+note() { printf '\033[2mset-glm: %s\033[0m\n' "$*" >&2; }
+
+# ── A GLM_* kulcsok beolvasása — SZÁNDÉKOSAN SZŰK ────────────────────────────
+#
+# Csak a `GLM_` prefixű sorokat vesszük át, és a már beállított értéket nem írjuk
+# felül. Azért nem `set -a; source .env`, mert az az ANTHROPIC_API_KEY-t is behozná —
+# épp azt a kulcsot, ami a hívást CSENDBEN a platform-számlára irányítaná át.
+# Amit nem hozunk be, az nem is szivároghat ki.
+load_glm_env() {
+    local file="$1"
+    [[ -r "$file" ]] || return 0
+    local line key val
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*(GLM_[A-Z0-9_]+)[[:space:]]*=(.*)$ ]] || continue
+        key="${BASH_REMATCH[1]}"
+        val="${BASH_REMATCH[2]}"
+        val="${val#"${val%%[![:space:]]*}"}"          # bal trim
+        val="${val%"${val##*[![:space:]]}"}"          # jobb trim
+        val="${val%\"}"; val="${val#\"}"              # idézőjelek
+        val="${val%\'}"; val="${val#\'}"
+        [[ -n "${!key:-}" ]] && continue              # a már beállított nyer
+        printf -v "$key" '%s' "$val"
+        export "${key?}"
+    done < "$file"
+}
+
+repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
+
+load_glm_env "$(repo_root)/.env"
+load_glm_env "$GLM_CONF"
+
+# ── Feloldás és a HANGOS elutasítás ──────────────────────────────────────────
+#
+# Fail-closed, mindenhol: hiányzó konfigra megállunk, és SOHA nem esünk vissza
+# Claude-ra. A csendes fallback a legrosszabb kimenet — a futás lefutna, csak épp a
+# másik keretből, és semmi nem jelezné.
+[[ -n "${GLM_TOKEN:-}" ]] || die "hiányzik a GLM_TOKEN.
+  Vedd fel ide: $GLM_CONF        (gépszintű, minden projektnek)
+  vagy a repo .env-jébe:  GLM_TOKEN=…
+  Minta:  printf 'GLM_TOKEN=%s\\nGLM_MODEL=glm-5.3-flash\\n' \"\$KULCS\" > '$GLM_CONF'"
+
+MODEL="${GLM_MODEL:-}"
+[[ -n "$MODEL" ]] || die "nincs modell — állítsd be a GLM_MODEL-t (pl. glm-5.3-flash)."
+
+# ⚠ A gateway-prefix az a hiba, ami egy egész éjszakai futást buktat el az ELSŐ
+# hívásnál. A `zai/glm-5.3-flash` az OpenRouter/LiteLLM alak; a z.ai natív
+# endpointja prefix nélküli nevet vár, a prefixesre `[1214][modelCode: does not
+# exist]` 400-at ad. Ezért itt utasítjuk el, indulás előtt.
+[[ "$MODEL" != */* ]] || die "a modellnév (\"$MODEL\") gateway-prefixet tartalmaz.
+  A z.ai Anthropic-endpointja prefix nélküli nevet vár (pl. \"glm-5.3-flash\");
+  a \"zai/…\" alakra 400 a válasz. Vedd le a prefixet."
+
+BASE_URL="${GLM_BASE_URL:-$DEFAULT_BASE_URL}"
+CONTEXT_TOKENS="${GLM_CONTEXT_TOKENS:-$DEFAULT_CONTEXT_TOKENS}"
+AUTOCOMPACT="${GLM_AUTOCOMPACT:-$DEFAULT_AUTOCOMPACT}"
+
+# ── A gyerekfolyamat env-je ──────────────────────────────────────────────────
+#
+# A három `unset` MINDIG lefut: egy shellből örökölt kulcs vagy base URL különben
+# csendben átirányítaná a hívást, és a képernyőn semmi nem jelezné, melyik keretre ment.
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+export ANTHROPIC_BASE_URL="$BASE_URL"
+export ANTHROPIC_AUTH_TOKEN="$GLM_TOKEN"
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CONTEXT_TOKENS"
+
+mask() { local t="$1"; printf '%s…%s (%d kar.)' "${t:0:6}" "${t: -4}" "${#t}"; }
+
+case "${1:-}" in
+  --print-env)
+      printf 'ANTHROPIC_BASE_URL=%s\n' "$BASE_URL"
+      printf 'ANTHROPIC_AUTH_TOKEN=%s\n' "$(mask "$GLM_TOKEN")"
+      printf 'CLAUDE_CODE_MAX_CONTEXT_TOKENS=%s\n' "$CONTEXT_TOKENS"
+      printf -- '--model %s --autocompact %s\n' "$MODEL" "$AUTOCOMPACT"
+      exit 0 ;;
+  --check)
+      note "próbahívás: $MODEL @ $BASE_URL"
+      out=$(claude --model "$MODEL" --autocompact "$AUTOCOMPACT" \
+                   -p 'Válaszolj EGYETLEN szóval: OK' --output-format json 2>&1) || {
+          printf '%s\n' "$out" >&2
+          die "a próbahívás ELHASALT — a fenti a CLI válasza."
+      }
+      printf '%s\n' "$out" | head -c 2000; echo
+      note "OK — a konfiguráció él."
+      exit 0 ;;
+esac
+
+# A hívó `--autocompact`-ja nyer; ha nem adott meg, a mért alapérték megy.
+extra=()
+[[ " $* " == *" --autocompact "* ]] || extra=(--autocompact "$AUTOCOMPACT")
+[[ " $* " == *" --model "* ]] || extra+=(--model "$MODEL")
+
+# ⚠ Ez a sor NEM kozmetika: egy keret-váltásnak látszania kell. Enélkül a futás
+# megkülönböztethetetlen egy sima `claude`-tól, és a következő olvasó (ember vagy
+# agent) rossz kerethez rendeli a költséget és a minőséget.
+note "GLM: $MODEL @ $BASE_URL (ablak ${CONTEXT_TOKENS}, autocompact ${AUTOCOMPACT})"
+
+exec claude "${extra[@]}" "$@"
