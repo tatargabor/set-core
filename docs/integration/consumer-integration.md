@@ -2296,4 +2296,4 @@ principle, which is the intended order.
 table on today's renderer, on a new tab, and their change does not depend on `stageOrder`. Their
 implementation has not started; proposal, four delta specs and design are done, `tasks.md` next,
 with an adversarial review before it. The contract delta also goes through the file channel at
-`~/.local/share/set-core/channels/wpc-pont/wpc-pont.md`, F1 first.
+the file channel under `~/.local/share/set-core/channels/<consumer>/`, F1 first.
