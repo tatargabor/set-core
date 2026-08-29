@@ -186,10 +186,39 @@ class TestJoin:
         log2.write_text('{"content": "merging change/branch-b now"}\n', encoding="utf-8")
         assert stage.infer_change_from_session(str(log2)) == "branch-b"
 
-    def test_inference_reads_the_head_and_no_more(self, tmp_path):
+    def test_inference_reads_windows_and_no_more(self, tmp_path):
+        # Bounded reads: a marker in the MIDDLE of a large transcript is in
+        # neither the head nor the tail window, and is not found. Reading the
+        # whole file per agent per poll is the cost this refuses.
         log = tmp_path / "s4.jsonl"
-        log.write_bytes(b'{"content": "x"}\n' * 20000
-                        + b'{"content": "/opsx:apply deep-a"}\n')
+        filler = b'{"content": "x"}\n' * 34000  # ~600 KB
+        middle = b'{"content": "/opsx:apply deep-a"}\n'
+        log.write_bytes(filler[:290_000] + middle + filler[290_000:])
+        assert log.stat().st_size > 570_000
+        # The marker sits past the head window and before the tail window:
+        assert 262_144 < 290_000 < log.stat().st_size - 262_144
+        assert stage.infer_change_from_session(str(log)) is None
+
+    def test_inference_prefers_the_most_recent_mention(self, tmp_path):
+        # The measured case that forced the tail window: a long-running
+        # session's HEAD names a change it left days ago; its TAIL names the
+        # one actually in flight. Recency wins.
+        log = tmp_path / "s7.jsonl"
+        head = b'{"content": "/opsx:apply stale-one"}\n' * 20000  # ~400 KB head
+        tail = b'{"content": "openspec/changes/fresh-two now"}\n' * 2000
+        log.write_bytes(head + tail)
+        assert stage.infer_change_from_session(str(log)) == "fresh-two"
+
+    def test_inference_matches_openspec_paths_and_change_args(self, tmp_path):
+        log = tmp_path / "s8.jsonl"
+        log.write_bytes(b'{"content": "cwd openspec/changes/path-a tasks"}\n'
+                        + b'{"content": "run --change arg-b now"}\n')
+        # The LAST match wins: arg-b is more recent.
+        assert stage.infer_change_from_session(str(log)) == "arg-b"
+
+    def test_inference_never_names_an_archived_change_from_its_path(self, tmp_path):
+        log = tmp_path / "s9.jsonl"
+        log.write_bytes(b'{"content": "moved openspec/changes/archive/2026-08-01-old-one"}\n')
         assert stage.infer_change_from_session(str(log)) is None
 
     def test_inference_memo_answers_an_unchanged_file_without_a_reread(self, tmp_path, monkeypatch):

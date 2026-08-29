@@ -194,21 +194,30 @@ def has_active_changes(project_root: str) -> bool:
 # Session → change inference
 # --------------------------------------------------------------------------- #
 
-#: Patterns that embed a change name in a session's own record. The same shapes
-#: `api.helpers._extract_session_change_name` matches, minus the dependency on
-#: that module: the fleet path must not import the orchestration API for four
-#: regexes. New shapes belong in BOTH places or neither.
+#: Patterns that embed a change name in a session's own record. Two families:
+#: explicit invocations (`/opsx:apply <name>`, `--change <name>`, a
+#: `"change_name"` key) and PATH mentions (`openspec/changes/<name>`), which is
+#: what an apply loop's tool calls are full of long after its opening prompt.
+#: Path mentions must NOT match under `archive/` — an archived change is done,
+#: and naming it is remembering, not working on it.
 _OPSX = re.compile(r"/opsx:\w+\s+([a-z0-9][a-z0-9-]+)")
 _CHANGE_KEY = re.compile(r'"change_name":\s*"([^"]+)"')
 _CHANGE_BRANCH = re.compile(r"\bchange/([a-z0-9][a-z0-9-]+)")
+_CHANGES_PATH = re.compile(r"openspec/changes/(?!archive)([a-z0-9][a-z0-9-]+)")
+_CHANGE_ARG = re.compile(r"--change[= ]([a-z0-9][a-z0-9-]+)")
+_PATTERNS = (_OPSX, _CHANGE_KEY, _CHANGE_BRANCH, _CHANGES_PATH, _CHANGE_ARG)
 
-#: The head of a session record that is read, and all that is read. The
-#: invocation that names the change is where a session STARTS; reading the
-#: whole transcript per agent per poll would make the fleet endpoint pay for
-#: megabytes to learn one slug.
-_INFERENCE_HEAD_BYTES = 262_144
+#: What is read of a session record: its head AND its tail. The invocation that
+#: names the change is where a session STARTS — but a session that has been
+#: running for days names its CURRENT change in its recent activity, and its
+#: head may hold nothing but a long-gone first task. Measured on a live session
+#: (2026-08-30, 732 KB): the head yielded a change mentioned once and long
+#: since left; the tail named the change actually in flight, three ways.
+#: The whole transcript is NOT read — per agent per poll that would make the
+#: fleet endpoint pay for megabytes to learn one slug.
+_INFERENCE_WINDOW_BYTES = 262_144
 
-#: A tiny memo so a 5 s poll does not re-read the same file head. Seconds, not
+#: A tiny memo so a 5 s poll does not re-read the same windows. Seconds, not
 #: minutes — a resumed session changes identity, and the memo must not outlive
 #: the file it describes. Keyed on the file's own fingerprint; holds a slug,
 #: never content. Same precedent as the status contract's in-memory answer
@@ -219,11 +228,11 @@ _INFERENCE_MEMO_MAX = 256
 
 
 def infer_change_from_session(session_log: Optional[str]) -> Optional[str]:
-    """The change name a session's own record names, or `None`.
+    """The change name a session's own record names MOST RECENTLY, or `None`.
 
-    Bounded to the head of the file, memoised for seconds on the file's
-    fingerprint. A miss is a MISS — the caller reports a gap rather than
-    guessing from the project's changes.
+    Two bounded windows — head and tail — and across both, the LAST match
+    wins: recency is the whole point. A miss is a MISS — the caller reports a
+    gap rather than guessing from the project's changes.
     """
     if not session_log:
         return None
@@ -236,18 +245,31 @@ def infer_change_from_session(session_log: Optional[str]) -> Optional[str]:
     hit = _INFERENCE_MEMO.get(key)
     if hit and now - hit[0] < _INFERENCE_MEMO_TTL:
         return hit[1]
+    size = st.st_size
+    windows: list = []
     try:
         with open(session_log, "rb") as fh:
-            head = fh.read(_INFERENCE_HEAD_BYTES)
+            head = fh.read(_INFERENCE_WINDOW_BYTES)
+            windows.append((0, head))
+            if size > _INFERENCE_WINDOW_BYTES:
+                fh.seek(max(0, size - _INFERENCE_WINDOW_BYTES))
+                tail = fh.read()
+                windows.append((size - len(tail), tail))
     except OSError as exc:
         logger.debug("fleet stage: session record unreadable (%s)", type(exc).__name__)
         return None
-    found: Optional[str] = None
-    for pattern in (_OPSX, _CHANGE_KEY, _CHANGE_BRANCH):
-        m = pattern.search(head.decode("utf-8", errors="replace"))
-        if m:
-            found = m.group(1)
-            break
+
+    # Every match carries its absolute offset; the largest offset is the most
+    # recent naming. A name mentioned recently beats a name mentioned first.
+    best: tuple = None
+    for base, window in windows:
+        text = window.decode("utf-8", errors="replace")
+        for pattern in _PATTERNS:
+            for m in pattern.finditer(text):
+                cand = (base + m.start(), m.group(1))
+                if best is None or cand[0] > best[0]:
+                    best = cand
+    found = best[1] if best else None
     if len(_INFERENCE_MEMO) >= _INFERENCE_MEMO_MAX:
         _INFERENCE_MEMO.clear()
     _INFERENCE_MEMO[key] = (now, found)
