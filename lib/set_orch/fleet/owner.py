@@ -170,17 +170,27 @@ class EnvironmentNotDelivered(OwnerError):
     """
 
 
-def assert_env_survived(resolved: Dict[str, str], child_env: Dict[str, str]) -> None:
+def assert_env_survived(
+    resolved: Dict[str, str],
+    child_env: Dict[str, str],
+    unset: Optional[Sequence[str]] = None,
+) -> None:
     """Refuse unless every resolved variable is in `child_env` with its value.
 
     Checked against the environment *about to be used*, not against the mapping
     that was passed in — comparing the input to itself would measure a proxy and
     pass whatever the builder did with it.
+
+    A REMOVAL that did not take is the same defect wearing the opposite sign, and
+    it is the more dangerous half: a surviving foreign endpoint does not stop the
+    agent, it silently points it at another account. So both directions are one
+    check, and a leftover is reported in the same sentence as a loss.
     """
     lost = [
         key for key, value in (resolved or {}).items()
         if child_env.get(key) != value
     ]
+    lost += [f"{key} (should have been removed)" for key in (unset or ()) if key in child_env]
     if lost:
         # The NAMES, not the values: a resolved environment carries credentials,
         # and this message reaches a log and an HTTP answer.
@@ -190,7 +200,10 @@ def assert_env_survived(resolved: Dict[str, str], child_env: Dict[str, str]) -> 
         )
 
 
-def build_child_env(env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def build_child_env(
+    env: Optional[Dict[str, str]] = None,
+    unset: Optional[Sequence[str]] = None,
+) -> Dict[str, str]:
     """The environment a started child gets. One owner, one place, one order.
 
     Extracted from `start()` on 2026-08-29 because two tracks needed it at once:
@@ -211,6 +224,13 @@ def build_child_env(env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """
     child_env = dict(os.environ)
     for key in [k for k in child_env if k.startswith("CLAUDE")]:
+        child_env.pop(key, None)
+    # The resolver's REMOVALS, before the caller's values and for the same reason
+    # the strip is first: a level that names a credential names its endpoint too,
+    # so an endpoint inherited from the ambient environment would redirect the
+    # call to another account with nothing on the screen saying so. A dict cannot
+    # express a removal, which is why this arrives as a second argument.
+    for key in unset or ():
         child_env.pop(key, None)
     child_env["TERM"] = "xterm-256color"
     child_env.update(env or {})
@@ -289,6 +309,7 @@ class AgentOwner:
         label: str,
         cwd: str,
         env: Optional[Dict[str, str]] = None,
+        unset: Optional[Sequence[str]] = None,
         rows: int = 40,
         cols: int = 120,
         resumed_session: Optional[str] = None,
@@ -312,10 +333,10 @@ class AgentOwner:
                 "stop it before starting, or recover it instead"
             )
 
-        child_env = build_child_env(env)
+        child_env = build_child_env(env, unset)
         # Before anything is created. A refusal here costs nothing; the same
         # defect discovered later is an agent that runs on the wrong provider.
-        assert_env_survived(env or {}, child_env)
+        assert_env_survived(env or {}, child_env, unset)
 
         # Resolve HERE — after the child env is final (the `CLAUDE*` strip above and
         # the caller's `env=` are both already applied) and before anything is
@@ -724,6 +745,8 @@ def recover(
     cwd: str,
     label: Optional[str] = None,
     resume_argv: Optional[Sequence[str]] = None,
+    env: Optional[Dict[str, str]] = None,
+    unset: Optional[Sequence[str]] = None,
 ) -> OwnedAgent:
     """Replace an orphaned agent: stop its scope, then resume its session.
 
@@ -763,9 +786,18 @@ def recover(
         )
 
     argv = list(resume_argv or ["claude", "--dangerously-skip-permissions", "--resume", session_id])
+    # ⚠ `env` is not an optional refinement here. Until 2026-08-29 this call
+    # passed none at all, so an agent started on a named provider came back on
+    # whatever the ambient environment supplied — the machine default, silently,
+    # against a different account. Nothing about the resumed agent said so: the
+    # transcript continues, the label is the same, and only the bill differs.
+    # Resuming on a different provider than the session was started on is a
+    # change of frame, and a change of frame has to be deliberate.
     return owner.start(
         argv,
         label=label or scopes.Scope(unit=unit, pid=None, cgroup="", active=False).label,
         cwd=cwd,
+        env=env,
+        unset=unset,
         resumed_session=session_id,
     )

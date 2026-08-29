@@ -43,9 +43,10 @@ import signal
 import socket
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
-from . import scopes
+from . import provider_record, scopes
+from ..providers import resolver as providers
 from .owner import (
     FOREIGN, STARTED_HERE, AgentOwner, CommandNotResolvable, OwnedAgent, OwnerError,
     recover,
@@ -544,14 +545,29 @@ class OwnerDaemon:
         }
 
     async def _do_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
-        return [
-            _agent_payload(
+        """Every held agent, each carrying the provider it was RECORDED on.
+
+        ⚠ An agent with no record gets `provider: null` and
+        `provider_recorded: false` — never the machine default. The two facts are
+        different and only one of them is known: an agent started before this
+        record existed, or started by something that did not name a provider, is
+        UNRECORDED. Filling it in from the configuration would make the screen
+        state confidently who is paying for a run nobody wrote down.
+        """
+        rows = []
+        for a in self.owner.owned():
+            payload = _agent_payload(
                 a,
                 tail_len=len(self._tails.get(a.label, b"")),
                 dropped=self._dropped.get(a.label, False),
             )
-            for a in self.owner.owned()
-        ]
+            recorded = provider_record.get(a.unit)
+            payload["provider_recorded"] = recorded is not None
+            payload["provider"] = (recorded or {}).get("provider")
+            payload["model"] = (recorded or {}).get("model")
+            payload["provenance"] = (recorded or {}).get("provenance") or {}
+            rows.append(payload)
+        return rows
 
     async def _do_orphans(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         orphans = await asyncio.to_thread(self.owner.orphans)
@@ -561,9 +577,41 @@ class OwnerDaemon:
         ]
 
     async def _do_start(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Start an agent, resolving its provider HERE rather than at the caller.
+
+        The resolution runs on this side of the socket on purpose. The caller
+        names a provider and a model; the credential is read from a file only
+        this service's user can read, and never travels the wire, never reaches
+        the browser, and cannot appear in a request log kept by anything in
+        between. The alternative — resolving at the API layer and sending an
+        environment mapping — would put a live key into every layer it crosses,
+        and each of those layers has its own logging.
+        """
         label = params["label"]
         cwd = params["cwd"]
         argv = list(params.get("argv") or DEFAULT_AGENT_ARGV)
+        env = params.get("env")
+        unset: Sequence[str] = ()
+        plan = None
+
+        if params.get("provider") or params.get("model") or params.get("project"):
+            # Resolve on a thread: `load()` reads a file and stats it.
+            plan = await asyncio.to_thread(
+                providers.resolve,
+                project=params.get("project"),
+                provider=params.get("provider"),
+                model=params.get("model"),
+            )
+            # The resolver's values outrank a caller-supplied mapping rather than
+            # merging with it. A merge would let the two disagree about the same
+            # key with nothing saying which won — and the losing half is a
+            # credential or an endpoint, so "nothing saying which won" means an
+            # agent billed to an account no record names.
+            env = {**(env or {}), **plan.env}
+            unset = plan.unset
+            argv = argv + list(plan.args)
+            logger.info("fleet owner: %s -> %s", label, plan.describe())
+
         # Blocking: `start` waits for systemd to report the scope active. Off the
         # loop, or every other agent's drain stalls behind it.
         agent = await asyncio.to_thread(
@@ -571,21 +619,52 @@ class OwnerDaemon:
             argv,
             label=label,
             cwd=cwd,
-            env=params.get("env"),
+            env=env,
+            unset=unset,
             rows=int(params.get("rows", 40)),
             cols=int(params.get("cols", 120)),
             requested_by=params.get("requested_by"),
         )
         self._attach_drain(agent)
-        return _agent_payload(agent)
+        payload = _agent_payload(agent)
+        if plan is not None:
+            # THE single point. Recorded after the start succeeded and before the
+            # answer is returned: recording earlier would leave an entry for an
+            # agent that never ran, and recording at each caller is how one
+            # caller ends up not recording at all.
+            try:
+                provider_record.record(
+                    agent.unit, provider=plan.provider, model=plan.model,
+                    provenance=plan.provenance,
+                )
+            except OSError as exc:
+                # The agent IS running. Failing the start here would report a
+                # failure that did not happen and leave a live agent nobody
+                # holds — a worse outcome than an unrecorded one, which the
+                # readers already have to handle.
+                logger.warning("fleet providers: could not record %s: %s", agent.unit, exc)
+            # The provenance travels with the answer, never the environment: the
+            # caller needs to SHOW which level decided, and showing that must not
+            # require holding what it decided.
+            payload["provider"] = plan.provider
+            payload["model"] = plan.model
+            payload["provenance"] = dict(plan.provenance)
+        return payload
 
     async def _do_stop(self, params: Dict[str, Any]) -> Dict[str, Any]:
         label = params["label"]
         agent = next((a for a in self.owner.owned() if a.label == label), None)
         if agent is not None:
             self._detach_drain(agent.master_fd)
+        unit = agent.unit if agent is not None else scopes.unit_name(label)
         result = await asyncio.to_thread(self.owner.stop, label)
         self._forget(label)
+        # Only for an agent that was actually stopped. A `stop` that found
+        # nothing must not delete a record — the unit may belong to a live agent
+        # this owner does not hold, and losing its provenance would turn a
+        # recorded agent into an unrecorded one for no reason.
+        if result.get("found"):
+            await asyncio.to_thread(provider_record.forget, unit)
         return result
 
     async def _do_rename(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -606,17 +685,50 @@ class OwnerDaemon:
         )
 
     async def _do_recover(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Resume an orphan on the provider it was STARTED on, not on the default.
+
+        The record is read here rather than passed in by the caller: the caller
+        is a screen, and a screen that supplies the provider can supply a
+        different one by accident. What the session was started on is a recorded
+        fact, and a resume is not the moment to revise it.
+        """
+        unit = params["unit"]
+        env = None
+        unset: Sequence[str] = ()
+        resume_argv = params.get("resume_argv")
+        plan = None
+        recorded = await asyncio.to_thread(provider_record.get, unit)
+        if recorded and recorded.get("provider"):
+            plan = await asyncio.to_thread(
+                providers.resolve,
+                provider=recorded["provider"], model=recorded.get("model"),
+            )
+            env, unset = plan.env, plan.unset
+            if plan.args:
+                base = list(resume_argv or [
+                    "claude", "--dangerously-skip-permissions",
+                    "--resume", params["session_id"]])
+                resume_argv = base + list(plan.args)
+            logger.info("fleet owner: recovering %s -> %s", unit, plan.describe())
+
         agent = await asyncio.to_thread(
             recover,
             self.owner,
-            unit=params["unit"],
+            unit=unit,
             session_id=params["session_id"],
             cwd=params["cwd"],
             label=params.get("label"),
-            resume_argv=params.get("resume_argv"),
+            resume_argv=resume_argv,
+            env=env,
+            unset=unset,
         )
         self._attach_drain(agent)
-        return _agent_payload(agent)
+        payload = _agent_payload(agent)
+        if plan is not None:
+            payload["provider"] = plan.provider
+            payload["model"] = plan.model
+            payload["provenance"] = dict(plan.provenance)
+        return payload
 
     async def _do_write(self, params: Dict[str, Any]) -> Dict[str, Any]:
         import base64

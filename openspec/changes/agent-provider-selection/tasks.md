@@ -53,12 +53,12 @@
 - [x] 6.3 Prove 6.2's test by reversing the order in the source and observing the failure, then restoring — and verify the restore actually took [REQ: the-child-environment-is-built-by-one-named-operation-that-a-test-holds]
 - [x] 6.3a Before trusting 6.3's result, check what the test's own fork double returns. Measured by a peer on this file the same day: a double returning pid `0` says "I am the child", so under the mutation the test process itself proceeds down the child branch — producing one passing dot and zero failures, which reads exactly like a test that does not catch the mutation. The double was wrong, not the guard. Return a non-zero pid, and assert the double was actually taken [REQ: the-child-environment-is-built-by-one-named-operation-that-a-test-holds]
 - [x] 6.4 Implement the pre-fork survival guard: every variable the resolver returned must be present with its resolved value, or the start is refused naming the lost variable [REQ: a-resolved-variable-that-did-not-survive-stops-the-start]
-- [ ] 6.5 Thread provider and model through the owner socket protocol and the client, as named fields [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
-- [ ] 6.6 Carry the resolved environment and argv extras into `start()`, replacing the fixed default argv with a resolved one [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
-- [ ] 6.7 Make `recover()` resolve and pass the same provider and model the session was started on [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 6.8 Record provider, model and provenance at the single point a start is recorded, in a store that survives a restart of the owning service [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
-- [ ] 6.9 Report an agent with no recorded provider as unrecorded, never as running on the default [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
-- [ ] 6.10 Unit tests for 6.4–6.9, including a restart of the owning service with an agent still running [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
+- [x] 6.5 Thread provider and model through the owner socket protocol and the client, as named fields [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
+- [x] 6.6 Carry the resolved environment and argv extras into `start()`, replacing the fixed default argv with a resolved one [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
+- [x] 6.7 Make `recover()` resolve and pass the same provider and model the session was started on [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 6.8 Record provider, model and provenance at the single point a start is recorded, in a store that survives a restart of the owning service [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
+- [x] 6.9 Report an agent with no recorded provider as unrecorded, never as running on the default [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
+- [x] 6.10 Unit tests for 6.4–6.9, including a restart of the owning service with an agent still running [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
 
 ## 7. The API
 

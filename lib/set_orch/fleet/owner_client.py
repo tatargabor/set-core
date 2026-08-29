@@ -153,7 +153,19 @@ class OwnerClient:
         rows: int = 40,
         cols: int = 120,
         requested_by: Optional[str] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        project: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Ask the owner to start an agent.
+
+        `provider`, `model` and `project` are NAMES, and that is the whole design:
+        the owner resolves them on its own side, so the credential never crosses
+        this socket, is never held by the caller, and cannot be logged by anything
+        between the two. A caller that wanted to spend against another account
+        would have to name a provider the configuration declares — which is a
+        decision the configuration already made, not one this call can invent.
+        """
         params: Dict[str, Any] = {"label": label, "cwd": cwd, "rows": rows, "cols": cols}
         if requested_by:
             params["requested_by"] = requested_by
@@ -161,6 +173,12 @@ class OwnerClient:
             params["argv"] = list(argv)
         if env:
             params["env"] = dict(env)
+        if provider:
+            params["provider"] = provider
+        if model:
+            params["model"] = model
+        if project:
+            params["project"] = project
         return self.request("start", params)
 
     def stop(self, label: str) -> Dict[str, Any]:
