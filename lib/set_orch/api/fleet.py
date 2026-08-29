@@ -839,6 +839,7 @@ _KIND_STATUS = {
     "provider-config": 503,
     "command-not-resolvable": 503,
     "environment-not-delivered": 503,
+    "owner-too-old": 503,
 }
 
 

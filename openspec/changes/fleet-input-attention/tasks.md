@@ -103,8 +103,8 @@
 - **7.4, the visual check — DONE, and here is what was seen.** The Chrome extension was not
   connected, so the screen was rendered headless and LOOKED AT rather than asserted:
   `set-core-figma`'s tile reads **`waiting for input 22m · acts now`** in red; `set-core-2023`
-  reads `quiet · wait unmeasured` (its record carries no status); the `set-core` and `wpc-pont`
-  rows carry the red tint with a red left bar and `1 22m` / `1 3h`; every other row is untinted.
+  reads `quiet · wait unmeasured` (its record carries no status); the `set-core` row and a
+  consumer project's row carry the red tint with a red left bar and `1 22m` / `1 3h`; every other row is untinted.
   The live fleet held no wait between 15 s and 3 min, so the amber band was rendered a second
   time with one duration rewritten in flight (47 s) — the row and its bar came out amber, and it
   is clearly separable from red at a glance.

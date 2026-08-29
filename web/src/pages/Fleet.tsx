@@ -1864,7 +1864,10 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
  * for the two cases that need looking at — never for the ordinary one.
  */
 function ProviderMarker({ agent }: { agent: FleetAgent }) {
-  const mark = providerMark(agent.provider)
+  // The MEASURED model comes with the cache record, and it exists for agents
+  // nobody recorded a provider for — which is most of them on a running
+  // machine. Passing it is what puts a model in the header at all.
+  const mark = providerMark(agent.provider, agent.cache?.model)
   // ⚠ Three tones, not two, and the split moved after LOOKING at the screen.
   // `unrecorded` was amber, and every agent on a live machine is unrecorded
   // until it is started through this — so three tiles out of three shouted in
@@ -1874,7 +1877,8 @@ function ProviderMarker({ agent }: { agent: FleetAgent }) {
   // no longer stand out. Unrecorded stays STATED and stays distinct; it just
   // stops claiming to be a fault.
   const tone =
-    mark.kind === 'override' ? 'text-amber-400'
+    mark.kind === 'mismatch' ? 'text-red-400 font-semibold'
+    : mark.kind === 'override' ? 'text-amber-400'
     : mark.kind === 'unrecorded' ? 'text-fg-ghost'
     : 'text-fg-muted'
   return (
@@ -1884,7 +1888,7 @@ function ProviderMarker({ agent }: { agent: FleetAgent }) {
       className={`text-xs shrink-0 whitespace-nowrap ${tone}`}
       title={mark.title}
     >
-      {mark.kind === 'override' ? <span aria-hidden>⚠ </span> : null}
+      {mark.kind === 'override' || mark.kind === 'mismatch' ? <span aria-hidden>⚠ </span> : null}
       {mark.text}
     </span>
   )

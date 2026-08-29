@@ -177,7 +177,34 @@ export function levelLabel(level: string | undefined): string {
 export type ProviderMark =
   | { kind: 'unrecorded'; text: string; title: string }
   | { kind: 'override'; text: string; title: string }
+  | { kind: 'mismatch'; text: string; title: string }
   | { kind: 'plain'; text: string; title: string }
+
+/**
+ * A model name as a person reads it. `claude-opus-5` → `opus-5`.
+ *
+ * The vendor prefix is the half every row shares, so it carries no information
+ * in a list and costs the width the model name needs.
+ */
+export function shortModel(model: string | null | undefined): string | null {
+  if (!model) return null
+  return model.replace(/^claude-/, '')
+}
+
+/**
+ * Whether the model the runtime REPORTS is the one that was asked for.
+ *
+ * Compared loosely on purpose: the recorded name is a catalogue entry
+ * (`glm-4.6`) and the measured one is whatever the runtime calls it
+ * (`claude-opus-5`), so equality would report a disagreement on every agent.
+ * What matters is whether one contains the other — `opus` inside
+ * `claude-opus-5` is agreement; `glm-4.6` against `claude-opus-5` is not.
+ */
+function modelsAgree(recorded: string, measured: string): boolean {
+  const a = shortModel(recorded)!.toLowerCase()
+  const b = shortModel(measured)!.toLowerCase()
+  return a === b || a.startsWith(b) || b.startsWith(a)
+}
 
 /**
  * The marker beside a running agent — three kinds, and they are three facts.
@@ -188,17 +215,44 @@ export type ProviderMark =
  * provider — an agent whose frame is never stated is one whose cost and quality
  * the next reader assigns to the wrong frame.
  */
-export function providerMark(p: AgentProvider | null | undefined): ProviderMark {
+export function providerMark(
+  p: AgentProvider | null | undefined,
+  measuredModel?: string | null,
+): ProviderMark {
+  const measured = shortModel(measuredModel)
   if (!p || !p.recorded || !p.provider) {
+    // ⚠ The MEASURED model is still shown. It comes from the runtime's own
+    // usage record and exists for every agent, recorded or not — so a header
+    // that showed nothing here would be hiding a fact it has, on exactly the
+    // agents nobody wrote anything down for. `unrecorded` is about the
+    // PROVIDER; the model is a separate measurement and says so by leading.
     return {
       kind: 'unrecorded',
-      text: 'provider unrecorded',
+      text: measured ? `${measured} · provider unrecorded` : 'provider unrecorded',
       title:
+        (measured ? `Running ${measured}, measured from the runtime's own record. ` : '') +
         'Nobody wrote down which provider this agent runs on — it was started before ' +
         'this was recorded, or by something that named none. This is a gap, not the default.',
     }
   }
-  const label = p.model ? `${p.provider} · ${p.model}` : p.provider
+  // The case this screen exists for, and the one that was reported from it:
+  // a start named a provider, and the agent came up on something else. Two
+  // independent sources disagreeing is a FINDING, not a rendering choice — and
+  // it is invisible in every other way, because the record says what was asked
+  // for and the agent says nothing at all.
+  if (measured && p.model && !modelsAgree(p.model, measured)) {
+    return {
+      kind: 'mismatch',
+      text: `${measured} — asked for ${p.provider} · ${p.model}`,
+      title:
+        `This agent was started asking for ${p.provider} / ${p.model}, and the runtime ` +
+        `reports it is running ${measured}. Two sources disagree: the record says what ` +
+        'was requested, the measurement says what is running, and the measurement wins. ' +
+        'A stale agent-owner service silently drops a provider it does not understand — ' +
+        'restart it with: systemctl --user restart set-agent-owner',
+    }
+  }
+  const label = p.model ? `${p.provider} · ${shortModel(p.model)}` : p.provider
   if (p.provenance?.credential === LEVEL_PROJECT) {
     return {
       kind: 'override',

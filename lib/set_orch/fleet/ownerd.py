@@ -72,6 +72,10 @@ DEFAULT_TAIL_BYTES = 64 * 1024
 #: would be a difference nothing on the surface explains.
 DEFAULT_AGENT_ARGV = ("claude", "--dangerously-skip-permissions")
 
+#: What this owner understands, sent in `health`. Add a name here when a start
+#: gains a parameter an older owner would silently drop.
+FEATURES = frozenset({"provider-selection"})
+
 #: Resolution refusals, as KINDS rather than as prose. A caller that has to grep
 #: the sentence to tell "you named a provider that does not exist" from "this
 #: machine's configuration is broken" breaks the moment the sentence improves —
@@ -577,6 +581,15 @@ class OwnerDaemon:
             # The number that matters operationally: restarting this service
             # ends this many agents.
             "held": len(self.owner.owned()),
+            # What this owner can be ASKED for, declared rather than inferred
+            # from a version string. A caller cannot tell an owner that ignores
+            # a parameter from one that honours it — measured as B-110, where a
+            # daemon nineteen hours older than its caller dropped `provider`
+            # without a word and started the agent on the machine default. The
+            # answer to an unknown parameter has to come from the owner, and the
+            # only owner that can answer is one new enough to know the question:
+            # so absence IS the answer, and the client treats it as a refusal.
+            "features": sorted(FEATURES),
         }
 
     async def _do_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:

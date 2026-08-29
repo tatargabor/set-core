@@ -158,7 +158,7 @@ def test_the_guard_compares_against_the_env_about_to_be_used(monkeypatch):
 import asyncio
 
 from set_orch.fleet import ownerd as ownerd_mod
-from set_orch.fleet.owner_client import OwnerClient
+from set_orch.fleet.owner_client import OwnerClient, OwnerClientError
 from set_orch.providers.resolver import (
     LEVEL_DEFAULT, LEVEL_PROJECT, LEVEL_REQUEST, LaunchPlan,
 )
@@ -184,6 +184,9 @@ class _FakeOwner:
 
     def __init__(self):
         self.calls = []
+
+    def owned(self):
+        return []
 
     def start(self, argv, **kw):
         self.calls.append({"argv": list(argv), **kw})
@@ -286,6 +289,10 @@ def test_the_client_sends_names_and_never_a_credential(monkeypatch):
     the shape that passes a signature test and delivers nothing."""
     sent = {}
     client = OwnerClient.__new__(OwnerClient)
+    # The owner declares it can resolve — otherwise the client refuses before
+    # sending anything, which is B-110's guard doing its job.
+    monkeypatch.setattr(OwnerClient, "health",
+                        lambda self: {"ok": True, "features": ["provider-selection"]})
     monkeypatch.setattr(OwnerClient, "request",
                         lambda self, method, params=None: sent.update(
                             {"method": method, "params": params or {}}) or {})
@@ -585,3 +592,73 @@ def test_a_resolution_refusal_travels_as_a_class_not_as_prose(monkeypatch, tmp_p
     assert response.error is not None
     assert response.error_kind == kind
     assert response.result is None
+
+
+# --------------------------------------------------------------------------- #
+# B-110 — an owner that would DROP the provider must refuse, not start
+# --------------------------------------------------------------------------- #
+
+def test_an_owner_that_cannot_resolve_a_provider_refuses_the_start(monkeypatch):
+    """Reported from the screen: a start naming a provider came up on the machine
+    default and its tile read `provider unrecorded`.
+
+    The cause was not a bug in the resolution — it was a daemon nineteen hours
+    older than its caller, whose `_do_start` reads a fixed set of keys and drops
+    the rest. Nothing errored. The same shape as the HTTP body that accepted an
+    unknown field and discarded it, one layer down, and the fix has to live in
+    the CLIENT: the old daemon is the one running and cannot be taught.
+    """
+    asked = []
+    client = OwnerClient.__new__(OwnerClient)
+    monkeypatch.setattr(OwnerClient, "health",
+                        lambda self: {"ok": True, "held": 12})  # no `features`
+    monkeypatch.setattr(OwnerClient, "request",
+                        lambda self, method, params=None: asked.append(method) or {})
+
+    with pytest.raises(OwnerClientError) as exc:
+        client.start(label="a", cwd="/tmp", provider="glm")
+
+    assert exc.value.kind == "owner-too-old"
+    # The remedy is named, and it is an OPERATOR's act — not "choose another
+    # provider", which is what a 409 would have suggested.
+    assert "restart" in str(exc.value)
+    assert asked == [], "the start was sent to an owner that would have dropped it"
+
+
+def test_an_owner_that_declares_the_capability_starts_normally(monkeypatch):
+    """The other direction. A guard that refuses everything also passes the test
+    above, and this is the only assertion that separates the two."""
+    sent = {}
+    client = OwnerClient.__new__(OwnerClient)
+    monkeypatch.setattr(OwnerClient, "health",
+                        lambda self: {"ok": True, "features": ["provider-selection"]})
+    monkeypatch.setattr(OwnerClient, "request",
+                        lambda self, method, params=None: sent.update(
+                            {"method": method, "params": params or {}}) or {})
+
+    client.start(label="a", cwd="/tmp", provider="glm", model="glm-4.6")
+    assert sent["params"]["provider"] == "glm"
+
+
+def test_a_start_naming_no_provider_does_not_ask_the_owner_its_age(monkeypatch):
+    """An ordinary start must not pay for a second round trip, and must keep
+    working against an owner that answers no features at all."""
+    sent = {}
+    client = OwnerClient.__new__(OwnerClient)
+    monkeypatch.setattr(OwnerClient, "health",
+                        lambda self: pytest.fail("health asked for a plain start"))
+    monkeypatch.setattr(OwnerClient, "request",
+                        lambda self, method, params=None: sent.update(
+                            {"method": method, "params": params or {}}) or {})
+
+    client.start(label="a", cwd="/tmp")
+    assert sent["method"] == "start"
+
+
+def test_this_owner_declares_the_capability_it_implements(monkeypatch, tmp_path):
+    """The handshake's other half, and the one a refactor would break silently:
+    the daemon that HAS the resolution must say so, or every provider start is
+    refused against a perfectly good owner."""
+    daemon = ownerd_mod.OwnerDaemon(str(tmp_path / "o.sock"), owner=_FakeOwner())
+    health = _run(daemon._do_health({}))
+    assert "provider-selection" in health["features"]

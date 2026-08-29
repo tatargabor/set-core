@@ -24,6 +24,7 @@ import {
   offerableProviders,
   previewResolution,
   providerMark,
+  shortModel,
   type ProviderCatalogue,
 } from '../../src/lib/fleetProviders'
 
@@ -395,5 +396,79 @@ describe('the project override the browser cannot see', () => {
     }))
     await fetchProviderCatalogue('set-core')
     expect(seen[0]).toBe('/api/fleet/providers?project=set-core')
+  })
+})
+
+// --------------------------------------------------------------------------- //
+// The MEASURED model, and the disagreement it makes visible — reported from the
+// live screen: a start named a provider and the agent came up on the default.
+// --------------------------------------------------------------------------- //
+
+describe('the model in the header', () => {
+  it('shortens a model name to the half that carries information', () => {
+    expect(shortModel('claude-opus-5')).toBe('opus-5')
+    expect(shortModel('glm-4.6')).toBe('glm-4.6')
+    expect(shortModel(null)).toBeNull()
+  })
+
+  it('shows the measured model even when NO provider was recorded', () => {
+    // Most agents on a running machine are unrecorded. A header that showed
+    // nothing here would be hiding a fact it already has, on exactly those.
+    const mark = providerMark(undefined, 'claude-opus-5')
+    expect(mark.kind).toBe('unrecorded')
+    expect(mark.text).toBe('opus-5 · provider unrecorded')
+  })
+
+  it('still says only "unrecorded" when there is no measurement either', () => {
+    // A gap is not a zero: no measurement must not render as some default name.
+    expect(providerMark(undefined).text).toBe('provider unrecorded')
+  })
+
+  it('MARKS a disagreement between what was asked for and what is running', () => {
+    // The reported defect, made visible. A stale owner service drops a provider
+    // it does not understand; the record then says `glm` while the agent runs
+    // Opus, and every other signal on the tile looks ordinary.
+    const mark = providerMark(
+      { recorded: true, provider: 'glm', model: 'glm-4.6', provenance: { provider: 'request' } },
+      'claude-opus-5',
+    )
+    expect(mark.kind).toBe('mismatch')
+    expect(mark.text).toContain('opus-5')
+    expect(mark.text).toContain('asked for glm')
+    // The remedy is an operator's act and is named, not left to be guessed.
+    expect(mark.title).toContain('restart')
+  })
+
+  it('does not cry mismatch when the two names merely differ in vendor prefix', () => {
+    // The recorded name is a catalogue entry, the measured one is whatever the
+    // runtime calls it. Strict equality would report a disagreement on every
+    // single agent — a marker that fires always is a marker nobody reads.
+    expect(providerMark(
+      { recorded: true, provider: 'anthropic', model: 'opus', provenance: {} },
+      'claude-opus-5',
+    ).kind).toBe('plain')
+    expect(providerMark(
+      { recorded: true, provider: 'glm', model: 'glm-4.6', provenance: {} },
+      'glm-4.6',
+    ).kind).toBe('plain')
+  })
+
+  it('renders a mismatch in red with a warning glyph, distinctly from a gap', async () => {
+    stubFleet({ agents: [agentRow({
+      cache: { started_at: new Date().toISOString(), tokens: 1, ttl_seconds: 1,
+               model: 'claude-opus-5', rewrite_usd: null, seconds_remaining: 1,
+               cooled: 0, cold: false },
+      provider: { recorded: true, provider: 'glm', model: 'glm-4.6',
+                  provenance: { provider: 'request' } },
+    })] })
+    render(<Fleet />)
+    const mark = await waitFor(() => {
+      const el = document.querySelector('[data-fleet-provider]')
+      if (!el) throw new Error('no provider marker yet')
+      return el as HTMLElement
+    })
+    expect(mark.getAttribute('data-fleet-provider')).toBe('mismatch')
+    expect(mark.className).toContain('red')
+    expect(mark.textContent).toMatch(/⚠/)
   })
 })

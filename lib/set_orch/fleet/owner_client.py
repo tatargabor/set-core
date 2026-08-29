@@ -173,6 +173,23 @@ class OwnerClient:
             params["argv"] = list(argv)
         if env:
             params["env"] = dict(env)
+        if provider or model:
+            # ⚠ ASK FIRST. An owner that does not know these parameters does not
+            # fail — it drops them and starts the agent on whatever the ambient
+            # environment supplies, which is a 200, a running agent, and an
+            # ordinary-looking tile. Measured as B-110 against a daemon nineteen
+            # hours older than its caller: the user chose a provider and got the
+            # machine default, billed to a different account.
+            #
+            # Fail closed, and name the remedy: an operator restarts a service,
+            # which is a different act from choosing another provider.
+            if "provider-selection" not in set(self.health().get("features") or ()):
+                raise OwnerClientError(
+                    "the agent owner service is older than this request and would "
+                    "ignore the provider silently; restart it "
+                    "(systemctl --user restart set-agent-owner) and try again",
+                    "owner-too-old",
+                )
         if provider:
             params["provider"] = provider
         if model:
