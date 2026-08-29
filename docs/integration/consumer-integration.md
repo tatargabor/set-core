@@ -2297,3 +2297,43 @@ table on today's renderer, on a new tab, and their change does not depend on `st
 implementation has not started; proposal, four delta specs and design are done, `tasks.md` next,
 with an adversarial review before it. The contract delta also goes through the file channel at
 the file channel under `~/.local/share/set-core/channels/<consumer>/`, F1 first.
+
+---
+
+## 2026-08-29 — both sides switched to English, and the producer's ARTIFACT SCHEMA is frozen Hungarian on purpose
+
+Recorded here rather than only in the rule file, because the switch and the exception arrived in
+the same hour and the exception is the half a later session will discard.
+
+**What switched.** The user closed the last two open items in this repo's language rule: commit
+messages, and the conversation itself (`a6b719ae`, `78b36e15`). The producer switched in the same
+round and recorded it on their side too. Neither side rewrites history — 38 of this repo's last 40
+subjects are Hungarian out of 2641 commits, and rewriting would break every sha reference in the
+bug register and in this file.
+
+**What did NOT switch, and this is the part that can silently break the integration.** The
+producer's **artifact schema stays Hungarian permanently**: the section names and text markers
+that gates and readers parse — `## Nyomozás`, `## Forrás`, `Válasz kiment:`, `[ÜTKÖZÉS: NINCS]`.
+Their measurement: **48 of their 72 gate scripts parse Hungarian section names**, and a renamed
+section **does not error — it silently reads as "not applicable"**. That is the failure shape this
+repo already has a name for, arriving from the other side of the seam.
+
+**The consequence for set-core, stated as a prohibition because it is one:** any pattern this
+framework matches against a producer artifact is a **wire format, not prose**, and the English
+rule does not reach it. Translating `Válasz kiment:` in a parser would not throw, would not fail a
+test that mocks its own input, and would turn every reply into "no reply". If that layer ever
+moves, it moves as its own change with its own self-tests, announced on the channel first — never
+as a side effect of a language pass. The same applies to the producer's free-text VALUES: bug
+titles and descriptions, and `changes` entries in their release YAMLs, stay Hungarian because that
+is the client-facing layer, and this framework only displays them.
+
+**Measured on this side the same day, so the boundary is not theoretical:** 24 files under
+`web/src` still contain Hungarian, and **every sampled instance is a verbatim quote of the user
+inside an English comment** — the exception the rule protects, because a paraphrase destroys the
+evidence a quote carries. So "no Hungarian left in `web/src`" is the wrong target, and a session
+that pursues it will delete evidence and may reach for the parser patterns next.
+
+**Unaffected:** the `stageOrder` agreement in full — four conditions, F1 first, `unknown` outside
+the declared order, vocabulary closed. Stage keys were already English by the producer's own F4
+reasoning. Their change is at proposal + four delta specs + design; `tasks.md` next, with an
+adversarial review before it.
