@@ -105,7 +105,7 @@ consumer's name, path, or content.
 
 ### B-108 — a unit does everything right and then does not commit: the engine's own run-state exclusion turns a silently-ignored directory into a hard `git add` failure
 
-- **state:** open
+- **state:** CLOSED (2026-08-29, `368ece07`) — the entry stays; see the closing measurement below
 - **reported:** 2026-08-29 by this session, from the first REAL work unit ever driven from
   the fleet screen (`work-cycle-run-visibility` task 7.4). Not a task in that change: the
   defect is in the engine's commit path, not in the screen that started the run.
@@ -149,6 +149,30 @@ consumer's name, path, or content.
 - **fixed when:** a unit run in a project whose run-state directory is gitignored records a
   commit sha, AND a deliberately broken `git add` records git's own message. A test that only
   proves the exclusion string is present proves the mechanism, not the result.
+- **CLOSED 2026-08-29, `368ece07`, with the measurement it asked for.** The fix asks git
+  whether it already ignores the run state (`check-ignore`) and keeps the exclusion only
+  where it does not; `check-ignore`'s own failure (128) is not read as "ignored", so an error
+  leaves the protection in place rather than dropping it. The reason now carries git's
+  sentence.
+
+  **Proved live, not only in a test.** Group 2 of the same change, started from the same
+  screen, into the same worktree that produced this entry:
+
+  ```
+  commit: {committed: true, sha: 3498603b68ec20e1b7adecc7ded07bce936b3722}
+  git show --name-only 3498603b | grep '^set/runtime'   → 0 lines
+  ```
+
+  The product went in (`NOTE.md` two lines, in group order; `proof/slugify.py`;
+  `tests_proof/`), the engine's own bookkeeping did not, and the tree came back clean.
+  Mutation-tested as well: restoring the old argv reproduces the exact live failure text in
+  the `reason`, while the not-ignored branch stays green; the restore was verified
+  byte-identical by sha256.
+
+  ⚠ **What the old test got wrong is worth keeping.** It asserted the argv and said so in its
+  own docstring — *"asserted on the argv rather than on a real repository"*. The argv was
+  correct; git's answer to it was not, and a fake runner cannot disagree with the command it
+  is handed. The replacement drives a real repository.
 
 ### B-107 — an engine-side refusal never reaches the caller; the scope's wording does
 
