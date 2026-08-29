@@ -68,6 +68,23 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-122 — a messaging-sourced project is named by whichever seat enrolled FIRST against its root, so a project can vanish behind another project's name
+- **state:** open
+- **reported:** 2026-08-29 by the user — "I cant see set-agent-comm in the fleet project view"
+- **measured:** `lib/set_orch/fleet/discovery.py:566` — `found.setdefault(root, {"root": root, "name": str(name), ...})` groups the messaging registry by ROOT and keeps the FIRST name the map yields; JSON preserves insertion order, so it is enrolment order. Measured on the live registry: two seats share `/home/tg/code2/set-agent-comm` under two different agent names, and the earlier one wins. `/api/fleet/agents` then returned **two rows carrying the same name** with different roots, and no row under the directory's own name. The `os.path.basename(root)` fallback already present on the same line is never reached, because the wrong name is not empty — it is merely wrong. Upstream cause is the messaging tool deriving the agent name from the shell's cwd, so a seat opened in a sibling directory records that directory as its project.
+- **fail direction:** silent and doubly wrong — a project the estate holds is absent (false absence at whole-project level) while another project's name is duplicated on a row that is not it (false value). Neither is marked, and the row count does not change.
+- **workaround applied 2026-08-29:** registering the project made the registry source supply the name, which wins because `discover_projects` merges the registry first (`discovery.py:586-597`). Verified: the row is now `set-agent-comm | sources=['registry','messaging']` and the duplicate is gone. This fixes one instance, not the class.
+- **fixed when:** a messaging entry whose root already carries a different name either renders under the directory basename or renders as its own marked row, and a unit test feeds two seat names against one root and asserts no two rows in the result share a name.
+
+### B-123 — `set-project init --dry-run` under-reports its own blast radius: four write paths appear only in the real run
+- **state:** open
+- **reported:** 2026-08-29 by this session, while running the deploy the register rule requires be previewed first
+- **measured:** the dry-run plan on a real tree listed commands, skills, rules, agents and one generated-patterns file. The subsequent real run additionally reported `Added Persistent Memory section to CLAUDE.md`, `Added Auto-Commit After Apply section to CLAUDE.md`, `Added Getting Started reference to CLAUDE.md`, `Scaffolded set/ directory structure` and `Registered set-core MCP server` — plus a modified `.gitignore` and a new `.env.example`, neither named in the plan. Net effect measured by sha256 snapshot of `.claude/` and `set/` before and after: **24 files -> 72**, and exactly one pre-existing file rewritten (`.claude/settings.json`, merged additively — the tree's own hook wiring survived).
+- **fail direction:** toward under-statement, which is the direction that matters. The project rule says to preview because the plan "is honest about its own blast radius"; a reader who approves on the plan approves less than what runs. The rewritten file happened to be merged correctly — that is a property of this run, not something the plan promised.
+- **note:** `.claude/` is gitignored in the tree this was measured on, so `git status` showed none of the 48 new files. The prescribed post-run diff-check is structurally blind wherever a tree ignores `.claude/`; a hash snapshot is the check that works.
+- **fixed when:** the dry-run enumerates every path the real run writes — the CLAUDE.md sections, the `set/` scaffold, `.gitignore`, `.env.example` and the MCP registration — and a test asserts the planned path set equals the set the real run touches.
+
+
 ### B-116 — an ALIAS variable the chosen provider does not declare survives into the child's environment
 - **state:** CLOSED (2026-08-29, `e886a39f`) — the entry stays; measurement and fix below.
 - **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
