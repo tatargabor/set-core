@@ -648,6 +648,8 @@ def test_the_commit_never_stages_the_engines_own_run_records(tmp_path):
 
     def fake_git(argv):
         calls.append(list(argv))
+        if "check-ignore" in argv:
+            return (1, "")  # this project does NOT already ignore the run state
         if "commit" in argv:
             return (1, "nothing to commit, working tree clean")
         return (0, "")
@@ -860,3 +862,101 @@ def test_no_framework_log_about_a_run_carries_text_from_its_stream(tmp_path, cap
     assert secret not in joined
     assert "PARTNER" not in joined
     assert str(len(secret)) in joined            # the shape IS reported
+
+
+# --------------------------------------------------------------------------- #
+# B-108 — the exclusion that broke the commit it was protecting
+# --------------------------------------------------------------------------- #
+
+
+def _real_repo(tmp_path):
+    """A real repository with the run-state area gitignored — the shape this engine's own
+    adoption note recommends, and the shape in which B-108 appeared."""
+    import subprocess
+
+    def git(*argv):
+        proc = subprocess.run(["git", "-C", str(tmp_path), *argv],
+                              capture_output=True, text=True)
+        assert proc.returncode == 0, f"{argv}: {proc.stderr}"
+        return proc.stdout
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "T")
+    git("config", "commit.gpgsign", "false")
+    git("config", "core.hooksPath", str(tmp_path / ".no-hooks"))
+    (tmp_path / ".gitignore").write_text("/set/*\n!/set/work-cycle.yaml\n")
+    git("add", "--", ".gitignore")
+    git("commit", "-q", "-m", "base")
+    return git
+
+
+def test_a_unit_commits_in_a_project_whose_run_state_directory_is_gitignored(tmp_path):
+    """B-108, measured on the first real work unit ever driven from the fleet screen: the
+    verdict was green, the gate was green, the product was on disk — and the record said
+    `commit: false, reason: "git add failed"`.
+
+    Driven with the REAL git runner, in a real repository, because that is precisely what
+    the previous test of this behaviour did not do. Its argv was correct; git's answer to
+    that argv was not, and a fake runner cannot disagree with the command it is given.
+    """
+    from set_workcycle.engine import RUN_STATE_DIR, GateOutcome, WorkUnit, commit_unit
+
+    git = _real_repo(tmp_path)
+    record = tmp_path / RUN_STATE_DIR / "c"
+    record.mkdir(parents=True)
+    (record / "c--1.json").write_text("{}")          # the engine's own bookkeeping
+    (tmp_path / "product.txt").write_text("the unit's work\n")
+
+    outcome = commit_unit(WorkUnit(change="c", tree=tmp_path, seat="s", group_key="1"),
+                          GateOutcome(state="passed"))
+
+    assert outcome.committed, f"the unit did not commit: {outcome.reason}"
+    committed = git("show", "--name-only", "--format=", "HEAD").split()
+    assert "product.txt" in committed, committed
+    assert not [f for f in committed if f.startswith("set/runtime")], (
+        f"the engine's run state reached the project's history: {committed}")
+
+
+def test_the_exclusion_is_kept_where_git_does_not_already_ignore_the_run_state(tmp_path):
+    """The other half, and it is the half that must not be lost: where the project does NOT
+    ignore the run state, dropping the exclusion would commit this engine's bookkeeping into
+    someone else's repository as if it were their work."""
+    from set_workcycle.engine import RUN_STATE_DIR, GateOutcome, WorkUnit, commit_unit
+
+    git = _real_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("")          # nothing is ignored any more
+    git("add", "--", ".gitignore")
+    git("commit", "-q", "-m", "stop ignoring set/")
+    record = tmp_path / RUN_STATE_DIR / "c"
+    record.mkdir(parents=True)
+    (record / "c--1.json").write_text("{}")
+    (tmp_path / "product.txt").write_text("the unit's work\n")
+
+    outcome = commit_unit(WorkUnit(change="c", tree=tmp_path, seat="s", group_key="1"),
+                          GateOutcome(state="passed"))
+
+    assert outcome.committed, f"the unit did not commit: {outcome.reason}"
+    committed = git("show", "--name-only", "--format=", "HEAD").split()
+    assert "product.txt" in committed, committed
+    assert not [f for f in committed if f.startswith("set/runtime")], (
+        f"the engine's run state reached the project's history: {committed}")
+
+
+def test_a_failed_add_reports_gits_own_sentence_not_the_name_of_the_command(tmp_path):
+    """The second, smaller defect in the same line: the reason named the command and threw
+    away the message that said what was wrong. A caller cannot act on `git add failed`."""
+    from set_workcycle.engine import GateOutcome, WorkUnit, commit_unit
+
+    def fake_git(argv):
+        if "check-ignore" in argv:
+            return (1, "")
+        if "add" in argv:
+            return (1, "fatal: Unable to create '.git/index.lock': File exists.")
+        return (0, "")
+
+    outcome = commit_unit(WorkUnit(change="c", tree=tmp_path, seat="s", group_key="1"),
+                          GateOutcome(state="passed"), runner=fake_git)
+
+    assert not outcome.committed
+    assert "index.lock" in outcome.reason, outcome.reason

@@ -423,9 +423,27 @@ def commit_unit(unit: WorkUnit, gate: GateOutcome, *, message: Optional[str] = N
     # this engine's invention, so keeping it out of someone else's history is this engine's
     # job, and a fix that requires every adopting project to add a line is a fix that will be
     # missed by the project that adopts next.
-    code, _ = run(["git", "-C", root, "add", "-A", "--", ".", f":(exclude){RUN_STATE_DIR}"])
+    # ⚠ AND the exclusion must not be pointed INSIDE a directory git already ignores.
+    # Measured 2026-08-29 (B-108), on the first real work unit driven from the screen: with
+    # `set/runtime` gitignored, `add -A -- . :(exclude)set/runtime/work-cycle` exits 1 with
+    # "The following paths are ignored by one of your .gitignore files", while the SAME add
+    # without the exclude exits 0 and stages nothing from there. An `:(exclude)` reaching
+    # into an ignored directory makes git treat that directory as explicitly named, and a
+    # silent skip becomes a hard error.
+    #
+    # So where git already ignores the run state, the exclusion is not merely redundant — it
+    # is what breaks the commit, and it breaks it in exactly the project shape this engine's
+    # own design recommends. Every unit test passed through this: the failing condition is
+    # CREATED by the thing under test, on its first run.
+    add_argv = ["git", "-C", root, "add", "-A", "--", "."]
+    if not _already_ignored(RUN_STATE_DIR, root, run):
+        add_argv.append(f":(exclude){RUN_STATE_DIR}")
+    code, out = run(add_argv)
     if code != 0:
-        return CommitOutcome(False, reason="git add failed")
+        # git's own sentence, not merely the name of the command that failed. Losing the
+        # cause and keeping a true statement about the symptom is the defect class this
+        # repository has now paid for three times (B-105, B-107, B-108).
+        return CommitOutcome(False, reason=f"git add failed: {out.strip()[:200]}")
     code, out = run(["git", "-C", root, "commit", "-m", text])
     if code != 0:
         if "nothing to commit" in out:
@@ -435,6 +453,21 @@ def commit_unit(unit: WorkUnit, gate: GateOutcome, *, message: Optional[str] = N
     logger.info("work unit %s committed as %s (gate: %s)", unit.unit_id, sha.strip()[:12],
                 gate.state)
     return CommitOutcome(True, sha=sha.strip())
+
+
+def _already_ignored(path: str, root: str, run) -> bool:
+    """True when git ALREADY ignores `path` inside `root`.
+
+    Asked of git rather than derived from the project's `.gitignore`: the answer depends on
+    global excludes, `.git/info/exclude`, negations and the ordering between them, and
+    re-implementing that is how a guard comes to disagree with the tool it is guarding.
+
+    Only exit 0 counts as ignored. `check-ignore` answers 1 for "not ignored" and 128 for a
+    failure, and a failure must leave the previous behaviour in place rather than quietly
+    dropping the exclusion that keeps this engine's bookkeeping out of a project's history.
+    """
+    code, _ = run(["git", "-C", root, "check-ignore", "-q", "--", path])
+    return code == 0
 
 
 def _git(argv: Sequence[str]) -> tuple[int, str]:
