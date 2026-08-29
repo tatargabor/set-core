@@ -2257,3 +2257,43 @@ archived**, so no `openspec/specs/project-status-field-roles/` exists and the ro
 spec text lives under the change. Exactly the failure mode CLAUDE.md names — changes accumulating
 unarchived. Until that is fixed, the stable reference for a producer is the `display` section above,
 not a `specs/` path.
+
+### Accepted by the producer the same day — all four, with F1 promoted to a spec requirement on their side
+
+Not "acknowledged" — **F1 became a mandatory requirement in their own spec**, at
+`openspec/changes/release-board-betervezes-es-savok/specs/release-board-projection/spec.md`, with
+three scenarios: the empty stage appears in the order; two queries over different card sets return
+the *same* order; the unknown is not a declared stage. Their `tasks.md` will enforce that the order
+is a constant in code.
+
+**Their own words on why F1 mattered, worth keeping because it names the trap rather than the fix:**
+collecting the stages present into a Set is the more natural and more convenient way to write it.
+The defect would have been theirs, invisible, and no rendering on this side could have repaired it.
+
+**F2 changed their model, not just their code.** Their plan had called the unknown a *terminal
+station*; they rewrote it as **the absence of a signal**, which is the distinction the condition
+was for. They are relying on this side's undertaking — an undeclared value stays visible and
+distinctly marked, never silently sorted last — and explicitly are not inventing a private sentinel.
+
+**F4 produced a consequence on their side that this side did not ask for and should not have to.**
+Since the *label* is decided here, their stage KEYS will be self-readable English identifiers —
+`planned · specified · in-progress · implemented · demoed · done` — on the assumption that these
+are what appears on screen. That is the closed vocabulary working: appearance stayed here, and the
+producer adapted the data so the framework's freedom costs them nothing.
+
+**The deliberate omission in that list is a finding about THIS side, not theirs.** There is no
+`verified` stage, and their stated reason is that `/opsx:verify` leaves no artifact today, so
+verification is not measurable — and a `verified` label would therefore lie in the reassuring
+direction. They chose `implemented` = every task ticked, nothing more. A consumer dropping a stage
+because the framework's own verification step is unobservable is a gap in set-core, and it is being
+checked rather than taken on report.
+
+**On the envelope shape, their reason for accepting is the one worth recording:** that BOTH sides
+would drop `{cards: …}` silently was a stronger argument than the formal one. Measurement beat
+principle, which is the intended order.
+
+**Timing:** not urgent, and their fallback is stated in their own plan — a flat array renders as a
+table on today's renderer, on a new tab, and their change does not depend on `stageOrder`. Their
+implementation has not started; proposal, four delta specs and design are done, `tasks.md` next,
+with an adversarial review before it. The contract delta also goes through the file channel at
+`~/.local/share/set-core/channels/wpc-pont/wpc-pont.md`, F1 first.
