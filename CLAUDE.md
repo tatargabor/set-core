@@ -315,8 +315,15 @@ included the two most heavily contaminated ones. Re-run the command; do not trus
 which is the same split the abstraction already draws: the domain lives on the project's side,
 and so does its language.
 
-**Talking to the user stays Hungarian.** The rule is about what is written INTO the repository,
-not about the conversation.
+**Talking to the user is ENGLISH too, from 2026-08-29.** This sentence used to read "talking to
+the user stays Hungarian", carving the conversation out of the rule. The user closed that carve-out
+directly — asked whether the switch covered the conversation as well, they answered that it does.
+`~/.claude/settings.json` already carries `"language": "English"`, so the harness agrees with the
+file; if the two ever disagree, ask rather than guess which one is stale.
+
+**The exceptions do not follow the conversation into English.** A verbatim quote of the user stays
+in the language they said it in — inside an English sentence — for the same reason it does in a
+commit message: a paraphrase destroys the evidence a quote carries. Same for the domain word.
 
 **The exceptions are the load-bearing half of this rule**, because a rule stated without them
 is either ignored or applied to things it would damage. Measured on 2026-08-19: **130 `.md`
