@@ -116,6 +116,7 @@ def test_an_empty_record_starts_nothing(tmp_path):
     assert out["record_exists"] is False
 
 
+# AC-1
 def test_a_resumable_entry_is_resumed_in_its_own_cwd(tmp_path):
     """AC-16, and the argv: none is passed, so the owner's own default is used
     and cannot drift from what a bare interactive session gets.
@@ -278,6 +279,7 @@ def test_complete_is_false_whenever_anything_did_not_start(tmp_path, monkeypatch
 # the owner
 # --------------------------------------------------------------------------- #
 
+# AC-2
 def test_an_unreachable_owner_fails_the_whole_request_before_anything_is_tried(tmp_path):
     """AC-17. Nothing was attempted, so a result listing N failures would say
     something different from the truth.

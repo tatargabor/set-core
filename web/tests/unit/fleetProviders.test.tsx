@@ -43,6 +43,7 @@ const CATALOGUE: ProviderCatalogue = {
 }
 
 describe('the decisions', () => {
+  // AC-53 / AC-54
   it('offers an unusable provider WITH THE REASON rather than omitting it', () => {
     const offered = offerableProviders(CATALOGUE)
     expect(offered.map(p => p.name)).toEqual(['anthropic', 'glm', 'needs-key'])
@@ -97,6 +98,7 @@ describe('the decisions', () => {
     expect(providerMark(undefined).kind).toBe('unrecorded')
   })
 
+  // AC-57
   it('marks a credential that came from a project override', () => {
     const mark = providerMark({
       recorded: true, provider: 'glm', model: 'glm-4.6',
@@ -211,6 +213,7 @@ describe('the form', () => {
     expect(options.find(o => o.value === 'glm')!.disabled).toBe(false)
   })
 
+  // AC-56
   it('shows the resolved frame and the level that supplies each half', async () => {
     stubFleet()
     await openStartForm()
@@ -303,6 +306,7 @@ describe('the tile', () => {
     expect(mark.textContent).not.toMatch(/⚠/)
   })
 
+  // AC-57
   it('marks a project-override credential where the agent is listed', async () => {
     stubFleet({ agents: [agentRow({
       provider: { recorded: true, provider: 'glm', model: 'glm-4.6',
@@ -350,6 +354,7 @@ describe('the tile', () => {
 // --------------------------------------------------------------------------- //
 
 describe('the project override the browser cannot see', () => {
+  // AC-56
   it('takes the SERVER’s resolution when nothing is chosen', () => {
     // Before this, the preview said `anthropic · opus (machine default)` for a
     // project whose override sends it to glm. Not "unknown" — a confident,

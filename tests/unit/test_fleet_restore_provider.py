@@ -66,6 +66,7 @@ def test_a_restore_names_which_record_the_resume_continues(tmp_path):
     assert call["provider_unit"] == "set-agent-proj-s1.scope"
 
 
+# AC-3
 def test_a_renamed_restore_still_finds_the_original_record(tmp_path):
     """The case the whole parameter exists for.
 
@@ -88,6 +89,7 @@ def test_a_renamed_restore_still_finds_the_original_record(tmp_path):
     assert call["provider_unit"] == "set-agent-proj-s1.scope"
 
 
+# AC-3
 def test_a_restored_agent_reports_the_provider_it_came_back_on(tmp_path):
     owner = _Owner()
     path, _, cwd = _seed(tmp_path, ["S1"])
@@ -99,6 +101,7 @@ def test_a_restored_agent_reports_the_provider_it_came_back_on(tmp_path):
     assert started["model"] == "glm-4.6"
 
 
+# AC-4
 def test_an_entry_with_no_recorded_provider_says_so(tmp_path):
     """`provider_recorded: false` is a GAP.
 

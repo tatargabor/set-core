@@ -76,6 +76,7 @@ def test_a_project_overriding_only_the_model_keeps_the_machine_credential(tmp_pa
 
 
 # AC-11 — a project may spend against its own credential
+# AC-32
 def test_a_project_may_carry_its_own_credential_and_it_is_visible_as_such(tmp_path):
     cfg = make(tmp_path, projects={"w": {
         "provider": "glm",
@@ -221,6 +222,7 @@ def test_the_default_provider_sets_no_endpoint_so_the_cli_login_is_used(tmp_path
 
 
 # AC-27 — a launch parameter is stated once, as data
+# AC-5 / AC-10 / AC-27
 def test_the_measured_launch_parameters_come_from_the_configuration(tmp_path):
     cfg = make(tmp_path)
     plan = res.resolve(provider="glm", model="glm-5.3", config=cfg)

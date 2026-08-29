@@ -828,6 +828,7 @@ def test_a_child_that_died_is_reported_as_a_child_not_as_a_scope(monkeypatch):
     assert "did not become active" in str(exc2.value)
 
 
+# AC-46 / AC-47
 def test_the_claude_strip_runs_before_the_caller_s_env_not_after(monkeypatch):
     """The ORDER inside `build_child_env`, held by a test rather than by a comment.
 

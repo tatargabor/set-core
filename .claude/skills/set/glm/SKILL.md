@@ -29,19 +29,36 @@ Minden további flag változatlanul megy tovább a `claude`-nak (`--allowedTools
 `--json-schema`, `--append-system-prompt`, …). A `--model` és az `--autocompact` csak
 akkor kerül hozzá, ha a hívó nem adta meg.
 
-### Konfiguráció — első találat nyer
+### Konfiguráció — EGY központi fájl (2026-08-29 óta)
 
-| # | hely | mikor |
-|---|---|---|
-| 1 | a folyamat env-je | egyszeri felülírás |
-| 2 | `./.env` a repóban (`GLM_*` sorok) | projekt-szintű |
-| 3 | `~/.config/set-core/glm.env` | **gépszintű — ez a hordozható hely** |
+**`~/.config/set-core/providers.json`**, `0600`. Ez az egyetlen hely, ahonnan a
+framework provider-credentialt olvas; a `set-glm` és a flotta agent-ownere ugyanazt a
+resolvert hívja, tehát a mért launch-paraméterek egy helyen állnak és nem drift-elnek szét.
 
 ```bash
-printf 'GLM_TOKEN=%s\nGLM_MODEL=glm-5.3-flash\n' "$KULCS" > ~/.config/set-core/glm.env
+set-providers path        # hol van
+set-providers show        # mi van benne — a token maszkolva
+set-providers migrate     # a régi glm.env átemelése, EGY parancs
 ```
 
-Csak a `GLM_` prefixű sorokat olvassa be — szándékosan. Egy `source .env` az
+Az elsőbbség három szint: **gépszintű default → projekt-override → maga a kérés**. A
+modell mezőnként dől el; a **credential és az endpointja viszont EGY blokk** — egy szint
+vagy mindkettőt adja, vagy elutasítás. Egy kulcs egy endpointra szól, és a kettőt külön
+szintről venni olyan kombináció, amit senki nem írt le: jó esetben 401, rossz esetben a
+másik számla.
+
+#### A régi `glm.env` — egy release-nyi ablak, aztán elfogy
+
+| ami volt | mi lett belőle |
+|---|---|
+| `./.env` a repóban (`GLM_*` sorok) | **MEGSZŰNT, nem olvassuk** — a hiba ki is mondja, hogy megszűnt, nem csak azt, hogy nem talált credentialt |
+| `~/.config/set-core/glm.env` | **egy release-ig még működik**, minden feloldásnál figyelmeztetéssel |
+
+A figyelmeztetés megnevezi a régi fájlt, az újat és a parancsot. A `migrate` **kifejezett**,
+sosem egy olvasás mellékhatása: egy olvasás semmit nem ír, és a `glm.env`-et a migráció is
+a helyén hagyja. Meglévő `providers.json`-t nem ír felül szó nélkül.
+
+Csak a `GLM_` prefixű sorokat olvassa be a régi fájlból — szándékosan. Egy `source .env` az
 `ANTHROPIC_API_KEY`-t is behozná, vagyis pont azt a kulcsot, ami a hívást csendben a
 platform-számlára irányítaná át.
 
@@ -88,8 +105,9 @@ nélkül is (2. azonos hívás: `input=16`, `cache_read=120 000`) · a `--json-s
    közt semmi nem látszik belőle.
 
 3. ⚠ **A `.env` gyakran git-követett.** Worktree-ben egy `git reset --hard` elviszi a
-   `GLM_*` sorokat, és a futás „hiányzik a GLM_TOKEN"-nel áll meg. Ezért van a gépszintű
-   `~/.config/set-core/glm.env` — az egyik repó takarítása nem viszi el a többiét.
+   `GLM_*` sorokat, és a futás „hiányzik a GLM_TOKEN"-nel áll meg. Ez az egyik oka annak,
+   hogy a repó-beli `.env` tier **megszűnt**: a credential helye a gépszintű
+   `~/.config/set-core/providers.json`, és az egyik repó takarítása nem viszi el a többiét.
 
 ## Subagent GLM-en — a provider a SZÜLŐTŐL jön, nem az agent-definícióból
 

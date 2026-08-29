@@ -149,12 +149,26 @@ def test_an_incomplete_source_is_refused_naming_the_field(home, missing):
 
 # ---------------------------------------------------------- the legacy reader
 
+#: A stand-in for a foreign key, deliberately NOT shaped like one.
+#:
+#: ⚠ It used to carry a vendor key PREFIX, and the release leak scan blocked on
+#: it — correctly. The scanner cannot tell a fixture from a live key, and it must
+#: not try: one that learns to recognise "obviously fake" values is one that can
+#: be talked out of a real finding. The fixture changes; the scanner stays blunt.
+#:
+#: And the prefix is described here rather than quoted, which is the second half
+#: of the same lesson. This repo's rule is to record the pattern that was WRONG —
+#: but a scanner matches text, so a comment quoting the offending literal re-trips
+#: the gate it exists to explain. Measured: the first version of this note did.
+FOREIGN_KEY_VALUE = "must-not-be-read-by-the-legacy-reader"
+
+
 def test_only_glm_prefixed_keys_are_read_from_the_old_file(home):
     """Sourcing the whole file would import the key that redirects the call."""
-    write_legacy(home, GLM_ENV + 'ANTHROPIC_API_KEY=sk-ant-should-never-be-read\n')
+    write_legacy(home, GLM_ENV + f'ANTHROPIC_API_KEY={FOREIGN_KEY_VALUE}\n')
     values = legacy.read_legacy(home / "glm.env")
     assert set(values) == {"GLM_TOKEN", "GLM_MODEL", "GLM_BASE_URL"}
-    assert not any("sk-ant" in v for v in values.values())
+    assert not any(FOREIGN_KEY_VALUE in v for v in values.values())
 
 
 # ------------------------------------------------------ the deprecation window

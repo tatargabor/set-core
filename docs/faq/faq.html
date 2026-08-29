@@ -1453,6 +1453,24 @@ curl -X POST http://localhost:7400/api/my-app/sentinel/start \
 
   <div class="faq-card">
     <div class="faq-question" onclick="toggle(this)">
+      <h3>Where do provider credentials live, and how do I switch providers?</h3>
+      <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="faq-answer">
+      <div class="faq-body">
+        <p>In one machine-level file: <code>~/.config/set-core/providers.json</code>, owner-only (<code>0600</code>). It declares each provider, the models it will answer to, and its credential. Nothing else is read — in particular, <strong>a credential in a project&rsquo;s own working tree is not consulted</strong>, because a file inside a repository gets committed, reset, or cleaned by accident.</p>
+        <p>Three levels decide what a start runs on, in increasing priority: <strong>machine default &rarr; project override &rarr; the start itself</strong>. The model resolves field by field, so a project can change just the model. The <strong>credential and its endpoint resolve together, as one block</strong>: a key is issued for an endpoint, and taking one from each level is a combination nobody wrote down.</p>
+        <p>Every launch reports which level supplied each value, and the dashboard shows it beside the agent — because an agent quietly running on another account is otherwise indistinguishable from an ordinary one.</p>
+        <pre><code>set-providers path        # where the file is
+set-providers show        # what it declares — the token is masked
+set-providers migrate     # carry an older glm.env across</code></pre>
+        <p>Migration is an explicit command, never a side effect of reading: resolving a provider writes nothing, and <code>migrate</code> leaves the old file in place and refuses to overwrite an existing configuration without being told to. The older <code>~/.config/set-core/glm.env</code> keeps working for one release, with a warning that names the old file, the new one and this command.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="faq-card">
+    <div class="faq-question" onclick="toggle(this)">
       <h3>Why not abstract over multiple LLMs?</h3>
       <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
     </div>
@@ -1460,6 +1478,7 @@ curl -X POST http://localhost:7400/api/my-app/sentinel/start \
       <div class="faq-body">
         <p>Because <strong>depth beats breadth</strong>. SET leverages Claude-specific capabilities: 200K+ context, native tool use, worktree support, hooks, MCP. Abstracting to a lowest-common-denominator API would sacrifice these for theoretical portability.</p>
         <p>SET bets on Claude getting better — and compounds that bet.</p>
+        <p><strong>That is not the same as being locked to one endpoint.</strong> You can point SET at any provider that speaks the same protocol, and choose the provider and model per machine, per project, or per start — see the next answer. What SET does not do is flatten those providers into a common subset: each one is declared with its own models and its own measured launch parameters, and a name it does not declare is refused rather than silently substituted.</p>
       </div>
     </div>
   </div>

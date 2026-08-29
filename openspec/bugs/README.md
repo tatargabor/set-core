@@ -68,6 +68,41 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-109 — three tracked files block every push: a consumer project's name in a spec, and two absolute home paths
+
+- **state:** open
+- **reported:** 2026-08-29 by this session, running `set-leakscan` as task 9.3 of
+  `agent-provider-selection`. Not a task in that change — none of the three files belongs
+  to it, and one belongs to a change that was archived months ago.
+- **measured:** `set-leakscan` over the unpushed range, 124 files scanned, three findings,
+  all marked `[BLOCKS]`:
+
+  ```
+  consumer-name  openspec/changes/fleet-input-attention/tasks.md:106
+  home-path      openspec/bugs/README.md:252
+  home-path      openspec/changes/work-cycle-run-visibility/tasks.md:16
+  ```
+
+  The first is the serious one and it is a rule breach, not a style issue: a consumer
+  project is named in a tracked file in a **public** repository, which
+  [external project confidentiality](../../CLAUDE.md) forbids outright. The other two are
+  `/home/<user>/...` paths, which publish the local username and directory layout —
+  the release-safety rule's check 4.
+
+- **the direction it fails in:** silently, and for everyone. `set-leakscan` blocks the
+  push, so nothing has leaked — but the block is on the RANGE, so these three lines now
+  stop *any* session from pushing *any* work until they are fixed. The cost lands on
+  whoever pushes next, not on whoever wrote them, and nothing in the authoring moment
+  said anything was wrong.
+
+- **what would prove it fixed:** `set-leakscan` exits 0 on the unpushed range, and
+  `set-leakscan --tree` reports no `consumer-name` finding at all. Re-running is seconds.
+
+- **what NOT to do:** do not add these to `~/.config/set-core/leakscan-allow.txt`. The
+  allow file is for deliberate exceptions — the user's own public repos — and a consumer
+  name is never one. Fix the text: a neutral name (`the consumer project`) for the first,
+  a `~`-relative or `<user>`-placeholder path for the other two.
+
 ### B-108 — a unit does everything right and then does not commit: the engine's own run-state exclusion turns a silently-ignored directory into a hard `git add` failure
 
 - **state:** open

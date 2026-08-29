@@ -41,6 +41,7 @@ def _nothing_running(monkeypatch):
 # 6.4 — the pre-fork survival guard
 # --------------------------------------------------------------------------- #
 
+# AC-48
 def test_a_resolved_variable_lost_by_the_builder_stops_the_start(monkeypatch, _nothing_running):
     """The guard's OWN test: it mutates the builder, not the order.
 
@@ -83,6 +84,7 @@ def test_a_resolved_variable_lost_by_the_builder_stops_the_start(monkeypatch, _n
     assert claimed == [], f"the start proceeded past the guard: {claimed}"
 
 
+# AC-55
 def test_the_refusal_names_the_variable_and_never_its_value(monkeypatch, _nothing_running):
     """A resolved environment carries credentials; this message reaches a log.
 
@@ -116,6 +118,7 @@ def test_an_altered_value_counts_as_lost(monkeypatch, _nothing_running):
     assert "ANTHROPIC_BASE_URL" in str(exc.value)
 
 
+# AC-49
 def test_a_complete_environment_passes_the_guard(monkeypatch, _nothing_running):
     """The other direction. A guard that refuses everything also passes the
     three tests above, and this is the only assertion that separates the two."""
@@ -214,6 +217,7 @@ def _daemon(monkeypatch, tmp_path, plan=None, owner=None):
 recorded: dict = {}
 
 
+# AC-42
 def test_a_start_naming_a_provider_resolves_it_on_the_owner_s_side(monkeypatch, tmp_path):
     """The names cross the socket; the credential is fetched behind it.
 
@@ -243,6 +247,7 @@ def test_a_start_naming_a_provider_resolves_it_on_the_owner_s_side(monkeypatch, 
     assert "env" not in payload
 
 
+# AC-43
 def test_a_start_naming_nothing_does_not_resolve_at_all(monkeypatch, tmp_path):
     """The other direction, and it is not cosmetic: an unconditional resolve
     would make every plain start fail on a machine with no providers file —
@@ -303,6 +308,7 @@ def test_the_client_sends_names_and_never_a_credential(monkeypatch):
 from set_orch.fleet import provider_record
 
 
+# AC-50 / AC-52
 def test_the_record_survives_a_restart_of_the_owning_service(monkeypatch, tmp_path):
     """6.8's actual claim, and the only way to test it: the in-memory holder is
     THROWN AWAY between the write and the read.
@@ -330,6 +336,7 @@ def test_the_record_survives_a_restart_of_the_owning_service(monkeypatch, tmp_pa
     assert "ANTHROPIC_AUTH_TOKEN" not in pathlib.Path(store).read_text()
 
 
+# AC-3
 def test_a_recovery_resumes_on_the_provider_the_session_was_started_on(monkeypatch, tmp_path):
     """6.7. Until 2026-08-29 `recover()` passed no environment at all, so a
     resumed agent came back on the ambient default — a different account, with
@@ -362,6 +369,7 @@ def test_a_recovery_resumes_on_the_provider_the_session_was_started_on(monkeypat
     assert payload["provider"] == "glm"
 
 
+# AC-4
 def test_a_recovery_with_no_record_resolves_nothing(monkeypatch, tmp_path):
     """An unrecorded agent must not be resumed on the machine default *by this
     path pretending it knew*. It resumes exactly as it did before the record
@@ -384,6 +392,7 @@ def test_a_recovery_with_no_record_resolves_nothing(monkeypatch, tmp_path):
     assert "provider" not in payload
 
 
+# AC-51
 def test_an_agent_with_no_record_is_listed_as_unrecorded_not_as_the_default(monkeypatch, tmp_path):
     """6.9, and it is the load-bearing one in this block.
 
@@ -466,6 +475,7 @@ import pathlib  # noqa: E402  — used by the store-content assertions above
 # the assertions it seemed to cover were covering something else.
 # --------------------------------------------------------------------------- #
 
+# AC-46
 def test_the_resolver_s_removals_actually_leave_the_child_environment(monkeypatch):
     """A foreign credential that SURVIVES is the worst of the three outcomes.
 
@@ -484,6 +494,7 @@ def test_the_resolver_s_removals_actually_leave_the_child_environment(monkeypatc
     assert "CLAUDECODE" not in env
 
 
+# AC-48
 def test_a_removal_the_builder_did_not_perform_stops_the_start(monkeypatch, _nothing_running):
     """The guard's removal half, which the loss half does not cover.
 
@@ -553,6 +564,7 @@ from set_orch.providers.errors import ConfigError, UnknownModel, UnknownProvider
     (UnknownModel("glm does not list 'opus'"), "unknown-model"),
     (ConfigError("/x/providers.json is mode 0644"), "provider-config"),
 ])
+# AC-39
 def test_a_resolution_refusal_travels_as_a_class_not_as_prose(monkeypatch, tmp_path,
                                                               exc, kind):
     """Without this branch the refusal fell through to the generic handler, lost

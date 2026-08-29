@@ -72,6 +72,7 @@ def _config(**over) -> ProvidersConfig:
 # 7.1 — the named fields, and what the body still refuses
 # --------------------------------------------------------------------------- #
 
+# AC-42
 def test_a_start_carries_the_named_provider_and_model_to_the_owner(monkeypatch, _here):
     owner = _Owner()
     monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: owner)
@@ -87,6 +88,7 @@ def test_a_start_carries_the_named_provider_and_model_to_the_owner(monkeypatch, 
     assert call["project"] == "some-project"
 
 
+# AC-45
 def test_the_start_body_still_refuses_an_argv_or_an_environment(monkeypatch, _here):
     """The half that is easy to lose while adding fields.
 
@@ -99,6 +101,7 @@ def test_the_start_body_still_refuses_an_argv_or_an_environment(monkeypatch, _he
         StartAgentBody(label="x", cwd=_here, env={"ANTHROPIC_AUTH_TOKEN": SECRET})
 
 
+# AC-43
 def test_a_start_naming_nothing_sends_no_provider(monkeypatch, _here):
     owner = _Owner()
     monkeypatch.setattr(fleet_api, "OwnerClient", lambda *a, **k: owner)
@@ -118,6 +121,7 @@ def test_a_start_naming_nothing_sends_no_provider(monkeypatch, _here):
     ("command-not-resolvable", 503),
     ("environment-not-delivered", 503),
 ])
+# AC-44 / AC-39
 def test_a_refusal_is_answered_by_whose_act_fixes_it(monkeypatch, _here, kind, status):
     """400 and 503 are not severities here, they are addresses.
 
@@ -201,6 +205,7 @@ def test_an_unreadable_configuration_is_503_and_never_an_empty_catalogue(monkeyp
 # 7.6 — the load-bearing one
 # --------------------------------------------------------------------------- #
 
+# AC-55
 def test_nothing_this_change_produces_ever_carries_a_credential(monkeypatch, _here, caplog):
     """Response bodies, error messages AND log lines, in one sweep.
 
@@ -238,6 +243,7 @@ def test_nothing_this_change_produces_ever_carries_a_credential(monkeypatch, _he
 # 7.5 — what a listed agent says, and what it must not
 # --------------------------------------------------------------------------- #
 
+# AC-51
 def test_a_listed_agent_reports_its_provider_or_admits_it_has_none():
     """6.9 as the surface sees it. `recorded: false` is a gap; the machine
     default in that slot would be a claim about who is being billed."""
@@ -262,6 +268,7 @@ def test_a_listed_agent_reports_its_provider_or_admits_it_has_none():
     assert row_unknown["provider"]["provider"] is None
 
 
+# AC-56
 def test_the_catalogue_resolves_the_project_default_with_its_own_resolver(monkeypatch):
     """Found by LOOKING at the running dashboard, not by any test here.
 

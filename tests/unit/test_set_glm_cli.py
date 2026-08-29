@@ -103,6 +103,7 @@ def test_a_gateway_prefixed_model_is_refused_with_the_bare_form(cfgdir):
 
 
 # AC-21 / AC-22 — the removed tier is named as removed, not reported as an absence
+# AC-12
 def test_a_repo_env_with_glm_keys_is_named_as_no_longer_read(tmp_path):
     repo = tmp_path / "proj"
     repo.mkdir()
