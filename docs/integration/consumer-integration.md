@@ -2362,3 +2362,62 @@ the cases its author could think of is measuring its author.
 the reason it would be tempting — this is the target definition to start from, not a diacritics
 grep. The failure direction is the expensive one: a grep's false positives look like work to do,
 and clearing them deletes evidence before anyone reaches the parser patterns.
+
+## 2026-08-29 — the release board: the read boundary stays a DECLARED COMMAND on the project's side
+
+The consumer asked before writing `tasks.md`, which is the cheap moment. Their change
+(`release-board-betervezes-es-savok`) carries proposal, design and four delta specs and
+deliberately no task list yet. Three questions; all three answered from what is already on
+this record, and the answers are below with the evidence each rests on.
+
+**Q1 — do they publish a new read command, or does set-core assemble the board from the
+surfaces it already has? ANSWER: a new declared read command, on their side.**
+
+The evidence is the decision at line 256 of this file: set-core keeps no built-in list of
+contract commands, and the measurement behind it is a sixth command that appeared through
+the API with **zero framework changes** because it was declared rather than documented.
+Assembling the board here would move their band definitions into Layer 1 — forbidden by
+`.claude/rules/modular-architecture.md` rule 1, but the stronger argument is theirs: their
+ticketing is mid-migration, so the definition is still moving, and a moving definition
+reimplemented on the far side of a release boundary is the 412%/164% drift they already
+measured. set-core would become the second implementation.
+
+Three conditions handed over with the answer: use the existing envelope
+(`{contractVersion, generatedAt, command, ok, data, deprecated}`); omit `ok` where it does
+not apply, as the test-system answer already does; and **emit every band explicitly,
+including empty ones**, because the renderer cannot distinguish an absent key from an
+empty list, nor an unreadable band from an empty one.
+
+**Q2 — is the fourth band `implemented` or `verified`? ANSWER: `implemented`, and they
+should not wait on us.**
+
+`verified` would depend on B-112, which is open, unowned and undated, and whose own
+"fixed when" is unbuilt design — the record must name WHAT was verified so a later edit
+invalidates the verdict instead of inheriting it. B-112's fail direction argues for their
+choice rather than against it: a change with no verification record looks exactly like a
+verified one, and the reassuring reading is the default. A band fed by nothing would be
+that defect at board scale. Additive either way — if B-112 closes, `verified` joins as a
+fifth band and nothing built now has to move.
+
+**Q3 — what breaks on our side that they cannot see? Four, and the first is the one a
+design review assumes away.**
+
+- **We may not KEEP what we read.** The confidentiality boundary is persistence: no repo
+  file, no committed artifact, no cache, log or debug dump. So set-core **cannot compute
+  "what moved since yesterday"**, because it is not allowed to hold yesterday. If the board
+  wants movement, the projection carries it. Every board anybody has used keeps history,
+  which is exactly why this one gets assumed.
+- **The tables cap, and the cap is never silent.** Measured: `web/src/components/StatusValue.tsx:456`
+  (`CHIP_LIMIT = 5`) and `web/src/components/StatusTable.tsx:66` (`ROW_CAP = 25`); both
+  always state the hidden count and keep it one click away. A 60-card band renders as 25
+  plus a stated remainder — nothing lost, but one screenful is not the whole release.
+- **We render, we never act.** Already matched by their own design (no column 0, no
+  buttons), so it costs them nothing — but it is a standing constraint here, not a phase.
+- **No field name is recognised in the renderer.** Emphasis must arrive as data; it can
+  never come from naming a field `status` or `priority`.
+
+**Recorded because the mandate requires it:** this is a decision taken under the delegation
+of 2026-07-24 rather than escalated, so it names its evidence and can be revisited. If the
+read-boundary answer is wrong, it is the expensive one to reverse, and they were told so
+before starting.
+
