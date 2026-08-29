@@ -1,0 +1,27 @@
+#!/bin/bash
+# set-work-cycle — the work-cycle engine's one entry point.
+#
+# A launcher beside the other `set-*` tools rather than only the console script
+# `pyproject.toml` declares. Both exist and they are not the same reach:
+#
+#   measured 2026-08-29 — the console script lands only inside the repo's venv,
+#   which is on nobody's PATH but a developer's shell. The agent owner and the
+#   dashboard both run with `PATH=~/.local/bin:…` and no venv, so the fleet's
+#   work-unit start named a command its own child could not execute (B-105).
+#
+# Resolves the interpreter the same way `set-orch-core` does, for the same
+# reason: `#!/usr/bin/env python3` finds macOS system Python 3.9.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+exec "$PYTHON" -c "
+import sys
+sys.path.insert(0, '$SET_TOOLS_ROOT/lib')
+from set_workcycle.cli import main
+sys.exit(main())
+" "$@"

@@ -90,11 +90,19 @@ class Response:
     id: str
     result: Any = None
     error: Optional[str] = None
+    #: What KIND of refusal this is, when the caller has to act differently on it.
+    #: Carried beside the message rather than inside it, because a caller that has
+    #: to pattern-match prose is a caller that breaks when the prose improves.
+    #: Absent on an old peer, and every reader must treat absence as "unclassified"
+    #: rather than as a kind of its own.
+    error_kind: Optional[str] = None
 
     def to_json(self) -> str:
         payload: Dict[str, Any] = {"id": self.id}
         if self.error is not None:
             payload["error"] = self.error
+            if self.error_kind is not None:
+                payload["error_kind"] = self.error_kind
         else:
             payload["result"] = self.result
         return json.dumps(payload)
@@ -106,6 +114,7 @@ class Response:
             id=str(data.get("id", "")),
             result=data.get("result"),
             error=data.get("error"),
+            error_kind=data.get("error_kind"),
         )
 
     @property
@@ -113,8 +122,8 @@ class Response:
         return self.error is None
 
 
-def make_error(request_id: str, message: str) -> Response:
-    return Response(id=request_id, error=message)
+def make_error(request_id: str, message: str, kind: Optional[str] = None) -> Response:
+    return Response(id=request_id, error=message, error_kind=kind)
 
 
 def make_result(request_id: str, result: Any) -> Response:

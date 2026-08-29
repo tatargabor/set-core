@@ -1068,7 +1068,11 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except OwnerClientError as exc:
         # The owner refused — a label already held, a scope already running. A
-        # refusal is the caller's answer, not a server fault.
+        # refusal is the caller's answer, not a server fault. The one exception
+        # is a command the child cannot execute: nothing is held and retrying
+        # changes nothing, so it answers like an unavailable owner instead.
+        if getattr(exc, "kind", None) == "command-not-resolvable":
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     logger.info(
         "fleet api: started agent %s in %s (%s, pid %s)",
@@ -1581,6 +1585,13 @@ def fleet_start_unit(body: StartUnitBody) -> Dict[str, Any]:
         # restart took every agent it had started with it.
         raise HTTPException(status_code=503, detail=str(exc))
     except OwnerClientError as exc:
+        # A command the child cannot execute is not a conflict — nothing is held,
+        # nothing is racing, and retrying changes nothing. It joins the owner-down
+        # family because the repair is the same SHAPE: something on this machine
+        # has to be fixed before any start can work, and the screen already has a
+        # place to say so instead of offering a control that fails when used.
+        if getattr(exc, "kind", None) == "command-not-resolvable":
+            raise HTTPException(status_code=503, detail=str(exc))
         raise HTTPException(status_code=409, detail=str(exc))
 
     result["kind"] = "work-unit"

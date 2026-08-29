@@ -36,6 +36,7 @@ import fcntl
 import logging
 import os
 import pty
+import shutil
 import signal
 import struct
 import termios
@@ -88,8 +89,91 @@ def _describe_exit(status: int) -> str:
     return f"ended with raw wait status {status}"
 
 
+def _reap(pid: int) -> Optional[int]:
+    """The child's wait status if it has already ended, else `None` — never blocks.
+
+    `None` means *still running*, which is a different answer from *ended with
+    status 0* and must not collapse into it: the first says the scope is the
+    thing that failed, the second says the child is.
+    """
+    try:
+        done, status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        # Already reaped elsewhere. We cannot say how it ended, and saying nothing
+        # is correct — inventing a status here would be a false value.
+        return None
+    except OSError:
+        return None
+    return status if done == pid else None
+
+
 class OwnerError(RuntimeError):
     """An agent could not be started, written to, or recovered."""
+
+
+class CommandNotResolvable(OwnerError):
+    """The command a start names cannot be executed in the environment the child gets.
+
+    A subclass rather than a message, because the two failures need different
+    answers: this one is knowable BEFORE anything is claimed, and the caller can
+    act on it (install the command, fix the service's PATH). The generic
+    `OwnerError` covers what is only knowable afterwards.
+    """
+
+
+def build_child_env(env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """The environment a started child gets. One owner, one place, one order.
+
+    Extracted from `start()` on 2026-08-29 because two tracks needed it at once:
+    the command resolution below has to see the FINAL environment, and the
+    provider/model track supplies its own keys through `env`. Two sessions
+    editing one inline block is the collision this removes.
+
+    **The order is the contract, not a detail.** The `CLAUDE*` strip runs BEFORE
+    the caller's `env` is applied, and reversing the two would silently drop a
+    key the caller deliberately set — `CLAUDE_CODE_MAX_CONTEXT_TOKENS` being the
+    measured example, whose loss is not an error but a compaction loop that looks
+    from outside like a slow model. Held by a test rather than by this paragraph.
+
+    The strip itself: a session started as another session's child writes no
+    transcript at all (measured 2026-08-18), which makes the agent invisible to
+    every source the fleet reads. Anything the framework starts must not inherit
+    that marker.
+    """
+    child_env = dict(os.environ)
+    for key in [k for k in child_env if k.startswith("CLAUDE")]:
+        child_env.pop(key, None)
+    child_env["TERM"] = "xterm-256color"
+    child_env.update(env or {})
+    return child_env
+
+
+def resolve_in_env(command: str, env: Dict[str, str]) -> Optional[str]:
+    """Where `command` would be found by a child running with `env` — or `None`.
+
+    ⚠ The environment is a PARAMETER and nothing here reads `os.environ`. That is
+    the whole point: measured 2026-08-29, this service's own PATH and the PATH a
+    started child gets are not the same string, and resolving against the wrong
+    one is the "measure a proxy instead of the thing" class — the check passes
+    while the child still cannot exec.
+
+    A command containing a separator is a path, not a name: PATH is not consulted
+    for it, exactly as `execvp` does not.
+    """
+    if not command:
+        return None
+    if os.sep in command or (os.altsep and os.altsep in command):
+        return command if os.access(command, os.X_OK) and os.path.isfile(command) else None
+    path = env.get("PATH")
+    if path is None:
+        # ⚠ NOT `shutil.which(command, path=None)`. Measured while writing the test
+        # for this function: `which` treats `None` as "use os.environ['PATH']", so an
+        # environment carrying no PATH at all would have resolved against THIS
+        # process's — the exact proxy this function exists to avoid, and failing in
+        # the direction that passes the check and leaves the child unable to exec.
+        # An env with no PATH is refused instead, which is also fail-closed.
+        return None
+    return shutil.which(command, path=path)
 
 
 @dataclass
@@ -159,15 +243,24 @@ class AgentOwner:
                 "stop it before starting, or recover it instead"
             )
 
-        child_env = dict(os.environ)
-        # A session started as another session's child writes no transcript at
-        # all — measured 2026-08-18, and it makes the agent invisible to every
-        # source the fleet reads. Anything the framework starts must not inherit
-        # that marker.
-        for key in [k for k in child_env if k.startswith("CLAUDE")]:
-            child_env.pop(key, None)
-        child_env["TERM"] = "xterm-256color"
-        child_env.update(env or {})
+        child_env = build_child_env(env)
+
+        # Resolve HERE — after the child env is final (the `CLAUDE*` strip above and
+        # the caller's `env=` are both already applied) and before anything is
+        # claimed. Both halves are requirements rather than placement preferences:
+        #
+        # * resolving earlier would consult a different environment than the child
+        #   gets, and pass while the child still failed;
+        # * refusing later means the caller waits out `await_unit`'s liveness poll
+        #   and is then told the SCOPE did not become active — a true sentence about
+        #   the symptom that points away from the missing command. Measured
+        #   2026-08-29: `systemd-run` exits 1 immediately, no unit ever registers,
+        #   and the four-second wait bought the reader nothing but a wrong cause.
+        if not resolve_in_env(argv[0], child_env):
+            raise CommandNotResolvable(
+                f"{argv[0]} cannot be executed by the started child: "
+                f"not found on PATH={child_env.get('PATH', '')!r}"
+            )
 
         pid, master_fd = pty.fork()
         if pid == 0:  # pragma: no cover - executed in the forked child
@@ -192,10 +285,22 @@ class AgentOwner:
             scope = scopes.adopt(unit, pid, cwd)
         except scopes.ScopeError as exc:
             os.close(master_fd)
+            # ⚠ Ask the CHILD what happened before quoting the scope. A scope that
+            # never became active and a child that died are two different failures
+            # that arrive here as one exception, and only the second one can say
+            # anything actionable. Reporting the scope for both is how a caller
+            # gets a true sentence about the symptom and nothing about the cause —
+            # the shape measured on 2026-08-29, where an unresolvable command was
+            # reported as a scope that did not become active.
+            gone = _reap(pid)
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
+            if gone is not None:
+                raise OwnerError(
+                    f"the agent was not started: the child {_describe_exit(gone)}"
+                ) from exc
             raise OwnerError(f"{exc}; the agent was not started") from exc
         cgroup = scope.cgroup
         agent = OwnedAgent(

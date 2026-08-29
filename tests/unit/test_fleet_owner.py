@@ -686,3 +686,170 @@ def test_a_nameless_rename_is_refused():
         with pytest.raises(OwnerError):
             o.rename("mine", empty)
     assert o._agents["mine"].label == "mine"
+
+
+# --------------------------------------------------------------------------- #
+# Resolving the command in the CHILD's environment — work-cycle-run-visibility §1
+#
+# The measurement these guard (2026-08-29): `set-work-cycle` exists only in this
+# repo's venv, the owner's own PATH does not contain it, and `POST /api/fleet/units`
+# therefore could not start a unit at all. What the caller got was NOT a false
+# success — it was a four-second wait ending in `did not become active`, a true
+# sentence about the symptom that points away from the missing command.
+# --------------------------------------------------------------------------- #
+
+def test_resolution_reads_the_environment_it_is_given_and_not_the_process_s_own(monkeypatch):
+    """The seam, asserted as a seam.
+
+    ⚠ A test that sets its own `PATH` and then resolves would measure the proxy:
+    it cannot tell "resolved against the argument" from "resolved against the
+    ambient environment", because in that test the two are the same string. So
+    the process's PATH is pointed at a directory where the command IS, and the
+    argument at one where it is NOT — and the answer must follow the argument.
+    """
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as has, tempfile.TemporaryDirectory() as has_not:
+        tool = os.path.join(has, "set-imaginary-tool")
+        with open(tool, "w") as fh:
+            fh.write("#!/bin/sh\n")
+        os.chmod(tool, 0o755)
+
+        monkeypatch.setenv("PATH", has)
+        assert owner_mod.resolve_in_env("set-imaginary-tool", {"PATH": has}) == tool
+        # The ambient PATH still has it. The argument does not. The argument wins.
+        assert owner_mod.resolve_in_env("set-imaginary-tool", {"PATH": has_not}) is None
+        # And an environment with no PATH at all is an absence, not a fallback.
+        assert owner_mod.resolve_in_env("set-imaginary-tool", {}) is None
+
+
+def test_a_command_carrying_a_path_is_not_looked_up_on_path(tmp_path):
+    """`execvp` does not consult PATH for a name containing a separator; nor does this."""
+    tool = tmp_path / "tool"
+    tool.write_text("#!/bin/sh\n")
+    tool.chmod(0o755)
+    assert owner_mod.resolve_in_env(str(tool), {"PATH": ""}) == str(tool)
+    assert owner_mod.resolve_in_env(str(tmp_path / "absent"), {"PATH": str(tmp_path)}) is None
+
+
+def test_an_unresolvable_command_is_refused_by_name_before_anything_is_claimed(monkeypatch):
+    """The whole of B-105's fix direction, in one assertion set.
+
+    Named, not merely refused: the message must carry the command and the PATH,
+    and must NOT carry the scope's wording — a reader who is told the scope did
+    not become active goes and looks at systemd.
+    """
+    claimed = []
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "is_gone", lambda u: True)
+    # If any of these runs, the refusal came too late.
+    #
+    # ⚠ The fake returns a NON-ZERO pid on purpose. `pty.fork()` answers 0 in the
+    # child, and this owner's child branch execs immediately — so a fake returning
+    # 0 makes the test process itself become `systemd-run` the moment the guard
+    # stops holding. Measured while mutation-testing this very guard: the run
+    # produced one dot and no failure, because pytest had been replaced. A test
+    # that cannot survive the mutation it exists to catch proves nothing.
+    monkeypatch.setattr(owner_mod.pty, "fork", lambda: (claimed.append("fork"), (4243, 0))[1])
+    monkeypatch.setattr(scopes_mod, "adopt",
+                        lambda *a, **k: claimed.append("adopt") or None)
+    monkeypatch.setattr(owner_mod.os, "close", lambda fd: None)
+    monkeypatch.setattr(owner_mod.os, "kill", lambda *a: None)
+    monkeypatch.setattr(AgentOwner, "_set_window", lambda *a, **k: None)
+
+    o = AgentOwner()
+    with pytest.raises(owner_mod.CommandNotResolvable) as exc:
+        o.start(["set-definitely-not-a-command", "--flag"],
+                label="unit-x", cwd="/tmp", env={"PATH": "/nonexistent"})
+
+    message = str(exc.value)
+    assert "set-definitely-not-a-command" in message
+    assert "/nonexistent" in message
+    assert "did not become active" not in message
+    assert claimed == []           # nothing forked, nothing adopted
+    assert o._agents == {}         # and no label held
+    # A refusal is not a conflict: a caller must be able to tell the two apart
+    # without reading the sentence.
+    assert isinstance(exc.value, OwnerError)
+
+
+def test_resolution_runs_after_the_caller_s_env_is_applied_not_before(monkeypatch):
+    """`env=` is the only correct seam, so it is the one resolution must see.
+
+    Measured on the parallel provider track: the child env is `os.environ` minus
+    every `CLAUDE*` key, then updated from `env=`. A check placed before that
+    update would refuse a command the caller had just made reachable.
+    """
+    seen = {}
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "is_gone", lambda u: True)
+    monkeypatch.setattr(owner_mod, "resolve_in_env",
+                        lambda cmd, env: seen.update(env=env) or "/found")
+    monkeypatch.setattr(owner_mod.pty, "fork", lambda: (1, 0))
+    monkeypatch.setattr(owner_mod, "_reap", lambda pid: None)
+    monkeypatch.setattr(scopes_mod, "adopt",
+                        lambda *a, **k: Scope(unit="u", pid=1, pids=[1], cgroup="/x", active=True))
+    monkeypatch.setattr(AgentOwner, "_set_window", lambda *a, **k: None)
+
+    AgentOwner().start(["thing"], label="unit-y", cwd="/tmp",
+                       env={"PATH": "/from-the-caller"})
+    assert seen["env"]["PATH"] == "/from-the-caller"
+
+
+def test_a_child_that_died_is_reported_as_a_child_not_as_a_scope(monkeypatch):
+    """The half resolution cannot predict — and the reason 1.5 exists.
+
+    A scope that never became active and a child that died arrive at one `except`.
+    Reporting the scope for both is how the caller learns nothing actionable.
+    """
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "is_gone", lambda u: True)
+    monkeypatch.setattr(owner_mod, "resolve_in_env", lambda cmd, env: "/found")
+    monkeypatch.setattr(owner_mod.pty, "fork", lambda: (4242, 0))
+    monkeypatch.setattr(owner_mod.os, "close", lambda fd: None)
+    monkeypatch.setattr(owner_mod.os, "kill", lambda *a: None)
+    monkeypatch.setattr(AgentOwner, "_set_window", lambda *a, **k: None)
+    monkeypatch.setattr(scopes_mod, "adopt",
+                        lambda *a, **k: (_ for _ in ()).throw(ScopeError("u did not become active")))
+
+    # 127 << 8 is "exited with code 127" — the exec failure the shell reports.
+    monkeypatch.setattr(owner_mod, "_reap", lambda pid: 127 << 8)
+    with pytest.raises(OwnerError) as exc:
+        AgentOwner().start(["thing"], label="unit-z", cwd="/tmp")
+    assert "the child exited with code 127" in str(exc.value)
+    assert "did not become active" not in str(exc.value)
+
+    # And when the child is STILL ALIVE, the scope really is what failed — the
+    # old wording is correct there and must not be replaced by a guess.
+    monkeypatch.setattr(owner_mod, "_reap", lambda pid: None)
+    with pytest.raises(OwnerError) as exc2:
+        AgentOwner().start(["thing"], label="unit-z2", cwd="/tmp")
+    assert "did not become active" in str(exc2.value)
+
+
+def test_the_claude_strip_runs_before_the_caller_s_env_not_after(monkeypatch):
+    """The ORDER inside `build_child_env`, held by a test rather than by a comment.
+
+    Reversing the two lines is silent: the caller's key is stripped, nothing
+    errors, and the measured consequence is a compaction loop that reads from
+    outside as a slow model rather than as a lost variable.
+    """
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "inherited-and-must-go")
+
+    env = owner_mod.build_child_env({"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000"})
+
+    # Inherited CLAUDE* keys are gone …
+    assert "CLAUDECODE" not in env
+    # … but the one the CALLER set survives, which only holds if the strip ran first.
+    assert env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "900000"
+    assert env["TERM"] == "xterm-256color"
+
+
+def test_build_child_env_with_no_caller_env_strips_and_adds_nothing_else(monkeypatch):
+    monkeypatch.setenv("CLAUDE_ANYTHING", "x")
+    monkeypatch.setenv("SET_KEEP_ME", "y")
+    env = owner_mod.build_child_env()
+    assert "CLAUDE_ANYTHING" not in env
+    assert env["SET_KEEP_ME"] == "y"

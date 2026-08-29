@@ -61,6 +61,16 @@ def start_command() -> str:
 class OwnerClientError(RuntimeError):
     """The owner answered, and the answer was a refusal."""
 
+    #: The owner's classification of the refusal, when it gave one. `None` means
+    #: unclassified — from an older owner, or a refusal with no kind — and a
+    #: caller must not read that as a kind of its own.
+    kind: Optional[str] = None
+
+    def __init__(self, message: str, kind: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
 
 class OwnerUnavailable(OwnerClientError):
     """The owner could not be reached at all."""
@@ -104,7 +114,10 @@ class OwnerClient:
         except (ValueError, json.JSONDecodeError) as exc:
             raise OwnerClientError(f"unparseable answer from the agent owner: {exc}") from exc
         if not resp.ok:
-            raise OwnerClientError(resp.error or "the agent owner refused without saying why")
+            raise OwnerClientError(
+                resp.error or "the agent owner refused without saying why",
+                resp.error_kind,
+            )
         return resp.result
 
     @staticmethod

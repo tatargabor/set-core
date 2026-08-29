@@ -46,7 +46,10 @@ import time
 from typing import Any, Dict, List, Optional
 
 from . import scopes
-from .owner import FOREIGN, STARTED_HERE, AgentOwner, OwnedAgent, OwnerError, recover
+from .owner import (
+    FOREIGN, STARTED_HERE, AgentOwner, CommandNotResolvable, OwnedAgent, OwnerError,
+    recover,
+)
 from .protocol import (
     SUPPORTED_METHODS, Request, Response, make_error, make_frame, make_result,
 )
@@ -511,8 +514,16 @@ class OwnerDaemon:
         except OwnerError as exc:
             # An expected refusal — a label already owned, a scope that will not
             # die, a terminal this owner does not hold. Not a daemon fault.
+            #
+            # One kind travels as a kind rather than as prose: a command the child
+            # could not execute needs a DIFFERENT act from the caller (install it,
+            # fix the service's PATH) than every other refusal here, and a caller
+            # that has to grep the sentence to tell them apart breaks the moment
+            # the sentence is improved.
+            kind = ("command-not-resolvable"
+                    if isinstance(exc, CommandNotResolvable) else None)
             logger.info("fleet owner: refused %s: %s", request.method, exc)
-            return make_error(request.id, str(exc))
+            return make_error(request.id, str(exc), kind)
         except (KeyError, TypeError, ValueError) as exc:
             logger.warning("fleet owner: bad %s request: %s", request.method, exc)
             return make_error(request.id, f"bad request: {exc}")
