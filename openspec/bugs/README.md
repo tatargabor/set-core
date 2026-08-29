@@ -68,6 +68,47 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-115 — a subagent under a provider-switched parent keeps the parent's ENDPOINT and its own ANTHROPIC model name, and the gateway answers anyway
+- **state:** open — measured, not fixed. Raised by the user's question ("subagents will also work?")
+  while closing B-114.
+- **measured 2026-08-29, two probes against the live GLM endpoint:**
+
+  | probe | model sent | result |
+  |---|---|---|
+  | A | `glm-5.3-flash` (the provider's own) | `stop_reason: end_turn` — works |
+  | B | `claude-sonnet-4-6` (an ANTHROPIC id) | `stop_reason: end_turn` — **also works** |
+
+  The gateway does not refuse a model name from another vendor. It answers, bills the GLM
+  account, and nothing in the result says which model actually replied.
+- **how the inheritance happens, both kinds:**
+  - Claude Code's own Task subagents run in the parent's process, so they hold its
+    `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` — the endpoint is inherited.
+  - The framework's spawned agents are separate processes, and
+    `subprocess_utils.run_command` builds `full_env = {**os.environ, **env}` — so they inherit
+    it too, while being launched with `--model resolve_model_id(<role model>)`.
+  - Three agent definitions pin an Anthropic name outright: `code-reviewer: sonnet`,
+    `gui-tester: haiku`, `openspec-verifier: sonnet`. `model_config.py`'s role presets do the
+    same for orchestration roles.
+- **⚠ the validation is inverted, which is why this is invisible.** Probe A — the CORRECT
+  model for the endpoint — produced `[claude-code:unrecognized_model]`, because Claude Code
+  checks the name against its OWN catalogue. Probe B — the wrong-vendor model — produced no
+  warning at all. So the one diagnostic that exists fires on the right answer and stays silent
+  on the wrong one.
+- **the direction it fails in:** silently, and in the direction that makes a quality change
+  invisible. A reviewer subagent "on sonnet" under a GLM parent is answered by some GLM model;
+  the transcript, the record and the screen all still say sonnet. This is the same false-value
+  shape as B-114, one level down — and B-114's fix does not touch it, because the resolver
+  deliberately scopes out "choosing the model for an orchestration ROLE"
+  (`openspec/specs/agent-provider-start/spec.md`, Out of scope).
+- **what would prove it fixed:** a role or agent-definition model is resolved AGAINST the
+  provider the parent runs on — either mapped to that provider's catalogue, or refused by name
+  the way `resolve()` refuses an unknown model. A cross-vendor pair must not reach the
+  gateway; the design's own rule is that a level supplying a credential supplies its endpoint,
+  and no launch silently falls back to another frame.
+- **not fixed here on purpose:** this is a design decision about where role-model resolution
+  belongs, not a defect with an obvious patch, and it crosses the resolver's declared scope
+  boundary.
+
 ### B-114 — the resolved MODEL reaches the record, the API and the tile, and never the child's command line
 - **state:** CLOSED (2026-08-29) — the entry stays; the measurement is below
 - **reported:** 2026-08-29 by the user, from the fleet screen: an agent whose tile read `glm`
