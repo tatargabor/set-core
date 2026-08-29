@@ -129,6 +129,14 @@ export interface FleetAgent {
    * in that checkout, on that branch. See `terminalTarget`.
    */
   cwd?: string | null
+  /**
+   * The project's root checkout, as discovery resolved it through git — the
+   * `cwd` is the agent's own standing point and differs from this exactly
+   * when the agent runs in a worktree. Optional: a server that predates the
+   * field sends nothing, and "is this the root?" then reads as unknown rather
+   * than as yes.
+   */
+  project_root?: string | null
   /** The terminal's address. Non-null only for `started-here`. */
   terminal_label?: string | null
   /**

@@ -40,7 +40,7 @@ const BODY: Json = {
   projects: [
     project('alpha', [
       agent(1, { stage: stage('apply') }),
-      agent(2, { stage: stage('design') }),
+      agent(2, { stage: stage('design'), cwd: '/r/alpha-wt-feat', branch: 'change/feat', project_root: '/r/alpha' }),
     ]),
     project('idle', [agent(3, { stage: stage(null, { state: 'gap', reason: 'nothing-started' }) })]),
     project('bare'),
@@ -106,6 +106,26 @@ describe('the tree', () => {
     expect(indexes).toEqual(['1', '2', '3', '4', '5'])
     expect(strip.querySelector('[data-stage-chip="apply"]')!.getAttribute('data-stage-state')).toBe('running')
     expect(strip.querySelector('[data-testid="fleet-stage-current"]')!.textContent).toBe('apply')
+  })
+
+  it('shows branch and worktree on the line between name and pipeline', async () => {
+    const { container } = render(<Fleet />)
+    const rows = await wait(() => {
+      const els = container.querySelectorAll('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row]')
+      expect(els.length).toBe(2)
+      return els
+    })
+    // Agent 1 stands in the root checkout: branch only, no worktree word.
+    const where1 = rows[0].querySelector('[data-fleet-agent-where="1"]')!
+    expect(where1).toBeTruthy()
+    expect(where1.textContent).toContain('main')
+    expect(where1.textContent).not.toContain(' \u00b7 ')
+    // Agent 2 stands in a worktree: branch, then the worktree's own name.
+    const where2 = rows[1].querySelector('[data-fleet-agent-where="2"]')!
+    expect(where2.textContent).toContain('change/feat')
+    expect(where2.textContent).toContain('alpha-wt-feat')
+    // And the pipeline still renders for the worktree agent too.
+    expect(rows[1].querySelector('[data-testid="fleet-stage-strip"]')).toBeTruthy()
   })
 
   it('shows sub-rows for projects that are NOT selected', async () => {

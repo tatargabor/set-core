@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, Bot, CircleDashed, Clock, ClockArrowDown, History, SearchX, TriangleAlert } from 'lucide-react'
+import { Archive, Bot, CircleDashed, Clock, ClockArrowDown, GitBranch, History, SearchX, TriangleAlert } from 'lucide-react'
 
 import { age, freshestSeconds, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
@@ -663,13 +663,18 @@ function AgentSubRow({ agent, project, focused, onSelectAgent }: {
   onSelectAgent: (project: string, pid: number) => void
 }) {
   const resolved = agent.stage?.state === 'resolved'
+  // WHERE the agent stands: its branch, and the worktree when it is not in
+  // the root checkout. basename(cwd) is the worktree's own name; equal to the
+  // root means the root checkout, which needs no second word.
+  const wt = agent.cwd && agent.project_root && agent.cwd !== agent.project_root
+    ? agent.cwd.split('/').filter(Boolean).pop() : null
   return (
-    // TWO lines by design — the user said it outright: a sub-row *"nem egy sor,
-    // nagyobb magasságot is felvehet"*. Line 1 is the agent; line 2, only when
-    // a flow is resolved, is the pipeline itself, left-aligned under the name.
-    // The first rendering squeezed both onto one line and the strip wrapped
-    // into a ragged right-aligned stack — measured in the browser, then fixed
-    // here rather than argued with.
+    // THREE lines by design — the user asked for each: a sub-row *"nem egy
+    // sor, nagyobb magasságot is felvehet"* (2026-08-29), the stage pipeline
+    // on its own line (2026-08-30), and now branch/worktree on the line
+    // between the name and the pipeline. Line 1 is the agent; line 2, where
+    // the agent is standing; line 3, where it is in its work. Each line
+    // answers one question, and none depends on hover.
     <button
       type="button"
       data-fleet-agent-row={agent.pid}
@@ -689,6 +694,15 @@ function AgentSubRow({ agent, project, focused, onSelectAgent }: {
             flow gets its own line below rather than competing with the name. */}
         {!resolved && <AgentStageStrip stage={agent.stage} />}
       </span>
+      {(agent.branch || wt) && (
+        <span data-fleet-agent-where={agent.pid}
+              className="flex items-center gap-1 pl-4 min-w-0 text-fg-ghost">
+          <GitBranch size={10} strokeWidth={1.75} className="shrink-0" aria-hidden />
+          <span className="truncate text-xs leading-4">
+            {agent.branch ?? 'no branch'}{wt && <span aria-hidden> · {wt}</span>}
+          </span>
+        </span>
+      )}
       {resolved && <AgentStageStrip stage={agent.stage} />}
     </button>
   )

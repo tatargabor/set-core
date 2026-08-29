@@ -90,10 +90,17 @@ function installFetch(agentOrder: Record<string, string[]> = {}) {
 }
 
 /** The tab strip appears once an agent is enlarged. */
-function enlargeFirst(container: HTMLElement) {
-  fireEvent.click(container.querySelector(
-    '[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]',
-  )!)
+async function enlargeFirst(container: HTMLElement) {
+  // The tile controls render with the first payload; under full-suite load a
+  // same-tick query has flaked (measured: fails without any product change,
+  // then passes). Wait for the control, then click it.
+  const control = await waitFor(() => {
+    const el = container.querySelector(
+      '[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')
+    expect(el).toBeTruthy()
+    return el as HTMLElement
+  }, { timeout: 4000 })
+  fireEvent.click(control)
 }
 
 const tabNames = (container: HTMLElement) =>
@@ -129,7 +136,7 @@ describe('a stored order on arrival', () => {
     await screen.findAllByText('demo-a')
     await waitFor(() => expect(tileNames(container)[0]).toBe('demo-c'))
 
-    enlargeFirst(container)
+    await enlargeFirst(container)
     expect(tabNames(container)).toEqual(['demo-c', 'demo-a', 'demo-b'])
   })
 
@@ -146,7 +153,7 @@ describe('moving a tab', () => {
     installFetch({})
     const { container } = render(<Fleet />)
     await screen.findAllByText('demo-a')
-    enlargeFirst(container)
+    await enlargeFirst(container)
     expect(tabNames(container)).toEqual(['demo-a', 'demo-b', 'demo-c'])
 
     const last = container.querySelector('[data-drag-handle="demo-c"]') as HTMLElement
@@ -162,7 +169,7 @@ describe('moving a tab', () => {
     installFetch({})
     const { container } = render(<Fleet />)
     await screen.findAllByText('demo-a')
-    enlargeFirst(container)
+    await enlargeFirst(container)
     fireEvent.keyDown(container.querySelector('[data-drag-handle="demo-c"]') as HTMLElement,
                       { key: 'ArrowLeft' })
     await waitFor(() => expect(orderWrites.length).toBe(1))
@@ -177,7 +184,7 @@ describe('moving a tab', () => {
     installFetch({})
     const { container } = render(<Fleet />)
     await screen.findAllByText('demo-a')
-    enlargeFirst(container)
+    await enlargeFirst(container)
 
     fireEvent.keyDown(container.querySelector('[data-drag-handle="demo-a"]') as HTMLElement,
                       { key: 'ArrowLeft' })
@@ -194,7 +201,7 @@ describe('moving a tab', () => {
     installFetch({})
     const { container } = render(<Fleet />)
     await screen.findAllByText('demo-a')
-    enlargeFirst(container)
+    await enlargeFirst(container)
 
     const tab = container.querySelector('[data-drag-handle="demo-c"]') as HTMLElement
     fireEvent.keyDown(tab, { key: 'ArrowUp' })
@@ -209,7 +216,7 @@ describe('a click is not a move', () => {
     installFetch({})
     const { container } = render(<Fleet />)
     await screen.findAllByText('demo-a')
-    enlargeFirst(container)
+    await enlargeFirst(container)
 
     const other = container.querySelector('[data-fleet-agent-tab="3"]') as HTMLElement
     fireEvent.pointerDown(other, { button: 0, pointerId: 1, clientX: 100, clientY: 10 })
