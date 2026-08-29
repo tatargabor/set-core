@@ -116,7 +116,7 @@ consumer's name, path, or content.
 
 ### B-105 — the fleet's work-unit start names an engine command the owner cannot resolve, and the refusal blames the scope
 
-- **state:** open
+- **state:** closed (`4fddfc7f`)
 - **reported:** 2026-08-29 by this session, while measuring how far the work-cycle engine is
   from being startable from the screen. Not a task in `work-cycle-engine-apply-first`: the
   route and the console script both shipped there and both are correct in isolation — the
@@ -161,6 +161,22 @@ consumer's name, path, or content.
   prints a path — **and** an unresolvable command is refused by name before a scope is claimed,
   with a test that holds the measured shape: unresolvable command → refusal naming the command
   and the environment, no four-second wait, and no `did not become active` in the message.
+- **closed:** 2026-08-29, `4fddfc7f`, both halves. **Behaviour:** `resolve_in_env(command, env)`
+  runs on the child's final environment before `pty.fork()`, and an unresolvable command raises
+  `CommandNotResolvable` naming the command and the PATH. **Installation:** `bin/set-work-cycle`
+  beside the other tools, symlinked into `~/.local/bin`. Re-ran the entry's own measurement:
+
+  ```
+  $ env -i PATH=<owner PATH> sh -c 'command -v set-work-cycle'
+  /home/tg/.local/bin/set-work-cycle
+  ```
+
+  Mutation-tested rather than asserted: without the guard 2 of the 4 tests fail, without the
+  child-exit report 1 fails, all 4 pass with both, and the restore was verified byte-identical.
+
+  ⚠ **The entry is kept because its FIRST reading was wrong** — it predicted a false `200`, and
+  the guard that prediction implied would have gone in the wrong place. What was actually there
+  was a four-second wait ending in a true sentence about the wrong thing.
 
 ### B-102 — `last_movement_seconds` is read from a log file that is rewritten without new entries
 
