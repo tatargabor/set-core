@@ -68,6 +68,68 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-111 — a question addressed to a person is written onto the blank line above the task, so the surface reports that nothing is pending
+
+- **state:** CLOSED (2026-08-29, `<this commit>`) — the entry stays; the measurement is below
+- **reported:** 2026-08-29 by this session, from the third real work unit driven from the
+  fleet screen (`work-cycle-run-visibility` task 7.4). Not a task in that change: the defect
+  is in the engine's connector, not in the screen.
+- **measured:** the unit did exactly what it was asked to. Its record says:
+
+  ```
+  verdict: NEEDS_INPUT
+  open_decisions: [{task: "3.1", question: "What exactly should the third line say?"}]
+  set_aside: {kind: "human-decision", detail: "<the question>"}
+  gate: null   commit: null
+  ```
+
+  And the engine's own `status`, one second later, in the same tree:
+
+  ```
+  answers: no answers were pending
+  3: runnable — selected
+  ```
+
+  The two disagree, and the one a person reads is the reassuring one. `git diff` on the task
+  file shows why — the question landed on the **blank line above** the task:
+
+  ```
+  -
+  + <!-- awaiting: What exactly should the third line ... -->
+    - [ ] 3.1 Append a third line to docs/work-cycle-proof/NOTE.md ...
+  ```
+
+- **cause, isolated to one character:** `_task_line_re` built its indent group as
+  `^(?P<indent>\s*)` under `re.M`. `\s` matches a newline, so the engine anchors `^` at the
+  BLANK line, lets `\s*` consume the newline, and matches the task on the *next* line — a
+  match whose `start()` is on the blank line. Every caller derives the line to rewrite from
+  `match.start()`. Measured in isolation:
+
+  ```
+  3.1 (first task of a group) → the resolved line is ''
+  3.2 (mid-list)              → the resolved line is '- [ ] 3.2 second task'
+  ```
+
+  So it fires on the **first task of every group** and nowhere else — because only there is a
+  blank line reachable from a preceding `^`. That is also exactly where a decision reserved
+  for a person tends to sit.
+- **why every test passed:** the fixture in `tests/unit/test_workcycle_connector.py` has
+  contained a `3.1` from the start, and **every existing test asked about `3.2`**. The case
+  was present and never exercised.
+- **fail direction — the expensive one:** `mark_awaiting` returned **True**. The question is
+  physically in the file, attached to nothing; `awaiting_tasks()` finds no marker; `status`
+  says nothing is pending; the group is offered as runnable. Press start again and a second
+  unit asks the same question in different words. This is the engine's own
+  `answer released but never delivered` finding, one layer along.
+- **fixed (`<this commit>`):** the indent group is `[ \t]*`, and `mark_awaiting` now refuses
+  to write at all when the line it resolved is not a task line — a write that produces no
+  marker must not report success. Mutation-tested: restoring `\s*` fails the new test, and
+  the refusal guard fires independently; restore verified byte-identical by sha256. 85 tests
+  green in the two affected files.
+- **numbered B-110 first, and that number was taken** by a parallel session while this was
+  being written — the second time today. Measuring the highest number once per session is
+  not enough when two sessions write the same file.
+
 ### B-110 — the dashboard watcher recursively watches every project ROOT, so 45 projects cost 176 687 inotify watches and a quarter of a core at idle
 - **state:** open
 - **reported:** 2026-08-29 by the user, from an htop screenshot showing `cli_entry.py serve --port 7400` at the top of the CPU list
@@ -81,6 +143,46 @@ consumer's name, path, or content.
   - **18 of the 45 registered projects are finished E2E runs** (38 GB under the runs directory), so most of the watch budget is spent on trees nothing will ever write to again
 - **fixed when:** with the same 45 projects registered, `set-web` at idle holds **under 5 000** inotify watches total and burns **under 2 % of one core** (20 ticks / 10 s), while a state-file change in a live project still reaches a connected WebSocket client. Two independent parts: (a) stop watching the project root recursively — watch the state/log directories, and give the root a non-recursive watch or a `watch_filter` that excludes `node_modules`, `.git`, `.next`, `.venv`, `dist`, `build`; (b) do not start a watcher for a project whose orchestration is finished.
 - **note on the fail direction:** it fails toward *silence*, which is why it survived. Nothing errors, the dashboard answers 200, and the only symptom is a machine that feels slow — so the cost is charged to every other process on the box rather than to the feature that incurs it.
+
+### B-110 — a start names GLM and the agent comes up on the machine default, because the owner service silently ignores a parameter it does not know
+
+- **state:** open
+- **reported:** 2026-08-29 by the user, from the fleet screen, with a screenshot: an agent
+  started as `set-core-kanban` after choosing a provider answered *"Opus 5 (1M context) —
+  model ID: claude-opus-5[1m] · Claude Max"*, and its tile read `provider unrecorded`.
+- **measured:** the owner service (`set-agent-owner.service`) has been running since
+  **2026-08-28 15:54:42** (`systemctl --user show -p ExecMainStartTimestamp`); the resolver
+  reached `lib/set_orch/fleet/ownerd.py` in commit `686ac381` at **2026-08-29 14:11**. The
+  running daemon therefore holds the pre-change `_do_start`, which reads only `label`,
+  `cwd`, `argv`, `env`, `rows`, `cols` and `requested_by`:
+
+  ```
+  git show 830df00b:lib/set_orch/fleet/ownerd.py   # the shipped-then version
+  → argv = list(params.get("argv") or DEFAULT_AGENT_ARGV)
+  ```
+
+  `provider` and `model` arrive in `params` and are **dropped without a word**. The start
+  succeeds, the agent runs on whatever the ambient environment supplies, and no record is
+  written — so the screen honestly reports `provider unrecorded` for an agent the user
+  explicitly gave a provider.
+
+- **the direction it fails in, and why this is a design defect and not just a stale
+  process:** silently, in the direction that spends money on the wrong account. A caller
+  that names a provider and is ignored gets a 200, a running agent, and a tile that looks
+  ordinary. This is the same shape as the HTTP start body, which accepted an unknown field
+  and dropped it until `extra="forbid"` was added the same day — **the socket layer was
+  left with the identical hole.** Restarting the daemon fixes today's symptom and leaves
+  the defect: any future owner older than its caller will do this again.
+
+- **what would prove it fixed:** a start naming a provider against an owner that cannot
+  resolve one is REFUSED, naming the reason, and no agent is created. Held by a test that
+  drives the client against a health answer with no provider capability. Restarting the
+  service is the operational half and is not the fix.
+
+- **cost of the operational half, so it is a decision and not a reflex:** the owner holds
+  **12** agents' terminals (`/api/fleet/owner` → `held`). Restarting it does not kill the
+  agents — they run in sibling scopes — but every one of them loses its browser terminal
+  and becomes an orphan until recovered.
 
 ### B-109 — three tracked files block every push: a consumer project's name in a spec, and two absolute home paths
 

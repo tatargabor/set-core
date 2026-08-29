@@ -6,6 +6,7 @@ which one it guards — a test whose reason is forgotten is a test that gets rel
 """
 from __future__ import annotations
 
+import re
 import json
 import sys
 import textwrap
@@ -266,3 +267,55 @@ def test_an_answer_is_not_applied_twice(tmp_path):
     write_answer(tmp_path, "c", "3.2", "yes", source="chat")
     assert len(intake(tmp_path, awaiting={"c#3.2"}).applied) == 1
     assert intake(tmp_path, awaiting={"c#3.2"}).applied == []
+
+
+# ── B-110 — the marker that landed on the blank line above the task ───────────────────────
+
+
+def test_the_first_task_of_a_group_is_marked_on_its_own_line(tmp_path):
+    """B-110, measured on a live run: the engine set a unit aside for a person, wrote the
+    question into the file, returned True — and the task kept `- [ ]`, so `status` answered
+    *"no answers were pending"* and offered the group as runnable. Pressing start again asks
+    the same question again.
+
+    The cause is one character: `^(?P<indent>\\s*)` with `re.M`. `\\s` matches a newline, so
+    the engine anchors at the BLANK line before the task, eats the newline, and matches the
+    task on the next line — a match that starts on the blank line. Every caller derives the
+    line from `match.start()`.
+
+    ⚠ It fires only on the FIRST task of a group, and every existing test in this file used
+    `3.2`. The fixture already contained a `3.1`; nobody asked it.
+    """
+    tasks = _tasks(tmp_path)
+
+    assert mark_awaiting(tasks, "3.1", "Whose wording is the third line?") is True
+
+    lines = tasks.read_text(encoding="utf-8").splitlines()
+    task_line = next(l for l in lines if "3.1 alpha" in l)
+    assert task_line.lstrip().startswith("- [?]"), f"the task was not marked: {task_line!r}"
+    assert "Whose wording" in task_line, f"the question is not beside the task: {task_line!r}"
+    assert not [l for l in lines if l.strip().startswith("<!-- awaiting:")], (
+        "the question was attached to a line that is not a task")
+
+    # The end this is FOR: a question addressed to a person must be findable afterwards.
+    assert ("3.1", "Whose wording is the third line?") in awaiting_tasks(tasks)
+
+
+def test_marking_refuses_rather_than_reporting_a_success_it_did_not_achieve(tmp_path):
+    """The second half of B-110, and the half that made it silent: the write reported True
+    while the file kept `- [ ]`. A marker is what every later query keys on, so a write that
+    produced none must say so."""
+    import set_workcycle.connector as connector
+
+    tasks = _tasks(tmp_path)
+    # A pattern that resolves to a line which is not a task line — the exact shape the old
+    # regex produced by accident.
+    monkey = re.compile(r"(?m)^(?P<indent>\s*)(?P<mark>)(?P<id>3\.1)?")
+    original = connector._task_line_re
+    connector._task_line_re = lambda task: monkey
+    try:
+        assert connector.mark_awaiting(tasks, "3.1", "Q?") is False
+    finally:
+        connector._task_line_re = original
+
+    assert awaiting_tasks(tasks) == [], "nothing should have been recorded"

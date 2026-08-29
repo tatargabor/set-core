@@ -344,7 +344,19 @@ _AWAITING_RE = re.compile(r"<!--\s*awaiting:\s*(?P<question>.*?)\s*-->")
 
 
 def _task_line_re(task: str) -> re.Pattern:
-    return re.compile(rf"(?m)^(?P<indent>\s*)-\s*\[(?P<mark>[ xX?])\]\s+(?P<id>{re.escape(task)})\b")
+    """The line a task id sits on.
+
+    ⚠ The indent is `[ \\t]*` and NOT `\\s*`, and that one character is a measured defect
+    (B-110). `\\s` matches a newline, so with `re.M` the engine anchors `^` at the BLANK line
+    before a task, lets `\\s*` eat the newline, and matches the task on the following line —
+    reporting a match that STARTS on the blank line. Every caller here derives the line from
+    `match.start()`, so it then rewrites the blank line instead of the task.
+
+    It fires on the FIRST task of every group and nowhere else, because only there is a blank
+    line reachable from a preceding `^`. That is also exactly where a decision reserved for a
+    person tends to sit.
+    """
+    return re.compile(rf"(?m)^(?P<indent>[ \t]*)-\s*\[(?P<mark>[ xX?])\]\s+(?P<id>{re.escape(task)})\b")
 
 
 def mark_awaiting(tasks_path: str | Path, task: str, question: str) -> bool:
@@ -368,6 +380,16 @@ def mark_awaiting(tasks_path: str | Path, task: str, question: str) -> bool:
     updated_line = re.sub(r"^(\s*)-\s*\[[ xX?]\]", r"\1- [?]", line, count=1)
     updated_line = _AWAITING_RE.sub("", updated_line).rstrip()
     updated_line = f"{updated_line} {_AWAITING_NOTE.format(question=question.strip())}"
+
+    # The marker is what every reader and every later query keys on, so a write that did not
+    # produce one must not report success. B-110 returned True while the file kept `- [ ]`,
+    # and from outside that is indistinguishable from a task nobody ever asked about.
+    if not updated_line.lstrip().startswith("- [?]"):
+        logger.error(
+            "mark_awaiting: refusing to write — the line resolved for task %r is not a task "
+            "line in %s; the question would be attached to nothing", task, path,
+        )
+        return False
 
     _write(path, text[:line_start] + updated_line + text[line_end:])
     logger.info("task %s in %s marked as awaiting a person", task, path)
