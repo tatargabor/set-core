@@ -1,3 +1,18 @@
+## IN SCOPE
+
+- Deriving a per-agent stage from the agent's project OpenSpec tree (default flow)
+- Overriding the flow with a producer-declared stage order (existing project-status contract)
+- Joining an agent session to a change and to a position in the flow
+- Gap semantics: a gap is reported, never filled or fabricated
+- Exposing the resolved stage on the fleet agent payload
+
+## OUT OF SCOPE
+
+- Rendering the stage on screen (covered by `fleet-agent-tree`)
+- Any change to the `stageOrder` contract, its validation, or the project-status table's strip
+- Persisting derived stage data anywhere
+- Non-OpenSpec flows that are not declared by the producer
+
 ## ADDED Requirements
 
 ### Requirement: The framework derives a default OpenSpec stage for every agent
@@ -112,18 +127,3 @@ field unchanged, and a consumer reading the payload without the new field SHALL 
 - **WHEN** a stage is resolved from a consumer project's tree or declared answer
 - **THEN** no value derived from that resolution is written to any file, cache, or log that
   outlives the request
-
-## IN SCOPE
-
-- Deriving a per-agent stage from the agent's project OpenSpec tree (default flow)
-- Overriding the flow with a producer-declared stage order (existing project-status contract)
-- Joining an agent session to a change and to a position in the flow
-- Gap semantics: a gap is reported, never filled or fabricated
-- Exposing the resolved stage on the fleet agent payload
-
-## OUT OF SCOPE
-
-- Rendering the stage on screen (covered by `fleet-agent-tree`)
-- Any change to the `stageOrder` contract, its validation, or the project-status table's strip
-- Persisting derived stage data anywhere
-- Non-OpenSpec flows that are not declared by the producer

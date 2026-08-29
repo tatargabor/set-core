@@ -1,3 +1,17 @@
+## IN SCOPE
+
+- Indented agent sub-rows under each project row in the fleet project column
+- Selecting an agent by clicking its sub-row
+- A compact per-agent stage strip on the sub-row (done / current / pending / empty / outside the flow)
+- Visible marking of stage gaps on the sub-row
+
+## OUT OF SCOPE
+
+- Deriving or overriding the stage values themselves (covered by `agent-stage-derivation`)
+- The project-status table's stage strip and its semantics (already specified; unchanged)
+- Docking, tabs, terminal panels, and the content-area agent grid (existing behaviour, unchanged)
+- Recorded (not-live) sessions as sub-rows
+
 ## ADDED Requirements
 
 ### Requirement: Each project row can expand to indented agent sub-rows
@@ -71,17 +85,3 @@ show the current stage.
 - **WHEN** a project declares a flow whose stage names are not OpenSpec stages
 - **THEN** the sub-row strip renders the producer's stage names in the declared order, with the
   same done/running/pending mechanics as the derived flow
-
-## IN SCOPE
-
-- Indented agent sub-rows under each project row in the fleet project column
-- Selecting an agent by clicking its sub-row
-- A compact per-agent stage strip on the sub-row (done / current / pending / empty / outside the flow)
-- Visible marking of stage gaps on the sub-row
-
-## OUT OF SCOPE
-
-- Deriving or overriding the stage values themselves (covered by `agent-stage-derivation`)
-- The project-status table's stage strip and its semantics (already specified; unchanged)
-- Docking, tabs, terminal panels, and the content-area agent grid (existing behaviour, unchanged)
-- Recorded (not-live) sessions as sub-rows
