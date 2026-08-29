@@ -68,6 +68,16 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-125 — `set-web` could not start at all, and nothing noticed for four hours because the running process predated the break
+- **state:** CLOSED (2026-08-29, this session) — the entry stays; measurement and fix below.
+- **reported:** 2026-08-29 by this session, on the first restart of the service in four hours
+- **measured:** `journalctl --user -u set-web` — `NameError: name 'Dict' is not defined` at `lib/set_orch/usage/accounts.py:162`, raised at import time through `api/__init__.py` -> `api/usage.py` -> `usage/accounts.py`. The file used `Dict[...]` and `Any` while importing only `List` (line 16). Introduced by `338837ed`; the running process had `ExecMainStartTimestamp = 17:01:35`, which is BEFORE that commit, so it held the last importable version of the module and served requests normally the whole time. Port 7400 stopped listening the moment it was restarted.
+- **fail direction:** the worst available. A totally broken service looked completely healthy — `systemctl is-active` said `active`, the dashboard answered every request — because liveness was a property of a process started from older code. The break is invisible until the next restart, which may be days away and will look like it was caused by whatever was deployed then.
+- **why it is worth an entry despite the one-line fix:** it is the literal case of this project's own rule that *a shipped commit is not a running system*, and it was found only as a side effect of needing a restart for something else. Nothing routinely restarts this service and nothing imports the module in CI, so the same shape can recur in any module reached only through the API's import chain.
+- **CLOSED by:** `from typing import Any, Dict, List` at `accounts.py:16`, verified by importing the module directly and by the service reaching `active` with port 7400 listening again.
+- **residual risk, stated rather than fixed:** an import-time break anywhere under `lib/set_orch/api/**` still has no check that would catch it before a restart. A smoke import of `set_orch.server` would.
+
+
 ### B-124 — `stageOrder` was AGREED with a consumer and rendering an undeclared value visibly is OWED, but nothing is implemented, so an undeclared lane is silently dropped
 - **state:** open
 - **reported:** 2026-08-29 by this session, after a consumer designed against the promise and said so on the channel

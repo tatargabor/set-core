@@ -13,11 +13,18 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Account", "discover_accounts", "config_dir"]
+__all__ = [
+    "Account",
+    "discover_accounts",
+    "config_dir",
+    "purge_accounts",
+    "KIND_WEB",
+    "KIND_CC",
+]
 
 #: The two authentication kinds, named the same way everywhere downstream.
 KIND_WEB = "web"
@@ -142,3 +149,109 @@ def discover_accounts(directory: Path | None = None) -> List[Account]:
     cc = _cc_accounts(_load_json(base / "cc-accounts.json"))
     logger.debug("discovered %d account(s): %d web, %d cc", len(web) + len(cc), len(web), len(cc))
     return web + cc
+
+
+# ---- purging -------------------------------------------------------------
+
+#: A credential that lives in the provider configuration, not in a store this
+#: module owns. `providers.json` is a hand-edited data file by design — removing
+#: a provider credential is a deliberate configuration act, never a button.
+PROVIDER_KIND = "glm"
+
+
+def _purge_web(path: Path, name: str) -> Dict[str, Any]:
+    """Drop every entry named `name` from the browser session store.
+
+    Removal is by the name the strip displays, because that is the identity the
+    operator confirmed; entries sharing it go together. The survivors are
+    written back atomically, always in the current multi-account shape, with
+    owner-only permissions — the store never regresses to the legacy
+    single-key form a purge could otherwise reintroduce.
+    """
+    data = _load_json(path)
+    if data is None:
+        return {"outcome": "refused", "reason": "no browser session store exists"}
+    if isinstance(data, dict) and isinstance(data.get("accounts"), list):
+        entries = data["accounts"]
+    elif isinstance(data, dict) and data.get("sessionKey"):
+        # Legacy single-key shape: the sole entry discovered as "Default".
+        entries = [{"name": "Default", "sessionKey": data["sessionKey"]}]
+    else:
+        return {"outcome": "refused", "reason": "browser session store is unreadable"}
+
+    keep = [e for e in entries if not (isinstance(e, dict) and e.get("name") == name)]
+    dropped = len(entries) - len(keep)
+    if dropped == 0:
+        return {"outcome": "refused", "reason": f"no entry named {name!r} in the browser session store"}
+
+    try:
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w") as fh:
+            json.dump({"accounts": keep}, fh, indent=2)
+        tmp.replace(path)
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        logger.warning("browser session store purge failed to write: %s", type(exc).__name__)
+        return {"outcome": "refused", "reason": "the store could not be written"}
+    logger.info("purged %d browser session account(s) named %r", dropped, name)
+    return {"outcome": "removed", "removed": dropped}
+
+
+def purge_accounts(targets, directory: Path | None = None, pool=None) -> Dict[str, Any]:
+    """Remove named accounts from this machine's credential stores.
+
+    `targets` is a list of `{kind, name}` — the same identity the usage
+    snapshot carries. Each target is applied independently: one refusal never
+    stops the others, and the answer separates what was removed from what was
+    refused, by name, with a reason. No credential travels in the answer — a
+    removal is exactly the moment a secret is in hand.
+    """
+    base = directory or config_dir()
+    results: List[Dict[str, Any]] = []
+
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        kind = target.get("kind")
+        name = target.get("name")
+        if not kind or not name:
+            results.append({"kind": kind, "name": name,
+                            "outcome": "refused", "reason": "a target needs a kind and a name"})
+            continue
+
+        if kind == PROVIDER_KIND:
+            results.append({
+                "kind": kind, "name": name, "outcome": "refused",
+                "reason": ("a provider credential lives in providers.json, which is edited "
+                           "by hand — remove it there, not here"),
+            })
+            continue
+
+        if kind == KIND_WEB:
+            outcome = _purge_web(base / "claude-session.json", name)
+            results.append({"kind": kind, "name": name, **outcome})
+            continue
+
+        if kind == KIND_CC:
+            if pool is None:
+                from set_router import AccountPool  # local: keeps the CLI import off this module's load
+                pool = AccountPool()
+            try:
+                detail = pool.remove(name)
+            except KeyError:
+                results.append({"kind": kind, "name": name, "outcome": "refused",
+                                "reason": f"no CLI account named {name!r}"})
+                continue
+            except ValueError as exc:
+                results.append({"kind": kind, "name": name, "outcome": "refused",
+                                "reason": str(exc)})
+                continue
+            logger.info("purged CLI account %r: %s", name, detail)
+            results.append({"kind": kind, "name": name, "outcome": "removed", "detail": detail})
+            continue
+
+        results.append({"kind": kind, "name": name, "outcome": "refused",
+                        "reason": f"unknown account kind {kind!r}"})
+
+    removed = sum(1 for r in results if r.get("outcome") == "removed")
+    return {"results": results, "removed": removed, "refused": len(results) - removed}
