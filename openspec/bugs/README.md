@@ -68,6 +68,38 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-106 — a permission mode named `allowedTools` omits `Agent` from its list, and the name is the only thing that says the omission restricts anything
+
+- **state:** open
+- **reported:** 2026-08-29 by a peer agent on the `set-glm` channel, relayed as a
+  measurement from a consumer project's own run. Their finding, in their words:
+  `--allowedTools` is **not a deny list** — a tool absent from the list is still
+  callable. They measured it costing a completed section: a review subagent was
+  invoked despite `Agent` being absent from the list, did not return, and the
+  60-minute ceiling cut off work that was already done (11/11 tasks, 57 green
+  tests, `tsc` clean) **without a commit**.
+- **measured (in THIS repo, and this half is ours):** `lib/editor.sh:134` —
+  ```
+  allowedTools)
+      echo '--allowedTools "Edit,Write,Bash,Read,Glob,Grep,Task"'
+  ```
+  `Agent` is absent from that list; `Task` is present. `lib/loop/engine.sh:402`
+  passes the same flag through `eval`. So set-core offers an operator a permission
+  mode whose **name** states a restriction, and the only evidence that the
+  restriction holds is the name.
+- **NOT yet measured here, and that is the gap:** whether the CLI actually permits
+  an omitted tool is the peer's measurement on their side, not ours. The fail
+  direction is what makes it worth an entry anyway — if they are right, the mode
+  is silently permissive, and a silently permissive guard is worse than an absent
+  one because it also reports that it is fine.
+- **fixed when:** a test starts a run under the `allowedTools` mode with `Agent`
+  absent from the list, asks the agent to invoke a subagent, and asserts it is
+  REFUSED. If it is not refused, the fix is `--disallowedTools Agent,Task`
+  alongside the allow list (the peer's remedy), and the mode is renamed to
+  whatever it then actually does.
+- **related:** the provider/model selection work in flight also passes flags to the
+  same CLI; whatever this entry settles applies there too.
+
 ### B-105 — the fleet's work-unit start names an engine command the owner cannot resolve, and the refusal blames the scope
 
 - **state:** open
