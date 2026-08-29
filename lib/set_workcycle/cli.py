@@ -311,7 +311,7 @@ def cmd_run(args) -> int:
 
     _emit({
         "started": True, "unit_id": unit.unit_id, "group": group.key,
-        "started_by": args.started_by,
+        "started_by": args.started_by or None,
         "outcome": record.verdict.outcome.value if record.verdict else "FAILED_TO_REPORT",
         "gate": None if record.gate is None else record.gate.state,
         "committed": bool(record.commit and record.commit.committed),
@@ -351,7 +351,10 @@ def _drive(unit, view, group, args, lines: list) -> UnitRecord:
     carried = carry_over_for(view.plan, group, _run_notes(view.tree, args.change))
 
     record = UnitRecord(unit=unit, started_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-                        pid=os.getpid())
+                        pid=os.getpid(), started_by=args.started_by or "")
+    # Saved with the origin ALREADY on it, before the session starts. A run killed
+    # in its first second still says who asked for it — and "who asked" is exactly
+    # the question a reader has when they find a run they did not start.
     record.save()
 
     marked_before = [t.key for t in group.tasks if t.marker == "done"]
@@ -368,6 +371,12 @@ def _drive(unit, view, group, args, lines: list) -> UnitRecord:
 
     agent = _AGENT_RUNNER or run_agent_session
     run = agent(prompt, view.tree, model=args.model or None)
+    # The identifier is read off the session's own stream — never invented here —
+    # and it is persisted BEFORE the verdict is parsed, because a session that
+    # produced an unreadable verdict is precisely the one whose transcript
+    # somebody will want to open.
+    record.session_id = run.session_id or ""
+    record.save()
     lines.append(f"agent session {run.session_id or '(none)'} ended (exit {run.exit_code})")
 
     from .verdict import VerdictSchemaError, extract_verdict
@@ -544,7 +553,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="start one work unit (the only start path)")
     run.add_argument("--seat", required=True,
                      help="the agent session this unit belongs to; a project name is refused")
-    run.add_argument("--started-by", default="agent",
+    run.add_argument("--started-by", default="",
                      help="who invoked the command — recorded, never a second start path")
     run.add_argument("--limit", type=int, default=None,
                      help="cut the slice to at most N open tasks within the group")

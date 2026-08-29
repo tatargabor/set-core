@@ -143,11 +143,24 @@ class Purpose:
     #: answered rather than quietly picking one.
     pid_unverified: bool = False
     progress: Progress = field(default_factory=Progress)
+    #: Who the caller said asked for this run. `None` where the record says nobody
+    #: did — kept apart from a name, because a run nobody claimed and a run started
+    #: by "an agent" are different facts and the engine stopped conflating them.
+    #:
+    #: ⚠ A CLAIM. The framework never verified that this seat asked; `origin_is_claim`
+    #: travels with it so no surface can render it as a measured relation by accident.
+    started_by: Optional[str] = None
+    origin_is_claim: bool = True
+    #: The agent session that ran it, as that session announced itself. `None` means
+    #: it never announced one — NOT that the run had no session.
+    session_id: Optional[str] = None
 
     def as_dict(self) -> Dict[str, object]:
         return {
             "change": self.change, "unit_id": self.unit_id, "group": self.group,
             "kind": self.kind, "lens": self.lens, "seat": self.seat, "pid": self.pid,
+            "started_by": self.started_by, "origin_is_claim": self.origin_is_claim,
+            "session_id": self.session_id,
             "started_at": self.started_at, "status": self.status,
             "verdict": self.verdict, "pid_unverified": self.pid_unverified,
             "progress": self.progress.as_dict(),
@@ -287,6 +300,12 @@ def read_purposes(
             lens=record.get("lens") or None,
             seat=record.get("seat") or None,
             pid=int(record.get("pid") or 0),
+            # A record written before these fields existed reads as "nobody said" /
+            # "never announced", which is the truth about it — not a parse failure
+            # and not a fabricated value.
+            started_by=record.get("started_by") or None,
+            origin_is_claim=bool(record.get("started_by_is_claim", True)),
+            session_id=record.get("session_id") or None,
             started_at=record.get("started_at") or None,
             status=status,
             verdict=record.get("verdict") or None,

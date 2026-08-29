@@ -463,6 +463,20 @@ class UnitRecord:
     diff: Optional[TreeDiff] = None
     set_aside_condition: Optional[dict] = None
     pid: int = 0
+    #: Who asked for this run, as the caller DECLARED it. Empty means nobody said,
+    #: which is a different fact from "started by an agent" and is kept as such:
+    #: the flag's old default filled this in with a plausible-looking word, so a
+    #: record could not distinguish a stated origin from an unstated one.
+    #:
+    #: ⚠ A CLAIM, never a measurement. Nothing here verifies that the named seat
+    #: asked for the run, and any surface rendering it must say so — the same
+    #: distinction the fleet screen already draws between a recorded parent and
+    #: one found by walking the process tree.
+    started_by: str = ""
+    #: The agent session this run actually got, read off that session's own first
+    #: event rather than generated here. Empty means the session never announced
+    #: one, which is NOT the same as the run having had no session.
+    session_id: str = ""
 
     def path(self) -> Path:
         return Path(self.unit.tree) / RUN_STATE_DIR / self.unit.change / f"{self.unit.unit_id}.json"
@@ -476,6 +490,12 @@ class UnitRecord:
             "lens": self.unit.lens,
             "seat": self.unit.seat,
             "pid": self.pid,
+            # Absence is a value here, and it is spelled out rather than left to
+            # a reader's default: `None` says nobody declared / nothing announced,
+            # and a reader that turns it into a word has invented a fact.
+            "started_by": self.started_by or None,
+            "started_by_is_claim": True,
+            "session_id": self.session_id or None,
             "started_at": self.started_at,
             "verdict": self.verdict.to_dict() if self.verdict else None,
             "verdict_at": self.verdict_at,

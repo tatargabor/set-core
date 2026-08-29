@@ -1472,3 +1472,43 @@ def test_the_attention_tally_counts_every_class_and_names_what_it_could_not():
 def test_the_worst_wait_is_absent_when_nobody_is_waiting():
     tally = fleet_api._attention_tally({1: _State(attention="working")})
     assert tally["worst_input_wait_seconds"] is None
+
+
+# --------------------------------------------------------------------------- #
+# The origin the engine records — work-cycle-run-visibility §2
+# --------------------------------------------------------------------------- #
+
+def test_the_engine_is_told_who_asked_not_which_surface_relayed_it(monkeypatch):
+    """The finding this task exists for.
+
+    Measured 2026-08-29: the route passed the literal `fleet-surface` as
+    `--started-by` for every run, so the engine's own record could never answer
+    *which agent started this*. The requester travelled to the OWNER instead,
+    where it lives only as long as that process does.
+    """
+    import set_orch.api.fleet as mod
+
+    seen = {}
+
+    class _Owner:
+        def start(self, **kw):
+            seen.update(kw)
+            return {"label": kw["label"], "pid": 1}
+
+    monkeypatch.setattr(mod, "_known_roots", lambda: {"/tmp"})
+    monkeypatch.setattr(mod, "OwnerClient", lambda: _Owner())
+    monkeypatch.setattr(mod.os.path, "realpath", lambda p: "/tmp")
+    monkeypatch.setattr(mod.os.path, "isdir", lambda p: True)
+
+    mod.fleet_start_unit(mod.StartUnitBody(
+        change="c", cwd="/tmp", seat="set-core#abc", requested_by="set-core#deadbeef"))
+    argv = seen["argv"]
+    assert argv[argv.index("--started-by") + 1] == "set-core#deadbeef"
+    assert "fleet-surface" not in argv
+
+    # …and with nobody identified, naming the mechanism is the honest answer.
+    # Inventing a seat here would be worse than saying which surface asked.
+    seen.clear()
+    mod.fleet_start_unit(mod.StartUnitBody(change="c", cwd="/tmp", seat="set-core#abc"))
+    argv = seen["argv"]
+    assert argv[argv.index("--started-by") + 1] == "fleet-surface"

@@ -657,3 +657,94 @@ def test_the_commit_never_stages_the_engines_own_run_records(tmp_path):
 
     add = next(c for c in calls if "add" in c)
     assert f":(exclude){RUN_STATE_DIR}" in add, f"run records are not excluded: {add}"
+
+
+# --------------------------------------------------------------------------- #
+# What a run records about its origin — work-cycle-run-visibility §2
+# --------------------------------------------------------------------------- #
+
+def test_an_undeclared_origin_is_absent_rather_than_a_plausible_word(tmp_path):
+    """The defect this task fixes was a DEFAULT, not a missing field.
+
+    `--started-by` defaulted to the word `agent`, so every run carried a
+    plausible-looking origin and a reader could not tell a stated one from an
+    unstated one. A default that reads like a declaration is worse than no field
+    at all: it is a false value, and it is the shape somebody builds on.
+    """
+    from set_workcycle.engine import UnitKind, UnitRecord, WorkUnit
+
+    unit = WorkUnit(change="c", tree=tmp_path, seat="s", kind=UnitKind.SLICE, group_key="1")
+    assert UnitRecord(unit=unit).to_dict()["started_by"] is None
+    assert UnitRecord(unit=unit, started_by="set-core#abc").to_dict()["started_by"] == "set-core#abc"
+
+
+def test_the_origin_travels_marked_as_a_claim(tmp_path):
+    """Nothing verified it, so nothing may render it as verified.
+
+    The marker travels IN the record rather than being applied by whichever
+    surface happens to read it — a rule that lives only in a renderer is a rule
+    the next renderer does not have.
+    """
+    from set_workcycle.engine import UnitKind, UnitRecord, WorkUnit
+
+    d = UnitRecord(unit=WorkUnit(change="c", tree=tmp_path, seat="s",
+                                 kind=UnitKind.SLICE, group_key="1"),
+                   started_by="set-core#abc").to_dict()
+    assert d["started_by_is_claim"] is True
+
+
+def test_a_session_that_never_announced_an_id_is_unknown_not_absent(tmp_path):
+    """`None` here means *never announced*, and must not read as *had no session*."""
+    from set_workcycle.engine import UnitKind, UnitRecord, WorkUnit
+
+    unit = WorkUnit(change="c", tree=tmp_path, seat="s", kind=UnitKind.SLICE, group_key="1")
+    assert UnitRecord(unit=unit).to_dict()["session_id"] is None
+    assert UnitRecord(unit=unit, session_id="sess-1").to_dict()["session_id"] == "sess-1"
+
+
+def test_the_origin_is_on_the_record_before_the_session_starts(tmp_path, monkeypatch):
+    """A run killed in its first second still says who asked for it.
+
+    Asserted at the moment the engine writes, not after the run — the harness's
+    own teardown must not be what answers.
+    """
+    import json
+    from set_workcycle import cli as wc_cli
+
+    seen = {}
+
+    def _fake_agent(prompt, tree, model=None):
+        # Read the record from DISK at the moment the session would start.
+        root = tmp_path / "set/runtime/work-cycle/demo"
+        seen["on_disk"] = [json.loads(p.read_text()) for p in root.glob("*.json")]
+        raise RuntimeError("stop here — the origin has already been asserted")
+
+    monkeypatch.setattr(wc_cli, "_AGENT_RUNNER", _fake_agent)
+    monkeypatch.setattr(wc_cli, "run_agent_session", _fake_agent)
+    # Drive `_drive` directly with the smallest real objects it needs.
+    from set_workcycle.engine import UnitKind, WorkUnit
+
+    class _Args:
+        change = "demo"; limit = None; model = ""; dry_run = False
+        started_by = "set-core#whoasked"
+
+    class _View:
+        tree = tmp_path
+        tasks_path = None
+        plan = None
+        adoption = None
+
+    (tmp_path / "openspec/changes/demo").mkdir(parents=True)
+    (tmp_path / "openspec/changes/demo/tasks.md").write_text("## 1. g\n\n- [ ] 1.1 do it\n")
+    _View.tasks_path = tmp_path / "openspec/changes/demo/tasks.md"
+    from set_workcycle.groups import parse_task_groups
+    _View.plan = parse_task_groups(_View.tasks_path)
+    group = _View.plan.groups[0]
+    unit = WorkUnit(change="demo", tree=tmp_path, seat="s", kind=UnitKind.SLICE,
+                    group_key=group.key)
+
+    with pytest.raises(RuntimeError):
+        wc_cli._drive(unit, _View(), group, _Args(), [])
+
+    assert seen["on_disk"], "no record on disk when the session was about to start"
+    assert seen["on_disk"][0]["started_by"] == "set-core#whoasked"

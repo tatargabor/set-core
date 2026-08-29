@@ -200,3 +200,61 @@ def test_the_verdict_is_carried_verbatim_rather_than_summarised(tmp_path):
     _record(tmp_path, "c", "u1", pid=4242, verdict=verdict)
     [p] = purpose.read_purposes(str(tmp_path), proc_root=_proc(tmp_path, 4242))
     assert p.verdict == verdict
+
+
+# --------------------------------------------------------------------------- #
+# The reader across the D10 seam — work-cycle-run-visibility §2.7
+# --------------------------------------------------------------------------- #
+
+def test_every_field_the_engine_writes_is_read_on_this_side_of_the_seam():
+    """The divergence guard, extended from a constant to the record's SHAPE.
+
+    A field added to the engine's record and not to this reader is invisible
+    rather than broken: nothing errors, nothing warns, and the surface simply
+    never shows it. That is the same silent-loss shape the `RUN_STATE_REL` copy
+    above is guarded against, one level up — so it is guarded the same way.
+
+    Read from the engine's own serialiser rather than from a list written here,
+    because a list written here is a third copy.
+    """
+    from set_workcycle.engine import UnitKind, UnitRecord, WorkUnit
+    from pathlib import Path
+
+    written = set(UnitRecord(
+        unit=WorkUnit(change="c", tree=Path("/tmp"), seat="s", kind=UnitKind.SLICE,
+                      group_key="1"),
+    ).to_dict())
+
+    # What this reader does not carry, and WHY. Every exemption is deliberate and
+    # named; a new field is a failure until somebody decides which side of this
+    # line it is on.
+    not_carried = {
+        "unit_id", "change", "group", "kind", "lens", "seat", "pid",  # carried, other names
+        "verdict_at",   # the record's own timestamp; the surface shows the verdict
+        "inputs",       # comparison inputs — the lens lane's, not shipped here
+        "diff",         # claimed-vs-marked divergence, reported by the engine itself
+        "gate", "commit", "set_aside",  # §5.1 — extended in the read-API group
+        "started_by_is_claim",          # carried as `origin_is_claim`
+    }
+    carried = set(purpose.Purpose(change="c").as_dict())
+    missing = written - carried - not_carried
+    assert not missing, (
+        f"the engine writes {sorted(missing)} and this reader drops them silently — "
+        "either read them or add them to `not_carried` with a reason"
+    )
+
+
+def test_a_record_written_before_the_origin_fields_existed_still_reads(tmp_path):
+    """Absence reads as absence, not as a parse failure and not as a made-up value."""
+    import json
+
+    d = tmp_path / purpose.RUN_STATE_REL / "demo"
+    d.mkdir(parents=True)
+    (d / "u1.json").write_text(json.dumps({
+        "unit_id": "u1", "change": "demo", "pid": 0, "started_at": "2026-01-01T00:00:00+0000",
+    }))
+    got = purpose.read_purposes(str(tmp_path), change="demo", with_progress=False)
+    assert len(got) == 1
+    assert got[0].started_by is None      # nobody said — not "agent"
+    assert got[0].session_id is None      # never announced — not "no session"
+    assert got[0].origin_is_claim is True

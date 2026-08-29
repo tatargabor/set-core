@@ -1562,8 +1562,17 @@ def fleet_start_unit(body: StartUnitBody) -> Dict[str, Any]:
             detail=f"{root} is not a project this screen knows; register it first",
         )
 
+    # ⚠ The REQUESTER, not this surface. Until 2026-08-29 this was the literal
+    # "fleet-surface" for every run the screen started, while the seat that
+    # actually asked travelled only to the owner as `requested_by` — which lives
+    # exactly as long as the owner process does. So the engine's record answered
+    # *what started this* and never *who*, which is the question somebody has
+    # when they find a run they did not start. The literal survives as a fallback
+    # for a caller that identified nobody: there the surface really is the only
+    # true answer, and inventing a seat would be worse than naming the mechanism.
     argv = [ENGINE_COMMAND, "--tree", root, "--change", body.change, ENGINE_RUN,
-            "--seat", body.seat, "--started-by", "fleet-surface"]
+            "--seat", body.seat,
+            "--started-by", body.requested_by or "fleet-surface"]
     if body.limit is not None:
         argv += ["--limit", str(body.limit)]
     if body.model:
