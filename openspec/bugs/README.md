@@ -127,9 +127,28 @@ consumer's name, path, or content.
   | GLM-5.3-Flash | 63.4 | **multimodal** (video/image/file) | **3x** |
   | GLM-5.3 | 66.9 | **text only** | 1x |
 
-  So: **main agent on `glm-5.3`** (strongest reasoning, and its work is text), **subagents on
-  `glm-5.3-flash`** — fan-out is exactly where a 3x quota matters, the gap is ~5%, and Flash
-  is the only one of the two that can SEE an image. Putting `gui-tester` on text-only
+  **CORRECTED the same hour, by the user and then by measurement: EVERYTHING is on
+  `glm-5.3-flash`, main agent included.** The split above put the main agent on `glm-5.3`,
+  reasoning that its work is text — which ignored that the user reports defects BY PASTING
+  SCREENSHOTS, twice in this session alone, and each time the screenshot WAS the bug report.
+  A blind primary agent breaks the actual workflow, not a subagent's.
+
+  ⚠ **And `glm-5.3` does not refuse an image — it answers wrongly.** Measured against the
+  live endpoint with solid-colour PNGs:
+
+  | truth | glm-5.3 | glm-5.3-flash |
+  |---|---|---|
+  | green | "Green" | "Green" |
+  | magenta | **"Teal"** | "Magenta" |
+  | orange | **no answer** | "Orange" |
+
+  It returns HTTP 200 and a confident answer. **The first probe used green and both models
+  said "Green" — a guessable value produced a false pass**, and stopping there would have
+  shipped a blind main agent with a measurement that appeared to prove the opposite. The
+  colour had to be one no guesser would reach before the test measured anything at all.
+
+  So the quota argument for Flash stands, the quality gap (~5% on DeepSWE) is accepted
+  deliberately, and vision decides the rest: Flash is the only one of the two that can SEE. Putting `gui-tester` on text-only
   `glm-5.3` would have broken the repo's own rule that a UI change is not done until somebody
   looked at the screen. Flash is also not the "weak model" the original rule guarded against:
   it beats the previous flagship by 17 points.
@@ -141,8 +160,8 @@ consumer's name, path, or content.
   effect is the same but the two fail differently: a quota limit throttles the day, a
   concurrency cap throttles one fan-out.
 
-- **The two levers are separate, which is what made the split clean:** `default_model` governs
-  the PRIMARY agent, `model_aliases` governs SUBAGENTS. Not measured: the account's plan tier
+- **The two levers are separate and both now point at Flash:** `default_model` governs the
+  PRIMARY agent, `model_aliases` governs SUBAGENTS. Not measured: the account's plan tier
   (Lite ~80 / Pro ~400 / Max ~1600 prompts per 5 h), which decides how much the 3x is worth.
 
 ### B-114 — the resolved MODEL reaches the record, the API and the tile, and never the child's command line
