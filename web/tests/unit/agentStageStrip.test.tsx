@@ -1,11 +1,13 @@
 /**
- * The per-agent stage strip, on screen.
+ * The per-agent stage strip, on screen — NUMBERED CIRCLES since 2026-08-30.
  *
- * Every assertion here is about something PRESENT and distinguishable, read
- * from the DOM: done / running / pending as three classes on real chips, the
- * empty state NOT reading like a failure, a failure NOT reading like calm,
- * the stray carried and marked. An assertion that nothing threw would pass
- * against a strip that renders nothing at all.
+ * The user asked for *"little circles like 1-2-3-4-5-6-7 where 1 is the start
+ * and the last is the final — more representative than just the name"*. So the
+ * DOM contract is: one numbered circle per flow stage, in declared order,
+ * connected; the current stage's name rendered AFTER the circles (nothing
+ * load-bearing on hover); every circle carrying its stage name on title.
+ * Every assertion here reads the DOM: numbers, states, connectors, the
+ * current name, the empty state NOT reading like a failure, the stray carried.
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
@@ -23,33 +25,53 @@ const stage = (over: Partial<NonNullable<FleetAgent['stage']>>): NonNullable<Fle
   ...over,
 })
 
-const chipStates = () =>
+const circles = () =>
   Array.from(screen.getByTestId('fleet-stage-strip').querySelectorAll('[data-stage-chip]'))
-    .map(el => [el.getAttribute('data-stage-chip'), el.getAttribute('data-stage-state')])
+    .map(el => ({
+      name: el.getAttribute('data-stage-chip'),
+      index: Number(el.getAttribute('data-stage-index')),
+      state: el.getAttribute('data-stage-state'),
+    }))
 
 describe('the mid-flow agent reads at a glance', () => {
-  it('renders done / running / pending per position, in flow order', () => {
+  it('numbers the circles from 1, in declared order', () => {
     render(<AgentStageStrip stage={stage({ position: 'apply' })} />)
-    expect(chipStates()).toEqual([
-      ['proposal', 'done'], ['design', 'done'], ['apply', 'running'],
-      ['verify', 'pending'], ['archive', 'pending'],
-    ])
+    expect(circles().map(c => c.index)).toEqual([1, 2, 3, 4, 5])
+    expect(circles().map(c => c.name)).toEqual(FLOW)
   })
 
-  it('renders every stage of the flow, including the ones not reached', () => {
+  it('marks done / running / pending per position', () => {
+    render(<AgentStageStrip stage={stage({ position: 'apply' })} />)
+    expect(circles().map(c => c.state)).toEqual(
+      ['done', 'done', 'running', 'pending', 'pending'])
+  })
+
+  it('renders the CURRENT stage name after the circles — no hover needed', () => {
+    render(<AgentStageStrip stage={stage({ position: 'apply' })} />)
+    expect(screen.getByTestId('fleet-stage-current').textContent).toBe('apply')
+  })
+
+  it('every circle carries its stage name', () => {
     render(<AgentStageStrip stage={stage({ position: 'proposal' })} />)
-    expect(chipStates().map(c => c[0])).toEqual(FLOW)
-    expect(chipStates()[0]).toEqual(['proposal', 'running'])
+    for (const el of screen.getByTestId('fleet-stage-strip').querySelectorAll('[data-stage-chip]')) {
+      expect(el.getAttribute('title')).toContain(el.getAttribute('data-stage-chip'))
+    }
+  })
+
+  it('connects the circles, so it reads as a pipeline', () => {
+    render(<AgentStageStrip stage={stage({ position: 'apply' })} />)
+    const strip = screen.getByTestId('fleet-stage-strip')
+    expect(strip.querySelectorAll('span[aria-hidden]').length).toBe(FLOW.length - 1)
   })
 
   it('renders a declared flow that is not the OpenSpec one, in the declared order', () => {
     render(<AgentStageStrip stage={stage({
       flow: ['triage', 'fixing', 'shipping'], position: 'shipping', source: 'declared',
     })} />)
-    expect(chipStates()).toEqual([
-      ['triage', 'done'], ['fixing', 'done'], ['shipping', 'running'],
-    ])
+    expect(circles().map(c => c.name)).toEqual(['triage', 'fixing', 'shipping'])
+    expect(circles().map(c => c.state)).toEqual(['done', 'done', 'running'])
     expect(screen.getByTestId('fleet-stage-strip').getAttribute('data-fleet-stage-source')).toBe('declared')
+    expect(screen.getByTestId('fleet-stage-current').textContent).toBe('shipping')
   })
 })
 
@@ -83,16 +105,18 @@ describe('the stray is carried and marked', () => {
     render(<AgentStageStrip stage={stage({
       position: 'weird', outside: true,
     })} />)
-    const states = chipStates()
-    expect(states.filter(c => c[1] === 'outside')).toEqual([['weird', 'outside']])
-    // The full declared flow is still there — five declared chips plus the stray.
-    expect(states.filter(c => c[0] !== 'weird').map(c => c[0])).toEqual(FLOW)
+    const states = circles()
+    // No declared stage is "running" — the agent is not IN the declared flow —
+    // and the stray is spelled out after the circles.
+    expect(states.every(c => c.state !== 'running')).toBe(true)
+    expect(screen.getByTestId('fleet-stage-current').textContent).toContain('weird')
+    expect(states.map(c => c.name)).toEqual(FLOW)
   })
 })
 
 describe('nothing rendered when there is nothing to say', () => {
   it('renders nothing for an agent whose payload predates the field', () => {
     const { container } = render(<AgentStageStrip stage={undefined} />)
-    expect(container.querySelector('[data-fleet-stage-strip]')).toBeNull()
+    expect(container.querySelector('[data-testid="fleet-stage-strip"]')).toBeNull()
   })
 })

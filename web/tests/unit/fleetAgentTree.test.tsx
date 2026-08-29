@@ -91,19 +91,33 @@ describe('the tree', () => {
   it('shows the selected project\'s agents as indented sub-rows, with their stages', async () => {
     const { container } = render(<Fleet />)
     await ready(container)
-    // The shell auto-selects the first project with agents — alpha — so its
-    // sub-rows render without a second click. The selection is an effect that
-    // runs after the arrangement lands, so WAIT for the rows rather than
-    // asserting at the same instant the group appeared.
+    // Sub-rows are ALWAYS visible (the user's rule — no selection needed).
+    // They render with the first payload, so wait rather than assert racing.
     const rows = await wait(() => {
       const els = container.querySelectorAll('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row]')
       expect(els.length).toBe(2)
       return els
     })
-    // One strip per sub-row, mid-flow: the current chip is the position.
+    // The strip is NUMBERED CIRCLES with the current stage's name beside them.
     const strip = rows[0].querySelector('[data-testid="fleet-stage-strip"]')!
     expect(strip).toBeTruthy()
+    const indexes = Array.from(strip.querySelectorAll('[data-stage-chip]'))
+      .map(el => el.getAttribute('data-stage-index'))
+    expect(indexes).toEqual(['1', '2', '3', '4', '5'])
     expect(strip.querySelector('[data-stage-chip="apply"]')!.getAttribute('data-stage-state')).toBe('running')
+    expect(strip.querySelector('[data-testid="fleet-stage-current"]')!.textContent).toBe('apply')
+  })
+
+  it('shows sub-rows for projects that are NOT selected', async () => {
+    // The user: "subprojects tree must be shown all the time — don't hide
+    // not-selected subprojects." Without clicking anything, every project
+    // holding agents shows its tree.
+    const { container } = render(<Fleet />)
+    await wait(() => {
+      expect(container.querySelector('[data-fleet-agent-rows="idle"]')).toBeTruthy()
+    })
+    expect(container.querySelectorAll('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row]').length).toBe(2)
+    expect(container.querySelectorAll('[data-fleet-agent-rows="idle"] [data-fleet-agent-row]').length).toBe(1)
   })
 
   it('suppresses sub-rows for a project with no live agents', async () => {

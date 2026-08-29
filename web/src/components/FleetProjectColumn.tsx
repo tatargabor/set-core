@@ -626,13 +626,15 @@ function ProjectRow(p: RowProps) {
         </div>
       )}
       {/* The TREE — one indented sub-row per live agent, the shortcut and the
-          stage strip. Only the SELECTED project's agents render (D5: the tree
-          follows the selection), which keeps a 40-project column from becoming
-          a 200-row one — and a sub-row is a DOM child of its project row, so
-          any filter that hides the project hides the agents with it, by
-          construction rather than by a second filter to keep in step.
-          Suppressed for agent-less projects: a tree of empty nodes is noise. */}
-      {p.active && p.onSelectAgent && (p.project?.agents?.length ?? 0) > 0 && (
+          stage strip, ALWAYS visible. The user overrode the expand-on-selection
+          design (2026-08-30): *"subprojects tree must be shown all the time,
+          don't hide not-selected subprojects"* — the whole point is seeing
+          every agent under its project without clicking through. A sub-row is
+          a DOM child of its project row, so any filter that hides the project
+          hides the agents with it, by construction rather than by a second
+          filter to keep in step. Suppressed for agent-less projects: a tree of
+          empty nodes is noise. */}
+      {p.onSelectAgent && (p.project?.agents?.length ?? 0) > 0 && (
         <div data-fleet-agent-rows={p.name} className="mt-0.5 mb-1 ml-3 mr-1 space-y-px">
           {p.project!.agents.map(a => (
             <AgentSubRow key={a.pid} agent={a} project={p.name}
