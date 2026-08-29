@@ -68,6 +68,43 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-114 — the resolved MODEL reaches the record, the API and the tile, and never the child's command line
+- **state:** CLOSED (2026-08-29) — the entry stays; the measurement is below
+- **reported:** 2026-08-29 by the user, from the fleet screen: an agent whose tile read `glm`
+  answered *"Yes — I'm Opus 5 (1M context)"*. The user's question was the whole diagnosis:
+  *"are you still opus? i wanted to create a glm"*.
+- **measured:** on the live agent `set-core-1624`, the owner reported
+  `provider glm, model glm-5.3-flash` while its real command line held no model at all:
+
+  ```
+  /proc/3128646/cmdline -> claude --dangerously-skip-permissions --autocompact 700k
+  ```
+
+  `resolve()` computes `plan.model` and returns it; `LaunchPlan.args` carried only the
+  PROVIDER's declared args. So the credential and the endpoint were delivered — the agent
+  really did bill against z.ai — and the model was not, leaving the CLI's own default.
+- **where the rule lived:** in exactly one caller, `bin/set-glm:148`
+  (`if "--model" not in args: args += ["--model", plan.model]`). The owner's start path and
+  its recover path never had it. One rule, three call sites, two of them written without it.
+- **⚠ the test asserted the defect.** `tests/unit/test_fleet_owner_provider.py:295` asserted
+  the delivered argv by EQUALITY —
+  `["claude", "--dangerously-skip-permissions", "--setting", "x"]` — three lines above
+  asserting `payload["model"] == "glm-4.6"`. The two together state "the model is recorded and
+  is not on the command line" as correct behaviour. **No mutation and no green run could ever
+  have reported this**, because the expected value was the bug. This is the sharper half of the
+  finding: the change archived with 58/58 acceptance criteria, and the criteria checked what
+  was RECORDED.
+- **the direction it fails in:** silently, toward spending on the wrong frame. Nothing errors,
+  the endpoint answers, the record is honest about what was ASKED for, and the only symptom is
+  a model nobody chose answering under the name of one somebody did — visible solely by asking
+  the agent, or by reading `/proc/<pid>/cmdline`.
+- **fixed when / CLOSED by:** `LaunchPlan.launch_args(caller_args)` returns the declared args
+  AND the resolved model, skipping any flag the caller already passed, and all three call sites
+  use it. A plan that hands out its own arguments cannot be under-delivered by the next caller
+  written. Held by four tests on the plan and by the two argv assertions above, corrected to
+  the delivered value — those two are the regression anchors, since they are the ones that were
+  wrong.
+
 ### B-113 — the pre-fork survival guard refuses EVERY start on a provider that carries a credential, because it reads `unset` as "absent from the child"
 - **state:** CLOSED (2026-08-29) — the entry stays; the measurement is below
 - **reported:** 2026-08-29 by the user, from the fleet screen, with a screenshot: a start

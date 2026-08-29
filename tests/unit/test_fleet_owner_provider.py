@@ -292,7 +292,14 @@ def test_a_start_naming_a_provider_resolves_it_on_the_owner_s_side(monkeypatch, 
     assert call["env"]["ANTHROPIC_AUTH_TOKEN"] == "s3cret-value"
     assert call["unset"] == ("ANTHROPIC_API_KEY",)
     # 6.6: the resolved argv extras are appended to the default, not instead of it.
-    assert call["argv"] == ["claude", "--dangerously-skip-permissions", "--setting", "x"]
+    #
+    # ⚠ B-114: this assertion USED to end at "--setting", "x" — asserting, three
+    # lines above `payload["model"] == "glm-4.6"`, that the model reaches the
+    # record and NOT the command line. The test encoded the defect as correct, so
+    # no mutation and no green run could ever have reported it. The measurement
+    # that found it was `/proc/<pid>/cmdline` on a live agent.
+    assert call["argv"] == ["claude", "--dangerously-skip-permissions",
+                            "--setting", "x", "--model", "glm-4.6"]
     # The answer carries the provenance and NOT the environment.
     assert payload["provider"] == "glm"
     assert payload["model"] == "glm-4.6"
@@ -422,7 +429,7 @@ def test_a_recovery_resumes_on_the_provider_the_session_was_started_on(monkeypat
     assert asked == {"provider": "glm", "model": "glm-4.6"}
     assert passed["env"]["ANTHROPIC_AUTH_TOKEN"] == "s3cret-value"
     assert passed["unset"] == ("ANTHROPIC_API_KEY",)
-    assert passed["resume_argv"][-2:] == ["--setting", "x"]
+    assert passed["resume_argv"][-4:] == ["--setting", "x", "--model", "glm-4.6"]
     assert "--resume" in passed["resume_argv"]
     assert payload["provider"] == "glm"
 

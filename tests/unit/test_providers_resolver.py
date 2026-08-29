@@ -371,3 +371,84 @@ def test_the_command_line_runner_and_a_library_caller_resolve_identically(tmp_pa
     assert f"# unset: {', '.join(library.unset)}" in out
     assert library.model == "glm-5.3"
     assert "shared-token" not in out          # and still never the credential
+
+
+# --------------------------------------------------------------------------- #
+# B-114 — the resolved MODEL must reach the child, not only the record
+# --------------------------------------------------------------------------- #
+
+def _bare_plan(**over):
+    from set_orch.providers.resolver import LaunchPlan
+    base = dict(provider="glm", model="glm-5.3-flash",
+                env={"ANTHROPIC_BASE_URL": "https://gw.invalid"},
+                unset=("ANTHROPIC_API_KEY",),
+                args=("--autocompact", "700k"),
+                provenance={})
+    base.update(over)
+    return LaunchPlan(**base)
+
+
+def test_launch_args_delivers_the_resolved_model():
+    """The model is a resolved VALUE and every caller must deliver it.
+
+    Measured 2026-08-29 on a live agent: the owner reported `glm / glm-5.3-flash`
+    while `/proc/<pid>/cmdline` read
+    `claude --dangerously-skip-permissions --autocompact 700k` — no `--model` at
+    all, so the agent ran the CLI's DEFAULT model against the provider's
+    endpoint. The record, the API answer and the tile were all correct and the
+    effect was missing, which is why a full green suite could not see it: every
+    assertion checked what was RECORDED.
+    """
+    plan = _bare_plan()
+    add = plan.launch_args()
+    assert "--model" in add
+    assert add[add.index("--model") + 1] == "glm-5.3-flash"
+    assert "--autocompact" in add          # the declared args still come through
+
+
+def test_the_caller_s_own_model_wins_and_is_not_duplicated():
+    """`set-glm --model X` must keep meaning what it says."""
+    plan = _bare_plan()
+    add = plan.launch_args(["--model", "glm-4.6"])
+    assert "--model" not in add, "the caller already chose; adding again would duplicate it"
+
+
+def test_a_declared_flag_the_caller_passed_is_not_added_twice():
+    plan = _bare_plan()
+    add = plan.launch_args(["--autocompact", "200k"])
+    assert "--autocompact" not in add
+    assert "--model" in add, "skipping the declared block must not also drop the model"
+
+
+def test_a_provider_declaring_no_args_still_delivers_its_model():
+    """The old owner-side guard was `if plan.args:` — which skipped everything
+    for a provider that declares no args, model included."""
+    plan = _bare_plan(args=())
+    assert plan.launch_args() == ("--model", "glm-5.3-flash")
+
+
+def test_the_model_is_translated_to_a_cli_id_on_the_way_out():
+    """Delivering a WRONG model would be worse than delivering none.
+
+    The catalogue holds set-core's short names, which are exactly `_MODEL_MAP`'s
+    keys; the CLI wants the full id. Caught while auditing what else besides the
+    model might not be delivered — the first version of `launch_args` passed the
+    catalogue name straight through, which would have sent `--model opus-1m`.
+    """
+    from set_orch.subprocess_utils import _MODEL_MAP
+    from set_orch.providers import config
+
+    assert _bare_plan(model="opus-1m").launch_args(
+    )[-1] == "claude-opus-4-6[1m]"
+    assert _bare_plan(model="opus").launch_args()[-1] == "claude-opus-4-6"
+
+    # An unmapped name passes through — a provider whose catalogue holds real
+    # ids needs no second mapping table.
+    assert _bare_plan(model="glm-5.3-flash").launch_args()[-1] == "glm-5.3-flash"
+
+    # The anchor that matters: if the declared catalogue ever gains a short name
+    # the map does not know, this says so instead of shipping it raw to the CLI.
+    declared = config.load().providers.get("anthropic")
+    if declared is not None:
+        unmapped = [m for m in declared.models if m not in _MODEL_MAP]
+        assert not unmapped, f"catalogue names with no CLI id: {unmapped}"

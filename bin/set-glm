@@ -143,10 +143,12 @@ def main(argv):
         die(f"the resolved environment did not survive: {', '.join(lost)}. Refusing to start.")
 
     args = list(passthrough)
-    if "--autocompact" not in args and "--autocompact" in plan.args:
-        args += list(plan.args)
-    if "--model" not in args:
-        args += ["--model", plan.model]
+    # Both rules — do not duplicate a flag the caller passed, and deliver the
+    # resolved model — now live on the plan, so this caller and the owner cannot
+    # drift apart again. They did: this line carried the `--model` append and the
+    # owner's start path did not, so an agent started from the screen ran the
+    # CLI's default model under the name of the one that was chosen.
+    args += list(plan.launch_args(args))
 
     if want_check:
         note(f"probe: {plan.describe()}")

@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .config import Credential, Provider, ProvidersConfig, load
 from .errors import (
@@ -126,6 +126,51 @@ class LaunchPlan:
         and it must be answerable without the credential itself.
         """
         return self.provenance.get("credential", LEVEL_DEFAULT) == LEVEL_DEFAULT
+
+    def launch_args(self, caller_args: Sequence[str] = ()) -> Tuple[str, ...]:
+        """What to ADD to a caller's argv: the declared args, and the resolved model.
+
+        ⚠ `model` is a resolved VALUE, and until 2026-08-29 it was the only part
+        of a plan that no caller delivered. It reached the durable record, the
+        API answer and the tile — and never the child's command line, so an agent
+        started on a named provider ran that provider's endpoint with the CLI's
+        DEFAULT model. Measured on a live agent: the owner reported
+        `glm / glm-5.3-flash` while `/proc/<pid>/cmdline` read
+        `claude --dangerously-skip-permissions --autocompact 700k`.
+
+        **The fail direction is what makes it worth a method rather than a line
+        at each call site.** Nothing errors: the endpoint accepts the request,
+        the record is honest about what was ASKED for, and the only symptom is a
+        model nobody chose answering under a name somebody did. The rule lived in
+        exactly one caller (`bin/set-glm`), which is why the other two silently
+        did without it. A plan that hands out its own arguments cannot be
+        under-delivered by the next caller written.
+
+        Returns only the ADDITIONS, so a caller appends rather than replaces, and
+        a flag the caller already passed is never added twice — the caller's own
+        value wins, which is what keeps `set-glm --model X` meaning what it says.
+
+        ⚠ The model is translated to a CLI id on the way out, and skipping that
+        would have made this method deliver a WRONG value rather than none — a
+        worse defect than the one it fixes. The catalogue holds set-core's SHORT
+        names (`opus-1m`, `opus-4-7-1m`), which are exactly `_MODEL_MAP`'s keys,
+        while the CLI wants `claude-opus-4-6[1m]`. Every other caller that builds
+        a `--model` already resolves first — `chat.py`, `subprocess_utils.py`,
+        `category_resolver.py`, `engine.sh` — so this is the established
+        convention, not a new rule. An unmapped name passes through unchanged,
+        which is what keeps a provider whose catalogue holds real ids (`glm`)
+        working without a second mapping table.
+        """
+        from ..subprocess_utils import resolve_model_id
+
+        caller = set(caller_args)
+        add: List[str] = []
+        declared_flags = {a for a in self.args if a.startswith("--")}
+        if not (declared_flags & caller):
+            add += list(self.args)
+        if self.model and "--model" not in caller and "--model" not in add:
+            add += ["--model", resolve_model_id(self.model)]
+        return tuple(add)
 
     def describe(self) -> str:
         """One line, safe to print anywhere. Names the endpoint, never the token.

@@ -665,7 +665,7 @@ class OwnerDaemon:
             # agent billed to an account no record names.
             env = {**(env or {}), **plan.env}
             unset = plan.unset
-            argv = argv + list(plan.args)
+            argv = argv + list(plan.launch_args(argv))
             logger.info("fleet owner: %s -> %s", label, plan.describe())
 
         # Blocking: `start` waits for systemd to report the scope active. Off the
@@ -767,11 +767,16 @@ class OwnerDaemon:
                 provider=recorded["provider"], model=recorded.get("model"),
             )
             env, unset = plan.env, plan.unset
-            if plan.args:
-                base = list(resume_argv or [
-                    "claude", "--dangerously-skip-permissions",
-                    "--resume", params["session_id"]])
-                resume_argv = base + list(plan.args)
+            base = list(resume_argv or [
+                "claude", "--dangerously-skip-permissions",
+                "--resume", params["session_id"]])
+            # Not guarded on `plan.args` any more: a provider may declare no args
+            # and still resolve a MODEL, and the old guard skipped the whole block
+            # in exactly that case — so a resume on such a provider came back on
+            # the CLI's default model while the record named another.
+            extra = plan.launch_args(base)
+            if extra:
+                resume_argv = base + list(extra)
             logger.info("fleet owner: recovering %s (record %s) -> %s",
                         unit, record_unit, plan.describe())
 
