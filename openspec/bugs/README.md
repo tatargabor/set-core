@@ -68,6 +68,42 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-116 — an ALIAS variable the chosen provider does not declare survives into the child's environment
+- **state:** open
+- **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
+- **measured:** `lib/set_orch/providers/resolver.py:81-85` — `FOREIGN_KEYS` (what `unset` carries) names only `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL`, never the `ANTHROPIC_DEFAULT_*_MODEL` keys. `resolve()` emits only the aliases the chosen provider declares (`resolver.py:322-323`), so a shell export like `ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-6` survives both start paths: `bin/set-glm:133-136` builds the child env from `os.environ` minus `plan.unset` only, and `lib/set_orch/fleet/ownerd.py:666` merges a caller-supplied mapping under `plan.env` — a caller key the plan does not overwrite passes through. The `opus`-declaring subagent then sends an Anthropic id at the GLM endpoint — B-115's exact symptom, through a path B-115's fix does not close. The outranking test (`tests/unit/test_fleet_owner_provider.py:327`) covers `ANTHROPIC_BASE_URL` but no alias key.
+- **fixed when:** `plan.unset` includes every `MODEL_ALIASES` value the plan did NOT emit, and the outranking test carries an alias key that must NOT survive.
+
+### B-117 — `launch_args()` drops the whole declared-args block when ANY ONE flag collides
+- **state:** open
+- **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
+- **measured:** `lib/set_orch/providers/resolver.py:166-170` — `if not (declared_flags & caller): add += list(self.args)` is all-or-nothing. A provider declaring `["--autocompact", "700k", "--verbose"]` whose caller passed `--verbose` gets the empty intersection test fail, so `--autocompact 700k` — never passed by the caller — is silently dropped. Latent only because the current config declares one flag; the second declared flag re-arms it. Same fail direction as B-114: nothing errors, the record stays honest, the effect is missing.
+- **fixed when:** a per-flag skip (flag and its value token) replaces the block skip, and a test with two declared flags where the caller passed one asserts the other still arrives.
+
+### B-118 — `launch_args()` translates the model through an ANTHROPIC short-name map for EVERY provider, and the anchor test that should catch drift can silently skip
+- **state:** open
+- **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
+- **measured:** `lib/set_orch/providers/resolver.py:164-172` calls `resolve_model_id` unconditionally; the map (`lib/set_orch/subprocess_utils.py:154-169`) maps `sonnet` → `claude-sonnet-4-6` etc. A non-Anthropic provider whose catalogue legitimately contains a key of that map gets the translated ANTHROPIC id sent to its own endpoint — a wrong value delivered silently, the outcome the method's own docstring calls worse than none. The anchor test meant to catch catalogue/map drift (`tests/unit/test_providers_resolver.py:451-454`) guards with `if declared is not None:` after `config.load()` of the LIVE machine file — no `anthropic` provider on the machine and the assertion is a no-op; a 0600 or absent config and the test errors. It is not hermetic and can pass without measuring anything.
+- **fixed when:** the translation is gated on the provider that needs it (or the coupling is a stated contract in `config.py`'s catalogue docs), and the anchor asserts against a fixture catalogue instead of the machine's live config.
+
+### B-119 — once aliases exist, the record's provenance is a false value and names the wrong model for a subagent
+- **state:** open
+- **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
+- **measured:** `lib/set_orch/providers/resolver.py:332` sets `provenance["env"] = LEVEL_DEFAULT`, but the env now carries provider-declared alias targets the machine default never named — `LEVEL_PROVIDER`'s own comment (`resolver.py:70-75`) calls exactly this a false value. And the record (`lib/set_orch/fleet/ownerd.py:692-694`) names `model=plan.model` with nothing about the alias map: a sonnet-declared subagent under a plan recorded `glm-5.3-flash` is answered per-alias, and every reader attributes cost and quality to a model that did not reply. The honest state is a documented absence; today it is undocumented.
+- **fixed when:** `describe()` and the provider record name the alias targets (or the resolved alias map), and `provenance["env"]` reflects the level that supplied the alias values.
+
+### B-120 — `set-glm --model=X` and a trailing `set-glm --model` both mangle the launch argv
+- **state:** open
+- **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
+- **measured:** `bin/set-glm:110-113` detects only the exact token `--model` followed by a value. `--model=glm-4.6` leaves `requested_model=None`, so the resolver picks the default and `launch_args()` (whose collision check is also exact-match, `resolver.py:171`) appends a second `--model` — two on one argv, resolution order-dependent. `--model` as the LAST token leaves a valueless flag in `passthrough` with `requested_model` still `None`.
+- **fixed when:** both sites also match the `--model=` prefix; a valueless trailing `--model` dies with a message naming the problem, in the file's refusal style.
+
+### B-121 — two refusal/skip branches around `--model` and `model_aliases` ship unexercised
+- **state:** open
+- **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
+- **measured:** `lib/set_orch/providers/resolver.py:171` — if a provider's DECLARED `args` contained `--model`, `"--model" not in add` holds and `plan.model` is never appended: the declared value would win with no provenance and no test covers the branch. And `lib/set_orch/providers/config.py:295-298` refuses a non-dict `model_aliases`, but no test in `tests/unit/test_providers_config.py` feeds one (e.g. a list) through.
+- **fixed when:** a test where declared args carry `--model` states which value must win; a non-dict `model_aliases` refusal is message-content-tested.
+
 ### B-115 — a subagent under a provider-switched parent keeps the parent's ENDPOINT and its own ANTHROPIC model name, and the gateway answers anyway
 - **state:** CLOSED (2026-08-29, `efd2c0f1`) — the entry stays; the measurement and the decision are below. Raised by the user's question ("subagents will also work?") while closing B-114.
 - **measured 2026-08-29, two probes against the live GLM endpoint:**
