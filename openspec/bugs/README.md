@@ -68,37 +68,51 @@ consumer's name, path, or content.
 
 ## Open
 
-### B-106 — a permission mode named `allowedTools` omits `Agent` from its list, and the name is the only thing that says the omission restricts anything
+### B-106 — `--allowedTools` restricts nothing, so a permission mode named after it is a guard that only reports being one
 
 - **state:** open
-- **reported:** 2026-08-29 by a peer agent on the `set-glm` channel, relayed as a
-  measurement from a consumer project's own run. Their finding, in their words:
-  `--allowedTools` is **not a deny list** — a tool absent from the list is still
-  callable. They measured it costing a completed section: a review subagent was
-  invoked despite `Agent` being absent from the list, did not return, and the
-  60-minute ceiling cut off work that was already done (11/11 tasks, 57 green
-  tests, `tsc` clean) **without a commit**.
-- **measured (in THIS repo, and this half is ours):** `lib/editor.sh:134` —
-  ```
-  allowedTools)
-      echo '--allowedTools "Edit,Write,Bash,Read,Glob,Grep,Task"'
-  ```
-  `Agent` is absent from that list; `Task` is present. `lib/loop/engine.sh:402`
-  passes the same flag through `eval`. So set-core offers an operator a permission
-  mode whose **name** states a restriction, and the only evidence that the
-  restriction holds is the name.
-- **NOT yet measured here, and that is the gap:** whether the CLI actually permits
-  an omitted tool is the peer's measurement on their side, not ours. The fail
-  direction is what makes it worth an entry anyway — if they are right, the mode
-  is silently permissive, and a silently permissive guard is worse than an absent
-  one because it also reports that it is fine.
-- **fixed when:** a test starts a run under the `allowedTools` mode with `Agent`
-  absent from the list, asks the agent to invoke a subagent, and asserts it is
-  REFUSED. If it is not refused, the fix is `--disallowedTools Agent,Task`
-  alongside the allow list (the peer's remedy), and the mode is renamed to
-  whatever it then actually does.
-- **related:** the provider/model selection work in flight also passes flags to the
-  same CLI; whatever this entry settles applies there too.
+- **reported:** 2026-08-29 by a peer agent on the `set-glm` channel, from a
+  consumer project's own run: a review subagent was invoked although `Agent` was
+  absent from the allow list, did not return, and a 60-minute ceiling then cut off
+  work that was already finished (11/11 tasks, 57 green tests, `tsc` clean)
+  **without a commit**. Their measurement ran on a non-Anthropic provider.
+- **measured HERE, on the Anthropic branch, because a conclusion that crosses to
+  the other side's runtime has to be measured there.** Empty temp directory,
+  `--settings` pointing at `{"permissions":{"defaultMode":"default","allow":[],"deny":[]}}`
+  so no user setting can explain the result:
+
+  | run | flags | result | `permission_denials` |
+  |---|---|---|---|
+  | 1 | `--allowedTools 'Read'` | Bash **ran** — `"A parancs lefutott, az output: SZIA"` | `[]` |
+  | 2 | + clean `--settings` | Bash **ran** — `"Lefuttattam, az output: SZIA"` | `[]` |
+  | 3 | `--allowedTools 'Read' --disallowedTools 'Bash'` | Bash **absent** — the model answers that it has no Bash tool | `[]` |
+
+  So the allow list does not restrict, and it is not an `Agent`-specific
+  exemption: a tool absent from it is callable in general. `--disallowedTools`
+  does work — and it works by **removing the tool from the session**, not by
+  denying a call.
+
+- ⚠ **`permission_denials` is NOT the discriminator, and an obvious test would be
+  blind here.** It is `[]` in all three runs — in the broken case because nothing
+  was denied, in the fixed case because there was nothing left to deny. A check
+  asserting on that field sees no difference between a working guard and an absent
+  one. Assert on **whether the tool ran**.
+
+- **what this costs us:** `lib/editor.sh:134` offers an operator a permission mode
+  literally named `allowedTools`, emitting
+  `--allowedTools "Edit,Write,Bash,Read,Glob,Grep,Task"`. `lib/loop/engine.sh:402`
+  passes the same flag through `eval`. The name states a restriction that the flag
+  does not keep for any tool — so the earlier reading of this entry ("`Agent` is
+  missing from the list") named the wrong defect: adding `Agent` to the list would
+  have changed nothing at all.
+
+- **fixed when:** a run under the `allowedTools` mode is given a prompt that asks
+  for a tool the mode does not list, and the tool does **not** run. The remedy
+  measured above is `--disallowedTools <the tools the mode means to exclude>`
+  alongside the allow list; the mode is then renamed to what it actually does.
+
+- **related:** the provider/model selection work in flight passes flags to the same
+  CLI, so whatever this settles applies there too.
 
 ### B-105 — the fleet's work-unit start names an engine command the owner cannot resolve, and the refusal blames the scope
 
