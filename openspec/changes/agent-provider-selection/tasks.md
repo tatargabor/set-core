@@ -1,7 +1,7 @@
 ## 1. Evidence before implementation
 
-- [ ] 1.1 Re-measure independently whether the context-window environment variable alone is necessary and sufficient for the alternative provider: a fresh session, a prompt large enough to exceed the default window, and the same four variants (neither variable, each alone, both). Record the four outcomes with their evidence in this change. Until this passes, no artifact may call the parameter a finding — the existing claim is single-sourced [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
-- [ ] 1.2 Confirm the gateway-prefix rejection independently: request a prefixed model name against the provider's endpoint and record the exact error, so the pre-launch refusal is validated against a real response rather than a remembered one [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
+- [x] 1.1 Re-measure independently whether the context-window environment variable alone is necessary and sufficient for the alternative provider: a fresh session, a prompt large enough to exceed the default window, and the same four variants (neither variable, each alone, both). Record the four outcomes with their evidence in this change. Until this passes, no artifact may call the parameter a finding — the existing claim is single-sourced [REQ: a-provider-declaration-carries-everything-needed-to-launch-it]
+- [x] 1.2 Confirm the gateway-prefix rejection independently: request a prefixed model name against the provider's endpoint and record the exact error, so the pre-launch refusal is validated against a real response rather than a remembered one [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
 - [ ] 1.3 Record a baseline of the test suite before touching anything, using the repository's set-diff recipe, so a later regression claim is a comparison rather than a recollection [REQ: one-resolver-serves-every-caller]
 
 ## 2. The configuration file

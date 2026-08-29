@@ -40,11 +40,13 @@ four seconds. That is a *true* sentence about the symptom that points away from 
 
 One more, which is about this design's own evidence rather than about the code:
 
-**M5 — the launch parameters are single-sourced.** `bin/set-glm` and a consumer project's
-own implementation were written by the same author from the same single measurement. One
-measurement written down twice is not two measurements. Every parameter this change treats
-as measured therefore carries a task to re-measure it independently before any artifact
-states it as a finding.
+**M5 — the launch parameters were single-sourced, and have now been confirmed.** `bin/set-glm`
+and a consumer project's own implementation were written by the same author from the same
+single measurement; one measurement written down twice is not two measurements. That claim
+was therefore re-measured independently for this change — a different session, a different
+prompt, a cleaned environment, and a control run establishing the wall. See **Appendix:
+the re-measurement** below. The result confirms the original: the context-window variable
+alone is necessary and sufficient, and the enforcement flag alone is not.
 
 A second set-core session is concurrently planning `work-cycle-run-visibility`, which needs
 to resolve `argv[0]` against the final child environment — the same lines this change
@@ -256,3 +258,46 @@ the migration never deletes its source.
 - **Does the independent re-measurement (M5) confirm the context-window parameter as
   necessary and sufficient?** If it does not, the parameter set changes but no interface in
   this design does — the values are data.
+
+## Appendix: the re-measurement (task 1.1 and 1.2)
+
+Run 2026-08-29 for this change, to settle M5. Independent of the original in every way that
+matters: a different session, generated filler rather than a real transcript, a cleaned
+environment, `--settings` pointing at an empty permission set, and a control variant
+establishing that the wall was actually reached.
+
+**Method.** One ~1.8 MB prompt on stdin ending in *"reply with one word: OK"*, sent four
+times to the same model on the same endpoint, changing only which environment variables were
+set. `--autocompact 700k` was passed in every variant, so it is held constant and cannot be
+the discriminator.
+
+| variant | environment set | `is_error` | `result` | input carried |
+|---|---|---|---|---|
+| A (control) | neither | `true` | `Prompt is too long` | 0 |
+| B | context-window **and** enforcement flag | `false` | `OK` | 606 567 |
+| C | **context-window only** | `false` | `OK` | 606 567 |
+| D | enforcement flag only | `true` | `Prompt is too long` | 0 |
+
+**Conclusion.** The context-window variable alone is necessary and sufficient. The
+enforcement flag alone is not sufficient, and adding it to C changes nothing — so the design
+sets the first and not the second. A redundant variable would only obscure which one acts.
+
+Two things this measurement caught about itself, both of which would have made it agree with
+the expected answer for the wrong reason:
+
+- **The first prompt never reached the wall.** It was built from long technical words and
+  tokenised at 6.5 characters per token, so it carried 154 489 tokens — under the default
+  window. Variant C succeeded, and that success proved nothing, because variant A would have
+  succeeded too. The filler was rebuilt from short common words and the control was run
+  first, so every later success is measured against a demonstrated failure.
+- **`input_tokens` alone is not the discriminator once a prompt cache exists.** Variant B
+  reported `input_tokens: 39`, which reads exactly like a truncated or compacted prompt. Its
+  `cache_read_input_tokens` was 606 528: the prompt went through in full, served from the
+  provider's cache after variant C had populated it. The honest figure is the sum, and that
+  is what the table reports.
+
+**Task 1.2 — the gateway prefix, measured the same day.** Requesting the model name with the
+gateway prefix against the provider's native endpoint returns
+`API Error: 400 [1214][modelCode: does not exist]`, with `api_error_status: 400` and
+`terminal_reason: api_error`. This is the response the pre-launch refusal in D6 exists to
+prevent, and it is now checked against a real answer rather than a remembered one.
