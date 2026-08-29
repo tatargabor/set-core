@@ -14,22 +14,25 @@ default, and a default that flips the wrong way publishes a token.
 
 from .config import (
     CONFIG_NAME, LEGACY_NAME, Credential, ProjectOverride, Provider,
-    ProvidersConfig, config_dir, config_path, legacy_path, load,
+    ProvidersConfig, config_dir, config_path, legacy_path, load, load_or_legacy,
 )
 from .errors import (
     ConfigError, IncompleteCredential, MissingCredential, ProviderError,
     UnknownModel, UnknownProvider,
 )
 from .resolver import (
-    FOREIGN_KEYS, LEVEL_DEFAULT, LEVEL_PROJECT, LEVEL_REQUEST, LaunchPlan,
-    catalogue, resolve,
+    FOREIGN_KEYS, LEVEL_DEFAULT, LEVEL_PROJECT, LEVEL_PROVIDER, LEVEL_REQUEST,
+    SECRET_ENV_KEYS,
+    LaunchPlan, catalogue, is_secret_env_key, resolve,
 )
 
 __all__ = [
     "CONFIG_NAME", "LEGACY_NAME", "Credential", "ProjectOverride", "Provider",
     "ProvidersConfig", "config_dir", "config_path", "legacy_path", "load",
+    "load_or_legacy",
     "ConfigError", "IncompleteCredential", "MissingCredential", "ProviderError",
     "UnknownModel", "UnknownProvider",
-    "FOREIGN_KEYS", "LEVEL_DEFAULT", "LEVEL_PROJECT", "LEVEL_REQUEST",
-    "LaunchPlan", "catalogue", "resolve",
+    "FOREIGN_KEYS", "LEVEL_DEFAULT", "LEVEL_PROJECT", "LEVEL_PROVIDER",
+    "LEVEL_REQUEST",
+    "SECRET_ENV_KEYS", "LaunchPlan", "catalogue", "is_secret_env_key", "resolve",
 ]

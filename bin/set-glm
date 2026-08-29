@@ -1,142 +1,172 @@
-#!/usr/bin/env bash
-#
-# set-glm — Claude Code a z.ai GLM modelljein, a mért paraméterekkel.
-#
-# Miért nem elég egy `ANTHROPIC_BASE_URL=… claude`: a CLI nem ismeri a GLM
-# context-ablakát, ezért ~200k-ra vág, és a hosszú prompt vagy `Prompt is too long`-gal
-# hasal el, vagy — rosszabb — NÉMÁN compact-hurokba fut. Mérve 2026-08-29 (wpc-pont,
-# apply-cycle): 9,5 perc, három egymást követő compact, NULLA megírt sor, majd a CLI
-# saját üzenete: „Autocompact is thrashing". Kívülről ez „lassú modell"-nek látszik.
-#
-# A három beállítás, ami ezt megoldja, és a mérés, ami eldöntötte (ugyanaz a ~250k
-# tokenes prompt, négy változatban):
-#
-#   csak `--autocompact 700k` ....................... Prompt is too long, input=0
-#   MAX_CONTEXT_TOKENS + DISABLE_…_ENFORCEMENT ...... OK, input_tokens=524 731
-#   csak `CLAUDE_CODE_MAX_CONTEXT_TOKENS` ........... OK   ← szükséges ÉS elégséges
-#   csak `…_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT`  Prompt is too long
-#
-# A második env-et ezért NEM állítjuk be: a fölös env csak elfedi, mi hat.
-#
-# Használat:
-#   set-glm -p "prompt"                    egyszeri hívás
-#   set-glm -p "…" --output-format json    strukturált kimenet
-#   set-glm                                interaktív session GLM-en
-#   set-glm --check                        konfiguráció + élő próbahívás, futtatás nélkül
-#   set-glm --print-env                    a beállított env kiírása (a token MASZKOLVA)
-#
-# Konfiguráció (első találat nyer):
-#   1. a folyamat env-je (GLM_TOKEN, GLM_MODEL, …)
-#   2. ./.env a MOSTANI repóban          — projekt-szintű
-#   3. ~/.config/set-core/glm.env        — gépszintű, ez a hordozható hely
-#
-set -euo pipefail
+#!/usr/bin/env python3
+"""set-glm — Claude Code on the GLM provider, with the measured parameters.
 
-readonly GLM_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/set-core/glm.env"
+The parameters are no longer computed here. They are DATA in
+`~/.config/set-core/providers.json`, and this command resolves them through
+`set_orch.providers` — the same resolver the fleet's agent owner uses. One
+measured value, one place, two carriers. (Before this change the values lived in
+this file AND in a consumer project's own implementation, written by one author
+from one measurement; two copies of one measurement are not two measurements,
+and they drift without either looking wrong.)
 
-# ── Mért alapértékek — ne írd át mérés nélkül ────────────────────────────────
-# endpoint: a z.ai NATÍV Anthropic-endpointja (nem OpenRouter, nem LiteLLM)
-readonly DEFAULT_BASE_URL="https://api.z.ai/api/anthropic"
-# 900k: a mért ~1M ablak alatt, hogy a CLI ne vágjon
-readonly DEFAULT_CONTEXT_TOKENS="900000"
-# 700k: a mért 800 016 elfogadott input token alatt
-readonly DEFAULT_AUTOCOMPACT="700k"
+Usage — unchanged from the shell version this replaces:
 
-die() { printf '\033[31mset-glm: %s\033[0m\n' "$*" >&2; exit 1; }
-note() { printf '\033[2mset-glm: %s\033[0m\n' "$*" >&2; }
+    set-glm -p "prompt"                    one call
+    set-glm -p "…" --output-format json    structured output
+    set-glm                                an interactive session
+    set-glm --check                        configuration plus a live probe
+    set-glm --print-env                    the env that would be set (token MASKED)
+    set-glm --model NAME                   a specific model from the catalogue
 
-# ── A GLM_* kulcsok beolvasása — SZÁNDÉKOSAN SZŰK ────────────────────────────
-#
-# Csak a `GLM_` prefixű sorokat vesszük át, és a már beállított értéket nem írjuk
-# felül. Azért nem `set -a; source .env`, mert az az ANTHROPIC_API_KEY-t is behozná —
-# épp azt a kulcsot, ami a hívást CSENDBEN a platform-számlára irányítaná át.
-# Amit nem hozunk be, az nem is szivároghat ki.
-load_glm_env() {
-    local file="$1"
-    [[ -r "$file" ]] || return 0
-    local line key val
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ "$line" =~ ^[[:space:]]*(GLM_[A-Z0-9_]+)[[:space:]]*=(.*)$ ]] || continue
-        key="${BASH_REMATCH[1]}"
-        val="${BASH_REMATCH[2]}"
-        val="${val#"${val%%[![:space:]]*}"}"          # bal trim
-        val="${val%"${val##*[![:space:]]}"}"          # jobb trim
-        val="${val%\"}"; val="${val#\"}"              # idézőjelek
-        val="${val%\'}"; val="${val#\'}"
-        [[ -n "${!key:-}" ]] && continue              # a már beállított nyer
-        printf -v "$key" '%s' "$val"
-        export "${key?}"
-    done < "$file"
-}
+Everything not listed above is passed through to `claude` untouched.
 
-repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
+**Why this is Python and not a shell wrapper.** The credential never becomes a
+shell variable, never reaches stdout, and never appears in a process listing: it
+is placed in the child's environment and the process is replaced. The shell
+version had to `export` it, which is one `set -x` away from a transcript.
+"""
 
-load_glm_env "$(repo_root)/.env"
-load_glm_env "$GLM_CONF"
+from __future__ import annotations
 
-# ── Feloldás és a HANGOS elutasítás ──────────────────────────────────────────
-#
-# Fail-closed, mindenhol: hiányzó konfigra megállunk, és SOHA nem esünk vissza
-# Claude-ra. A csendes fallback a legrosszabb kimenet — a futás lefutna, csak épp a
-# másik keretből, és semmi nem jelezné.
-[[ -n "${GLM_TOKEN:-}" ]] || die "hiányzik a GLM_TOKEN.
-  Vedd fel ide: $GLM_CONF        (gépszintű, minden projektnek)
-  vagy a repo .env-jébe:  GLM_TOKEN=…
-  Minta:  printf 'GLM_TOKEN=%s\\nGLM_MODEL=glm-5.3-flash\\n' \"\$KULCS\" > '$GLM_CONF'"
+import os
+import subprocess
+import sys
+from pathlib import Path
 
-MODEL="${GLM_MODEL:-}"
-[[ -n "$MODEL" ]] || die "nincs modell — állítsd be a GLM_MODEL-t (pl. glm-5.3-flash)."
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-# ⚠ A gateway-prefix az a hiba, ami egy egész éjszakai futást buktat el az ELSŐ
-# hívásnál. A `zai/glm-5.3-flash` az OpenRouter/LiteLLM alak; a z.ai natív
-# endpointja prefix nélküli nevet vár, a prefixesre `[1214][modelCode: does not
-# exist]` 400-at ad. Ezért itt utasítjuk el, indulás előtt.
-[[ "$MODEL" != */* ]] || die "a modellnév (\"$MODEL\") gateway-prefixet tartalmaz.
-  A z.ai Anthropic-endpointja prefix nélküli nevet vár (pl. \"glm-5.3-flash\");
-  a \"zai/…\" alakra 400 a válasz. Vedd le a prefixet."
+from set_orch.providers import is_secret_env_key, resolve  # noqa: E402
+from set_orch.providers.config import load_or_legacy  # noqa: E402
+from set_orch.providers.errors import ProviderError  # noqa: E402
 
-BASE_URL="${GLM_BASE_URL:-$DEFAULT_BASE_URL}"
-CONTEXT_TOKENS="${GLM_CONTEXT_TOKENS:-$DEFAULT_CONTEXT_TOKENS}"
-AUTOCOMPACT="${GLM_AUTOCOMPACT:-$DEFAULT_AUTOCOMPACT}"
+PROVIDER = "glm"
 
-# ── A gyerekfolyamat env-je ──────────────────────────────────────────────────
-#
-# A három `unset` MINDIG lefut: egy shellből örökölt kulcs vagy base URL különben
-# csendben átirányítaná a hívást, és a képernyőn semmi nem jelezné, melyik keretre ment.
-unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
-export ANTHROPIC_BASE_URL="$BASE_URL"
-export ANTHROPIC_AUTH_TOKEN="$GLM_TOKEN"
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CONTEXT_TOKENS"
+DIM, RED, RESET = "\033[2m", "\033[31m", "\033[0m"
 
-mask() { local t="$1"; printf '%s…%s (%d kar.)' "${t:0:6}" "${t: -4}" "${#t}"; }
 
-case "${1:-}" in
-  --print-env)
-      printf 'ANTHROPIC_BASE_URL=%s\n' "$BASE_URL"
-      printf 'ANTHROPIC_AUTH_TOKEN=%s\n' "$(mask "$GLM_TOKEN")"
-      printf 'CLAUDE_CODE_MAX_CONTEXT_TOKENS=%s\n' "$CONTEXT_TOKENS"
-      printf -- '--model %s --autocompact %s\n' "$MODEL" "$AUTOCOMPACT"
-      exit 0 ;;
-  --check)
-      note "próbahívás: $MODEL @ $BASE_URL"
-      out=$(claude --model "$MODEL" --autocompact "$AUTOCOMPACT" \
-                   -p 'Válaszolj EGYETLEN szóval: OK' --output-format json 2>&1) || {
-          printf '%s\n' "$out" >&2
-          die "a próbahívás ELHASALT — a fenti a CLI válasza."
-      }
-      printf '%s\n' "$out" | head -c 2000; echo
-      note "OK — a konfiguráció él."
-      exit 0 ;;
-esac
+def note(message: str) -> None:
+    print(f"{DIM}set-glm: {message}{RESET}", file=sys.stderr)
 
-# A hívó `--autocompact`-ja nyer; ha nem adott meg, a mért alapérték megy.
-extra=()
-[[ " $* " == *" --autocompact "* ]] || extra=(--autocompact "$AUTOCOMPACT")
-[[ " $* " == *" --model "* ]] || extra+=(--model "$MODEL")
 
-# ⚠ Ez a sor NEM kozmetika: egy keret-váltásnak látszania kell. Enélkül a futás
-# megkülönböztethetetlen egy sima `claude`-tól, és a következő olvasó (ember vagy
-# agent) rossz kerethez rendeli a költséget és a minőséget.
-note "GLM: $MODEL @ $BASE_URL (ablak ${CONTEXT_TOKENS}, autocompact ${AUTOCOMPACT})"
+def die(message: str) -> None:
+    print(f"{RED}set-glm: {message}{RESET}", file=sys.stderr)
+    raise SystemExit(1)
 
-exec claude "${extra[@]}" "$@"
+
+def repo_root() -> Path:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        return Path(out.stdout.strip())
+    except Exception:
+        return Path.cwd()
+
+
+def removed_tier_hint() -> str:
+    """Say that the OLD location is no longer read — not merely that nothing was found.
+
+    Until this change, a `.env` in the repository could hold `GLM_*` keys and it
+    was consulted. Removing that tier is the direct consequence of putting
+    credentials in one machine-level place; a repository `.env` is git-tracked, so
+    a worktree `reset --hard` takes it, and a careless `add` publishes it.
+
+    The distinction this function exists for: an operator whose credential IS in
+    that file and who is told "no credential configured" goes and creates a second
+    one. They have to be told the place they used is no longer consulted.
+    """
+    env_file = repo_root() / ".env"
+    if not env_file.exists():
+        return ""
+    try:
+        has_glm = any(
+            line.strip().startswith("GLM_") for line in env_file.read_text().splitlines()
+        )
+    except OSError:
+        return ""
+    if not has_glm:
+        return ""
+    return (
+        f"\n\n⚠ {env_file} declares GLM_* keys and is NO LONGER READ. That tier was "
+        "removed: a credential in a working tree is taken by a `reset --hard` and "
+        "published by a careless `add`. Move it to the machine-level configuration "
+        "with:  set-providers migrate   (or add it under providers.glm.credential)."
+    )
+
+
+def masked(token: str) -> str:
+    return f"{token[:6]}…{token[-4:]} ({len(token)} chars)"
+
+
+def main(argv):
+    passthrough = [a for a in argv if a not in ("--check", "--print-env")]
+    want_check = "--check" in argv
+    want_env = "--print-env" in argv
+
+    # The caller's own flags win. Reading them here rather than appending blindly
+    # is what keeps `set-glm --model X` meaning what it says.
+    requested_model = None
+    if "--model" in passthrough:
+        i = passthrough.index("--model")
+        if i + 1 < len(passthrough):
+            requested_model = passthrough[i + 1]
+
+    try:
+        cfg, notice = load_or_legacy()
+        if notice:
+            note(notice)
+        plan = resolve(provider=PROVIDER, model=requested_model, config=cfg)
+    except ProviderError as exc:
+        die(f"{exc}{removed_tier_hint()}")
+        return 1
+
+    if want_env:
+        for key in sorted(plan.env):
+            value = plan.env[key]
+            print(f"{key}={masked(value) if is_secret_env_key(key) else value}")
+        print(f"# unset: {', '.join(plan.unset)}")
+        print(f"# args:  {' '.join(plan.args)}")
+        print(f"# {plan.describe()}")
+        return 0
+
+    child_env = dict(os.environ)
+    for key in plan.unset:
+        child_env.pop(key, None)
+    child_env.update(plan.env)
+
+    # The guard, at the point of the effect. A variable the resolver returned that
+    # did not survive is not an error anywhere downstream — the measured
+    # consequence is a compaction loop that reads from outside as a slow model.
+    lost = [k for k, v in plan.env.items() if child_env.get(k) != v]
+    if lost:
+        die(f"the resolved environment did not survive: {', '.join(lost)}. Refusing to start.")
+
+    args = list(passthrough)
+    if "--autocompact" not in args and "--autocompact" in plan.args:
+        args += list(plan.args)
+    if "--model" not in args:
+        args += ["--model", plan.model]
+
+    if want_check:
+        note(f"probe: {plan.describe()}")
+        probe = subprocess.run(
+            ["claude", *args, "-p", "Reply with ONE word: OK", "--output-format", "json"],
+            env=child_env, capture_output=True, text=True,
+        )
+        sys.stdout.write(probe.stdout[:2000] + "\n")
+        if probe.returncode != 0:
+            sys.stderr.write(probe.stderr)
+            die("the probe FAILED — the output above is the CLI's answer.")
+        note("OK — the configuration is live.")
+        return 0
+
+    # ⚠ Not decoration: a frame switch has to be VISIBLE. Without this line the run
+    # is indistinguishable from a plain `claude`, and the next reader — person or
+    # agent — assigns its cost and its quality to the wrong frame.
+    note(plan.describe())
+    os.execvpe("claude", ["claude", *args], child_env)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

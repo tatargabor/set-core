@@ -30,21 +30,21 @@
 
 ## 4. `bin/set-glm` becomes a caller
 
-- [ ] 4.1 Rewrite `bin/set-glm` to obtain its environment and argv extras from the resolver instead of computing them, keeping its command-line surface unchanged [REQ: one-resolver-serves-every-caller]
-- [ ] 4.2 Assert in a test that the command-line runner and the fleet's owner obtain the same environment and argv for the same project, provider and model [REQ: one-resolver-serves-every-caller]
-- [ ] 4.3 Remove the repository-`.env` configuration tier and replace it with a failure that names the removed location, the central file, and the migration command [REQ: reading-a-provider-credential-from-a-project-s-working-tree-is-removed]
-- [ ] 4.4 Assert that the removal failure states the location is no longer read, not merely that no credential was found [REQ: reading-a-provider-credential-from-a-project-s-working-tree-is-removed]
+- [x] 4.1 Rewrite `bin/set-glm` to obtain its environment and argv extras from the resolver instead of computing them, keeping its command-line surface unchanged [REQ: one-resolver-serves-every-caller]
+- [x] 4.2 Assert in a test that the command-line runner and the fleet's owner obtain the same environment and argv for the same project, provider and model [REQ: one-resolver-serves-every-caller]
+- [x] 4.3 Remove the repository-`.env` configuration tier and replace it with a failure that names the removed location, the central file, and the migration command [REQ: reading-a-provider-credential-from-a-project-s-working-tree-is-removed]
+- [x] 4.4 Assert that the removal failure states the location is no longer read, not merely that no credential was found [REQ: reading-a-provider-credential-from-a-project-s-working-tree-is-removed]
 
 ## 5. `set-providers` and the migration
 
-- [ ] 5.1 Add `bin/set-providers` with subcommands to show the resolved configuration (credentials masked) and to migrate [REQ: migration-is-an-explicit-command-never-a-side-effect-of-reading]
-- [ ] 5.2 Implement `set-providers migrate`: read the older single-provider file, write `providers.json` at mode `0600`, leave the source in place [REQ: the-migration-reports-what-it-moved-and-never-widens-permissions]
-- [ ] 5.3 Report each field carried across by name, never by value [REQ: the-migration-reports-what-it-moved-and-never-widens-permissions]
-- [ ] 5.4 Refuse to overwrite an existing `providers.json` without an explicit instruction; report what would change [REQ: migration-is-an-explicit-command-never-a-side-effect-of-reading]
-- [ ] 5.5 Assert in a test that resolving, reading and starting never create or modify a configuration file [REQ: migration-is-an-explicit-command-never-a-side-effect-of-reading]
-- [ ] 5.6 Implement the one-release deprecation path: read the older file when no `providers.json` exists, warning with the old path, the new path and the migration command; emit nothing once `providers.json` exists [REQ: the-older-configuration-file-is-read-for-one-release-with-a-warning]
-- [ ] 5.7 Implement the post-window failure so it names the migration command rather than reporting no provider configured, and gate it on a single declared switch so closing the window is one edit [REQ: the-older-configuration-file-is-read-for-one-release-with-a-warning]
-- [ ] 5.8 Unit tests for 5.2–5.7 [REQ: the-migration-reports-what-it-moved-and-never-widens-permissions]
+- [x] 5.1 Add `bin/set-providers` with subcommands to show the resolved configuration (credentials masked) and to migrate [REQ: migration-is-an-explicit-command-never-a-side-effect-of-reading]
+- [x] 5.2 Implement `set-providers migrate`: read the older single-provider file, write `providers.json` at mode `0600`, leave the source in place [REQ: the-migration-reports-what-it-moved-and-never-widens-permissions]
+- [x] 5.3 Report each field carried across by name, never by value [REQ: the-migration-reports-what-it-moved-and-never-widens-permissions]
+- [x] 5.4 Refuse to overwrite an existing `providers.json` without an explicit instruction; report what would change [REQ: migration-is-an-explicit-command-never-a-side-effect-of-reading]
+- [x] 5.5 Assert in a test that resolving, reading and starting never create or modify a configuration file [REQ: migration-is-an-explicit-command-never-a-side-effect-of-reading]
+- [x] 5.6 Implement the one-release deprecation path: read the older file when no `providers.json` exists, warning with the old path, the new path and the migration command; emit nothing once `providers.json` exists [REQ: the-older-configuration-file-is-read-for-one-release-with-a-warning]
+- [x] 5.7 Implement the post-window failure so it names the migration command rather than reporting no provider configured, and gate it on a single declared switch so closing the window is one edit [REQ: the-older-configuration-file-is-read-for-one-release-with-a-warning]
+- [x] 5.8 Unit tests for 5.2–5.7 [REQ: the-migration-reports-what-it-moved-and-never-widens-permissions]
 
 ## 6. The owner: child environment, guard, start and resume
 
@@ -150,3 +150,9 @@
 - [ ] AC-56: WHEN a person opens the offer to start an agent in a project with an override THEN the offered provider and model are the resolved ones, and the level that supplied each is shown [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided, scenario: the-start-offer-states-what-would-be-used]
 - [ ] AC-57: WHEN an agent runs on a credential taken from a project override THEN the surface marks it as such where the agent is listed [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided, scenario: a-non-default-credential-is-marked-on-the-running-agent]
 - [ ] AC-58: WHEN the change is considered complete THEN the fleet start form and the agent list have been opened in a browser and inspected, or the inspection is recorded as not performed [REQ: the-screen-shows-which-provider-an-agent-runs-on-and-which-level-decided, scenario: the-screen-is-confirmed-by-looking-at-it]
+
+<!-- Added during implementation: a cross-provider fallback the design missed.
+     See design.md, "Correction taken during implementation". -->
+- [x] AC-59: WHEN a provider other than the machine default provider is resolved and no model is requested THEN that provider's own default model is used, and the machine default model is not [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint, scenario: the-machine-default-model-is-not-carried-to-another-provider]
+- [x] AC-60: WHEN a provider other than the machine default is resolved, no model is requested, and that provider declares no default model THEN resolution fails naming the provider whose model the machine default belongs to and listing the models that could be asked for [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint, scenario: a-provider-with-no-default-of-its-own-refuses-and-explains-why]
+- [x] AC-61: WHEN a model comes from the resolved provider's own declaration THEN its provenance names the provider's level, distinct from the machine default's [REQ: precedence-has-three-levels-and-the-credential-is-inseparable-from-its-endpoint, scenario: a-value-the-provider-itself-supplied-is-not-attributed-to-the-machine-default]

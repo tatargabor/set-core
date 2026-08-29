@@ -26,11 +26,13 @@ def make(tmp_path, **over):
             "anthropic": {
                 "models": ANTHROPIC_MODELS,
                 "requires_credential": False,
+                "default_model": "opus",
                 "credential": None, "env": {}, "args": [],
             },
             "glm": {
                 "models": ["glm-5.3", "glm-5.3-flash"],
                 "requires_credential": True,
+                "default_model": "glm-5.3-flash",
                 "credential": {"token": "machine-token",
                                "base_url": "https://machine.invalid/api"},
                 "env": {"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000"},
@@ -130,7 +132,7 @@ def test_an_unconfigured_provider_is_listed_as_unusable_rather_than_omitted(tmp_
     cfg = make(tmp_path)
     cfg.providers["glm"] = cfg.providers["glm"].__class__(
         name="glm", models=cfg.providers["glm"].models,
-        requires_credential=True, credential=None, env={}, args=(),
+        requires_credential=True, default_model=None, credential=None, env={}, args=(),
     )
     cat = res.catalogue(cfg)
     glm = [p for p in cat["providers"] if p["name"] == "glm"][0]
@@ -173,7 +175,7 @@ def test_a_provider_requiring_a_credential_with_none_is_refused(tmp_path):
     cfg = make(tmp_path)
     cfg.providers["glm"] = cfg.providers["glm"].__class__(
         name="glm", models=("glm-5.3",), requires_credential=True,
-        credential=None, env={}, args=(),
+        default_model=None, credential=None, env={}, args=(),
     )
     with pytest.raises(MissingCredential) as e:
         res.resolve(provider="glm", model="glm-5.3", config=cfg)
@@ -279,3 +281,91 @@ def test_an_alternative_providers_name_still_fails_the_anthropic_validator(tmp_p
     from set_orch.config import MODEL_NAME_RE
     for name in ("glm-5.3", "glm-5.3-flash"):
         assert re.match(MODEL_NAME_RE, name) is None
+
+
+# A provider's own default is NOT the machine default, and must not claim to be.
+def test_a_providers_own_default_model_is_reported_as_the_providers_level(tmp_path):
+    """Provenance that names the wrong level is a false value.
+
+    It is the same defect class the whole result type exists to prevent, showing
+    up inside the mechanism meant to prevent it: the reader is told a level
+    decided something it never named.
+    """
+    cfg = make(tmp_path)                       # machine default is anthropic/opus
+    plan = res.resolve(provider="glm", config=cfg)
+    assert plan.model == "glm-5.3-flash"
+    assert plan.provenance["model"] == res.LEVEL_PROVIDER
+    assert plan.provenance["model"] != res.LEVEL_DEFAULT
+
+
+def test_the_machine_default_model_is_used_only_for_the_machine_default_provider(tmp_path):
+    cfg = make(tmp_path)
+    same = res.resolve(provider="anthropic", config=cfg)
+    assert (same.model, same.provenance["model"]) == ("opus", res.LEVEL_DEFAULT)
+
+
+def test_a_provider_with_no_default_of_its_own_refuses_rather_than_borrowing_one(tmp_path):
+    """The refusal must explain WHY the machine default was not used.
+
+    "unknown model 'opus'" would be true and useless: it names the symptom of a
+    fallback the reader never asked for.
+    """
+    cfg = make(tmp_path)
+    cfg.providers["glm"] = cfg.providers["glm"].__class__(
+        name="glm", models=("glm-5.3",), requires_credential=True,
+        default_model=None,
+        credential=cfg.providers["glm"].credential, env={}, args=(),
+    )
+    with pytest.raises(UnknownModel) as e:
+        res.resolve(provider="glm", config=cfg)
+    assert "belongs to provider 'anthropic'" in str(e.value)
+    assert "glm-5.3" in str(e.value)
+
+
+# AC-26 — the CLI runner and the fleet's owner obtain the SAME plan
+def test_the_command_line_runner_and_a_library_caller_resolve_identically(tmp_path):
+    """One resolver, two carriers. Asserted through the CLI, not by inspection.
+
+    `set-glm --print-env` is the command-line carrier; `resolve()` is the one the
+    owner uses. If these ever differ, a measured value has grown a second home.
+    """
+    import json as _json
+    import os as _os
+    import pathlib as _pathlib
+    import subprocess as _subprocess
+
+    root = _pathlib.Path(__file__).resolve().parents[2]
+    cfgdir = tmp_path / "set-core"
+    cfgdir.mkdir(exist_ok=True)
+    raw = {
+        "default": {"provider": "glm", "model": "glm-5.3-flash"},
+        "providers": {
+            "glm": {
+                "models": ["glm-5.3", "glm-5.3-flash"],
+                "requires_credential": True,
+                "default_model": "glm-5.3-flash",
+                "credential": {"token": "shared-token", "base_url": "https://z.invalid/api"},
+                "env": {"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000"},
+                "args": ["--autocompact", "700k"],
+            },
+        },
+        "projects": {},
+    }
+    p = cfgdir / "providers.json"
+    p.write_text(_json.dumps(raw))
+    p.chmod(0o600)
+
+    library = res.resolve(provider="glm", model="glm-5.3", config=cfgmod.load(p))
+
+    out = _subprocess.run(
+        [str(root / "bin" / "set-glm"), "--model", "glm-5.3", "--print-env"],
+        capture_output=True, text=True,
+        env=dict(_os.environ, SET_CONFIG_DIR=str(cfgdir)), cwd=str(root),
+    ).stdout
+
+    assert f"ANTHROPIC_BASE_URL={library.env['ANTHROPIC_BASE_URL']}" in out
+    assert "CLAUDE_CODE_MAX_CONTEXT_TOKENS=900000" in out
+    assert f"# args:  {' '.join(library.args)}" in out
+    assert f"# unset: {', '.join(library.unset)}" in out
+    assert library.model == "glm-5.3"
+    assert "shared-token" not in out          # and still never the credential

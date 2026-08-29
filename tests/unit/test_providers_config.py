@@ -31,6 +31,7 @@ GOOD = {
         "anthropic": {
             "models": ["haiku", "sonnet", "opus"],
             "requires_credential": False,
+            "default_model": "opus",
             "credential": None,
             "env": {},
             "args": [],
@@ -38,6 +39,7 @@ GOOD = {
         "glm": {
             "models": ["glm-5.3", "glm-5.3-flash"],
             "requires_credential": True,
+            "default_model": "glm-5.3-flash",
             "credential": {"token": "t-secret", "base_url": "https://example.invalid/api"},
             "env": {"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000"},
             "args": ["--autocompact", "700k"],
@@ -184,18 +186,27 @@ def test_no_template_or_manifest_deploys_a_provider_configuration():
     assert hits == [], f"deployable trees mention the credential file: {hits}"
 
 
-def test_the_providers_package_writes_nothing_at_all():
+def test_exactly_one_module_writes_and_it_is_the_migration_one():
     """Reading a configuration must not be a write path in disguise.
 
     Migration is a separate, explicitly invoked act (`set-providers migrate`).
     A resolver that writes has a side effect nothing in a trace would show, and
     it fires in whichever process happens to read first.
+
+    Stated as "exactly one", not "none": naming the single permitted writer is
+    what makes this survive the module that legitimately writes. A test that only
+    forbade writes would have been deleted the day migration landed, and with it
+    the guarantee about every other module.
     """
     pkg = pathlib.Path(__file__).resolve().parents[2] / "lib" / "set_orch" / "providers"
-    for f in sorted(pkg.glob("*.py")):
-        body = f.read_text()
-        for forbidden in ("write_text(", "open(", "mkdir(", "chmod("):
-            assert forbidden not in body, f"{f.name} contains {forbidden}"
+    writes = {"write_text(", "open(", "mkdir(", "chmod(", "os.write("}
+    writers = {
+        f.name for f in sorted(pkg.glob("*.py"))
+        if any(w in f.read_text() for w in writes)
+    }
+    assert writers == {"migrate.py"}, (
+        f"expected only migrate.py to write; found {sorted(writers)}"
+    )
 
 
 # AC-15 — resolving leaves the configuration untouched

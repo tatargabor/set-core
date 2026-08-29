@@ -67,6 +67,12 @@ logger = logging.getLogger(__name__)
 LEVEL_DEFAULT = "machine-default"
 LEVEL_PROJECT = "project"
 LEVEL_REQUEST = "request"
+#: A value the PROVIDER declares for itself, distinct from the machine default.
+#: Separate because provenance that says "machine-default" for a value the
+#: machine default never named is a false value — the exact defect class this
+#: whole result type exists to prevent, appearing inside the mechanism meant to
+#: prevent it.
+LEVEL_PROVIDER = "provider-default"
 
 #: Credentials and endpoints belonging to a provider other than the resolved one.
 #: Removed from every launch, unconditionally — including on the default
@@ -77,6 +83,22 @@ FOREIGN_KEYS: Tuple[str, ...] = (
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
 )
+
+#: Environment keys whose VALUE is a credential. Named exactly, never matched as
+#: a substring — measured while writing `set-glm --print-env`, a `"TOKEN" in key`
+#: test masked `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, printing `900000` as
+#: `900000…0000 (6 chars)`. A substring test wearing the appearance of a rule is
+#: still a substring test, and here it made a diagnostic lie in the direction of
+#: looking careful.
+SECRET_ENV_KEYS: Tuple[str, ...] = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+)
+
+
+def is_secret_env_key(key: str) -> bool:
+    """Whether this key's value must never be printed. Exact match, by design."""
+    return key in SECRET_ENV_KEYS
 
 
 @dataclass(frozen=True)
@@ -190,16 +212,26 @@ def resolve(
         )
 
     # -- model ---------------------------------------------------------- #
+    # ⚠ The machine-wide default model belongs to the machine's default PROVIDER.
+    # Applying it to a different provider is the same defect the credential
+    # pairing prevents, one axis over: a combination nobody wrote down. Measured
+    # while wiring `set-glm`, which asks for the alternative provider and was
+    # handed the default provider's model, then refused for a reason that named
+    # the symptom rather than the fallback that produced it.
     if model:
         chosen_model, model_level = model, LEVEL_REQUEST
     elif override and override.model:
         chosen_model, model_level = override.model, LEVEL_PROJECT
-    elif cfg.default_model:
+    elif cfg.default_model and chosen == cfg.default_provider:
         chosen_model, model_level = cfg.default_model, LEVEL_DEFAULT
+    elif declared.default_model:
+        chosen_model, model_level = declared.default_model, LEVEL_PROVIDER
     else:
         raise UnknownModel(
-            f"no model requested and no 'default.model' declared in {cfg.source}. "
-            f"Provider {chosen!r} offers: {', '.join(declared.models)}"
+            f"no model requested, and provider {chosen!r} declares no 'default_model'. "
+            f"The machine default model is not used here: it belongs to provider "
+            f"{cfg.default_provider!r}, and carrying it across would name a model "
+            f"{chosen!r} does not have. Ask for one of: {', '.join(declared.models)}"
         )
     _check_model(declared, chosen_model)
 

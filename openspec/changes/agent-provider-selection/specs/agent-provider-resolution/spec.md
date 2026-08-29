@@ -50,6 +50,12 @@ The merge across levels SHALL be hybrid:
   MUST NOT combine a credential from one level with an endpoint from another.
 - The model SHALL be resolved as an independent field, taking the value from the
   highest-priority level that supplies one.
+- A machine-wide default model SHALL apply only when the resolved provider is the
+  machine's default provider. A provider MAY declare its own default model, which
+  is used when the resolved provider is not the default one. Where neither
+  applies, resolution SHALL fail asking for a model and SHALL say that the
+  machine default was not carried across, rather than reporting the machine
+  default's model as unknown.
 
 #### Scenario: A project overrides only the model
 
@@ -65,6 +71,21 @@ The merge across levels SHALL be hybrid:
 
 - **WHEN** a start requests a provider and model, and both the machine default and the project override name different ones
 - **THEN** the requested provider and model are resolved
+
+#### Scenario: The machine default model is not carried to another provider
+
+- **WHEN** a provider other than the machine default provider is resolved and no model is requested
+- **THEN** that provider's own default model is used, and the machine default model is not
+
+#### Scenario: A provider with no default of its own refuses and explains why
+
+- **WHEN** a provider other than the machine default is resolved, no model is requested, and that provider declares no default model
+- **THEN** resolution fails naming the provider whose model the machine default belongs to and listing the models that could be asked for
+
+#### Scenario: A value the provider itself supplied is not attributed to the machine default
+
+- **WHEN** a model comes from the resolved provider's own declaration
+- **THEN** its provenance names the provider's level, distinct from the machine default's
 
 ### Requirement: The resolver reports where every resolved value came from
 

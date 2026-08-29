@@ -301,3 +301,43 @@ gateway prefix against the provider's native endpoint returns
 `API Error: 400 [1214][modelCode: does not exist]`, with `api_error_status: 400` and
 `terminal_reason: api_error`. This is the response the pre-launch refusal in D6 exists to
 prevent, and it is now checked against a real answer rather than a remembered one.
+
+## Correction taken during implementation: the model default belongs to its provider
+
+Found while wiring `bin/set-glm`, by a test that was written to check something
+else entirely — the command asked for the alternative provider, and was refused
+for naming a model that provider does not have.
+
+The design said the model resolves *field-wise* while the credential and endpoint
+resolve as a block. That is right as far as it goes, and it quietly assumed the
+machine-wide default model is provider-neutral. It is not. `default.model` is
+stated beside `default.provider` and describes **that** provider; applying it
+when a different provider was resolved produces a model/provider pair nobody ever
+wrote down — the same defect as a half-inherited credential, one axis over.
+
+It is worth recording how it presented, because the symptom pointed away from the
+cause: the failure said *"provider 'glm' does not list model 'opus'"*. True, and
+useless. Nothing in it says a fallback the caller never asked for supplied that
+name. The corrected refusal says so explicitly.
+
+**The fix, and why it stays declaration-driven:** a provider may declare its own
+`default_model`, validated at read time against its own catalogue. The chain is
+now: request → project override → machine default *only when the resolved
+provider is the machine default provider* → the provider's own default → refuse,
+naming which provider the machine default belongs to.
+
+**And a second, smaller correction inside the first.** The provider's own default
+was first reported with the machine default's provenance level. That is a false
+value in the very mechanism built to prevent them: the reader is told a level
+decided something it never named. There is now a distinct `provider-default`
+level, and a test asserts the two do not collapse.
+
+## Correction: a substring test wearing the appearance of a rule
+
+`set-glm --print-env` masked any key containing `TOKEN`, so it printed
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS=900000` as `900000…0000 (6 chars)`. The failure
+direction is what makes it worth recording: it erred towards looking *more*
+careful, so nothing about the output suggested it was wrong.
+
+Secret keys are now an exact, named set (`SECRET_ENV_KEYS`), and a test asserts
+that a key merely ending in `TOKENS` is printed in full.

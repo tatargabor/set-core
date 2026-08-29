@@ -23,12 +23,14 @@ working tree is removed by a `reset --hard` and republished by a careless `add`.
           "models": ["haiku", "sonnet", "opus"],
           "requires_credential": false,
           "credential": null,
+          "default_model": "opus",
           "env": {},
           "args": []
         },
         "glm": {
           "models": ["glm-5.3", "glm-5.3-flash"],
           "requires_credential": true,
+          "default_model": "glm-5.3-flash",
           "credential": {
             "token": "...",
             "base_url": "https://api.z.ai/api/anthropic"
@@ -133,6 +135,11 @@ class Provider:
     #: `None` means either "uses the CLI's own login" or "not configured yet";
     #: `requires_credential` is what tells those two apart.
     credential: Optional[Credential]
+    #: The model this provider falls back to when nothing else named one. It
+    #: exists because a machine-wide default model belongs to the machine's
+    #: default PROVIDER: applying it to a different provider produces exactly the
+    #: cross-provider combination this design refuses everywhere else.
+    default_model: Optional[str]
     #: Measured launch parameters, as data.
     env: Dict[str, str]
     args: Tuple[str, ...]
@@ -234,6 +241,13 @@ def _provider(name: str, raw: object, source: Path) -> Provider:
     ):
         raise ConfigError(f"{where}: 'env' must be an object of string keys to scalar values")
 
+    fallback = raw.get("default_model")
+    if fallback is not None and fallback not in models:
+        raise ConfigError(
+            f"{where}: 'default_model' is {fallback!r}, which is not in this "
+            f"provider's own catalogue ({', '.join(models)})"
+        )
+
     args = raw.get("args", [])
     if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
         raise ConfigError(f"{where}: 'args' must be a list of strings")
@@ -242,6 +256,7 @@ def _provider(name: str, raw: object, source: Path) -> Provider:
         name=name,
         models=tuple(models),
         requires_credential=raw["requires_credential"],
+        default_model=raw.get("default_model"),
         credential=_credential(raw["credential"], where),
         env={k: str(v) for k, v in env.items()},
         args=tuple(args),
@@ -262,6 +277,39 @@ def _project(name: str, raw: object, source: Path) -> ProjectOverride:
         provider=provider,
         model=model,
         credential=_credential(raw.get("credential"), where),
+    )
+
+
+def load_or_legacy() -> Tuple[ProvidersConfig, Optional[str]]:
+    """The configuration, plus a notice to show the operator if one applies.
+
+    The order is what makes the deprecation honest: `providers.json` wins
+    whenever it exists, so a migrated setup goes quiet immediately rather than
+    warning about a file it no longer depends on.
+
+    Returns `(config, notice_or_None)`. The notice is returned rather than
+    printed because this package must not choose an output stream for its
+    callers — a CLI writes it to stderr, a service logs it, and neither should
+    have the other's behaviour forced on it.
+    """
+    from . import legacy                      # local: legacy imports from here
+
+    primary = config_path()
+    if primary.exists():
+        return load(primary), None
+
+    src = legacy_path()
+    if src.exists():
+        if not legacy.WINDOW_OPEN:
+            raise ConfigError(legacy.closed_window_error(src))
+        _require_owner_only(src)
+        return legacy.as_config(legacy.read_legacy(src), src), legacy.deprecation_notice(src)
+
+    # Neither exists. Name both, because an operator who has never configured
+    # this and one whose file is somewhere unexpected need different next steps.
+    raise ConfigError(
+        f"no provider configuration: neither {primary} nor {src} exists. "
+        "Create the first, or run: set-providers migrate"
     )
 
 

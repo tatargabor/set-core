@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""set-providers — the machine's provider configuration: show it, check it, migrate it.
+
+    set-providers show [--project NAME]   what would be used, and which level decided
+    set-providers list                    the catalogue a surface is offered
+    set-providers migrate [--overwrite]   convert an older single-provider file
+    set-providers path                    where the configuration is expected
+
+⚠ No subcommand here ever prints a credential. `show` names the endpoint and the
+precedence level; that is the half a person needs and the half that is safe in a
+terminal, a screenshot or a paste.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from set_orch.providers import (  # noqa: E402
+    catalogue, config_path, legacy_path, resolve,
+)
+from set_orch.providers.config import load_or_legacy  # noqa: E402
+from set_orch.providers.errors import ProviderError  # noqa: E402
+from set_orch.providers.migrate import migrate  # noqa: E402
+
+
+def _die(message: str) -> None:
+    print(f"set-providers: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def _note(message: str) -> None:
+    print(f"set-providers: {message}", file=sys.stderr)
+
+
+def cmd_path(_args) -> int:
+    print(config_path())
+    return 0
+
+
+def cmd_list(_args) -> int:
+    cfg, notice = load_or_legacy()
+    if notice:
+        _note(notice)
+    print(json.dumps(catalogue(cfg), indent=2))
+    return 0
+
+
+def cmd_show(args) -> int:
+    cfg, notice = load_or_legacy()
+    if notice:
+        _note(notice)
+    plan = resolve(
+        project=args.project, provider=args.provider, model=args.model, config=cfg
+    )
+    print(plan.describe())
+    print(f"  args:  {' '.join(plan.args) or '(none)'}")
+    # The env is printed by KEY. Its values include the credential, and a command
+    # whose ordinary output can be pasted into a chat must not carry one.
+    print(f"  env:   {', '.join(sorted(plan.env)) or '(none)'}")
+    print(f"  unset: {', '.join(plan.unset)}")
+    return 0
+
+
+def cmd_migrate(args) -> int:
+    dst, report = migrate(overwrite=args.overwrite)
+    for line in report:
+        print(line)
+    return 0
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="set-providers", description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("path", help="where the configuration is expected").set_defaults(
+        func=cmd_path)
+    sub.add_parser("list", help="the catalogue, with no credentials").set_defaults(
+        func=cmd_list)
+
+    show = sub.add_parser("show", help="what would be used, and which level decided")
+    show.add_argument("--project")
+    show.add_argument("--provider")
+    show.add_argument("--model")
+    show.set_defaults(func=cmd_show)
+
+    mig = sub.add_parser("migrate", help="convert an older single-provider file")
+    mig.add_argument("--overwrite", action="store_true",
+                     help="replace an existing configuration (it is never replaced silently)")
+    mig.set_defaults(func=cmd_migrate)
+
+    args = parser.parse_args(argv)
+    try:
+        return args.func(args)
+    except ProviderError as exc:
+        _die(str(exc))
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
