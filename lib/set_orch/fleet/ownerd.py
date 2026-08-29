@@ -47,9 +47,13 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from . import provider_record, scopes
 from ..providers import resolver as providers
+from ..providers.errors import (
+    ConfigError, IncompleteCredential, MissingCredential, ProviderError,
+    UnknownModel, UnknownProvider,
+)
 from .owner import (
-    FOREIGN, STARTED_HERE, AgentOwner, CommandNotResolvable, OwnedAgent, OwnerError,
-    recover,
+    FOREIGN, STARTED_HERE, AgentOwner, CommandNotResolvable, EnvironmentNotDelivered,
+    OwnedAgent, OwnerError, recover,
 )
 from .protocol import (
     SUPPORTED_METHODS, Request, Response, make_error, make_frame, make_result,
@@ -67,6 +71,18 @@ DEFAULT_TAIL_BYTES = 64 * 1024
 #: agent and a fresh one appearing on the same screen with different permissions
 #: would be a difference nothing on the surface explains.
 DEFAULT_AGENT_ARGV = ("claude", "--dangerously-skip-permissions")
+
+#: Resolution refusals, as KINDS rather than as prose. A caller that has to grep
+#: the sentence to tell "you named a provider that does not exist" from "this
+#: machine's configuration is broken" breaks the moment the sentence improves —
+#: and those two need different answers from different people.
+_PROVIDER_ERROR_KINDS = {
+    UnknownProvider: "unknown-provider",
+    UnknownModel: "unknown-model",
+    MissingCredential: "provider-config",
+    IncompleteCredential: "provider-config",
+    ConfigError: "provider-config",
+}
 
 
 #: How far past a cut `_resync` will look for a boundary before giving up.
@@ -523,7 +539,26 @@ class OwnerDaemon:
             # the sentence is improved.
             kind = ("command-not-resolvable"
                     if isinstance(exc, CommandNotResolvable) else None)
+            if kind is None and isinstance(exc, EnvironmentNotDelivered):
+                kind = "environment-not-delivered"
             logger.info("fleet owner: refused %s: %s", request.method, exc)
+            return make_error(request.id, str(exc), kind)
+        except ProviderError as exc:
+            # A configuration fault, reported AS ONE. Without this branch a
+            # resolution refusal fell through to the generic handler below, lost
+            # its class, and reached the surface as an unclassified refusal —
+            # which the API answers with a 409, the status for "somebody else
+            # holds it". Measured as B-105 one layer along: a true sentence about
+            # a symptom that sends the reader to systemd instead of to a file.
+            #
+            # The split is by WHOSE act fixes it, which is also which status the
+            # API can answer with: a name the catalogue does not declare is this
+            # request's mistake and the next request may succeed; an unreadable
+            # or incomplete configuration is an operator's file and every request
+            # will fail the same way until it is fixed.
+            kind = _PROVIDER_ERROR_KINDS.get(type(exc), "provider-config")
+            logger.info("fleet owner: %s refused by configuration: %s",
+                        request.method, exc)
             return make_error(request.id, str(exc), kind)
         except (KeyError, TypeError, ValueError) as exc:
             logger.warning("fleet owner: bad %s request: %s", request.method, exc)
@@ -697,7 +732,14 @@ class OwnerDaemon:
         unset: Sequence[str] = ()
         resume_argv = params.get("resume_argv")
         plan = None
-        recorded = await asyncio.to_thread(provider_record.get, unit)
+        # Which record this resume continues. Defaults to the unit being
+        # started; a restore that had to rename supplies the ORIGINAL unit,
+        # because the record is keyed on what the agent was started under and a
+        # renamed resume would otherwise look unrecorded and silently fall back
+        # to the ambient default — the exact defect 6.7 fixed, reappearing
+        # through the one path that legitimately changes the name.
+        record_unit = params.get("provider_unit") or unit
+        recorded = await asyncio.to_thread(provider_record.get, record_unit)
         if recorded and recorded.get("provider"):
             plan = await asyncio.to_thread(
                 providers.resolve,
@@ -709,7 +751,8 @@ class OwnerDaemon:
                     "claude", "--dangerously-skip-permissions",
                     "--resume", params["session_id"]])
                 resume_argv = base + list(plan.args)
-            logger.info("fleet owner: recovering %s -> %s", unit, plan.describe())
+            logger.info("fleet owner: recovering %s (record %s) -> %s",
+                        unit, record_unit, plan.describe())
 
         agent = await asyncio.to_thread(
             recover,

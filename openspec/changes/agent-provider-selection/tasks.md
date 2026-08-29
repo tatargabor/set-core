@@ -62,14 +62,14 @@
 
 ## 7. The API
 
-- [ ] 7.1 Add optional named `provider` and `model` fields to the start request; keep it refusing an argv or an environment mapping [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
-- [ ] 7.2 Refuse an undeclared provider or model with an answer naming the unrecognised value [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
-- [ ] 7.3 Ensure a resolution refusal is reported as the configuration fault it is, and never surfaces as a scope that failed to become ready [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
-- [ ] 7.4 Add the catalogue endpoint: provider identifiers, model names, and a per-provider boolean saying whether a credential is configured [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
-- [ ] 7.5 Expose each listed agent's provider, model and provenance [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
-- [ ] 7.6 Add a test that no response, log line or error message produced by this change contains a credential value [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
-- [ ] 7.7 Make restore reproduce the recorded provider, and report an entry with none as having had no recorded provider [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
-- [ ] 7.8 API tests for 7.1–7.7 [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
+- [x] 7.1 Add optional named `provider` and `model` fields to the start request; keep it refusing an argv or an environment mapping [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
+- [x] 7.2 Refuse an undeclared provider or model with an answer naming the unrecognised value [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
+- [x] 7.3 Ensure a resolution refusal is reported as the configuration fault it is, and never surfaces as a scope that failed to become ready [REQ: every-refusal-happens-before-a-process-is-created-and-never-falls-back]
+- [x] 7.4 Add the catalogue endpoint: provider identifiers, model names, and a per-provider boolean saying whether a credential is configured [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
+- [x] 7.5 Expose each listed agent's provider, model and provenance [REQ: the-provider-an-agent-runs-on-outlives-the-process-that-started-it]
+- [x] 7.6 Add a test that no response, log line or error message produced by this change contains a credential value [REQ: a-surface-receives-the-catalogue-and-never-a-credential]
+- [x] 7.7 Make restore reproduce the recorded provider, and report an entry with none as having had no recorded provider [REQ: each-entry-is-restored-by-starting-an-agent-that-resumes-its-session]
+- [x] 7.8 API tests for 7.1–7.7 [REQ: a-start-may-name-a-provider-and-a-model-and-nothing-more]
 
 ## 8. The screen
 

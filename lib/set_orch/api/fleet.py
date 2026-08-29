@@ -38,12 +38,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..fleet import discover_agents, discover_projects, read_state
 from ..fleet.awaiting import awaiting_for
 from ..fleet.discovery import (
     discover_agent, live_session_ids, parent_seat, read_messaging_projects,
+    resolve_project,
 )
 from ..fleet import scopes as fleet_scopes
 from ..fleet import instruct as fleet_instruct
@@ -58,6 +59,8 @@ from ..fleet import roster
 from ..fleet import restore as fleet_restore
 from ..fleet.discovery import live_session_ids as fleet_live_session_ids
 from ..fleet.layout import LayoutConflict
+from ..providers import config as providers_config
+from ..providers.errors import ProviderError
 from ..fleet.owner_client import (
     OwnerClient, OwnerClientError, OwnerStream, OwnerUnavailable,
 )
@@ -165,13 +168,27 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         population = "orphaned" if scope else "foreign"
         terminal_label = None
 
-    requested_by = (owned or {}).get(agent.pid, {}).get("requested_by")
+    held = (owned or {}).get(agent.pid, {})
+    requested_by = held.get("requested_by")
+    # 7.5 / 6.9. Three fields, and `recorded` is the one that carries the
+    # meaning: `provider: null` with `recorded: false` is a GAP — nobody wrote
+    # down what this agent runs on — while the machine default in that slot
+    # would be a claim about whose account is being billed. Only an owner that
+    # HOLDS the agent can answer at all, so an orphan or a foreign agent is
+    # unrecorded here too, and says so rather than guessing.
+    provider_row = {
+        "recorded": bool(held.get("provider_recorded")),
+        "provider": held.get("provider"),
+        "model": held.get("model"),
+        "provenance": held.get("provenance") or {},
+    }
     parent = (
         {"seat": requested_by, "source": "recorded"} if requested_by
         else parent_seat(agent.pid)
     )
     return {
         "pid": agent.pid,
+        "provider": provider_row,
         # ONE identity per agent, and which one depends on who named it.
         #
         # For an agent the framework holds, that is the framework's label — the
@@ -748,6 +765,14 @@ def fleet_agent_log(pid: int, limit: int = Query(60, ge=1, le=500)) -> Dict[str,
 class StartAgentBody(BaseModel):
     """What the screen may ask for.
 
+    ⚠ `extra="forbid"`, and it is the difference between a rule and a wish.
+    Pydantic's default is to IGNORE an unknown field, so a body carrying `argv`
+    or `env` was accepted with a 200 and the extra silently dropped — which reads
+    to whoever sent it exactly like it was honoured. The spec says such a request
+    is rejected as malformed, and "quietly ignored" is not that: a caller
+    building a start with an environment mapping gets a 422 that names the field
+    instead of an agent running without it.
+
     Narrower than what the owner's socket accepts, on purpose. The socket takes
     an `argv`; this endpoint does not, because an HTTP route that runs an
     arbitrary command list is a different thing from a button that starts an
@@ -755,6 +780,8 @@ class StartAgentBody(BaseModel):
     entry point as its own, separately-labelled act — that is where a second kind
     of start belongs, not in a free-form parameter here.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     label: str
     cwd: str
@@ -764,6 +791,14 @@ class StartAgentBody(BaseModel):
     #: framework does not verify it, and the surface must present it as a claim
     #: rather than as a measured relation.
     requested_by: Optional[str] = None
+    #: The provider and the model, as NAMES drawn from the declared catalogue.
+    #: Deliberately not a credential, an endpoint or an environment mapping: the
+    #: names are resolved behind the owner's socket, so nothing secret crosses
+    #: this route, this process, or any log between them. A surface that could
+    #: send an endpoint could point a named provider somewhere else while the
+    #: record still said the provider's name — a false value about who pays.
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 
 def _safe_registry() -> List[Dict[str, Any]]:
@@ -787,6 +822,45 @@ def _safe_messaging() -> List[Dict[str, Any]]:
     except Exception as exc:                      # never empty the fleet for it
         logger.warning("fleet api: messaging registry unreadable: %s", type(exc).__name__)
         return []
+
+
+#: Owner refusal kinds the caller cannot fix by retrying, and the status each
+#: gets. Everything else stays a 409 — "somebody else holds it" — which is the
+#: right answer for a label already taken and the wrong one for a machine whose
+#: provider configuration is broken.
+#:
+#: The split is by WHOSE act fixes it: a name the catalogue does not declare is
+#: the request's (400); an unreadable configuration, a missing credential, an
+#: unexecutable command or a framework defect is not (503, with the reason).
+_KIND_STATUS = {
+    "unknown-provider": 400,
+    "unknown-model": 400,
+    "provider-config": 503,
+    "command-not-resolvable": 503,
+    "environment-not-delivered": 503,
+}
+
+
+def _project_for(cwd: str) -> Optional[str]:
+    """The project name a provider override would be keyed on, or `None`.
+
+    Through git, exactly as the fleet's own discovery resolves it, so every
+    worktree of one repository selects the same override — a per-project
+    credential that applied in the main checkout and not in a worktree would
+    bill two halves of one piece of work to two accounts.
+
+    ⚠ `None` for a directory that is not in a repository, rather than the
+    basename. A guessed name that happens to match a declared override would
+    silently select somebody's credential; a name that matches nothing is
+    indistinguishable from no name at all, so the guess can only do harm.
+    """
+    try:
+        _root, name = resolve_project(cwd)
+    except Exception as exc:                      # never fail a start for this
+        logger.warning("fleet api: could not resolve a project for a start: %s",
+                       type(exc).__name__)
+        return None
+    return name
 
 
 def _known_roots() -> set:
@@ -1042,6 +1116,53 @@ def fleet_owner() -> Dict[str, Any]:
     return {"available": True, **health}
 
 
+@router.get("/api/fleet/providers")
+def fleet_providers() -> Dict[str, Any]:
+    """The declared catalogue — names, models, and whether a credential is set.
+
+    **What this route may NOT return, and the reason is the whole design.** No
+    token, no endpoint carrying one, no header. A surface needs to know *which*
+    providers exist and *whether* each is usable; it never needs the secret, and
+    a route that returns one puts it in the browser, in the network log, and in
+    whatever the browser caches.
+
+    So the credential appears here as a BOOLEAN and nothing else. The boolean is
+    `configured`, and it is not the same question as `requires_credential`:
+
+    - `requires_credential: true, configured: false` → declared, not yet set up.
+      A start on it will be refused, and the screen can say so before the click.
+    - `requires_credential: false` → the CLI's own login answers for it, and
+      `configured` says nothing about a credential this file holds.
+
+    Collapsing those two into one flag is the false-absence class: a provider
+    that works through a login would be shown as "not configured" and the reader
+    would go looking for a key nobody needs.
+
+    A configuration that cannot be read answers 503 with the file named. It is an
+    operator's file, not the caller's mistake, and an empty catalogue would read
+    as "this machine declares no providers" — a false zero.
+    """
+    try:
+        cfg = providers_config.load()
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "default_provider": cfg.default_provider,
+        "default_model": cfg.default_model,
+        "providers": [
+            {
+                "name": p.name,
+                "models": list(p.models),
+                "default_model": p.default_model,
+                "requires_credential": p.requires_credential,
+                "configured": p.credential is not None,
+                "usable": p.is_usable(),
+            }
+            for p in (cfg.providers[n] for n in cfg.provider_names())
+        ],
+    }
+
+
 @router.post("/api/fleet/agents")
 def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
     """Start an agent through the owner service.
@@ -1064,6 +1185,8 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
         agent = OwnerClient().start(
             label=body.label, cwd=cwd, rows=body.rows, cols=body.cols,
             requested_by=body.requested_by,
+            provider=body.provider, model=body.model,
+            project=_project_for(cwd),
         )
     except OwnerUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -1072,8 +1195,9 @@ def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
         # refusal is the caller's answer, not a server fault. The one exception
         # is a command the child cannot execute: nothing is held and retrying
         # changes nothing, so it answers like an unavailable owner instead.
-        if getattr(exc, "kind", None) == "command-not-resolvable":
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        kind = getattr(exc, "kind", None)
+        if kind in _KIND_STATUS:
+            raise HTTPException(status_code=_KIND_STATUS[kind], detail=str(exc)) from exc
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     logger.info(
         "fleet api: started agent %s in %s (%s, pid %s)",

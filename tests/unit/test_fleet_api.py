@@ -18,6 +18,7 @@ import os
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from set_orch.api import fleet as fleet_api
 from set_orch.api.fleet import StartAgentBody
@@ -163,8 +164,16 @@ def test_the_body_does_not_accept_a_command_to_run():
     engine's entry point as its own, separately-labelled act.
     """
     assert "argv" not in StartAgentBody.model_fields
-    body = StartAgentBody(label="x", cwd="/tmp", argv=["rm", "-rf", "/"])  # type: ignore[call-arg]
-    assert not hasattr(body, "argv")
+
+    # ⚠ TIGHTENED 2026-08-29 (task 7.1). This used to assert that the extra was
+    # silently DROPPED — `body = StartAgentBody(..., argv=[...])` succeeding and
+    # `not hasattr(body, "argv")`. That is pydantic's default, and it is the
+    # wrong guarantee: the caller got a 200 and an agent that ran without the
+    # argv it sent, which reads exactly like the argv was honoured. The refusal
+    # is now explicit and names the field.
+    with pytest.raises(ValidationError) as exc:
+        StartAgentBody(label="x", cwd="/tmp", argv=["rm", "-rf", "/"])  # type: ignore[call-arg]
+    assert "argv" in str(exc.value)
 
 
 # --------------------------------------------------------------------------- #

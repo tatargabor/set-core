@@ -538,3 +538,38 @@ def test_recover_hands_the_environment_to_the_start_it_performs(monkeypatch):
     assert seen["env"] == {"ANTHROPIC_AUTH_TOKEN": "resolved"}
     assert seen["unset"] == ("ANTHROPIC_API_KEY",)
     assert seen["resumed_session"] == "sess-9"
+
+
+# --------------------------------------------------------------------------- #
+# 7.3 at the owner — a resolution refusal keeps its class across the wire
+# --------------------------------------------------------------------------- #
+
+from set_orch.fleet.protocol import Request
+from set_orch.providers.errors import ConfigError, UnknownModel, UnknownProvider
+
+
+@pytest.mark.parametrize("exc,kind", [
+    (UnknownProvider("no provider named 'zzz' is declared"), "unknown-provider"),
+    (UnknownModel("glm does not list 'opus'"), "unknown-model"),
+    (ConfigError("/x/providers.json is mode 0644"), "provider-config"),
+])
+def test_a_resolution_refusal_travels_as_a_class_not_as_prose(monkeypatch, tmp_path,
+                                                              exc, kind):
+    """Without this branch the refusal fell through to the generic handler, lost
+    its class, and reached the API as an unclassified refusal — answered with a
+    409, the status for "somebody else holds that label". A reader sent to
+    change a name that was never the problem is B-105's shape one layer along.
+    """
+    daemon, _ = _daemon(monkeypatch, tmp_path)
+    monkeypatch.setattr(ownerd_mod.providers, "resolve",
+                        lambda **kw: (_ for _ in ()).throw(exc))
+
+    response = _run(daemon.dispatch(
+        Request(method="start",
+                params={"label": "a9", "cwd": "/tmp", "provider": "zzz"}),
+        None,
+    ))
+
+    assert response.error is not None
+    assert response.error_kind == kind
+    assert response.result is None

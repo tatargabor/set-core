@@ -46,9 +46,11 @@ class FakeOwner:
             raise OwnerClientError("no")
         return [{"label": l} for l in self.held]
 
-    def recover(self, *, unit, session_id, cwd, label=None, resume_argv=None):
+    def recover(self, *, unit, session_id, cwd, label=None, resume_argv=None,
+                provider_unit=None):
         self.recovered.append({"unit": unit, "session_id": session_id, "cwd": cwd,
-                               "label": label, "resume_argv": resume_argv})
+                               "label": label, "resume_argv": resume_argv,
+                               "provider_unit": provider_unit})
         if session_id in self.refuse:
             raise OwnerClientError(self.refuse[session_id])
         self.pid += 1

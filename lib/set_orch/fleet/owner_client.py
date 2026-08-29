@@ -196,12 +196,24 @@ class OwnerClient:
         cwd: str,
         label: Optional[str] = None,
         resume_argv: Optional[List[str]] = None,
+        provider_unit: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Resume an orphan.
+
+        `provider_unit` names WHICH recorded agent this resume continues, for the
+        case where the resumed agent gets a different label than it had — a
+        restore after a reboot renames when the old name is taken, and the
+        provider record is keyed on the unit the agent was started under. It
+        still selects a record rather than a provider: a caller can say *this is
+        the same agent*, never *run it on that account*.
+        """
         params: Dict[str, Any] = {"unit": unit, "session_id": session_id, "cwd": cwd}
         if label:
             params["label"] = label
         if resume_argv:
             params["resume_argv"] = list(resume_argv)
+        if provider_unit:
+            params["provider_unit"] = provider_unit
         return self.request("recover", params)
 
     def write(self, label: str, data: bytes) -> int:

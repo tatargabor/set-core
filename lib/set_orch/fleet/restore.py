@@ -238,12 +238,20 @@ def restore(
             else RENAMED if recorded
             else DERIVED
         )
+        # WHICH record this resume continues. The provider record is keyed on the
+        # unit the agent was started under, and `label` above may be a renamed
+        # one — so passing the new unit would look unrecorded and resume on the
+        # ambient default. The original label is what the roster stored; with no
+        # stored label there is nothing to continue, and `None` says so rather
+        # than pointing at a unit that means something else.
+        provider_unit = scopes.unit_name(str(recorded)) if recorded else None
         try:
             agent = client.recover(
                 unit=scopes.unit_name(label),
                 session_id=str(session_id),
                 cwd=cwd,
                 label=label,
+                provider_unit=provider_unit,
                 # No resume_argv: the owner's own default is used, so this cannot
                 # drift from the argv a bare interactive session gets.
             )
@@ -256,10 +264,20 @@ def restore(
             logger.warning("fleet restore: %s (%s) refused: %s", label, session_id, exc)
             continue
         held.add(label)
+        # 7.7. `provider_recorded: false` is a GAP, not a default: an entry
+        # restored before the record existed, or one started by something that
+        # named no provider, resumes on whatever the ambient environment
+        # supplies — and the honest report of that is "nobody wrote it down",
+        # never the machine default's name. The owner answers with the provider
+        # only when it actually resolved one from a record.
+        resumed_provider = agent.get("provider")
         started.append(_outcome(entry, STARTED, None, label_used=label,
                                 pid=agent.get("pid"), unit=agent.get("unit"),
                                 renamed=label != wanted, wanted_label=wanted,
-                                name_source=name_source))
+                                name_source=name_source,
+                                provider_recorded=resumed_provider is not None,
+                                provider=resumed_provider,
+                                model=agent.get("model")))
         logger.info("fleet restore: %s resumed session %s as %s (pid %s)",
                     project, session_id, label, agent.get("pid"))
 
