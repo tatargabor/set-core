@@ -68,6 +68,22 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-128 — an open/reveal request that arrives while the file tree is hidden is a silent no-op
+- **state:** CLOSED (2026-08-29, `98f0df93`) — the entry stays; evidence below.
+- **reported:** 2026-08-29 by this session, from `FleetFileView.tsx` read end to end
+- **measured:** the only writers of `treeHidden` are the persisted read (`FleetFileView.tsx:397`) and the toggle button (`:862`); nothing un-hides it. The reveal effect (`:762-784`) expands ancestors and `scrollIntoView`s `revealRef` — a button that renders only inside the `{!treeHidden && …}` pane (`:956`) — so with the pane hidden the whole reveal runs against nothing, and `revealFoundNothing` (`:979`), whose entire purpose is to say so, is hidden with it. The panel's own rule, stated at `:709-719`, is that *a control that appears to do nothing is indistinguishable from a broken one*; the hide control breaks it.
+- **fail direction:** silent no-op. A ctrl-click on a terminal path lands on a panel that shows nothing happen and says nothing about why.
+- **fixed when:** a request carrying an open or reveal target while the tree is hidden makes the target's location visible — either the pane un-hides or the content pane states where the request landed and that the list is hidden — with a unit test driving a request into a hidden-tree panel and asserting the visible outcome.
+- **CLOSED by `98f0df93`:** the request effect un-hides the pane before acting, so the reveal's mark lands on a mounted row. The new surface test hides the tree, re-renders with a request for a nested file, and asserts the row renders and the toggle reads `off`; stash-and-rerun confirmed it fails on the unfixed source.
+
+### B-127 — the file view's hidden structure pane is silent and global, so a working panel reads as one broken by file count
+- **state:** CLOSED (2026-08-29, `98f0df93`) — the entry stays; evidence below. The per-project-vs-global decision was taken the same day: the three booleans stay browser-global, written where the keys are defined.
+- **reported:** 2026-08-29 by the user, with a screenshot of the panel on a consumer project
+- **measured:** the screenshot shows the header `20000 of 63389` and the content pane beginning at the panel's left edge + padding — no structure pane, so `treeHidden` was on (`set-file-tree-hidden`, persisted). The listing itself works on that project: `curl 'http://localhost:7400/api/fleet/files?root=<consumer root>'` answered in 4.3 s with `total 38005, truncated True, source git` and **37 top-level entries** for the tree — cheap to render, collapsed by default. The screenshot's `63389` against the measured `38005` also shows `ignored=true` was on, i.e. the persisted `set-file-ignored` flag was on too. Neither persisted flag is per-project: one browser-wide key decides all projects.
+- **fail direction:** the hidden state is silent exactly when there is no alarm (a git repository, a status map, no error — `treeAlarm` at `FleetFileView.tsx:735-741` covers only error/no-status), so the panel shows one line of help text over empty space next to a truncation badge. That composition reads as "the panel gave up on a big project", which is what was reported.
+- **fixed when:** with the tree hidden, nothing open, and no alarm, the panel states in the content pane that the file list is hidden (and how to bring it back) — never bare empty; and the decision on per-project vs. global persistence of the three booleans is taken and written where the keys are defined.
+- **CLOSED by `98f0df93`:** both halves. The content pane renders `the file list is hidden — the panel-list button in the header brings it back.` (`data-fleet-file-list-hidden`) whenever the list is hidden and nothing is open, and the global-flag decision is recorded at the key definitions. Looked at both states on the live dashboard: hidden now reads as a hidden state, not a broken panel; bringing it back restores the pane and its splitter.
+
 ### B-126 — the rename route's `carried` answer grew `agent_order` and its test still asserts the old exact dict
 - **state:** OPEN — found while implementing `fleet-agent-stage-tree`, and NOT caused by it: fails identically with the change's edits to `api/fleet.py` stashed.
 - **reported:** 2026-08-29 by this session, via `.venv/bin/python -m pytest tests/unit/test_fleet_api.py -q`
