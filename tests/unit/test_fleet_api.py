@@ -1512,3 +1512,131 @@ def test_the_engine_is_told_who_asked_not_which_surface_relayed_it(monkeypatch):
     mod.fleet_start_unit(mod.StartUnitBody(change="c", cwd="/tmp", seat="set-core#abc"))
     argv = seen["argv"]
     assert argv[argv.index("--started-by") + 1] == "fleet-surface"
+
+
+# --------------------------------------------------------------------------- #
+# The work-cycle read surface — work-cycle-run-visibility §5
+# --------------------------------------------------------------------------- #
+
+def test_the_stream_terminator_matches_the_engine_s_own():
+    """SECOND COPY across the D10 seam, guarded rather than promised.
+
+    A renamed terminator would make every finished recording read as truncated —
+    silently, because a missing marker and an unfinished run look the same.
+    """
+    import set_orch.api.fleet as mod
+    from set_workcycle.runner import StreamSink
+
+    assert mod._STREAM_TERMINATOR == StreamSink.TERMINATOR
+
+
+def _wc_tree(tmp_path, runs=None, stream=None):
+    import json as _json
+    from set_orch.fleet import purpose as fp
+
+    d = tmp_path / fp.RUN_STATE_REL / "demo"
+    d.mkdir(parents=True)
+    for name, rec in (runs or {}).items():
+        (d / f"{name}.json").write_text(_json.dumps(rec))
+    if stream is not None:
+        (d / "u1.stream.jsonl").write_text(stream)
+    return tmp_path
+
+
+def test_a_missing_engine_does_not_empty_the_screen(tmp_path, monkeypatch):
+    """The rule this endpoint exists to keep: a missing capability is not missing data."""
+    import set_orch.api.fleet as mod
+    from set_orch.fleet import workcycle_plan as wcp
+
+    root = _wc_tree(tmp_path, runs={"u1": {"unit_id": "u1", "change": "demo", "pid": 0}})
+    wcp.clear_cache()
+    monkeypatch.setattr(wcp, "_run", lambda argv: (_ for _ in ()).throw(FileNotFoundError()))
+
+    got = mod.fleet_work_cycle(cwd=str(root))
+    assert got["engine"]["available"] is False
+    assert "not installed" in got["engine"]["reason"]
+    # `adopted` is UNKNOWN, never False — nobody measured the project.
+    assert got["adopted"] is None
+    # …and the recorded run is still there.
+    assert [r["unit_id"] for r in got["runs"]] == ["u1"]
+
+
+def test_changes_are_listed_with_the_engine_s_own_reason_when_not_runnable(tmp_path, monkeypatch):
+    import json as _json
+    import set_orch.api.fleet as mod
+    from set_orch.fleet import workcycle_plan as wcp
+
+    root = _wc_tree(tmp_path)
+    wcp.clear_cache()
+
+    def fake(argv):
+        if "--change" not in argv:
+            return 0, _json.dumps({"adopted": True, "changes_dir": "openspec/changes",
+                                   "changes": ["demo"]}), ""
+        return 1, _json.dumps({"adopted": True, "selected": None,
+                               "reasons": {"2": "blocked by 1 [declared]"}}), ""
+
+    monkeypatch.setattr(wcp, "_run", fake)
+    got = mod.fleet_work_cycle(cwd=str(root))
+    assert got["adopted"] is True
+    one = got["changes"][0]
+    assert one["change"] == "demo"
+    assert one["runnable"] is False
+    assert one["reasons"] == {"2": "blocked by 1 [declared]"}
+
+
+def test_a_recording_says_whether_it_is_complete(tmp_path):
+    import set_orch.api.fleet as mod
+    from set_workcycle.runner import StreamSink
+
+    root = _wc_tree(
+        tmp_path, runs={"u1": {"unit_id": "u1", "change": "demo"}},
+        stream='{"type":"a"}\n{"type":"' + StreamSink.TERMINATOR + '","events":1}\n')
+    got = mod.fleet_work_cycle_stream(cwd=str(root), change="demo", unit_id="u1")
+    assert got["kind"] == "recording"
+    assert got["complete"] is True
+    assert got["total"] == 1
+    assert [e["type"] for e in got["events"]] == ["a"]
+
+
+def test_a_truncated_recording_is_not_reported_as_complete(tmp_path):
+    import set_orch.api.fleet as mod
+
+    root = _wc_tree(tmp_path, runs={"u1": {"unit_id": "u1", "change": "demo"}},
+                    stream='{"type":"a"}\n{"type":"b"}\n')
+    got = mod.fleet_work_cycle_stream(cwd=str(root), change="demo", unit_id="u1")
+    assert got["complete"] is False
+    assert got["total"] == 2
+
+
+def test_no_stream_at_all_is_its_own_answer(tmp_path):
+    import set_orch.api.fleet as mod
+    from fastapi import HTTPException
+
+    root = _wc_tree(tmp_path, runs={"u1": {"unit_id": "u1", "change": "demo"}})
+    with pytest.raises(HTTPException) as exc:
+        mod.fleet_work_cycle_stream(cwd=str(root), change="demo", unit_id="u1")
+    assert exc.value.status_code == 404
+    assert exc.value.detail["error"] == "no-stream"
+
+
+def test_a_unit_id_cannot_reach_outside_the_project(tmp_path):
+    import set_orch.api.fleet as mod
+    from fastapi import HTTPException
+
+    root = _wc_tree(tmp_path, runs={"u1": {"unit_id": "u1", "change": "demo"}})
+    # ⚠ Enough `..` to actually LEAVE. Written with two first, and it did not
+    # escape — `set/runtime/work-cycle/../../x` lands back inside the project —
+    # so the test passed the containment check and failed on a 404, proving
+    # nothing about the guard. A traversal test has to traverse.
+    with pytest.raises(HTTPException) as exc:
+        mod.fleet_work_cycle_stream(cwd=str(root), change="../../../../../../etc",
+                                    unit_id="passwd")
+    assert exc.value.status_code == 400
+    assert "not in this project" in exc.value.detail
+
+    # And the near miss stays a near miss: a name with `..` that resolves back
+    # inside is not refused, it simply has no stream.
+    with pytest.raises(HTTPException) as exc2:
+        mod.fleet_work_cycle_stream(cwd=str(root), change="../../inside", unit_id="x")
+    assert exc2.value.status_code == 404

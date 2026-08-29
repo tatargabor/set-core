@@ -154,6 +154,19 @@ class Purpose:
     #: The agent session that ran it, as that session announced itself. `None` means
     #: it never announced one — NOT that the run had no session.
     session_id: Optional[str] = None
+    #: The gate the engine ran for this unit, as it recorded it. `None` where no
+    #: gate ran — which the engine records as its own state precisely because a
+    #: section gate is weaker than a merge gate and must not read as the same
+    #: assurance.
+    gate: Optional[dict] = None
+    #: The commit, or the recorded reason there was none.
+    commit: Optional[dict] = None
+    #: The condition a set-aside unit is waiting on — a person's answer, most of
+    #: the time. A unit waiting for somebody is NOT a failed unit.
+    set_aside: Optional[dict] = None
+    #: What the project's declared reading paths resolved to. `None` where it
+    #: declared none.
+    reading: Optional[dict] = None
 
     def as_dict(self) -> Dict[str, object]:
         return {
@@ -161,6 +174,8 @@ class Purpose:
             "kind": self.kind, "lens": self.lens, "seat": self.seat, "pid": self.pid,
             "started_by": self.started_by, "origin_is_claim": self.origin_is_claim,
             "session_id": self.session_id,
+            "gate": self.gate, "commit": self.commit, "set_aside": self.set_aside,
+            "reading": self.reading,
             "started_at": self.started_at, "status": self.status,
             "verdict": self.verdict, "pid_unverified": self.pid_unverified,
             "progress": self.progress.as_dict(),
@@ -306,6 +321,10 @@ def read_purposes(
             started_by=record.get("started_by") or None,
             origin_is_claim=bool(record.get("started_by_is_claim", True)),
             session_id=record.get("session_id") or None,
+            gate=record.get("gate") or None,
+            commit=record.get("commit") or None,
+            set_aside=record.get("set_aside") or None,
+            reading=record.get("reading") or None,
             started_at=record.get("started_at") or None,
             status=status,
             verdict=record.get("verdict") or None,

@@ -233,7 +233,6 @@ def test_every_field_the_engine_writes_is_read_on_this_side_of_the_seam():
         "verdict_at",   # the record's own timestamp; the surface shows the verdict
         "inputs",       # comparison inputs — the lens lane's, not shipped here
         "diff",         # claimed-vs-marked divergence, reported by the engine itself
-        "gate", "commit", "set_aside",  # §5.1 — extended in the read-API group
         "started_by_is_claim",          # carried as `origin_is_claim`
     }
     carried = set(purpose.Purpose(change="c").as_dict())
@@ -258,3 +257,60 @@ def test_a_record_written_before_the_origin_fields_existed_still_reads(tmp_path)
     assert got[0].started_by is None      # nobody said — not "agent"
     assert got[0].session_id is None      # never announced — not "no session"
     assert got[0].origin_is_claim is True
+
+
+def test_the_outcome_fields_are_carried_as_the_engine_wrote_them(tmp_path):
+    """Carried, not summarised. A summary of a verdict is a second judgement, and
+    the same is true of a gate: `failures` and `attribution` are the two things a
+    reader needs at the moment a gate is red, and both are the first casualties of
+    a helpful one-line rendering.
+    """
+    import json
+
+    d = tmp_path / purpose.RUN_STATE_REL / "demo"
+    d.mkdir(parents=True)
+    (d / "u1.json").write_text(json.dumps({
+        "unit_id": "u1", "change": "demo", "pid": 0,
+        "gate": {"state": "failed", "failures": ["tsc"], "attribution": "another lane",
+                 "steps": ["tsc"], "detail": "1 of 1 failed"},
+        "commit": {"committed": False, "sha": "", "reason": "gate not green",
+                   "committed_by_agent": False},
+        "set_aside": {"kind": "human-decision", "question": "which wording?", "task": "2.2"},
+        "reading": {"declared": True, "present": [], "missing": ["docs/x"],
+                    "refused": [], "reached_nothing": True},
+    }))
+    got = purpose.read_purposes(str(tmp_path), change="demo", with_progress=False)[0]
+    assert got.gate["failures"] == ["tsc"]
+    assert got.gate["attribution"] == "another lane"
+    assert got.commit["committed"] is False and got.commit["reason"] == "gate not green"
+    assert got.set_aside["question"] == "which wording?"
+    assert got.reading["reached_nothing"] is True
+    # …and all of it survives serialisation to the surface.
+    d = got.as_dict()
+    assert d["gate"]["attribution"] == "another lane"
+    assert d["set_aside"]["task"] == "2.2"
+
+
+def test_a_set_aside_run_is_not_a_failed_one(tmp_path):
+    """The distinction the screen must not flatten, guarded at the reader.
+
+    A unit waiting for a person has no gate and no commit — exactly the shape a
+    failed unit has — and only `set_aside` tells them apart.
+    """
+    import json
+
+    d = tmp_path / purpose.RUN_STATE_REL / "demo"
+    d.mkdir(parents=True)
+    (d / "waiting.json").write_text(json.dumps({
+        "unit_id": "waiting", "change": "demo", "pid": 0,
+        "verdict": {"outcome": "NEEDS_INPUT", "summary": "a person must decide"},
+        "set_aside": {"kind": "human-decision", "question": "q", "task": "1.1"},
+    }))
+    (d / "failed.json").write_text(json.dumps({
+        "unit_id": "failed", "change": "demo", "pid": 0,
+        "verdict": {"outcome": "BLOCKED", "summary": "could not proceed"},
+    }))
+    by_id = {p.unit_id: p for p in
+             purpose.read_purposes(str(tmp_path), change="demo", with_progress=False)}
+    assert by_id["waiting"].set_aside is not None
+    assert by_id["failed"].set_aside is None

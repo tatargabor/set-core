@@ -51,6 +51,7 @@ from ..fleet import purpose as fleet_purpose
 from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet.cache_heat import read_cache_heat
+from ..fleet import workcycle_plan as wc_plan
 from ..fleet import layout as fleet_layout
 from ..fleet import state as attention_state
 from ..fleet import roster
@@ -1506,6 +1507,12 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
 #: the framework's surface as a caller and says there is no second mechanism.
 ENGINE_COMMAND = "set-work-cycle"
 
+#: ⚠ SECOND COPY of `set_workcycle.runner.StreamSink.TERMINATOR` — `set_orch` may
+#: not import the engine (D10). `tests/unit/test_fleet_api.py` imports both and
+#: fails when they diverge; without it a renamed terminator would make every
+#: finished recording read as truncated, silently.
+_STREAM_TERMINATOR = "__stream_end__"
+
 #: The one subcommand that starts a unit. Named here so the argv this route
 #: builds is checkable; `tests/unit/test_fleet_api.py` asserts against the
 #: engine's own parser, where `run` carries `starts_a_unit=True`.
@@ -1531,6 +1538,120 @@ class StartUnitBody(BaseModel):
     rows: int = 40
     cols: int = 120
     requested_by: Optional[str] = None
+
+
+@router.get("/api/fleet/work-cycle")
+def fleet_work_cycle(cwd: str) -> Dict[str, Any]:
+    """What the engine can drive in this project, and what its runs came to.
+
+    Two sources, deliberately not one. **Records** are read straight off disk —
+    that is what the engine's contract promises, and it means this renders with
+    nothing running, which is the case a reader most needs. **What is runnable**
+    is asked of the engine, because resolving it needs the task file parsed and
+    the dependency graph walked, and `set_orch` may not import the engine (D10).
+
+    An engine that is not installed is an ANSWER here, not an empty screen:
+    `plan.available` is false with the reason, and the recorded runs still render.
+    Turning a missing capability into missing data is the failure this avoids.
+    """
+    root = os.path.realpath(os.path.expanduser(cwd))
+    if not os.path.isdir(root):
+        raise HTTPException(status_code=400, detail=f"no such directory: {cwd}")
+
+    tree = wc_plan.read_plan(root, "")
+    runs = [p.as_dict() for p in fleet_purpose.read_purposes(root)]
+
+    changes: List[Dict[str, Any]] = []
+    listed = tree.payload.get("changes")
+    if listed is None and tree.available:
+        # The engine ran and could not list them. Said, not shown as none — the
+        # two are different answers and only one of them is about the project.
+        changes = []
+    for name in (listed or []):
+        one = wc_plan.read_plan(root, name)
+        changes.append({
+            "change": name,
+            "runnable": one.runnable,
+            "selected": one.selected,
+            "reasons": one.payload.get("reasons") or {},
+            "available": one.available,
+            "reason": one.reason,
+            "runs": [r for r in runs if r.get("change") == name],
+        })
+
+    return {
+        "project_root": root,
+        # `adopted` is None when the engine could not be asked at all — never
+        # False, which would say something about the project that nobody measured.
+        "adopted": tree.adopted,
+        "not_adopted_reason": "" if tree.adopted else tree.reason,
+        "engine": {"available": tree.available, "reason": tree.reason},
+        "changes_dir": tree.payload.get("changes_dir"),
+        "changes_listed": listed is not None,
+        "changes_error": tree.payload.get("changes_error", ""),
+        "changes": changes,
+        # Every run, including those whose change the listing did not reach. A run
+        # that exists must not vanish because its change could not be enumerated.
+        "runs": runs,
+    }
+
+
+@router.get("/api/fleet/work-cycle/stream")
+def fleet_work_cycle_stream(cwd: str, change: str, unit_id: str,
+                            limit: int = 2000) -> Dict[str, Any]:
+    """A finished run's own stream, read back from the project's runtime area.
+
+    A RECORDING, and it says so: a reader shown terminal-looking output with no
+    marker will take it for a live session, which is the false-value shape this
+    screen keeps having to design against.
+    """
+    root = os.path.realpath(os.path.expanduser(cwd))
+    rel = os.path.join(fleet_purpose.RUN_STATE_REL, change, f"{unit_id}.stream.jsonl")
+    path = os.path.realpath(os.path.join(root, rel))
+    if not path.startswith(root + os.sep):
+        raise HTTPException(status_code=400, detail="that unit is not in this project")
+    if not os.path.isfile(path):
+        # 404 with the distinction ON it: no stream file means no session was
+        # started for this unit, which is not the same as a session that said
+        # nothing (an existing file holding only a terminator).
+        raise HTTPException(status_code=404, detail={
+            "error": "no-stream",
+            "detail": "no session stream was recorded for this unit",
+        })
+
+    events: List[Dict[str, Any]] = []
+    complete = False
+    total = 0
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(payload, dict) and payload.get("type") == _STREAM_TERMINATOR:
+                    complete = True
+                    continue
+                total += 1
+                if len(events) < limit:
+                    events.append(payload)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"could not read the stream: {exc}")
+
+    return {
+        "kind": "recording",
+        "change": change, "unit_id": unit_id,
+        "events": events,
+        "total": total,
+        "truncated": total > len(events),
+        # ⚠ False here means the run did not finish writing — killed, or still
+        # running. It is NOT "we could not tell", and the screen must not render
+        # a truncated recording as a complete one.
+        "complete": complete,
+    }
 
 
 @router.post("/api/fleet/units")

@@ -251,9 +251,26 @@ def cmd_status(args) -> int:
     for r in runs:
         lines.append(f"run {r.get('unit_id')}: {r['_status']}")
 
-    _emit({"adopted": True, "selected": selected, "reasons": reasons,
-           "runs": [{"unit_id": r.get("unit_id"), "status": r["_status"]} for r in runs],
-           "lines": lines}, args.json)
+    payload = {"adopted": True, "selected": selected, "reasons": reasons,
+               "runs": [{"unit_id": r.get("unit_id"), "status": r["_status"]} for r in runs],
+               "lines": lines}
+    if not args.change and view.adoption is not None:
+        # Asked for the WHOLE tree: say where changes live and which ones are there.
+        # A caller that had to work this out for itself would be parsing the project's
+        # adoption declaration a second time, and a second parser of one declaration is
+        # a second answer to "where do changes live" waiting to disagree.
+        base = view.tree / view.adoption.changes_dir
+        payload["changes_dir"] = view.adoption.changes_dir
+        try:
+            payload["changes"] = sorted(
+                d.name for d in base.iterdir()
+                if d.is_dir() and d.name != "archive" and (d / "tasks.md").is_file())
+        except OSError as exc:
+            # Named, not empty: "no changes" and "could not look" are different answers.
+            payload["changes"] = None
+            payload["changes_error"] = str(exc)
+            lines.append(f"could not list changes under {base}: {exc}")
+    _emit(payload, args.json)
     return 0
 
 
