@@ -2173,3 +2173,87 @@ trace on disk and the absence of that trace is the assertion.
 **Running total for one live unit of work: six defects.** Four found by the run, two by the fix for
 it. Every unit test passed at every point. The pattern holds — each one lived in the gap between a
 mechanism and its result, and the last two lived in the gap between *a guard* and *a way out of it*.
+
+---
+
+## 2026-08-29 — `stageOrder`, the fifth role: the closed vocabulary opens for an ORDER, and stays closed for everything visual
+
+**Asked by the producer's session over the runtime channel, not the file channel** — they wanted a
+"kanban-like" view of a new command that returns one flat array of development items, and asked
+whether the framework could recognise *an ordered stage axis* on an array. They explicitly did not
+ask for columns, and quoted this repo's own two rules back at us: `StatusValue.tsx`'s "by SHAPE,
+never by name", and "a role says what the data is; it never says how it looks."
+
+**Answered YES, with four conditions.** The decision rests on what the closed vocabulary is
+actually for. Its stated reason (`display` section above) is that `display` is *the* key style
+leaks through — `"bold"`, `"red"`, `"%.2f"` are each one reasonable-sounding request away. The
+lock keeps **appearance** out; it was never a lock against data statements. "This field is a
+member of an ordered set, and the order is this" is the same kind of claim as
+`duration-seconds` ("this number is seconds") or `progressOf` ("this part, of that whole"), and
+it says nothing about how it is drawn. So the vocabulary goes to seven, and the rendering stays
+entirely on the framework's side.
+
+**But it must be ADDED, not merely tolerated.** An unknown role is silently ignored today
+(`project_status.py:670-681`, `statusShape.tsx:858-869` — both verified by reading, not recalled),
+so `stageOrder` would be inert on both sides. Inert is not acceptance.
+
+### The four conditions
+
+1. **`stageOrder` is a STATIC declaration of the project's process, never computed from the data
+   in the answer.** This is not a preference — it is the *only* thing that makes condition 3
+   achievable, and it comes straight from the finding recorded above: measured 2026-08-02 at
+   16:06, this producer's `display` block shrank from eleven entries to five, and `follow`
+   vanished entirely, because both are computed from what happens to be present. A `stageOrder`
+   computed the same way loses exactly the empty stage the producer is asking us to preserve.
+   Told to them; it is the condition that carries the other three.
+2. **An "unknown" bucket must NOT appear inside `stageOrder`.** The producer has a real terminal
+   "unknown" station for items no signal matched. Declared as a stage it becomes
+   indistinguishable from a genuine one, and the framework loses the ability to say *nothing
+   matched* — the contract-level form of "null is not zero and not success". In exchange the
+   framework renders any value absent from the order **visibly and distinctly**, never silently
+   sorted to the end and never dropped, uniformly for every producer, so no one invents a private
+   sentinel.
+3. **A declared stage with zero items is rendered.** Follows from 1. "Done: 0" says nothing from
+   the release is finished yet; dropping it destroys that.
+4. **The vocabulary stays closed afterwards.** No `stageColors`, `stageIcons`, `stageLabels`. The
+   *order* is data because the process belongs to the project; everything visual stays here. Said
+   out loud now, because the next request is otherwise about colours and that one does break the
+   lock.
+
+### The envelope shape they proposed is wrong, and it fails silently
+
+They proposed `"display": {"cards": {"<field>": {"stageOrder": [...]}}}`. The `cards` layer names
+a **view**, which is the appearance leak the lock exists for — and measured rather than argued:
+no `cards` key is parsed anywhere in `web/` or `lib/set_orch/`, so `{cards: …}` is a one-key dict
+matching neither `PAIRED_ROLES` nor the TS form check, and both sides drop it without a word. It
+is the same silent non-match the spec already calls out for dotted keys
+(`declared-field-roles/specs/project-status-field-roles/spec.md:77-78`).
+
+Agreed shape — one-key object with an argument, exactly like `{progressOf: <field>}`, the only
+novelty being that the argument is an array rather than a field name:
+
+```json
+"display": { "<field>": { "stageOrder": ["planned", "specified", "in-progress", "implemented", "demoed", "done"] } }
+```
+
+### What was NOT promised
+
+No board, no columns. Three guarantees only: the order does not get lost, an unmatched value stays
+visible, and an empty declared stage is shown. Whether that renders as columns, a grouped list, or
+one ordered table column is the framework's call — the same split that has now held twelve times.
+Writing stays on the producer's side; a future "drag the card" follows the existing `actions`
+pattern, their CLI writing, as with `ack`.
+
+**Not blocking them, by their own design:** their answer is a plain array, so it renders as a table
+on today's renderer, on a new tab. `stageOrder` only improves it.
+
+**Where this plugs in when it is built** (feasibility, not a design): the table has exactly one
+row-ordering pipeline, `web/src/components/StatusTable.tsx:739-768`. Nothing in `StatusTable`
+reads `useRoles()` today — roles reach it only through the `renderValue` closure
+(`StatusValue.tsx:524-529`), so a stage role would be the first declaration the table itself reads.
+
+**Debt this surfaced, and it is ours:** `declared-field-roles` is complete (36/36 tasks) but **not
+archived**, so no `openspec/specs/project-status-field-roles/` exists and the role vocabulary's only
+spec text lives under the change. Exactly the failure mode CLAUDE.md names — changes accumulating
+unarchived. Until that is fixed, the stable reference for a producer is the `display` section above,
+not a `specs/` path.
