@@ -51,9 +51,9 @@
 
 ## 9. Closing the loop
 
-- [ ] 9.1 Close B-124 in `openspec/bugs/README.md` with the commit sha and the evidence, leaving the entry in place [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
-- [ ] 9.2 Record in `docs/integration/consumer-integration.md` that the framework's half is shipped, naming what was verified and how [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
-- [ ] 9.3 Tell the producer on the channel that it is real, where "real" means a test that fails without the code — not that the tasks are ticked [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
+- [x] 9.1 Close B-124 in `openspec/bugs/README.md` with the commit sha and the evidence, leaving the entry in place [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
+- [x] 9.2 Record in `docs/integration/consumer-integration.md` that the framework's half is shipped, naming what was verified and how [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
+- [x] 9.3 Tell the producer on the channel that it is real, where "real" means a test that fails without the code — not that the tasks are ticked [REQ: a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked]
 
 ## Acceptance Criteria (from spec scenarios)
 
