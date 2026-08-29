@@ -113,6 +113,17 @@ Vagyis a képernyőn Anthropic modellnév áll, a számla viszont a z.ai-é, és
 Anthropic auth. Ez a *„más számla, azonos kinézet"* hibaosztály — ugyanaz, amit a ledger
 provider-mezője zár le a másik oldalról.
 
+
+**És nem átcímkézés: VALÓDI Claude jön.** Mérve — a z.ai endpointra `--model sonnet`-tel
+küldött „melyik modellcsalád vagy?" kérdésre a válasz **„Claude"**, ugyanarra `glm-5.3-flash`-sel
+**„GLM"**, Anthropic-endpointon sonnettel megint **„Claude"**. A z.ai tehát **továbbítja** a
+Claude-hívást — és a saját számlájára. (Az önbevallás önmagában nem bizonyíték, de a GLM-kontroll
+magát GLM-nek vallja, ezért a jel értékes.)
+
+Ez pontosítja, mi a valódi kockázat: **nem mást kapsz, mint amit kérsz — ugyanazt kapod, más
+számláról**, és semmi nem jelzi. Egy `model: sonnet` agent GLM-szülő alatt tehát nem „rosszabb
+minőségű", hanem **elszámolásilag láthatatlan**.
+
 **Ezért:** ha egy agent-definíciót GLM-szülő alatt akarsz futtatni, vagy **hagyd el a `model:`
 mezőt** (akkor a szülő modelljét örökli, és nincs mit félreérteni), vagy írj bele **GLM-modellt**.
 A `model: sonnet` GLM-szülő alatt félrevezető: azt ígéri, amit nem tart be.
