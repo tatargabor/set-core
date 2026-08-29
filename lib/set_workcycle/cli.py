@@ -20,6 +20,7 @@ remembered — every path opens the engine through `_open()`, and `_open()` take
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import logging
 import sys
@@ -27,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
-from .adoption import ADOPTION_REL, read_adoption
+from .adoption import ADOPTION_REL, read_adoption, resolve_reading_paths
 from .connector import (
     ResumeCondition,
     answers_for,
@@ -52,7 +53,7 @@ from .groups import DependencyCycle, RunNote, carry_over_for, cut_slice, parse_t
     reading_list, select_next_group
 from .lock import LockHeld, SeatRefused, acquire, read_lock, release, validate_seat
 from .prompt import build_unit_prompt
-from .runner import run_agent_session
+from .runner import StreamSink, run_agent_session
 
 logger = logging.getLogger(__name__)
 
@@ -360,8 +361,21 @@ def _drive(unit, view, group, args, lines: list) -> UnitRecord:
     marked_before = [t.key for t in group.tasks if t.marker == "done"]
     baseline = _head(view.tree)
 
+    reading = resolve_reading_paths(view.tree, view.adoption) if view.adoption else None
+    if reading is not None:
+        lines.extend(f"  {l}" for l in reading.as_lines())
+        record.reading = {
+            "declared": reading.declared,
+            "present": list(reading.present),
+            "missing": list(reading.missing),
+            "refused": list(reading.refused),
+            "reached_nothing": reading.reached_nothing,
+        }
+        record.save()
+
     prompt = build_unit_prompt(
         args.change, slice_, reading_list=artifacts, carry_over=carried,
+        background=list(reading.present) if reading else (),
         tasks_path=str(Path(view.tasks_path).relative_to(view.tree)),
         answers=answers_for(view.tree, args.change, [t.key for t in group.tasks]),
     )
@@ -370,7 +384,24 @@ def _drive(unit, view, group, args, lines: list) -> UnitRecord:
         return record
 
     agent = _AGENT_RUNNER or run_agent_session
-    run = agent(prompt, view.tree, model=args.model or None)
+    sink = StreamSink(record.stream_path()).open()
+    # ⚠ ASKED, not tried. Wrapping the call in `except TypeError` to detect a
+    # runner that takes no `on_event` would also catch a TypeError raised INSIDE
+    # a runner that does — and the recovery would then start a SECOND agent
+    # session for one unit. The signature is a question with an answer; a failed
+    # call is not.
+    kwargs = {"model": args.model or None}
+    try:
+        if "on_event" in inspect.signature(agent).parameters:
+            kwargs["on_event"] = sink.write
+    except (TypeError, ValueError):  # a callable with no introspectable signature
+        logger.debug("work unit: runner signature unavailable; running without a stream sink")
+    run = None
+    try:
+        run = agent(prompt, view.tree, **kwargs)
+    finally:
+        sink.close(exit_code=getattr(run, "exit_code", None))
+    lines.append(f"stream: {sink.events} event(s) -> {sink.path.name}")
     # The identifier is read off the session's own stream — never invented here —
     # and it is persisted BEFORE the verdict is parsed, because a session that
     # produced an unreadable verdict is precisely the one whose transcript

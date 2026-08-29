@@ -55,6 +55,7 @@ def build_unit_prompt(
     slice_: Slice,
     *,
     reading_list: Sequence[str] = (),
+    background: Sequence[str] = (),
     carry_over: Iterable[RunNote] = (),
     tasks_path: str = "",
     answers: Sequence[tuple] = (),
@@ -80,6 +81,18 @@ def build_unit_prompt(
             "## Read these first\n\n"
             + "\n".join(f"- `{p}`" for p in reading_list)
             + "\n\nThey are this change's own artifacts, including any an earlier run wrote."
+        )
+
+    if background:
+        # Separate from the change's own artifacts on purpose: one is the work,
+        # the other is what the project wants known while doing it. Merging them
+        # into one list tells the unit that a standing reference is part of this
+        # change, which is a different instruction.
+        parts.append(
+            "## The project's own background\n\n"
+            + "\n".join(f"- `{p}`" for p in background)
+            + "\n\nDeclared by the project, not by this change. Read what is relevant; "
+              "these are standing references rather than this change's artifacts."
         )
 
     if notes:

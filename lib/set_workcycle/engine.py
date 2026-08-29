@@ -477,9 +477,23 @@ class UnitRecord:
     #: event rather than generated here. Empty means the session never announced
     #: one, which is NOT the same as the run having had no session.
     session_id: str = ""
+    #: What the project's declared reading paths resolved to — present, missing,
+    #: refused. `None` where the project declared none. A dropped path that leaves
+    #: no trace is indistinguishable from one that was never declared.
+    reading: Optional[dict] = None
 
     def path(self) -> Path:
         return Path(self.unit.tree) / RUN_STATE_DIR / self.unit.change / f"{self.unit.unit_id}.json"
+
+    def stream_path(self) -> Path:
+        """Beside the record, under the tree the engine was GIVEN.
+
+        Derived from `self.unit.tree` and nothing else — no framework path, no
+        home directory, no temp dir. The stream carries the project's domain, so
+        where it lands is a confidentiality decision (see the module the record
+        lives in) rather than a storage one.
+        """
+        return self.path().with_suffix(".stream.jsonl")
 
     def to_dict(self) -> dict:
         return {
@@ -496,6 +510,7 @@ class UnitRecord:
             "started_by": self.started_by or None,
             "started_by_is_claim": True,
             "session_id": self.session_id or None,
+            "reading": self.reading,
             "started_at": self.started_at,
             "verdict": self.verdict.to_dict() if self.verdict else None,
             "verdict_at": self.verdict_at,

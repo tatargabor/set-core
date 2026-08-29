@@ -247,3 +247,109 @@ def test_the_project_s_existing_markings_are_read_rather_than_replaced(tmp_path)
     code, payload = _run(tmp_path, "--change", "c", "status")
     assert code == 0
     assert "awaiting" in payload["reasons"]["1"]
+
+
+# --------------------------------------------------------------------------- #
+# Declared reading paths — work-cycle-run-visibility §4
+# --------------------------------------------------------------------------- #
+
+def _adopted(tmp_path, body: str):
+    (tmp_path / "set").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "set" / "work-cycle.yaml").write_text(body)
+    from set_workcycle.adoption import read_adoption
+    return read_adoption(tmp_path)
+
+
+def test_a_project_that_declares_no_reading_paths_reads_exactly_what_it_read_before(tmp_path):
+    """The absence of a key is not an empty list, and neither is a guess."""
+    a = _adopted(tmp_path, "changes_dir: openspec/changes\n")
+    assert a.reading_paths == ()
+    assert a.reading_paths_declared is False
+
+
+def test_declared_paths_are_read_from_the_project_s_own_declaration(tmp_path):
+    a = _adopted(tmp_path, "changes_dir: openspec/changes\nreading_paths:\n  - docs/knowledge\n")
+    assert a.reading_paths == ("docs/knowledge",)
+    assert a.reading_paths_declared is True
+    # …and it does not leak into extras, where a second reader would find it again.
+    assert "reading_paths" not in a.extras
+
+
+def test_a_missing_declared_path_is_reported_and_the_run_proceeds(tmp_path):
+    from set_workcycle.adoption import resolve_reading_paths
+
+    (tmp_path / "docs").mkdir()
+    a = _adopted(tmp_path,
+                 "changes_dir: openspec/changes\nreading_paths:\n  - docs\n  - gone\n")
+    r = resolve_reading_paths(tmp_path, a)
+    assert r.present == ("docs",)
+    assert r.missing == ("gone",)
+    assert r.reached_nothing is False
+    assert any("does not exist: gone" in l for l in r.as_lines())
+
+
+def test_a_declaration_that_reached_nothing_is_not_a_project_that_declared_nothing(tmp_path):
+    """The distinction this whole dataclass exists for.
+
+    A filter downstream of a source that drops everything looks exactly like a
+    source that returned nothing — and the two need different repairs.
+    """
+    from set_workcycle.adoption import resolve_reading_paths
+
+    declared_but_gone = _adopted(
+        tmp_path, "changes_dir: openspec/changes\nreading_paths:\n  - nowhere\n")
+    declared_none = _adopted(tmp_path, "changes_dir: openspec/changes\n")
+
+    assert resolve_reading_paths(tmp_path, declared_but_gone).reached_nothing is True
+    assert resolve_reading_paths(tmp_path, declared_none).reached_nothing is False
+
+
+def test_a_path_escaping_the_tree_is_refused_by_traversal_and_by_symlink(tmp_path):
+    """Two DIFFERENT escapes, and a check on the written string only catches one.
+
+    The traversal is visible in the text; the symlink is not — it is an ordinary
+    relative name that resolves outside. Checking the resolved location catches
+    both with one rule.
+    """
+    import os
+    from set_workcycle.adoption import resolve_reading_paths
+
+    outside = tmp_path.parent / "outside-the-tree"
+    outside.mkdir(exist_ok=True)
+    tree = tmp_path / "proj"
+    tree.mkdir()
+    os.symlink(str(outside), str(tree / "looks-local"))
+
+    (tree / "set").mkdir()
+    (tree / "set" / "work-cycle.yaml").write_text(
+        "changes_dir: openspec/changes\nreading_paths:\n  - ../outside-the-tree\n"
+        "  - looks-local\n")
+    from set_workcycle.adoption import read_adoption
+    r = resolve_reading_paths(tree, read_adoption(tree))
+
+    assert set(r.refused) == {"../outside-the-tree", "looks-local"}
+    assert r.present == ()
+    refusals = [l for l in r.as_lines() if l.startswith("declared reading path refused")]
+    assert len(refusals) == 2
+    assert all("outside the project tree" in l for l in refusals)
+    # Both were refused and nothing was left, so the declaration reached nothing —
+    # which is its own line and must not be mistaken for one of the refusals.
+    assert r.reached_nothing is True
+
+
+def test_background_is_offered_to_the_unit_apart_from_the_change_s_artifacts(tmp_path):
+    """One is the work; the other is what the project wants known while doing it."""
+    from set_workcycle.groups import parse_task_groups, cut_slice
+    from set_workcycle.prompt import build_unit_prompt
+
+    (tmp_path / "tasks.md").write_text("## 1. g\n\n- [ ] 1.1 do it\n")
+    plan = parse_task_groups(tmp_path / "tasks.md")
+    prompt = build_unit_prompt("c", cut_slice(plan.groups[0]),
+                               reading_list=["openspec/changes/c/design.md"],
+                               background=["docs/knowledge"])
+    assert "docs/knowledge" in prompt
+    assert "openspec/changes/c/design.md" in prompt
+    # The two live under different headings — a unit told they are one list has
+    # been told a standing reference is part of this change.
+    assert prompt.index("Read these first") != prompt.index("The project's own background")
+    assert "Declared by the project, not by this change" in prompt

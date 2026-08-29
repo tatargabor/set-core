@@ -32,7 +32,10 @@ from typing import Callable, Iterable, Iterator, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["AgentRun", "AgentEvent", "build_agent_command", "run_agent_session", "iter_events"]
+__all__ = [
+    "AgentRun", "AgentEvent", "StreamSink", "build_agent_command", "run_agent_session",
+    "iter_events",
+]
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,80 @@ class AgentRun:
     exit_code: Optional[int] = None
     events: int = 0
     stderr: str = ""
+
+
+class StreamSink:
+    """The session's stream, written down as it arrives.
+
+    Three properties, each of which is a requirement rather than a convenience:
+
+    **Incremental.** Every event is written and flushed as it lands. A run killed
+    mid-way keeps everything it had produced — and a killed run is precisely the
+    one somebody wants to read, so buffering it into a final write would lose it
+    exactly when it matters.
+
+    **Terminated.** A completed stream ends with a marker line. Without one a
+    truncated file and a finished one are indistinguishable, and a reader has no
+    way to tell "this is all there was" from "this is all that survived".
+
+    **Located by the caller.** The path is built from the tree the engine was
+    given, never from anything this module decides. The stream carries the
+    project's own domain — partner names, order numbers, whatever the work is
+    about — so it lives in the project's runtime area and the framework persists
+    none of it. See External Project Confidentiality.
+    """
+
+    #: The last line of a stream that ended on its own.
+    TERMINATOR = "__stream_end__"
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.events = 0
+        self._fh = None
+
+    def open(self) -> "StreamSink":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Opened BEFORE the session starts, so an empty file means "a session ran
+        # and said nothing" while no file at all means "no session was started".
+        # Those are different facts and a reader must not have to guess which.
+        self._fh = self.path.open("w", encoding="utf-8")
+        return self
+
+    def write(self, event: "AgentEvent") -> None:
+        if self._fh is None:
+            return
+        try:
+            self._fh.write(json.dumps(event.payload, ensure_ascii=False) + "\n")
+            self._fh.flush()
+        except (OSError, TypeError, ValueError) as exc:
+            # Named, never swallowed — but a sink that cannot write must not end a
+            # run that is otherwise working. The record will say how many events
+            # reached it, so the loss is visible rather than silent.
+            logger.warning("work unit: could not write to the run stream: %s", exc)
+        else:
+            self.events += 1
+
+    def close(self, *, exit_code=None) -> None:
+        if self._fh is None:
+            return
+        try:
+            self._fh.write(json.dumps({
+                "type": self.TERMINATOR, "events": self.events, "exit_code": exit_code,
+            }) + "\n")
+            self._fh.flush()
+        except OSError as exc:
+            logger.warning("work unit: could not terminate the run stream: %s", exc)
+        finally:
+            try:
+                self._fh.close()
+            finally:
+                self._fh = None
+
+    def __enter__(self) -> "StreamSink":
+        return self.open()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
 def build_agent_command(
@@ -94,7 +171,15 @@ def iter_events(lines: Iterable[str]) -> Iterator[AgentEvent]:
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
-            logger.debug("non-JSON line on the agent stream: %.200s", line)
+            # ⚠ The SHAPE, never the content. This logged up to 200 characters of
+            # the line until 2026-08-29, and a line off a consumer's session is
+            # full of that consumer's domain — so a DEBUG log became a place the
+            # framework persisted a customer's data. The same rule `db_safety.py`
+            # follows for URLs: enough to debug with, nothing to leak.
+            logger.debug(
+                "non-JSON line on the agent stream: %d chars, starts %r",
+                len(line), line[:1],
+            )
             continue
         if not isinstance(payload, dict):
             continue

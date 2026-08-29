@@ -748,3 +748,115 @@ def test_the_origin_is_on_the_record_before_the_session_starts(tmp_path, monkeyp
 
     assert seen["on_disk"], "no record on disk when the session was about to start"
     assert seen["on_disk"][0]["started_by"] == "set-core#whoasked"
+
+
+# --------------------------------------------------------------------------- #
+# The run's stream — work-cycle-run-visibility §3
+# --------------------------------------------------------------------------- #
+
+def test_the_stream_is_written_under_the_tree_the_engine_was_given(tmp_path):
+    """Confidentiality by construction, asserted for a tree that is NOT this repo.
+
+    The stream carries the project's own domain. It lands in the project's runtime
+    area or the framework has persisted a consumer's data — which is a defect, not
+    a storage preference.
+    """
+    from set_workcycle.engine import UnitKind, UnitRecord, WorkUnit
+
+    elsewhere = tmp_path / "some-other-project"
+    rec = UnitRecord(unit=WorkUnit(change="c", tree=elsewhere, seat="s",
+                                   kind=UnitKind.SLICE, group_key="1"))
+    assert rec.stream_path().is_relative_to(elsewhere)
+    assert rec.stream_path().parent == rec.path().parent
+    # And it is not derived from anything ambient.
+    assert "set-core" not in str(rec.stream_path())
+
+
+def test_a_killed_run_keeps_every_event_it_had_produced(tmp_path):
+    """Incremental, not buffered — and asserted by never closing the sink.
+
+    A run killed mid-way is exactly the run somebody wants to read, so a final
+    write would lose it at the moment it matters most.
+    """
+    from set_workcycle.runner import AgentEvent, StreamSink
+
+    sink = StreamSink(tmp_path / "u.stream.jsonl").open()
+    sink.write(AgentEvent(type="a", payload={"type": "a"}))
+    sink.write(AgentEvent(type="b", payload={"type": "b"}))
+    # No close(): the process died here.
+    lines = (tmp_path / "u.stream.jsonl").read_text().splitlines()
+    assert [json.loads(l)["type"] for l in lines] == ["a", "b"]
+    assert StreamSink.TERMINATOR not in (tmp_path / "u.stream.jsonl").read_text()
+
+
+def test_a_finished_stream_is_distinguishable_from_a_truncated_one(tmp_path):
+    from set_workcycle.runner import AgentEvent, StreamSink
+
+    with StreamSink(tmp_path / "u.stream.jsonl") as sink:
+        sink.write(AgentEvent(type="a", payload={"type": "a"}))
+    last = json.loads((tmp_path / "u.stream.jsonl").read_text().splitlines()[-1])
+    assert last["type"] == StreamSink.TERMINATOR
+    assert last["events"] == 1
+
+
+def test_a_session_that_said_nothing_is_not_the_same_as_no_session(tmp_path):
+    """Three states, not two — and the middle one is the one that gets flattened."""
+    from set_workcycle.runner import StreamSink
+
+    # No session started: no file at all.
+    assert not (tmp_path / "never.stream.jsonl").exists()
+
+    # A session ran and produced nothing: the file exists and says so.
+    with StreamSink(tmp_path / "silent.stream.jsonl"):
+        pass
+    lines = (tmp_path / "silent.stream.jsonl").read_text().splitlines()
+    assert len(lines) == 1 and json.loads(lines[0])["events"] == 0
+
+
+def test_a_sink_that_cannot_write_does_not_end_a_working_run(tmp_path, caplog):
+    """Named, never swallowed — and never fatal to the unit.
+
+    The count on the record still says how many events reached it, so the loss is
+    visible rather than silent.
+    """
+    from set_workcycle.runner import AgentEvent, StreamSink
+
+    sink = StreamSink(tmp_path / "u.stream.jsonl").open()
+    sink._fh.close()                      # the file handle dies under it
+    with caplog.at_level("WARNING"):
+        sink.write(AgentEvent(type="a", payload={"type": "a"}))
+    assert sink.events == 0
+    assert any("run stream" in r.message for r in caplog.records)
+
+
+def test_the_runner_is_asked_for_its_signature_not_tried_and_retried(tmp_path):
+    """The hazard this replaced: a `TypeError` from INSIDE a runner would have
+    been read as "this runner takes no on_event" and started a SECOND session for
+    one unit. A signature is a question with an answer; a failed call is not.
+    """
+    import inspect
+    from set_workcycle import cli as wc_cli
+
+    src = inspect.getsource(wc_cli._drive)
+    assert "inspect.signature(agent)" in src
+    assert "except TypeError:\n        # A runner that does not take" not in src
+
+
+def test_no_framework_log_about_a_run_carries_text_from_its_stream(tmp_path, caplog):
+    """Asserted on the OUTPUT, not on the intent.
+
+    Found by writing this test: `iter_events` logged up to 200 characters of any
+    non-JSON line, so a DEBUG log became a place the framework persisted a
+    consumer's domain data. Counts and identifiers are what a log needs.
+    """
+    from set_workcycle.runner import iter_events
+
+    secret = "PARTNER-NAME-AND-ORDER-12345 quoted from the session"
+    with caplog.at_level("DEBUG"):
+        events = list(iter_events([secret, '{"type":"system","session_id":"s1"}']))
+
+    assert len(events) == 1                      # the junk line was skipped, not fatal
+    joined = " ".join(r.getMessage() for r in caplog.records)
+    assert secret not in joined
+    assert "PARTNER" not in joined
+    assert str(len(secret)) in joined            # the shape IS reported
