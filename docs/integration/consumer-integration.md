@@ -2421,3 +2421,61 @@ of 2026-07-24 rather than escalated, so it names its evidence and can be revisit
 read-boundary answer is wrong, it is the expensive one to reverse, and they were told so
 before starting.
 
+## 2026-08-29 — the framework's half of `stageOrder` is SHIPPED, and the evidence is a look
+
+The undertaking recorded above — a value absent from the declared order renders visibly and
+distinctly — stopped being a promise. Both halves are in: `3e76932a` (Layer 1) and the renderer
+commit that follows it. B-124 is closed.
+
+**What the producer may now rely on:**
+
+- The declared order resolves from the declaration ALONE, before any value is examined. Two
+  answers over disjoint value sets return the identical order.
+- A declared stage holding nothing is drawn, with its zero.
+- A value outside the order is present and marked — never dropped, never unmarked-last.
+- A malformed order yields NO role, never a partial one: non-array, empty, non-string or empty
+  member, or a duplicate stage name. A salvaged partial order is a false value; an absent one is
+  a gap.
+
+**The boundary against the shipped presence rule is now IN the spec**, because the two read as
+contradictory otherwise: the DATA decides whether the field is roled at all, the DECLARATION
+decides which stages exist once it is. So a producer wanting an all-empty board rendered must
+emit the field — which is what the producer had already concluded independently.
+
+**Verified, in three ways, and the weakest one is named as weakest.** Stash-and-rerun at both
+layers: 10 Python and 14 web tests fail on their ASSERTIONS against reverted code and pass
+restored, sha256-verified both directions. Full suites green (146 Python in the status area,
+1329 web across 82 files) — which proves no regression and nothing about this feature. And the
+one that actually settles it: a look, in a browser, against a live producer through the real
+contract path.
+
+```
+lane: planned 30 | specified 0 | in-progress 4 | implemented 0 | demoed 0 | done 1
+      | tesztelés 1 ⚑ | (no value) 1 ⚑     — 2 rows outside the declared order
+```
+
+**`done 1` is the load-bearing observation**: that row is NOT in the visible 25-row slice. The
+count comes from the full set. Counting the rendered slice would have let a stage whose every
+row fell past `ROW_CAP` report as EMPTY — an honest cap turned into a false absence, landing
+exactly on the guarantee the work exists to provide. The producer's decision to filter nothing
+(~560 cards, the band counts carrying the big picture) is what made that load-bearing rather
+than a nicety.
+
+**A deviation from the change's own design note, recorded because it is the kind of thing that
+is otherwise discovered later:** it renders as a STRIP above the table, not as in-table section
+headers. The table already flows rows into side-by-side groups when narrow, and interleaving
+headers into that would rebuild the layout engine for every existing consumer to deliver a
+guarantee the strip states more plainly. The spec deliberately leaves the rendering choice here;
+the producer has been told, while changing it is still cheap.
+
+**Two costs paid on the way, both worth remembering:**
+
+- **The first stash-and-rerun proved nothing** and looked like proof: a collection error, zero
+  failures, because the new symbols do not exist at HEAD. Nothing ran. Resolved by importing the
+  new names lazily in the test, so every behavioural test runs against old code and fails on its
+  assertion.
+- **Restarting the web service to see the change exposed that it could not start at all** — a
+  module using `Dict` and `Any` while importing only `List`. It had served normally for four
+  hours because the process predated the breaking commit. B-125. This is the literal case of
+  *a shipped commit is not a running system*, and it was found by accident.
+
