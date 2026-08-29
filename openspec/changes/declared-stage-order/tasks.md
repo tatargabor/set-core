@@ -1,18 +1,18 @@
 ## 1. Layer 1 — the declaration survives the parser
 
-- [ ] 1.1 Add the `stageOrder` array form to the `display` parser in `lib/set_orch/project_status.py`, beside the existing string-argument paired forms, without loosening the string test that guards `progressOf` / `limitOf` [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
-- [ ] 1.2 Validate the argument: a non-array, an empty array, or an array holding a non-string or an empty string leaves the field entirely unroled — never a partial order [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
-- [ ] 1.3 Unit test: a well-formed declaration produces a stage role carrying the exact declared array, order preserved [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
-- [ ] 1.4 Unit test: each malformed shape from 1.2 yields NO role, and the answer still renders in full [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
-- [ ] 1.5 Unit test: an unrecognised role beside a valid `stageOrder` is still ignored silently, and does not suppress the valid one [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
+- [x] 1.1 Add the `stageOrder` array form to the `display` parser in `lib/set_orch/project_status.py`, beside the existing string-argument paired forms, without loosening the string test that guards `progressOf` / `limitOf` [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
+- [x] 1.2 Validate the argument: a non-array, an empty array, or an array holding a non-string or an empty string leaves the field entirely unroled — never a partial order [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
+- [x] 1.3 Unit test: a well-formed declaration produces a stage role carrying the exact declared array, order preserved [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
+- [x] 1.4 Unit test: each malformed shape from 1.2 yields NO role, and the answer still renders in full [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
+- [x] 1.5 Unit test: an unrecognised role beside a valid `stageOrder` is still ignored silently, and does not suppress the valid one [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
 
 ## 2. Layer 1 — the order is static
 
-- [ ] 2.1 Resolve the declared order from the declaration alone, before any value is examined; never append, reorder or filter it from the data [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
-- [ ] 2.2 Unit test: a stage named in the order but matched by no value stays in the order, in position, reported as holding nothing [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
-- [ ] 2.3 Unit test: the same declaration resolved against two answers with disjoint value sets yields identical orders in identical positions [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
-- [ ] 2.4 Unit test: a value absent from the order does not extend the order and displaces no declared stage [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
-- [ ] 2.5 Unit test — the boundary against the shipped presence rule: a declared order for a field NO row carries produces no role, no placeholder and no statement of absence [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
+- [x] 2.1 Resolve the declared order from the declaration alone, before any value is examined; never append, reorder or filter it from the data [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
+- [x] 2.2 Unit test: a stage named in the order but matched by no value stays in the order, in position, reported as holding nothing [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
+- [x] 2.3 Unit test: the same declaration resolved against two answers with disjoint value sets yields identical orders in identical positions [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
+- [x] 2.4 Unit test: a value absent from the order does not extend the order and displaces no declared stage [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
+- [x] 2.5 Unit test — the boundary against the shipped presence rule: a declared order for a field NO row carries produces no role, no placeholder and no statement of absence [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
 
 ## 3. Renderer — the declaration reaches the surface
 
@@ -41,7 +41,7 @@
 ## 7. Proving the fix is a fix
 
 - [ ] 7.1 Stash-and-rerun every new test from groups 1–5 against unfixed code and confirm each one FAILS; a test that passes both ways proves nothing and must be rewritten [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer]
-- [ ] 7.2 Record which assertion fails without the fix for the two silent-drop paths specifically — the Python fall-through and the resolver's `null` — since "nothing threw" would pass on unfixed code [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
+- [x] 7.2 Record which assertion fails without the fix for the two silent-drop paths specifically — the Python fall-through and the resolver's `null` — since "nothing threw" would pass on unfixed code [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert]
 
 ## 8. Looking at it — required, not optional
 
@@ -61,15 +61,15 @@
 
 - [ ] AC-1: WHEN an answer declares `display: {"size": "bytes"}` and `bytes` is not a recognised role THEN `size` renders as it would with no declaration at all, and nothing on screen reports a problem [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert, scenario: a-producer-ships-a-role-the-framework-does-not-know-yet]
 - [ ] AC-2: WHEN an answer's `display` is a list, a string, or null THEN the answer renders in full with no roles applied [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert, scenario: a-malformed-declaration-does-not-cost-the-answer]
-- [ ] AC-3: WHEN an answer declares `display: {"lane": {"stageOrder": ["planned", "done"]}}` THEN the `lane` field carries a stage role whose declared order is exactly `["planned", "done"]` [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert, scenario: a-stage-order-is-carried-through-as-a-role]
-- [ ] AC-4: WHEN a `stageOrder` argument is a string, is an empty array, or contains a non-string or an empty string THEN the field carries no stage role at all, and the answer renders in full [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert, scenario: a-malformed-stage-order-leaves-the-field-unroled-rather-than-half-ordered]
+- [x] AC-3: WHEN an answer declares `display: {"lane": {"stageOrder": ["planned", "done"]}}` THEN the `lane` field carries a stage role whose declared order is exactly `["planned", "done"]` [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert, scenario: a-stage-order-is-carried-through-as-a-role]
+- [x] AC-4: WHEN a `stageOrder` argument is a string, is an empty array, or contains a non-string or an empty string THEN the field carries no stage role at all, and the answer renders in full [REQ: the-role-vocabulary-is-closed-and-an-unknown-role-is-inert, scenario: a-malformed-stage-order-leaves-the-field-unroled-rather-than-half-ordered]
 
 ### a-declared-stage-order-is-static-and-is-never-computed-from-the-answer
 
-- [ ] AC-5: WHEN an order declares `["planned", "specified", "done"]` and no value in the answer is `specified` THEN `specified` is still part of the resolved order, in position, marked as holding nothing [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: an-empty-declared-stage-survives]
-- [ ] AC-6: WHEN the same declaration is resolved against one answer holding only `planned` values and another holding only `done` values THEN both resolve to the identical declared order, in the identical positions [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: two-answers-over-different-value-sets-yield-the-same-order]
-- [ ] AC-7: WHEN `display` declares a stage order for `lane` and no row in the answer carries `lane` THEN nothing is roled and the surface says nothing about the declared stages [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: a-field-the-answer-does-not-carry-stays-unroled-despite-its-declaration]
-- [ ] AC-8: WHEN the answer holds a value that appears nowhere in the declared order THEN the declared order is unchanged — the value is not appended to it and does not displace any declared stage [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: a-value-outside-the-order-never-extends-it]
+- [x] AC-5: WHEN an order declares `["planned", "specified", "done"]` and no value in the answer is `specified` THEN `specified` is still part of the resolved order, in position, marked as holding nothing [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: an-empty-declared-stage-survives]
+- [x] AC-6: WHEN the same declaration is resolved against one answer holding only `planned` values and another holding only `done` values THEN both resolve to the identical declared order, in the identical positions [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: two-answers-over-different-value-sets-yield-the-same-order]
+- [x] AC-7: WHEN `display` declares a stage order for `lane` and no row in the answer carries `lane` THEN nothing is roled and the surface says nothing about the declared stages [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: a-field-the-answer-does-not-carry-stays-unroled-despite-its-declaration]
+- [x] AC-8: WHEN the answer holds a value that appears nowhere in the declared order THEN the declared order is unchanged — the value is not appended to it and does not displace any declared stage [REQ: a-declared-stage-order-is-static-and-is-never-computed-from-the-answer, scenario: a-value-outside-the-order-never-extends-it]
 
 ### a-declared-stage-order-governs-presentation-and-a-value-outside-it-stays-visible-and-marked
 

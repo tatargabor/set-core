@@ -640,6 +640,35 @@ SIMPLE_ROLES = frozenset({"id", "path", "duration-seconds", "count"})
 #: Roles that describe ONE fact carried by TWO fields, declared as `{<form>: "<partner field>"}`.
 PAIRED_ROLES = frozenset({"progressOf", "limitOf"})
 
+#: Roles whose argument is an ARRAY of stage names rather than a partner field, declared as
+#: `{<form>: ["<stage>", ...]}`. Same one-key object shape as `PAIRED_ROLES`; only the argument
+#: differs, which is why the two are validated separately — loosening the string test that guards
+#: `progressOf` would let a malformed pair through to draw a bar from nothing.
+LIST_ROLES = frozenset({"stageOrder"})
+
+
+def _stage_list(raw: Any) -> Optional[list]:
+    """A declared stage order, or `None` when the declaration is not usable as one.
+
+    **All or nothing, deliberately.** A partial order — the valid entries kept, the bad ones
+    dropped — is the worst outcome available here: it renders as a complete process quietly missing
+    stages, which is a false value rather than a gap, and the producer gets no signal at all.
+    Returning `None` leaves the field unroled, so its values render exactly as they do today.
+
+    Duplicates are rejected for the same reason. A stage named twice would produce two groups with
+    one name, and a reader cannot tell which one holds their row.
+    """
+    if not isinstance(raw, list) or not raw:
+        return None
+    stages = []
+    for stage in raw:
+        if not isinstance(stage, str) or not stage.strip():
+            return None
+        stages.append(stage.strip())
+    if len(set(stages)) != len(stages):
+        return None
+    return stages
+
 
 def _display_roles(raw: Any) -> dict:
     """Field name → role, as the project declared it. Read, never inferred.
@@ -678,6 +707,11 @@ def _display_roles(raw: Any) -> dict:
             if form in PAIRED_ROLES and isinstance(partner, str) and partner.strip():
                 roles[name.strip()] = {form: partner.strip()}
                 continue
+            if form in LIST_ROLES:
+                stages = _stage_list(partner)
+                if stages is not None:
+                    roles[name.strip()] = {form: stages}
+                continue
         # Unknown, or a paired form without a usable partner name. Inert by design.
     return roles
 
@@ -715,6 +749,16 @@ def field_roles(data: Any, display: dict) -> Dict[str, Any]:
                     resolved[key] = role
                 else:
                     (form, partner), = role.items()
+                    if form in LIST_ROLES:
+                        # A stage order has no partner FIELD — its argument is the declared
+                        # vocabulary. Presence still comes from the data (this branch runs only
+                        # because `key` was found), but which stages exist comes from the
+                        # declaration, and nothing about the values may change it. Falling through
+                        # to the sibling lookup below would call `value.get(<list>)` and raise on an
+                        # unhashable key, costing the whole answer for a decoration.
+                        resolved[key] = {form: list(partner)}
+                        walk(child)
+                        continue
                     # Sibling of THIS object. `value`, not `data`.
                     mate = value.get(partner)
                     if isinstance(mate, bool) or not isinstance(mate, (int, float)):
