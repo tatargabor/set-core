@@ -43,7 +43,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Layers, Minimize2, Presentation, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Layers, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
@@ -51,13 +51,14 @@ import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, 
 import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
+import FleetWorkCycle from '../components/FleetWorkCycle'
 import SrOnly from '../components/SrOnly'
 import {
   bandsOn, defaultDockSize, dockSplitKey, dockedBands, docksFor, loadDocks, remainingArea, saveDocks,
   withCollapsed, withDock,
   type DockEdge, type DockedView, type DockMap,
 } from '../lib/fleetDocks'
-import { PANEL_AGENT, PANEL_FILES } from '../lib/fleetPanels'
+import { PANEL_AGENT, PANEL_FILES, PANEL_WORK_CYCLE } from '../lib/fleetPanels'
 import FleetFileView, { type FileRequest } from '../components/FleetFileView'
 import { fileToOpen } from '../lib/fleetFiles'
 import {
@@ -2125,6 +2126,30 @@ export default function Fleet() {
     }
   }, [docks, dockPanel])
 
+  /**
+   * The work-cycle panel, opened per project ROOT.
+   *
+   * Deliberately the same three steps as the file view — open if closed, un-tidy
+   * if collapsed, close from wherever it sits — rather than a second path to a
+   * panel, which is a second place for those steps to drift.
+   */
+  const [workCycleOpen, setWorkCycleOpen] = useState<Set<string>>(new Set())
+  const openWorkCycle = useCallback((root: string) => {
+    setWorkCycleOpen(prev => (prev.has(root) ? prev : new Set([...prev, root])))
+    const band = docks.find(d => d.kind === PANEL_WORK_CYCLE && d.id === root)
+    if (band?.collapsed) collapseBand(PANEL_WORK_CYCLE, root, false)
+  }, [docks, collapseBand])
+  const closeWorkCycle = useCallback((root: string) => {
+    setWorkCycleOpen(prev => {
+      const next = new Set(prev)
+      next.delete(root)
+      return next
+    })
+    if (docks.some(d => d.kind === PANEL_WORK_CYCLE && d.id === root)) {
+      dockPanel(PANEL_WORK_CYCLE, root, null)
+    }
+  }, [docks, dockPanel])
+
   const dockedEdgeOf = useCallback((label: string | null | undefined): DockEdge | null => (
     label ? docks.find(d => d.kind === PANEL_AGENT && d.id === label)?.edge ?? null : null
   ), [docks])
@@ -2500,6 +2525,9 @@ export default function Fleet() {
   */
   const filesShowing = !!active?.root
     && (filesOpen.has(active.root) || docks.some(d => d.kind === PANEL_FILES && d.id === active.root))
+  const workCycleShowing = !!active?.root
+    && (workCycleOpen.has(active.root)
+        || docks.some(d => d.kind === PANEL_WORK_CYCLE && d.id === active.root))
 
   const filesBig = filesMax !== null
     && filesMax === active?.root
@@ -2805,6 +2833,23 @@ export default function Fleet() {
           onMaximise={bandEdge
             ? () => toggleBandMax(dockSplitKey({ kind: PANEL_FILES, id: band.id }), bandEdge)
             : undefined}
+        />
+      )
+    }
+    if (band.kind === PANEL_WORK_CYCLE) {
+      const project = data?.projects.find(p => p.root === band.id)
+      if (!project) {
+        return (
+          <div className="p-2 text-xs text-fg-muted">
+            no project with this root is on the screen — the panel is kept, not closed
+          </div>
+        )
+      }
+      return (
+        <FleetWorkCycle
+          root={project.root}
+          projectName={project.name}
+          onClose={() => closeWorkCycle(band.id)}
         />
       )
     }
@@ -3209,6 +3254,29 @@ export default function Fleet() {
                   }`}
                 ><FolderTree size={13} strokeWidth={1.75} /></button>
                 {/*
+                  The work cycle, offered wherever the files are. A project that
+                  has not adopted the engine still gets the panel: it is the
+                  panel that SAYS so, with what is missing — a control that
+                  vanishes for an unadopted project would leave the reader with
+                  no way to find out why.
+                */}
+                <button
+                  data-fleet-work-cycle-open={active.root}
+                  aria-pressed={workCycleShowing}
+                  aria-label="the work cycle"
+                  title={workCycleShowing
+                    ? 'Close the work cycle'
+                    : 'Open the work cycle — what the engine can drive here, and what its runs came to'}
+                  onClick={() => (workCycleShowing
+                    ? closeWorkCycle(active.root)
+                    : openWorkCycle(active.root))}
+                  className={`p-1 rounded border shrink-0 ${
+                    workCycleShowing
+                      ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
+                      : 'border-transparent text-fg-ghost hover:text-fg-muted'
+                  }`}
+                ><Repeat size={13} strokeWidth={1.75} /></button>
+                {/*
                   OFFERED WHENEVER THE GRID DRAWS ANYTHING — it used to hide
                   itself under `agents.length > 1`, and that hid the one state a
                   reader cannot get out of. The default is TWO columns, so a
@@ -3528,6 +3596,26 @@ export default function Fleet() {
                     dockedEdge={null}
                     maximised={filesBig}
                     onMaximise={() => toggleFilesMax(active.name, active.root)}
+                  />
+                </div>
+              )}
+              {/*
+                THE WORK CYCLE AS A TILE, on the same terms as the file view: a
+                panel of the PROJECT rather than of an agent, in the grid until
+                somebody sends it to an edge. Docked, `renderDocked` draws it and
+                this renders nothing — one panel, one place, never two copies to
+                drift apart.
+              */}
+              {active.root && workCycleOpen.has(active.root)
+                && !docks.some(d => d.kind === PANEL_WORK_CYCLE && d.id === active.root) && (
+                <div
+                  className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden`}
+                  data-fleet-work-cycle-tile={active.root}
+                >
+                  <FleetWorkCycle
+                    root={active.root}
+                    projectName={active.name}
+                    onClose={() => closeWorkCycle(active.root)}
                   />
                 </div>
               )}

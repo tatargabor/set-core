@@ -143,7 +143,15 @@ describe('the registry stays domain-free — task 4.4', () => {
     // same way an agent is. It names nothing about any consumer's business — the
     // panel LISTS a project's paths, and those never come near this list. That
     // is the distinction this test exists to make a person make, and it holds.
-    expect([...KNOWN_PANEL_KINDS]).toEqual(['agent', 'files'])
+    //
+    // LOOKED AT on 2026-08-29, adding `work-cycle`: the work cycle is the
+    // FRAMEWORK's own engine — a work unit, a group, a verdict, a gate. Every one
+    // of those words is set-core's, not any consumer's, and the panel's contents
+    // are read from the engine's records rather than from a project's business.
+    // The domain arrives INSIDE the panel (a change is named by the project, a
+    // gate step is a command the project declared) and stops there, which is
+    // exactly where the abstraction is meant to stop. It holds.
+    expect([...KNOWN_PANEL_KINDS]).toEqual(['agent', 'files', 'work-cycle'])
   })
 
   it('an unknown kind is carried as data, never executed or interpolated anywhere but a message', () => {

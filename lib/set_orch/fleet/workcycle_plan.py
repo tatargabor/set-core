@@ -122,6 +122,12 @@ def _fingerprint(tree: str, change: str, changes_dir: str) -> Any:
             return None
 
     return (
+        # ⚠ The ADOPTION DECLARATION is part of the answer. Measured live: adding
+        # `set/work-cycle.yaml` to a project changed nothing on screen, because
+        # neither the task file nor the run directory had moved — so the cache
+        # kept answering *not adopted* about a project that had just adopted. A
+        # fingerprint that omits an input is a cache that outlives its truth.
+        digest(os.path.join(tree, "set", "work-cycle.yaml")),
         digest(os.path.join(tree, changes_dir, change, "tasks.md")),
         listing(os.path.join(tree, "set", "runtime", "work-cycle", change)),
     )
@@ -132,7 +138,14 @@ def read_plan(tree: str, change: str, *, changes_dir: str = "openspec/changes",
     """What the engine says about `change` in `tree`. Cached on the fingerprint."""
     key = (os.path.realpath(tree), change)
     fp = _fingerprint(tree, change, changes_dir)
-    hit = _CACHE.get(key)
+    # ⚠ The WHOLE-TREE query is not cached, and the reason is honest rather than
+    # cautious: its answer includes a listing of the project's declared changes
+    # directory, and this module does not know where that is — the project's
+    # declaration says, and parsing it here would be a second parser of the one
+    # file the engine owns. An under-inclusive fingerprint is a cache that lies;
+    # not caching costs one process per panel open, which is not a poll.
+    cacheable = bool(change)
+    hit = _CACHE.get(key) if cacheable else None
     if hit is not None and hit[0] == fp:
         return hit[1]
 
@@ -153,7 +166,8 @@ def read_plan(tree: str, change: str, *, changes_dir: str = "openspec/changes",
         view = PlanView(available=False, reason=(
             f"{ENGINE_COMMAND} is not installed on this machine, so what is runnable "
             f"cannot be reported; recorded runs are still shown"))
-        _CACHE[key] = (fp, view)
+        if cacheable:
+            _CACHE[key] = (fp, view)
         return view
     except subprocess.TimeoutExpired:
         # NOT cached: a timeout is a fact about this moment, and caching it would
@@ -161,10 +175,18 @@ def read_plan(tree: str, change: str, *, changes_dir: str = "openspec/changes",
         return PlanView(available=False,
                         reason=f"{ENGINE_COMMAND} did not answer within {_TIMEOUT_SECONDS:.0f}s")
 
-    if code not in (0, 1):
-        # The engine ran and refused. Its words, not ours.
+    # ⚠ Exit 2 is the engine ANSWERING "not adopted", not refusing to answer.
+    # Read as a refusal it produced a `reason` holding the whole JSON blob and an
+    # `adopted` of null — so the screen said *this could not be measured* about a
+    # project the engine had just told it about. Found by calling the live
+    # endpoint; every test here injected a runner and none of them noticed.
+    #
+    # 0 = answered · 1 = answered, nothing runnable · 2 = answered, not adopted
+    # 3 = answered, dependency cycle. Anything else is the engine refusing.
+    if code not in (0, 1, 2, 3):
         view = PlanView(available=False, reason=(err or out or "").strip()[:500])
-        _CACHE[key] = (fp, view)
+        if cacheable:
+            _CACHE[key] = (fp, view)
         return view
 
     try:
@@ -174,7 +196,8 @@ def read_plan(tree: str, change: str, *, changes_dir: str = "openspec/changes",
         return PlanView(available=False, reason=f"the engine's answer could not be read: {exc}")
 
     view = PlanView(available=True, payload=payload if isinstance(payload, dict) else {})
-    _CACHE[key] = (fp, view)
+    if cacheable:
+        _CACHE[key] = (fp, view)
     return view
 
 

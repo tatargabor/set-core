@@ -89,6 +89,38 @@ def _describe_exit(status: int) -> str:
     return f"ended with raw wait status {status}"
 
 
+def _drain(fd: int, *, deadline: float = 0.4, cap: int = 1200) -> str:
+    """Whatever the child already wrote to its terminal. Never blocks.
+
+    A failed start's only explanation is usually the text the child printed
+    before dying, and that text is on the pty this owner holds — nowhere else.
+    Read non-blocking with a short deadline, because the alternative is a caller
+    hanging on a child that is not going to say anything.
+
+    Terminal control sequences are stripped: they are noise in an error message,
+    and one of them can move a reader's cursor when the message is echoed.
+    """
+    import re
+    import select
+
+    chunks: list = []
+    end = time.monotonic() + deadline
+    try:
+        while time.monotonic() < end and sum(len(c) for c in chunks) < cap:
+            ready, _, _ = select.select([fd], [], [], max(0.0, end - time.monotonic()))
+            if not ready:
+                break
+            data = os.read(fd, 4096)
+            if not data:
+                break
+            chunks.append(data)
+    except OSError:
+        pass
+    text = b"".join(chunks).decode("utf-8", errors="replace")
+    text = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", text)
+    return " ".join(text.split())[-cap:]
+
+
 def _reap(pid: int) -> Optional[int]:
     """The child's wait status if it has already ended, else `None` — never blocks.
 
@@ -284,7 +316,6 @@ class AgentOwner:
         try:
             scope = scopes.adopt(unit, pid, cwd)
         except scopes.ScopeError as exc:
-            os.close(master_fd)
             # ⚠ Ask the CHILD what happened before quoting the scope. A scope that
             # never became active and a child that died are two different failures
             # that arrive here as one exception, and only the second one can say
@@ -292,16 +323,26 @@ class AgentOwner:
             # gets a true sentence about the symptom and nothing about the cause —
             # the shape measured on 2026-08-29, where an unresolvable command was
             # reported as a scope that did not become active.
+            # What the CHILD said before it died, off the pty this owner holds.
+            # Measured 2026-08-29: an engine refusing a bad seat exits at once,
+            # the scope never registers a cgroup, and the caller was told
+            # "systemd reports no cgroup" — a true sentence about the symptom,
+            # while the engine's own explanation sat unread in the terminal.
+            # ⚠ Drained BEFORE the fd is closed; afterwards there is nothing left
+            # to read and the error would be as blind as before.
+            said = _drain(master_fd)
+            os.close(master_fd)
             gone = _reap(pid)
             try:
                 os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
+            detail = f": {said}" if said else ""
             if gone is not None:
                 raise OwnerError(
-                    f"the agent was not started: the child {_describe_exit(gone)}"
+                    f"the agent was not started: the child {_describe_exit(gone)}{detail}"
                 ) from exc
-            raise OwnerError(f"{exc}; the agent was not started") from exc
+            raise OwnerError(f"{exc}; the agent was not started{detail}") from exc
         cgroup = scope.cgroup
         agent = OwnedAgent(
             label=label, unit=unit, pid=scope.pid, cwd=cwd,

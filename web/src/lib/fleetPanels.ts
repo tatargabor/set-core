@@ -53,7 +53,17 @@ export const PANEL_FILES = 'files'
  * are built; nothing here may name a domain concept, because the framework layer
  * knows that a view exists and never what it lists.
  */
-export const KNOWN_PANEL_KINDS: readonly string[] = [PANEL_AGENT, PANEL_FILES]
+/**
+ * The work-cycle panel — what the engine can drive in a project, and what its
+ * runs came to.
+ *
+ * Keyed on the project ROOT, like the file view and for the same reason: the
+ * endpoints behind it are keyed on a tree, and one panel per project is what
+ * makes "open the work cycle from anywhere in this project" land predictably.
+ */
+export const PANEL_WORK_CYCLE = 'work-cycle'
+
+export const KNOWN_PANEL_KINDS: readonly string[] = [PANEL_AGENT, PANEL_FILES, PANEL_WORK_CYCLE]
 
 /** One panel: what kind it is, and which instance of that kind. */
 export interface PanelRef {

@@ -1,0 +1,18 @@
+# This repository, driven by its own work-cycle engine.
+#
+# A DECLARATION, not a switch: nothing runs because this file exists. It says
+# where changes live and which gate steps a unit must pass, and the engine
+# refuses to guess either — a guess that happens to be right here is
+# indistinguishable, from outside, from a project that actually said so.
+changes_dir: openspec/changes
+
+# Left undeclared on purpose, which is NOT the same as declaring none: with no
+# `gates:` key the gate is resolved from this project's profile, and the engine
+# still names no command of its own. Declaring `gates: []` would mean "run no
+# gate", and a section commit behind no gate is a weaker assurance than it looks.
+
+# Where a unit should read beyond the change's own artifacts. These are standing
+# references, not this change's work — the prompt keeps the two apart.
+reading_paths:
+  - CLAUDE.md
+  - .claude/rules

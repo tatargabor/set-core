@@ -1584,7 +1584,10 @@ def fleet_work_cycle(cwd: str) -> Dict[str, Any]:
         # `adopted` is None when the engine could not be asked at all — never
         # False, which would say something about the project that nobody measured.
         "adopted": tree.adopted,
-        "not_adopted_reason": "" if tree.adopted else tree.reason,
+        # The engine's own `missing` when it answered, its refusal otherwise —
+        # never the raw payload, which is how this first rendered.
+        "not_adopted_reason": ("" if tree.adopted
+                               else str(tree.payload.get("missing") or tree.reason)),
         "engine": {"available": tree.available, "reason": tree.reason},
         "changes_dir": tree.payload.get("changes_dir"),
         "changes_listed": listed is not None,

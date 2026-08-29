@@ -853,3 +853,53 @@ def test_build_child_env_with_no_caller_env_strips_and_adds_nothing_else(monkeyp
     env = owner_mod.build_child_env()
     assert "CLAUDE_ANYTHING" not in env
     assert env["SET_KEEP_ME"] == "y"
+
+
+def test_a_failed_start_carries_what_the_child_actually_said(monkeypatch, tmp_path):
+    """The engine's own words, off the pty this owner holds — nowhere else.
+
+    Measured 2026-08-29 against the live service: an engine refusing a bad seat
+    exits at once, the scope never registers a cgroup, and the caller was told
+    "systemd reports no cgroup; cannot verify survival" while the engine's
+    explanation sat unread in the terminal. Same class as the refusal B-105 fixed,
+    one layer along: a true sentence about the symptom, pointing away from the
+    cause.
+    """
+    import os
+
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b"\x1b[31mseat 'set-core' does not identify a single agent "
+                       b"session\x1b[0m\r\n")
+    os.close(write_fd)
+
+    monkeypatch.setattr(scopes_backend, "get", lambda u: None)
+    monkeypatch.setattr(scopes_backend, "is_gone", lambda u: True)
+    monkeypatch.setattr(owner_mod, "resolve_in_env", lambda cmd, env: "/found")
+    monkeypatch.setattr(owner_mod.pty, "fork", lambda: (4242, read_fd))
+    monkeypatch.setattr(owner_mod.os, "kill", lambda *a: None)
+    monkeypatch.setattr(owner_mod, "_reap", lambda pid: 4 << 8)
+    monkeypatch.setattr(AgentOwner, "_set_window", lambda *a, **k: None)
+    monkeypatch.setattr(scopes_mod, "adopt", lambda *a, **k: (_ for _ in ()).throw(
+        ScopeError("set-agent-unit-x.scope: systemd reports no cgroup")))
+
+    with pytest.raises(OwnerError) as exc:
+        AgentOwner().start(["thing"], label="unit-said", cwd="/tmp")
+
+    message = str(exc.value)
+    assert "does not identify a single agent session" in message
+    assert "exited with code 4" in message
+    # ⚠ Control sequences stripped: they are noise in an error, and one of them
+    # can move a reader's cursor when the message is echoed back.
+    assert "\x1b[" not in message
+
+
+def test_draining_happens_before_the_terminal_is_closed(monkeypatch):
+    """Order, not intent: after the close there is nothing left to read, and the
+    error would be exactly as blind as it was before this existed.
+    """
+    import inspect
+
+    src = inspect.getsource(AgentOwner.start)
+    drain_at = src.index("_drain(master_fd)")
+    close_at = src.index("os.close(master_fd)")
+    assert drain_at < close_at, "the pty is closed before it is read"

@@ -68,6 +68,40 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-107 — an engine-side refusal never reaches the caller; the scope's wording does
+
+- **state:** open (partially addressed — see below)
+- **reported:** 2026-08-29 by this session, while doing the browser check for
+  `work-cycle-run-visibility`. Not a task in that change: the change's own start-integrity
+  requirement covers refusals the framework can know BEFORE the exec, and this one happens
+  inside the child.
+- **measured:** live against the running dashboard, `POST /api/fleet/units` with a seat that
+  names a project (which the engine refuses by design):
+
+  ```
+  {"detail":"set-agent-unit-…-set-core.scope: systemd reports no cgroup;
+             cannot verify survival; the agent was not started"}   HTTP 409
+  ```
+
+  The engine's actual sentence — *seat 'set-core' does not identify a single agent session;
+  a seat that names only a project matches every live session in it* — went to the pty and
+  was never read. Same class as B-105 one layer along: a true statement about the symptom,
+  pointing away from the cause. A second run of the same request produced
+  `did not become active` instead, so the failure surfaces through more than one path.
+- **partially addressed (`<this change>`):** the owner now drains the pty before closing it
+  and appends what the child said (`_drain`, `owner.py`), with the control sequences stripped.
+  ⚠ **Unit-tested and NOT verified live:** re-running the measurement above after the fix
+  produced no captured text — the child had not written by the time `adopt` gave up, or the
+  data was gone. So the mechanism exists and the RESULT is unproven, which is exactly the
+  distinction this register asks for.
+- **fixed when:** the measurement above returns the engine's own sentence. A test that only
+  proves `_drain` can read a pipe does not close this — it proves the mechanism, and the
+  mechanism is not what was missing.
+- ⚠ **numbered B-106 first, and that number was already taken** by a parallel session four
+  minutes earlier. Re-measured with the register's own command before renumbering — which is
+  the rule this file states in its rule 3, and which measuring once at the start of a session
+  is not enough to satisfy when somebody else is writing to the same file.
+
 ### B-106 — `--allowedTools` restricts nothing, so a permission mode named after it is a guard that only reports being one
 
 - **state:** open

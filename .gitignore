@@ -62,7 +62,18 @@ local-docs/
 test-results/
 
 # Runtime worktree state
-/set/
+# ⚠ `/set/*`, not `/set/`. A trailing-slash exclusion excludes the DIRECTORY, and git
+# never descends into an excluded directory — so the negation below would have had no
+# effect at all, silently. Measured here: `git add` kept refusing the file with the
+# negation already in place.
+/set/*
+# …except the work-cycle ADOPTION DECLARATION. `/set/` is ignored because it holds
+# runtime state, and the engine's declaration happens to live in the same place —
+# so an adopted project is adopted only on the machine that adopted it, and a
+# clone silently is not. Measured here on 2026-08-29: `git add set/work-cycle.yaml`
+# was refused, which is the polite version of the failure; the quiet version is a
+# project that reads as unadopted for everybody else.
+!/set/work-cycle.yaml
 
 # Benchmark temp data
 benchmark/synthetic/.set-core/
