@@ -153,6 +153,43 @@ class CommandNotResolvable(OwnerError):
     """
 
 
+class EnvironmentNotDelivered(OwnerError):
+    """A variable the resolver returned is absent from — or altered in — the child env.
+
+    Its own class, for the same reason `CommandNotResolvable` has one: this is
+    knowable BEFORE anything is created, and it names a framework defect rather
+    than a caller mistake. The caller cannot fix it by supplying different input.
+
+    ⚠ Why a guard exists at all when `build_child_env` applies the caller's
+    variables last and therefore cannot lose one today. Because "cannot today" is
+    a property of five lines that two tracks edit at once, and a lost variable
+    does NOT fail loudly: measured 2026-08-29, dropping
+    `CLAUDE_CODE_MAX_CONTEXT_TOKENS` produces a working agent that compacts in a
+    loop and reads from outside as a slow model. The failure direction is silent
+    success, which is the one direction a guard has to cover.
+    """
+
+
+def assert_env_survived(resolved: Dict[str, str], child_env: Dict[str, str]) -> None:
+    """Refuse unless every resolved variable is in `child_env` with its value.
+
+    Checked against the environment *about to be used*, not against the mapping
+    that was passed in — comparing the input to itself would measure a proxy and
+    pass whatever the builder did with it.
+    """
+    lost = [
+        key for key, value in (resolved or {}).items()
+        if child_env.get(key) != value
+    ]
+    if lost:
+        # The NAMES, not the values: a resolved environment carries credentials,
+        # and this message reaches a log and an HTTP answer.
+        raise EnvironmentNotDelivered(
+            "the resolved environment did not survive into the child: "
+            + ", ".join(sorted(lost))
+        )
+
+
 def build_child_env(env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """The environment a started child gets. One owner, one place, one order.
 
@@ -276,6 +313,9 @@ class AgentOwner:
             )
 
         child_env = build_child_env(env)
+        # Before anything is created. A refusal here costs nothing; the same
+        # defect discovered later is an agent that runs on the wrong provider.
+        assert_env_survived(env or {}, child_env)
 
         # Resolve HERE — after the child env is final (the `CLAUDE*` strip above and
         # the caller's `env=` are both already applied) and before anything is
