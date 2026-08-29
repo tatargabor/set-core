@@ -191,10 +191,28 @@ consumer's name, path, or content.
   drives the client against a health answer with no provider capability. Restarting the
   service is the operational half and is not the fix.
 
-- **cost of the operational half, so it is a decision and not a reflex:** the owner holds
-  **12** agents' terminals (`/api/fleet/owner` → `held`). Restarting it does not kill the
-  agents — they run in sibling scopes — but every one of them loses its browser terminal
-  and becomes an orphan until recovered.
+- **cost of the operational half, so it is a decision and not a reflex — CORRECTED
+  2026-08-29, and the first version was wrong in the direction that makes the act look
+  cheap.** This entry originally said restarting the owner "does not kill the agents — they
+  run in sibling scopes — but every one of them loses its browser terminal and becomes an
+  orphan". The sibling-scope half is true and the conclusion does not follow. The unit file
+  says so in its own header, measured 2026-08-18:
+
+  > A restart of THIS unit does still kill every agent it is holding, and that is not a
+  > configuration mistake — it is the mechanism. When a pty master closes, the slave returns
+  > EOF, and any process reading its own tty exits; the scope then goes inactive because its
+  > last process left. The transient scope protects against a cgroup kill, not against
+  > losing a terminal.
+
+  So the real cost is: **every held agent EXITS.** Measured at the time of writing, the owner
+  held **11**, across five projects, and one of them was the session doing this work. The
+  conversations are resumable from their transcripts (`recover`), but whatever is in flight
+  in each of them is not.
+
+  The lesson is the one this repository keeps paying for: a summary is not a source. The
+  claim was written from a plausible reading of "sibling scope" rather than from the file
+  that documents the mechanism, and it was quoted back to the user as the basis for a
+  decision.
 
 ### B-109 — three tracked files block every push: a consumer project's name in a spec, and two absolute home paths
 
