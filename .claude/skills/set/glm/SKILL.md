@@ -91,6 +91,54 @@ nélkül is (2. azonos hívás: `input=16`, `cache_read=120 000`) · a `--json-s
    `GLM_*` sorokat, és a futás „hiányzik a GLM_TOKEN"-nel áll meg. Ezért van a gépszintű
    `~/.config/set-core/glm.env` — az egyik repó takarítása nem viszi el a többiét.
 
+## Subagent GLM-en — a provider a SZÜLŐTŐL jön, nem az agent-definícióból
+
+Mérve 2026-08-29, három kísérlettel. **A subagent a szülő session ENDPOINTJÁT örökli** (a
+`spawn` a szülő env-jét viszi tovább); az agent-definíció `model:` mezője csak azon az
+endpointon belül választ.
+
+| szülő | az agent `model:` mezője | mi történik |
+|---|---|---|
+| Anthropic | `glm-5.3-flash` | ⛔ **`model_not_found` (HTTP 404)** — a subagent elindul, majd elhasal |
+| GLM (z.ai env) | `glm-5.3-flash` | ✅ működik, `modelUsage` = csak `glm-5.3-flash` |
+| GLM (z.ai env) | `sonnet` | ⚠ **lefut**, de a hívás a **z.ai-ra** megy, és `claude-sonnet-5`-ként számolódik el |
+
+**A recept tehát: a szülőt kell GLM-en indítani.** Nincs mód agentenként providert váltani —
+`set-glm` a szülő session, és a subagentjei magukkal viszik.
+
+⚠ **A harmadik sor a csapda, és ezt ki kell mondani.** GLM-szülő alatt egy `model: sonnet`
+agent nem hasal el — a z.ai elfogadja a nevet —, a `modelUsage` pedig **két sort** mutat:
+`glm-5.3-flash` (`costBasis: unknown`) és `claude-sonnet-5` (`costBasis: list`, `ctx=200000`).
+Vagyis a képernyőn Anthropic modellnév áll, a számla viszont a z.ai-é, és az env-ben nincs is
+Anthropic auth. Ez a *„más számla, azonos kinézet"* hibaosztály — ugyanaz, amit a ledger
+provider-mezője zár le a másik oldalról.
+
+**Ezért:** ha egy agent-definíciót GLM-szülő alatt akarsz futtatni, vagy **hagyd el a `model:`
+mezőt** (akkor a szülő modelljét örökli, és nincs mit félreérteni), vagy írj bele **GLM-modellt**.
+A `model: sonnet` GLM-szülő alatt félrevezető: azt ígéri, amit nem tart be.
+
+### Melyik GLM-modell review-ra — mérve, öt eseten
+
+Öt kód-review eset (sorszám-race · ÁFA-kerekítés · dátum-UTC · cron-idempotencia · egy
+**szándékosan tiszta** kód a hamis pozitív méréséhez):
+
+| modell | találat | átlag idő | átlag output |
+|---|---|---|---|
+| `glm-5.3-flash` | **5/5** | 12,7 mp | 222 token |
+| `sonnet` (összevetésül) | **5/5** | 5,4 mp | 74 token |
+| `glm-4.6` | 2/2 (rövid próbán) | 15,7 mp | 604 token |
+| `glm-4.5-air` | ⛔ **0/2** | 11,0 mp | 878 token |
+
+A **`glm-4.5-air` kizárva**: kétszer, két különböző hibaosztályon fogott mellé — egyszer
+„NINCS HIBA"-t mondott valódi hibára —, és 8× annyi tokent égetett rá, mint a flash. Egy
+review-agentnél ez a legrosszabb kimenet: a hallgatás megnyugtatóan hangzik.
+
+A **`glm-5.3-flash` alkalmas** — a tiszta kódra is helyesen mondott „NINCS HIBA"-t (nem gyárt
+hamis pozitívot). Cserébe 2,4× lassabb és 3× bőbeszédűbb a sonnetnél.
+
+⚠ A minta **könnyű volt**: öt önhordó, 5–8 soros, tankönyvi hiba. Egy valódi review nehezebb —
+nagy fájl, projekt-kontextus, egymásnak feszülő szabályok —, és arról ez a mérés semmit nem mond.
+
 ## Amit a költség-mező HAZUDIK
 
 A `--output-format json` `total_cost_usd` mezője **Anthropic-árazással** számol, tehát
