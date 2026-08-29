@@ -69,10 +69,10 @@ consumer's name, path, or content.
 ## Open
 
 ### B-116 — an ALIAS variable the chosen provider does not declare survives into the child's environment
-- **state:** open
+- **state:** CLOSED (2026-08-29, `e886a39f`) — the entry stays; measurement and fix below.
 - **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
 - **measured:** `lib/set_orch/providers/resolver.py:81-85` — `FOREIGN_KEYS` (what `unset` carries) names only `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL`, never the `ANTHROPIC_DEFAULT_*_MODEL` keys. `resolve()` emits only the aliases the chosen provider declares (`resolver.py:322-323`), so a shell export like `ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-6` survives both start paths: `bin/set-glm:133-136` builds the child env from `os.environ` minus `plan.unset` only, and `lib/set_orch/fleet/ownerd.py:666` merges a caller-supplied mapping under `plan.env` — a caller key the plan does not overwrite passes through. The `opus`-declaring subagent then sends an Anthropic id at the GLM endpoint — B-115's exact symptom, through a path B-115's fix does not close. The outranking test (`tests/unit/test_fleet_owner_provider.py:327`) covers `ANTHROPIC_BASE_URL` but no alias key.
-- **fixed when:** `plan.unset` includes every `MODEL_ALIASES` value the plan did NOT emit, and the outranking test carries an alias key that must NOT survive.
+- **CLOSED by** (`e886a39f`): `plan.unset` now carries every alias variable the plan did not emit and the provider did not hand-write in its own `env`. Anchored by two unit tests (non-declared keys are unset; an emitted key is delivered AND not unset), and by `tests/live/probe_subagent_model.py` — the anthropic live probe shows all four ambient GLM alias keys in `unset` and only Claude-family models served.
 
 ### B-117 — `launch_args()` drops the whole declared-args block when ANY ONE flag collides
 - **state:** open
@@ -85,6 +85,7 @@ consumer's name, path, or content.
 - **reported:** 2026-08-29 by code-reviewer subagent; verified same day by reading the code
 - **measured:** `lib/set_orch/providers/resolver.py:164-172` calls `resolve_model_id` unconditionally; the map (`lib/set_orch/subprocess_utils.py:154-169`) maps `sonnet` → `claude-sonnet-4-6` etc. A non-Anthropic provider whose catalogue legitimately contains a key of that map gets the translated ANTHROPIC id sent to its own endpoint — a wrong value delivered silently, the outcome the method's own docstring calls worse than none. The anchor test meant to catch catalogue/map drift (`tests/unit/test_providers_resolver.py:451-454`) guards with `if declared is not None:` after `config.load()` of the LIVE machine file — no `anthropic` provider on the machine and the assertion is a no-op; a 0600 or absent config and the test errors. It is not hermetic and can pass without measuring anything.
 - **fixed when:** the translation is gated on the provider that needs it (or the coupling is a stated contract in `config.py`'s catalogue docs), and the anchor asserts against a fixture catalogue instead of the machine's live config.
+- **measured again 2026-08-29, same day:** the anchor went RED on this machine — `config.load()` returned the live config whose anthropic catalogue now contains `fable`, which `_MODEL_MAP` does not know (`tests/unit/test_providers_resolver.py::test_the_model_is_translated_to_a_cli_id_on_the_way_out`). Confirmed pre-existing by pathspec stash-and-rerun on HEAD. The hermeticity half of this entry is thereby demonstrated live; the drift half needs a decision first — pass-through of `fable` is arguably CORRECT (the CLI resolves the alias natively), so the anchor's premise "every catalogue short name must be in the map" may itself be the wrong assertion, not the map.
 
 ### B-119 — once aliases exist, the record's provenance is a false value and names the wrong model for a subagent
 - **state:** open
