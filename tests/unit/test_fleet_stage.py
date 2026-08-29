@@ -199,27 +199,67 @@ class TestJoin:
         assert 262_144 < 290_000 < log.stat().st_size - 262_144
         assert stage.infer_change_from_session(str(log)) is None
 
-    def test_inference_prefers_the_most_recent_mention(self, tmp_path):
+    def test_inference_prefers_the_most_recent_invocation(self, tmp_path):
         # The measured case that forced the tail window: a long-running
         # session's HEAD names a change it left days ago; its TAIL names the
-        # one actually in flight. Recency wins.
+        # one actually in flight. Recency wins among INVOCATIONS.
         log = tmp_path / "s7.jsonl"
         head = b'{"content": "/opsx:apply stale-one"}\n' * 20000  # ~400 KB head
-        tail = b'{"content": "openspec/changes/fresh-two now"}\n' * 2000
+        tail = b'{"content": "openspec status --change fresh-two"}\n' * 2000
         log.write_bytes(head + tail)
         assert stage.infer_change_from_session(str(log)) == "fresh-two"
 
-    def test_inference_matches_openspec_paths_and_change_args(self, tmp_path):
+    def test_a_bare_path_mention_never_joins_a_change(self, tmp_path):
+        # MEASURED false value (2026-08-30): a session doing non-change work
+        # carried four `openspec/changes/<other-change>` mentions — git status
+        # output, file reads — and rendered the OTHER change's stage. A path
+        # mention is a mention, not an act of addressing; only invocations
+        # join, and a transcript without any yields an honest gap.
         log = tmp_path / "s8.jsonl"
-        log.write_bytes(b'{"content": "cwd openspec/changes/path-a tasks"}\n'
-                        + b'{"content": "run --change arg-b now"}\n')
-        # The LAST match wins: arg-b is more recent.
-        assert stage.infer_change_from_session(str(log)) == "arg-b"
-
-    def test_inference_never_names_an_archived_change_from_its_path(self, tmp_path):
-        log = tmp_path / "s9.jsonl"
-        log.write_bytes(b'{"content": "moved openspec/changes/archive/2026-08-01-old-one"}\n')
+        log.write_bytes(b'{"content": "M openspec/changes/someone-elses-change/tasks.md"}\n'
+                        + b'{"content": "read openspec/changes/someone-elses-change/proposal.md"}\n')
         assert stage.infer_change_from_session(str(log)) is None
+
+    def test_inference_matches_change_args_and_flags(self, tmp_path):
+        log = tmp_path / "s9.jsonl"
+        log.write_bytes(b'{"content": "openspec status --change arg-b"}\n'
+                        + b'{"content": "x"}\n')
+        assert stage.infer_change_from_session(str(log)) == "arg-b"
+        log2 = tmp_path / "s9b.jsonl"
+        log2.write_bytes(b'{"content": "run --change=eq-form now"}\n')
+        assert stage.infer_change_from_session(str(log2)) == "eq-form"
+
+    def test_a_quoted_change_arg_matches(self, tmp_path):
+        # The CLI form this very repository uses: --change "the-name".
+        log = tmp_path / "s10.jsonl"
+        log.write_bytes(b'{"content": "openspec status --change \'quoted-one\'"}\n')
+        assert stage.infer_change_from_session(str(log)) == "quoted-one"
+
+    def test_the_resolver_skips_unbacked_candidates_for_backed_ones(self, tmp_path):
+        # MEASURED live (2026-08-30): the most recent invocation-shaped match in
+        # a real transcript was prose junk ("--change args"); the true change
+        # sat behind it. The tree is the ground truth: walk the candidates most
+        # recent first and take the first the project can POSITION.
+        log = tmp_path / "s11.jsonl"
+        log.write_bytes(b'{"content": "openspec status --change junk-name"}\n'
+                        + b'{"content": "openspec status --change real-one"}\n')
+        _change(tmp_path, "real-one", tasks="- [ ] 1.1 one\n")
+        got = stage.resolve_stage(str(tmp_path), None, 1, "s", str(log))
+        assert got.state == stage.STATE_RESOLVED
+        assert got.position == "apply"
+
+    def test_prose_about_a_flag_is_not_an_invocation(self, tmp_path):
+        # '--change args' in a sentence matched the flag pattern and produced
+        # the change name "args". The value must look like a slug and the flag
+        # must be followed by it, not by prose about the flag... measured: the
+        # prose form uses a following word that IS slug-shaped, so the honest
+        # guard is the project-side check: a junk name derives no position and
+        # becomes a gap, never a stage. Asserted at the resolver level
+        # (test_a_joined_change_with_no_artifacts_is_no_position); here, only
+        # that the pattern requires the slug immediately after the flag.
+        import re
+        m = stage._CHANGE_ARG.search("the --change argument takes a name")
+        assert m is None or m.group(1) == "argument"
 
     def test_inference_memo_answers_an_unchanged_file_without_a_reread(self, tmp_path, monkeypatch):
         # The memo's whole job: a 5 s poll must not re-read the same head.

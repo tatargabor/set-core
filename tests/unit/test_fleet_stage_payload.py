@@ -159,5 +159,5 @@ def test_the_inference_memo_holds_the_slug_not_the_record(tmp_path):
     fleet_stage.infer_change_from_session(str(log))
     assert len(fleet_stage._INFERENCE_MEMO) == 1
     (stamp, value), = fleet_stage._INFERENCE_MEMO.values()
-    assert value == "memo-x"
+    assert value == ["memo-x"]  # a candidate list now, most recent first
     assert isinstance(stamp, float)

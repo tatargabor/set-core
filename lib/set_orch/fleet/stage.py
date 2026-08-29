@@ -60,6 +60,7 @@ __all__ = [
     "Stage",
     "derive_position",
     "has_active_changes",
+    "infer_change_candidates",
     "infer_change_from_session",
     "declared_axis_from_results",
     "resolve_stage",
@@ -194,18 +195,21 @@ def has_active_changes(project_root: str) -> bool:
 # Session → change inference
 # --------------------------------------------------------------------------- #
 
-#: Patterns that embed a change name in a session's own record. Two families:
-#: explicit invocations (`/opsx:apply <name>`, `--change <name>`, a
-#: `"change_name"` key) and PATH mentions (`openspec/changes/<name>`), which is
-#: what an apply loop's tool calls are full of long after its opening prompt.
-#: Path mentions must NOT match under `archive/` — an archived change is done,
-#: and naming it is remembering, not working on it.
+#: Patterns that name a change as an ACT OF ADDRESSING it — an invocation, not
+#: a mention. Measured 2026-08-30 on a live false value: a session doing
+#: bug-register fixes carried four bare `openspec/changes/<other-change>` path
+#: mentions (git status output, file reads) and rendered the OTHER change's
+#: stage — a false value, which is worse than a gap. So path mentions are NOT
+#: evidence of working a change, and only invocation shapes join:
+#: `/opsx:<verb> <name>`, `--change <name>` as a command argument, a
+#: `"change_name"` key, a `change/<name>` branch reference. A session whose
+#: transcript holds none of these has no resolvable change — and the caller
+#: reports a gap rather than dressing up a mention.
 _OPSX = re.compile(r"/opsx:\w+\s+([a-z0-9][a-z0-9-]+)")
 _CHANGE_KEY = re.compile(r'"change_name":\s*"([^"]+)"')
-_CHANGE_BRANCH = re.compile(r"\bchange/([a-z0-9][a-z0-9-]+)")
-_CHANGES_PATH = re.compile(r"openspec/changes/(?!archive)([a-z0-9][a-z0-9-]+)")
-_CHANGE_ARG = re.compile(r"--change[= ]([a-z0-9][a-z0-9-]+)")
-_PATTERNS = (_OPSX, _CHANGE_KEY, _CHANGE_BRANCH, _CHANGES_PATH, _CHANGE_ARG)
+_CHANGE_BRANCH = re.compile(r"(?<![\w-])change/([a-z0-9][a-z0-9-]+)")
+_CHANGE_ARG = re.compile(r'--change[=\s]+\\?["\']?([a-z0-9][a-z0-9-]+)')
+_PATTERNS = (_OPSX, _CHANGE_KEY, _CHANGE_BRANCH, _CHANGE_ARG)
 
 #: What is read of a session record: its head AND its tail. The invocation that
 #: names the change is where a session STARTS — but a session that has been
@@ -227,19 +231,20 @@ _INFERENCE_MEMO_TTL = 10.0
 _INFERENCE_MEMO_MAX = 256
 
 
-def infer_change_from_session(session_log: Optional[str]) -> Optional[str]:
-    """The change name a session's own record names MOST RECENTLY, or `None`.
+def infer_change_candidates(session_log: Optional[str]) -> List[str]:
+    """Every change name the session's own record ADDRESSES, most recent first.
 
-    Two bounded windows — head and tail — and across both, the LAST match
-    wins: recency is the whole point. A miss is a MISS — the caller reports a
-    gap rather than guessing from the project's changes.
+    Two bounded windows — head and tail — and across both, invocation matches
+    are collected with their absolute offsets; the returned list is ordered by
+    descending offset (most recent first). A miss is a MISS — the caller
+    reports a gap rather than guessing from the project's changes.
     """
     if not session_log:
-        return None
+        return []
     try:
         st = Path(session_log).stat()
     except OSError:
-        return None
+        return []
     key = (session_log, st.st_mtime_ns, st.st_size)
     now = time.monotonic()
     hit = _INFERENCE_MEMO.get(key)
@@ -257,23 +262,32 @@ def infer_change_from_session(session_log: Optional[str]) -> Optional[str]:
                 windows.append((size - len(tail), tail))
     except OSError as exc:
         logger.debug("fleet stage: session record unreadable (%s)", type(exc).__name__)
-        return None
+        return []
 
     # Every match carries its absolute offset; the largest offset is the most
-    # recent naming. A name mentioned recently beats a name mentioned first.
-    best: tuple = None
+    # recent naming. A name addressed recently beats a name addressed first —
+    # but the CALLER, not this function, decides which candidate the project
+    # actually backs (the tree is the ground truth; see resolve_stage).
+    best: Dict[str, int] = {}
     for base, window in windows:
         text = window.decode("utf-8", errors="replace")
         for pattern in _PATTERNS:
             for m in pattern.finditer(text):
-                cand = (base + m.start(), m.group(1))
-                if best is None or cand[0] > best[0]:
-                    best = cand
-    found = best[1] if best else None
+                off = base + m.start()
+                name = m.group(1)
+                if best.get(name, -1) < off:
+                    best[name] = off
+    found = [name for name, _ in sorted(best.items(), key=lambda kv: -kv[1])]
     if len(_INFERENCE_MEMO) >= _INFERENCE_MEMO_MAX:
         _INFERENCE_MEMO.clear()
     _INFERENCE_MEMO[key] = (now, found)
     return found
+
+
+def infer_change_from_session(session_log: Optional[str]) -> Optional[str]:
+    """The change name the session addressed MOST RECENTLY, or `None`."""
+    candidates = infer_change_candidates(session_log)
+    return candidates[0] if candidates else None
 
 
 # --------------------------------------------------------------------------- #
@@ -363,6 +377,32 @@ def _joined_change(purposes: Optional[List[Purpose]], pid: int,
     return None
 
 
+def _inferred_change(project_root: Optional[str], index: Optional[Dict[str, str]],
+                     session_log: Optional[str]) -> Optional[str]:
+    """The most recent inferred candidate the project actually BACKS, or `None`.
+
+    The tree is the ground truth: a transcript's most recent mention may be
+    prose about a flag ("--change args"), a fixture name, another change's
+    file path — names the project cannot back. Measured live (2026-08-30): a
+    real session's most recent invocation-shaped match was the prose junk
+    `args`, which would have degraded a true `verify` to a gap. So the
+    candidates are walked most-recent-first and the first one the project can
+    position (or, for a declared flow, the producer's index can place) wins.
+    Only when NO candidate is backed does the most recent candidate travel —
+    it derives to `no-position`, an honest gap rather than a skipped name.
+    """
+    candidates = infer_change_candidates(session_log)
+    if not candidates:
+        return None
+    for cand in candidates:
+        if index is not None:
+            if cand in index:
+                return cand
+        elif derive_position(project_root or "", cand) is not None:
+            return cand
+    return candidates[0]
+
+
 def _gap(reason: str, flow: Optional[Tuple[str, ...]], source: Optional[str]) -> Stage:
     return Stage(state=STATE_GAP, flow=flow, position=None, reason=reason,
                  source=source)
@@ -387,7 +427,8 @@ def resolve_stage(
         flow = tuple(flow_list)
         change = _joined_change(purposes, pid, session_id)
         if change is None:
-            change = infer_change_from_session(session_log)
+            change = _inferred_change(index=index, project_root=None,
+                                      session_log=session_log)
         if change is None:
             # No join. An empty producer index says the project itself has
             # nothing in flight; a populated one says this agent specifically
@@ -410,10 +451,11 @@ def resolve_stage(
 
     change = _joined_change(purposes, pid, session_id)
     if change is None:
-        change = infer_change_from_session(session_log)
+        change = _inferred_change(project_root=project_root, index=None,
+                                  session_log=session_log)
     if change is None:
         reason = (REASON_NOTHING_STARTED
-                  if not project_root or not has_active_changes(project_root)
+                  if not has_active_changes(project_root)
                   else REASON_JOIN_FAILED)
         return _gap(reason, flow, "derived")
 
