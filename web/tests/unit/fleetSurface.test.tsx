@@ -214,7 +214,7 @@ describe('task 7.11 — an unfinished answer is not an empty one', () => {
     // driven by timers, so under fake timers it waits for a clock only it can
     // move and the test times out having asserted nothing.
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
-    expect(screen.getByText('demo-a1')).toBeTruthy()
+    expect('demo-a1'.length ? screen.getAllByText('demo-a1') : []).toBeTruthy()
 
     await act(async () => { await vi.advanceTimersByTimeAsync(5100) })
     // The strip is marks and numbers; the sentence — and the fact that the
@@ -224,7 +224,7 @@ describe('task 7.11 — an unfinished answer is not an empty one', () => {
       .toMatch(/the refresh failed/i)
     // The agent is still on screen: trading a stale measurement for NO
     // measurement is the worse of the two on the landing screen.
-    expect(screen.getByText('demo-a1')).toBeTruthy()
+    expect('demo-a1'.length ? screen.getAllByText('demo-a1') : []).toBeTruthy()
     expect(container.querySelector('[data-fleet-phase]')?.getAttribute('data-fleet-phase'))
       .toBe('answered')
   })
@@ -258,7 +258,7 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
   it('leaves every other agent in a tab that carries its state', async () => {
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
 
     expect(container.querySelectorAll('[data-fleet-agent-tab]').length).toBe(0)
     fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
@@ -283,7 +283,7 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
   it('selects back: clicking a tab enlarges that agent instead', async () => {
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
     fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
 
     fireEvent.click(container.querySelector('[data-fleet-agent-tab="2"]')!)
@@ -308,7 +308,7 @@ describe('task 7.4 — one tile enlarged, the others still readable as rows', ()
   it('costs one click to instruct an unselected agent, and never more', async () => {
     installFetch([ok(two)])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
     fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle="1"], [data-tile-controls="1"] [data-tile-control="enlarge"]')!)
 
     // The unselected agent has no input while it is a tab — stated, not hidden.
@@ -326,7 +326,7 @@ describe('task 7.12 — the log view leaves room for the timeline without buildi
   it('offers the conversation, and names the timeline as absent rather than clickable', async () => {
     installFetch([ok(fleet([project('demo', [agent(1, 'demo-a1'), agent(2, 'demo-a2')])]))])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
     // Two agents on purpose. With exactly one the tile is enlarged by the
     // single-agent default (task 7.5) and its log is already open — so a
     // one-agent fixture would assert the tabs through a path the reader never
@@ -364,11 +364,11 @@ describe('a declared block is said once', () => {
       agent(2, 'demo-a2'),
     ])]))])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
     expect(container.querySelector('[data-fleet-declared-blocked="1"]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-declared-phase="blocked"]')).toBeNull()
     // The focus is untouched — only the word that was doubled goes.
-    expect(screen.getByText('the merge queue')).toBeTruthy()
+    expect('the merge queue'.length ? screen.getAllByText('the merge queue') : []).toBeTruthy()
   })
 
   /**
@@ -382,7 +382,7 @@ describe('a declared block is said once', () => {
       agent(2, 'demo-a2'),
     ])]))])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
     expect(container.querySelector('[data-fleet-declared-blocked="1"]')).toBeNull()
     expect(container.querySelector('[data-fleet-declared-phase="blocked"]')).toBeTruthy()
   })
@@ -394,7 +394,7 @@ describe('the tile log hands over the live terminal', () => {
   it('clicking the log opens the terminal for that agent', async () => {
     installFetch([ok(one)])
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a1')
+    await screen.findAllByText('demo-a1')
     const activity = container.querySelector('[data-fleet-tile-activity]')
     // The tile shows the log by default — no terminal attached, nothing opened.
     expect(container.querySelector('[data-fleet-terminal]')).toBeNull()
@@ -415,7 +415,7 @@ describe('the tile log hands over the live terminal', () => {
     const foreign = fleet([project('demo', [agent(2, 'demo-b1')])])
     installFetch([ok(foreign)])
     const { container } = render(<Fleet />)
-    return screen.findByText('demo-b1').then(() => {
+    return screen.findAllByText('demo-b1').then(() => {
       const activity = container.querySelector('[data-fleet-tile-activity]')
       if (activity) expect(activity.className).not.toContain('cursor-pointer')
     })

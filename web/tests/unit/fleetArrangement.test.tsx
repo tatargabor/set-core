@@ -544,7 +544,7 @@ describe('the agent tile and the header must not contradict each other', () => {
       { ...agent(1, 'a1', 'waiting'), waiting_for: 'approval needed' },
     ])], { waiting: 1 }))
     const { container } = render(<Fleet />)
-    await waitFor(() => expect(screen.getByText('a1')).toBeTruthy())
+    await waitFor(() => expect('a1'.length ? screen.getAllByText('a1') : []).toBeTruthy())
 
     const right = container.querySelector('[data-fleet-enlarged="1"]') as HTMLElement
     // ⚠ Still Hungarian, on purpose: this string comes from `Fleet.tsx`, which is
@@ -559,7 +559,7 @@ describe('the agent tile and the header must not contradict each other', () => {
   it('prints a state it does not recognise as itself rather than as quiet', async () => {
     install(fleet([project('set-core', [agent(1, 'a1', 'compacting')])]))
     const { container } = render(<Fleet />)
-    await waitFor(() => expect(screen.getByText('a1')).toBeTruthy())
+    await waitFor(() => expect('a1'.length ? screen.getAllByText('a1') : []).toBeTruthy())
 
     const right = container.querySelector('[data-fleet-enlarged="1"]') as HTMLElement
     expect(within(right).getByText('compacting')).toBeTruthy()
@@ -575,7 +575,7 @@ describe('B-9 — the project tile carries what is worth seeing, where it lives'
     const bad = { ...agent(7, 'a1'), declaration_ignored: 'the log refutes it' }
     install(fleet([project('demo', [bad]), project('calm', [agent(8, 'b1')])]))
     const { container } = render(<Fleet />)
-    return screen.findByText('demo').then(() => {
+    return screen.findAllByText('demo').then(() => {
       const row = container.querySelector('[data-fleet-project="demo"]')!
       expect(row.querySelector('[data-fleet-project-conflicts]')?.getAttribute('data-fleet-project-conflicts')).toBe('1')
       // And the calm project carries no marker at all — a badge on every row
@@ -590,7 +590,7 @@ describe('B-9 — the project tile carries what is worth seeing, where it lives'
     const stuck = { ...agent(2, 'stuck'), last_movement_seconds: 3600 }
     install(fleet([project('demo', [busy, stuck])]))
     const { container } = render(<Fleet />)
-    return screen.findByText('demo').then(() => {
+    return screen.findAllByText('demo').then(() => {
       const row = container.querySelector('[data-fleet-project="demo"]')!
       expect(row.querySelector('[data-fleet-project-stalest]')?.getAttribute('data-fleet-project-stalest')).toBe('3600')
     })

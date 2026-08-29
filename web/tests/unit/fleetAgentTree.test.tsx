@@ -72,6 +72,14 @@ function install(body: Json = BODY) {
 beforeEach(() => { install(); try { localStorage.clear() } catch { /* no storage */ } })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
+/**
+ * waitFor with room to spare. The FULL suite runs its files in parallel, and
+ * one flake at the default 1 s was measured under exactly that load (5/5 green
+ * in isolation, then a timeout in the run). The assertions are unchanged; this
+ * only says they may take a few seconds on a busy machine.
+ */
+const wait = (cb: () => void) => waitFor(cb, { timeout: 4000 })
+
 const ready = async (c: HTMLElement) =>
   waitFor(() => {
     const el = c.querySelector('[data-fleet-group="g-open"]')
@@ -87,7 +95,7 @@ describe('the tree', () => {
     // sub-rows render without a second click. The selection is an effect that
     // runs after the arrangement lands, so WAIT for the rows rather than
     // asserting at the same instant the group appeared.
-    const rows = await waitFor(() => {
+    const rows = await wait(() => {
       const els = container.querySelectorAll('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row]')
       expect(els.length).toBe(2)
       return els
@@ -109,20 +117,20 @@ describe('the tree', () => {
     await ready(container)
     // The row's SELECT button — the flex-1 one, not the drag grip or the ⋯ menu.
     fireEvent.click(container.querySelector('[data-fleet-project="idle"] button.flex-1')!)
-    await waitFor(() => expect(container.querySelector('[data-fleet-agent-rows="idle"]')).toBeTruthy())
+    await wait(() => expect(container.querySelector('[data-fleet-agent-rows="idle"]')).toBeTruthy())
     expect(container.querySelector('[data-fleet-agent-rows="idle"] [data-testid="fleet-stage-empty"]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-agent-rows="idle"] [data-testid="fleet-stage-gap"]')).toBeNull()
   })
 
   it('hides sub-rows with their project when the filter runs — no orphans', async () => {
     const { container } = render(<Fleet />)
-    const bar = await waitFor(() => {
+    const bar = await wait(() => {
       const el = container.querySelector('[data-fleet-column-controls]')
       expect(el).toBeTruthy()
       return el as HTMLElement
     })
     fireEvent.change(bar.querySelector('[data-fleet-column-filter]')!, { target: { value: 'alp' } })
-    await waitFor(() => expect(container.querySelector('[data-fleet-column-flat]')).toBeTruthy())
+    await wait(() => expect(container.querySelector('[data-fleet-column-flat]')).toBeTruthy())
     // idle is filtered OUT — its sub-rows are gone with it, and no sub-row
     // survives whose project row does not. alpha still matches the filter, so
     // its sub-rows legitimately remain (a selected project's tree renders in
@@ -145,11 +153,11 @@ describe('the tree shortcut', () => {
     fireEvent.click(row)
     // The shell stores the enlarged pid per project — the same memory a tile
     // click writes — and marks the row focused.
-    await waitFor(() => {
+    await wait(() => {
       const stored = JSON.parse(localStorage.getItem('set-fleet-view') ?? '{}')
       expect(stored.alpha?.enlarged).toBe(2)
     })
-    await waitFor(() => {
+    await wait(() => {
       const r2 = container.querySelector('[data-fleet-agent-row="2"]')
       expect(r2?.getAttribute('data-fleet-agent-row-focused')).toBe('true')
     })
@@ -160,22 +168,22 @@ describe('the tree shortcut', () => {
     await ready(container)
     // Same effect-timing rule as the first test: the sub-rows exist only once
     // the shell's auto-selection has rendered them, so wait for the target.
-    const row = await waitFor(() => {
+    const row = await wait(() => {
       const el = container.querySelector('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row="2"]')
       expect(el).toBeTruthy()
       return el as HTMLElement
     })
     fireEvent.click(row)
-    await waitFor(() => {
+    await wait(() => {
       expect(JSON.parse(localStorage.getItem('set-fleet-view') ?? '{}').alpha?.enlarged).toBe(2)
     })
     // Leave…
     fireEvent.click(container.querySelector('[data-fleet-project="idle"] button.flex-1')!)
-    await waitFor(() => expect(container.querySelector('[data-fleet-agent-rows="idle"]')).toBeTruthy())
+    await wait(() => expect(container.querySelector('[data-fleet-agent-rows="idle"]')).toBeTruthy())
     // …and return: the remembered pid is resolved against the live answer and
     // the same agent is focused again, without another click.
     fireEvent.click(container.querySelector('[data-fleet-project="alpha"] button.flex-1')!)
-    await waitFor(() => {
+    await wait(() => {
       expect(container.querySelector('[data-fleet-agent-row="2"]')
         ?.getAttribute('data-fleet-agent-row-focused')).toBe('true')
     })

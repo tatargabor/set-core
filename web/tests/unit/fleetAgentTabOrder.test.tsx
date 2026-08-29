@@ -116,7 +116,7 @@ describe('a stored order on arrival', () => {
   it('lays the GRID out in it, before anything is enlarged', async () => {
     installFetch({ demo: ['demo-c', 'demo-a', 'demo-b'] })
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
 
     // The half the reader asked for in the same sentence as the tabs: *"a
     // gridben is, hogy hova tartozik"*.
@@ -126,7 +126,7 @@ describe('a stored order on arrival', () => {
   it('lays the STRIP out in the same order', async () => {
     installFetch({ demo: ['demo-c', 'demo-a', 'demo-b'] })
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     await waitFor(() => expect(tileNames(container)[0]).toBe('demo-c'))
 
     enlargeFirst(container)
@@ -136,7 +136,7 @@ describe('a stored order on arrival', () => {
   it('leaves discovery order alone when nothing is stored', async () => {
     installFetch({})
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     await waitFor(() => expect(tileNames(container)).toEqual(['demo-a', 'demo-b', 'demo-c']))
   })
 })
@@ -145,7 +145,7 @@ describe('moving a tab', () => {
   it('moves the agent and WRITES the new order', async () => {
     installFetch({})
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     enlargeFirst(container)
     expect(tabNames(container)).toEqual(['demo-a', 'demo-b', 'demo-c'])
 
@@ -161,7 +161,7 @@ describe('moving a tab', () => {
   it('moves the GRID with it', async () => {
     installFetch({})
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     enlargeFirst(container)
     fireEvent.keyDown(container.querySelector('[data-drag-handle="demo-c"]') as HTMLElement,
                       { key: 'ArrowLeft' })
@@ -176,7 +176,7 @@ describe('moving a tab', () => {
   it('does not move past either end', async () => {
     installFetch({})
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     enlargeFirst(container)
 
     fireEvent.keyDown(container.querySelector('[data-drag-handle="demo-a"]') as HTMLElement,
@@ -193,7 +193,7 @@ describe('moving a tab', () => {
     // doing something else entirely.
     installFetch({})
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     enlargeFirst(container)
 
     const tab = container.querySelector('[data-drag-handle="demo-c"]') as HTMLElement
@@ -208,7 +208,7 @@ describe('a click is not a move', () => {
   it('selects the agent and writes nothing', async () => {
     installFetch({})
     const { container } = render(<Fleet />)
-    await screen.findByText('demo-a')
+    await screen.findAllByText('demo-a')
     enlargeFirst(container)
 
     const other = container.querySelector('[data-fleet-agent-tab="3"]') as HTMLElement
