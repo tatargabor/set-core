@@ -68,6 +68,16 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-124 — `stageOrder` was AGREED with a consumer and rendering an undeclared value visibly is OWED, but nothing is implemented, so an undeclared lane is silently dropped
+- **state:** open
+- **reported:** 2026-08-29 by this session, after a consumer designed against the promise and said so on the channel
+- **measured:** one grep over the whole repository with `.git` excluded — `stageOrder` / `stage_order`, case-insensitive — matches **exactly one file**, `docs/integration/consumer-integration.md`. No code, no test, no spec delta, no OpenSpec change. The behaviour promised in exchange (condition 2: "the framework renders any value absent from the order **visibly and distinctly**, never silently sorted to the end and never dropped") is contradicted by what ships: `lib/set_orch/project_status.py:679` falls through with the comment "Unknown, or a paired form without a usable partner name. Inert by design.", and `web/src/components/statusShape.tsx:857-865` returns `null` for any unrecognised string. Both re-read today rather than recalled.
+- **fail direction:** silent drop, in the reassuring direction, and it has already left the building. The living record itself warned of exactly this at the moment of the agreement — *"it must be ADDED, not merely tolerated. An unknown role is silently ignored today ... so `stageOrder` would be inert on both sides. Inert is not acceptance."* — and the warning was recorded rather than acted on the same day.
+- **why it outranks its size:** the consumer restructured their own model around the promise. Their plan had `unknown` as a terminal station; on the strength of condition 2 they rewrote it as *the absence of a signal* and explicitly declined to invent a private sentinel. Their adversarial review then found Hungarian band keys against the English `stageOrder`, and scored the consequence as "every card lands in set-core's not-in-the-declared-order rendering". The true consequence today is "every card silently disappears". A promise held only on a channel shaped somebody else's design and inverted the fail direction of their own review finding.
+- **fixed when:** a value absent from a declared `stageOrder` renders visibly and distinctly — never dropped, never sorted last — on both the Python and the renderer path, with a test per side feeding an undeclared lane and asserting it is present AND marked; and `stageOrder` itself is honoured as a static declaration (F1: an empty stage still appears; two queries over different card sets return the same order). Contract change, so it carries a spec delta rather than a direct commit.
+- **note:** told to the consumer on the channel the same evening, before their `tasks.md` was written, with the instruction to treat their flat-array fallback as the load-bearing path and `stageOrder` as a later enhancement.
+
+
 ### B-122 — a messaging-sourced project is named by whichever seat enrolled FIRST against its root, so a project can vanish behind another project's name
 - **state:** open
 - **reported:** 2026-08-29 by the user — "I cant see set-agent-comm in the fleet project view"
