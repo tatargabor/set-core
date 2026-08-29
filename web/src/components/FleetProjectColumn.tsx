@@ -635,7 +635,8 @@ function ProjectRow(p: RowProps) {
           filter to keep in step. Suppressed for agent-less projects: a tree of
           empty nodes is noise. */}
       {p.onSelectAgent && (p.project?.agents?.length ?? 0) > 0 && (
-        <div data-fleet-agent-rows={p.name} className="mt-0.5 mb-1 ml-3 mr-1 space-y-px">
+        <div data-fleet-agent-rows={p.name}
+            className="mt-0.5 mb-1 ml-3 mr-1 space-y-px rounded-md border-l-2 border-surface-edge-soft bg-surface-raised/40 py-0.5 pl-1">
           {p.project!.agents.map(a => (
             <AgentSubRow key={a.pid} agent={a} project={p.name}
                          focused={p.focusedPid === a.pid}
@@ -686,7 +687,7 @@ function AgentSubRow({ agent, project, focused, onSelectAgent }: {
       }`}
     >
       <span className="flex items-center gap-1.5 min-w-0">
-        <span aria-hidden className="text-xs text-fg-ghost leading-none select-none shrink-0">└</span>
+        <span aria-hidden className="w-2 shrink-0" />
         <span className={`text-xs truncate flex-1 min-w-0 ${focused ? 'text-fg-strong' : 'text-fg-muted'}`}>
           {agent.name ?? `pid ${agent.pid}`}
         </span>
