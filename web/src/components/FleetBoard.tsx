@@ -48,6 +48,67 @@ interface BoardLane {
 }
 
 /**
+ * The producer's release membership: per open draft, what it plans. The producer
+ * RESOLVES each item to its card and states the card's lane and on-board state —
+ * set-core renders that resolution and never re-derives it.
+ */
+interface ReleasePlanned {
+  release?: unknown
+  status?: unknown
+  total?: unknown
+  onBoardCount?: unknown
+  items?: unknown
+}
+
+/** One membership item that is planned but carries no card on the board. */
+interface OffBoardItem {
+  id: string
+  title: string | null
+  openTarget: string | null
+  reason: string | null
+}
+
+function asReleasePlanned(v: unknown): ReleasePlanned[] | null {
+  if (!Array.isArray(v)) return null
+  return v.filter(e => e !== null && typeof e === 'object') as ReleasePlanned[]
+}
+
+function releaseItems(r: ReleasePlanned): Array<Record<string, unknown>> {
+  if (!Array.isArray(r.items)) return []
+  return r.items.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object')
+}
+
+/** The card ids the draft says ARE on the board, or null when the draft cannot
+    be read — a null means "no filter", never "show nothing". */
+function releaseItemIds(r: ReleasePlanned | undefined): Set<string> | null {
+  if (!r) return null
+  const ids = new Set<string>()
+  for (const it of releaseItems(r)) {
+    if (it.onBoard === true && typeof it.id === 'string' && it.id) ids.add(it.id)
+  }
+  return ids
+}
+
+/** The draft's planned items with no card on the board — each keeps its own
+    reason, so the absence stays the producer's statement, not a gap. */
+function releaseOffBoardItems(r: ReleasePlanned): OffBoardItem[] {
+  const out: OffBoardItem[] = []
+  for (const it of releaseItems(r)) {
+    if (it.onBoard !== false) continue
+    const id = typeof it.ref === 'string' && it.ref ? it.ref
+      : typeof it.id === 'string' ? it.id : null
+    if (id === null) continue
+    out.push({
+      id,
+      title: typeof it.title === 'string' && it.title ? it.title : null,
+      openTarget: typeof it.openTarget === 'string' && it.openTarget ? it.openTarget : null,
+      reason: typeof it.reason === 'string' && it.reason ? it.reason : null,
+    })
+  }
+  return out
+}
+
+/**
  * The generic card face. `id` and `title` are the producer's values verbatim; the
  * rest is optional and renders only when present. No field here carries a meaning
  * set-core interprets — `blocked` is drawn as a mark, `note` as text, nothing more.
@@ -220,12 +281,16 @@ function cardProgress(c: BoardCard): string | null {
     words, because a gap is not a zero: `0 cards` is the project's OWN zero,
     straight from its count; a positive count with no cards placed is the
     counts-vs-cards disagreement, which this surface renders unreconciled —
-    worded so it cannot read as a zero. */
-function ColumnEmpty({ count, placed }: { count: number; placed: number }) {
+    worded so it cannot read as a zero. A release filter explains emptiness on
+    its own (`explainable`): a lane whose cards are merely hidden by the chosen
+    draft is neither a zero nor a disagreement, so it says nothing. */
+function ColumnEmpty({ count, placed, explainable = false }:
+{ count: number; placed: number; explainable?: boolean }) {
   if (placed > 0) return null
   if (count === 0) {
     return <div className="text-xs text-fg-faint px-1 py-0.5" data-fleet-board-col-empty="zero">0 cards</div>
   }
+  if (explainable) return null
   return (
     <div className="text-xs text-fg-faint px-1 py-0.5" data-fleet-board-col-empty="mismatch"
          data-fleet-board-col-mismatch={count}
@@ -269,6 +334,7 @@ export default function FleetBoard({
   const [result, setResult] = useState<StatusCommandResult | null>(() => answerCache.get(project)?.result ?? null)
   const [answeredAt, setAnsweredAt] = useState<number | null>(() => answerCache.get(project)?.at ?? null)
   const [failed, setFailed] = useState<string | null>(null)
+  const [releaseChoice, setReleaseChoice] = useState<string | 'all' | null>(null)
 
   const alive = useRef(true)
   useEffect(() => {
@@ -405,6 +471,25 @@ export default function FleetBoard({
     })
     .join('\n')
 
+  // The producer's open drafts and what each plans. Everything here is the
+  // producer's OWN membership — set-core never resolves which card belongs to a
+  // release; the answer names each item's card id, lane and on-board state.
+  const releases = asReleasePlanned(data.releasePlanned)
+  const drafts = (releases ?? []).filter(r => typeof r.release === 'string' && r.release)
+  // null = follow the producer's first open draft (asked for 2026-08-30: the
+  // board opens ON the draft, not on every card); 'all' is the reader's escape.
+  const selectedRelease: string | 'all' =
+    releaseChoice ?? (drafts.length > 0 ? (drafts[0].release as string) : 'all')
+  const selectedDraft = drafts.find(r => r.release === selectedRelease)
+  const memberIds = releaseItemIds(selectedDraft)
+  const filtered = memberIds !== null
+  const offBoardItems = selectedDraft ? releaseOffBoardItems(selectedDraft) : []
+  const cardVisible = (c: BoardCard): boolean => {
+    if (!filtered) return true
+    const id = cardId(c)
+    return id !== null && memberIds.has(id)
+  }
+
   // The card columns. Placement is by each card's OWN lane value; the headers are
   // the producer's counts. A present-but-unreadable `cards` field is the contract
   // having moved — said, not swallowed; an absent one is a strip-only board.
@@ -413,11 +498,11 @@ export default function FleetBoard({
     .map(e => e.name)
   const inBand = (lane: unknown): lane is string =>
     typeof lane === 'string' && bandNames.includes(lane)
-  const trayCards = cards === null ? [] : (cards ?? []).filter(c => !inBand(c.lane))
+  const trayCards = cards === null ? [] : (cards ?? []).filter(c => !inBand(c.lane) && cardVisible(c))
   const cardsByLane = new Map<string, BoardCard[]>()
   if (cards !== null && cards !== undefined) {
     for (const c of cards) {
-      if (!inBand(c.lane)) continue
+      if (!inBand(c.lane) || !cardVisible(c)) continue
       const list = cardsByLane.get(c.lane as string) ?? []
       list.push(c)
       cardsByLane.set(c.lane as string, list)
@@ -426,6 +511,7 @@ export default function FleetBoard({
   const countByLane = new Map(items
     .filter((e): e is { name: string; count: number } => e !== null)
     .map(e => [e.name, e.count]))
+
 
   // Windowed (panel/fullscreen) contexts FILL their window; the inline strip
   // under the project header stays bounded. See the note on the panel body.
@@ -448,6 +534,27 @@ export default function FleetBoard({
                 title="when this answer was taken; it re-asks on its own about every 30s while the page is visible">
             · {new Date(answeredAt).toLocaleTimeString()}
           </span>
+        )}
+        {drafts.length > 0 && (
+          <select
+            data-fleet-board-release-selector={selectedRelease}
+            aria-label="which release's cards the board shows"
+            value={selectedRelease}
+            onChange={e => setReleaseChoice(e.target.value === 'all' ? 'all' : e.target.value)}
+            className="ml-1 bg-surface-raised/60 border border-surface-line rounded px-1 py-0.5 text-xs text-fg-normal shrink-0"
+          >
+            {drafts.map(r => {
+              const name = r.release as string
+              const on = typeof r.onBoardCount === 'number' ? r.onBoardCount : null
+              const tot = typeof r.total === 'number' ? r.total : null
+              return (
+                <option key={name} value={name}>
+                  {name} · draft{on !== null && tot !== null ? ` — ${on}/${tot} on board` : ''}
+                </option>
+              )
+            })}
+            <option value="all">all cards</option>
+          </select>
         )}
         <IconButton
           icon={RotateCw}
@@ -534,6 +641,23 @@ export default function FleetBoard({
               </span>
             )}
           </div>
+          {/* The chosen draft's planned items that carry no card — each with its
+              own reason and, when declared, its artefact one click away. Their
+              absence is the producer's statement, never folded into a lane. */}
+          {filtered && offBoardItems.length > 0 && (
+            <div data-fleet-board-release-offboard className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs min-w-0">
+              <span className="text-amber-400 shrink-0"
+                    title="planned by the chosen draft, with no card on the board — as the project reports it">
+                planned, not on board ({offBoardItems.length})
+              </span>
+              {offBoardItems.map(it => (
+                <BoardCardFace key={it.id}
+                               c={{ id: it.id, title: it.title ?? undefined, openTarget: it.openTarget ?? undefined,
+                                    note: it.reason ? `not on board — ${it.reason}` : 'not on board' }}
+                               onOpenTarget={onOpenTarget} />
+              ))}
+            </div>
+          )}
           {/* The card columns. Header counts are the producer's; the cards are
               placed by their own lane value and never re-sorted into agreement
               with the counts. Scroll lives in each column — the board is bounded
@@ -553,7 +677,8 @@ export default function FleetBoard({
                       <BoardCardFace key={cardId(c) ?? i} c={c} onOpenTarget={onOpenTarget} />
                     ))}
                     <ColumnEmpty count={countByLane.get(name) ?? 0}
-                                 placed={(cardsByLane.get(name) ?? []).length} />
+                                 placed={(cardsByLane.get(name) ?? []).length}
+                                 explainable={filtered} />
                   </div>
                 </div>
               ))}
@@ -574,7 +699,8 @@ export default function FleetBoard({
                     {trayCards.map((c, i) => (
                       <BoardCardFace key={cardId(c) ?? i} c={c} onOpenTarget={onOpenTarget} />
                     ))}
-                    <ColumnEmpty count={unknown ?? trayCards.length} placed={trayCards.length} />
+                    <ColumnEmpty count={unknown ?? trayCards.length} placed={trayCards.length}
+                                 explainable={filtered} />
                   </div>
                 </div>
               )}

@@ -397,6 +397,79 @@ describe('the card board', () => {
   })
 })
 
+describe('the release selector', () => {
+  /** The fixture plus the producer's own membership for one open draft. */
+  const boardWithDraft = () => ({ ok: true, data: {
+      ...BOARD.data,
+      releasePlanned: [{
+        release: 'v1.24.0', status: 'draft', total: 2, onBoardCount: 1,
+        items: [
+          { kind: 'ticket', ref: '293', id: '293', onBoard: false, lane: null,
+            title: null, openTarget: 'docs/bugs/293.md', reason: 'pending' },
+          { kind: 'change', ref: 'SET-0077', id: 'SET-0077', onBoard: true,
+            lane: 'specified', title: 'a specified card', openTarget: null, reason: null },
+        ],
+      }],
+    }
+  })
+
+  const renderDraft = async (props: Record<string, unknown> = {}) => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) return { commands: { board: boardWithDraft() } }
+      return undefined
+    })
+    const r = render(<FleetBoard project="p" {...props} />)
+    await rendered(r.container)
+    return r
+  }
+
+  it("opens ON the producer's open draft — only its cards render, the rest are hidden", async () => {
+    const { container } = await renderDraft()
+    const selector = container.querySelector('[data-fleet-board-release-selector]')!
+    expect(selector.getAttribute('data-fleet-board-release-selector')).toBe('v1.24.0')
+    // member card visible, non-member cards hidden — placement still by lane
+    expect(container.querySelector('[data-fleet-board-card="SET-0077"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-board-card="SET-0081"]')).toBeNull()
+    expect(container.querySelector('[data-fleet-board-card="SET-0090"]')).toBeNull()
+    // lane header counts stay the producer's whole-board figures
+    expect(container.querySelector('[data-fleet-board-col="in-progress"]')!.textContent).toContain('29')
+  })
+
+  it("the draft's off-board items render as their own group, reason and artefact attached", async () => {
+    const onOpenTarget = vi.fn()
+    const { container } = await renderDraft({ onOpenTarget })
+    const group = container.querySelector('[data-fleet-board-release-offboard]')!
+    expect(group.textContent).toContain('planned, not on board (1)')
+    expect(group.textContent).toContain('293')
+    // its openTarget is one click away, like a card's
+    const clickable = group.querySelector('[data-fleet-board-card-open="docs/bugs/293.md"]')!
+    fireEvent.click(clickable)
+    expect(onOpenTarget).toHaveBeenCalledWith('docs/bugs/293.md')
+  })
+
+  it('choosing "all cards" shows everything again, selector remembered', async () => {
+    const { container } = await renderDraft()
+    const selector = container.querySelector('[data-fleet-board-release-selector]')!
+    fireEvent.change(selector, { target: { value: 'all' } })
+    expect(container.querySelector('[data-fleet-board-card="SET-0081"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-board-card="SET-0090"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-board-release-offboard]')).toBeNull()
+  })
+
+  it('no releasePlanned in the answer — no selector, every card shows', async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) return { commands: { board: BOARD } }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" />)
+    await rendered(container)
+    expect(container.querySelector('[data-fleet-board-release-selector]')).toBeNull()
+    expect(container.querySelectorAll('[data-fleet-board-card]').length).toBe(3)
+  })
+})
+
 describe('the board as a panel', () => {
   const renderPanel = async () => {
     install(u => {
@@ -493,7 +566,7 @@ describe('freshness, manual refresh, and full screen', () => {
     await rendered(container)
     expect(container.querySelector('[data-tile-control="board-refresh"]')).toBeTruthy()
     // The answer time is rendered, not guessed: the strip says when it was taken.
-    expect(container.querySelector('[data-fleet-board-strip]')!.textContent).toMatch(/\d\d:\d\d:\d\d/)
+    expect(container.querySelector('[data-fleet-board-strip]')!.textContent).toMatch(/\d{1,2}:\d\d:\d\d/)
     // The explicit ask bypasses the transport cache.
     const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls
       .filter((c: unknown[]) => String(c[0]).includes('refresh=true'))
