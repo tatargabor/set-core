@@ -813,7 +813,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
     <div className={`flex flex-col min-h-0 ${fullscreen ? 'fixed inset-0 z-[60] bg-surface-page p-3' : 'h-full'}`}
          data-fleet-file-view={projectName}
          data-fleet-file-fullscreen-root={fullscreen ? projectName : undefined}>
-      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-surface-line min-w-0">
+      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-surface-line min-w-0 shrink-0">
         <span className="text-xs text-fg-strong shrink-0">files</span>
         <span className="text-xs text-fg-ghost truncate" title={root}>{projectName}</span>
         {/* WHICH CHECKOUT — shown whenever it is not the project's own. A panel

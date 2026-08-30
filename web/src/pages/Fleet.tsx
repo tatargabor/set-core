@@ -3153,8 +3153,15 @@ export default function Fleet() {
           onClose={() => closeBoard(band.id)}
           onDock={edge => dockPanel(PANEL_BOARD, band.id, edge)}
           dockedEdge={bandEdge}
-          maximised={boardMax === band.id}
-          onMaximise={() => toggleBoardMax(project.name, band.id)}
+          /* Maximising a DOCKED board resizes the band, the way the docked
+             files panel already does — NOT the grid's boardMax. The old wiring
+             flipped the icon while arming boardMax for a grid the board was
+             not in: nothing visibly happened, and the armed state starved the
+             files tile on the next switch-back (reproduced 2026-08-30). */
+          maximised={bandRestore[dockSplitKey({ kind: PANEL_BOARD, id: band.id })] !== undefined}
+          onMaximise={bandEdge
+            ? () => toggleBandMax(dockSplitKey({ kind: PANEL_BOARD, id: band.id }), bandEdge)
+            : undefined}
           onOpenTarget={path => openFile(project.root, { path })}
         />
       )
@@ -3949,11 +3956,17 @@ export default function Fleet() {
               {active.root && filesOpen.has(active.root)
                 && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root) && (
                 <div
-                  className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden${
+                  className={`${cardClasses('ours', {})} flex flex-col overflow-hidden min-h-44${
                     filesBig ? ' flex-1' : ''}`}
                   data-fleet-file-tile={active.root}
                   data-fleet-file-max={filesBig ? 'on' : 'off'}
                 >
+                  {/* min-h-44 = the grid's own 11rem row floor. With an agent
+                      enlarged the column becomes flex-col, and a maximised board
+                      tile (flex-1, remembered per project) starved this tile to
+                      a header sliver — the reported switch-back misrender
+                      (2026-08-30). The floor holds it at the smallest the grid
+                      would ever draw it. */}
                   <FleetFileView
                     root={active.root}
                     projectName={active.name}
