@@ -40,6 +40,22 @@ export const WIRE_GUTTER_MAX = 220
     shifts between polls (collapse, drag, font settle) at low cost. */
 const MEASURE_BELT_MS = 2000
 
+/** One line of the legend: a swatch drawn with the drawing's OWN classes,
+    then the sentence. `children` carry the swatch's SVG shape. */
+function LegendRow({ swatch, children }: {
+  swatch: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-1.5">
+      <svg width="10" height="10" viewBox="0 0 10 10" className="mt-0.5 shrink-0" aria-hidden>
+        {swatch}
+      </svg>
+      <span>{children}</span>
+    </div>
+  )
+}
+
 export default function FleetWirePanel({ payload }: { payload: ChannelsPayload | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [layout, setLayout] = useState<RoomMatrix | null>(null)
@@ -78,6 +94,7 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
   }, [measure])
 
   const sourceDown = payload?.sourceAvailable === false
+  const [legendOpen, setLegendOpen] = useState(false)
 
   return (
     <div
@@ -86,6 +103,52 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
       className="relative h-full shrink-0 border-l border-surface-line bg-surface-panel/30"
       style={{ width: layout?.width ?? WIRE_GUTTER_WIDTH }}
     >
+      {/* The legend, toggled by its icon. The swatches render with the SAME
+          classes the drawing uses, so the two cannot drift apart: restyle the
+          wires and the legend restyles with them. Bottom-right, because the
+          room labels own the top band. */}
+      <button
+        type="button"
+        data-fleet-wire-legend-toggle
+        aria-expanded={legendOpen}
+        title="what the wires mean"
+        onClick={() => setLegendOpen(o => !o)}
+        className={`absolute bottom-1 right-1 z-10 h-5 w-5 rounded border text-[10px] leading-none ${
+          legendOpen
+            ? 'border-fg-strong bg-fg-strong text-surface-panel'
+            : 'border-surface-line text-fg-muted hover:text-fg-strong'
+        }`}
+      >
+        ?
+      </button>
+      {legendOpen && (
+        <div
+          data-fleet-wire-legend
+          className="absolute bottom-7 left-1 right-1 z-10 space-y-1 rounded border border-surface-line bg-surface-panel p-1.5 text-[10px] leading-tight text-fg-muted shadow-lg"
+        >
+          <LegendRow swatch={<circle cx="5" cy="5" r="4" className="fleet-wire-cell-sender" />}>
+            filled — wrote LAST in this room
+          </LegendRow>
+          <LegendRow swatch={<circle cx="5" cy="5" r="4" className="fleet-wire-cell-sender fleet-wire-cell-live" />}>
+            pulsing — that write is &lt;30 min old
+          </LegendRow>
+          <LegendRow swatch={<circle cx="5" cy="5" r="3.5" className="fleet-wire-cell-member-active" />}>
+            thick ring — in the room, room is fresh
+          </LegendRow>
+          <LegendRow swatch={<circle cx="5" cy="5" r="3.5" className="fleet-wire-cell-member-idle" />}>
+            thin dim ring — in the room, idle
+          </LegendRow>
+          <LegendRow swatch={<span className="inline-block h-2 w-2" />}>
+            blank — not a member of that room
+          </LegendRow>
+          <LegendRow swatch={<rect x="1" y="1" width="2" height="8" className="fleet-wire-terminal" />}>
+            tick — enrolled agent · socket — not enrolled
+          </LegendRow>
+          <div className="border-t border-surface-line pt-1">
+            columns lead with the most recently written room; hover any dot for the room, its members and the write age
+          </div>
+        </div>
+      )}
       {sourceDown ? (
         <div data-fleet-wire-source-down
              className="px-2 py-2 text-xs text-amber-300">

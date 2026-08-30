@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 
 import FleetWirePanel from '../../src/components/FleetWirePanel'
 import type { ChannelsPayload } from '../../src/lib/fleetWireLayout'
@@ -99,5 +99,44 @@ describe('FleetWirePanel (room matrix)', () => {
     expect(container.querySelector('[data-fleet-wire-source-down]')).not.toBeNull()
     expect(container.querySelectorAll('[data-fleet-wire-socket]').length).toBe(0)
     expect(container.querySelectorAll('[data-fleet-wire-terminal]').length).toBe(0)
+  })
+})
+
+describe('the wire legend', () => {
+  it('is hidden until its icon is pressed, and closes on a second press', () => {
+    const { container } = renderPanel(PAYLOAD)
+    expect(container.querySelector('[data-fleet-wire-legend]')).toBeNull()
+    const toggle = container.querySelector('[data-fleet-wire-legend-toggle]')!
+    expect(toggle).toBeTruthy()
+    fireEvent.click(toggle)
+    expect(container.querySelector('[data-fleet-wire-legend]')).toBeTruthy()
+    fireEvent.click(toggle)
+    expect(container.querySelector('[data-fleet-wire-legend]')).toBeNull()
+  })
+
+  it('the legend explains every visual encoding with swatches drawn by the SAME classes as the wires', () => {
+    const { container } = renderPanel(PAYLOAD)
+    fireEvent.click(container.querySelector('[data-fleet-wire-legend-toggle]')!)
+    const legend = container.querySelector('[data-fleet-wire-legend]')!
+    // the four cell encodings, named in the legend text
+    expect(legend.textContent).toContain('wrote LAST')
+    expect(legend.textContent).toContain('pulsing')
+    expect(legend.textContent).toContain('thick ring')
+    expect(legend.textContent).toContain('thin dim ring')
+    expect(legend.textContent).toContain('not a member')
+    // the swatches reuse the drawing's classes — a restyle of the wires
+    // cannot leave the legend describing a picture that no longer exists
+    expect(legend.querySelector('.fleet-wire-cell-sender')).toBeTruthy()
+    expect(legend.querySelector('.fleet-wire-cell-sender.fleet-wire-cell-live')).toBeTruthy()
+    expect(legend.querySelector('.fleet-wire-cell-member-active')).toBeTruthy()
+    expect(legend.querySelector('.fleet-wire-cell-member-idle')).toBeTruthy()
+  })
+
+  it('the legend icon is present even when the source is down — the encodings are documented, not the live data', () => {
+    const { container } = renderPanel({ ...PAYLOAD, sourceAvailable: false, edges: [] })
+    expect(container.querySelector('[data-fleet-wire-legend-toggle]')).toBeTruthy()
+    fireEvent.click(container.querySelector('[data-fleet-wire-legend-toggle]')!)
+    expect(container.querySelector('[data-fleet-wire-legend]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-wire-source-down]')).toBeTruthy()
   })
 })
