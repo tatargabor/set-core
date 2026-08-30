@@ -32,37 +32,37 @@
 
 ## 5. Verification
 
-- [ ] 5.1 `tsc -b` and targeted vitest files green; Python route + module tests green; no new regressions vs the regression-baseline set-diff [REQ: channel-graph-route]
-- [ ] 5.2 Visual check in the browser against a store with a live DM and a multi-member room: terminals align to rows, wire leaves the gutter, animation direction matches the newest sender, docked right-edge bands yield and restore — the screen is LOOKED at, per the UI-quality rule; if the browser cannot be reached this task stays open and says so [REQ: terminal-per-live-agent-row] [REQ: directional-flow-animation] [REQ: show/hide-toggle-with-right-edge-ownership]
+- [x] 5.1 `tsc -b` and targeted vitest files green; Python route + module tests green; no new regressions vs the regression-baseline set-diff [REQ: channel-graph-route]
+- [x] 5.2 Visual check in the browser against a store with a live DM and a multi-member room: terminals align to rows, wire leaves the gutter, animation direction matches the newest sender, docked right-edge bands yield and restore — the screen is LOOKED at, per the UI-quality rule; if the browser cannot be reached this task stays open and says so [REQ: terminal-per-live-agent-row] [REQ: directional-flow-animation] [REQ: show/hide-toggle-with-right-edge-ownership]
 
 ## Acceptance Criteria (from spec scenarios)
 
 ### channel-topology-api
 
-- [ ] AC-1: WHEN the route is called while the store holds enrolled agents and rooms THEN the response contains nodes (session identity, project root, seat name, enrolled flag) and edges (room name, member identities, latest activity) [REQ: channel-graph-route, scenario: graph-returned-for-a-live-store]
-- [ ] AC-2: WHEN an edge is derived from a room's channel files THEN it names room, members, sender and timestamp of the newest write, and no message body/excerpt/heading text is included [REQ: members-are-identities-not-content, scenario: members-are-identities-not-content]
-- [ ] AC-3: WHEN a live fleet agent's session id equals an enrolled seat's session id THEN the node is enrolled with that seat name [REQ: join-on-session-identity, scenario: session-id-match]
-- [ ] AC-4: WHEN no session id matches but exactly one seat's project path equals the agent's project root THEN the node joins that seat [REQ: join-on-session-identity, scenario: fallback-on-project-root]
-- [ ] AC-5: WHEN multiple seats share the project path and none matches by session id THEN the node stays `enrolled: false` [REQ: join-on-session-identity, scenario: ambiguous-fallback-stays-unjoined]
-- [ ] AC-6: WHEN an enrolled seat matches no live fleet agent THEN no node is emitted for it [REQ: live-sessions-only, scenario: enrolled-but-not-live]
-- [ ] AC-7: WHEN the newest channel file belongs to seat A and carries an addressee heading naming seat B THEN `from` is A, `to` lists B, `lastActivity` is that write's timestamp [REQ: edge-activity-and-direction, scenario: recent-send-establishes-direction]
-- [ ] AC-8: WHEN the newest write has no parseable addressee THEN `from` stays the writer and `to` is the other members (broadcast) [REQ: edge-activity-and-direction, scenario: unparseable-newest-write-degrades-to-broadcast]
-- [ ] AC-9: WHEN the store root is missing or unreadable THEN the response is 200 with empty edges and `sourceAvailable: false` [REQ: graceful-degradation, scenario: store-missing]
-- [ ] AC-10: WHEN no override is configured THEN the route reads the platform-default agent-comm data directory [REQ: store-root-is-configuration, scenario: default-resolution]
+- [x] AC-1: WHEN the route is called while the store holds enrolled agents and rooms THEN the response contains nodes (session identity, project root, seat name, enrolled flag) and edges (room name, member identities, latest activity) [REQ: channel-graph-route, scenario: graph-returned-for-a-live-store]
+- [x] AC-2: WHEN an edge is derived from a room's channel files THEN it names room, members, sender and timestamp of the newest write, and no message body/excerpt/heading text is included [REQ: members-are-identities-not-content, scenario: members-are-identities-not-content]
+- [x] AC-3: WHEN a live fleet agent's session id equals an enrolled seat's session id THEN the node is enrolled with that seat name [REQ: join-on-session-identity, scenario: session-id-match]
+- [x] AC-4: WHEN no session id matches but exactly one seat's project path equals the agent's project root THEN the node joins that seat [REQ: join-on-session-identity, scenario: fallback-on-project-root]
+- [x] AC-5: WHEN multiple seats share the project path and none matches by session id THEN the node stays `enrolled: false` [REQ: join-on-session-identity, scenario: ambiguous-fallback-stays-unjoined]
+- [x] AC-6: WHEN an enrolled seat matches no live fleet agent THEN no node is emitted for it [REQ: live-sessions-only, scenario: enrolled-but-not-live]
+- [x] AC-7: WHEN the newest channel file belongs to seat A and carries an addressee heading naming seat B THEN `from` is A, `to` lists B, `lastActivity` is that write's timestamp [REQ: edge-activity-and-direction, scenario: recent-send-establishes-direction]
+- [x] AC-8: WHEN the newest write has no parseable addressee THEN `from` stays the writer and `to` is the other members (broadcast) [REQ: edge-activity-and-direction, scenario: unparseable-newest-write-degrades-to-broadcast]
+- [x] AC-9: WHEN the store root is missing or unreadable THEN the response is 200 with empty edges and `sourceAvailable: false` [REQ: graceful-degradation, scenario: store-missing]
+- [x] AC-10: WHEN no override is configured THEN the route reads the platform-default agent-comm data directory [REQ: store-root-is-configuration, scenario: default-resolution]
 
 ### fleet-channel-wires
 
-- [ ] AC-11: WHEN the wire view is shown and a live agent row exists THEN a terminal is drawn at that row's right edge, vertically centred [REQ: terminal-per-live-agent-row, scenario: live-row-gets-a-terminal]
-- [ ] AC-12: WHEN the board scrolls, collapses, gains/loses a row, or resizes THEN terminals and wires recompute and no wire points at a rectangle no row occupies [REQ: terminals-follow-the-board, scenario: terminals-follow-the-board]
-- [ ] AC-13: WHEN a channel has exactly two enrolled live members THEN one gutter-routed wire connects the terminals [REQ: wires-route-through-the-gutter, scenario: pair-channel]
-- [ ] AC-14: WHEN a channel has more than two members THEN one junction renders and each member has its own wire to it [REQ: wires-route-through-the-gutter, scenario: multi-member-channel-renders-a-junction]
-- [ ] AC-15: WHEN a channel's newest write is by seat A within the window THEN segments from A animate in the direction of travel as motion [REQ: directional-flow-animation, scenario: recent-send-animates-outward]
-- [ ] AC-16: WHEN a channel's newest write is older than the window THEN its wires are static and muted [REQ: directional-flow-animation, scenario: idle-channel-is-static]
-- [ ] AC-17: WHEN the newest write names no addressee THEN animation flows from the sender toward every other member [REQ: broadcast-reaches-every-member, scenario: broadcast-reaches-every-member]
-- [ ] AC-18: WHEN the wire view toggles on with right-edge bands docked THEN the gutter takes the edge and the bands collapse intact [REQ: show/hide-toggle-with-right-edge-ownership, scenario: toggle-on-yields-docked-bands]
-- [ ] AC-19: WHEN the wire view toggles off THEN the right-edge bands return with their stored arrangement [REQ: show/hide-toggle-with-right-edge-ownership, scenario: toggle-off-restores-them]
-- [ ] AC-20: WHEN the fleet screen reloads THEN the wire view state is as left [REQ: choice-persists, scenario: choice-persists]
-- [ ] AC-21: WHEN a live agent matches no seat THEN it shows a dim socket marked not enrolled, with no wires and no "no communication" reading [REQ: not-enrolled-affordance, scenario: unenrolled-live-agent]
-- [ ] AC-22: WHEN `sourceAvailable: false` THEN the view states the source is unreachable rather than an all-unenrolled board [REQ: not-enrolled-affordance, scenario: source-unavailable]
-- [ ] AC-23: WHEN hovering a wire or junction THEN a tooltip names the channel, its member seats, and the newest write's age, with no message content [REQ: hover-identifies-the-channel, scenario: wire-hover]
-- [ ] AC-24: WHEN right-edge bands yield to the wire view and it toggles off THEN they return with the same edge, size, and collapsed state [REQ: the-wire-view-owns-the-right-edge-while-shown, scenario: right-edge-bands-yield-and-return]
+- [x] AC-11: WHEN the wire view is shown and a live agent row exists THEN a terminal is drawn at that row's right edge, vertically centred [REQ: terminal-per-live-agent-row, scenario: live-row-gets-a-terminal]
+- [x] AC-12: WHEN the board scrolls, collapses, gains/loses a row, or resizes THEN terminals and wires recompute and no wire points at a rectangle no row occupies [REQ: terminals-follow-the-board, scenario: terminals-follow-the-board]
+- [x] AC-13: WHEN a channel has exactly two enrolled live members THEN one gutter-routed wire connects the terminals [REQ: wires-route-through-the-gutter, scenario: pair-channel]
+- [x] AC-14: WHEN a channel has more than two members THEN one junction renders and each member has its own wire to it [REQ: wires-route-through-the-gutter, scenario: multi-member-channel-renders-a-junction]
+- [x] AC-15: WHEN a channel's newest write is by seat A within the window THEN segments from A animate in the direction of travel as motion [REQ: directional-flow-animation, scenario: recent-send-animates-outward]
+- [x] AC-16: WHEN a channel's newest write is older than the window THEN its wires are static and muted [REQ: directional-flow-animation, scenario: idle-channel-is-static]
+- [x] AC-17: WHEN the newest write names no addressee THEN animation flows from the sender toward every other member [REQ: broadcast-reaches-every-member, scenario: broadcast-reaches-every-member]
+- [x] AC-18: WHEN the wire view toggles on with right-edge bands docked THEN the gutter takes the edge and the bands collapse intact [REQ: show/hide-toggle-with-right-edge-ownership, scenario: toggle-on-yields-docked-bands]
+- [x] AC-19: WHEN the wire view toggles off THEN the right-edge bands return with their stored arrangement [REQ: show/hide-toggle-with-right-edge-ownership, scenario: toggle-off-restores-them]
+- [x] AC-20: WHEN the fleet screen reloads THEN the wire view state is as left [REQ: choice-persists, scenario: choice-persists]
+- [x] AC-21: WHEN a live agent matches no seat THEN it shows a dim socket marked not enrolled, with no wires and no "no communication" reading [REQ: not-enrolled-affordance, scenario: unenrolled-live-agent]
+- [x] AC-22: WHEN `sourceAvailable: false` THEN the view states the source is unreachable rather than an all-unenrolled board [REQ: not-enrolled-affordance, scenario: source-unavailable]
+- [x] AC-23: WHEN hovering a wire or junction THEN a tooltip names the channel, its member seats, and the newest write's age, with no message content [REQ: hover-identifies-the-channel, scenario: wire-hover]
+- [x] AC-24: WHEN right-edge bands yield to the wire view and it toggles off THEN they return with the same edge, size, and collapsed state [REQ: the-wire-view-owns-the-right-edge-while-shown, scenario: right-edge-bands-yield-and-return]
