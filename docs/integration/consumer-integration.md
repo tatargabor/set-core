@@ -2515,3 +2515,30 @@ the channel.
 Fleet page tests consumes one entry per unmatched URL, so any new self-scheduled fetch the
 page makes shifts every later answer by one. The stub now answers the project-status routes
 flatly, for the same reason it already answered `/log` flatly.
+
+## 2026-08-30 (morning) — the board becomes COLUMNS OF CARDS, and it is GENERIC by the user's own decision
+
+The producer relayed a reversal: the summary strip was correct but not what the user asked
+for — the board itself, cards in columns. The user named two shapes and chose the second
+explicitly: a GENERIC board rendering fed through the abstraction, the first project being
+the proof, not the spec. OpenSpec change: `generic-board-view` (all artifacts, strict-valid).
+
+**The abstraction's card vocabulary:** `id · title · kind · blocked · tasksDone ·
+tasksTotal · plannedRelease · note` — all optional but id/title. The producer maps its own
+field names onto it (its domain-named reason field maps to `note`); no domain word enters
+framework code, enforced by a test that fails if the first implementer's field name ever
+renders.
+
+**Values are taken, never recomputed:** column order and header counts from the declared
+`lanes` array alone; cards placed by their own `lane` value; a counts-vs-cards mismatch
+renders BOTH unreconciled (tested); the unknown tray's header is the `unknown` scalar, not
+a count of tray cards. The board is read-only — cards are divs, not buttons (tested).
+
+**Verified:** 14/14 board unit tests; full suite set-diffed (only B-129 and the B-130 flake
+family — fleetSurface passes 14/14 in isolation); looked at in the running dashboard against
+the live 180-card answer; screenshot taken.
+
+**One boundary note:** the bundle rebuild waited on the sibling session's in-flight
+`FleetWirePanel.tsx` type error — the working tree is shared, and building while another
+thread is mid-edit would bake a broken intermediate into the served bundle. A background
+`tsc -b` watch gated the build.

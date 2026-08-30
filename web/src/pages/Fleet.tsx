@@ -36,7 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FleetProjectColumn from '../components/FleetProjectColumn'
 import { RestoreFromEmpty, RestoreForProject } from '../components/FleetRestore'
 import FleetPm from '../components/FleetPm'
-import FleetBoardStrip from '../components/FleetBoardStrip'
+import FleetBoard from '../components/FleetBoard'
 import FleetWirePanel from '../components/FleetWirePanel'
 import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
@@ -2016,17 +2016,28 @@ export default function Fleet() {
    */
   const [channels, setChannels] = useState<ChannelsPayload | null>(null)
   const [wiresShown, setWiresShown] = useState(false)
+  /** Set the moment the user toggles. The stored value arrives from a slow
+      endpoint (the layout GET runs discovery), and a late answer must never
+      overwrite a click that happened while it was in flight — measured live:
+      the answer landed seconds after a toggle and silently switched the view
+      back off. First intent wins; the stored value only fills the initial
+      render. */
+  const wiresTouched = useRef(false)
 
   useEffect(() => {
     let cancelled = false
     fetch('/api/fleet/layout')
       .then(r => (r.ok ? r.json() : null))
-      .then(body => { if (!cancelled && body && typeof body === 'object') setWiresShown(Boolean((body as { wires_shown?: unknown }).wires_shown)) })
+      .then(body => {
+        if (!cancelled && !wiresTouched.current && body && typeof body === 'object')
+          setWiresShown(Boolean((body as { wires_shown?: unknown }).wires_shown))
+      })
       .catch(() => { /* hidden until the toggle is used — see above */ })
     return () => { cancelled = true }
   }, [])
 
   const toggleWires = useCallback(() => {
+    wiresTouched.current = true
     setWiresShown(prev => {
       const next = !prev
       void fetch('/api/fleet/layout/wires', {
@@ -3648,7 +3659,7 @@ export default function Fleet() {
                   nothing for a project that does not declare a `board` command —
                   a project that publishes no board is the producer's decision, not
                   a gap — and renders every failure once it does. See the component. */}
-              <FleetBoardStrip project={active.name} />
+              <FleetBoard project={active.name} />
               {/* Task 4.2 — a panel whose KIND this build does not have.
                   Stated where the reader is standing, above the grid, rather
                   than only in the place it would have been rendered: the whole
