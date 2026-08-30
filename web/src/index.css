@@ -335,3 +335,40 @@ thead th {
 .fleet-wire-col-hit {
   cursor: pointer;
 }
+
+/* Three-step room age (#3): fresh = being written to right now (under 2
+   min), warm = inside the 30-min activity window, idle = past it. The old
+   binary active/idle flattened "alive now" and "alive this half hour"
+   into one tone. */
+.fleet-wire-col-fresh {
+  stroke: var(--color-sky-300, #7dd3fc);
+  opacity: 0.85;
+}
+.fleet-wire-col-warm {
+  stroke: var(--color-lane-fill);
+  opacity: 0.55;
+}
+.fleet-wire-col-idle {
+  stroke: var(--color-fg-dim);
+  opacity: 0.35;
+}
+.fleet-wire-label-fresh {
+  fill: var(--color-sky-300, #7dd3fc);
+  opacity: 0.95;
+}
+.fleet-wire-label-warm {
+  fill: var(--color-lane-fill);
+  opacity: 0.7;
+}
+.fleet-wire-label-idle {
+  fill: var(--color-fg-dim);
+  opacity: 0.45;
+}
+
+/* Session drift (#5): an unenrolled agent whose project HAS seats is one
+   click away from re-enrolment, so its socket announces itself in amber
+   instead of waiting to be hovered. */
+.fleet-wire-socket-drift {
+  fill: var(--color-amber-300, #fcd34d);
+  opacity: 0.95;
+}

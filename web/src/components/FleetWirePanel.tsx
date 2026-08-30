@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import {
-  computeRoomMatrix, cellTitle, directGroupTitle, HEADER_Y, DIRECT_ROOM,
+  computeRoomMatrix, cellTitle, directGroupTitle, ageBucket, ageLine,
+  HEADER_Y,
   type ChannelsPayload, type RoomMatrix,
 } from '../lib/fleetWireLayout'
 
@@ -117,6 +118,22 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
 
   const sourceDown = payload?.sourceAvailable === false
   const [legendOpen, setLegendOpen] = useState(false)
+  /** The room card: one room's members and write age, opened by clicking its
+      column. Seat names and ages ONLY — the payload carries no message bodies,
+      and the card must not become a reason to change that. */
+  const [cardRoom, setCardRoom] = useState<string | null>(null)
+
+  // Escape closes whatever overlay holds the focus — the card first.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setCardRoom(null)
+        setLegendOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div
@@ -148,14 +165,14 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
           data-fleet-wire-legend
           className="absolute bottom-7 left-1 right-1 z-10 space-y-1 rounded border border-surface-line bg-surface-panel p-1.5 text-[10px] leading-tight text-fg-muted shadow-lg"
         >
-          <LegendRow swatch={<circle cx="5" cy="5" r="4" className="fleet-wire-cell-sender" />}>
-            filled — wrote LAST in this room
-          </LegendRow>
           <LegendRow swatch={<circle cx="5" cy="5" r="4" className="fleet-wire-cell-sender fleet-wire-cell-live" />}>
-            pulsing — that write is &lt;30 min old
+            pulsing — wrote LAST here, under 2 min ago
+          </LegendRow>
+          <LegendRow swatch={<circle cx="5" cy="5" r="4" className="fleet-wire-cell-sender" />}>
+            filled — wrote LAST here, 2–30 min back
           </LegendRow>
           <LegendRow swatch={<circle cx="5" cy="5" r="3.5" className="fleet-wire-cell-member-active" />}>
-            thick ring — in the room, room is fresh
+            thick ring — in the room, written to &lt;30 min ago
           </LegendRow>
           <LegendRow swatch={<circle cx="5" cy="5" r="3.5" className="fleet-wire-cell-member-idle" />}>
             thin dim ring — in the room, idle
@@ -164,7 +181,13 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
             blank — not a member of that room
           </LegendRow>
           <LegendRow swatch={<rect x="1" y="1" width="2" height="8" className="fleet-wire-terminal" />}>
-            tick — enrolled agent · socket — not enrolled
+            tick — enrolled agent
+          </LegendRow>
+          <LegendRow swatch={<rect x="1" y="1" width="6" height="7" rx="1" className="fleet-wire-socket fleet-wire-socket-drift" />}>
+            amber socket — session drift, re-enrol
+          </LegendRow>
+          <LegendRow swatch={<rect x="1" y="1" width="6" height="7" rx="1" className="fleet-wire-socket" />}>
+            hollow socket — not enrolled
           </LegendRow>
           <div className="border-t border-surface-line pt-1">
             columns lead with the most recently written room; hover any dot for the room, its members and the write age
@@ -186,17 +209,26 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
           >
             {/* Column guide lines and their VERTICAL names, pinned to the top
                 band. The guide runs full height — it is the column's track —
-                and brightens when the room's newest write is fresh. */}
-            {layout.columns.map(col => (
+                and its tone is the room's THREE-STEP age: fresh (under 2 min,
+                being written to right now), warm (inside the 30-min window),
+                idle. Click opens the room card; the folded pair-group expands. */}
+            {layout.columns.map(col => {
+              const age = ageBucket(col.lastActivity, Date.now(), payload?.activityWindowSeconds)
+              const colCls = age === 'fresh' ? 'fleet-wire-col fleet-wire-col-fresh'
+                : age === 'warm' ? 'fleet-wire-col fleet-wire-col-warm'
+                : 'fleet-wire-col fleet-wire-col-idle'
+              const labelCls = age === 'fresh' ? 'fleet-wire-label fleet-wire-label-fresh'
+                : age === 'warm' ? 'fleet-wire-label fleet-wire-label-warm'
+                : 'fleet-wire-label fleet-wire-label-idle'
+              return (
               <g key={`col-${col.room}`}
                  className="pointer-events-auto fleet-wire-col-hit"
                  onPointerEnter={() => setHoverRoom(col.room)}
                  onPointerLeave={() => setHoverRoom(r => (r === col.room ? null : r))}
                  onClick={() => {
-                   // The fold is the toggle: the folded column expands, any
-                   // expanded pair-room column folds the group back.
+                   // The fold expands on click; every real room opens its card.
                    if (col.isDirectGroup) setDirectOpen(true)
-                   else if (col.room === DIRECT_ROOM || col.room.startsWith('dm-')) setDirectOpen(false)
+                   else setCardRoom(col.room)
                  }}
               >
                 <title>{col.directCount != null
@@ -204,8 +236,9 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                   : cellTitle(col.room, col.memberSeats, col.lastActivity, Date.now())}</title>
                 <line
                   data-fleet-wire-column={col.room}
+                  data-fleet-wire-col-age={age}
                   x1={col.x} y1={34} x2={col.x} y2="100%"
-                  className={col.recent ? 'fleet-wire-col fleet-wire-col-active' : 'fleet-wire-col fleet-wire-col-idle'}
+                  className={colCls}
                 />
                 <text
                   data-fleet-wire-label={col.room}
@@ -213,12 +246,13 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                   x={col.x + 3}
                   y={HEADER_Y}
                   transform={`rotate(90 ${col.x + 3} ${HEADER_Y})`}
-                  className={col.recent ? 'fleet-wire-label fleet-wire-label-active' : 'fleet-wire-label fleet-wire-label-idle'}
+                  className={labelCls}
                 >
                   {col.label ?? (col.room.length > 14 ? `${col.room.slice(0, 13)}…` : col.room)}
                 </text>
               </g>
-            ))}
+              )
+            })}
             {/* Membership cells. The room's SENDER renders filled (animated
                 while fresh) — in a grid, who-sent is WHICH CELL IS FILLED.
                 A row or column hover dims every cell that does not match. */}
@@ -228,8 +262,11 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                 && (hoverRoom == null || cell.room === hoverRoom)
               const dim = focusActive && !focused
               const roomCol = layout.columns.find(c => c.room === cell.room)
+              // The pulse means "being written to RIGHT NOW" (<2 min); a room
+              // merely inside the 30-min window holds a still-filled sender.
+              const bucket = ageBucket(roomCol?.lastActivity ?? null, Date.now(), payload?.activityWindowSeconds)
               const base = cell.role === 'sender'
-                ? (cell.active
+                ? (bucket === 'fresh'
                     ? 'fleet-wire-cell fleet-wire-cell-sender fleet-wire-cell-live'
                     : 'fleet-wire-cell fleet-wire-cell-sender')
                 : (cell.active
@@ -276,8 +313,11 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
               <rect
                 key={s.pid}
                 data-fleet-wire-socket={s.pid}
+                data-fleet-wire-socket-state={s.projectSeatCount ? 'drift' : 'unenrolled'}
                 x={0} y={s.y - 3.5} width={6} height={7}
-                className="fleet-wire-socket"
+                className={s.projectSeatCount
+                  ? 'fleet-wire-socket fleet-wire-socket-drift'
+                  : 'fleet-wire-socket'}
               >
                 <title>{s.projectSeatCount
                   ? 'seats exist for this project, but none carries THIS session (session drift) — re-enrol: sac install'
@@ -287,6 +327,75 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
           </svg>
         )
       )}
+      {/* The room card. Seat names and ages only, never message content —
+          the payload's structural line stops exactly short of bodies, and
+          this card is why that line must hold. */}
+      {!sourceDown && cardRoom && layout && (() => {
+        const col = layout.columns.find(c => c.room === cardRoom)
+        if (col == null) return null
+        const senderSeats = new Set(
+          layout.cells
+            .filter(c => c.room === col.room && c.role === 'sender')
+            .map(c => payload?.nodes?.find(n => n.pid === c.pid)?.seat)
+            .filter((s): s is string => typeof s === 'string'),
+        )
+        return (
+          <div
+            data-fleet-wire-card={col.room}
+            className="absolute left-1 right-1 top-8 z-20 space-y-1 rounded border border-surface-line bg-surface-panel p-2 text-[10px] leading-tight text-fg-muted shadow-lg"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span data-fleet-wire-card-title className="text-xs text-fg-strong truncate">
+                {col.label ?? col.room}
+              </span>
+              <button
+                type="button"
+                data-fleet-wire-card-close
+                aria-label="close room card"
+                onClick={() => setCardRoom(null)}
+                className="shrink-0 h-4 w-4 rounded border border-surface-line text-[10px] leading-none text-fg-muted hover:text-fg-strong"
+              >
+                ×
+              </button>
+            </div>
+            <div data-fleet-wire-card-age>
+              newest write {ageLine(col.lastActivity, Date.now() / 1000)}
+              {col.directCount != null ? ` across ${col.directCount} direct rooms` : ''}
+            </div>
+            <ul className="space-y-0.5">
+              {col.memberSeats.map(seat => (
+                <li key={seat} data-fleet-wire-card-seat={seat}>
+                  {seat}
+                  {senderSeats.has(seat) ? ' — wrote last' : ''}
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-2 border-t border-surface-line pt-1">
+              {col.isDirectGroup && (
+                <button
+                  type="button"
+                  data-fleet-wire-card-expand
+                  onClick={() => { setDirectOpen(true); setCardRoom(null) }}
+                  className="rounded border border-surface-line px-1 text-fg-strong"
+                >
+                  expand
+                </button>
+              )}
+              {!col.isDirectGroup && col.room.startsWith('dm-') && (
+                <button
+                  type="button"
+                  data-fleet-wire-card-fold
+                  onClick={() => { setDirectOpen(false); setCardRoom(null) }}
+                  className="rounded border border-surface-line px-1 text-fg-strong"
+                >
+                  fold direct rooms
+                </button>
+              )}
+              <span className="ml-auto truncate">leave: sac part {col.room}</span>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

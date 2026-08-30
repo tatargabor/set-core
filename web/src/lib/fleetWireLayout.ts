@@ -130,7 +130,7 @@ export const HEADER_Y = 14
 export const DIRECT_ROOM = 'dm'
 
 /** One human age line, shared by every hover that names a write age. */
-function formatAge(last: number | null, nowSeconds: number): string {
+export function ageLine(last: number | null, nowSeconds: number): string {
   if (last == null) return 'no recorded write'
   const age = Math.max(0, Math.round(nowSeconds - last))
   return age < 60 ? `${age}s ago`
@@ -138,16 +138,35 @@ function formatAge(last: number | null, nowSeconds: number): string {
     : `${Math.round(age / 3600)}h ago`
 }
 
+/** How alive a room is, in three steps instead of the binary recent: a room
+    written to seconds ago is a DIFFERENT thing from one written to twenty
+    minutes back, and the old two-state view flattened exactly that. */
+export const FRESH_SECONDS = 120
+
+export type AgeBucket = 'fresh' | 'warm' | 'idle'
+
+export function ageBucket(
+  lastActivity: number | null,
+  nowMs: number,
+  windowSeconds: number = 1800,
+): AgeBucket {
+  if (lastActivity == null) return 'idle'
+  const age = Math.max(0, nowMs / 1000 - lastActivity)
+  if (age < FRESH_SECONDS) return 'fresh'
+  if (age < windowSeconds) return 'warm'
+  return 'idle'
+}
+
 /** The seat name a cell's hover shows, and the prune hint every hover
     carries — the inactive columns exist to be JUDGED and left. */
 export function cellTitle(room: string, seats: string[], lastActivity: number | null, nowMs: number): string {
-  return `${room} — ${seats.join(', ')} — newest write ${formatAge(lastActivity, nowMs / 1000)} — leave it: sac part ${room}`
+  return `${room} — ${seats.join(', ')} — newest write ${ageLine(lastActivity, nowMs / 1000)} — leave it: sac part ${room}`
 }
 
 /** The folded pair-room column's hover line — not one room, so the default
     room title would misdescribe it. Count and newest write, then the act. */
 export function directGroupTitle(count: number, lastActivity: number | null, nowMs: number): string {
-  return `${count} direct-message rooms — newest write ${formatAge(lastActivity, nowMs / 1000)} — click to expand them`
+  return `${count} direct-message rooms — newest write ${ageLine(lastActivity, nowMs / 1000)} — click to expand them`
 }
 
 /**

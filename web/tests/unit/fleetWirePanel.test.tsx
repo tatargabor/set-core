@@ -161,7 +161,7 @@ describe('pair-room fold and hover focus', () => {
   }
 
   it('pair rooms render as ONE +2 direct column, and clicking it unfolds them', () => {
-    const { container } = mountRows()
+    mountRows()
     const { container } = renderPanel(FOLDED)
     expect(container.querySelector('[data-fleet-wire-label="dm"]')?.textContent).toBe('+2 direct')
     expect(container.querySelector('[data-fleet-wire-label="dm-a-b"]')).toBeNull()
@@ -170,13 +170,12 @@ describe('pair-room fold and hover focus', () => {
     expect(container.querySelector('[data-fleet-wire-label="dm-a-b"]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-wire-label="dm-a-c"]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-wire-label="dm"]')).toBeNull()
-    // clicking a pair-room column folds the group back
-    fireEvent.click(container.querySelector('[data-fleet-wire-column="dm-a-b"]')!)
-    expect(container.querySelector('[data-fleet-wire-label="dm"]')?.textContent).toBe('+2 direct')
+    // folding back is a card action now, not a bare column click — covered
+    // by the room-card test below
   })
 
   it('hovering a column dims every cell that is not that room’s', () => {
-    const { container } = mountRows()
+    mountRows()
     const { container } = renderPanel(FOLDED)
     fireEvent.pointerEnter(container.querySelector('[data-fleet-wire-column="war-room"]')!)
     const dimmed = container.querySelectorAll('[data-fleet-wire-dim="true"]')
@@ -189,22 +188,107 @@ describe('pair-room fold and hover focus', () => {
   })
 
   it('hovering an AGENT ROW on the board dims every cell that is not that agent’s', () => {
-    const { container } = mountRows()
+    mountRows()
     const { container } = renderPanel(FOLDED)
     // the row lives in the sibling column — the panel hears it off the document
     fireEvent.mouseOver(document.querySelector('[data-fleet-agent-row="2"]')!)
-    const dimmed = container.querySelectorAll('[data-fleet-wire-dim="true"]')
-    expect(dimmed.length).toBeGreaterThan(0)
-    // pid 2 (bravo) sits in dm-a-b and war-room — its cells stay undimmed
-    for (const el of container.querySelectorAll('[data-fleet-wire-dim="true"]'))
-      expect(['dm-a-b', 'war-room']).not.toContain(el.getAttribute('data-fleet-wire-cell'))
-    for (const el of container.querySelectorAll('[data-fleet-wire-cell]')) {
-      const room = el.getAttribute('data-fleet-wire-cell')
-      if (room === 'dm-a-b' || room === 'war-room')
-        expect(el.getAttribute('data-fleet-wire-dim')).toBeNull()
-    }
+    // folded view: 5 cells (dm: pids 1,2,3 · war-room: pids 1,2); pid 2 owns 2
+    // of them, so exactly 3 dim
+    expect(container.querySelectorAll('[data-fleet-wire-dim="true"]').length).toBe(3)
+    expect(container.querySelectorAll('[data-fleet-wire-cell]').length).toBe(5)
     // hovering elsewhere releases the focus
     fireEvent.mouseOver(document.body)
     expect(container.querySelectorAll('[data-fleet-wire-dim="true"]').length).toBe(0)
+  })
+})
+
+describe('age tones, room card, socket states', () => {
+  /** A fresh work room + a drifted agent + an unenrolled agent. */
+  const TONED: ChannelsPayload = {
+    sourceAvailable: true,
+    activityWindowSeconds: 1800,
+    nodes: [
+      { pid: 1, sessionId: 'sess-a', seat: 'alpha#111111', agent: 'alpha', enrolled: true },
+      { pid: 2, sessionId: 'sess-b', seat: 'bravo#222222', agent: 'bravo', enrolled: true },
+      { pid: 3, sessionId: 'sess-c', seat: null, enrolled: false },                       // truly unenrolled
+      { pid: 4, sessionId: 'sess-d', seat: null, enrolled: false, projectSeatCount: 2 },  // session drift
+    ],
+    edges: [{
+      room: 'war-room', members: ['sess-a', 'sess-b'],
+      memberSeats: ['alpha#111111', 'bravo#222222'],
+      from: 'sess-a', fromSeat: 'alpha#111111',
+      lastActivity: Date.now() / 1000 - 10, recent: true,
+    }],
+  }
+
+  it('the column carries its age bucket — fresh now, warm and idle by age', () => {
+    mountRows()
+    const { container } = renderPanel(TONED)
+    expect(container.querySelector('[data-fleet-wire-column="war-room"]')?.getAttribute('data-fleet-wire-col-age')).toBe('fresh')
+  })
+
+  it('clicking a real room opens the room card: seats, the sender, the age — never message content', () => {
+    mountRows()
+    const { container } = renderPanel(TONED)
+    fireEvent.click(container.querySelector('[data-fleet-wire-column="war-room"]')!)
+    const card = container.querySelector('[data-fleet-wire-card="war-room"]')!
+    expect(card).toBeTruthy()
+    expect(card.querySelector('[data-fleet-wire-card-title]')?.textContent).toBe('war-room')
+    expect(card.querySelector('[data-fleet-wire-card-age]')?.textContent).toContain('newest write')
+    expect(card.querySelectorAll('[data-fleet-wire-card-seat]').length).toBe(2)
+    expect(card.textContent).toContain('alpha#111111 — wrote last')
+    // no card for a folded-only view, and Escape closes
+    fireEvent.click(card.querySelector('[data-fleet-wire-card-close]')!)
+    expect(container.querySelector('[data-fleet-wire-card]')).toBeNull()
+  })
+
+  it('the folded column still expands on click, and an expanded dm room offers fold in its card', () => {
+    mountRows()
+    const folded: ChannelsPayload = {
+      ...TONED,
+      edges: [
+        ...TONED.edges!,
+        { room: 'dm-a-b', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
+          from: 'sess-a', fromSeat: 'alpha#111111', lastActivity: Date.now() / 1000 - 30, recent: true },
+        { room: 'dm-a-c', members: ['sess-a', 'sess-c'], memberSeats: ['alpha#111111', 'charlie#333333'],
+          from: 'sess-c', fromSeat: 'charlie#333333', lastActivity: Date.now() / 1000 - 600, recent: false },
+      ],
+    }
+    const { container } = renderPanel(folded)
+    // click the FOLD -> expands (unchanged contract)
+    fireEvent.click(container.querySelector('[data-fleet-wire-column="dm"]')!)
+    expect(container.querySelector('[data-fleet-wire-label="dm-a-b"]')).toBeTruthy()
+    // click an expanded pair room -> its CARD opens, offering the fold back
+    fireEvent.click(container.querySelector('[data-fleet-wire-column="dm-a-b"]')!)
+    const card = container.querySelector('[data-fleet-wire-card="dm-a-b"]')!
+    expect(card).toBeTruthy()
+    fireEvent.click(card.querySelector('[data-fleet-wire-card-fold]')!)
+    expect(container.querySelector('[data-fleet-wire-label="dm"]')?.textContent).toBe('+2 direct')
+    expect(container.querySelector('[data-fleet-wire-card]')).toBeNull()
+  })
+
+  it('the two unenrolled states differ on sight: drift runs amber, plain unenrolled does not', () => {
+    mountRows()
+    { const row = document.createElement('button'); row.setAttribute('data-fleet-agent-row', '4'); document.body.appendChild(row) }
+    const { container } = renderPanel(TONED)
+    const drift = container.querySelector('[data-fleet-wire-socket="4"]')!
+    const plain = container.querySelector('[data-fleet-wire-socket="3"]')!
+    expect(drift.getAttribute('data-fleet-wire-socket-state')).toBe('drift')
+    expect(drift.classList.contains('fleet-wire-socket-drift')).toBe(true)
+    expect(plain.getAttribute('data-fleet-wire-socket-state')).toBe('unenrolled')
+    expect(plain.classList.contains('fleet-wire-socket-drift')).toBe(false)
+  })
+
+  it('the sender pulses only while the room is FRESH — a warm room holds a still-filled dot', () => {
+    mountRows()
+    const warm: ChannelsPayload = {
+      ...TONED,
+      edges: [{ ...TONED.edges![0], lastActivity: Date.now() / 1000 - 600 }],
+    }
+    const { container } = renderPanel(warm)
+    const sender = container.querySelector('[data-fleet-wire-role="sender"]')!
+    expect(sender.classList.contains('fleet-wire-cell-sender')).toBe(true)
+    expect(sender.classList.contains('fleet-wire-cell-live')).toBe(false)
+    expect(container.querySelector('[data-fleet-wire-column="war-room"]')?.getAttribute('data-fleet-wire-col-age')).toBe('warm')
   })
 })

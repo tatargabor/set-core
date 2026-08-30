@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  computeRoomMatrix, cellTitle,
+  computeRoomMatrix, cellTitle, ageBucket,
   type ChannelsPayload, type RowRect,
 } from '../../src/lib/fleetWireLayout'
 
@@ -208,5 +208,24 @@ describe('pair-room folding (collapseDirect)', () => {
     const m = computeRoomMatrix({ payload: p, rows: rows(1, 2, 3), height: H, gutterWidth: W })
     expect(m.columns[0].room).toBe('wpc-board')
     expect(m.columns[1].room).toBe('dm')
+  })
+})
+
+describe('age buckets', () => {
+  it('null is idle, not an error — a room with no writes is quiet, not broken', () => {
+    expect(ageBucket(null, 1_000_000)).toBe('idle')
+  })
+  it('under two minutes is fresh, under the window is warm, past it idle', () => {
+    const now = 10_000_000 // ms
+    expect(ageBucket(now / 1000 - 10, now)).toBe('fresh')    // 10 s old
+    expect(ageBucket(now / 1000 - 119, now)).toBe('fresh')   // just inside
+    expect(ageBucket(now / 1000 - 121, now)).toBe('warm')    // just outside
+    expect(ageBucket(now / 1000 - 1700, now)).toBe('warm')   // still in the window
+    expect(ageBucket(now / 1000 - 1900, now)).toBe('idle')   // past 30 min
+  })
+  it('the window honours the payload, not a hardcoded constant', () => {
+    const now = 10_000_000
+    expect(ageBucket(now / 1000 - 300, now, 600)).toBe('warm')
+    expect(ageBucket(now / 1000 - 700, now, 600)).toBe('idle')
   })
 })
