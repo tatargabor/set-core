@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { TriangleAlert } from 'lucide-react'
+import { Maximize2, Minimize2, TriangleAlert, X } from 'lucide-react'
 
 import { getProjectStatus, getStatusContract, type StatusCommandResult } from '../lib/api'
 import { GAP_HINT } from '../lib/statusGapHints'
+import { DOCK_CONTROLS, IconButton } from './TileControls'
+import type { DockEdge } from '../lib/fleetDocks'
 
 /**
  * The project's own board, under the active project's header row: the summary
@@ -158,7 +160,24 @@ function cardProgress(c: BoardCard): string | null {
   return done !== null && totalCount !== null ? `${done}/${totalCount}` : null
 }
 
-export default function FleetBoard({ project }: { project: string }) {
+export default function FleetBoard({
+  project, projectName, showBoard = true, onClose, onDock, dockedEdge, maximised, onMaximise,
+}: {
+  project: string
+  /** Set by a PANEL context: names the title bar and turns on the window chrome.
+      The inline summary under the project header passes nothing — a strip has
+      no window to control. */
+  projectName?: string
+  /** Whether the card columns render. The panel owns them when it is open;
+      the inline copy then stays the summary line only, so one board is never
+      drawn twice on one screen. */
+  showBoard?: boolean
+  onClose?: () => void
+  onDock?: (edge: DockEdge | null) => void
+  dockedEdge?: DockEdge | null
+  maximised?: boolean
+  onMaximise?: () => void
+}) {
   // `null` = the contract has not answered yet. `false` = it declares no board,
   // which is a decision of the project's, not a gap of anyone's.
   const [declares, setDeclares] = useState<boolean | null>(null)
@@ -296,8 +315,8 @@ export default function FleetBoard({ project }: { project: string }) {
     .filter((e): e is { name: string; count: number } => e !== null)
     .map(e => [e.name, e.count]))
 
-  return (
-    <div data-fleet-board-strip className="mt-1 rounded border border-surface-line bg-surface-panel/40 px-2 py-1.5 space-y-1">
+  const body = (
+    <>
       <div className="flex items-center gap-2 text-xs min-w-0">
         <span
           className="text-fg-ghost shrink-0"
@@ -386,7 +405,7 @@ export default function FleetBoard({ project }: { project: string }) {
               placed by their own lane value and never re-sorted into agreement
               with the counts. Scroll lives in each column — the board is bounded
               so 180 cards cannot take the screen. */}
-          {cards !== null && (
+          {showBoard && cards !== null && (
             <div className="flex gap-1.5 min-w-0 overflow-x-auto" data-fleet-board-columns>
               {bandNames.map(name => (
                 <div key={name} data-fleet-board-col={name} className="flex-1 min-w-28 space-y-1">
@@ -423,13 +442,70 @@ export default function FleetBoard({ project }: { project: string }) {
               )}
             </div>
           )}
-          {cards === null && (
+          {showBoard && cards === null && (
             <div className="text-xs text-amber-300" data-fleet-board-cards-shape>
               board — the answer carries a cards field this build cannot read
             </div>
           )}
         </>
       )}
+    </>
+  )
+
+  // PANEL context: a title bar with the same window chrome every other project
+  // panel carries — four dock edges, maximise, close (asked for 2026-08-30:
+  // the board must not read as a second-class panel next to the agent ones).
+  if (projectName) {
+    return (
+      <div className="flex flex-col h-full min-h-0" data-fleet-board-panel={projectName}>
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-surface-line shrink-0">
+          <span className="text-xs text-fg-strong shrink-0">board</span>
+          <span className="text-xs text-fg-ghost truncate">{projectName}</span>
+          <span className="ml-auto flex items-center gap-0.5 shrink-0">
+            {onDock && (
+              <span className="flex items-center" data-fleet-board-dock={dockedEdge ?? 'grid'}>
+                {DOCK_CONTROLS.map(({ edge, icon, where }) => (
+                  <IconButton
+                    key={edge}
+                    icon={icon}
+                    testId={`board-dock-${edge}`}
+                    active={dockedEdge === edge}
+                    label={dockedEdge === edge
+                      ? `bring the board back into the grid from the ${where}`
+                      : `put the board ${where} — the panel takes its space out of the grid`}
+                    onClick={() => onDock(dockedEdge === edge ? null : edge)}
+                  />
+                ))}
+              </span>
+            )}
+            {onMaximise && (
+              <IconButton
+                icon={maximised ? Minimize2 : Maximize2}
+                testId="board-max"
+                active={maximised}
+                mark={{ 'data-fleet-board-maximised': maximised ? 'on' : 'off' }}
+                label={maximised
+                  ? 'back to the size it had — the agents get their room back'
+                  : 'as large as this placement allows — in the grid the agents move to the strip above; on an edge the band takes the room the layout can spare'}
+                onClick={onMaximise}
+              />
+            )}
+            {onClose && (
+              <IconButton icon={X} testId="board-close" label="close the board" onClick={onClose} />
+            )}
+          </span>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1.5">
+          <div data-fleet-board-strip className="space-y-1">{body}</div>
+        </div>
+      </div>
+    )
+  }
+
+  // INLINE context: the summary card under the project header, as shipped.
+  return (
+    <div data-fleet-board-strip className="mt-1 rounded border border-surface-line bg-surface-panel/40 px-2 py-1.5 space-y-1">
+      {body}
     </div>
   )
 }

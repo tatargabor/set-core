@@ -63,7 +63,14 @@ export const PANEL_FILES = 'files'
  */
 export const PANEL_WORK_CYCLE = 'work-cycle'
 
-export const KNOWN_PANEL_KINDS: readonly string[] = [PANEL_AGENT, PANEL_FILES, PANEL_WORK_CYCLE]
+/**
+ * The board — a project's published development board (its contract `board`
+ * answer), as columns of cards. Keyed on the project ROOT like the file view
+ * and the work cycle: one board per project, whichever agent is selected.
+ */
+export const PANEL_BOARD = 'board'
+
+export const KNOWN_PANEL_KINDS: readonly string[] = [PANEL_AGENT, PANEL_FILES, PANEL_WORK_CYCLE, PANEL_BOARD]
 
 /** One panel: what kind it is, and which instance of that kind. */
 export interface PanelRef {

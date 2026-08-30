@@ -6,6 +6,8 @@
 - [x] 1.4 Render the generic card face (`id`, `title`, optional `kind`, `blocked` mark, `tasksDone`/`tasksTotal` progress only when both present, `plannedRelease` chip, `note`) with no producer field name anywhere in the code [REQ: the-card-face-is-domain-free-and-renders-the-generic-fields]
 - [x] 1.5 Render the unknown tray hatched and header-counted from the `unknown` scalar when present [REQ: the-unknown-tray-is-the-absence-of-a-band]
 - [x] 1.6 Bound the board area (max height, internal scroll per column) and keep every interaction a reading one [REQ: the-board-is-read-only]
+- [x] 1.7 The board as a dockable panel kind (`board`) with the same window chrome as the other project panels — four dock edges, maximise, close — opened from a glyph in the project header; while the panel is open the inline copy stays the summary strip only [REQ: the-board-is-read-only]
+- [x] 1.8 Count the project tiles (file view, work cycle, board) in the grid-tile count so the column control cannot disagree with what is drawn [REQ: the-board-is-read-only]
 
 ## 2. Tests
 
@@ -29,3 +31,4 @@
 - [x] AC-5: WHEN the board renders with populated bands and an unknown scalar THEN the tray is distinguishable by more than position and the strip's unknown figure equals the tray header's [REQ: the-unknown-tray-is-the-absence-of-a-band, scenario: the-tray-does-not-absorb-the-bands]
 - [x] AC-6: WHEN the board command returns a gap result THEN the gap renders and no card columns claim an empty board [REQ: the-summary-strip-and-the-honesty-fields-stay, scenario: the-answer-fails-after-the-board-shipped]
 - [x] AC-7: WHEN the reader clicks a card THEN nothing is written and any effect is a reading effect [REQ: the-board-is-read-only, scenario: a-card-click]
+- [x] AC-8: WHEN the board renders as a panel THEN it carries the same window chrome as the other project panels — dock edges, maximise, close [REQ: the-board-is-read-only]

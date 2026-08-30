@@ -46,7 +46,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Layers, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Kanban, Layers, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
@@ -61,7 +61,7 @@ import {
   withCollapsed, withDock,
   type DockEdge, type DockedView, type DockMap,
 } from '../lib/fleetDocks'
-import { PANEL_AGENT, PANEL_FILES, PANEL_WORK_CYCLE } from '../lib/fleetPanels'
+import { PANEL_AGENT, PANEL_BOARD, PANEL_FILES, PANEL_WORK_CYCLE } from '../lib/fleetPanels'
 import FleetFileView, { type FileRequest } from '../components/FleetFileView'
 import { fileToOpen } from '../lib/fleetFiles'
 import {
@@ -2360,6 +2360,39 @@ export default function Fleet() {
     }
   }, [docks, dockPanel])
 
+  /**
+   * The board panel, opened per project ROOT — the same three steps as the file
+   * view and the work cycle, for the reason they state: a second path to a
+   * panel is a second place for those steps to drift.
+   */
+  const [boardOpen, setBoardOpen] = useState<Set<string>>(new Set())
+  const openBoard = useCallback((root: string) => {
+    setBoardOpen(prev => (prev.has(root) ? prev : new Set([...prev, root])))
+    const band = docks.find(d => d.kind === PANEL_BOARD && d.id === root)
+    if (band?.collapsed) collapseBand(PANEL_BOARD, root, false)
+  }, [docks, collapseBand])
+  const closeBoard = useCallback((root: string) => {
+    setBoardOpen(prev => {
+      const next = new Set(prev)
+      next.delete(root)
+      return next
+    })
+    if (docks.some(d => d.kind === PANEL_BOARD && d.id === root)) {
+      dockPanel(PANEL_BOARD, root, null)
+    }
+  }, [docks, dockPanel])
+  const [boardMax, setBoardMax] = useState<string | null>(null)
+  const toggleBoardMax = useCallback((project: string | null, root: string) => {
+    setBoardMax(prev => {
+      const next = prev === root ? null : root
+      if (next !== null) {
+        writeView(project, { enlarged: null })
+        setMemory({ project, view: readView(project) })
+      }
+      return next
+    })
+  }, [])
+
   const dockedEdgeOf = useCallback((label: string | null | undefined): DockEdge | null => (
     label ? docks.find(d => d.kind === PANEL_AGENT && d.id === label)?.edge ?? null : null
   ), [docks])
@@ -2755,6 +2788,9 @@ export default function Fleet() {
   const workCycleShowing = !!active?.root
     && (workCycleOpen.has(active.root)
         || docks.some(d => d.kind === PANEL_WORK_CYCLE && d.id === active.root))
+  const boardShowing = !!active?.root
+    && (boardOpen.has(active.root)
+        || docks.some(d => d.kind === PANEL_BOARD && d.id === active.root))
 
   const filesBig = filesMax !== null
     && filesMax === active?.root
@@ -2770,7 +2806,18 @@ export default function Fleet() {
   const fileTileInGrid = !!active?.root
     && filesOpen.has(active.root)
     && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root)
-  const gridTiles = gridAgents.length + (fileTileInGrid ? 1 : 0)
+  // The work cycle and the board count too — the comment above says the layout,
+  // the column control and the tiles cannot disagree about this number, and the
+  // work-cycle tile was missing from it (measured when the board tile landed;
+  // the file view was the only project panel the count knew).
+  const workCycleTileInGrid = !!active?.root
+    && workCycleOpen.has(active.root)
+    && !docks.some(d => d.kind === PANEL_WORK_CYCLE && d.id === active.root)
+  const boardTileInGrid = !!active?.root
+    && boardOpen.has(active.root)
+    && !docks.some(d => d.kind === PANEL_BOARD && d.id === active.root)
+  const gridTiles = gridAgents.length
+    + (fileTileInGrid ? 1 : 0) + (workCycleTileInGrid ? 1 : 0) + (boardTileInGrid ? 1 : 0)
   /* The preference, clamped to what there is to lay out — see `fitColumns`. */
   const fittedColumns = fitColumns(columns, gridTiles)
 
@@ -3077,6 +3124,28 @@ export default function Fleet() {
           root={project.root}
           projectName={project.name}
           onClose={() => closeWorkCycle(band.id)}
+        />
+      )
+    }
+    if (band.kind === PANEL_BOARD) {
+      const project = data?.projects.find(p => p.root === band.id)
+      if (!project) {
+        return (
+          <div className="p-2 text-xs text-fg-muted">
+            no project with this root is on the screen — the panel is kept, not closed
+          </div>
+        )
+      }
+      const bandEdge = docks.find(d => d.kind === PANEL_BOARD && d.id === band.id)?.edge ?? null
+      return (
+        <FleetBoard
+          project={project.name}
+          projectName={project.name}
+          onClose={() => closeBoard(band.id)}
+          onDock={edge => dockPanel(PANEL_BOARD, band.id, edge)}
+          dockedEdge={bandEdge}
+          maximised={boardMax === band.id}
+          onMaximise={() => toggleBoardMax(project.name, band.id)}
         />
       )
     }
@@ -3514,6 +3583,20 @@ export default function Fleet() {
                       : 'border-transparent text-fg-ghost hover:text-fg-muted'
                   }`}
                 ><Repeat size={13} strokeWidth={1.75} /></button>
+                <button
+                  data-fleet-board-open={active.root}
+                  aria-pressed={boardShowing}
+                  aria-label="the project's board"
+                  title={boardShowing
+                    ? 'Close the board'
+                    : 'Open the board — the cards the project publishes, as a panel with room controls'}
+                  onClick={() => (boardShowing ? closeBoard(active.root) : openBoard(active.root))}
+                  className={`p-1 rounded border shrink-0 ${
+                    boardShowing
+                      ? 'border-surface-line bg-surface-raised/60 text-fg-strong'
+                      : 'border-transparent text-fg-ghost hover:text-fg-muted'
+                  }`}
+                ><Kanban size={13} strokeWidth={1.75} /></button>
                 {/*
                   OFFERED WHENEVER THE GRID DRAWS ANYTHING — it used to hide
                   itself under `agents.length > 1`, and that hid the one state a
@@ -3659,7 +3742,7 @@ export default function Fleet() {
                   nothing for a project that does not declare a `board` command —
                   a project that publishes no board is the producer's decision, not
                   a gap — and renders every failure once it does. See the component. */}
-              <FleetBoard project={active.name} />
+              <FleetBoard project={active.name} showBoard={!boardShowing} />
               {/* Task 4.2 — a panel whose KIND this build does not have.
                   Stated where the reader is standing, above the grid, rather
                   than only in the place it would have been rendered: the whole
@@ -3859,6 +3942,33 @@ export default function Fleet() {
                     root={active.root}
                     projectName={active.name}
                     onClose={() => closeWorkCycle(active.root)}
+                  />
+                </div>
+              )}
+              {/*
+                THE BOARD AS A TILE, on the same terms as the file view and the
+                work cycle. Its own chrome — dock to an edge, maximise, close —
+                is what makes it a panel of the same class as the agents', not a
+                second-class summary (asked for 2026-08-30). While the panel is
+                open anywhere, the inline copy under the header stays the
+                summary strip only: one board, one place, never two to drift.
+              */}
+              {active.root && boardOpen.has(active.root)
+                && !docks.some(d => d.kind === PANEL_BOARD && d.id === active.root) && (
+                <div
+                  className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden${
+                    boardMax === active.root ? ' flex-1' : ''}`}
+                  data-fleet-board-tile={active.root}
+                  data-fleet-board-max={boardMax === active.root ? 'on' : 'off'}
+                >
+                  <FleetBoard
+                    project={active.name}
+                    projectName={active.name}
+                    onClose={() => closeBoard(active.root)}
+                    onDock={edge => dockPanel(PANEL_BOARD, active.root, edge)}
+                    dockedEdge={null}
+                    maximised={boardMax === active.root}
+                    onMaximise={() => toggleBoardMax(active.name, active.root)}
                   />
                 </div>
               )}

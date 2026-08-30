@@ -307,3 +307,57 @@ describe('the card board', () => {
     expect(board.querySelector('button, a, input, form')).toBeNull()
   })
 })
+
+describe('the board as a panel', () => {
+  const renderPanel = async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) return { commands: { board: BOARD } }
+      return undefined
+    })
+    const r = render(
+      <FleetBoard project="p" projectName="p"
+        onClose={() => {}} onDock={() => {}} dockedEdge={null}
+        maximised={false} onMaximise={() => {}} />,
+    )
+    await rendered(r.container)
+    return r
+  }
+
+  it('carries the same window chrome as the other project panels', async () => {
+    const { container } = await renderPanel()
+    // Four dock edges, a maximise, a close — the set the agent tiles and the
+    // file view carry, no board-specific substitutes.
+    for (const edge of ['left', 'right', 'top', 'bottom']) {
+      expect(container.querySelector(`[data-tile-control="board-dock-${edge}"]`)).toBeTruthy()
+    }
+    expect(container.querySelector('[data-tile-control="board-max"]')).toBeTruthy()
+    expect(container.querySelector('[data-tile-control="board-close"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-board-panel="p"]')).toBeTruthy()
+  })
+
+  it('renders no window chrome inline — a summary strip has no window', async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) return { commands: { board: BOARD } }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" />)
+    await rendered(container)
+    expect(container.querySelector('[data-fleet-board-panel]')).toBeNull()
+    expect(container.querySelector('[data-tile-control="board-max"]')).toBeNull()
+    expect(container.querySelector('[data-tile-control="board-dock-left"]')).toBeNull()
+  })
+
+  it('honours showBoard=false: the summary strip stays, the columns do not render twice', async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) return { commands: { board: BOARD } }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" showBoard={false} />)
+    await rendered(container)
+    expect(container.querySelector('[data-fleet-board-bands]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-board-columns]')).toBeNull()
+  })
+})
