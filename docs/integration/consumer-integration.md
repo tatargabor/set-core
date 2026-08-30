@@ -2668,3 +2668,20 @@ Side finding registered as **B-132**: a dock click issued while `GET /api/fleet/
 (~30-35 s) is still in flight writes the stale local list over the server — the probe
 itself deleted the user's persisted files dock this way. Open, not mine to leave silent.
 B-131 closed (the release-selector work wired the reported-unused symbols).
+
+## 2026-08-30 (evening) — the "still apply after archive" strip defect REPRODUCED and FIXED (`a9f37e90`)
+
+The stage strip's session→change inference ranked candidates purely by recency; the
+producer session's verify work had merely REFERENCED another session's active change
+(2 invocation matches, most recent), which outranked its own just-archived change.
+Pure counts fail the opposite measured case, so the fix is the ARCHIVE ANCHOR: when the
+recency leader is not archived and another candidate derives to `archive` with ≥ half
+the leader's tail-window weight, the archive wins. Carried as OpenSpec change
+`fleet-stage-archive-anchor` — the FIRST spec for `agent-stage-derivation`, which had
+shipped code-only. Stage suites 52/52 incl. the live case as a regression test;
+set-web restarted (no run in flight).
+
+Live state, stated honestly: the producer RESTARTED its session right after archiving,
+and the new 26 KB record names no change yet — so the row currently shows the
+`join-failed` gap (⚠ stage?), which is true. When the session names a change, the strip
+resolves; if it re-references the archived one, the anchor holds it at `archive`.
