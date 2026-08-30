@@ -3715,7 +3715,8 @@ consumer's name, path, or content.
   agent-tree work is committed; if they still flake then, the cause is elsewhere.
 
 ### B-131 — `tsc -b` fails on main: unused release-membership scaffolding in `FleetBoard.tsx`
-- **state:** open
+- **state:** closed (fixed by wiring — the "wire them" branch of the report's own fork)
+- **closed:** 2026-08-30; the release-selector work wired both symbols (`setReleaseChoice` drives the selector, `offBoardItems` renders the off-board group). Evidence: `cd web && npx tsc -b` exits with 0 lines of output at commit `306b1e5b`; the symbols are read in `FleetBoard.tsx` (selector + off-board group) and asserted by `fleetBoard.test.tsx` 30/30.
 - **reported:** 2026-08-30 by the release-prep session while typechecking before a push.
 - **measured:** `cd web && npx tsc -b` — two TS6133 errors at HEAD:
   `src/components/FleetBoard.tsx:480` (`setReleaseChoice` declared but never read) and
@@ -3727,3 +3728,9 @@ consumer's name, path, or content.
   tree), which is why a fully-green commit sequence still carries this.
 - **fixed when:** `npx tsc -b` on main exits clean, either by wiring or removing the two
   symbols, with the owning session's consent.
+
+### B-132 — a dock/undock click before `loadDocks` resolves writes the stale list over the server
+- **state:** open
+- **reported:** 2026-08-30 by the misrender investigation (measured while probing, then reproduced by the probe itself).
+- **measured:** `GET /api/fleet/layout` takes ~30-35 s (it runs discovery). Until it resolves, the page's dock list is the local default; any dock/undock click in that window calls `writeDocks` with the STALE list (`Fleet.tsx:2071-2075`, `loadDocks` lands late at `:2059`), silently deleting docked panels. During investigation the probe's click deleted the user's persisted files dock (`docks.wpc-pont`). Same "late answer overwrites a click" class as `wiresTouched` (`Fleet.tsx:2019-2025`).
+- **what proves it fixed:** a dock click issued while the layout request is still in flight survives the request's resolution — the clicked dock is still present in `docks` after `loadDocks` lands.
