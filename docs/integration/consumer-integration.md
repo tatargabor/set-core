@@ -2651,3 +2651,20 @@ the project).
   screenshot; NOT yet reproduced (dock-top combinations round-trip clean under
   Playwright). A background investigation agent is iterating variants (maximised docked
   board, terminal band present, persisted arrangements). OPEN.
+
+## 2026-08-30 (night) — the switch-back misrender REPRODUCED and FIXED (`8acba0ef`)
+
+Reproduced by a background investigation agent with the missing ingredient the direct
+attempts missed: an ENLARGED AGENT turns the panel column into flex-col; the board tile's
+remembered maximise (flex-1, in-memory, keyed by root, re-arms on switch-back) then
+starves the files tile — `flex: 0 1 auto; min-height: 0` — to 63-117 px with its header
+clipping. Three fixes at the three measured points: the files grid tile carries the
+grid's own 11rem floor (`min-h-44`); the file-view header is `shrink-0`; and a DOCKED
+board's maximise now resizes the band (the docked files pattern) instead of silently
+arming the grid's boardMax. Verified by re-driving the exact defect sequence on the
+live dashboard: the files tile holds 176 px. Suites 85/85; `tsc -b` clean.
+
+Side finding registered as **B-132**: a dock click issued while `GET /api/fleet/layout`
+(~30-35 s) is still in flight writes the stale local list over the server — the probe
+itself deleted the user's persisted files dock this way. Open, not mine to leave silent.
+B-131 closed (the release-selector work wired the reported-unused symbols).
