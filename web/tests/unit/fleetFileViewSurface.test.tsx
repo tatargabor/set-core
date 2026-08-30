@@ -773,3 +773,41 @@ describe('revealing a directory', () => {
     expect(container.querySelector('[data-fleet-file-open="a.ts"]')).toBeTruthy()
   })
 })
+
+/**
+ * THE BOARD'S ⛶, ON THE FILE VIEW (asked for 2026-08-30): full screen is the
+ * whole window, past every dock and grid cell — and the panel is the SAME
+ * instance, its root escaping to `fixed`, because a page-level overlay would
+ * remount the panel and drop an unsaved draft.
+ */
+describe('full screen', () => {
+  it('offers no ⛶ when the page provides no way to go full screen', () => {
+    const { container } = view()
+    expect(container.querySelector('[data-tile-control="file-fullscreen"]')).toBeNull()
+  })
+
+  it('the ⛶ toggles through to the page, and the root escapes to fixed while on', () => {
+    const onFullscreen = vi.fn()
+    const { container } = view({ fullscreen: false, onFullscreen })
+    const btn = container.querySelector('[data-tile-control="file-fullscreen"]')!
+    expect(btn).toBeTruthy()
+    fireEvent.click(btn)
+    expect(onFullscreen).toHaveBeenCalledTimes(1)
+
+    const { container: onScreen } = view({ fullscreen: true, onFullscreen, onMaximise: () => {} })
+    expect(onScreen.querySelector('[data-fleet-file-fullscreen="on"]')).toBeTruthy()
+    const rootEl = onScreen.querySelector('[data-fleet-file-fullscreen-root="proj"]')!
+    expect(rootEl.className).toContain('fixed')
+    expect(rootEl.className).toContain('inset-0')
+    // maximise and full screen are different controls: maximise grows within
+    // the placement, full screen takes the window
+    expect(onScreen.querySelector('[data-tile-control="file-max"]')).toBeTruthy()
+  })
+
+  it('without fullscreen the root stays a placed panel, not fixed', () => {
+    const { container } = view({ fullscreen: false, onFullscreen: () => {} })
+    const rootEl = container.querySelector('[data-fleet-file-view="proj"]')!
+    expect(rootEl.className).not.toContain('fixed')
+    expect(rootEl.className).toContain('h-full')
+  })
+})

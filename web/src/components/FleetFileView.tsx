@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown, ChevronRight, EyeOff, File as FileIcon, Maximize2, Minimize2,
-  PanelLeftClose, PanelLeftOpen, RefreshCw, Save, WrapText, X,
+  ChevronDown, ChevronRight, Expand, EyeOff, File as FileIcon, Maximize2, Minimize2,
+  PanelLeftClose, PanelLeftOpen, RefreshCw, Save, Shrink, WrapText, X,
 } from 'lucide-react'
 
 import { ancestorsOf, buildTree, languageOf, statusKind, type TreeNode } from '../lib/fleetFiles'
@@ -193,7 +193,7 @@ export interface FileRequest {
   reveal?: boolean
 }
 
-export default function FleetFileView({ root, projectName, request, initial, onClose, onRequestHandled, onOpened, onDock, dockedEdge, maximised, onMaximise }: {
+export default function FleetFileView({ root, projectName, request, initial, onClose, onRequestHandled, onOpened, onDock, dockedEdge, maximised, onMaximise, fullscreen, onFullscreen }: {
   /** The project's root — the panel's IDENTITY, and its default checkout. */
   root: string
   projectName: string
@@ -253,6 +253,12 @@ export default function FleetFileView({ root, projectName, request, initial, onC
    */
   maximised?: boolean
   onMaximise?: () => void
+  /** Full screen — the whole window, not the panel's placement. The instance
+      STAYS MOUNTED and its root simply escapes to `fixed`: the panel holds
+      unsaved editor state, and a page-level overlay would remount it and drop
+      a draft in flight. */
+  fullscreen?: boolean
+  onFullscreen?: () => void
 }) {
   /*
     WHICH CHECKOUT THIS PANEL IS READING — reported 2026-08-26.
@@ -804,7 +810,9 @@ export default function FleetFileView({ root, projectName, request, initial, onC
   }, [markedPath, revealed])
 
   return (
-    <div className="flex flex-col h-full min-h-0" data-fleet-file-view={projectName}>
+    <div className={`flex flex-col min-h-0 ${fullscreen ? 'fixed inset-0 z-[60] bg-surface-page p-3' : 'h-full'}`}
+         data-fleet-file-view={projectName}
+         data-fleet-file-fullscreen-root={fullscreen ? projectName : undefined}>
       <div className="flex items-center gap-1.5 px-2 py-1 border-b border-surface-line min-w-0">
         <span className="text-xs text-fg-strong shrink-0">files</span>
         <span className="text-xs text-fg-ghost truncate" title={root}>{projectName}</span>
@@ -864,6 +872,21 @@ export default function FleetFileView({ root, projectName, request, initial, onC
                 ? 'back to the size it had — the agents get their room back'
                 : 'as large as this placement allows — in the grid the agents move to the strip above; on an edge the band takes the room the layout can spare, never all of it'}
               onClick={onMaximise}
+            />
+          )}
+          {onFullscreen && (
+            /* The board's ⛶, on the same terms (asked for 2026-08-30): full
+               screen is the whole WINDOW, past every dock and grid cell —
+               maximise only ever grows within the placement. */
+            <IconButton
+              icon={fullscreen ? Shrink : Expand}
+              testId="file-fullscreen"
+              active={fullscreen}
+              mark={{ 'data-fleet-file-fullscreen': fullscreen ? 'on' : 'off' }}
+              label={fullscreen
+                ? 'back out of full screen — the panel returns to its placement'
+                : 'full screen — the files take the whole window'}
+              onClick={onFullscreen}
             />
           )}
           {/* Layout, not data: it changes what the panel spends its width on

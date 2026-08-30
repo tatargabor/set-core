@@ -2385,6 +2385,10 @@ export default function Fleet() {
   // FULL SCREEN — the whole layout, not a grid cell. Held by project ROOT; the
   // overlay carries its own exit, so leaving the project is not the only way out.
   const [boardFullscreen, setBoardFullscreen] = useState<string | null>(null)
+  // Same pattern for the file view. Its panel keeps ONE mounted instance per
+  // placement; full screen is the instance's own root escaping to `fixed`, so
+  // unsaved editor state survives the round trip.
+  const [filesFullscreen, setFilesFullscreen] = useState<string | null>(null)
   const toggleBoardMax = useCallback((project: string | null, root: string) => {
     setBoardMax(prev => {
       const next = prev === root ? null : root
@@ -3110,6 +3114,8 @@ export default function Fleet() {
           onMaximise={bandEdge
             ? () => toggleBandMax(dockSplitKey({ kind: PANEL_FILES, id: band.id }), bandEdge)
             : undefined}
+          fullscreen={filesFullscreen === project.root}
+          onFullscreen={() => setFilesFullscreen(filesFullscreen === project.root ? null : project.root ?? null)}
         />
       )
     }
@@ -3960,6 +3966,9 @@ export default function Fleet() {
                     dockedEdge={null}
                     maximised={filesBig}
                     onMaximise={() => toggleFilesMax(active.name, active.root)}
+                    fullscreen={filesFullscreen === active.root}
+                    onFullscreen={() => setFilesFullscreen(
+                      filesFullscreen === active.root ? null : active.root ?? null)}
                   />
                 </div>
               )}
