@@ -62,6 +62,7 @@ __all__ = [
     "has_active_changes",
     "infer_change_candidates",
     "infer_change_from_session",
+    "infer_change_weights",
     "declared_axis_from_results",
     "resolve_stage",
 ]
@@ -238,6 +239,11 @@ def infer_change_candidates(session_log: Optional[str]) -> List[str]:
     are collected with their absolute offsets; the returned list is ordered by
     descending offset (most recent first). A miss is a MISS — the caller
     reports a gap rather than guessing from the project's changes.
+
+    Weights are kept beside the order (`infer_change_weights`): the recency
+    order alone was measured insufficient on 2026-08-30, and the tiebreak that
+    fixes it needs the TREE, so it lives in `resolve_stage` — see the archive-
+    anchor rule there.
     """
     if not session_log:
         return []
@@ -249,7 +255,7 @@ def infer_change_candidates(session_log: Optional[str]) -> List[str]:
     now = time.monotonic()
     hit = _INFERENCE_MEMO.get(key)
     if hit and now - hit[0] < _INFERENCE_MEMO_TTL:
-        return hit[1]
+        return hit[1][0]
     size = st.st_size
     windows: list = []
     try:
@@ -263,36 +269,52 @@ def infer_change_candidates(session_log: Optional[str]) -> List[str]:
     except OSError as exc:
         logger.debug("fleet stage: session record unreadable (%s)", type(exc).__name__)
         return []
+    tail_base = windows[-1][0]
 
-    # Every match carries its absolute offset; the largest offset is the most
-    # recent naming. A name addressed recently beats a name addressed first —
-    # but the CALLER, not this function, decides which candidate the project
-    # actually backs (the tree is the ground truth; see resolve_stage).
-    best: Dict[str, int] = {}
+    # Per name: mentions inside the tail window, and the most recent offset
+    # across both windows. The CALLER, not this function, decides which
+    # candidate the project actually backs (the tree is the ground truth).
+    tail_weight: Dict[str, int] = {}
+    last: Dict[str, int] = {}
     for base, window in windows:
+        in_tail = base >= tail_base
         text = window.decode("utf-8", errors="replace")
         for pattern in _PATTERNS:
             for m in pattern.finditer(text):
                 off = base + m.start()
                 name = m.group(1)
-                if best.get(name, -1) < off:
-                    best[name] = off
-    found = [name for name, _ in sorted(best.items(), key=lambda kv: -kv[1])]
+                if in_tail:
+                    tail_weight[name] = tail_weight.get(name, 0) + 1
+                if last.get(name, -1) < off:
+                    last[name] = off
+    found = [name for name, _ in sorted(last.items(), key=lambda kv: -kv[1])]
     if len(_INFERENCE_MEMO) >= _INFERENCE_MEMO_MAX:
         _INFERENCE_MEMO.clear()
-    _INFERENCE_MEMO[key] = (now, found)
+    _INFERENCE_MEMO[key] = (now, (found, tail_weight))
     return found
 
+
+def infer_change_weights(session_log: Optional[str]) -> Dict[str, int]:
+    """Tail-window mention counts per candidate, from the same memoized read
+    `infer_change_candidates` made. Empty for a record never inferred."""
+    if not session_log:
+        return {}
+    try:
+        st = Path(session_log).stat()
+    except OSError:
+        return {}
+    hit = _INFERENCE_MEMO.get((session_log, st.st_mtime_ns, st.st_size))
+    return dict(hit[1][1]) if hit else {}
+
+
+# The declared flow, from a project-status answer
+# --------------------------------------------------------------------------- #
 
 def infer_change_from_session(session_log: Optional[str]) -> Optional[str]:
     """The change name the session addressed MOST RECENTLY, or `None`."""
     candidates = infer_change_candidates(session_log)
     return candidates[0] if candidates else None
 
-
-# --------------------------------------------------------------------------- #
-# The declared flow, from a project-status answer
-# --------------------------------------------------------------------------- #
 
 def declared_axis_from_results(results: Iterable[Any]) -> Optional[Tuple[List[str], Dict[str, str]]]:
     """The declared flow and a change→stage index, from contract answers.
@@ -465,4 +487,24 @@ def resolve_stage(
         # a change that never existed here, or a bare directory. A gap, not a
         # guess at the first stage.
         return _gap(REASON_NO_POSITION, flow, "derived")
+
+    # THE ARCHIVE ANCHOR (measured live, 2026-08-30): recency alone let a
+    # drive-by reference to another session's ACTIVE change (2 invocation
+    # matches) outrank the change this session had just ARCHIVED (3, its own
+    # work) — the strip showed `apply` over finished work. When the recent
+    # leader is positionable and some other candidate derives to `archive`
+    # with at least half the leader's tail weight, the archive wins: a
+    # session's finished change stays finished until the session's NEW work
+    # outweighs it, instead of any passing mention reopening it.
+    weights = infer_change_weights(session_log) if session_log else {}
+    if position != "archive" and weights:
+        leader_weight = weights.get(change, 0)
+        for name in infer_change_candidates(session_log):
+            if name == change:
+                continue
+            if weights.get(name, 0) * 2 < leader_weight:
+                continue
+            if derive_position(project_root or "", name) == "archive":
+                change, position = name, "archive"
+                break
     return Stage(state=STATE_RESOLVED, flow=flow, position=position, source="derived")

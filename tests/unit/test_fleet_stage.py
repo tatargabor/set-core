@@ -424,5 +424,29 @@ def test_the_stage_shape_is_complete_and_json_clean():
     json.dumps(s)
 
 
+def test_a_drive_by_mention_of_an_active_change_loses_to_the_archived_own_change(tmp_path):
+    # MEASURED live (2026-08-30, the user reported it as the fleet screen
+    # showing `apply` for a change already archived): a session archived its
+    # own change, then its verify work merely REFERENCED another session's
+    # active change — the reference was the MOST RECENT invocation match, and
+    # recency alone put the strip on the other change's `apply`. The archive
+    # anchor: a candidate deriving to `archive` with at least half the
+    # leader's tail weight is the session's own finished work, and finished
+    # work stays finished.
+    _change(tmp_path, "active-one", tasks="- [ ] 1.1 a\n")
+    (tmp_path / "openspec" / "changes" / "archive" / "2026-08-30-done-one").mkdir(parents=True)
+    (tmp_path / "openspec" / "changes" / "archive" / "2026-08-30-done-one" / "tasks.md").write_text(
+        "- [x] 1.1 done\n", encoding="utf-8")
+    log = tmp_path / "s-live.jsonl"
+    log.write_text(
+        json.dumps({"content": "/opsx:apply done-one do the work"}) + "\n"
+        + json.dumps({"content": "/opsx:apply done-one more work"}) + "\n"
+        + json.dumps({"content": "openspec status --change active-one"}) + "\n",
+        encoding="utf-8")
+    got = stage.resolve_stage(str(tmp_path), None, 1, "s", str(log))
+    assert got.state == stage.STATE_RESOLVED
+    assert got.position == "archive"
+
+
 def test_the_default_flow_is_the_openspec_lifecycle():
     assert stage.DEFAULT_FLOW == ("proposal", "design", "apply", "verify", "archive")

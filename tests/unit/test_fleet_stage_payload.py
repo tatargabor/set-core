@@ -159,5 +159,9 @@ def test_the_inference_memo_holds_the_slug_not_the_record(tmp_path):
     fleet_stage.infer_change_from_session(str(log))
     assert len(fleet_stage._INFERENCE_MEMO) == 1
     (stamp, value), = fleet_stage._INFERENCE_MEMO.values()
-    assert value == ["memo-x"]  # a candidate list now, most recent first
+    # a candidate list (most recent first) plus per-slug tail-mention COUNTS —
+    # weights, not words: a count per slug is exactly the "count, not content"
+    # the module's confidentiality line allows, and the archive-anchor rule in
+    # resolve_stage reads it (2026-08-30). No transcript text may appear here.
+    assert value == (["memo-x"], {"memo-x": 1})
     assert isinstance(stamp, float)
