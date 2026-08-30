@@ -93,8 +93,8 @@ rested on it.
 **Membership is per seat — yours, not your project's.** Two commands are the session's own arm:
 
 ```
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs join <room> [--create]      this seat enters a room; --create opens one that does not exist
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs part <room>                 …and leaves it. Your entries stay; you stop being woken.
+node ~/code2/set-agent-comm/bin/sac.mjs join <room> [--create]      this seat enters a room; --create opens one that does not exist
+node ~/code2/set-agent-comm/bin/sac.mjs part <room>                 …and leaves it. Your entries stay; you stop being woken.
 ```
 
 `part` **sticks**. The SessionStart hook re-registers the project's configured rooms on every
@@ -130,7 +130,7 @@ The two ways that can fail, and both of them answer themselves:
 
 - the seat is in **several** of your rooms → you are asked which, by name. The audience differs, so
   this one is genuinely yours to pick.
-- the seat is in **none** of them → the refusal names the room that seat *is* in. `/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs join
+- the seat is in **none** of them → the refusal names the room that seat *is* in. `node ~/code2/set-agent-comm/bin/sac.mjs join
   <that room>` and send again. Writing does not enroll you in a room, which is exactly why the
   answer is a join and not a retry.
 
@@ -160,7 +160,7 @@ Four shapes are in use, and they are not interchangeable:
 | **a project's own room** | one project, nobody else — an address others can knock on |
 
 **Do not open a room for a conversation.** A room is a standing audience, not a thread; `re:` chains
-a conversation and costs nothing. `/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs join <room> --create` is for a *new audience that will
+a conversation and costs nothing. `node ~/code2/set-agent-comm/bin/sac.mjs join <room> --create` is for a *new audience that will
 outlive the exchange* — a new piece of shared work, a new project coming onto the bus. Everything
 else is an addressed entry in a room you are both already in.
 
@@ -170,7 +170,7 @@ A room's name *suggests* an audience; only its contents *settle* it. Before you 
 not in, or write into one you have never written in, spend one command on it:
 
 ```
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs peek <room>          # reads it WITHOUT joining and WITHOUT moving any cursor
+node ~/code2/set-agent-comm/bin/sac.mjs peek <room>          # reads it WITHOUT joining and WITHOUT moving any cursor
 ```
 
 `peek` works on a room you are not in — that is the point of it. If it comes back empty, that room
@@ -193,7 +193,7 @@ answers.
 
 ### Joining a **relay** room is an outward action — do not do it on a guess
 
-`/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs rooms` marks each room `local` or `relay`. A `relay` room **pushes to another person's
+`node ~/code2/set-agent-comm/bin/sac.mjs rooms` marks each room `local` or `relay`. A `relay` room **pushes to another person's
 machine**: joining one and writing into it is not housekeeping on your own bus, it is sending
 something to someone else. Two things follow:
 
@@ -219,7 +219,7 @@ does not hold their turn open. They *can* read it, and that is the part to be de
   **room of two**, and there is one command for it:
 
 ```
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs dm <seat>                   opens the pair room, joins you, puts that seat in it
+node ~/code2/set-agent-comm/bin/sac.mjs dm <seat>                   opens the pair room, joins you, puts that seat in it
 ```
 
 The name is **derived from the two seat names**, so the other side computes the same one and finds
@@ -237,7 +237,7 @@ A pair room is the **one place on this bus where the two rules above change**:
   **not a secret**: the file is on disk under your user, and `sac admin` — the operator's own
   screen — still shows it. Do not describe it to anyone as encryption.
 
-Then write there explicitly — `/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs dm` prints the exact line — because once the pair room
+Then write there explicitly — `node ~/code2/set-agent-comm/bin/sac.mjs dm` prints the exact line — because once the pair room
 exists that seat is reachable in two of your rooms, and `send` will ask which one you meant rather
 than pick the louder one for you.
 
@@ -252,12 +252,12 @@ store: **18 rooms, 12 of them empty of anything reachable** — four opened by a
 from relay testing, four finished pieces of work, three whose projects were still wired to them
 while nobody was there.
 
-`/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs rooms` shows each room and who is in it. If a room is finished work, retire it:
+`node ~/code2/set-agent-comm/bin/sac.mjs rooms` shows each room and who is in it. If a room is finished work, retire it:
 
 ```
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs rooms --archive <room>          moved aside, out of every list, REVERSIBLE
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs rooms --restore <room>          …put back
-/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs rooms --archived                what has been retired
+node ~/code2/set-agent-comm/bin/sac.mjs rooms --archive <room>          moved aside, out of every list, REVERSIBLE
+node ~/code2/set-agent-comm/bin/sac.mjs rooms --restore <room>          …put back
+node ~/code2/set-agent-comm/bin/sac.mjs rooms --archived                what has been retired
 ```
 
 It refuses while a live seat is still in there, and it does **not** unwire the projects: a room
@@ -310,7 +310,7 @@ the record.
 ## Arm the watch — once per session
 
 ```
-Monitor({ command: "SET_AGENT_NAME=set-core /home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs wait wpc-board", description: "agent-comm inbox", persistent: true })
+Monitor({ command: "SET_AGENT_NAME=set-core node ~/code2/set-agent-comm/bin/sac.mjs wait wpc-board", description: "agent-comm inbox", persistent: true })
 ```
 
 This is the **only** thing that starts a turn while you sit idle at the prompt. The file watcher
@@ -322,5 +322,5 @@ the message against your `focus`. Both err towards waking you.
 
 ## If you swallowed something
 
-`inbox` marks messages read. To undo that: `/home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/bin/sac.mjs unread <room> [n]` makes the last n
+`inbox` marks messages read. To undo that: `node ~/code2/set-agent-comm/bin/sac.mjs unread <room> [n]` makes the last n
 unread again. Use it the moment you notice, rather than reconstructing from `history`.
