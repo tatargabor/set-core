@@ -369,6 +369,10 @@ export default function FleetBoard({
     .filter((e): e is { name: string; count: number } => e !== null)
     .map(e => [e.name, e.count]))
 
+  // Windowed (panel/fullscreen) contexts FILL their window; the inline strip
+  // under the project header stays bounded. See the note on the panel body.
+  const fill = Boolean(projectName)
+
   const body = (
     <>
       <div className="flex items-center gap-2 text-xs min-w-0">
@@ -477,15 +481,16 @@ export default function FleetBoard({
               with the counts. Scroll lives in each column — the board is bounded
               so 180 cards cannot take the screen. */}
           {showBoard && cards !== null && (
-            <div className="flex gap-1.5 min-w-0 overflow-x-auto" data-fleet-board-columns>
+            <div className={`flex gap-1.5 min-w-0 overflow-x-auto ${fill ? 'flex-1 min-h-0' : ''}`} data-fleet-board-columns>
               {bandNames.map(name => (
-                <div key={name} data-fleet-board-col={name} className="flex-1 min-w-28 space-y-1">
+                <div key={name} data-fleet-board-col={name}
+                     className={`flex-1 min-w-28 space-y-1 ${fill ? 'flex flex-col min-h-0' : ''}`}>
                   <div className="flex items-baseline gap-1.5 text-xs border-b border-surface-edge/70 pb-0.5">
                     <span className="text-fg-muted truncate">{name}</span>
                     <span className="text-fg-ghost tabular-nums shrink-0"
                           title="as the project counts it">{countByLane.get(name)}</span>
                   </div>
-                  <div className="space-y-1 max-h-72 overflow-y-auto">
+                  <div className={`space-y-1 overflow-y-auto ${fill ? 'flex-1 min-h-0' : 'max-h-72'}`}>
                     {(cardsByLane.get(name) ?? []).map((c, i) => (
                       <BoardCardFace key={cardId(c) ?? i} c={c} />
                     ))}
@@ -493,7 +498,8 @@ export default function FleetBoard({
                 </div>
               ))}
               {(unknown !== null || trayCards.length > 0) && (
-                <div data-fleet-board-tray className="flex-1 min-w-28 space-y-1">
+                <div data-fleet-board-tray
+                     className={`flex-1 min-w-28 space-y-1 ${fill ? 'flex flex-col min-h-0' : ''}`}>
                   <div
                     className="flex items-baseline gap-1.5 text-xs pb-0.5 text-amber-400"
                     style={{ background:
@@ -504,7 +510,7 @@ export default function FleetBoard({
                     <span className="tabular-nums shrink-0"
                           title="the project's own unknown figure">{unknown ?? trayCards.length}</span>
                   </div>
-                  <div className="space-y-1 max-h-72 overflow-y-auto">
+                  <div className={`space-y-1 overflow-y-auto ${fill ? 'flex-1 min-h-0' : 'max-h-72'}`}>
                     {trayCards.map((c, i) => (
                       <BoardCardFace key={cardId(c) ?? i} c={c} />
                     ))}
@@ -578,8 +584,13 @@ export default function FleetBoard({
             )}
           </span>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1.5">
-          <div data-fleet-board-strip className="space-y-1">{body}</div>
+        {/* A windowed board FILLS its window: the body is a flex column and the
+            card columns take the room below the strip, each scrolling its own
+            cards — a max-height cap here is what left two thirds of the full
+            screen dark (seen on screen, 2026-08-30). The inline strip under the
+            project header keeps the cap; it shares its page with real content. */}
+        <div className={`flex-1 min-h-0 overflow-y-auto px-2 py-1.5 ${fill ? 'flex flex-col' : ''}`}>
+          <div data-fleet-board-strip className={`space-y-1 ${fill ? 'flex flex-1 min-h-0 flex-col' : ''}`}>{body}</div>
         </div>
       </div>
     )

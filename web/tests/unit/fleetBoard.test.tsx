@@ -336,6 +336,35 @@ describe('the board as a panel', () => {
     expect(container.querySelector('[data-fleet-board-panel="p"]')).toBeTruthy()
   })
 
+  it('fills its window: the columns stretch, the card lists carry no height cap', async () => {
+    // The defect this pins: a max-height cap meant full screen showed ~4 cards
+    // and two thirds of dark, empty window below them (seen on screen, 2026-08-30).
+    const { container } = await renderPanel()
+    expect(container.querySelector('[data-fleet-board-columns]')!.className).toContain('flex-1')
+    const lists = container.querySelectorAll('[data-fleet-board-columns] .overflow-y-auto')
+    expect(lists.length).toBeGreaterThan(0)
+    for (const list of lists) {
+      expect(list.className).toContain('flex-1')
+      expect(list.className).not.toContain('max-h-72')
+    }
+  })
+
+  it('caps the INLINE card lists instead — the strip shares its page with real content', async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) return { commands: { board: BOARD } }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" />)
+    await rendered(container)
+    const lists = container.querySelectorAll('[data-fleet-board-columns] .overflow-y-auto')
+    expect(lists.length).toBeGreaterThan(0)
+    for (const list of lists) {
+      expect(list.className).toContain('max-h-72')
+      expect(list.className).not.toContain('flex-1')
+    }
+  })
+
   it('renders no window chrome inline — a summary strip has no window', async () => {
     install(u => {
       if (u.includes('/project-status/contract')) return CONTRACT

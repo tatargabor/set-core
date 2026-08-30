@@ -3342,7 +3342,11 @@ export default function Fleet() {
         const project = data?.projects.find(p => p.root === boardFullscreen)
         if (!project) return null
         return (
-          <div className="fixed inset-0 z-40 bg-surface-page/95 p-3 flex" data-fleet-board-fullscreen-root={project.root}>
+          // z-[60]: the app sidebar is fixed z-50 (UnifiedSidebar), and at the
+          // overlay's old z-40 it painted ON TOP of the full-screen board — the
+          // first column and the legend head sat hidden under it (seen on
+          // screen, 2026-08-30). Full screen means the whole window.
+          <div className="fixed inset-0 z-[60] bg-surface-page/95 p-3 flex" data-fleet-board-fullscreen-root={project.root}>
             <div className="flex-1 min-w-0 rounded border border-surface-line bg-surface-panel/60">
               <FleetBoard
                 project={project.name}
