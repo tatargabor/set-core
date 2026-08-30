@@ -313,3 +313,21 @@ def test_route_is_registered_before_project_wildcards():
     wildcards = [i for i, p in paths if "{project" in p and not p.startswith("/api/fleet")]
     assert fleet and wildcards
     assert max(fleet) < min(wildcards)
+
+
+def test_fallback_joined_session_does_not_crash_the_room_loop(tmp_path):
+    """Measured live 2026-08-30: an agent whose session id is NOT a roster key,
+    joined through the unique-project-root fallback, reached
+    `seat_by_session[session]` in the rooms loop — KeyError, HTTP 500 on
+    /api/fleet/channels, and the whole wire view dead ("no wire" meant "the
+    view is dead"). The room lookup follows the seat the node actually
+    resolved, which exists for BOTH join paths."""
+    agents = [LiveAgent(pid=9, session_id="sess-fallback",
+                        project_root="/proj/a", name="f")]
+    payload = _graph(tmp_path, agents=agents)
+    node = payload["nodes"][0]
+    assert node["enrolled"] is True
+    assert node["seat"] == "alpha#111111"
+    # the fallback seat's rooms become a real edge, not a crash
+    edge = _edge(payload, "war-room")
+    assert "sess-fallback" in edge["members"]

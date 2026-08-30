@@ -263,10 +263,25 @@ def derive_channel_graph(
     # edge never claims a second live member; the surface renders it as a
     # stub to the room's junction.
     rooms: Dict[str, list] = {}
+    # Seat objects by NAME, not by session: a node joined through the
+    # unique-project-root fallback carries a session id that has NO entry in
+    # `seat_by_session` — that is the condition the fallback exists for — and
+    # keying by session here turned exactly that case into a KeyError, a 500
+    # on the whole wire endpoint (measured live 2026-08-30: one such agent
+    # took down /api/fleet/channels for the entire fleet, so "no wire" meant
+    # "the view is dead"). `node.seat` is set for every enrolled node, both
+    # paths, so the room lookup follows the seat the node actually resolved.
+    seat_obj_by_name: Dict[str, Any] = {}
+    for seat in seat_by_session.values():
+        name = getattr(seat, "seat", None)
+        if name:
+            seat_obj_by_name[name] = seat
     for node in nodes:
         if not node.enrolled or not node.session_id:
             continue
-        seat = seat_by_session[str(node.session_id)]
+        seat = seat_obj_by_name.get(node.seat or "")
+        if seat is None:
+            continue
         for room in getattr(seat, "rooms", ()) or ():
             rooms.setdefault(room, []).append(node)
 
