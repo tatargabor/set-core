@@ -308,7 +308,7 @@ install_scripts() {
 
     mkdir -p "$INSTALL_DIR"
 
-    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner set-glm)
+    local scripts=(set-common.sh set-paths set-project set-new set-work set-add set-list set-merge set-close set-version set-status set-focus set-config set-control set-control-gui set-control-init set-control-sync set-control-chat set-loop set-usage set-skill-start set-hook-stop set-hook-skill set-hook-activity set-hook-checkout-guard set-leakscan set-hook-leakscan set-deploy-hooks set-openspec set-audit set-orchestrate set-manual set-e2e-report set-orch-core set-web-install set-discord-setup set-run-logs set-agent-owner set-glm set-providers)
 
     # ── Retire the removed memory subsystem ────────────────────────────────
     # Stopping the SHIPPING of a script does not remove one already on the target's

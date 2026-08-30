@@ -3,189 +3,196 @@ name: glm
 description: Run Claude Code against the z.ai GLM models with the measured, working parameters — one-shot `-p` calls, batch loops, or an interactive session. Use when the user asks to run something on GLM, on a non-Anthropic model, or to compare models on the same task (an A/B run), and when a GLM run behaves strangely — silent stalls, "Prompt is too long", or a 400 on the model name. Carries the three failure modes measured in production so they do not have to be rediscovered.
 ---
 
-# GLM futtatás — `set-glm`
+# Running GLM — `set-glm`
 
-**Nem a modell váltása a nehéz, hanem a context-ablak.** A Claude Code CLI nem ismeri a
-GLM ablakát, ezért egy konzervatív értékre (~200k) vág — és a hosszú prompt vagy hangosan
-elhasal, vagy némán compact-hurokba fut. Ez a skill azért létezik, hogy ezt ne kelljen
-újra kimérni.
+**The hard part is not switching the model — it is the context window.** The Claude Code CLI
+does not know GLM's window, so it cuts to a conservative value (~200k) — and a long prompt
+either fails loudly or runs in a silent compact loop. This skill exists so that nobody has
+to measure that again.
 
-⚠ **A váltás mindig FELHASZNÁLÓI döntés.** Nincs automatika és nincs csendes fallback:
-hiányzó konfigra a futtató megáll, nem esik vissza Claude-ra. Egy csendes visszaesés
-azért a legrosszabb kimenet, mert a futás lefutna — csak a másik keretből, és semmi nem
-jelezné, melyikből.
+⚠ **Switching is always a USER decision.** No automatics and no silent fallback: on missing
+config the runner stops, it does not fall back to Claude. A silent fallback is the worst
+outcome because the run would still finish — just inside the other framework, with nothing
+telling you which one.
 
-## Használat
-
-```bash
-set-glm --check                     # konfiguráció + ÉLŐ próbahívás — ezzel kezdj
-set-glm -p "prompt"                 # egyszeri hívás
-set-glm -p "…" --output-format json # strukturált kimenet (a token- és költség-mezőkkel)
-set-glm                             # interaktív session GLM-en
-set-glm --print-env                 # mit állít be (a token maszkolva)
-```
-
-Minden további flag változatlanul megy tovább a `claude`-nak (`--allowedTools`,
-`--json-schema`, `--append-system-prompt`, …). A `--model` és az `--autocompact` csak
-akkor kerül hozzá, ha a hívó nem adta meg.
-
-### Konfiguráció — EGY központi fájl (2026-08-29 óta)
-
-**`~/.config/set-core/providers.json`**, `0600`. Ez az egyetlen hely, ahonnan a
-framework provider-credentialt olvas; a `set-glm` és a flotta agent-ownere ugyanazt a
-resolvert hívja, tehát a mért launch-paraméterek egy helyen állnak és nem drift-elnek szét.
+## Usage
 
 ```bash
-set-providers path        # hol van
-set-providers show        # mi van benne — a token maszkolva
-set-providers migrate     # a régi glm.env átemelése, EGY parancs
+set-glm --check                     # config + LIVE probe call — start here
+set-glm -p "prompt"                 # one-shot call
+set-glm -p "…" --output-format json # structured output (with token- and cost-fields)
+set-glm                             # interactive session on GLM
+set-glm --print-env                 # what it sets (token masked)
 ```
 
-Az elsőbbség három szint: **gépszintű default → projekt-override → maga a kérés**. A
-modell mezőnként dől el; a **credential és az endpointja viszont EGY blokk** — egy szint
-vagy mindkettőt adja, vagy elutasítás. Egy kulcs egy endpointra szól, és a kettőt külön
-szintről venni olyan kombináció, amit senki nem írt le: jó esetben 401, rossz esetben a
-másik számla.
+Every other flag passes through to `claude` unchanged (`--allowedTools`,
+`--json-schema`, `--append-system-prompt`, …). `--model` and `--autocompact` are only
+added when the caller did not supply them.
 
-#### A régi `glm.env` — egy release-nyi ablak, aztán elfogy
+### Configuration — ONE central file (since 2026-08-29)
 
-| ami volt | mi lett belőle |
+**`~/.config/set-core/providers.json`**, mode `0600`. This is the only place the framework
+reads a provider credential from; `set-glm` and the fleet's agent-owner call the same
+resolver, so the measured launch parameters live in one place and do not drift apart.
+
+```bash
+set-providers path        # where it is expected
+set-providers show        # what is in it — token masked
+set-providers migrate     # carry the old glm.env over, ONE command
+```
+
+Precedence has three levels: **machine-level default → project override → the request
+itself**. The model is decided per field; the **credential and its endpoint are ONE block** —
+a level either provides both or is rejected. A key is issued for one endpoint, and taking the
+two from different levels is a combination nobody has described: best case a 401, worst case
+the other bill.
+
+#### The old `glm.env` — one release of grace, then gone
+
+| what it was | what became of it |
 |---|---|
-| `./.env` a repóban (`GLM_*` sorok) | **MEGSZŰNT, nem olvassuk** — a hiba ki is mondja, hogy megszűnt, nem csak azt, hogy nem talált credentialt |
-| `~/.config/set-core/glm.env` | **egy release-ig még működik**, minden feloldásnál figyelmeztetéssel |
+| `./.env` in the repo (`GLM_*` lines) | **DISCONTINUED, no longer read** — the error says it was discontinued, not merely that no credential was found |
+| `~/.config/set-core/glm.env` | **still works for one release**, with a warning on every resolution |
 
-A figyelmeztetés megnevezi a régi fájlt, az újat és a parancsot. A `migrate` **kifejezett**,
-sosem egy olvasás mellékhatása: egy olvasás semmit nem ír, és a `glm.env`-et a migráció is
-a helyén hagyja. Meglévő `providers.json`-t nem ír felül szó nélkül.
+The warning names the old file, the new one, and the command. `migrate` is **explicit**,
+never a side effect of a read: a read writes nothing, and even the migration leaves
+`glm.env` in place. An existing `providers.json` is not overwritten silently.
 
-Csak a `GLM_` prefixű sorokat olvassa be a régi fájlból — szándékosan. Egy `source .env` az
-`ANTHROPIC_API_KEY`-t is behozná, vagyis pont azt a kulcsot, ami a hívást csendben a
-platform-számlára irányítaná át.
+Only the `GLM_`-prefixed lines are read from the old file — deliberately. A `source .env`
+would also pull in `ANTHROPIC_API_KEY` — exactly the key that would silently redirect the
+call to the platform bill.
 
-## A mért paraméterek (2026-08-29) — ne mérd ki újra
+## The measured parameters (2026-08-29) — do not re-measure
 
-| mit | érték | env |
+| what | value | env |
 |---|---|---|
 | endpoint | `https://api.z.ai/api/anthropic` | `GLM_BASE_URL` |
-| modell | `glm-5.3-flash` — **prefix nélkül** | `GLM_MODEL` |
-| context-ablak | **900000** (`CLAUDE_CODE_MAX_CONTEXT_TOKENS`) | `GLM_CONTEXT_TOKENS` |
+| model | `glm-5.3-flash` — **no prefix** | `GLM_MODEL` |
+| context window | **900000** (`CLAUDE_CODE_MAX_CONTEXT_TOKENS`) | `GLM_CONTEXT_TOKENS` |
 | auto-compact | **700k** | `GLM_AUTOCOMPACT` |
 
-Mért képességek: **800 016 input token elfogadva** (1,05M-nál `model_context_window_exceeded`,
-tehát az ablak ~1M) · max output **≥131 072** · a **prompt cache működik** `cache_control`
-nélkül is (2. azonos hívás: `input=16`, `cache_read=120 000`) · a `--json-schema`, az
-`--allowedTools` és a Write/Edit tool mind megy. 200-at ad: `glm-4.6`, `glm-5.3`,
+Measured capabilities: **800,016 input tokens accepted** (`model_context_window_exceeded` at
+1.05M, so the window is ~1M) · max output **≥131,072** · the **prompt cache works** without
+`cache_control` (2nd identical call: `input=16`, `cache_read=120,000`) · `--json-schema`,
+`--allowedTools` and the Write/Edit tool all work. Returns 200 for: `glm-4.6`, `glm-5.3`,
 `glm-5.3-flash`, `glm-4.5`, `glm-4.5-air`.
 
-## Három csapda — mindegyik MÉRT bukásból
+## Three traps — each one a MEASURED failure
 
-1. ⚠ **A modellnév nem hordozhat gateway-prefixet.** A `zai/glm-5.3-flash` alakra
-   `[1214][modelCode: does not exist]` 400 a válasz — az OpenRouter/LiteLLM formátum. A
-   futtató ezért indulás ELŐTT elutasítja a `/`-t tartalmazó nevet: különben egy éjszakai
-   loop az első hívásnál bukna el.
+1. ⚠ **The model name must not carry a gateway prefix.** A `zai/glm-5.3-flash`-shaped name
+   gets `[1214][modelCode: does not exist]` 400 back — that is the OpenRouter/LiteLLM
+   format. The runner therefore rejects a name containing `/` BEFORE starting: otherwise a
+   night loop fails on its first call.
 
-2. ⚠⚠ **A `--autocompact` önmagában kevés.** A CLI a küszöböt levágja arra az ablakra,
-   amit az ismeretlen modellhez feltételez. Ugyanaz a ~250k tokenes prompt, négy változatban:
+2. ⚠⚠ **`--autocompact` alone is not enough.** The CLI clips the threshold to the window it
+   assumes for an unknown model. The same ~250k-token prompt, four variants:
 
-   | beállítás | eredmény |
+   | setting | result |
    |---|---|
-   | csak `--autocompact 700k` | `Prompt is too long`, input=0 |
-   | `MAX_CONTEXT_TOKENS` + `DISABLE_…_ENFORCEMENT` | OK, `input_tokens=524 731` |
-   | **csak `CLAUDE_CODE_MAX_CONTEXT_TOKENS`** | **OK — szükséges ÉS elégséges** |
-   | csak `…_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT` | `Prompt is too long` |
+   | only `--autocompact 700k` | `Prompt is too long`, input=0 |
+   | `MAX_CONTEXT_TOKENS` + `DISABLE_…_ENFORCEMENT` | OK, `input_tokens=524,731` |
+   | **only `CLAUDE_CODE_MAX_CONTEXT_TOKENS`** | **OK — necessary AND sufficient** |
+   | only `…_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT` | `Prompt is too long` |
 
-   A második env-et ezért nem állítjuk be: a fölös env csak elfedi, mi hat.
+   The second env var is therefore NOT set: the redundant env only hides which one works.
 
-   **A compact NEM hibaüzenet — kívülről „lassú modell"-nek látszik.** A mért bukás:
-   180 174 tokennél compact (227 mp), fél perc múlva újra, végül a CLI saját üzenete —
-   *„Autocompact is thrashing: the context refilled to the limit within 3 turns of the
-   previous compact, 3 times in a row"* —, **9,5 perc alatt nulla megírt sorral**.
-   Ha egy GLM-futás gyanúsan hosszan hallgat, a `--output-format stream-json` naplójában
-   a **`compact_boundary`** és a `status: compacting` eseményt keresd; a tool-események
-   közt semmi nem látszik belőle.
+   **A compact is NOT an error message — from the outside it looks like a "slow model".**
+   The measured failure: compact at 180,174 tokens (227 s), again half a minute later,
+   finally the CLI's own message — *"Autocompact is thrashing: the context refilled to the
+   limit within 3 turns of the previous compact, 3 times in a row"* — **9.5 minutes, zero
+   lines written**. If a GLM run is suspiciously silent for a long time, look for
+   **`compact_boundary`** and `status: compacting` events in the `--output-format
+   stream-json` log; nothing among the tool events shows it.
 
-3. ⚠ **A `.env` gyakran git-követett.** Worktree-ben egy `git reset --hard` elviszi a
-   `GLM_*` sorokat, és a futás „hiányzik a GLM_TOKEN"-nel áll meg. Ez az egyik oka annak,
-   hogy a repó-beli `.env` tier **megszűnt**: a credential helye a gépszintű
-   `~/.config/set-core/providers.json`, és az egyik repó takarítása nem viszi el a többiét.
+3. ⚠ **A `.env` is often git-tracked.** In a worktree, a `git reset --hard` takes the
+   `GLM_*` lines with it, and the run stops with "GLM_TOKEN is missing". This is one reason
+   the in-repo `.env` tier was **discontinued**: the credential's home is the machine-level
+   `~/.config/set-core/providers.json`, and one repo's cleanup must not take the others'
+   with it.
 
-## Subagent GLM-en — a provider a SZÜLŐTŐL jön, nem az agent-definícióból
+## Subagents on GLM — the provider comes from the PARENT, not the agent definition
 
-Mérve 2026-08-29, három kísérlettel. **A subagent a szülő session ENDPOINTJÁT örökli** (a
-`spawn` a szülő env-jét viszi tovább); az agent-definíció `model:` mezője csak azon az
-endpointon belül választ.
+Measured 2026-08-29, three attempts. **A subagent inherits the parent session's ENDPOINT**
+(the `spawn` carries the parent's env forward); the agent definition's `model:` field only
+chooses within that endpoint.
 
-| szülő | az agent `model:` mezője | mi történik |
+| parent | the agent's `model:` field | what happens |
 |---|---|---|
-| Anthropic | `glm-5.3-flash` | ⛔ **`model_not_found` (HTTP 404)** — a subagent elindul, majd elhasal |
-| GLM (z.ai env) | `glm-5.3-flash` | ✅ működik, `modelUsage` = csak `glm-5.3-flash` |
-| GLM (z.ai env) | `sonnet` | ⚠ **lefut**, de a hívás a **z.ai-ra** megy, és `claude-sonnet-5`-ként számolódik el |
+| Anthropic | `glm-5.3-flash` | ⛔ **`model_not_found` (HTTP 404)** — the subagent starts, then falls over |
+| GLM (z.ai env) | `glm-5.3-flash` | ✅ works, `modelUsage` = `glm-5.3-flash` only |
+| GLM (z.ai env) | `sonnet` | ⚠ **runs**, but the call goes to **z.ai** and is billed as `claude-sonnet-5` |
 
-**A recept tehát: a szülőt kell GLM-en indítani.** Nincs mód agentenként providert váltani —
-`set-glm` a szülő session, és a subagentjei magukkal viszik.
+**The recipe is therefore: start the PARENT on GLM.** There is no way to switch provider
+per agent — `set-glm` is the parent session, and its subagents carry it with them.
 
-⚠ **A harmadik sor a csapda, és ezt ki kell mondani.** GLM-szülő alatt egy `model: sonnet`
-agent nem hasal el — a z.ai elfogadja a nevet —, a `modelUsage` pedig **két sort** mutat:
-`glm-5.3-flash` (`costBasis: unknown`) és `claude-sonnet-5` (`costBasis: list`, `ctx=200000`).
-Vagyis a képernyőn Anthropic modellnév áll, a számla viszont a z.ai-é, és az env-ben nincs is
-Anthropic auth. Ez a *„más számla, azonos kinézet"* hibaosztály — ugyanaz, amit a ledger
-provider-mezője zár le a másik oldalról.
+⚠ **The third row is the trap, and it must be said out loud.** Under a GLM parent, a
+`model: sonnet` agent does not fall over — z.ai accepts the name — and the `modelUsage`
+shows **two rows**: `glm-5.3-flash` (`costBasis: unknown`) and `claude-sonnet-5`
+(`costBasis: list`, `ctx=200000`). So the screen shows an Anthropic model name while the
+bill is z.ai's, and the env holds no Anthropic auth at all. This is the *"other bill, same
+look"* defect class — the same one the ledger's provider field closes from the other side.
 
 
-**És nem átcímkézés: VALÓDI Claude jön.** Mérve — a z.ai endpointra `--model sonnet`-tel
-küldött „melyik modellcsalád vagy?" kérdésre a válasz **„Claude"**, ugyanarra `glm-5.3-flash`-sel
-**„GLM"**, Anthropic-endpointon sonnettel megint **„Claude"**. A z.ai tehát **továbbítja** a
-Claude-hívást — és a saját számlájára. (Az önbevallás önmagában nem bizonyíték, de a GLM-kontroll
-magát GLM-nek vallja, ezért a jel értékes.)
+**And it is not relabelling: REAL Claude comes back.** Measured — asked "which model family
+are you?" through the z.ai endpoint with `--model sonnet`, the answer was **"Claude"**; the
+same question with `glm-5.3-flash` answered **"GLM"**; on the Anthropic endpoint with
+sonnet, **"Claude"** again. So z.ai **forwards** the Claude call — onto its own bill. (A
+model's self-report alone is not proof, but the GLM control self-reports as GLM, so the
+signal is worth something.)
 
-Ez pontosítja, mi a valódi kockázat: **nem mást kapsz, mint amit kérsz — ugyanazt kapod, más
-számláról**, és semmi nem jelzi. Egy `model: sonnet` agent GLM-szülő alatt tehát nem „rosszabb
-minőségű", hanem **elszámolásilag láthatatlan**.
+This sharpens what the real risk is: **you do not get something other than what you asked
+for — you get exactly that, on a different bill**, and nothing signals it. A `model:
+sonnet` agent under a GLM parent is therefore not "lower quality" — it is **invisibly
+billed elsewhere**.
 
-**Ezért:** ha egy agent-definíciót GLM-szülő alatt akarsz futtatni, vagy **hagyd el a `model:`
-mezőt** (akkor a szülő modelljét örökli, és nincs mit félreérteni), vagy írj bele **GLM-modellt**.
-A `model: sonnet` GLM-szülő alatt félrevezető: azt ígéri, amit nem tart be.
+**Therefore:** if you want an agent definition to run under a GLM parent, either **leave
+out the `model:` field** (it inherits the parent's model, and there is nothing to
+misread) or write a **GLM model** into it. A `model: sonnet` under a GLM parent is
+misleading: it promises what it does not deliver.
 
-### Melyik GLM-modell review-ra — mérve, öt eseten
+### Which GLM model for review — measured on five cases
 
-Öt kód-review eset (sorszám-race · ÁFA-kerekítés · dátum-UTC · cron-idempotencia · egy
-**szándékosan tiszta** kód a hamis pozitív méréséhez):
+Five code-review cases (counter-race · VAT rounding · date-UTC · cron idempotency · one
+**deliberately clean** file to measure the false-positive rate):
 
-| modell | találat | átlag idő | átlag output |
+| model | hits | avg time | avg output |
 |---|---|---|---|
-| `glm-5.3-flash` | **5/5** | 12,7 mp | 222 token |
-| `sonnet` (összevetésül) | **5/5** | 5,4 mp | 74 token |
-| `glm-4.6` | 2/2 (rövid próbán) | 15,7 mp | 604 token |
-| `glm-4.5-air` | ⛔ **0/2** | 11,0 mp | 878 token |
+| `glm-5.3-flash` | **5/5** | 12.7 s | 222 tokens |
+| `sonnet` (for comparison) | **5/5** | 5.4 s | 74 tokens |
+| `glm-4.6` | 2/2 (short trial) | 15.7 s | 604 tokens |
+| `glm-4.5-air` | ⛔ **0/2** | 11.0 s | 878 tokens |
 
-A **`glm-4.5-air` kizárva**: kétszer, két különböző hibaosztályon fogott mellé — egyszer
-„NINCS HIBA"-t mondott valódi hibára —, és 8× annyi tokent égetett rá, mint a flash. Egy
-review-agentnél ez a legrosszabb kimenet: a hallgatás megnyugtatóan hangzik.
+**`glm-4.5-air` is excluded**: twice, on two different defect classes, it missed — once it
+said "NO BUG" on a real one — and burned 8× more tokens than flash to do it. For a
+review agent that is the worst outcome: silence sounds reassuring.
 
-A **`glm-5.3-flash` alkalmas** — a tiszta kódra is helyesen mondott „NINCS HIBA"-t (nem gyárt
-hamis pozitívot). Cserébe 2,4× lassabb és 3× bőbeszédűbb a sonnetnél.
+**`glm-5.3-flash` is suitable** — it also said "NO BUG" correctly on the clean file (it
+does not manufacture false positives). In exchange it is 2.4× slower and 3× more verbose
+than sonnet.
 
-⚠ A minta **könnyű volt**: öt önhordó, 5–8 soros, tankönyvi hiba. Egy valódi review nehezebb —
-nagy fájl, projekt-kontextus, egymásnak feszülő szabályok —, és arról ez a mérés semmit nem mond.
+⚠ The sample was **easy**: five self-contained, 5–8-line, textbook defects. A real review
+is harder — a large file, project context, rules in tension — and this measurement says
+nothing about that.
 
-## Amit a költség-mező HAZUDIK
+## What the cost field LIES about
 
-A `--output-format json` `total_cost_usd` mezője **Anthropic-árazással** számol, tehát
-GLM-futásnál nem valós számla. Két modell összevetésére a **wall-clock** és a
-**token-szám** való, a dollár nem — és ha egy ledgerbe írod, mondd ki mellette, hogy
-ár-ekvivalens.
+The `--output-format json` `total_cost_usd` field computes with **Anthropic pricing**, so
+for a GLM run it is not a real bill. For comparing two models, **wall-clock** and the
+**token counts** are the honest measures, dollars are not — and if you write it into a
+ledger, state next to it that it is price-equivalent.
 
-## Ha egy ciklust futtatsz vele (A/B, éjszakai loop)
+## If you run a loop with it (A/B, night loop)
 
-- **Ugyanaz a prompt, ugyanaz a feladat** — különben nem mérés, hanem anekdota.
-- **A kapusor a mérés része.** A mért GLM-futás munkája jó volt, de a commitot egy lint-kapu
-  elutasította, mert a modell egy **nem létező** ignore-direktívával próbálta elnémítani a
-  szabályt a repó saját precedense helyett. Ezt csak a kapu fogta meg — a teszt zöld volt.
-  Aki modellt hasonlít össze, a **kapun átment** commitot számolja, ne a megírt sorokat.
-- **Naplózz eseményt, ne csak kimenetet** (`--output-format stream-json`): a compact
-  különben láthatatlan, és a lassulást a modellre fogod.
+- **Same prompt, same task** — otherwise it is not a measurement, it is an anecdote.
+- **The gate line is part of the measurement.** The measured GLM run's work was good, but a
+  lint gate rejected the commit because the model tried to silence a rule with a
+  **non-existent** ignore directive instead of the repo's own precedent. Only the gate
+  caught it — the test was green. Whoever compares models counts the commits that **went
+  through the gate**, not the lines written.
+- **Log events, not just output** (`--output-format stream-json`): otherwise the compact
+  is invisible, and you will blame the model for the slowdown.
 
-## Kapcsolódó
+## Related
 
-- `bin/set-glm` — a futtató; a mért indoklás a fájl fejlécében, kommentben
-- `bin/claude-local` — ugyanez lokális Ollama modellre (a testvér-eset)
+- `bin/set-glm` — the runner; the measured rationale is in the file header, in comments
+- `bin/claude-local` — the same for a local Ollama model (the sibling case)
