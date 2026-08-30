@@ -306,6 +306,40 @@ describe('the card board', () => {
     const board = container.querySelector('[data-fleet-board-columns]')!
     expect(board.querySelector('button, a, input, form')).toBeNull()
   })
+
+  it('says "0 cards" in a column the project counts at zero, instead of empty silence', async () => {
+    const { container } = await renderBoard()
+    const planned = container.querySelector('[data-fleet-board-col="planned"]')!
+    expect(planned.querySelector('[data-fleet-board-col-empty="zero"]')!.textContent).toBe('0 cards')
+    // and a populated column says nothing — the marker is only for the empty ones
+    expect(container.querySelector('[data-fleet-board-col="in-progress"] [data-fleet-board-col-empty]')).toBeNull()
+  })
+
+  it('words a count-with-no-cards column as a mismatch, never as a zero', async () => {
+    // A gap is not a zero: the header says 2, no card carries the lane — that
+    // disagreement renders UNRECONCILED, so the empty marker may not say "0 cards".
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) {
+        return {
+          commands: { board: { ok: true, data: {
+            lanes: [{ lane: 'specified', count: 2 }, { lane: 'done', count: 0 }],
+            unknown: 0,
+            total: 2,
+            plannedNotOnBoard: [],
+            coverage: { complete: true },
+            cards: [],
+          } } },
+        }
+      }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" />)
+    await rendered(container)
+    const marker = container.querySelector('[data-fleet-board-col-empty="mismatch"]')!
+    expect(marker.textContent).toBe('no cards placed')
+    expect(marker.getAttribute('data-fleet-board-col-mismatch')).toBe('2')
+  })
 })
 
 describe('the board as a panel', () => {

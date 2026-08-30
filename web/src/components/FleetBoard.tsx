@@ -181,6 +181,26 @@ function cardProgress(c: BoardCard): string | null {
   return done !== null && totalCount !== null ? `${done}/${totalCount}` : null
 }
 
+/** An empty column says so, in faint text — one that says nothing reads as
+    "not drawn yet" (asked for 2026-08-30). The two empty shapes get DIFFERENT
+    words, because a gap is not a zero: `0 cards` is the project's OWN zero,
+    straight from its count; a positive count with no cards placed is the
+    counts-vs-cards disagreement, which this surface renders unreconciled —
+    worded so it cannot read as a zero. */
+function ColumnEmpty({ count, placed }: { count: number; placed: number }) {
+  if (placed > 0) return null
+  if (count === 0) {
+    return <div className="text-xs text-fg-faint px-1 py-0.5" data-fleet-board-col-empty="zero">0 cards</div>
+  }
+  return (
+    <div className="text-xs text-fg-faint px-1 py-0.5" data-fleet-board-col-empty="mismatch"
+         data-fleet-board-col-mismatch={count}
+         title={`the project counts ${count} here, but no card carries this lane`}>
+      no cards placed
+    </div>
+  )
+}
+
 export default function FleetBoard({
   project, projectName, showBoard = true, onClose, onDock, dockedEdge, maximised, onMaximise,
   fullscreen, onFullscreen,
@@ -494,6 +514,8 @@ export default function FleetBoard({
                     {(cardsByLane.get(name) ?? []).map((c, i) => (
                       <BoardCardFace key={cardId(c) ?? i} c={c} />
                     ))}
+                    <ColumnEmpty count={countByLane.get(name) ?? 0}
+                                 placed={(cardsByLane.get(name) ?? []).length} />
                   </div>
                 </div>
               ))}
@@ -514,6 +536,7 @@ export default function FleetBoard({
                     {trayCards.map((c, i) => (
                       <BoardCardFace key={cardId(c) ?? i} c={c} />
                     ))}
+                    <ColumnEmpty count={unknown ?? trayCards.length} placed={trayCards.length} />
                   </div>
                 </div>
               )}
