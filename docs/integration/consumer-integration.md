@@ -2555,7 +2555,7 @@ explicit approval:
   wpc-board delivery plus the `agent-comm` skill. Future sessions of this project are
   enrolled from birth; the live inbox watch is still per-session (armed manually or by the
   session-start note).
-- **Chrome ANSWER sent** to wpc-pont on the channel (re: its 10:11 REQUEST) — the board
+- **Chrome ANSWER sent** to consumer-app on the channel (re: its 10:11 REQUEST) — the board
   panel carries the same window chrome as the agent panels (`170aa23e`, `e8151b24`), and the
   board is opt-in with an in-memory cache.
 

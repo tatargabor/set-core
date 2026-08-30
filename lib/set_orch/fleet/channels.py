@@ -250,7 +250,7 @@ def derive_channel_graph(
                 enrolled_sessions.add(str(session))
         elif agent.project_root:
             # Unjoined, and the project HAS seats: session drift, not absence.
-            # Measured live: wpc-pont-board's session had no seat while the
+            # Measured live: consumer-app-board's session had no seat while the
             # registry held twelve for its project — "not enrolled" would have
             # sent the reader to install what is already installed.
             node.project_seat_count = len(seats_by_project.get(agent.project_root, []))
