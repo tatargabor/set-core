@@ -152,7 +152,7 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                   data-fleet-wire-label={s.room}
                   x={s.label.x}
                   y={s.label.y}
-                  textAnchor="middle"
+                  textAnchor="end"
                   className={s.active ? 'fleet-wire-label fleet-wire-label-active' : 'fleet-wire-label fleet-wire-label-idle'}
                 >
                   {labelFor(s.room)}

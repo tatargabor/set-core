@@ -16,7 +16,9 @@ import pathlib
 import pytest
 
 from set_orch.fleet import layout as layout_mod
-from set_orch.fleet.layout import LayoutConflict, apply_to, load, normalise, save
+from set_orch.fleet.layout import (
+    LayoutConflict, apply_to, load, normalise, save, save_docks, save_wires,
+)
 
 
 def _path(tmp_path):
@@ -512,3 +514,17 @@ def test_the_legacy_dock_list_survives_a_relabel(tmp_path):
     assert json.loads(pathlib.Path(p).read_text())["docks_legacy"] == [
         {"kind": "agent", "id": "from-before", "edge": "right"}
     ]
+
+
+def test_an_arrangement_save_that_says_nothing_about_wires_preserves_the_toggle(tmp_path):
+    """The arrangement writers never send wires_shown — its own route does.
+    Omission must preserve, exactly like splits and docks, or every group
+    drag silently resets the wire view to hidden."""
+    path = _path(tmp_path)
+    save_wires(True, path=path)
+    # `save` is the ARRANGEMENT writer (group drag, dock change) — it goes
+    # through `normalise(new)`, whose default for an unmentioned wires_shown
+    # is False. It must preserve instead.
+    save({"groups": [], "parked": [], "ungrouped_order": [], "splits": None,
+          "docks": None}, base_version=None, path=path)
+    assert load(path)["wires_shown"] is True

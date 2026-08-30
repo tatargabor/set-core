@@ -277,3 +277,13 @@ thead th {
 .fleet-wire-label-idle {
   fill: var(--color-fg-dim);
 }
+
+/*
+  Several channels between the SAME two seats draw as a strand bundle. The
+  bundle must read as one cable with strands, not as a tangle: idle strands
+  fade further back than a lone idle wire would.
+*/
+.fleet-wire-seg-idle {
+  stroke: var(--color-fg-dim);
+  opacity: 0.45;
+}

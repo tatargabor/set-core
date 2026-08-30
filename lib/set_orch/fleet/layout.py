@@ -515,6 +515,14 @@ def save(new: Dict[str, Any], *, path: Optional[str] = None, base_version: Optio
     # The legacy list is never written by a caller; it only ever survives.
     if not payload.get("docks_legacy"):
         payload["docks_legacy"] = list(current.get("docks_legacy") or [])
+    # The wire view's toggle is written by its OWN route (`save_wires`), never
+    # by the arrangement callers — so an arrangement save that says nothing
+    # about it preserves it, exactly like `splits` and `docks` above. Without
+    # this, every group drag and dock change silently reset the toggle to
+    # hidden: measured live, the stored `true` kept flipping to `false` while
+    # nobody was toggling anything.
+    if new.get("wires_shown") is None:
+        payload["wires_shown"] = bool(current.get("wires_shown"))
 
     _write_atomically(payload, path)
     logger.info(

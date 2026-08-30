@@ -214,9 +214,9 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
         flow: sender ? 'sender' : 'receiver',
         active,
         kind: 'pair',
-        // The name rides the wire's outermost point — inside the bulge, at
-        // the vertical middle, where it cannot be mistaken for either row's.
-        label: { x: bulge, y: Math.round((from.y + to.y) / 2) },
+        // Labels live in ONE right-aligned column (see the pair-group
+        // staggering below) — a legend column, not text floating on curves.
+        label: { x: gutterWidth - 6, y: Math.round((from.y + to.y) / 2) },
         ...meta,
       })
       return
@@ -240,13 +240,33 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
         flow,
         active: active && (emphasize || sender == null || addressees.size === 0),
         kind: 'fan',
-        // Same label for every fan member — the component renders it once
-        // per room, above the junction where the wires converge.
-        label: { x: lx, y: junctionY - 10 },
+        // Same label for every fan member — the component renders it once,
+        // in the label column, level with the junction.
+        label: { x: gutterWidth - 6, y: junctionY - 10 },
         ...meta,
       })
     }
   })
+
+  // Pair channels between the SAME two rows share a midpoint, so their labels
+  // would overprint (measured live: `dm-set-core-ff8…` on top of `wpc-board`).
+  // Stagger each group's labels vertically around the shared midpoint, ordered
+  // by lane so the label column reads in the same order as the wires.
+  const pairGroups = new Map<string, WireSegment[]>()
+  for (const seg of segments) {
+    if (seg.kind !== 'pair') continue
+    const key = `${seg.label.y}`
+    const group = pairGroups.get(key)
+    if (group) group.push(seg)
+    else pairGroups.set(key, [seg])
+  }
+  for (const group of pairGroups.values()) {
+    if (group.length < 2) continue
+    group.sort((a, b) => a.label.x - b.label.x)
+    group.forEach((seg, i) => {
+      seg.label = { ...seg.label, y: seg.label.y + (i - (group.length - 1) / 2) * 11 }
+    })
+  }
 
   return {
     sourceAvailable: true,
