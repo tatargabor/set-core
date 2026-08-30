@@ -136,6 +136,10 @@ def test_migrating_with_no_source_says_so(home):
     with pytest.raises(ConfigError) as e:
         mig.migrate()
     assert "nothing to migrate" in str(e.value)
+    # A machine without the legacy file is the FRESH-INSTALL case — the message
+    # must point at creating the configuration, not loop back to this command
+    # (measured 2026-08-30: the error suggested migrate, migrate had no source).
+    assert "create the provider configuration directly" in str(e.value)
 
 
 @pytest.mark.parametrize("missing", ["GLM_TOKEN", "GLM_MODEL"])

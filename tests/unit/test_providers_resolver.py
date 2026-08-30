@@ -12,7 +12,8 @@ import pytest
 from set_orch.providers import config as cfgmod
 from set_orch.providers import resolver as res
 from set_orch.providers.errors import (
-    IncompleteCredential, MissingCredential, UnknownModel, UnknownProvider,
+    ConfigError, IncompleteCredential, MissingCredential, UnknownModel,
+    UnknownProvider,
 )
 
 ANTHROPIC_MODELS = ["haiku", "sonnet", "opus", "sonnet-1m", "opus-1m",
@@ -530,3 +531,24 @@ def test_an_emitted_alias_key_is_delivered_and_not_also_unset(tmp_path):
     for key in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
                 "ANTHROPIC_DEFAULT_FABLE_MODEL"):
         assert key in plan.unset
+
+
+# ------------------------------------------------------------- the fresh install
+
+def test_a_fresh_install_is_told_how_to_create_not_only_to_migrate(tmp_path, monkeypatch):
+    """Measured 2026-08-30 on a machine that never had glm.env: the neither-exists
+    refusal sent the operator to `set-providers migrate`, which answered "nothing to
+    migrate" — a loop with no way in. The refusal must name the create path and
+    where the JSON shape is documented."""
+    d = tmp_path / "set-core"
+    d.mkdir()
+    monkeypatch.setenv("SET_CONFIG_DIR", str(d))
+    with pytest.raises(ConfigError) as e:
+        cfgmod.load_or_legacy()
+    msg = str(e.value)
+    assert "no provider configuration" in msg
+    assert str(d / "providers.json") in msg   # both candidates named
+    assert str(d / "glm.env") in msg
+    assert "Provider Configuration" in msg    # where the shape is documented
+    # migrate stays offered — but only for machines that actually had the old file
+    assert "set-providers migrate" in msg

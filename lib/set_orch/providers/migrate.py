@@ -101,7 +101,15 @@ def migrate(
     dst = target or config_path()
 
     if not src.exists():
-        raise ConfigError(f"nothing to migrate: {src} does not exist")
+        # The fresh-install case — no legacy file was ever there. Sending the
+        # operator back to "create the config" is the loop this command's own
+        # error message just came from; name the create path instead.
+        raise ConfigError(
+            f"nothing to migrate: {src} does not exist. This machine never had "
+            "the legacy file — create the provider configuration directly "
+            "instead (mode 0600; the JSON shape is documented in "
+            "docs/reference/configuration.md, section 'Provider Configuration')"
+        )
     values = legacy.read_legacy(src)
     for required in ("GLM_TOKEN", "GLM_MODEL"):
         if not values.get(required):

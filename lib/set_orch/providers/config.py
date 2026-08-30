@@ -366,9 +366,14 @@ def load_or_legacy() -> Tuple[ProvidersConfig, Optional[str]]:
 
     # Neither exists. Name both, because an operator who has never configured
     # this and one whose file is somewhere unexpected need different next steps.
+    # A FRESH INSTALL is the first case, and "create it" without the shape is a
+    # dead end — measured 2026-08-30 on a third machine: the suggested migrate
+    # then answered "nothing to migrate". Name the documented shape instead.
     raise ConfigError(
         f"no provider configuration: neither {primary} nor {src} exists. "
-        "Create the first, or run: set-providers migrate"
+        "Create the first by hand (mode 0600; the JSON shape is documented in "
+        "docs/reference/configuration.md, section 'Provider Configuration'), "
+        "or run: set-providers migrate — but only if an older glm.env exists"
     )
 
 
@@ -383,7 +388,9 @@ def load(path: Optional[Path] = None) -> ProvidersConfig:
     src = path or config_path()
     if not src.exists():
         raise ConfigError(
-            f"no provider configuration at {src}. Create one, or migrate an existing "
+            f"no provider configuration at {src}. Create one by hand (mode 0600; "
+            "the JSON shape is documented in docs/reference/configuration.md, "
+            f"section 'Provider Configuration'), or migrate an existing "
             f"{LEGACY_NAME} with: set-providers migrate"
         )
     _require_owner_only(src)
