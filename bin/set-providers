@@ -64,6 +64,11 @@ def cmd_show(args) -> int:
     # whose ordinary output can be pasted into a chat must not carry one.
     print(f"  env:   {', '.join(sorted(plan.env)) or '(none)'}")
     print(f"  unset: {', '.join(plan.unset)}")
+    # The EFFECTIVE id mapping — declared block or shipped default, exactly what
+    # the launch will translate through. Ids are model names, not credentials;
+    # this is the half an operator needs to see when a pin they replaced seems
+    # to still apply (whole-block replacement, never a merge).
+    print(f"  ids:   {', '.join(f'{k} -> {v}' for k, v in sorted(plan.model_ids.items())) or '(none)'}")
     return 0
 
 

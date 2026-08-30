@@ -46,18 +46,27 @@ _ANTHROPIC_DECL = {
 
 def _anthropic_models() -> List[str]:
     """The Anthropic catalogue, taken from the framework rather than retyped."""
-    from ..config import ANTHROPIC_MODEL_NAMES
+    from .defaults import ANTHROPIC_MODEL_NAMES
     return list(ANTHROPIC_MODEL_NAMES)
 
 
 def build(values: dict) -> dict:
     """The `providers.json` content a set of old keys translates into."""
+    from .defaults import DEFAULT_MODEL_IDS
+
     model = values["GLM_MODEL"]
     return {
         "version": 1,
         "default": {"provider": legacy.LEGACY_PROVIDER, "model": model},
         "providers": {
-            "anthropic": {"models": _anthropic_models(), **_ANTHROPIC_DECL},
+            # The id mapping is written EXPLICITLY, so a migrated machine is
+            # pinned to the mapping that existed at migration time — a later
+            # change to the shipped default cannot move it under its feet.
+            "anthropic": {
+                "models": _anthropic_models(),
+                "model_ids": dict(DEFAULT_MODEL_IDS),
+                **_ANTHROPIC_DECL,
+            },
             legacy.LEGACY_PROVIDER: {
                 "models": [model],
                 "requires_credential": True,

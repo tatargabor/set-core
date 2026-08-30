@@ -25,7 +25,8 @@ working tree is removed by a `reset --hard` and republished by a careless `add`.
           "credential": null,
           "default_model": "opus",
           "env": {},
-          "args": []
+          "args": [],
+          "model_ids": {"sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-6"}
         },
         "glm": {
           "models": ["glm-5.3", "glm-5.3-flash"],
@@ -95,6 +96,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .errors import ConfigError
+from .defaults import DEFAULT_MODEL_IDS, DEFAULT_MODEL_IDS_PROVIDER
 
 logger = logging.getLogger(__name__)
 
@@ -175,10 +177,35 @@ class Provider:
     #: catalogue, not about a piece of work. Empty means "this provider answers
     #: to the aliases directly", which is true of `anthropic` and of nothing else.
     model_aliases: Dict[str, str] = field(default_factory=dict)
+    #: catalogue name -> the id the agent CLI consumes. `None` (the block is
+    #: ABSENT from the declaration) means "use the framework's shipped default
+    #: for this provider, if it has one"; an EMPTY block is a DECLARED answer
+    #: meaning "no translation" — the two must stay distinct, because collapsing
+    #: them would make an explicit opt-out indistinguishable from an omission.
+    #: See `effective_model_ids` for the whole-block rule: a declared block
+    #: replaces the default, it is never merged with it.
+    model_ids: Optional[Dict[str, str]] = None
 
     def is_usable(self) -> bool:
         """Whether an agent can actually be started on this provider right now."""
         return self.credential is not None or not self.requires_credential
+
+    def effective_model_ids(self) -> Dict[str, str]:
+        """The id mapping this provider's launches translate through.
+
+        Whole-block semantics (spec: "a declared map replaces the default
+        whole"): a declared `model_ids` is applied as-is — including an empty
+        one, which means NO translation — and the shipped default applies only
+        when the block is absent. No merge: a partial table silently missing
+        one pin would deliver that name untranslated, a wrong value rather
+        than an error. The default also never conjures a provider: it is
+        consulted only for a declaration that exists.
+        """
+        if self.model_ids is not None:
+            return dict(self.model_ids)
+        if self.name == DEFAULT_MODEL_IDS_PROVIDER:
+            return dict(DEFAULT_MODEL_IDS)
+        return {}
 
 
 @dataclass(frozen=True)
@@ -310,6 +337,34 @@ def _provider(name: str, raw: object, source: Path) -> Provider:
                 f"cross-provider pair this design refuses everywhere else."
             )
 
+    # `model_ids` is OPTIONAL, and absent-vs-present carries meaning (None =
+    # "use the shipped default"; {} = "no translation"), so it is read with a
+    # sentinel rather than `.get(key, {})`. Validated at LOAD time for the same
+    # reason `model_aliases` is: the alternative is a pin that silently never
+    # applies, discovered only as a wrong model id on a launch that succeeded.
+    # Keys must be in this provider's catalogue — an id mapping for a name the
+    # provider does not serve is a block written against the wrong provider,
+    # and the file is where that gets said. Values are free strings: they are
+    # ids the CONSUMER CLI resolves, not models this provider serves.
+    raw_model_ids = raw.get("model_ids")
+    if raw_model_ids is not None and not isinstance(raw_model_ids, dict):
+        raise ConfigError(
+            f"{where}: 'model_ids' must be an object of catalogue name -> CLI id"
+        )
+    if raw_model_ids is not None:
+        for key, value in raw_model_ids.items():
+            if not isinstance(key, str) or not isinstance(value, str) or not value:
+                raise ConfigError(
+                    f"{where}: 'model_ids.{key!r}' must map a catalogue name to a "
+                    "non-empty CLI id string"
+                )
+            if key not in models:
+                raise ConfigError(
+                    f"{where}: 'model_ids.{key!r}' names a model outside this "
+                    f"provider's own catalogue ({', '.join(models)}). An id mapping "
+                    "belongs to the names that catalogue serves."
+                )
+
     return Provider(
         name=name,
         models=tuple(models),
@@ -319,6 +374,7 @@ def _provider(name: str, raw: object, source: Path) -> Provider:
         env={k: str(v) for k, v in env.items()},
         args=tuple(args),
         model_aliases={k: str(v) for k, v in aliases.items()},
+        model_ids=None if raw_model_ids is None else {k: str(v) for k, v in raw_model_ids.items()},
     )
 
 

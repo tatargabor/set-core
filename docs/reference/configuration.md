@@ -189,8 +189,26 @@ nothing copies it into a project tree, and the deploy path never writes one.
   "version": 1,
   "default": { "provider": "glm", "model": "glm-5.3-flash" },
   "providers": {
-    "anthropic": { "models": ["haiku", "sonnet", "opus"], "requires_credential": false,
-                   "credential": null, "default_model": "opus", "env": {}, "args": [] },
+    "anthropic": {
+      "models": ["haiku", "sonnet", "opus", "sonnet-1m", "opus-1m",
+                 "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m", "fable"],
+      "requires_credential": false,
+      "credential": null,
+      "default_model": "opus",
+      "env": {},
+      "args": [],
+      "model_ids": {
+        "haiku": "claude-haiku-4-5-20251001",
+        "sonnet": "claude-sonnet-4-6",
+        "opus": "claude-opus-4-6",
+        "opus-1m": "claude-opus-4-6[1m]",
+        "sonnet-1m": "claude-sonnet-4-6[1m]",
+        "opus-4-6": "claude-opus-4-6",
+        "opus-4-7": "claude-opus-4-7",
+        "opus-4-6-1m": "claude-opus-4-6[1m]",
+        "opus-4-7-1m": "claude-opus-4-7[1m]"
+      }
+    },
     "glm": {
       "models": ["glm-5.3-flash"],
       "requires_credential": true,
@@ -206,6 +224,14 @@ nothing copies it into a project tree, and the deploy path never writes one.
   }
 }
 ```
+
+The `model_ids` block maps a catalogue's short names to the ids the agent CLI
+consumes. It is OPTIONAL: a declared `anthropic` without one gets the framework's
+shipped default (exactly the mapping above), and any other provider without one
+gets no translation — a real-id catalogue needs none. A declared block replaces
+the default WHOLE, never merged with it, so re-pinning a name is a data edit;
+`fable` is deliberately unmapped (the CLI resolves it natively). `set-providers
+show` displays the effective mapping alongside the resolved launch.
 
 The rules the resolver enforces (spec: `agent-provider-config`):
 

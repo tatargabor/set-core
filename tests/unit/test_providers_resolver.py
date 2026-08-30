@@ -432,23 +432,28 @@ def test_a_provider_declaring_no_args_still_delivers_its_model():
 def test_the_model_is_translated_to_a_cli_id_on_the_way_out():
     """Delivering a WRONG model would be worse than delivering none.
 
-    The catalogue holds set-core's short names, which are exactly `_MODEL_MAP`'s
-    keys; the CLI wants the full id. Caught while auditing what else besides the
-    model might not be delivered — the first version of `launch_args` passed the
-    catalogue name straight through, which would have sent `--model opus-1m`.
+    The catalogue holds set-core's short names, which are exactly the default
+    id map's keys; the CLI wants the full id. Caught while auditing what else
+    besides the model might not be delivered — the first version of
+    `launch_args` passed the catalogue name straight through, which would have
+    sent `--model opus-1m`. Since `anthropic-model-mapping-as-config-data` the
+    map rides ON the plan (resolved from the declaration or the shipped
+    default), so these plans carry it explicitly — a bare plan has an empty
+    map, which is the honest "nothing resolved" answer.
     """
-    from set_orch.subprocess_utils import _MODEL_MAP
+    from set_orch.providers.defaults import DEFAULT_MODEL_IDS
 
-    assert _bare_plan(provider="anthropic", model="opus-1m").launch_args(
+    ids = dict(DEFAULT_MODEL_IDS)
+    assert _bare_plan(provider="anthropic", model="opus-1m", model_ids=ids).launch_args(
     )[-1] == "claude-opus-4-6[1m]"
-    assert _bare_plan(provider="anthropic", model="opus").launch_args(
+    assert _bare_plan(provider="anthropic", model="opus", model_ids=ids).launch_args(
     )[-1] == "claude-opus-4-6"
 
     # An unmapped name passes through — for anthropic that means a name the CLI
     # resolves natively (`fable`, measured 2026-08-29: no unrecognized_model and
     # a attempted call on an unreachable endpoint, while `sonnet-1m` was refused
     # under its own name), and for a real-id catalogue no second table is needed.
-    assert _bare_plan(provider="anthropic", model="fable").launch_args(
+    assert _bare_plan(provider="anthropic", model="fable", model_ids=ids).launch_args(
     )[-1] == "fable"
     assert _bare_plan(model="glm-5.3-flash").launch_args()[-1] == "glm-5.3-flash"
 
@@ -552,3 +557,130 @@ def test_a_fresh_install_is_told_how_to_create_not_only_to_migrate(tmp_path, mon
     assert "Provider Configuration" in msg    # where the shape is documented
     # migrate stays offered — but only for machines that actually had the old file
     assert "set-providers migrate" in msg
+
+
+# --------------------------------------------------------------------------- #
+# the id mapping rides on the declaration — anthropic-model-mapping-as-config-data
+# --------------------------------------------------------------------------- #
+
+def test_a_declared_anthropic_without_a_model_ids_block_launches_the_default_pins(tmp_path):
+    """AC-1 — the shipped default applies to a DECLARED anthropic that carries
+    no block of its own. The default must reach the argv through resolve(),
+    not through a code table at launch time."""
+    cfg = make(tmp_path)  # anthropic declared, no model_ids block
+    plan = res.resolve(provider="anthropic", model="opus-1m", config=cfg)
+    assert plan.launch_args()[-1] == "claude-opus-4-6[1m]"
+    # the plan CARRIES the map, so `set-providers show` and the argv answer
+    # from one resolved value rather than two lookups that can drift
+    assert plan.model_ids["sonnet"] == "claude-sonnet-4-6"
+    # `fable` is deliberately absent from the default map (CLI-native,
+    # measured 2026-08-29) — pass-through, not a missing entry
+    fable = res.resolve(provider="anthropic", model="fable", config=cfg)
+    assert fable.launch_args()[-1] == "fable"
+
+
+def _write_config(tmp_path, providers):
+    d = tmp_path / "set-core"
+    d.mkdir(exist_ok=True)
+    p = d / "providers.json"
+    p.write_text(json.dumps({
+        "default": {"provider": "anthropic", "model": "sonnet"},
+        "providers": providers,
+        "projects": {},
+    }))
+    p.chmod(0o600)
+    return cfgmod.load(p)
+
+
+def test_a_declared_model_ids_block_replaces_the_default_whole(tmp_path):
+    """AC-2 — a declared block is applied WHOLE. A name it does not map is
+    delivered unchanged, never falling back to the shipped default entry:
+    a partial table that silently merged would deliver a default pin the
+    operator believed they had replaced."""
+    cfg = _write_config(tmp_path, {"anthropic": {
+        "models": ["sonnet", "fable"],
+        "requires_credential": False, "credential": None,
+        "default_model": "sonnet", "env": {}, "args": [],
+        "model_ids": {"sonnet": "my-own-sonnet-pin"},
+    }})
+    plan = res.resolve(provider="anthropic", model="sonnet", config=cfg)
+    assert plan.launch_args()[-1] == "my-own-sonnet-pin"
+    # `fable` is not in the DECLARED block, and the default does not rescue it
+    fable = res.resolve(provider="anthropic", model="fable", config=cfg)
+    assert fable.launch_args()[-1] == "fable"
+    # and the effective map is the declared block EXACTLY — no default entries
+    # merged in (a merge would make the replacement partial after all)
+    assert fable.model_ids == {"sonnet": "my-own-sonnet-pin"}
+    assert "opus" not in fable.model_ids
+
+
+def test_an_empty_model_ids_block_is_a_declared_no_not_an_omission(tmp_path):
+    """Absent means 'use the default'; an EMPTY block is an explicit 'no
+    translation'. Collapsing the two would make an opt-out indistinguishable
+    from an unfinished declaration."""
+    cfg = _write_config(tmp_path, {"anthropic": {
+        "models": ["sonnet"],
+        "requires_credential": False, "credential": None,
+        "default_model": "sonnet", "env": {}, "args": [],
+        "model_ids": {},
+    }})
+    plan = res.resolve(provider="anthropic", model="sonnet", config=cfg)
+    assert plan.launch_args()[-1] == "sonnet"
+    assert plan.model_ids == {}
+
+
+def test_a_model_ids_key_outside_the_catalogue_is_refused_by_name(tmp_path):
+    """An id mapping for a name the provider does not serve is a block written
+    against the wrong provider — refused where it can be fixed, not discovered
+    as a never-applying pin."""
+    d = tmp_path / "set-core"
+    d.mkdir()
+    p = d / "providers.json"
+    p.write_text(json.dumps({
+        "default": {"provider": "anthropic", "model": "sonnet"},
+        "providers": {"anthropic": {
+            "models": ["sonnet"],
+            "requires_credential": False, "credential": None,
+            "default_model": "sonnet", "env": {}, "args": [],
+            "model_ids": {"opus": "claude-opus-4-6"},
+        }},
+        "projects": {},
+    }))
+    p.chmod(0o600)
+    with pytest.raises(ConfigError) as e:
+        cfgmod.load(p)
+    assert "model_ids" in str(e.value)
+    assert "opus" in str(e.value)
+
+
+def test_the_mapping_has_one_source():
+    """The mapping has one source — the spec forbids a second private copy,
+    because two copies drift without either looking wrong. subprocess_utils and
+    the top-level config RE-EXPORT the defaults module's objects (identity, not
+    equality), and the id literals appear in neither module's source."""
+    import inspect
+
+    import set_orch.config as top
+    import set_orch.subprocess_utils as su
+    from set_orch.providers import defaults
+
+    assert su._MODEL_MAP is defaults.DEFAULT_MODEL_IDS
+    assert top.ANTHROPIC_MODEL_NAMES is defaults.ANTHROPIC_MODEL_NAMES
+    for mod in (su, top):
+        assert "claude-sonnet-4-6" not in inspect.getsource(mod), (
+            f"{mod.__name__} carries a private copy of the id mapping"
+        )
+
+
+def test_a_pre_change_config_launches_exactly_as_before(tmp_path):
+    """A file written before `model_ids` existed — every machine running today —
+    loads and launches unchanged: the shipped default pins apply to a declared
+    anthropic, and a real-id catalogue still passes through untouched."""
+    cfg = make(tmp_path)  # the pre-change shape: no model_ids anywhere
+    assert cfg.providers["anthropic"].model_ids is None
+    assert res.resolve(
+        provider="anthropic", model="sonnet", config=cfg
+    ).launch_args()[-1] == "claude-sonnet-4-6"
+    assert res.resolve(
+        provider="glm", model="glm-5.3-flash", config=cfg
+    ).launch_args()[-1] == "glm-5.3-flash"

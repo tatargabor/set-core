@@ -118,6 +118,12 @@ class LaunchPlan:
     #: field name -> the level that supplied it. Never contains a secret; the
     #: credential's entry names the LEVEL, which is the useful half.
     provenance: Dict[str, str] = field(default_factory=dict)
+    #: The provider's EFFECTIVE id mapping, resolved at plan time: a declared
+    #: `model_ids` block, else the shipped default for that provider, else
+    #: empty. Carried on the plan rather than looked up at launch time, so the
+    #: argv this plan hands out is exactly the argv `set-providers show`
+    #: described — the two answer from the same resolved value.
+    model_ids: Dict[str, str] = field(default_factory=dict)
 
     def uses_default_credential(self) -> bool:
         """Whether the credential came from the machine default.
@@ -150,36 +156,29 @@ class LaunchPlan:
         a flag the caller already passed is never added twice — the caller's own
         value wins, which is what keeps `set-glm --model X` meaning what it says.
 
-        ⚠ The model is translated to a CLI id on the way out — but ONLY for a
-        provider in `MODEL_MAP_PROVIDERS`, the providers whose catalogue the
-        short-name map was written for. Skipping the translation where it is
-        needed would deliver a WRONG value rather than none (a worse defect than
-        the one it fixes): the anthropic catalogue holds set-core's SHORT names
-        (`opus-1m`, `opus-4-7-1m`), which are exactly `_MODEL_MAP`'s keys, while
-        the CLI wants `claude-opus-4-6[1m]`. Every other caller that builds a
-        `--model` already resolves first — `chat.py`, `subprocess_utils.py`,
-        `category_resolver.py`, `engine.sh` — so this is the established
-        convention, not a new rule. An unmapped name passes through unchanged,
-        which is what keeps a provider whose catalogue holds real ids (`glm`)
-        working without a second mapping table — and names the CLI resolves
-        natively (`fable`, measured 2026-08-29) pass through too, deliberately.
+        ⚠ The model is translated to a CLI id on the way out — through the
+        provider's EFFECTIVE id mapping (`self.model_ids`): a declared
+        `model_ids` block, else the shipped default for that provider, else no
+        translation. Skipping the translation where it is needed would deliver
+        a WRONG value rather than none (a worse defect than the one it fixes):
+        the anthropic catalogue holds set-core's SHORT names (`opus-1m`,
+        `opus-4-7-1m`), while the CLI wants `claude-opus-4-6[1m]`. An unmapped
+        name passes through unchanged, which is what keeps a provider whose
+        catalogue holds real ids (`glm`) working without any mapping table —
+        and names the CLI resolves natively (`fable`, deliberately absent from
+        the default map, measured 2026-08-29) pass through too.
         """
-        from ..subprocess_utils import resolve_model_id
-
         caller = set(caller_args)
         add: List[str] = []
         declared_flags = {a for a in self.args if a.startswith("--")}
         if not (declared_flags & caller):
             add += list(self.args)
         if self.model and "--model" not in caller and "--model" not in add:
-            if self.provider in MODEL_MAP_PROVIDERS:
-                add += ["--model", resolve_model_id(self.model)]
-            else:
-                # Not this map's catalogue — deliver the name as declared. A
-                # catalogue holding real ids needs no translation, and one
-                # holding a name that collides with a map key must keep its
-                # own meaning (B-118).
-                add += ["--model", self.model]
+            # Through the effective map only: a catalogue holding real ids has
+            # an empty map and delivers as declared, and a name whose meaning
+            # belongs to THIS provider keeps it even when it collides with a
+            # short name somewhere else (B-118).
+            add += ["--model", self.model_ids.get(self.model, self.model)]
         return tuple(add)
 
     def describe(self) -> str:
@@ -196,19 +195,6 @@ class LaunchPlan:
             f"model from {self.provenance.get('model', '?')}, "
             f"credential from {self.provenance.get('credential', '?')})"
         )
-
-
-#: The providers whose catalogue `_MODEL_MAP` translates. The map is an
-#: ANTHROPIC-catalogue artifact: its keys are set-core short names, its values
-#: Claude ids, and several exist only because the CLI does not resolve the bare
-#: short name itself (`opus-1m` needs the bracket form) or because a version
-#: pin is deliberate (`opus` -> 4.6). A DIFFERENT provider whose catalogue
-#: legitimately contains a key — `sonnet` as a real tier name — must have that
-#: name delivered UNTOUCHED: translating it would send a Claude id at that
-#: provider's endpoint, a wrong value delivered silently, which is worse than
-#: none (B-118). Membership is explicit data, not inference: a provider whose
-#: catalogue holds short names adds itself here deliberately.
-MODEL_MAP_PROVIDERS = frozenset({"anthropic"})
 
 
 def _check_model(provider: Provider, model: str) -> None:
@@ -381,6 +367,7 @@ def resolve(
                 if k not in emitted and k not in declared.env),
         args=declared.args,
         provenance=provenance,
+        model_ids=declared.effective_model_ids(),
     )
     logger.info("providers: resolved %s", plan.describe())
     return plan

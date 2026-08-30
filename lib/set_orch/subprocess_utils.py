@@ -151,22 +151,13 @@ def run_command(
     )
 
 
-_MODEL_MAP = {
-    "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-6",
-    # `opus` shorthand resolves to 4.6 — the established default for
-    # framework orchestration (better token economy than 4.7 at
-    # comparable quality on agent/decompose tasks). Operators wanting
-    # 4.7 must pin it explicitly via `opus-4-7` or `models.agent: opus-4-7`.
-    "opus": "claude-opus-4-6",
-    "opus-1m": "claude-opus-4-6[1m]",
-    "sonnet-1m": "claude-sonnet-4-6[1m]",
-    # Explicit version pins — bypass the shorthand default.
-    "opus-4-6": "claude-opus-4-6",
-    "opus-4-7": "claude-opus-4-7",
-    "opus-4-6-1m": "claude-opus-4-6[1m]",
-    "opus-4-7-1m": "claude-opus-4-7[1m]",
-}
+#: The shipped-default Anthropic id mapping. DELETED as a private copy — the
+#: spec (`agent-provider-config`, "The mapping has one source") forbids a
+#: second table beside `set_orch.providers.defaults`, because two copies drift
+#: without either looking wrong. This module now reads that one body of data;
+#: a provider declaration's own `model_ids` block, where one exists, outranks
+#: it inside the resolver.
+from .providers.defaults import DEFAULT_MODEL_IDS as _MODEL_MAP
 
 
 def resolve_model_id(name: str) -> str:
