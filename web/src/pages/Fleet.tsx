@@ -3149,6 +3149,7 @@ export default function Fleet() {
           dockedEdge={bandEdge}
           maximised={boardMax === band.id}
           onMaximise={() => toggleBoardMax(project.name, band.id)}
+          onOpenTarget={path => openFile(project.root, { path })}
         />
       )
     }
@@ -3354,6 +3355,12 @@ export default function Fleet() {
                 fullscreen
                 onClose={() => setBoardFullscreen(null)}
                 onFullscreen={() => setBoardFullscreen(null)}
+                onOpenTarget={path => {
+                  // The file view lives in the page BENEATH the overlay — leave
+                  // full screen first, then open the artefact there.
+                  setBoardFullscreen(null)
+                  openFile(project.root, { path })
+                }}
               />
             </div>
           </div>
@@ -4003,6 +4010,7 @@ export default function Fleet() {
                     fullscreen={boardFullscreen === active.root}
                     onFullscreen={() => setBoardFullscreen(
                       boardFullscreen === active.root ? null : active.root ?? null)}
+                    onOpenTarget={path => openFile(active.root, { path })}
                   />
                 </div>
               )}

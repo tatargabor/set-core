@@ -301,10 +301,65 @@ describe('the card board', () => {
       .toContain('cannot read')
   })
 
-  it('is read-only: no card is a button, form or link', async () => {
+  it('is read-only: cards without a declared open target are not controls, and nothing writes', async () => {
     const { container } = await renderBoard()
     const board = container.querySelector('[data-fleet-board-columns]')!
-    expect(board.querySelector('button, a, input, form')).toBeNull()
+    // No card in the fixture declares openTarget, so no card is a control of
+    // any kind — and there is no form, input or link anywhere regardless.
+    expect(board.querySelector('[data-fleet-board-card-open]')).toBeNull()
+    expect(board.querySelector('form, input, a')).toBeNull()
+    for (const card of board.querySelectorAll('[data-fleet-board-card]')) {
+      expect(card.tagName).toBe('DIV')
+    }
+  })
+
+  it('a card whose producer declared openTarget opens the artefact through the page — a reading act', async () => {
+    // The path comes ONLY from the producer's openTarget field; it is never
+    // derived from `path`, `id` or anything else (the producer's own `path`
+    // carried source documents on tickets — measured on the channel, 2026-08-30).
+    const onOpenTarget = vi.fn()
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) {
+        return { commands: { board: { ok: true, data: {
+          ...BOARD.data,
+          cards: [
+            { id: 'SET-0077', title: 'a specified card', lane: 'specified', openTarget: 'docs/bugs/SET-0077.md' },
+            { id: 'SET-0081', title: 'no target', lane: 'in-progress' },
+          ],
+        } } } }
+      }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" onOpenTarget={onOpenTarget} />)
+    await rendered(container)
+    const clickable = container.querySelector('[data-fleet-board-card-open]')!
+    expect(clickable.getAttribute('data-fleet-board-card-open')).toBe('docs/bugs/SET-0077.md')
+    expect(clickable.tagName).toBe('BUTTON')
+    fireEvent.click(clickable)
+    expect(onOpenTarget).toHaveBeenCalledTimes(1)
+    expect(onOpenTarget).toHaveBeenCalledWith('docs/bugs/SET-0077.md')
+    // a card with no declared target stays a plain div
+    const plain = container.querySelector('[data-fleet-board-card="SET-0081"]')!
+    expect(plain.tagName).toBe('DIV')
+    expect(onOpenTarget).toHaveBeenCalledTimes(1)
+  })
+
+  it('without a page-provided opener even a declared target renders as a plain div', async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) {
+        return { commands: { board: { ok: true, data: {
+          ...BOARD.data,
+          cards: [{ id: 'SET-0077', title: 'a specified card', lane: 'specified', openTarget: 'docs/bugs/SET-0077.md' }],
+        } } } }
+      }
+      return undefined
+    })
+    const { container } = render(<FleetBoard project="p" />)
+    await rendered(container)
+    expect(container.querySelector('[data-fleet-board-card="SET-0077"]')!.tagName).toBe('DIV')
+    expect(container.querySelector('[data-fleet-board-card-open]')).toBeNull()
   })
 
   it('says "0 cards" in a column the project counts at zero, instead of empty silence', async () => {

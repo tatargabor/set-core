@@ -23,8 +23,8 @@ import type { DockEdge } from '../lib/fleetDocks'
  *   its cards disagree, both render as given — the surface never reconciles, per the
  *   agent-api-parity precedent (recomputed values ran 412 % against 164 % actual).
  * - **The card face is set-core's own vocabulary** (`id`, `title`, `kind`, `blocked`,
- *   `tasksDone`, `tasksTotal`, `plannedRelease`, `note`) — a project maps its field
- *   names onto it; none of theirs may appear in this code.
+ *   `tasksDone`, `tasksTotal`, `plannedRelease`, `note`, `openTarget`) — a project
+ *   maps its field names onto it; none of theirs may appear in this code.
  * - **`unknown` is the ABSENCE of a lane, never a seventh one.** It is a scalar beside
  *   `lanes`, drawn hatched — this surface reserves amber for "unknown", and the hatch
  *   says "not a stage" the way a solid band would not. Cards with no usable lane join
@@ -62,18 +62,36 @@ interface BoardCard {
   tasksTotal?: unknown
   plannedRelease?: unknown
   note?: unknown
+  /** The artefact the card IS, as a project-root-relative path — a file (the
+      ticket's own document) or a directory (the change's folder). Declared BY
+      THE PRODUCER, never derived here: set-core's own `path`-style fields on
+      the producer's cards carried source documents, not the artefact (measured
+      on the channel, 2026-08-30), so a click that guesses would look like it
+      worked and open the wrong file. */
+  openTarget?: unknown
+}
+
+/** The open target as a usable path, or null. A non-empty string only — anything
+    else is as if absent, and the card stays a non-clicking face. */
+function cardOpenTarget(c: BoardCard): string | null {
+  return typeof c.openTarget === 'string' && c.openTarget ? c.openTarget : null
 }
 
 /** One card face. A DIV, not a button: the board is read-only, and a control that
-    looks clickable but writes nothing is a promise the surface should not make. */
-function BoardCardFace({ c }: { c: BoardCard }) {
+    looks clickable but writes nothing is a promise the surface should not make.
+    The ONE exception is a card whose producer declared `openTarget` — following it
+    is a reading act (opening the artefact, through the page's `onOpenTarget`), it
+    writes nothing, and the card stays a plain div whenever the field is absent or
+    the page offers no way to open anything. */
+function BoardCardFace({ c, onOpenTarget }: { c: BoardCard; onOpenTarget?: (path: string) => void }) {
   const id = cardId(c)
   const title = cardTitle(c)
   const blocked = blockedDetail(c)
   const progress = cardProgress(c)
-  return (
-    <div data-fleet-board-card={id ?? undefined}
-         className="rounded border border-surface-line bg-surface-raised/40 px-1.5 py-1 space-y-0.5 min-w-0">
+  const openTarget = cardOpenTarget(c)
+  const clickable = Boolean(openTarget && onOpenTarget)
+  const face = (
+    <>
       <div className="flex items-center gap-1.5 text-xs min-w-0">
         {id && <span className="text-fg-ghost tabular-nums shrink-0">{id}</span>}
         {typeof c.kind === 'string' && c.kind
@@ -101,7 +119,23 @@ function BoardCardFace({ c }: { c: BoardCard }) {
           )}
         </div>
       )}
-    </div>
+    </>
+  )
+  const shell = 'rounded border border-surface-line bg-surface-raised/40 px-1.5 py-1 space-y-0.5 min-w-0'
+  if (clickable) {
+    return (
+      <button
+        type="button"
+        data-fleet-board-card={id ?? undefined}
+        data-fleet-board-card-open={openTarget!}
+        className={`${shell} w-full text-left cursor-pointer hover:border-fg-ghost/60`}
+        title={`open ${openTarget}`}
+        onClick={() => onOpenTarget!(openTarget!)}
+      >{face}</button>
+    )
+  }
+  return (
+    <div data-fleet-board-card={id ?? undefined} className={shell}>{face}</div>
   )
 }
 
@@ -203,7 +237,7 @@ function ColumnEmpty({ count, placed }: { count: number; placed: number }) {
 
 export default function FleetBoard({
   project, projectName, showBoard = true, onClose, onDock, dockedEdge, maximised, onMaximise,
-  fullscreen, onFullscreen,
+  fullscreen, onFullscreen, onOpenTarget,
 }: {
   project: string
   /** Set by a PANEL context: names the title bar and turns on the window chrome.
@@ -222,6 +256,10 @@ export default function FleetBoard({
   /** Full screen — the whole layout, not just the tile's grid cell. */
   fullscreen?: boolean
   onFullscreen?: () => void
+  /** Opens a card's declared artefact — the page's file view. Reading only: the
+      board itself still has no write path. Absent = every card stays a plain
+      div, even one that declares an open target. */
+  onOpenTarget?: (path: string) => void
 }) {
   // Seeded from the per-process cache: a board the reader has already seen this
   // session renders its last answer INSTANTLY on remount, then revalidates.
@@ -512,7 +550,7 @@ export default function FleetBoard({
                   </div>
                   <div className={`space-y-1 overflow-y-auto ${fill ? 'flex-1 min-h-0' : 'max-h-72'}`}>
                     {(cardsByLane.get(name) ?? []).map((c, i) => (
-                      <BoardCardFace key={cardId(c) ?? i} c={c} />
+                      <BoardCardFace key={cardId(c) ?? i} c={c} onOpenTarget={onOpenTarget} />
                     ))}
                     <ColumnEmpty count={countByLane.get(name) ?? 0}
                                  placed={(cardsByLane.get(name) ?? []).length} />
@@ -534,7 +572,7 @@ export default function FleetBoard({
                   </div>
                   <div className={`space-y-1 overflow-y-auto ${fill ? 'flex-1 min-h-0' : 'max-h-72'}`}>
                     {trayCards.map((c, i) => (
-                      <BoardCardFace key={cardId(c) ?? i} c={c} />
+                      <BoardCardFace key={cardId(c) ?? i} c={c} onOpenTarget={onOpenTarget} />
                     ))}
                     <ColumnEmpty count={unknown ?? trayCards.length} placed={trayCards.length} />
                   </div>
