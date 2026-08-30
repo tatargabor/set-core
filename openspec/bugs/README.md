@@ -3742,3 +3742,10 @@ consumer's name, path, or content.
 - **fail direction:** silent and total — not a missing wire but a dead endpoint, dressed as an empty view.
 - **fixed:** rooms loop resolves the seat by NAME (`node.seat`, set on both join paths) instead of by session id; regression test feeds a fallback-joined agent WITH a session id and asserts a real edge. Stash-and-rerun proven with the change's own new tests: the crash case reproduces on the old loop by construction (KeyError) and passes fixed; channels suite 24/24.
 - **fixed when:** met — endpoint 200s with the fallback-joined agent live in the fleet.
+
+### B-134 — a live session's own tile stays seat-less: sac's session suffix is not the harness session id, so the sanctioned join misses
+- **state:** open
+- **reported:** 2026-08-30 by this session, while wiring the fleet wire view live.
+- **measured:** the fleet discovery lists this session (pid 2445628, harness session id `2854f26e-8abe-…`, tile `set-core-subproject-lines`) with `seat=null`; the bus roster holds the SAME session as `set-core#e832b7ce` (`sac whoami`: "writer: set-core#e832b7ce (this session)"; `sac agents --json` contains `e832b7ce`). The join in `fleet/channels.py` keys the roster by harness session id, so a seat whose suffix derives from something other than the harness uuid never joins — the tile reads "no seat on the messaging bus", its writes reach the bus (channel file created in `channels/wpc-board/`) but never light up its own node. Sibling sessions whose sac suffix DOES match their harness id (e.g. `set-core#547efd3b` ↔ node `547efd3b-09c8…`) join fine, which is why the drift is invisible most of the time.
+- **fail direction:** false absence on the live view plus a misleading "no seat" instruction — the seat exists; the two identity systems disagree about the id.
+- **fixed when:** a live session whose sac seat exists joins its own node regardless of which id each system derived, with a test feeding a roster whose session id differs from the discovery session id.
