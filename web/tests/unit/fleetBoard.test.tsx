@@ -13,9 +13,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 
-import FleetBoard from '../../src/components/FleetBoard'
+import FleetBoard, { _resetBoardCachesForTests } from '../../src/components/FleetBoard'
 
 const CONTRACT = {
   configured: true,
@@ -71,7 +71,7 @@ function install(route: Route) {
   }))
 }
 
-beforeEach(() => { vi.useRealTimers() })
+beforeEach(() => { vi.useRealTimers(); _resetBoardCachesForTests() })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 const strip = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-fleet-board-strip]')!
@@ -359,5 +359,56 @@ describe('the board as a panel', () => {
     await rendered(container)
     expect(container.querySelector('[data-fleet-board-bands]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-board-columns]')).toBeNull()
+  })
+})
+
+describe('freshness, manual refresh, and full screen', () => {
+  const installBoard = () => install(u => {
+    if (u.includes('/project-status/contract')) return CONTRACT
+    if (u.includes('commands=board')) return { commands: { board: BOARD } }
+    return undefined
+  })
+
+  it('shows when the answer was taken, and offers a manual refresh that forces', async () => {
+    installBoard()
+    const { container } = render(<FleetBoard project="p" />)
+    await rendered(container)
+    expect(container.querySelector('[data-tile-control="board-refresh"]')).toBeTruthy()
+    // The answer time is rendered, not guessed: the strip says when it was taken.
+    expect(container.querySelector('[data-fleet-board-strip]')!.textContent).toMatch(/\d\d:\d\d:\d\d/)
+    // The explicit ask bypasses the transport cache.
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => String(c[0]).includes('refresh=true'))
+    expect(calls.length).toBe(0)
+    fireEvent.click(container.querySelector('[data-tile-control="board-refresh"]')!)
+    await waitFor(() => {
+      expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls
+        .some((c: unknown[]) => String(c[0]).includes('refresh=true'))).toBe(true)
+    })
+  })
+
+  it('renders the last answer INSTANTLY on remount, before the network answers', async () => {
+    installBoard()
+    const first = render(<FleetBoard project="p" />)
+    await rendered(first.container)
+    first.unmount()
+    // Second mount with a fetch that NEVER answers: only the cache can draw this.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+    const second = render(<FleetBoard project="p" />)
+    // Synchronous, before any await: the cached bands are already on screen.
+    expect(second.container.querySelector('[data-fleet-board-bands]')).toBeTruthy()
+  })
+
+  it('carries a full-screen control in the chrome and marks its state', async () => {
+    installBoard()
+    const { container } = render(
+      <FleetBoard project="p" projectName="p" fullscreen onFullscreen={() => {}}
+        onClose={() => {}} onDock={() => {}} dockedEdge={null}
+        maximised={false} onMaximise={() => {}} />,
+    )
+    await rendered(container)
+    const fs = container.querySelector('[data-fleet-board-fullscreen]')
+    expect(fs).toBeTruthy()
+    expect(fs!.getAttribute('data-fleet-board-fullscreen')).toBe('on')
   })
 })

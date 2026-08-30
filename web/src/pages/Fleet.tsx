@@ -2382,6 +2382,9 @@ export default function Fleet() {
     }
   }, [docks, dockPanel])
   const [boardMax, setBoardMax] = useState<string | null>(null)
+  // FULL SCREEN — the whole layout, not a grid cell. Held by project ROOT; the
+  // overlay carries its own exit, so leaving the project is not the only way out.
+  const [boardFullscreen, setBoardFullscreen] = useState<string | null>(null)
   const toggleBoardMax = useCallback((project: string | null, root: string) => {
     setBoardMax(prev => {
       const next = prev === root ? null : root
@@ -3330,6 +3333,29 @@ export default function Fleet() {
         />
       )}
 
+      {/* THE BOARD, FULL SCREEN. Outside the grid's overflow on purpose: the
+          reader asked for the whole layout, and a maximised TILE only ever gets
+          the room its cell can spare (that was the report — maximize that
+          cannot maximise). Keyed on root, so it stays up while it is up; the
+          panel's own ⛶ control is the way out, alongside each project switch. */}
+      {boardFullscreen && (() => {
+        const project = data?.projects.find(p => p.root === boardFullscreen)
+        if (!project) return null
+        return (
+          <div className="fixed inset-0 z-40 bg-surface-page/95 p-3 flex" data-fleet-board-fullscreen-root={project.root}>
+            <div className="flex-1 min-w-0 rounded border border-surface-line bg-surface-panel/60">
+              <FleetBoard
+                project={project.name}
+                projectName={project.name}
+                fullscreen
+                onClose={() => setBoardFullscreen(null)}
+                onFullscreen={() => setBoardFullscreen(null)}
+              />
+            </div>
+          </div>
+        )
+      })()}
+
       {/* One source for the escalation thresholds, wrapping BOTH the project
           column's counters and every agent tile: threading the value into one
           subtree and not the other is a screen whose row and tile disagree
@@ -3738,11 +3764,12 @@ export default function Fleet() {
                   />
                 )}
               </div>
-              {/* The project's own board, read live through its contract. Renders
-                  nothing for a project that does not declare a `board` command —
-                  a project that publishes no board is the producer's decision, not
-                  a gap — and renders every failure once it does. See the component. */}
-              <FleetBoard project={active.name} showBoard={!boardShowing} />
+              {/* The board loads ONLY when the reader opens it — the kanban glyph
+                  in the row above (decided 2026-08-30: nothing about a project's
+                  board should spawn subprocesses or take room until the reader
+                  asks). The last answer stays in the session's memory, so
+                  reopening after a switch is instant. */}
+
               {/* Task 4.2 — a panel whose KIND this build does not have.
                   Stated where the reader is standing, above the grid, rather
                   than only in the place it would have been rendered: the whole
@@ -3969,6 +3996,9 @@ export default function Fleet() {
                     dockedEdge={null}
                     maximised={boardMax === active.root}
                     onMaximise={() => toggleBoardMax(active.name, active.root)}
+                    fullscreen={boardFullscreen === active.root}
+                    onFullscreen={() => setBoardFullscreen(
+                      boardFullscreen === active.root ? null : active.root ?? null)}
                   />
                 </div>
               )}

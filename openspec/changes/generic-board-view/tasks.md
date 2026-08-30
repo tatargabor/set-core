@@ -8,6 +8,10 @@
 - [x] 1.6 Bound the board area (max height, internal scroll per column) and keep every interaction a reading one [REQ: the-board-is-read-only]
 - [x] 1.7 The board as a dockable panel kind (`board`) with the same window chrome as the other project panels — four dock edges, maximise, close — opened from a glyph in the project header; while the panel is open the inline copy stays the summary strip only [REQ: the-board-is-read-only]
 - [x] 1.8 Count the project tiles (file view, work cycle, board) in the grid-tile count so the column control cannot disagree with what is drawn [REQ: the-board-is-read-only]
+- [x] 1.9 Cache the contract decision and last answer per project in memory (stale-while-revalidate): a remount after switching views renders the last board instantly and revalidates in the background — never persisted [REQ: the-summary-strip-and-the-honesty-fields-stay]
+- [x] 1.10 Show when the answer was taken in the strip header and add a manual refresh control that bypasses the transport cache; auto-poll stays at 30s, visible only [REQ: the-summary-strip-and-the-honesty-fields-stay]
+- [x] 1.11 Full screen: a ⛶ control in the board chrome rendering the board over the whole layout (fixed overlay), with the same control as the way out — maximise only ever got the tile's grid cell [REQ: the-board-is-read-only]
+- [x] 1.12 OPT-IN: the board loads only when the reader opens it — no inline auto-render, no subprocesses until the kanban glyph is clicked (decided by the user, 2026-08-30) [REQ: the-summary-strip-and-the-honesty-fields-stay]
 
 ## 2. Tests
 
@@ -32,3 +36,5 @@
 - [x] AC-6: WHEN the board command returns a gap result THEN the gap renders and no card columns claim an empty board [REQ: the-summary-strip-and-the-honesty-fields-stay, scenario: the-answer-fails-after-the-board-shipped]
 - [x] AC-7: WHEN the reader clicks a card THEN nothing is written and any effect is a reading effect [REQ: the-board-is-read-only, scenario: a-card-click]
 - [x] AC-8: WHEN the board renders as a panel THEN it carries the same window chrome as the other project panels — dock edges, maximise, close [REQ: the-board-is-read-only]
+- [x] AC-9: WHEN the reader returns to a view where the board was open THEN the last answer renders immediately from the in-memory cache and revalidates in the background [REQ: the-summary-strip-and-the-honesty-fields-stay]
+- [x] AC-10: WHEN the reader wants the whole layout THEN the ⛶ control gives the board the full screen, and the same control returns out of it [REQ: the-board-is-read-only]

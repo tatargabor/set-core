@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Maximize2, Minimize2, TriangleAlert, X } from 'lucide-react'
+import { Expand, Maximize2, Minimize2, RotateCw, Shrink, TriangleAlert, X } from 'lucide-react'
 
 import { getProjectStatus, getStatusContract, type StatusCommandResult } from '../lib/api'
 import { GAP_HINT } from '../lib/statusGapHints'
@@ -105,6 +105,27 @@ function BoardCardFace({ c }: { c: BoardCard }) {
   )
 }
 
+/**
+ * The last answer and the contract decision, per project, IN MEMORY ONLY.
+ *
+ * The board unmounts on every project and view switch, and state that lives in
+ * the component dies with it — measured as the board re-asking the project and
+ * showing a loading gap every time the reader came back, while the terminals
+ * around it appeared to remember. They remembered because their data is held
+ * above the switch; the board now does the same. Render the cached answer
+ * INSTANTLY, revalidate in the background. Dies with the page, never written
+ * anywhere — the same confidentiality line the transport layer holds.
+ */
+const declaresCache = new Map<string, boolean>()
+const answerCache = new Map<string, { result: StatusCommandResult; at: number }>()
+
+/** TESTS ONLY: the caches are per-process by design; a suite that mounts the
+    board for many fake projects must start each test from the same ground. */
+export function _resetBoardCachesForTests() {
+  declaresCache.clear()
+  answerCache.clear()
+}
+
 /** Refresh cadence. The transport layer caches answers for 30s, so asking faster
     would spawn the project's toolchain for a number it already refused to refresh. */
 const POLL_MS = 30_000
@@ -162,6 +183,7 @@ function cardProgress(c: BoardCard): string | null {
 
 export default function FleetBoard({
   project, projectName, showBoard = true, onClose, onDock, dockedEdge, maximised, onMaximise,
+  fullscreen, onFullscreen,
 }: {
   project: string
   /** Set by a PANEL context: names the title bar and turns on the window chrome.
@@ -177,11 +199,17 @@ export default function FleetBoard({
   dockedEdge?: DockEdge | null
   maximised?: boolean
   onMaximise?: () => void
+  /** Full screen — the whole layout, not just the tile's grid cell. */
+  fullscreen?: boolean
+  onFullscreen?: () => void
 }) {
+  // Seeded from the per-process cache: a board the reader has already seen this
+  // session renders its last answer INSTANTLY on remount, then revalidates.
   // `null` = the contract has not answered yet. `false` = it declares no board,
   // which is a decision of the project's, not a gap of anyone's.
-  const [declares, setDeclares] = useState<boolean | null>(null)
-  const [result, setResult] = useState<StatusCommandResult | null>(null)
+  const [declares, setDeclares] = useState<boolean | null>(() => declaresCache.get(project) ?? null)
+  const [result, setResult] = useState<StatusCommandResult | null>(() => answerCache.get(project)?.result ?? null)
+  const [answeredAt, setAnsweredAt] = useState<number | null>(() => answerCache.get(project)?.at ?? null)
   const [failed, setFailed] = useState<string | null>(null)
 
   const alive = useRef(true)
@@ -193,36 +221,62 @@ export default function FleetBoard({
   // Does THIS project publish a board at all? One cheap manifest read decides
   // whether the strip exists here.
   useEffect(() => {
-    setDeclares(null)
-    setResult(null)
+    setDeclares(declaresCache.get(project) ?? null)
+    setResult(answerCache.get(project)?.result ?? null)
+    setAnsweredAt(answerCache.get(project)?.at ?? null)
     setFailed(null)
     if (!project) return
     getStatusContract(project)
-      .then(c => { if (alive.current) setDeclares(Boolean(c.configured && c.commands?.includes('board'))) })
+      .then(c => {
+        const ok = Boolean(c.configured && c.commands?.includes('board'))
+        declaresCache.set(project, ok)
+        if (alive.current) setDeclares(ok)
+      })
       // A contract route that will not answer is the page's own breakage — the same
       // breakage the fleet payload above it is already showing. One missing strip
       // added to that would be noise, not signal.
       .catch(() => { if (alive.current) setDeclares(false) })
   }, [project])
 
+  const fetchRef = useRef<((force: boolean) => void) | null>(null)
+
   useEffect(() => {
     if (!declares || !project) return
     let timer: ReturnType<typeof setTimeout>
+    let inFlight = false
 
-    const tick = () => {
-      if (document.visibilityState !== 'visible') { timer = setTimeout(tick, POLL_MS); return }
-      getProjectStatus(project, { commands: ['board'] })
+    const tick = (force: boolean) => {
+      // A poll that is still running is not raced by the next one: the board is
+      // read-only, so there is nothing to lose by letting the slow answer land.
+      if (inFlight) return
+      inFlight = true
+      if (document.visibilityState !== 'visible' && !force) {
+        inFlight = false
+        timer = setTimeout(() => tick(false), POLL_MS)
+        return
+      }
+      getProjectStatus(project, { commands: ['board'], refresh: force })
         .then(res => {
           if (!alive.current) return
           setFailed(null)
-          setResult(res.commands?.board ?? null)
+          const board = res.commands?.board ?? null
+          if (board) {
+            const at = Date.now()
+            answerCache.set(project, { result: board, at })
+            setResult(board)
+            setAnsweredAt(at)
+          }
         })
         .catch(e => { if (alive.current) setFailed(String(e?.message ?? e)) })
-        .finally(() => { if (alive.current) timer = setTimeout(tick, POLL_MS) })
+        .finally(() => {
+          inFlight = false
+          if (alive.current) timer = setTimeout(() => tick(false), POLL_MS)
+        })
     }
 
-    tick()
-    return () => clearTimeout(timer)
+    fetchRef.current = (force: boolean) => tick(force)
+    tick(false)
+    return () => { clearTimeout(timer); fetchRef.current = null }
   }, [declares, project])
 
   if (declares === null || declares === false) return null
@@ -323,6 +377,23 @@ export default function FleetBoard({
           title={result.generatedAt ? `as reported by the project at ${result.generatedAt}` : undefined}
         >board</span>
         {total !== null && <span className="text-fg-muted tabular-nums shrink-0">{total} cards</span>}
+        {/* WHEN this answer was taken, where the reader is standing — a strip
+            that refreshes silently is a strip whose freshness has to be guessed
+            (asked 2026-08-30). The clock time of the answer, not an age: an age
+            would need a per-second re-render of every card to stay true. */}
+        {answeredAt !== null && (
+          <span className="text-fg-ghost tabular-nums shrink-0"
+                title="when this answer was taken; it re-asks on its own about every 30s while the page is visible">
+            · {new Date(answeredAt).toLocaleTimeString()}
+          </span>
+        )}
+        <IconButton
+          icon={RotateCw}
+          testId="board-refresh"
+          tone="ghost"
+          label="ask the project again now — this also skips the few seconds of answer cache on set-core's side"
+          onClick={() => fetchRef.current?.(true)}
+        />
         <span className="ml-auto flex items-center gap-2 min-w-0">
           {plannedOff.length > 0 && (
             <span
@@ -488,6 +559,18 @@ export default function FleetBoard({
                   ? 'back to the size it had — the agents get their room back'
                   : 'as large as this placement allows — in the grid the agents move to the strip above; on an edge the band takes the room the layout can spare'}
                 onClick={onMaximise}
+              />
+            )}
+            {onFullscreen && (
+              <IconButton
+                icon={fullscreen ? Shrink : Expand}
+                testId="board-fullscreen"
+                active={fullscreen}
+                mark={{ 'data-fleet-board-fullscreen': fullscreen ? 'on' : 'off' }}
+                label={fullscreen
+                  ? 'back out of full screen — the column, the docks and the sidebar come back'
+                  : 'full screen — the board takes the whole layout, not just its grid cell'}
+                onClick={onFullscreen}
               />
             )}
             {onClose && (
