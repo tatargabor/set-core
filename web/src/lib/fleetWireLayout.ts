@@ -69,6 +69,11 @@ export interface LayoutInput {
   height: number
   /** Width of the gutter — how far the columns may spread. */
   gutterWidth: number
+  /** Fold every `dm-` pair room into ONE column (`+N direct`). Default TRUE:
+      pair rooms are private by nature — their value on this screen is "how
+      many and how loud", not their per-room traffic — and N of them crowd the
+      work rooms out of a 140px gutter. The surface expands them on click. */
+  collapseDirect?: boolean
 }
 
 export interface WireTerminal {
@@ -86,6 +91,13 @@ export interface RoomColumn {
   /** Age of the room's newest write in seconds, when known. */
   lastActivity: number | null
   memberSeats: string[]
+  /** The text the label shows, when it is not the room name — the collapsed
+      direct-messages column reads `+N direct`. */
+  label?: string
+  /** This column is the FOLDED group of pair rooms: clicking it expands. */
+  isDirectGroup?: boolean
+  /** How many pair rooms the fold holds — the N in `+N direct`. */
+  directCount?: number
 }
 
 export interface RoomCell {
@@ -113,20 +125,29 @@ export interface RoomMatrix {
 /** Where the column headers live — a fixed band at the gutter's top. */
 export const HEADER_Y = 14
 
+/** The synthetic room name the folded pair-room column carries. Not a real
+    room — no sac room is named `dm` — so it can never collide with one. */
+export const DIRECT_ROOM = 'dm'
+
+/** One human age line, shared by every hover that names a write age. */
+function formatAge(last: number | null, nowSeconds: number): string {
+  if (last == null) return 'no recorded write'
+  const age = Math.max(0, Math.round(nowSeconds - last))
+  return age < 60 ? `${age}s ago`
+    : age < 3600 ? `${Math.round(age / 60)}m ago`
+    : `${Math.round(age / 3600)}h ago`
+}
+
 /** The seat name a cell's hover shows, and the prune hint every hover
     carries — the inactive columns exist to be JUDGED and left. */
 export function cellTitle(room: string, seats: string[], lastActivity: number | null, nowMs: number): string {
-  const age = lastActivity != null
-    ? Math.max(0, Math.round((nowMs / 1000) - lastActivity))
-    : null
-  const when = age == null
-    ? 'no recorded write'
-    : age < 60
-      ? `newest write ${age}s ago`
-      : age < 3600
-        ? `newest write ${Math.round(age / 60)}m ago`
-        : `newest write ${Math.round(age / 3600)}h ago`
-  return `${room} — ${seats.join(', ')} — ${when} — leave it: sac part ${room}`
+  return `${room} — ${seats.join(', ')} — newest write ${formatAge(lastActivity, nowMs / 1000)} — leave it: sac part ${room}`
+}
+
+/** The folded pair-room column's hover line — not one room, so the default
+    room title would misdescribe it. Count and newest write, then the act. */
+export function directGroupTitle(count: number, lastActivity: number | null, nowMs: number): string {
+  return `${count} direct-message rooms — newest write ${formatAge(lastActivity, nowMs / 1000)} — click to expand them`
 }
 
 /**
@@ -202,9 +223,39 @@ export function computeRoomMatrix(input: LayoutInput): RoomMatrix {
 
   // Recent rooms lead — the active conversation is the leftmost column, the
   // ones to prune trail to the right. Ties break by name so the order does
-  // not jitter between polls.
-  const rooms = [...byRoom.entries()].sort((a, b) => {
+  // not jitter between polls. Pair rooms fold into ONE entry first, so the
+  // folded column takes the newest write among them and sits by it.
+  type RoomInfo = { seats: string[]; visibleSeats: string[]; recent: boolean
+                    last: number | null; senderSeat: string | null; roomCount?: number }
+  const isDirect = (room: string) => room.startsWith('dm-')
+  let entries = [...byRoom.entries()] as [string, RoomInfo][]
+  if (input.collapseDirect !== false) {
+    const direct = entries.filter(([room]) => isDirect(room))
+    if (direct.length > 1) {
+      const seatOrder: string[] = []
+      for (const [, info] of direct) {
+        for (const seat of info.seats) if (!seatOrder.includes(seat)) seatOrder.push(seat)
+      }
+      const folded: RoomInfo = {
+        seats: seatOrder,
+        visibleSeats: seatOrder,
+        recent: direct.some(([, info]) => info.recent),
+        last: direct.reduce<number | null>((acc, [, info]) =>
+          info.last != null && (acc == null || info.last > acc) ? info.last : acc, null),
+        senderSeat: null, // a fold has no single sender — cells stay member rings
+        roomCount: direct.length,
+      }
+      entries = [[DIRECT_ROOM, folded] as [string, RoomInfo],
+                 ...entries.filter(([room]) => !isDirect(room))]
+    }
+  }
+  const rooms = entries.sort((a, b) => {
     if (a[1].recent !== b[1].recent) return a[1].recent ? -1 : 1
+    // Same recency class: the genuinely newer write leads, and only an exact
+    // tie (or two rooms with no writes at all) falls back to the name.
+    const al = a[1].last ?? -1
+    const bl = b[1].last ?? -1
+    if (al !== bl) return bl - al
     return a[0].localeCompare(b[0])
   })
   const columns: RoomColumn[] = rooms.map(([room, info], i) => ({
@@ -213,6 +264,11 @@ export function computeRoomMatrix(input: LayoutInput): RoomMatrix {
     recent: info.recent,
     lastActivity: info.last,
     memberSeats: info.seats,
+    ...(info.roomCount != null && room === DIRECT_ROOM ? {
+      label: `+${info.roomCount} direct`,
+      isDirectGroup: true,
+      directCount: info.roomCount,
+    } : {}),
   }))
   const colX = new Map(columns.map(c => [c.room, c.x]))
 

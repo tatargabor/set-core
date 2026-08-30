@@ -323,3 +323,15 @@ thead th {
   stroke: var(--color-fg-dim);
   stroke-width: 1;
 }
+
+/* Hover focus (#2): a hovered agent row or room column dims every cell that
+   does not match, so "which dots are mine" is a glance, not a trace. */
+.fleet-wire-cell {
+  transition: opacity 0.15s ease;
+}
+.fleet-wire-cell-dim {
+  opacity: 0.12;
+}
+.fleet-wire-col-hit {
+  cursor: pointer;
+}

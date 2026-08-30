@@ -140,3 +140,71 @@ describe('the wire legend', () => {
     expect(container.querySelector('[data-fleet-wire-source-down]')).toBeTruthy()
   })
 })
+
+describe('pair-room fold and hover focus', () => {
+  /** Two pair rooms + one work room: enough dm rooms to trigger the fold. */
+  const FOLDED: ChannelsPayload = {
+    sourceAvailable: true,
+    nodes: [
+      { pid: 1, sessionId: 'sess-a', seat: 'alpha#111111', agent: 'alpha', enrolled: true },
+      { pid: 2, sessionId: 'sess-b', seat: 'bravo#222222', agent: 'bravo', enrolled: true },
+      { pid: 3, sessionId: 'sess-c', seat: 'charlie#333333', agent: 'charlie', enrolled: true },
+    ],
+    edges: [
+      { room: 'dm-a-b', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
+        from: 'sess-a', fromSeat: 'alpha#111111', lastActivity: Date.now() / 1000 - 30, recent: true },
+      { room: 'dm-a-c', members: ['sess-a', 'sess-c'], memberSeats: ['alpha#111111', 'charlie#333333'],
+        from: 'sess-c', fromSeat: 'charlie#333333', lastActivity: Date.now() / 1000 - 600, recent: false },
+      { room: 'war-room', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
+        from: 'sess-b', fromSeat: 'bravo#222222', lastActivity: Date.now() / 1000 - 900, recent: false },
+    ],
+  }
+
+  it('pair rooms render as ONE +2 direct column, and clicking it unfolds them', () => {
+    const { container } = mountRows()
+    const { container } = renderPanel(FOLDED)
+    expect(container.querySelector('[data-fleet-wire-label="dm"]')?.textContent).toBe('+2 direct')
+    expect(container.querySelector('[data-fleet-wire-label="dm-a-b"]')).toBeNull()
+    fireEvent.click(container.querySelector('[data-fleet-wire-column="dm"]')!)
+    // unfolded: the real pair rooms draw, the fold is gone
+    expect(container.querySelector('[data-fleet-wire-label="dm-a-b"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-wire-label="dm-a-c"]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-wire-label="dm"]')).toBeNull()
+    // clicking a pair-room column folds the group back
+    fireEvent.click(container.querySelector('[data-fleet-wire-column="dm-a-b"]')!)
+    expect(container.querySelector('[data-fleet-wire-label="dm"]')?.textContent).toBe('+2 direct')
+  })
+
+  it('hovering a column dims every cell that is not that room’s', () => {
+    const { container } = mountRows()
+    const { container } = renderPanel(FOLDED)
+    fireEvent.pointerEnter(container.querySelector('[data-fleet-wire-column="war-room"]')!)
+    const dimmed = container.querySelectorAll('[data-fleet-wire-dim="true"]')
+    expect(dimmed.length).toBeGreaterThan(0)
+    for (const el of dimmed) expect(el.getAttribute('data-fleet-wire-cell')).toBe('dm')
+    for (const el of container.querySelectorAll('[data-fleet-wire-cell="war-room"]'))
+      expect(el.getAttribute('data-fleet-wire-dim')).toBeNull()
+    fireEvent.pointerLeave(container.querySelector('[data-fleet-wire-column="war-room"]')!)
+    expect(container.querySelectorAll('[data-fleet-wire-dim="true"]').length).toBe(0)
+  })
+
+  it('hovering an AGENT ROW on the board dims every cell that is not that agent’s', () => {
+    const { container } = mountRows()
+    const { container } = renderPanel(FOLDED)
+    // the row lives in the sibling column — the panel hears it off the document
+    fireEvent.mouseOver(document.querySelector('[data-fleet-agent-row="2"]')!)
+    const dimmed = container.querySelectorAll('[data-fleet-wire-dim="true"]')
+    expect(dimmed.length).toBeGreaterThan(0)
+    // pid 2 (bravo) sits in dm-a-b and war-room — its cells stay undimmed
+    for (const el of container.querySelectorAll('[data-fleet-wire-dim="true"]'))
+      expect(['dm-a-b', 'war-room']).not.toContain(el.getAttribute('data-fleet-wire-cell'))
+    for (const el of container.querySelectorAll('[data-fleet-wire-cell]')) {
+      const room = el.getAttribute('data-fleet-wire-cell')
+      if (room === 'dm-a-b' || room === 'war-room')
+        expect(el.getAttribute('data-fleet-wire-dim')).toBeNull()
+    }
+    // hovering elsewhere releases the focus
+    fireEvent.mouseOver(document.body)
+    expect(container.querySelectorAll('[data-fleet-wire-dim="true"]').length).toBe(0)
+  })
+})

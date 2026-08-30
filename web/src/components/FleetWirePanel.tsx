@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import {
-  computeRoomMatrix, cellTitle, HEADER_Y,
+  computeRoomMatrix, cellTitle, directGroupTitle, HEADER_Y, DIRECT_ROOM,
   type ChannelsPayload, type RoomMatrix,
 } from '../lib/fleetWireLayout'
 
@@ -59,6 +59,15 @@ function LegendRow({ swatch, children }: {
 export default function FleetWirePanel({ payload }: { payload: ChannelsPayload | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [layout, setLayout] = useState<RoomMatrix | null>(null)
+  /** Pair rooms fold into one `+N direct` column until expanded. Local on
+      purpose: the fold is a reading aid for THIS visit, not an arrangement —
+      the server-side layout document holds positions, not view toggles. */
+  const [directOpen, setDirectOpen] = useState(false)
+  /** Hover focus. A row hover (agent anywhere on the board) or a column hover
+      (room in this gutter) dims every cell that does not match — the answer
+      to "which of these dots are mine / whose is this column". */
+  const [hoverPid, setHoverPid] = useState<number | null>(null)
+  const [hoverRoom, setHoverRoom] = useState<string | null>(null)
 
   const measure = useCallback(() => {
     const container = containerRef.current
@@ -74,12 +83,25 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
     }
     // Two passes: the first counts columns, the second lays them out in the
     // width their count chose. Pure function, so the double run is free.
-    const probe = computeRoomMatrix({ payload, rows, height: box.height, gutterWidth: WIRE_GUTTER_MAX })
+    const probe = computeRoomMatrix({ payload, rows, height: box.height, gutterWidth: WIRE_GUTTER_MAX, collapseDirect: !directOpen })
     const width = probe.columns.length > 8 ? WIRE_GUTTER_MAX : WIRE_GUTTER_WIDTH
     setLayout({ ...probe, width })
-  }, [payload])
+  }, [payload, directOpen])
 
   useLayoutEffect(measure, [measure])
+
+  useEffect(() => {
+    // Rows live in the SIBLING column, so their hover never reaches this
+    // component's own tree — the listener rides the document instead. A row
+    // hovered anywhere on the board focuses this agent's cells.
+    const onOver = (event: MouseEvent) => {
+      const row = (event.target as HTMLElement | null)?.closest?.('[data-fleet-agent-row]')
+      const pid = row ? Number((row as HTMLElement).dataset.fleetAgentRow) : NaN
+      setHoverPid(Number.isFinite(pid) ? pid : null)
+    }
+    document.addEventListener('mouseover', onOver)
+    return () => document.removeEventListener('mouseover', onOver)
+  }, [])
 
   useEffect(() => {
     // Capture catches the column's INTERNAL scrolls, which do not bubble.
@@ -166,8 +188,20 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                 band. The guide runs full height — it is the column's track —
                 and brightens when the room's newest write is fresh. */}
             {layout.columns.map(col => (
-              <g key={`col-${col.room}`} className="pointer-events-auto">
-                <title>{cellTitle(col.room, col.memberSeats, col.lastActivity, Date.now())}</title>
+              <g key={`col-${col.room}`}
+                 className="pointer-events-auto fleet-wire-col-hit"
+                 onPointerEnter={() => setHoverRoom(col.room)}
+                 onPointerLeave={() => setHoverRoom(r => (r === col.room ? null : r))}
+                 onClick={() => {
+                   // The fold is the toggle: the folded column expands, any
+                   // expanded pair-room column folds the group back.
+                   if (col.isDirectGroup) setDirectOpen(true)
+                   else if (col.room === DIRECT_ROOM || col.room.startsWith('dm-')) setDirectOpen(false)
+                 }}
+              >
+                <title>{col.directCount != null
+                  ? directGroupTitle(col.directCount, col.lastActivity, Date.now())
+                  : cellTitle(col.room, col.memberSeats, col.lastActivity, Date.now())}</title>
                 <line
                   data-fleet-wire-column={col.room}
                   x1={col.x} y1={34} x2={col.x} y2="100%"
@@ -175,43 +209,59 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                 />
                 <text
                   data-fleet-wire-label={col.room}
+                  data-fleet-wire-direct-group={col.isDirectGroup ? 'true' : undefined}
                   x={col.x + 3}
                   y={HEADER_Y}
                   transform={`rotate(90 ${col.x + 3} ${HEADER_Y})`}
                   className={col.recent ? 'fleet-wire-label fleet-wire-label-active' : 'fleet-wire-label fleet-wire-label-idle'}
                 >
-                  {col.room.length > 14 ? `${col.room.slice(0, 13)}…` : col.room}
+                  {col.label ?? (col.room.length > 14 ? `${col.room.slice(0, 13)}…` : col.room)}
                 </text>
               </g>
             ))}
             {/* Membership cells. The room's SENDER renders filled (animated
-                while fresh) — in a grid, who-sent is WHICH CELL IS FILLED. */}
-            {layout.cells.map(cell => (
-              <g key={cell.key} className="pointer-events-auto">
-                <title>{cellTitle(cell.room, layout.columns.find(c => c.room === cell.room)?.memberSeats ?? [], layout.columns.find(c => c.room === cell.room)?.lastActivity ?? null, Date.now())}</title>
-                {cell.role === 'sender' ? (
-                  <circle
-                    data-fleet-wire-cell={cell.room}
-                    data-fleet-wire-role="sender"
-                    data-fleet-wire-active={cell.active ? 'true' : undefined}
-                    cx={cell.x} cy={cell.y} r={4}
-                    className={cell.active
-                      ? 'fleet-wire-cell fleet-wire-cell-sender fleet-wire-cell-live'
-                      : 'fleet-wire-cell fleet-wire-cell-sender'}
-                  />
-                ) : (
-                  <circle
-                    data-fleet-wire-cell={cell.room}
-                    data-fleet-wire-role="member"
-                    data-fleet-wire-active={cell.active ? 'true' : undefined}
-                    cx={cell.x} cy={cell.y} r={3.5}
-                    className={cell.active
-                      ? 'fleet-wire-cell fleet-wire-cell-member-active'
-                      : 'fleet-wire-cell fleet-wire-cell-member-idle'}
-                  />
-                )}
-              </g>
-            ))}
+                while fresh) — in a grid, who-sent is WHICH CELL IS FILLED.
+                A row or column hover dims every cell that does not match. */}
+            {layout.cells.map(cell => {
+              const focusActive = hoverPid != null || hoverRoom != null
+              const focused = (hoverPid == null || cell.pid === hoverPid)
+                && (hoverRoom == null || cell.room === hoverRoom)
+              const dim = focusActive && !focused
+              const roomCol = layout.columns.find(c => c.room === cell.room)
+              const base = cell.role === 'sender'
+                ? (cell.active
+                    ? 'fleet-wire-cell fleet-wire-cell-sender fleet-wire-cell-live'
+                    : 'fleet-wire-cell fleet-wire-cell-sender')
+                : (cell.active
+                    ? 'fleet-wire-cell fleet-wire-cell-member-active'
+                    : 'fleet-wire-cell fleet-wire-cell-member-idle')
+              return (
+                <g key={cell.key} className="pointer-events-auto">
+                  <title>{roomCol?.directCount != null
+                    ? directGroupTitle(roomCol.directCount, roomCol.lastActivity, Date.now())
+                    : cellTitle(cell.room, roomCol?.memberSeats ?? [], roomCol?.lastActivity ?? null, Date.now())}</title>
+                  {cell.role === 'sender' ? (
+                    <circle
+                      data-fleet-wire-cell={cell.room}
+                      data-fleet-wire-role="sender"
+                      data-fleet-wire-active={cell.active ? 'true' : undefined}
+                      data-fleet-wire-dim={dim ? 'true' : undefined}
+                      cx={cell.x} cy={cell.y} r={4}
+                      className={dim ? `${base} fleet-wire-cell-dim` : base}
+                    />
+                  ) : (
+                    <circle
+                      data-fleet-wire-cell={cell.room}
+                      data-fleet-wire-role="member"
+                      data-fleet-wire-active={cell.active ? 'true' : undefined}
+                      data-fleet-wire-dim={dim ? 'true' : undefined}
+                      cx={cell.x} cy={cell.y} r={3.5}
+                      className={dim ? `${base} fleet-wire-cell-dim` : base}
+                    />
+                  )}
+                </g>
+              )
+            })}
             {layout.terminals.map(t => (
               <rect
                 key={t.pid}

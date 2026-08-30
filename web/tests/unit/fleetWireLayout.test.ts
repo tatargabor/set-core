@@ -140,3 +140,73 @@ describe('cellTitle', () => {
     expect(title).toContain('no recorded write')
   })
 })
+
+describe('pair-room folding (collapseDirect)', () => {
+  function directPayload() {
+    return payload({
+      edges: [
+        { room: 'dm-a-b', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
+          from: 'sess-a', fromSeat: 'alpha#111111', lastActivity: 9_000, recent: true },
+        { room: 'dm-a-c', members: ['sess-a', 'sess-c'], memberSeats: ['alpha#111111', 'charlie#333333'],
+          from: 'sess-c', fromSeat: 'charlie#333333', lastActivity: 100_000, recent: false },
+        { room: 'wpc-board', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
+          from: 'sess-b', fromSeat: 'bravo#222222', lastActivity: 300_000, recent: false },
+      ],
+    })
+  }
+
+  it('folds two or more pair rooms into ONE synthetic column, labelled +N direct', () => {
+    const m = computeRoomMatrix({ payload: directPayload(), rows: rows(1, 2, 3), height: H, gutterWidth: W })
+    const folded = m.columns.find(c => c.room === 'dm')!
+    expect(folded).toBeTruthy()
+    expect(folded.label).toBe('+2 direct')
+    expect(folded.isDirectGroup).toBe(true)
+    expect(folded.directCount).toBe(2)
+    // the pair rooms themselves draw NO columns
+    expect(m.columns.filter(c => c.room.startsWith('dm-'))).toEqual([])
+    // the fold takes the NEWEST write among its rooms and sits by it: 9s is
+    // recent, so the fold leads the recency-first order
+    expect(folded.recent).toBe(true)
+    expect(m.columns[0].room).toBe('dm')
+    expect(m.columns.map(c => c.room)).toEqual(['dm', 'wpc-board'])
+    // membership is the UNION of the folded rooms' seats
+    expect(folded.memberSeats).toEqual(['alpha#111111', 'bravo#222222', 'charlie#333333'])
+  })
+
+  it('a fold has no sender — the newest-writer of ONE pair room is not the writer of the fold', () => {
+    const m = computeRoomMatrix({ payload: directPayload(), rows: rows(1, 2, 3), height: H, gutterWidth: W })
+    const cells = m.cells.filter(c => c.room === 'dm')
+    expect(cells.every(c => c.role === 'member')).toBe(true)
+    // every visible member of ANY folded room still gets its cell
+    expect(cells.map(c => c.pid).sort()).toEqual([1, 2, 3])
+  })
+
+  it('a single pair room is left alone — one dm column is not a crowd', () => {
+    const p = payload({
+      edges: [
+        { room: 'dm-a-b', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
+          from: 'sess-a', fromSeat: 'alpha#111111', lastActivity: 9_000, recent: true },
+      ],
+    })
+    const m = computeRoomMatrix({ payload: p, rows: rows(1, 2), height: H, gutterWidth: W })
+    expect(m.columns.map(c => c.room)).toEqual(['dm-a-b'])
+    expect(m.columns[0].isDirectGroup).toBeFalsy()
+  })
+
+  it('collapseDirect: false unfolds — every pair room draws its own column, senders and all', () => {
+    const m = computeRoomMatrix({ payload: directPayload(), rows: rows(1, 2, 3), height: H, gutterWidth: W, collapseDirect: false })
+    expect(m.columns.map(c => c.room).sort()).toEqual(['dm-a-b', 'dm-a-c', 'wpc-board'])
+    const senders = m.cells.filter(c => c.role === 'sender').map(c => c.room)
+    expect(senders.sort()).toEqual(['dm-a-b', 'dm-a-c', 'wpc-board'])
+  })
+
+  it('the fold does not outrank a genuinely fresher work room — write time breaks the recency tie', () => {
+    const p = directPayload()
+    // both end up "recent", but the work room's newest write is NEWER
+    p.edges![2].recent = true
+    p.edges![2].lastActivity = 200_000 // fold's newest is 100_000
+    const m = computeRoomMatrix({ payload: p, rows: rows(1, 2, 3), height: H, gutterWidth: W })
+    expect(m.columns[0].room).toBe('wpc-board')
+    expect(m.columns[1].room).toBe('dm')
+  })
+})
