@@ -82,6 +82,12 @@ class ChannelNode:
     seat: Optional[str] = None
     agent: Optional[str] = None
     enrolled: bool = False
+    #: How many seats share this node's project root. Set only when the node
+    #: itself is UNJOINED: zero means "never enrolled here", one-or-more means
+    #: seats EXIST for this project but none carries this session — session
+    #: drift, and the surface can say "re-enrol" instead of a bare "not
+    #: enrolled", which would send the reader to install what is installed.
+    project_seat_count: Optional[int] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -92,6 +98,7 @@ class ChannelNode:
             "seat": self.seat,
             "agent": self.agent,
             "enrolled": self.enrolled,
+            "projectSeatCount": self.project_seat_count,
         }
 
 
@@ -241,6 +248,12 @@ def derive_channel_graph(
             node.agent = getattr(seat, "agent", None)
             if session:
                 enrolled_sessions.add(str(session))
+        elif agent.project_root:
+            # Unjoined, and the project HAS seats: session drift, not absence.
+            # Measured live: wpc-pont-board's session had no seat while the
+            # registry held twelve for its project — "not enrolled" would have
+            # sent the reader to install what is already installed.
+            node.project_seat_count = len(seats_by_project.get(agent.project_root, []))
         nodes.append(node)
 
     # Every room an enrolled live agent sits in is a channel — even alone.

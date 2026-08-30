@@ -1,28 +1,30 @@
 /**
- * The wire view's geometry — pure, testable, component-free.
+ * The wire view's geometry — a ROOM-COLUMN MATRIX.
  *
- * ## Why this is here and not in the component
+ * ## The shape, and why it replaced freeform wires
  *
- * A wire is a claim about two rows and a channel. The component's job is
- * measuring rows and drawing; turning measurements into paths is the part
- * with the rules in it (lane assignment, direction, what happens when a row
- * has vanished), and rules that live in a component are rules nobody can
- * unit test without a DOM.
+ * Rows are agents (as on the board), columns are rooms, and each membership
+ * is a cell where its row crosses its column. The user designed this on the
+ * live screen: freeform wires between two seats degenerated into an
+ * unreadable sheaf once seats shared several channels, and the hygiene
+ * question — WHICH rooms does this seat hold, which are unwanted — is a
+ * scanning question, and scanning is what a matrix is for. Room names run
+ * VERTICALLY down their column; a room no visible agent belongs to draws no
+ * column at all.
  *
  * ## The coordinate space
  *
- * Everything is relative to the gutter container's top-left: the caller hands
- * over row rectangles ALREADY RELATIVE to it (viewport rect minus container
- * rect), and every y this file returns is directly an SVG coordinate.
+ * Everything is relative to the gutter container's top-left: the caller
+ * hands over row rectangles ALREADY RELATIVE to it, and every y this file
+ * returns is directly an SVG coordinate. Column headers sit at a FIXED y at
+ * the top (they label the column, not any row); cells move with their rows.
  *
- * ## Direction is path direction
+ * ## Direction is the cell, not an arrow
  *
- * Every segment's path is written IN THE FLOW DIRECTION — sender terminal →
- * junction, junction → receiver, sender → receiver for a pair. The CSS
- * animation then needs no direction of its own: dashes moving forward along
- * the path ARE the flow. A segment whose flow starts at the sender carries
- * `flow: 'sender'`; a receiver's carries `flow: 'receiver'` — which only
- * decides where the animation's emphasis sits, never the path.
+ * A channel's newest write has a sender. The sender's cell renders FILLED
+ * and, when the write is fresh, animated; every other member's cell renders
+ * a bright ring; an idle membership renders a dim ring. Who-sent-what is
+ * readable from which cell is filled — no arrows needed in a grid.
  */
 
 export interface WireNode {
@@ -31,6 +33,9 @@ export interface WireNode {
   seat?: string | null
   agent?: string | null
   enrolled?: boolean
+  /** Seats sharing this node's project root, when the node itself is
+      unjoined — session drift, and the surface says "re-enrol". */
+  projectSeatCount?: number
 }
 
 export interface WireEdge {
@@ -39,7 +44,6 @@ export interface WireEdge {
   memberSeats?: (string | null)[]
   from?: string | null
   fromSeat?: string | null
-  to?: (string | null)[]
   lastActivity?: number | null
   recent?: boolean
 }
@@ -63,7 +67,7 @@ export interface LayoutInput {
   rows: RowRect[]
   /** Height of the gutter container — the SVG's own height. */
   height: number
-  /** Width of the gutter — how far wires may reach into it. */
+  /** Width of the gutter — how far the columns may spread. */
   gutterWidth: number
 }
 
@@ -74,237 +78,46 @@ export interface WireTerminal {
   seat: string | null
 }
 
-export interface WireJunction {
+export interface RoomColumn {
+  room: string
+  /** The column's x — where its guide line, header and cells sit. */
+  x: number
+  recent: boolean
+  /** Age of the room's newest write in seconds, when known. */
+  lastActivity: number | null
+  memberSeats: string[]
+}
+
+export interface RoomCell {
   key: string
+  pid: number
+  room: string
   x: number
   y: number
-  room: string
-}
-
-export interface WireSegment {
-  key: string
-  /** SVG path data, written in the flow direction. */
-  path: string
-  flow: 'sender' | 'receiver'
+  /** sender = this seat made the room's newest write; member = sits in it. */
+  role: 'sender' | 'member'
   active: boolean
-  /** Pair channels animate their one segment both ways; a junction channel's
-      receiver segments each carry it. The flag marks junction fan members. */
-  kind: 'pair' | 'fan'
-  room: string
-  memberSeats: string[]
-  /** Age of the channel's newest write in seconds, when known. */
-  lastActivity: number | null
-  /** Where the channel's NAME sits — the wire's midpoint for a pair, above
-      the junction for a fan. A channel a reader cannot name is a wire they
-      cannot reason about; hover-only identity was measured invisible. */
-  label: { x: number; y: number }
 }
 
-export interface WireLayout {
+export interface RoomMatrix {
   sourceAvailable: boolean
+  /** The width the caller should render at — echoed back by the component's
+      two-pass width choice, so the SVG and its container agree. */
+  width?: number
+  columns: RoomColumn[]
+  cells: RoomCell[]
   terminals: WireTerminal[]
-  sockets: { pid: number; y: number }[]
-  junctions: WireJunction[]
-  segments: WireSegment[]
+  sockets: { pid: number; y: number; projectSeatCount: number | null }[]
 }
 
-const GUTTER_INSET = 4
+/** Where the column headers live — a fixed band at the gutter's top. */
+export const HEADER_Y = 14
 
-/** A terminal dot's x — on the gutter's left edge, just inside it. */
-export const TERMINAL_X = GUTTER_INSET
-
-/**
- * Turn a channels payload plus measured rows into terminals, junctions and
- * segments. Never throws on a malformed payload: an edge naming a session no
- * node carries is dropped, not a crash — the next poll redraws everything.
- */
-export function computeWireLayout(input: LayoutInput): WireLayout {
-  const { payload, rows, height, gutterWidth } = input
-  if (!payload || payload.sourceAvailable === false) {
-    return { sourceAvailable: payload?.sourceAvailable !== false && payload != null, terminals: [], sockets: [], junctions: [], segments: [] }
-  }
-
-  // pid → node, session → pid. The join the whole view rests on: edges speak
-  // sessions, the screen speaks pids.
-  const nodeByPid = new Map<number, WireNode>()
-  const pidBySession = new Map<string, number>()
-  for (const node of payload.nodes ?? []) {
-    if (typeof node.pid !== 'number') continue
-    nodeByPid.set(node.pid, node)
-    if (node.sessionId) pidBySession.set(node.sessionId, node.pid)
-  }
-  // A row scrolled out of the gutter's view keeps its CHANNEL: its y clamps
-  // to the edge the row exited through, so the wire runs off-screen instead
-  // of vanishing. Measured live: scrolling one endpoint row out of view made
-  // the whole channel disappear — a screen that loses its data because the
-  // reader scrolled is lying about the channels it showed a second ago.
-  // `onScreen` is false exactly when the clamp fired, and only the terminal
-  // dot (which would sit at the edge pointing at nothing) is suppressed.
-  const clampY = (y: number) => Math.max(2, Math.min(height - 2, y))
-  const yByPid = new Map<number, { y: number; onScreen: boolean }>()
-  for (const row of rows) {
-    const mid = (row.top + row.bottom) / 2
-    const onScreen = row.bottom > 0 && row.top < height
-    yByPid.set(row.pid, { y: clampY(mid), onScreen })
-  }
-
-  const terminals: WireTerminal[] = []
-  const sockets: { pid: number; y: number }[] = []
-  for (const [pid, pos] of yByPid) {
-    if (!pos.onScreen) continue
-    const node = nodeByPid.get(pid)
-    if (node?.enrolled) {
-      terminals.push({ pid, y: pos.y, enrolled: true, seat: node.seat ?? null })
-    } else {
-      // A live row with no seat — the socket, never a wired node. Note the
-      // case this cannot happen in: `sourceAvailable: false` already
-      // returned above, so `enrolled: false` here is a measurement (the bus
-      // was asked and does not know this session), not a guess.
-      sockets.push({ pid, y: pos.y })
-    }
-  }
-  terminals.sort((a, b) => a.y - b.y)
-
-  const tx = TERMINAL_X
-
-  // One lane per channel across the gutter, so two channels' wires share the
-  // strip instead of overprinting each other.
-  //
-  // NEVER-WRITTEN channels draw too, as the dimmest tier. The user's own
-  // framing: the inactive lines are how you DETECT unwanted memberships and
-  // prune them (`sac part <room>`) — hiding them hides exactly the lines that
-  // need pruning. Their hover says "no recorded write" so they cannot be
-  // mistaken for quiet-but-alive channels.
-  const edges = (payload.edges ?? []).filter(e => {
-    const members = (e.members ?? []).filter((s): s is string => typeof s === 'string')
-    const live = members.filter(s => yByPid.has(pidBySession.get(s) ?? -1))
-    return live.length >= 1 && typeof e.room === 'string'
-  })
-  const laneX = (index: number) =>
-    Math.round(((index + 1) / (edges.length + 1)) * (gutterWidth - tx) + tx)
-
-  const junctions: WireJunction[] = []
-  const segments: WireSegment[] = []
-
-  edges.forEach((edge, index) => {
-    const room = edge.room as string
-    const members = (edge.members ?? []).filter((s): s is string => typeof s === 'string')
-    const memberPids = members
-      .map(s => pidBySession.get(s))
-      .filter((p): p is number => typeof p === 'number' && yByPid.has(p))
-    const seats = (edge.memberSeats ?? []).filter((s): s is string => typeof s === 'string')
-    const active = edge.recent === true
-    const last = typeof edge.lastActivity === 'number' ? edge.lastActivity : null
-    const meta = { room, memberSeats: seats, lastActivity: last }
-
-    const lx = laneX(index)
-    const ys = memberPids.map(pid => ({ pid, y: yByPid.get(pid)!.y }))
-    const senderPid = edge.from ? pidBySession.get(edge.from) : undefined
-    const sender = ys.find(e => e.pid === senderPid) ?? null
-    // A sender the screen cannot see (its row is scrolled away or the write
-    // came from a non-live seat) degrades to broadcast: every member animates
-    // as a receiver from the junction, and nothing claims a direction nobody
-    // can see.
-    const addressees = new Set(
-      (edge.to ?? []).filter((s): s is string => typeof s === 'string')
-        .map(s => pidBySession.get(s)))
-
-    if (ys.length === 2) {
-      // Pair channel: one wire, bulging into the gutter, drawn from the
-      // sender to the receiver. With no visible sender the path direction is
-      // top-to-bottom — still motion, never a claim about who sent.
-      const [a, b] = ys
-      const forward = sender ? sender.pid === a.pid : true
-      const [from, to] = forward ? [a, b] : [b, a]
-      const bulge = Math.max(lx, tx + 12)
-      segments.push({
-        key: `${room}:${from.pid}:${to.pid}`,
-        path: `M ${tx} ${from.y} C ${bulge} ${from.y}, ${bulge} ${to.y}, ${tx} ${to.y}`,
-        flow: sender ? 'sender' : 'receiver',
-        active,
-        kind: 'pair',
-        // Labels live in ONE right-aligned column (see the pair-group
-        // staggering below) — a legend column, not text floating on curves.
-        label: { x: gutterWidth - 6, y: Math.round((from.y + to.y) / 2) },
-        ...meta,
-      })
-      return
-    }
-
-    // Multi-member: a junction in the lane, each member wired to it.
-    const junctionY = clampY(ys.reduce((s, e) => s + e.y, 0) / ys.length)
-    junctions.push({ key: room, x: lx, y: junctionY, room })
-    for (const member of ys) {
-      const isSender = sender != null && member.pid === sender.pid
-      const flow: 'sender' | 'receiver' = isSender ? 'sender' : 'receiver'
-      const emphasize = isSender || addressees.has(member.pid)
-      segments.push({
-        key: `${room}:${member.pid}`,
-        // Written in the flow direction: sender runs terminal → junction,
-        // every receiver runs junction → terminal, so forward dashes move
-        // outward everywhere.
-        path: isSender
-          ? `M ${tx} ${member.y} C ${lx} ${member.y}, ${lx} ${junctionY}, ${lx} ${junctionY}`
-          : `M ${lx} ${junctionY} C ${lx} ${member.y}, ${lx} ${member.y}, ${tx} ${member.y}`,
-        flow,
-        active: active && (emphasize || sender == null || addressees.size === 0),
-        kind: 'fan',
-        // Same label for every fan member — the component renders it once,
-        // in the label column, level with the junction.
-        label: { x: gutterWidth - 6, y: junctionY - 10 },
-        ...meta,
-      })
-    }
-  })
-
-  // Channels sharing a label level would overprint in the legend column —
-  // pair channels between the same two rows share a midpoint (measured live:
-  // `dm-set-core-ff8…` on top of `wpc-board`), and single-member stubs all
-  // sit at their one member's y. Stagger per ROOM (a fan's segments share one
-  // label), around the shared level, ordered by lane so the column reads in
-  // wire order.
-  const roomLabels = new Map<string, WireSegment>()
-  for (const seg of segments) {
-    if (!roomLabels.has(seg.room)) roomLabels.set(seg.room, seg)
-  }
-  const levelGroups = new Map<string, WireSegment[]>()
-  for (const seg of roomLabels.values()) {
-    const key = `${seg.label.y}`
-    const group = levelGroups.get(key)
-    if (group) group.push(seg)
-    else levelGroups.set(key, [seg])
-  }
-  for (const group of levelGroups.values()) {
-    if (group.length < 2) continue
-    group.sort((a, b) => a.label.x - b.label.x)
-    group.forEach((seg, i) => {
-      seg.label = { ...seg.label, y: seg.label.y + (i - (group.length - 1) / 2) * 11 }
-    })
-  }
-
-  return {
-    sourceAvailable: true,
-    terminals,
-    sockets,
-    junctions,
-    segments,
-  }
-}
-
-/** How much room name a 140px gutter can carry at label size. The full name
-    rides the hover; a truncated name that FITS beats a full name that
-    overprints its neighbours. */
-export function labelFor(room: string): string {
-  return room.length <= 16 ? room : `${room.slice(0, 15)}…`
-}
-
-/** Human sentence for a segment's hover — identity and recency, plus the
-    pruning hint, because the inactive lines exist to be JUDGED: a room that
-    should not be there is something the reader leaves, not just observes. */
-export function segmentTitle(segment: WireSegment, nowMs: number): string {
-  const seats = segment.memberSeats.join(', ')
-  const age = segment.lastActivity != null
-    ? Math.max(0, Math.round((nowMs / 1000) - segment.lastActivity))
+/** The seat name a cell's hover shows, and the prune hint every hover
+    carries — the inactive columns exist to be JUDGED and left. */
+export function cellTitle(room: string, seats: string[], lastActivity: number | null, nowMs: number): string {
+  const age = lastActivity != null
+    ? Math.max(0, Math.round((nowMs / 1000) - lastActivity))
     : null
   const when = age == null
     ? 'no recorded write'
@@ -313,5 +126,118 @@ export function segmentTitle(segment: WireSegment, nowMs: number): string {
       : age < 3600
         ? `newest write ${Math.round(age / 60)}m ago`
         : `newest write ${Math.round(age / 3600)}h ago`
-  return `${segment.room} — ${seats} — ${when} — leave it: sac part ${segment.room}`
+  return `${room} — ${seats.join(', ')} — ${when} — leave it: sac part ${room}`
+}
+
+/**
+ * Turn a channels payload plus measured rows into the room matrix. Never
+ * throws on a malformed payload: an edge naming a session no node carries is
+ * dropped, not a crash — the next poll redraws everything.
+ */
+export function computeRoomMatrix(input: LayoutInput): RoomMatrix {
+  const { payload, rows, height, gutterWidth } = input
+  if (!payload || payload.sourceAvailable === false) {
+    return { sourceAvailable: false, columns: [], cells: [], terminals: [], sockets: [] }
+  }
+
+  const nodeByPid = new Map<number, WireNode>()
+  const pidBySession = new Map<string, number>()
+  for (const node of payload.nodes ?? []) {
+    if (typeof node.pid !== 'number') continue
+    nodeByPid.set(node.pid, node)
+    if (node.sessionId) pidBySession.set(node.sessionId, node.pid)
+  }
+
+  // A row scrolled out of the gutter keeps its CELLS clamped to the edge it
+  // exited through — scrolling must never make drawn data vanish (measured
+  // live when this was a wire view). Only the row's own terminal dot is
+  // suppressed: a dot at the edge points at nothing.
+  const clampY = (y: number) => Math.max(2, Math.min(height - 2, y))
+  const yByPid = new Map<number, { y: number; onScreen: boolean }>()
+  for (const row of rows) {
+    const mid = (row.top + row.bottom) / 2
+    yByPid.set(row.pid, { y: clampY(mid), onScreen: row.bottom > 0 && row.top < height })
+  }
+
+  const terminals: WireTerminal[] = []
+  const sockets: RoomMatrix['sockets'] = []
+  for (const [pid, pos] of yByPid) {
+    if (!pos.onScreen) continue
+    const node = nodeByPid.get(pid)
+    if (node?.enrolled) {
+      terminals.push({ pid, y: pos.y, enrolled: true, seat: node.seat ?? null })
+    } else {
+      sockets.push({ pid, y: pos.y, projectSeatCount: node?.projectSeatCount ?? null })
+    }
+  }
+  terminals.sort((a, b) => a.y - b.y)
+
+  // The columns: every room at least one VISIBLE enrolled agent sits in. A
+  // room whose members are all off-screen or unenrolled draws nothing — the
+  // user's own rule: rooms of non-showing projects are not visualized.
+  const seatToPid = new Map<string, number>()
+  for (const node of payload.nodes ?? []) {
+    if (node.enrolled && node.seat && typeof node.pid === 'number') seatToPid.set(node.seat, node.pid)
+  }
+  const byRoom = new Map<string, {
+    seats: string[]; visibleSeats: string[]; recent: boolean; last: number | null; senderSeat: string | null
+  }>()
+  for (const edge of payload.edges ?? []) {
+    const room = edge.room
+    if (typeof room !== 'string') continue
+    const seats = (edge.memberSeats ?? []).filter((s): s is string => typeof s === 'string')
+    const visible = seats.filter(s => {
+      const pid = seatToPid.get(s)
+      return pid != null && yByPid.get(pid)?.onScreen === true
+    })
+    if (visible.length === 0) continue
+    byRoom.set(room, {
+      seats: visible,
+      visibleSeats: visible,
+      recent: edge.recent === true,
+      last: typeof edge.lastActivity === 'number' ? edge.lastActivity : null,
+      senderSeat: edge.fromSeat ?? null,
+    })
+  }
+
+  // Recent rooms lead — the active conversation is the leftmost column, the
+  // ones to prune trail to the right. Ties break by name so the order does
+  // not jitter between polls.
+  const rooms = [...byRoom.entries()].sort((a, b) => {
+    if (a[1].recent !== b[1].recent) return a[1].recent ? -1 : 1
+    return a[0].localeCompare(b[0])
+  })
+  const columns: RoomColumn[] = rooms.map(([room, info], i) => ({
+    room,
+    x: Math.round(((i + 1) / (rooms.length + 1)) * (gutterWidth - 24) + 12),
+    recent: info.recent,
+    lastActivity: info.last,
+    memberSeats: info.seats,
+  }))
+  const colX = new Map(columns.map(c => [c.room, c.x]))
+
+  const cells: RoomCell[] = []
+  for (const [room, info] of rooms) {
+    const x = colX.get(room) as number
+    for (const seat of info.visibleSeats) {
+      const pid = seatToPid.get(seat)
+      if (pid == null) continue
+      const pos = yByPid.get(pid)
+      if (!pos) continue
+      cells.push({
+        key: `${room}:${pid}`,
+        pid, room, x, y: pos.y,
+        role: info.senderSeat === seat ? 'sender' : 'member',
+        active: info.recent,
+      })
+    }
+  }
+
+  return {
+    sourceAvailable: true,
+    columns,
+    cells,
+    terminals,
+    sockets,
+  }
 }

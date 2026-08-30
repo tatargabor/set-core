@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import {
-  computeWireLayout, labelFor, segmentTitle,
-  type ChannelsPayload, type WireLayout,
+  computeRoomMatrix, cellTitle, HEADER_Y,
+  type ChannelsPayload, type RoomMatrix,
 } from '../lib/fleetWireLayout'
 
 /**
@@ -31,6 +31,10 @@ import {
 /** The gutter's width in px. Wide enough for three lanes; the main pane's
     splitter still owns the rest, so this is a claim on 140px, not on the edge. */
 export const WIRE_GUTTER_WIDTH = 140
+/** Wider gutter for many columns — sixteen rooms in 140px is 8px per column,
+    which no name fits. Computed rooms choose the width; the layout is then
+    computed FOR the chosen width (pure function, run twice). */
+export const WIRE_GUTTER_MAX = 220
 
 /** Belt re-measure interval. The poll redraws anyway; this catches layout
     shifts between polls (collapse, drag, font settle) at low cost. */
@@ -38,7 +42,7 @@ const MEASURE_BELT_MS = 2000
 
 export default function FleetWirePanel({ payload }: { payload: ChannelsPayload | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [layout, setLayout] = useState<WireLayout | null>(null)
+  const [layout, setLayout] = useState<RoomMatrix | null>(null)
 
   const measure = useCallback(() => {
     const container = containerRef.current
@@ -52,12 +56,11 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
       if (rect.height === 0) continue
       rows.push({ pid, top: rect.top - box.top, bottom: rect.bottom - box.top })
     }
-    setLayout(computeWireLayout({
-      payload,
-      rows,
-      height: box.height,
-      gutterWidth: WIRE_GUTTER_WIDTH,
-    }))
+    // Two passes: the first counts columns, the second lays them out in the
+    // width their count chose. Pure function, so the double run is free.
+    const probe = computeRoomMatrix({ payload, rows, height: box.height, gutterWidth: WIRE_GUTTER_MAX })
+    const width = probe.columns.length > 8 ? WIRE_GUTTER_MAX : WIRE_GUTTER_WIDTH
+    setLayout({ ...probe, width })
   }, [payload])
 
   useLayoutEffect(measure, [measure])
@@ -81,7 +84,7 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
       ref={containerRef}
       data-fleet-wire-gutter
       className="relative h-full shrink-0 border-l border-surface-line bg-surface-panel/30"
-      style={{ width: WIRE_GUTTER_WIDTH }}
+      style={{ width: layout?.width ?? WIRE_GUTTER_WIDTH }}
     >
       {sourceDown ? (
         <div data-fleet-wire-source-down
@@ -96,87 +99,76 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
             height="100%"
             className="pointer-events-none select-none"
           >
-            {layout.segments.map(seg => (
-              <g key={seg.key} className="pointer-events-auto">
-                {/* A fat transparent stroke under the visible one: the hover
-                    target is the WIRE, not the one-pixel line a mouse must
-                    find. The <title> carries identity and recency only. */}
-                <path d={seg.path} stroke="transparent" strokeWidth={10} fill="none" />
-                <title>{segmentTitle(seg, Date.now())}</title>
-                <path
-                  data-fleet-wire-segment={seg.room}
-                  data-fleet-wire-flow={seg.flow}
-                  data-fleet-wire-active={seg.active ? 'true' : undefined}
-                  d={seg.path}
-                  fill="none"
-                  strokeWidth={seg.flow === 'sender' ? 2 : 1.5}
-                  className={seg.active
-                    ? (seg.flow === 'sender'
-                      ? 'fleet-wire-seg fleet-wire-seg-active fleet-wire-seg-sender'
-                      : 'fleet-wire-seg fleet-wire-seg-active')
-                    : 'fleet-wire-seg fleet-wire-seg-idle'}
+            {/* Column guide lines and their VERTICAL names, pinned to the top
+                band. The guide runs full height — it is the column's track —
+                and brightens when the room's newest write is fresh. */}
+            {layout.columns.map(col => (
+              <g key={`col-${col.room}`} className="pointer-events-auto">
+                <title>{cellTitle(col.room, col.memberSeats, col.lastActivity, Date.now())}</title>
+                <line
+                  data-fleet-wire-column={col.room}
+                  x1={col.x} y1={34} x2={col.x} y2="100%"
+                  className={col.recent ? 'fleet-wire-col fleet-wire-col-active' : 'fleet-wire-col fleet-wire-col-idle'}
                 />
-              </g>
-            ))}
-            {layout.junctions.map(j => (
-              <g key={j.key} className="pointer-events-auto">
-                <title>{segmentTitle({
-                  key: j.key, path: '', flow: 'sender', active: false, kind: 'fan',
-                  room: j.room,
-                  memberSeats: layout.segments
-                    .filter(s => s.room === j.room).flatMap(s => s.memberSeats)
-                    .filter((s, i, a) => a.indexOf(s) === i),
-                  lastActivity: layout.segments.find(s => s.room === j.room)?.lastActivity ?? null,
-                  label: { x: j.x, y: j.y - 10 },
-                }, Date.now())}</title>
-                <circle
-                  data-fleet-wire-junction={j.room}
-                  cx={j.x} cy={j.y} r={4}
-                  className="fleet-wire-junction"
-                />
-              </g>
-            ))}
-            {/* One name per channel, at the wire's own midpoint / above the
-                junction. Rendered from the segments deduped by room — a fan's
-                segments all carry the same label. This is the channel's
-                IDENTITY standing where the reader stands, not a hover extra:
-                the user's own words after the first live view, seeing one bare
-                wire and not knowing it was the wpc-board room. */}
-            {[...new Map(layout.segments.map(s => [s.room, s])).values()].map(s => (
-              <g key={`label-${s.room}`} className="pointer-events-auto">
-                {/* The <title> lives on the wrapping <g>, NOT inside <text>:
-                    inside it, the hover text joins the text node and would
-                    render twice on some engines. */}
-                <title>{segmentTitle(s, Date.now())}</title>
                 <text
-                  data-fleet-wire-label={s.room}
-                  x={s.label.x}
-                  y={s.label.y}
-                  textAnchor="end"
-                  className={s.active ? 'fleet-wire-label fleet-wire-label-active' : 'fleet-wire-label fleet-wire-label-idle'}
+                  data-fleet-wire-label={col.room}
+                  x={col.x + 3}
+                  y={HEADER_Y}
+                  transform={`rotate(90 ${col.x + 3} ${HEADER_Y})`}
+                  className={col.recent ? 'fleet-wire-label fleet-wire-label-active' : 'fleet-wire-label fleet-wire-label-idle'}
                 >
-                  {labelFor(s.room)}
+                  {col.room.length > 14 ? `${col.room.slice(0, 13)}…` : col.room}
                 </text>
               </g>
             ))}
+            {/* Membership cells. The room's SENDER renders filled (animated
+                while fresh) — in a grid, who-sent is WHICH CELL IS FILLED. */}
+            {layout.cells.map(cell => (
+              <g key={cell.key} className="pointer-events-auto">
+                <title>{cellTitle(cell.room, layout.columns.find(c => c.room === cell.room)?.memberSeats ?? [], layout.columns.find(c => c.room === cell.room)?.lastActivity ?? null, Date.now())}</title>
+                {cell.role === 'sender' ? (
+                  <circle
+                    data-fleet-wire-cell={cell.room}
+                    data-fleet-wire-role="sender"
+                    data-fleet-wire-active={cell.active ? 'true' : undefined}
+                    cx={cell.x} cy={cell.y} r={4}
+                    className={cell.active
+                      ? 'fleet-wire-cell fleet-wire-cell-sender fleet-wire-cell-live'
+                      : 'fleet-wire-cell fleet-wire-cell-sender'}
+                  />
+                ) : (
+                  <circle
+                    data-fleet-wire-cell={cell.room}
+                    data-fleet-wire-role="member"
+                    data-fleet-wire-active={cell.active ? 'true' : undefined}
+                    cx={cell.x} cy={cell.y} r={3.5}
+                    className={cell.active
+                      ? 'fleet-wire-cell fleet-wire-cell-member-active'
+                      : 'fleet-wire-cell fleet-wire-cell-member-idle'}
+                  />
+                )}
+              </g>
+            ))}
             {layout.terminals.map(t => (
-              <circle
+              <rect
                 key={t.pid}
                 data-fleet-wire-terminal={t.pid}
-                cx={4} cy={t.y} r={3.5}
+                x={0} y={t.y - 4} width={2.5} height={8}
                 className="fleet-wire-terminal"
               >
                 <title>{t.seat ?? `agent ${t.pid}`}</title>
-              </circle>
+              </rect>
             ))}
             {layout.sockets.map(s => (
               <rect
                 key={s.pid}
                 data-fleet-wire-socket={s.pid}
-                x={1} y={s.y - 3.5} width={7} height={7}
+                x={0} y={s.y - 3.5} width={6} height={7}
                 className="fleet-wire-socket"
               >
-                <title>not enrolled on the channel bus — run `sac install` in that project to enrol it</title>
+                <title>{s.projectSeatCount
+                  ? 'seats exist for this project, but none carries THIS session (session drift) — re-enrol: sac install'
+                  : 'not enrolled on the channel bus — run `sac install` in that project to enrol it'}</title>
               </rect>
             ))}
           </svg>

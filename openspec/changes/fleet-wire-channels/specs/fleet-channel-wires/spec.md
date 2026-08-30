@@ -1,16 +1,15 @@
 ## IN SCOPE
-- A wire-gutter visualisation of active channels between live agents on the fleet screen
-- One terminal per live agent row, wires routed through a dedicated gutter strip
-- Junction rendering for channels with more than two members; direct wires for pairs
-- Directional flow animation on wires with recent traffic
-- A show/hide toggle for the wire view, persisted across reloads
-- The not-enrolled affordance for live agents with no agent-comm seat
+- A channel-gutter visualisation of the rooms between live agents on the fleet screen, rendered as a ROOM-COLUMN MATRIX: rows are agents, columns are rooms, membership is a cell
+- Vertical room names in a fixed header band; rooms whose members are all off-screen draw no column
+- The room's newest sender renders as a filled, animated cell; other members render rings; idle memberships render dim
+- A show/hide toggle for the view, persisted across reloads
+- The not-enrolled affordance for live agents with no agent-comm seat, distinguishing session drift (seats exist, none carries this session) from never-enrolled
 
 ## OUT OF SCOPE
 - Enrolment execution itself (the affordance points at the existing enrolment path)
 - Message content display of any kind
-- Wires for enrolled-but-idle agents, or a persistent background network view
-- Layout editing, wire dragging, or manual routing
+- Columns for enrolled-but-idle agents' rooms where no visible agent sits in them
+- Layout editing, column reordering by hand, or manual routing
 
 ## ADDED Requirements
 
@@ -29,57 +28,63 @@ rectangle.
 
 - **WHEN** the board scrolls, a group collapses, a row appears or disappears on poll,
   or the window resizes
-- **THEN** terminals and wires are recomputed to the new rectangles
-- **AND** no wire is left drawn to a rectangle a row no longer occupies
+- **THEN** terminals, columns and cells are recomputed to the new rectangles
+- **AND** a column persists while any of its members is visible; a scrolled-out
+  row draws no cells, and nothing is left drawn where no row is
 
-### Requirement: Wires route through the gutter
+### Requirement: Rooms render as columns in a matrix
 
-Wires MUST be drawn in a dedicated gutter strip beside the board, not across board
-text: a wire runs from its sender row's terminal into the gutter, routes vertically,
-and reaches its target terminal or junction.
+The gutter SHALL render one column per room that at least one visible enrolled
+agent belongs to: a vertical guide line with the room's name running vertically
+in a fixed header band. Rooms whose members are all off-screen or not rendered
+draw no column. Columns with a fresh write lead; idle columns trail.
 
 #### Scenario: Pair channel
 
 - **WHEN** a channel has exactly two enrolled live members
-- **THEN** a single wire connects the two terminals, routed through the gutter
+- **THEN** both rows render a membership cell in the room's column
 
-#### Scenario: Multi-member channel renders a junction
+#### Scenario: Multi-member channel
 
 - **WHEN** a channel has more than two enrolled live members
-- **THEN** one junction node renders in the gutter for that channel
-- **AND** each member's terminal connects to the junction with its own wire
+- **THEN** every member row renders its own cell in the room's column
 
-#### Scenario: Single live member renders a stub channel
+#### Scenario: Single live member renders a stub column
 
 - **WHEN** a channel has exactly one enrolled live member — the others being
   offline or unenrolled
-- **THEN** the channel still renders: one wire from that member's terminal to
-  the channel's junction, labelled like any other
+- **THEN** the column still renders with that member's cell
 - **AND** the hover identifies the members and the newest write's age, so the
   reader can see rooms a seat sits in and prune the unwanted ones (`sac part`)
 
-### Requirement: Directional flow animation
+#### Scenario: Room of a non-showing project
 
-A wire whose channel has a recent activity record SHALL animate flow from the
-sender's terminal toward the addressee terminal or junction; a wire without recent
-activity SHALL render static and muted.
+- **WHEN** a room's members are all off-screen or not rendered
+- **THEN** no column is drawn for it
 
-#### Scenario: Recent send animates outward
+### Requirement: The sender cell is the direction
 
-- **WHEN** a channel's newest recorded write is by seat A within the activity window
-- **THEN** the wire segment(s) from A's terminal animate in the direction of travel
-- **AND** the animation reads as motion (travelling dash or dot), not as a colour change alone
+For a room whose newest write is within the activity window, the sender's cell
+SHALL render filled and animated; the other members' cells render bright rings.
+A membership whose room has no fresh write SHALL render static and muted. Who
+sent is readable from WHICH CELL is filled — a grid needs no arrows.
 
-#### Scenario: Idle channel is static
+#### Scenario: Recent send marks the sender
 
-- **WHEN** a channel's newest write is older than the activity window
-- **THEN** its wires render static and muted, with no animation
+- **WHEN** a room's newest recorded write is by seat A within the activity window
+- **THEN** A's cell renders filled and animated
+- **AND** the other members' cells render bright rings
 
-#### Scenario: Broadcast reaches every member
+#### Scenario: Idle room is static
 
-- **WHEN** the newest write names no specific addressee
-- **THEN** the animation flows from the sender toward every other member's terminal
-  via the junction or direct wires
+- **WHEN** a room's newest write is older than the activity window
+- **THEN** its cells render static and muted, with no animation
+
+#### Scenario: Never-written room renders dimmest
+
+- **WHEN** a room has no recorded write at all
+- **THEN** its column and cells render in the dimmest tier, and the hover says
+  "no recorded write" — the inactive columns exist to be judged and pruned
 
 ### Requirement: Show/hide toggle with right-edge ownership
 
@@ -127,8 +132,8 @@ affordance pointing at enrolment.
 Pointing at a wire or junction SHALL identify the channel — room name, members, and
 the age of the newest write — without any message content.
 
-#### Scenario: Wire hover
+#### Scenario: Cell hover
 
-- **WHEN** the user hovers a wire or junction
-- **THEN** a tooltip names the channel, lists its member seat names, and states the
-  newest write's age
+- **WHEN** the user hovers a cell, column line, or header
+- **THEN** a tooltip names the room, lists its member seat names, states the
+  newest write's age, and carries the pruning verb (`sac part <room>`)

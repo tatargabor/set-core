@@ -287,3 +287,39 @@ thead th {
   stroke: var(--color-fg-dim);
   opacity: 0.45;
 }
+
+/*
+  The room-matrix columns. The header name runs DOWN its column (rotated at
+  the fixed top band); the guide line is the column's track. Fresh rooms read
+  bright, idle ones quiet — same hierarchy as the wires they replaced.
+*/
+.fleet-wire-col {
+  stroke-width: 1;
+}
+.fleet-wire-col-active {
+  stroke: var(--color-lane-fill);
+  opacity: 0.55;
+}
+.fleet-wire-col-idle {
+  stroke: var(--color-fg-dim);
+  opacity: 0.35;
+}
+.fleet-wire-cell-sender {
+  fill: var(--color-sky-300, #7dd3fc);
+}
+.fleet-wire-cell-live {
+  animation: fleet-wire-pulse 1.2s ease-in-out infinite;
+}
+@keyframes fleet-wire-pulse {
+  50% { opacity: 0.35; }
+}
+.fleet-wire-cell-member-active {
+  fill: none;
+  stroke: var(--color-lane-fill);
+  stroke-width: 1.5;
+}
+.fleet-wire-cell-member-idle {
+  fill: none;
+  stroke: var(--color-fg-dim);
+  stroke-width: 1;
+}
