@@ -2564,3 +2564,25 @@ clean (the sibling's fleetWire* work landed as `17b89e58` + `db27531e`), board A
 live. Remaining open items from the handoff, unchanged: B-129 (usage-strip font size —
 one-liner, but the file belongs to the other thread's feature) and B-130 (Fleet-suite
 parallel-run flakes).
+
+## 2026-08-30 (afternoon) — two board follow-ups from the first real use, both WAITING on the producer's field shapes
+
+The producer relayed two items from the user's first board session; answered on the channel
+(12:19, re: its 12:18 REQUEST). Neither can be wired yet:
+
+1. **Card click → open the related artefact.** Accepted, but explicitly NOT bound to the
+   cards' existing `path` field — measured on the producer's side it is present on only
+   75 of 180 cards, and for tickets it holds the SOURCE document (an email, a service
+   file), not the ticket. The producer will emit a canonical open target (bug.md for a
+   ticket, the change directory for a change, null when none). When the field name lands:
+   wire it as a GENERIC card field, click stays a reading act (opens set-core's file view,
+   writes nothing), and carry it as a small OpenSpec change — the archived
+   `fleet-board-view` spec pins a click to reading effects on the card itself.
+2. **Release-membership section.** The producer will add per-open-draft planned items with
+   the resolved card, its lane, and on-board status — renderable without inference, since
+   their lane precedence keeps started work out of `planned` deliberately. Nothing to do
+   until the field shape arrives.
+
+Their answer to "why are implemented/demoed/done empty": the truth of their data — no
+change has reached tasksDone == tasksTotal yet, `done` only fills when a draft closes.
+Consistent with what the surface claims (each empty lane reads "0 cards").
