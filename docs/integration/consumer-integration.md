@@ -2610,3 +2610,30 @@ target. Screenshot taken. Board suite 26/26.
 `board-card-open-target`; (2) render the producer's `releasePlanned[].items[]`
 (release-membership section, its shape now includes `openTarget` for planned items that
 are not cards) as its own group; (3) B-129/B-130 remain open register items.
+
+## 2026-08-30 (late evening) — release prep: the unpushed range scrubbed and verified for a third party
+
+`set-leakscan` blocked the push with 24 findings; all resolved, decided with the user
+(consumer-app token · localize + genericize · keep the live room name · install fix +
+translate):
+
+- **Consumer name** generalized to `consumer-app` in the two tracked files and, via a
+  mechanical `sed` msg-filter over the 127 unpushed commits (run in a temp clone — the
+  working tree had a parallel session's uncommitted edits, and `filter-branch` refuses a
+  dirty tree), in the 4 flagged commit messages. Tree diff pre-vs-post rewrite: EMPTY
+  (content did not move). Temp clone with its `refs/original` backup deleted.
+- **Machine-specific sac hooks** left the tracked `.claude/settings.json` for the untracked
+  `settings.local.json` (18 `/home` paths gone from the published tree; origin's
+  settings.json had zero); the agent-comm skill's invocations became portable
+  (`node ~/code2/set-agent-comm/...`). Live room name unchanged.
+- **Third-person GLM path, measured and fixed:** `install.sh` did not ship
+  `set-providers` (onboarding said `command not found`); added, symlinked locally. The GLM
+  skill — the only token-setup doc — translated to English, measured values untouched.
+  Token itself is per-machine (`~/.config/set-core/providers.json`, 0600), nothing
+  committed: after `./install.sh`, a fresh clone onboards with `set-glm --check`.
+- **B-131 entered:** `tsc -b` fails on main (unused `FleetBoard.tsx` release scaffolding)
+  — left to the owning session.
+
+Scan now clean (232 files, 12 consumer patterns). Residual, deliberate: the live room
+name `wpc-board` stays in tracked files (user decision — it names the shared room, not
+the project).
