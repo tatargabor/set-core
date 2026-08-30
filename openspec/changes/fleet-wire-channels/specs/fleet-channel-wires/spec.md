@@ -49,6 +49,15 @@ and reaches its target terminal or junction.
 - **THEN** one junction node renders in the gutter for that channel
 - **AND** each member's terminal connects to the junction with its own wire
 
+#### Scenario: Single live member renders a stub channel
+
+- **WHEN** a channel has exactly one enrolled live member — the others being
+  offline or unenrolled
+- **THEN** the channel still renders: one wire from that member's terminal to
+  the channel's junction, labelled like any other
+- **AND** the hover identifies the members and the newest write's age, so the
+  reader can see rooms a seat sits in and prune the unwanted ones (`sac part`)
+
 ### Requirement: Directional flow animation
 
 A wire whose channel has a recent activity record SHALL animate flow from the

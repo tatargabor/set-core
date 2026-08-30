@@ -87,6 +87,19 @@ members without parsing message content itself.
 - **THEN** `from` is still the writing seat and `to` is the channel's other members
   (a broadcast), so a stale or odd file never silently removes the channel
 
+### Requirement: Channels with one live member are reported
+
+A room shared by at least one enrolled live agent SHALL produce an edge even
+when its other members are offline or unenrolled — the channel exists, and the
+surface's job is to make it visible so unwanted memberships can be pruned.
+
+#### Scenario: One live member keeps the channel
+
+- **WHEN** a room holds exactly one enrolled live agent
+- **THEN** an edge is emitted for that room, carrying the room name, that
+  member's identity, and the channel's latest activity
+- **AND** the edge does not claim a second live member
+
 ### Requirement: Graceful degradation
 
 The route SHALL return a valid empty graph (zero nodes from the store, zero edges)

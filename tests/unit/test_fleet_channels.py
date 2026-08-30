@@ -135,9 +135,13 @@ def test_shared_room_becomes_an_edge(tmp_path):
     assert sorted(edge["members"]) == ["sess-a", "sess-b", "sess-c"]
 
 
-def test_room_with_one_live_member_has_no_edge(tmp_path):
+def test_room_with_one_live_member_still_reports_the_channel(tmp_path):
+    """The hygiene view: a room one enrolled live agent sits in is emitted, so
+    unwanted memberships are visible (and prunable) even with nobody live on
+    the other end. The edge does not claim a second member."""
     payload = _graph(tmp_path)
-    assert all(e["room"] != "lonely-room" for e in payload["edges"])
+    edge = next(e for e in payload["edges"] if e["room"] == "lonely-room")
+    assert edge["members"] == ["sess-d"]
 
 
 def test_direction_from_addressee_heading(tmp_path):

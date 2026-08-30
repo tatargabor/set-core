@@ -243,8 +243,12 @@ def derive_channel_graph(
                 enrolled_sessions.add(str(session))
         nodes.append(node)
 
-    # Rooms shared by two or more enrolled live agents are channels. A room
-    # with one live member has nobody on this screen to wire it to.
+    # Every room an enrolled live agent sits in is a channel — even alone.
+    # A one-member channel is the hygiene view: it shows rooms a seat holds
+    # with nobody live on the other end, which is exactly what a reader
+    # pruning unwanted memberships needs to SEE (`sac part <room>`). The
+    # edge never claims a second live member; the surface renders it as a
+    # stub to the room's junction.
     rooms: Dict[str, list] = {}
     for node in nodes:
         if not node.enrolled or not node.session_id:
@@ -276,8 +280,8 @@ def derive_channel_graph(
 
     edges: list = []
     for room, members in rooms.items():
-        if len(members) < 2:
-            continue
+        # Every member here is enrolled and live by construction of `rooms`;
+        # a single-member channel is kept on purpose (the hygiene view).
         edge = ChannelEdge(
             room=room,
             members=[m.session_id for m in members if m.session_id],

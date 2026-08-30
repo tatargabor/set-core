@@ -87,16 +87,20 @@ describe('computeWireLayout', () => {
     }
   })
 
-  it('drops an edge naming a session no node carries — never draws to nothing', () => {
+  it('draws a memberless-other channel as a stub to the visible member only', () => {
     const p = payload({
       edges: [{
         room: 'ghost', members: ['sess-a', 'sess-zzz'], memberSeats: ['alpha#111111'],
         from: 'sess-a', to: ['sess-zzz'], lastActivity: null, recent: false,
       }],
     })
+    // sess-zzz has no node — the wire must never reach for it. The room still
+    // exists and alpha is in it, so one stub wire to alpha renders (the
+    // hygiene view), and nothing points at the member nobody carries.
     const layout = computeWireLayout({ payload: p, rows: rows(1), height: H, gutterWidth: W })
-    expect(layout.segments).toEqual([])
-    expect(layout.junctions).toEqual([])
+    expect(layout.segments).toHaveLength(1)
+    expect(layout.segments[0].path.startsWith('M')).toBe(true)
+    expect(layout.junctions).toHaveLength(1)
   })
 
   it('keeps a channel whose endpoint row scrolled out, clamped to the edge', () => {
@@ -168,7 +172,7 @@ describe('segmentTitle', () => {
     expect(title).toContain('war-room')
     expect(title).toContain('alpha#111111')
     expect(title).toContain('45s ago')
-    expect(title).not.toMatch(/said|text|body/)
+    expect(title).toContain('sac part war-room')
   })
 
   it('says when nothing was ever written', () => {

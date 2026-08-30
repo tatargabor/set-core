@@ -169,16 +169,16 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
 
   // One lane per channel across the gutter, so two channels' wires share the
   // strip instead of overprinting each other.
+  //
+  // NEVER-WRITTEN channels draw too, as the dimmest tier. The user's own
+  // framing: the inactive lines are how you DETECT unwanted memberships and
+  // prune them (`sac part <room>`) — hiding them hides exactly the lines that
+  // need pruning. Their hover says "no recorded write" so they cannot be
+  // mistaken for quiet-but-alive channels.
   const edges = (payload.edges ?? []).filter(e => {
     const members = (e.members ?? []).filter((s): s is string => typeof s === 'string')
     const live = members.filter(s => yByPid.has(pidBySession.get(s) ?? -1))
-    // A channel that NEVER had a write draws nothing. Two enrolled seats
-    // typically share a dozen dead rooms — measured live: eleven channels,
-    // one with a write in the last hour. Drawing all of them buries the one
-    // conversation the screen exists to show, which is the same
-    // "compacting must not hide a failure" failure in the opposite direction:
-    // drawing everything hides what matters.
-    return live.length >= 2 && typeof e.room === 'string' && e.lastActivity != null
+    return live.length >= 1 && typeof e.room === 'string'
   })
   const laneX = (index: number) =>
     Math.round(((index + 1) / (edges.length + 1)) * (gutterWidth - tx) + tx)
@@ -257,19 +257,24 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
     }
   })
 
-  // Pair channels between the SAME two rows share a midpoint, so their labels
-  // would overprint (measured live: `dm-set-core-ff8…` on top of `wpc-board`).
-  // Stagger each group's labels vertically around the shared midpoint, ordered
-  // by lane so the label column reads in the same order as the wires.
-  const pairGroups = new Map<string, WireSegment[]>()
+  // Channels sharing a label level would overprint in the legend column —
+  // pair channels between the same two rows share a midpoint (measured live:
+  // `dm-set-core-ff8…` on top of `wpc-board`), and single-member stubs all
+  // sit at their one member's y. Stagger per ROOM (a fan's segments share one
+  // label), around the shared level, ordered by lane so the column reads in
+  // wire order.
+  const roomLabels = new Map<string, WireSegment>()
   for (const seg of segments) {
-    if (seg.kind !== 'pair') continue
-    const key = `${seg.label.y}`
-    const group = pairGroups.get(key)
-    if (group) group.push(seg)
-    else pairGroups.set(key, [seg])
+    if (!roomLabels.has(seg.room)) roomLabels.set(seg.room, seg)
   }
-  for (const group of pairGroups.values()) {
+  const levelGroups = new Map<string, WireSegment[]>()
+  for (const seg of roomLabels.values()) {
+    const key = `${seg.label.y}`
+    const group = levelGroups.get(key)
+    if (group) group.push(seg)
+    else levelGroups.set(key, [seg])
+  }
+  for (const group of levelGroups.values()) {
     if (group.length < 2) continue
     group.sort((a, b) => a.label.x - b.label.x)
     group.forEach((seg, i) => {
@@ -293,7 +298,9 @@ export function labelFor(room: string): string {
   return room.length <= 16 ? room : `${room.slice(0, 15)}…`
 }
 
-/** Human sentence for a segment's hover — identity and recency, never content. */
+/** Human sentence for a segment's hover — identity and recency, plus the
+    pruning hint, because the inactive lines exist to be JUDGED: a room that
+    should not be there is something the reader leaves, not just observes. */
 export function segmentTitle(segment: WireSegment, nowMs: number): string {
   const seats = segment.memberSeats.join(', ')
   const age = segment.lastActivity != null
@@ -306,5 +313,5 @@ export function segmentTitle(segment: WireSegment, nowMs: number): string {
       : age < 3600
         ? `newest write ${Math.round(age / 60)}m ago`
         : `newest write ${Math.round(age / 3600)}h ago`
-  return `${segment.room} — ${seats} — ${when}`
+  return `${segment.room} — ${seats} — ${when} — leave it: sac part ${segment.room}`
 }
