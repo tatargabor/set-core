@@ -133,29 +133,38 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
     nodeByPid.set(node.pid, node)
     if (node.sessionId) pidBySession.set(node.sessionId, node.pid)
   }
-  const yByPid = new Map<number, number>()
+  // A row scrolled out of the gutter's view keeps its CHANNEL: its y clamps
+  // to the edge the row exited through, so the wire runs off-screen instead
+  // of vanishing. Measured live: scrolling one endpoint row out of view made
+  // the whole channel disappear — a screen that loses its data because the
+  // reader scrolled is lying about the channels it showed a second ago.
+  // `onScreen` is false exactly when the clamp fired, and only the terminal
+  // dot (which would sit at the edge pointing at nothing) is suppressed.
+  const clampY = (y: number) => Math.max(2, Math.min(height - 2, y))
+  const yByPid = new Map<number, { y: number; onScreen: boolean }>()
   for (const row of rows) {
-    if (row.bottom <= 0 || row.top >= height) continue
-    yByPid.set(row.pid, (row.top + row.bottom) / 2)
+    const mid = (row.top + row.bottom) / 2
+    const onScreen = row.bottom > 0 && row.top < height
+    yByPid.set(row.pid, { y: clampY(mid), onScreen })
   }
 
   const terminals: WireTerminal[] = []
   const sockets: { pid: number; y: number }[] = []
-  for (const [pid, y] of yByPid) {
+  for (const [pid, pos] of yByPid) {
+    if (!pos.onScreen) continue
     const node = nodeByPid.get(pid)
     if (node?.enrolled) {
-      terminals.push({ pid, y, enrolled: true, seat: node.seat ?? null })
+      terminals.push({ pid, y: pos.y, enrolled: true, seat: node.seat ?? null })
     } else {
       // A live row with no seat — the socket, never a wired node. Note the
       // case this cannot happen in: `sourceAvailable: false` already
       // returned above, so `enrolled: false` here is a measurement (the bus
       // was asked and does not know this session), not a guess.
-      sockets.push({ pid, y })
+      sockets.push({ pid, y: pos.y })
     }
   }
   terminals.sort((a, b) => a.y - b.y)
 
-  const clampY = (y: number) => Math.max(2, Math.min(height - 2, y))
   const tx = TERMINAL_X
 
   // One lane per channel across the gutter, so two channels' wires share the
@@ -189,7 +198,7 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
     const meta = { room, memberSeats: seats, lastActivity: last }
 
     const lx = laneX(index)
-    const ys = memberPids.map(pid => ({ pid, y: clampY(yByPid.get(pid) as number) }))
+    const ys = memberPids.map(pid => ({ pid, y: yByPid.get(pid)!.y }))
     const senderPid = edge.from ? pidBySession.get(edge.from) : undefined
     const sender = ys.find(e => e.pid === senderPid) ?? null
     // A sender the screen cannot see (its row is scrolled away or the write

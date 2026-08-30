@@ -99,17 +99,25 @@ describe('computeWireLayout', () => {
     expect(layout.junctions).toEqual([])
   })
 
-  it('drops a segment when a row has vanished from the screen', () => {
+  it('keeps a channel whose endpoint row scrolled out, clamped to the edge', () => {
     const p = payload({
       edges: [{
         room: 'dm-a-b', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
         from: 'sess-a', to: ['sess-b'], lastActivity: 1_000, recent: true,
       }],
     })
-    // pid 2 has no row — scrolled away or closed. The pair edge keeps two
-    // MEMBERS in the payload but only one visible y, so it must not draw.
-    const layout = computeWireLayout({ payload: p, rows: rows(1), height: H, gutterWidth: W })
-    expect(layout.segments).toEqual([])
+    // pid 2's row is BELOW the visible gutter (top beyond height). The
+    // channel must survive, clamped to the bottom edge — scrolling must not
+    // make drawn channels vanish; it only hides the terminal dot.
+    const layout = computeWireLayout({
+      payload: p,
+      rows: [...rows(1), { pid: 2, top: H + 50, bottom: H + 80 }],
+      height: H, gutterWidth: W,
+    })
+    expect(layout.segments).toHaveLength(1)
+    expect(layout.segments[0].path.endsWith(` ${H - 2}`)).toBe(true)
+    // The off-screen row draws no terminal dot (it would point at nothing).
+    expect(layout.terminals.map(t => t.pid)).toEqual([1])
   })
 
   it('mutes an idle channel', () => {
