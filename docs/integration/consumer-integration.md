@@ -2586,3 +2586,27 @@ The producer relayed two items from the user's first board session; answered on 
 Their answer to "why are implemented/demoed/done empty": the truth of their data — no
 change has reached tasksDone == tasksTotal yet, `done` only fills when a draft closes.
 Consistent with what the surface claims (each empty lane reads "0 cards").
+
+## 2026-08-30 (evening) — card click SHIPPED and verified end-to-end; release membership is the next step
+
+The "waiting on the producer's field name" hold was dropped: set-core defined the field
+(the founding split — the abstraction names the shape, the producer fills the value), the
+producer adopted the same name within minutes — it had shipped the identical field as
+`openPath` at 12:29 and renamed it `openTarget` to match (`bec9b8c36`).
+
+**Shipped (`488b2790`):** the card vocabulary carries optional `openTarget` (one
+project-root-relative path, file or directory, never derived from any other field); a
+card renders clickable only when a target AND a page opener both exist; the click opens
+the fleet file view (`openFile`) — a reading act; the full-screen mount leaves full
+screen first. OpenSpec change `board-card-open-target` (MODIFIED read-only requirement,
+ADDED openTarget requirements), strict-valid, all tasks checked, UNARCHIVED pending the
+user seeing it work.
+
+**Verified against live data:** 180/180 producer cards carry `openTarget`; clicking the
+first card opened the file view over the change's proposal.md — exactly the declared
+target. Screenshot taken. Board suite 26/26.
+
+**Next, in order:** (1) user confirms the click on screen → archive
+`board-card-open-target`; (2) render the producer's `releasePlanned[].items[]`
+(release-membership section, its shape now includes `openTarget` for planned items that
+are not cards) as its own group; (3) B-129/B-130 remain open register items.
