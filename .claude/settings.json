@@ -47,6 +47,14 @@
             "command": "set-hook-checkout-guard PostToolUse"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board /home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/hooks/heartbeat.mjs"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -57,6 +65,24 @@
             "type": "command",
             "command": "set-hook-stop",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board /home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/hooks/stop.mjs"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SET_AGENT_NAME=set-core SET_AGENT_ROOM=wpc-board /home/linuxbrew/.linuxbrew/Cellar/node/25.6.1/bin/node /home/tg/code2/set-agent-comm/hooks/session-start.mjs"
           }
         ]
       }
