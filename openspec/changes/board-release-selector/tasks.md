@@ -5,6 +5,7 @@
 - [x] 1.3 Filter band columns and tray by the draft's on-board membership ids; placement still by each card's own lane; headers unchanged
 - [x] 1.4 Off-board items as their own group: reason visible, `openTarget` clickable, never placed into a lane
 - [x] 1.5 Filter-explained emptiness claims neither zero nor mismatch (`explainable` on ColumnEmpty)
+- [x] 1.6 Draft-view header counts come from the draft's membership per lane, not the whole-board lanes array — the 28-against-1 mismatch read as a bug (user, 2026-08-30); whole-board headers stay in the all-cards view and the strip legend
 
 ## 2. Tests (module: web)
 

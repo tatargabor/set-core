@@ -432,7 +432,14 @@ describe('the release selector', () => {
     expect(container.querySelector('[data-fleet-board-card="SET-0077"]')).toBeTruthy()
     expect(container.querySelector('[data-fleet-board-card="SET-0081"]')).toBeNull()
     expect(container.querySelector('[data-fleet-board-card="SET-0090"]')).toBeNull()
-    // lane header counts stay the producer's whole-board figures
+    // lane header counts are the DRAFT's own figures here (membership items
+    // per lane) — 1 member in specified, none elsewhere; the whole-board 29
+    // would read as a bug beside one card (user-reported, 2026-08-30)
+    expect(container.querySelector('[data-fleet-board-col="specified"]')!.textContent).toContain('1')
+    expect(container.querySelector('[data-fleet-board-col="in-progress"]')!.textContent).toContain('0')
+    // choosing "all cards" brings the whole-board headers back
+    fireEvent.change(container.querySelector('[data-fleet-board-release-selector]')!,
+                     { target: { value: 'all' } })
     expect(container.querySelector('[data-fleet-board-col="in-progress"]')!.textContent).toContain('29')
   })
 

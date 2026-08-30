@@ -29,9 +29,12 @@ answer without `releasePlanned` SHALL render no selector and every card.
 
 ### Requirement: Filtering follows the producer's membership, never an inference
 A selected draft SHALL filter the card columns to the cards its membership names as
-on-board (by card id). Column placement stays by each card's own lane, and the lane
-header counts SHALL remain the producer's whole-board figures — the surface MUST NOT
-recount or relabel them. The draft's planned items with no card SHALL render as their
+on-board (by card id). Column placement stays by each card's own lane. Under a selected
+draft the lane header counts SHALL come from the draft's OWN membership — how many
+items it places in each lane — because the whole-board figure beside a filtered column
+reads as a bug (user-reported, 2026-08-30); the whole-board figures SHALL render in the
+"all cards" view and in the strip legend. The surface MUST NOT count CARDS to produce a
+header. The draft's planned items with no card SHALL render as their
 own group, each with its stated reason, and each following the same `openTarget` click
 rule as a card.
 

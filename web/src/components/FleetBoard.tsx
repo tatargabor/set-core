@@ -512,6 +512,20 @@ export default function FleetBoard({
     .filter((e): e is { name: string; count: number } => e !== null)
     .map(e => [e.name, e.count]))
 
+  // Under a selected draft, the header counts come from the DRAFT's membership
+  // — the producer states each item's lane, so the draft view counts those,
+  // never the whole board's lanes array (whose 28-against-1 mismatch the user
+  // read as a bug, 2026-08-30). Whole-board headers render in the all-cards
+  // view. Aggregating the producer's own per-item statements is not recounting
+  // cards; a mismatch between this figure and the rendered cards still renders
+  // unreconciled, both visible.
+  const draftLaneCounts = new Map<string, number>()
+  if (selectedDraft) {
+    for (const it of releaseItems(selectedDraft)) {
+      if (it.onBoard !== true || typeof it.lane !== 'string' || !inBand(it.lane)) continue
+      draftLaneCounts.set(it.lane, (draftLaneCounts.get(it.lane) ?? 0) + 1)
+    }
+  }
 
   // Windowed (panel/fullscreen) contexts FILL their window; the inline strip
   // under the project header stays bounded. See the note on the panel body.
@@ -670,7 +684,11 @@ export default function FleetBoard({
                   <div className="flex items-baseline gap-1.5 text-xs border-b border-surface-edge/70 pb-0.5">
                     <span className="text-fg-muted truncate">{name}</span>
                     <span className="text-fg-ghost tabular-nums shrink-0"
-                          title="as the project counts it">{countByLane.get(name)}</span>
+                          title={filtered
+                            ? 'items the chosen draft places in this lane, as its membership reports — the whole board\'s count is the strip legend above'
+                            : 'as the project counts it'}>
+                      {filtered ? draftLaneCounts.get(name) ?? 0 : countByLane.get(name)}
+                    </span>
                   </div>
                   <div className={`space-y-1 overflow-y-auto ${fill ? 'flex-1 min-h-0' : 'max-h-72'}`}>
                     {(cardsByLane.get(name) ?? []).map((c, i) => (
