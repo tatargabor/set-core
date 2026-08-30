@@ -3713,3 +3713,17 @@ consumer's name, path, or content.
   — the likely cause, still being written.
 - **what proves it fixed:** those two files pass on three consecutive runs once the
   agent-tree work is committed; if they still flake then, the cause is elsewhere.
+
+### B-131 — `tsc -b` fails on main: unused release-membership scaffolding in `FleetBoard.tsx`
+- **state:** open
+- **reported:** 2026-08-30 by the release-prep session while typechecking before a push.
+- **measured:** `cd web && npx tsc -b` — two TS6133 errors at HEAD:
+  `src/components/FleetBoard.tsx:480` (`setReleaseChoice` declared but never read) and
+  `:486` (`offBoardItems` declared but never read). The file is untouched by the working
+  tree at report time, so the errors are committed content. NOT verified against the
+  parallel session's intent: the symbols look like the release-membership scaffolding that
+  session is expected to wire next, so the fix may be "wire them", not "delete them".
+- **note:** `tsc --noEmit` is blind here — only `tsc -b` measures (known property of this
+  tree), which is why a fully-green commit sequence still carries this.
+- **fixed when:** `npx tsc -b` on main exits clean, either by wiring or removing the two
+  symbols, with the owning session's consent.
