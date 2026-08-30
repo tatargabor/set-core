@@ -2542,3 +2542,25 @@ the live 180-card answer; screenshot taken.
 `FleetWirePanel.tsx` type error — the working tree is shared, and building while another
 thread is mid-edit would bake a broken intermediate into the served bundle. A background
 `tsc -b` watch gated the build.
+
+## 2026-08-30 (midday) — board thread closed out: archived, enrolment committed, chrome ANSWER sent
+
+Successor session (handoff `0830-771c`) closed the three held items, each with the user's
+explicit approval:
+
+- **`generic-board-view` ARCHIVED** → `openspec/changes/archive/2026-08-30-generic-board-view/`;
+  the delta's five ADDED requirements are synced into the new main spec
+  `openspec/specs/fleet-board-view/spec.md`. Commit `e7841c4d`.
+- **sac enrolment committed** (`2f3087d6`): SessionStart/Stop/PostToolUse hook wiring for
+  wpc-board delivery plus the `agent-comm` skill. Future sessions of this project are
+  enrolled from birth; the live inbox watch is still per-session (armed manually or by the
+  session-start note).
+- **Chrome ANSWER sent** to wpc-pont on the channel (re: its 10:11 REQUEST) — the board
+  panel carries the same window chrome as the agent panels (`170aa23e`, `e8151b24`), and the
+  board is opt-in with an in-memory cache.
+
+Pre-archival re-verification: board tests 20/20, fleetSurface 14/14 in isolation, `tsc -b`
+clean (the sibling's fleetWire* work landed as `17b89e58` + `db27531e`), board API answer
+live. Remaining open items from the handoff, unchanged: B-129 (usage-strip font size —
+one-liner, but the file belongs to the other thread's feature) and B-130 (Fleet-suite
+parallel-run flakes).
