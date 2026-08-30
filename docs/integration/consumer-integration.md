@@ -2637,3 +2637,17 @@ translate):
 Scan now clean (232 files, 12 consumer patterns). Residual, deliberate: the live room
 name `wpc-board` stays in tracked files (user decision — it names the shared room, not
 the project).
+
+## 2026-08-30 (late) — release selector shipped; file view full screen; band overlap still under investigation
+
+- **Release selector** (`306b1e5b`): the strip selector defaults to the producer's first
+  open draft and filters by the draft's OWN membership ids; "all cards" one choice away.
+  The draft's off-board items render as their own group (reason + openTarget). Verified
+  live: `v1.24.0 · draft — 1/2 on board`, item 293 "not on board — pending". OpenSpec
+  change `board-release-selector`, strict-valid, UNARCHIVED pending user confirmation.
+- **File view ⛶** (same commit): full screen like the board's; the instance stays
+  mounted (root escapes to `fixed`) so an unsaved editor draft survives.
+- **Board band overlapping the files band after a project switch** — reported with a
+  screenshot; NOT yet reproduced (dock-top combinations round-trip clean under
+  Playwright). A background investigation agent is iterating variants (maximised docked
+  board, terminal band present, persisted arrangements). OPEN.
