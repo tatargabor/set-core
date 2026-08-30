@@ -37,6 +37,8 @@ import FleetProjectColumn from '../components/FleetProjectColumn'
 import { RestoreFromEmpty, RestoreForProject } from '../components/FleetRestore'
 import FleetPm from '../components/FleetPm'
 import FleetBoardStrip from '../components/FleetBoardStrip'
+import FleetWirePanel from '../components/FleetWirePanel'
+import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetSplitter from '../components/FleetSplitter'
 import {
@@ -2003,6 +2005,39 @@ export default function Fleet() {
   const [dockMap, setDockMap] = useState<DockMap>({})
   const docks = useMemo(() => docksFor(dockMap, selected), [dockMap, selected])
 
+  /**
+   * The wire view — the channel graph between live agents — and its toggle.
+   *
+   * The toggle rides the same server-backed document as the docks (its own
+   * key, one PUT), so the choice survives a reload like every other
+   * arrangement this screen remembers. A read failure leaves it hidden, which
+   * is the default rather than a reported state: the toggle is one click to
+   * retry, and a banner for it would be noise.
+   */
+  const [channels, setChannels] = useState<ChannelsPayload | null>(null)
+  const [wiresShown, setWiresShown] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/fleet/layout')
+      .then(r => (r.ok ? r.json() : null))
+      .then(body => { if (!cancelled && body && typeof body === 'object') setWiresShown(Boolean((body as { wires_shown?: unknown }).wires_shown)) })
+      .catch(() => { /* hidden until the toggle is used — see above */ })
+    return () => { cancelled = true }
+  }, [])
+
+  const toggleWires = useCallback(() => {
+    setWiresShown(prev => {
+      const next = !prev
+      void fetch('/api/fleet/layout/wires', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shown: next }),
+      }).catch(() => { /* the local state already flipped; the write retries on the next toggle */ })
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     void loadSplits().then(stored => {
@@ -2109,6 +2144,15 @@ export default function Fleet() {
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(d => { setData(d); setAnsweredAt(Date.now()); setError(null) })
       .catch(e => setError(String(e.message ?? e)))
+    // The channel graph rides the same cycle. A failed answer keeps the last
+    // one on screen — the wires are already labelled with their write ages, so
+    // a gap between polls reads as stale data, not as silence about a failure;
+    // `sourceAvailable: false` inside a payload is the only source-down signal
+    // this surface trusts, because that one is a measurement.
+    fetch('/api/fleet/channels')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ChannelsPayload) => setChannels(d))
+      .catch(() => { /* keep the last graph; see above */ })
   }, [])
 
   useEffect(() => {
@@ -3238,7 +3282,16 @@ export default function Fleet() {
           onSelectAgent={focusAgentFromTree}
           focusedPid={enlarged}
           width={projectWidth}
+          wiresShown={wiresShown}
+          onToggleWires={toggleWires}
         />
+
+        {/* The wire gutter, when shown: it takes the strip between the project
+            list and the main pane, so a wire runs from an agent row's edge
+            into the gutter and never across readable content. The width it
+            claims is paid for by the right-edge dock bands, which yield while
+            the view is shown — the trade the toggle exists to offer. */}
+        {wiresShown && <FleetWirePanel payload={channels} />}
 
         {/* The divider between the list and the panel. Its size lives in the
             same server-side document as the arrangement, because it is the same
@@ -3893,7 +3946,12 @@ export default function Fleet() {
               </FleetDockBand>
             ))}
           </div>
-          {bandsOn(bands, 'right').map(band => (
+          {/* The wire view OWNS the right edge while shown (see the toggle
+              above): the bands yield rather than squeeze, because their stored
+              edge, size and collapsed state are untouched — they come back
+              whole when the view is hidden. Filtering the RENDER list, not the
+              stored map, is what makes that reversible. */}
+          {(wiresShown ? [] : bandsOn(bands, 'right')).map(band => (
             <FleetDockBand
               key={dockSplitKey(band)}
               band={band}

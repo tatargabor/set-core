@@ -906,6 +906,8 @@ export default function FleetProjectColumn({
   onSelectAgent,
   focusedPid,
   width,
+  wiresShown,
+  onToggleWires,
 }: {
   data: FleetResponse
   selected: string | null
@@ -916,6 +918,11 @@ export default function FleetProjectColumn({
    * sub-rows simply do not render, and nothing else about the row changes.
    */
   onSelectAgent?: (project: string, pid: number) => void
+  /** The wire view's state, and its toggle — owned by the shell (the gutter
+      renders beside the column, and the right-edge bands are the shell's to
+      yield), carried here only because the toggle stands in the header. */
+  wiresShown?: boolean
+  onToggleWires?: () => void
   /** The focused agent of the selected project, for the sub-row's own mark. */
   focusedPid?: number | null
   /**
@@ -1389,6 +1396,23 @@ export default function FleetProjectColumn({
               )
             })}
           </div>
+          {onToggleWires && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={wiresShown === true}
+              data-fleet-wire-toggle={wiresShown ? 'on' : 'off'}
+              onClick={onToggleWires}
+              title="Draw the active agent-comm channels between live agents as wires. While shown, the wire gutter takes the strip beside this list and the right-edge panels yield."
+              className={`px-2 py-1 rounded border text-xs transition-colors ${
+                wiresShown
+                  ? 'bg-surface-raised text-fg-loud border-surface-line'
+                  : 'text-fg-faint hover:text-fg-normal border-transparent'
+              }`}
+            >
+              wires
+            </button>
+          )}
           {/* ---------------------------------------------------------- */}
           {/* Freshest-first — "put the projects I am working in on top".
 

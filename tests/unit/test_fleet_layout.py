@@ -89,6 +89,7 @@ def test_a_missing_file_is_an_unarranged_screen_not_an_error(tmp_path):
     assert load(_path(tmp_path)) == {
         "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
         "docks": {}, "docks_legacy": [],
+        "wires_shown": False,
     }
 
 

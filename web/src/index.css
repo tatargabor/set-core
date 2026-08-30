@@ -218,3 +218,44 @@ thead th {
   background: rgba(251, 191, 36, 0.16);
   border-left: 2px solid rgba(251, 191, 36, 0.8);
 }
+
+/*
+  The fleet wire view's strokes.
+
+  Direction is PATH direction, decided in fleetWireLayout.ts: every segment's
+  `d` is written in the flow direction, so one keyframe — dashes walking
+  forward — reads as sender-to-receiver everywhere, and a receiver's inward
+  walk arrives rather than leaves. Colour alone was explicitly not enough: the
+  flow must read as motion.
+*/
+.fleet-wire-seg {
+  stroke: var(--color-fg-faint);
+  stroke-linecap: round;
+}
+.fleet-wire-seg-idle {
+  stroke: var(--color-fg-dim);
+}
+.fleet-wire-seg-active {
+  stroke: var(--color-lane-fill);
+  stroke-dasharray: 5 9;
+  animation: fleet-wire-flow 0.8s linear infinite;
+}
+.fleet-wire-seg-sender {
+  stroke: var(--color-sky-300, #7dd3fc);
+}
+@keyframes fleet-wire-flow {
+  to { stroke-dashoffset: -28; }
+}
+.fleet-wire-terminal {
+  fill: var(--color-lane-fill);
+}
+.fleet-wire-junction {
+  fill: var(--color-surface-page);
+  stroke: var(--color-lane-fill);
+  stroke-width: 1.5;
+}
+.fleet-wire-socket {
+  fill: none;
+  stroke: var(--color-fg-dim);
+  stroke-dasharray: 2 2;
+}

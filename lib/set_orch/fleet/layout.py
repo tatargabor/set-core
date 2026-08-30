@@ -71,6 +71,9 @@ EMPTY: Dict[str, Any] = {
     "version": 0, "groups": [], "parked": [], "ungrouped_order": [], "splits": {},
     # Keyed by project since 2026-08-20 — see `_normalise_docks`.
     "docks": {}, "docks_legacy": [],
+    # The fleet wire view's shown/hidden choice — one screen-wide preference,
+    # not per project, because the channels it draws cross projects.
+    "wires_shown": False,
 }
 
 
@@ -310,6 +313,9 @@ def normalise(raw: Any) -> Dict[str, Any]:
         "docks_legacy": _normalise_dock_legacy(
             raw.get("docks") if isinstance(raw.get("docks"), list) else raw.get("docks_legacy")
         ),
+        # Named like every other key: this function drops what it does not
+        # name, and a toggle the reader left on must survive a save.
+        "wires_shown": bool(raw.get("wires_shown", EMPTY["wires_shown"])),
     }
 
 
@@ -390,6 +396,23 @@ def save_docks(docks: Any, *, project: str, path: Optional[str] = None) -> List[
     logger.info("fleet layout: %d docked view(s) stored for project %r at version %s (unchanged)",
                 len(docked), name, payload["version"])
     return docked
+
+
+def save_wires(shown: Any, *, path: Optional[str] = None) -> bool:
+    """Store the wire view's shown/hidden choice, without touching the rest.
+
+    Same write discipline as `save_docks`: version unchanged, other keys read
+    back from the file just written. A screen-wide flag rather than per
+    project, because the channels the wires draw cross projects.
+    """
+    path = path or default_layout_path()
+    current = load(path)
+    payload = dict(current)
+    payload["wires_shown"] = bool(shown)
+    _write_atomically(payload, path)
+    logger.info("fleet layout: wires_shown=%s stored at version %s (unchanged)",
+                payload["wires_shown"], payload["version"])
+    return payload["wires_shown"]
 
 
 def save_agent_order(order: Any, *, project: str, path: Optional[str] = None) -> List[str]:
@@ -573,6 +596,9 @@ def apply_to(layout: Dict[str, Any], existing: Sequence[str]) -> Dict[str, Any]:
         # list exists to prevent. The client holds the inventory and does the
         # join at render time.
         "agent_order": {k: list(v) for k, v in (layout.get("agent_order") or {}).items()},
+        # The wire view's toggle, passed through unjoined — a screen-wide
+        # preference with nothing for discovery to confirm or contradict.
+        "wires_shown": bool(layout.get("wires_shown")),
     }
 
 

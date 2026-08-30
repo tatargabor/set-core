@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -48,6 +49,7 @@ from ..fleet.discovery import (
 )
 from ..fleet import scopes as fleet_scopes
 from ..fleet import instruct as fleet_instruct
+from ..fleet import channels as fleet_channels_mod
 from ..fleet import purpose as fleet_purpose
 from ..fleet import stage as fleet_stage
 from ..fleet import capabilities as fleet_caps
@@ -781,6 +783,37 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
     }
 
 
+@router.get("/api/fleet/channels")
+def fleet_channel_graph() -> Dict[str, Any]:
+    """The channel graph between live agents, for the fleet wire view.
+
+    Derivation lives in `fleet/channels.py` (pure, store-root-parameterised);
+    this route is the adapter that feeds it the live roster and the resolved
+    store root. Reads topology only — sender, addressee, recency — and a
+    message body never crosses it, so nothing here logs payload content
+    either: the log line names counts, never rooms or seats.
+    """
+    agents = discover_agents()
+    # The SAME cached roster the listing uses — one bus question serves both
+    # endpoints inside the cache window, not one per poll each.
+    seats = fleet_instruct.seats_cached()
+    live = [
+        fleet_channels_mod.LiveAgent(
+            pid=agent.pid,
+            session_id=agent.session_id,
+            project_root=agent.project_root,
+            name=agent.name,
+        )
+        for agent in agents
+    ]
+    graph = fleet_channels_mod.derive_channel_graph(
+        seats, fleet_channels_mod.resolve_store_root(), live, now=time.time())
+    logger.debug(
+        "fleet channels: %d nodes, %d edges, sourceAvailable=%s",
+        len(graph["nodes"]), len(graph["edges"]), graph["sourceAvailable"])
+    return graph
+
+
 @router.get("/api/fleet/agents/{pid}/log")
 def fleet_agent_log(pid: int, limit: int = Query(60, ge=1, le=500)) -> Dict[str, Any]:
     """The raw conversation of one agent — design §5.8.
@@ -1448,6 +1481,22 @@ def fleet_get_layout() -> Dict[str, Any]:
                                                registered=_safe_registry(),
                                                messaging=_safe_messaging())]
     return fleet_layout.apply_to(stored, names)
+
+
+class WiresBody(BaseModel):
+    shown: bool
+
+
+@router.put("/api/fleet/layout/wires")
+def fleet_put_wires(body: WiresBody) -> Dict[str, Any]:
+    """Store the wire view's shown/hidden choice — nothing else moves."""
+    try:
+        shown = fleet_layout.save_wires(body.shown)
+    except OSError as exc:
+        logger.error("fleet api: cannot store wires_shown: %s", exc)
+        raise HTTPException(status_code=500,
+                            detail=f"cannot store wires_shown: {exc}") from exc
+    return {"wires_shown": shown}
 
 
 @router.put("/api/fleet/layout")
