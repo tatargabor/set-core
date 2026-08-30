@@ -259,3 +259,21 @@ thead th {
   stroke: var(--color-fg-dim);
   stroke-dasharray: 2 2;
 }
+
+/*
+  The channel's name, riding the wire. Active channels read loud; idle ones
+  stay present but quiet — same hierarchy as the wires themselves.
+*/
+.fleet-wire-label {
+  font-size: 9px;
+  fill: var(--color-fg-ghost);
+  paint-order: stroke;
+  stroke: var(--color-surface-page);
+  stroke-width: 3px;
+}
+.fleet-wire-label-active {
+  fill: var(--color-sky-300, #7dd3fc);
+}
+.fleet-wire-label-idle {
+  fill: var(--color-fg-dim);
+}

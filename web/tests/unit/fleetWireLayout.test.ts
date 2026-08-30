@@ -128,11 +128,11 @@ describe('computeWireLayout', () => {
       edges: [
         {
           room: 'dm-a-b', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
-          from: 'sess-a', to: ['sess-b'], lastActivity: null, recent: false,
+          from: 'sess-a', to: ['sess-b'], lastActivity: 1_000, recent: false,
         },
         {
           room: 'dm-b-c', members: ['sess-b', 'sess-c'], memberSeats: ['bravo#222222', 'charlie#333333'],
-          from: 'sess-c', to: ['sess-b'], lastActivity: null, recent: false,
+          from: 'sess-c', to: ['sess-b'], lastActivity: 1_000, recent: false,
         },
       ],
     })
@@ -153,6 +153,7 @@ describe('segmentTitle', () => {
   const seg = {
     key: 'k', path: 'M 0 0', flow: 'sender' as const, active: true, kind: 'pair' as const,
     room: 'war-room', memberSeats: ['alpha#111111', 'bravo#222222'], lastActivity: 5_000_000,
+    label: { x: 10, y: 10 },
   }
   it('names the channel, members and write age — never message content', () => {
     const title = segmentTitle(seg, 5_000_045_000)

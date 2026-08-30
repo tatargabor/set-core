@@ -108,7 +108,7 @@ describe('FleetWirePanel', () => {
       nodes: PAYLOAD.nodes,
       edges: [{
         room: 'war-room', members: ['sess-a', 'sess-b'], memberSeats: ['alpha#111111', 'bravo#222222'],
-        from: 'sess-a', to: [], lastActivity: null, recent: false,
+        from: 'sess-a', to: [], lastActivity: 1_000, recent: false,
       }],
     }
     // Two visible members only — still renders through the junction path? No:

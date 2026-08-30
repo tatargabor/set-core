@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import {
-  computeWireLayout, segmentTitle,
+  computeWireLayout, labelFor, segmentTitle,
   type ChannelsPayload, type WireLayout,
 } from '../lib/fleetWireLayout'
 
@@ -127,12 +127,36 @@ export default function FleetWirePanel({ payload }: { payload: ChannelsPayload |
                     .filter(s => s.room === j.room).flatMap(s => s.memberSeats)
                     .filter((s, i, a) => a.indexOf(s) === i),
                   lastActivity: layout.segments.find(s => s.room === j.room)?.lastActivity ?? null,
+                  label: { x: j.x, y: j.y - 10 },
                 }, Date.now())}</title>
                 <circle
                   data-fleet-wire-junction={j.room}
                   cx={j.x} cy={j.y} r={4}
                   className="fleet-wire-junction"
                 />
+              </g>
+            ))}
+            {/* One name per channel, at the wire's own midpoint / above the
+                junction. Rendered from the segments deduped by room — a fan's
+                segments all carry the same label. This is the channel's
+                IDENTITY standing where the reader stands, not a hover extra:
+                the user's own words after the first live view, seeing one bare
+                wire and not knowing it was the wpc-board room. */}
+            {[...new Map(layout.segments.map(s => [s.room, s])).values()].map(s => (
+              <g key={`label-${s.room}`} className="pointer-events-auto">
+                {/* The <title> lives on the wrapping <g>, NOT inside <text>:
+                    inside it, the hover text joins the text node and would
+                    render twice on some engines. */}
+                <title>{segmentTitle(s, Date.now())}</title>
+                <text
+                  data-fleet-wire-label={s.room}
+                  x={s.label.x}
+                  y={s.label.y}
+                  textAnchor="middle"
+                  className={s.active ? 'fleet-wire-label fleet-wire-label-active' : 'fleet-wire-label fleet-wire-label-idle'}
+                >
+                  {labelFor(s.room)}
+                </text>
               </g>
             ))}
             {layout.terminals.map(t => (

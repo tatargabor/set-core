@@ -94,6 +94,10 @@ export interface WireSegment {
   memberSeats: string[]
   /** Age of the channel's newest write in seconds, when known. */
   lastActivity: number | null
+  /** Where the channel's NAME sits — the wire's midpoint for a pair, above
+      the junction for a fan. A channel a reader cannot name is a wire they
+      cannot reason about; hover-only identity was measured invisible. */
+  label: { x: number; y: number }
 }
 
 export interface WireLayout {
@@ -159,7 +163,13 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
   const edges = (payload.edges ?? []).filter(e => {
     const members = (e.members ?? []).filter((s): s is string => typeof s === 'string')
     const live = members.filter(s => yByPid.has(pidBySession.get(s) ?? -1))
-    return live.length >= 2 && typeof e.room === 'string'
+    // A channel that NEVER had a write draws nothing. Two enrolled seats
+    // typically share a dozen dead rooms — measured live: eleven channels,
+    // one with a write in the last hour. Drawing all of them buries the one
+    // conversation the screen exists to show, which is the same
+    // "compacting must not hide a failure" failure in the opposite direction:
+    // drawing everything hides what matters.
+    return live.length >= 2 && typeof e.room === 'string' && e.lastActivity != null
   })
   const laneX = (index: number) =>
     Math.round(((index + 1) / (edges.length + 1)) * (gutterWidth - tx) + tx)
@@ -204,6 +214,9 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
         flow: sender ? 'sender' : 'receiver',
         active,
         kind: 'pair',
+        // The name rides the wire's outermost point — inside the bulge, at
+        // the vertical middle, where it cannot be mistaken for either row's.
+        label: { x: bulge, y: Math.round((from.y + to.y) / 2) },
         ...meta,
       })
       return
@@ -227,6 +240,9 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
         flow,
         active: active && (emphasize || sender == null || addressees.size === 0),
         kind: 'fan',
+        // Same label for every fan member — the component renders it once
+        // per room, above the junction where the wires converge.
+        label: { x: lx, y: junctionY - 10 },
         ...meta,
       })
     }
@@ -239,6 +255,13 @@ export function computeWireLayout(input: LayoutInput): WireLayout {
     junctions,
     segments,
   }
+}
+
+/** How much room name a 140px gutter can carry at label size. The full name
+    rides the hover; a truncated name that FITS beats a full name that
+    overprints its neighbours. */
+export function labelFor(room: string): string {
+  return room.length <= 16 ? room : `${room.slice(0, 15)}…`
 }
 
 /** Human sentence for a segment's hover — identity and recency, never content. */
