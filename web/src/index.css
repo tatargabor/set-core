@@ -55,6 +55,13 @@
   --color-status-planned: #a9afbc;
   --color-status-idle: #878a98;
 
+  /* The board strip's lane bands — one hue for all six stages on purpose. The
+     stages are ordered left-to-right and named in the legend; giving each its own
+     hue would make neighbours in a 10px-tall bar a colour-discrimination test.
+     Contrast against the page surface is ≥ 3:1, so a zero-width lane is a gap the
+     eye can still find. */
+  --color-lane-fill: #4e8fd0;
+
   /* ── Text: how loud, not what state ───────────────────────────────────────────────
      The five neutrals carry 880 of the tree's colour classes, and almost none of them are
      about state. Separating them is what lets the drift test say something true: after the

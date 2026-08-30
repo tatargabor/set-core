@@ -82,6 +82,17 @@ function installFetch(answers: (() => Promise<unknown>)[], layout: unknown = { v
         json: () => Promise.resolve({ turns: [], total_read: 0, truncated: false }),
       } as Response)
     }
+    // The project-status routes (the board strip) are answered OUTSIDE the queue,
+    // for the reason that put the layout route there: the screen asks them on its
+    // own schedule, and letting one consume a queue entry would shift every later
+    // answer by one — measured when the strip landed, as a fleetSurface failure
+    // whose only cause was the shifted queue.
+    if (String(url).includes('/project-status')) {
+      // A contract answer that declares no commands keeps the strip unmounted —
+      // these tests are about the surface, not the board.
+      const contract = { configured: true, commands: [], onDemand: [] }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(contract) } as Response)
+    }
     const next = answers[Math.min(i, answers.length - 1)]
     i += 1
     return next() as Promise<Response>

@@ -2479,3 +2479,39 @@ the producer has been told, while changing it is still cheap.
   hours because the process predated the breaking commit. B-125. This is the literal case of
   *a shipped commit is not a running system*, and it was found by accident.
 
+
+## 2026-08-30 — the board strip is wired into FleetView; the producer's `board` contract is consumed
+
+The producer posted the `board` envelope into `wpc-board` (00:36 FACT) and asked, on the
+user's behalf, that the strip reach the fleet screen "tonight" (01:18 REQUEST). Done the same
+night. **The framework took zero changes** — the strip consumes the board through the existing
+declaration-driven project-status route, the eighth time that design has held.
+
+**What shipped** (frontend only): `FleetBoardStrip` under the active project's header row in
+the fleet screen, plus `statusGapHints.ts` (GAP_HINT moved out of the Project Status page so
+both surfaces say the same thing about the same failure class).
+
+**The producer's three load-bearing points, honoured literally:** `data.lanes` renders as a
+plain ordered array → six bands; `stageOrder` is referenced nowhere on our side (inert is not
+acceptance — and note the tension with the 2026-08-29 entry above, which shipped a
+`stageOrder` half in the status TABLE: that is a different surface, and the fleet strip does
+not lean on it either way); empty lanes arrive as `count: 0` and draw as zero-width.
+`unknown` is drawn as a hatched amber tail OUTSIDE the bands — amber being this surface's
+reserved unknown colour — with the count in the legend, never folded into a band.
+`plannedNotOnBoard` and `coverage.complete: false` render as amber markers in the strip's
+header line, reasons in their tooltips. A failed command renders as a red gap with its class;
+a project that declares no board draws no strip.
+
+**Verified:** 8 new web unit tests (lane order/widths, legend, both honesty markers, gap
+rendering, no-declaration silence, shape-moved warning, all-zero board in words, poll
+cadence ≥ the transport cache); `tsc -b` clean; full web suite set-diffed (the only stable
+failure is B-129, pre-existing at HEAD; the fleet page flakes are B-130, measured with and
+without the strip). And the one that settles it: a look, in a browser, at the live strip
+against the live board — `board 180 cards · specified 2 · in-progress 29 · unknown 149`,
+`1 planned off board`, `coverage incomplete`. Screenshot taken; the producer was answered on
+the channel.
+
+**One measurement this work produced, about our own suite:** a queue-based fetch stub in the
+Fleet page tests consumes one entry per unmatched URL, so any new self-scheduled fetch the
+page makes shifts every later answer by one. The stub now answers the project-status routes
+flatly, for the same reason it already answered `/log` flatly.

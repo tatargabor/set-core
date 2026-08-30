@@ -3685,3 +3685,31 @@ consumer's name, path, or content.
 - **the cause, for the next reader:** the panel was `overflow-y-auto`, so it had no
   height to give, and every tile sized itself from its own text while the terminal
   took a guessed `62vh`.
+
+### B-129 — the usage strip renders an arbitrary 10px font size, breaking the design-drift gate on main
+- **state:** open
+- **reported:** 2026-08-30 by the board-strip session, running the design-drift suite
+  while wiring the fleet board strip.
+- **measured:** `cd web && npx vitest run tests/unit/designDrift.test.ts` —
+  "carries no arbitrary font size" fails with exactly one hit:
+  `components/FleetUsageStrip.tsx:113: <span className="text-[10px] text-fg-ghost shrink-0"`.
+  Introduced by `15d06462` ("feat(usage): a short label before each compact usage bar
+  pair"); the file is otherwise clean at HEAD. Pre-existing, not caused by the strip.
+- **what proves it fixed:** the same vitest file passes; `git grep -n 'text-\[10px\]' web/src`
+  returns nothing.
+
+### B-130 — the Fleet page suites flake under the in-flight agent-tree work, and the failing test MOVES between runs
+- **state:** open
+- **reported:** 2026-08-30 by the board-strip session while wiring the fleet board
+  strip — it initially looked like the strip's fault, which is exactly why it is
+  written down.
+- **measured:** `cd web && npx vitest run tests/unit/fleetSurface.test.tsx
+  tests/unit/fleetArrangement.test.tsx` run three times in minutes — different
+  tests fail each time (task 7.4 enlarged-toggle, "drops the phase", "renders a
+  waiting agent"), and the same failures occur with the strip **fully reverted**
+  from `Fleet.tsx` (revert → run → re-apply, no stash). Isolated single-file runs
+  also fail, so it is not parallel-file load. The working tree carries uncommitted
+  `FleetProjectColumn.tsx` / `fleetTypes.ts` edits (the agent branch/worktree line)
+  — the likely cause, still being written.
+- **what proves it fixed:** those two files pass on three consecutive runs once the
+  agent-tree work is committed; if they still flake then, the cause is elsewhere.

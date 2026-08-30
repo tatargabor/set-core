@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FleetProjectColumn from '../components/FleetProjectColumn'
 import { RestoreFromEmpty, RestoreForProject } from '../components/FleetRestore'
 import FleetPm from '../components/FleetPm'
+import FleetBoardStrip from '../components/FleetBoardStrip'
 import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetSplitter from '../components/FleetSplitter'
 import {
@@ -3590,6 +3591,11 @@ export default function Fleet() {
                   />
                 )}
               </div>
+              {/* The project's own board, read live through its contract. Renders
+                  nothing for a project that does not declare a `board` command —
+                  a project that publishes no board is the producer's decision, not
+                  a gap — and renders every failure once it does. See the component. */}
+              <FleetBoardStrip project={active.name} />
               {/* Task 4.2 — a panel whose KIND this build does not have.
                   Stated where the reader is standing, above the grid, rather
                   than only in the place it would have been rendered: the whole
