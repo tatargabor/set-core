@@ -117,7 +117,7 @@ Kiro's genuine innovations:
 | **Quality** | PBT + LSP diagnostics (35ms) + 10 hook types | Gate pipeline: build → test → E2E → review → smoke |
 | **Merge handling** | Opens PRs (never auto-merges) | Integration-gated merge queue with conflict resolution |
 | **Memory** | Steering files (4 modes) | Semantic memory with cross-session learning |
-| **Models** | Claude, DeepSeek, Qwen, auto-router | Claude only |
+| **Models** | Claude, DeepSeek, Qwen, auto-router | Claude Code harness; model switchable (GLM shipped) |
 | **Design integration** | None | Design pipeline (tokens, briefs, per-change design.md) |
 
 **What Kiro does better:** Property-Based Testing is genuinely novel — random test generation from spec properties that SET doesn't have. The Autonomous Agent handles 10 concurrent tasks across repos. Multi-model support with auto-routing. Lower barrier to entry. 10 hook trigger types (vs SET's orchestration-level hooks). For a single developer or small team wanting structured AI with quality feedback, Kiro is more accessible.
@@ -142,7 +142,7 @@ Aider is a CLI-based AI pair programmer — interactive, lightweight, model-agno
 
 **What Aider does genuinely better than SET (and most alternatives):**
 - **Git integration** — best-in-class. Every edit auto-committed with meaningful messages. Full undo via `git revert`. No other tool matches this.
-- **Model flexibility** — supports virtually every LLM provider. Easy mid-session model switching. SET is Claude-only.
+- **Model flexibility** — supports virtually every LLM provider. Easy mid-session model switching. SET's harness is Claude Code only; its model is switchable via `providers.json` (GLM shipped, measured).
 - **Repo map** — tree-sitter-based symbol map gives the LLM structural codebase awareness efficiently. Smart context management.
 - **Cost efficiency** — careful token usage, transparent cost tracking per message.
 - **Edit format innovation** — matches diff format to model capability (diff, whole-file, udiff). Genuine innovation.
@@ -194,7 +194,7 @@ Augment Intent (public beta, February 2026, macOS only) is architecturally the m
 | **Specs** | Living specs (auto-updating) | OpenSpec with delta specs + archive |
 | **Agents** | Coordinator + specialists + verifier | Planner + Ralph Loop + sentinel |
 | **Isolation** | Worktree "Spaces" | Git worktrees |
-| **Models** | Multi-model (Claude, Codex, etc.) | Claude only |
+| **Models** | Multi-model (Claude, Codex, etc.) | Claude Code harness; model switchable (GLM shipped) |
 | **Quality** | Verifier agent | 7 deterministic gates (exit codes) |
 | **Merge** | Not documented | Integration-gated merge queue |
 | **Platform** | macOS only (desktop app) | Linux/macOS (CLI + web) |
@@ -230,7 +230,7 @@ Different category entirely. Lovable is an app builder for non-developers — pr
 
 | Tool | Parallel Agents | Worktree Isolation | Structured Specs | Quality Gates | Merge Pipeline | Supervisor | Cloud Exec | Multi-Model |
 |---|---|---|---|---|---|---|---|---|
-| **SET** | Yes | Yes | Yes (OpenSpec) | Yes (9 gates) | Yes | Yes (Sentinel) | No (local) | Claude only |
+| **SET** | Yes | Yes | Yes (OpenSpec) | Yes (9 gates) | Yes | Yes (Sentinel) | No (local) | Claude Code (model switchable) |
 | Augment Intent | Yes (coordinator) | Yes (Spaces) | Yes (living specs) | Verifier agent | Not documented | No | No | Yes (multi) |
 | Claude Code | Experimental (Teams) | Yes (subagents) | No | Hooks (DIY) | No | No | No | Claude only |
 | Cursor | Yes (local 8 + cloud) | Yes (worktrees + VMs) | No | No (~30% PR merge) | No | No | Yes | Multi-model |
@@ -518,9 +518,9 @@ Each module implements the `ProjectType` ABC: `detect_test_command()`, `detect_e
 
 ### Can I use this without Claude Code?
 
-No. SET is built specifically for Claude Code and goes deeper into its capabilities (worktrees, hooks, MCP, skills, subagents). This is by design — SET doesn't abstract over LLMs. It leverages Claude's strengths (long context, tool use, code understanding) fully.
+No — the **harness** stays Claude Code. SET is built specifically for it and goes deeper into its capabilities (worktrees, hooks, MCP, skills, subagents); the orchestration, gates, and state management assume that tool surface.
 
-**This is a deliberate trade-off.** Tools like Aider, Roo Code, and Cline support any LLM provider. SET bets on Claude getting better and compounds that bet. If you need model flexibility, SET is not the right choice.
+**The model behind the harness is not fixed, though.** A single machine-level `providers.json` declares providers and credentials with per-project overrides — GLM is measured and shipped (endpoint, context-window launch parameters, and the known failure modes are documented), and a missing configuration stops loudly rather than falling back silently. What SET deliberately does not do is abstract over the tool harness: tools like Aider, Roo Code, and Cline support any CLI. SET bets on Claude Code and compounds that bet. See [provider configuration](../reference/configuration.md#provider-configuration-providersjson).
 
 ### Can this run on-premise?
 
@@ -546,7 +546,7 @@ Honest gaps where competitors are ahead — these inform our development roadmap
 | Gap | Who does it better | Notes |
 |---|---|---|
 | **Cloud execution** | Cursor BGA, Devin, Copilot | SET requires a running local machine. Cloud agents work while you sleep. |
-| **Model flexibility** | Aider, Roo Code, Cline | SET is Claude-only by design. No GPT, Gemini, or local model support. |
+| **Model flexibility** | Aider, Roo Code, Cline | The harness is Claude Code by design; the model behind it is switchable per machine/project via `providers.json` (GLM shipped and measured). No per-call model router. |
 | **IDE integration** | Kiro, Cursor, Windsurf | SET is CLI + web dashboard. No VS Code/JetBrains plugin for in-editor orchestration control. |
 | **Zero-setup simplicity** | Copilot, Cline, Cursor | SET requires pip install, project init, orchestration config. Others are install-and-go. |
 | **GitHub Issue → PR** | Copilot Coding Agent | SET works from specs, not from issue trackers. No native Jira/Linear/GitHub Issue integration. |
@@ -659,7 +659,7 @@ CI/CD assumes someone creates the PR. SET creates the PRs, validates them, merge
 
 Because depth beats breadth. SET leverages Claude-specific capabilities: 200K+ context for large codebases, native tool use for file operations, worktree support for isolation, hooks for memory injection, MCP for external integrations. Abstracting to a lowest-common-denominator API would sacrifice these capabilities for theoretical portability. SET bets on Claude getting better — and compounds that bet.
 
-This is a trade-off. If Claude Code changes its API or another model becomes dramatically better, SET's Claude-only approach becomes a liability. We accept this risk for the depth advantage.
+This is a trade-off. If Claude Code changes its API, SET's harness commitment becomes a liability. The model side of that bet is now hedged — `providers.json` swaps the model behind the same harness — but the harness risk itself we accept for the depth advantage.
 
 ### What's the competitive moat?
 

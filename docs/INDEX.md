@@ -28,7 +28,7 @@ Navigation map for finding the right doc based on your role and goal.
 | Doc | Description |
 |-----|-------------|
 | [cli.md](reference/cli.md) | Complete CLI command reference |
-| [configuration.md](reference/configuration.md) | Config files and options |
+| [configuration.md](reference/configuration.md) | Config files, options, and provider credentials (`providers.json`) |
 | [architecture.md](reference/architecture.md) | Technical design and layer model |
 | [plugins.md](reference/plugins.md) | Project type system |
 | [screenshot-pipeline.md](reference/screenshot-pipeline.md) | Auto-generated documentation screenshots |

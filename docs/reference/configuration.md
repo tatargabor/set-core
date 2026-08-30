@@ -177,6 +177,68 @@ Supported editors: `zed` (primary), `vscode`, `cursor`, `windsurf`.
 
 ![set-config editor list](../images/auto/cli/set-config-editor-list.png)
 
+## Provider Configuration (providers.json)
+
+One machine-level file holds every provider credential: **`~/.config/set-core/providers.json`**,
+mode `0600` (honouring `XDG_CONFIG_HOME`). The framework **refuses to read it** when the mode
+says group-readable — it holds credentials. Every set project inherits it by *reading* it;
+nothing copies it into a project tree, and the deploy path never writes one.
+
+```json
+{
+  "version": 1,
+  "default": { "provider": "glm", "model": "glm-5.3-flash" },
+  "providers": {
+    "anthropic": { "models": ["haiku", "sonnet", "opus"], "requires_credential": false,
+                   "credential": null, "default_model": "opus", "env": {}, "args": [] },
+    "glm": {
+      "models": ["glm-5.3-flash"],
+      "requires_credential": true,
+      "default_model": "glm-5.3-flash",
+      "credential": { "token": "…", "base_url": "https://api.z.ai/api/anthropic" },
+      "env": { "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000" },
+      "args": ["--autocompact", "700k"],
+      "model_aliases": { "sonnet": "glm-5.3" }
+    }
+  },
+  "projects": {
+    "some-project": { "provider": "glm", "model": "glm-5.3" }
+  }
+}
+```
+
+The rules the resolver enforces (spec: `agent-provider-config`):
+
+- **Precedence has three levels** — machine default → per-project override → the request
+  itself. The model may come from a different level than the provider; the **credential and
+  its `base_url` are one block** and never split across levels (a key is issued for one
+  endpoint — splitting them yields a 401 or the wrong bill).
+- **`requires_credential` is declared, never inferred.** `true` with `credential: null` is a
+  legitimate "declared but not configured" state: the launch refuses loudly instead of
+  reaching an unauthenticated endpoint.
+- **An absent or unreadable configuration fails loudly.** There is no fallback to another
+  provider — a silent fallback would run the task anyway, and nothing would say which
+  framework executed it.
+- **The model catalogue is data, not code** — adding a model or provider means editing this
+  file, nothing else.
+
+```bash
+set-providers path        # where the file is expected
+set-providers show        # content, token masked — never prints a credential
+set-providers list        # the catalogue a surface is offered
+set-providers migrate     # carry an older ~/.config/set-core/glm.env over, one command
+```
+
+An in-repo `.env` with `GLM_*` lines is **discontinued** as a credential source — a run
+names that explicitly instead of reporting "token not found". Only the `GLM_`-prefixed lines
+are ever read from a legacy file, so a `source .env` cannot drag `ANTHROPIC_API_KEY` along.
+
+For GLM specifically, the measured endpoint, model names, context-window env and the three
+failure modes (gateway-prefixed model names, autocompact needing
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS`, compact thrashing that looks like a slow model) are in
+`.claude/skills/set/glm/SKILL.md`; `set-glm --check` verifies the configuration with a live
+probe call.
+
 ## Environment Variables
 
 Common `.env` variables used by set-core and consumer projects:

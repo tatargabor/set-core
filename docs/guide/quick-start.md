@@ -125,6 +125,7 @@ Now that you have seen the full loop, explore these guides to go deeper:
 - **[Dashboard](dashboard.md)** -- Every tab of the web monitoring UI
 - **[Memory](memory.md)** -- Cross-session knowledge in the native per-repository memory
 - **[Configuration](../reference/configuration.md)** -- `orchestration.yaml`, profiles, and project-type plugins
+- **[Model providers](../reference/configuration.md#provider-configuration-providersjson)** -- run on GLM behind the same harness: one machine-level credential file, per-project overrides, `set-glm --check` to verify
 
 ---
 
