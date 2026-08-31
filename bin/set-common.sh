@@ -681,11 +681,10 @@ set_model_prefix() {
 # (CLI/ENV/yaml/profile/DIRECTIVE_DEFAULTS). Falls through to the
 # positional <fallback> when the Python lookup returns nothing.
 #
-# `opus` shorthand resolves to 4.6 (the framework default after
-# unified-models). `opus-4-7` must be pinned explicitly via
-# `models.agent: opus-4-7` (or use `--model-profile all-opus-4-7`).
-# Mirrors _MODEL_MAP in lib/set_orch/subprocess_utils.py — keep both
-# sides in sync.
+# `opus` shorthand resolves to the current release (currently 5).
+# Explicit version pins (`opus-4-6`, `opus-4-7`, `opus-5`) are
+# available for operators who want to lock a specific version.
+# Mirrors DEFAULT_MODEL_IDS in lib/set_orch/providers/defaults.py.
 resolve_model_id() {
     local config_yaml="" role=""
     while [[ $# -gt 0 ]]; do
@@ -733,16 +732,19 @@ except Exception:
     case "$name" in
         haiku)        echo "${prefix}claude-haiku-4-5-20251001" ;;
         sonnet)       echo "${prefix}claude-sonnet-4-6" ;;
-        # `opus` alias resolves to 4.6 (the framework default). Pin
-        # `opus-4-7` explicitly for 4.7. Mirrors _MODEL_MAP in
-        # lib/set_orch/subprocess_utils.py — keep both sides in sync.
-        opus)         echo "${prefix}claude-opus-4-6" ;;
-        opus-1m)      echo "${prefix}claude-opus-4-6[1m]" ;;
+        # `opus` alias resolves to 5 (the current release). Pin
+        # `opus-4-6` or `opus-4-7` explicitly for older versions. Mirrors
+        # DEFAULT_MODEL_IDS in lib/set_orch/providers/defaults.py.
+        opus)         echo "${prefix}claude-opus-5" ;;
+        opus-1m)      echo "${prefix}claude-opus-5[1m]" ;;
         sonnet-1m)    echo "${prefix}claude-sonnet-4-6[1m]" ;;
         opus-4-6)     echo "${prefix}claude-opus-4-6" ;;
         opus-4-7)     echo "${prefix}claude-opus-4-7" ;;
+        opus-4-8)     echo "${prefix}claude-opus-4-8" ;;
+        opus-5)       echo "${prefix}claude-opus-5" ;;
         opus-4-6-1m)  echo "${prefix}claude-opus-4-6[1m]" ;;
         opus-4-7-1m)  echo "${prefix}claude-opus-4-7[1m]" ;;
+        opus-5-1m)    echo "${prefix}claude-opus-5[1m]" ;;
         *)            echo "$name" ;;  # pass through full IDs
     esac
 }

@@ -2,8 +2,9 @@
 
 Asserts that every Python file in lib/set_orch/ and modules/web/set_project_web/
 contains zero hardcoded short-model-name string literals (`"opus"`, `"sonnet"`,
-`"haiku"`, `"opus-4-6"`, `"opus-4-7"`, `"sonnet-1m"`, `"opus-1m"`,
-`"opus-4-6-1m"`, `"opus-4-7-1m"`) outside of:
+`"haiku"`, `"opus-4-6"`, `"opus-4-7"`, `"opus-4-8"`, `"opus-5"`,
+`"sonnet-1m"`, `"opus-1m"`, `"opus-4-6-1m"`, `"opus-4-7-1m"`,
+`"opus-5-1m"`) outside of:
 
   - lib/set_orch/config.py            (canonical defaults table)
   - lib/set_orch/model_config.py      (resolver + presets + last-resort fallbacks)
@@ -46,8 +47,8 @@ EXEMPT_FILES: set[Path] = {
 SHORT_MODEL_NAMES = (
     "haiku", "sonnet", "opus",
     "sonnet-1m", "opus-1m",
-    "opus-4-6", "opus-4-7",
-    "opus-4-6-1m", "opus-4-7-1m",
+    "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
+    "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m",
 )
 
 

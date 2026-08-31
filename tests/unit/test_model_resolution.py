@@ -1,14 +1,13 @@
 """Unit tests for short model name → full Claude model ID resolution.
 
 Two implementations must stay in sync:
-- Python: lib/set_orch/subprocess_utils.py::resolve_model_id / _MODEL_MAP
+- Python: lib/set_orch/providers/defaults.py::DEFAULT_MODEL_IDS
 - Bash:   bin/set-common.sh::resolve_model_id
 
 These tests pin the contract:
-- `opus` shorthand resolves to the project-wide default (currently 4.7)
-- Explicit `opus-4-6` and `opus-4-7` pins are available for operators who
-  want to lock a specific version (e.g. `default_model: opus-4-6` in
-  orchestration config to opt out of 4.7's token cost)
+- `opus` shorthand resolves to the current release (currently 5)
+- Explicit `opus-4-6`, `opus-4-7` etc. pins are available for operators who
+  want to lock a specific version
 - Bash and Python resolvers MUST agree on every short name
 """
 
@@ -30,14 +29,14 @@ SET_COMMON = REPO_ROOT / "bin" / "set-common.sh"
 
 
 def test_opus_default_pins_current_release():
-    """`opus` shorthand resolves to the project-wide default (currently
-    4.6). Update this test together with _MODEL_MAP when the default
+    """`opus` shorthand resolves to the current release (currently 5).
+    Update this test together with DEFAULT_MODEL_IDS when the default
     moves — that change is intentional, not accidental."""
-    assert resolve_model_id("opus") == "claude-opus-4-6"
+    assert resolve_model_id("opus") == "claude-opus-5"
 
 
 def test_opus_1m_default_pins_current_release():
-    assert resolve_model_id("opus-1m") == "claude-opus-4-6[1m]"
+    assert resolve_model_id("opus-1m") == "claude-opus-5[1m]"
 
 
 def test_explicit_opus_4_6_pin():
@@ -51,6 +50,15 @@ def test_explicit_opus_4_7_pin_still_available():
     assert resolve_model_id("opus-4-7-1m") == "claude-opus-4-7[1m]"
 
 
+def test_explicit_opus_5_pin():
+    assert resolve_model_id("opus-5") == "claude-opus-5"
+    assert resolve_model_id("opus-5-1m") == "claude-opus-5[1m]"
+
+
+def test_explicit_opus_4_8_pin():
+    assert resolve_model_id("opus-4-8") == "claude-opus-4-8"
+
+
 def test_sonnet_haiku_unchanged():
     assert resolve_model_id("sonnet") == "claude-sonnet-4-6"
     assert resolve_model_id("sonnet-1m") == "claude-sonnet-4-6[1m]"
@@ -61,8 +69,7 @@ def test_full_id_passthrough():
     """Unknown names (full model IDs) pass through unchanged."""
     assert resolve_model_id("claude-opus-4-7") == "claude-opus-4-7"
     assert resolve_model_id("claude-sonnet-4-6") == "claude-sonnet-4-6"
-    # Future-proof: a hypothetical 5.0 string passes through
-    assert resolve_model_id("claude-opus-5-0") == "claude-opus-5-0"
+    assert resolve_model_id("claude-opus-5") == "claude-opus-5"
 
 
 # ─── Bash mirror — verify shell map matches Python ──────────────────────
@@ -88,7 +95,8 @@ def test_bash_python_parity():
     """The bash and python resolvers MUST agree on every short name."""
     short_names = [
         "haiku", "sonnet", "opus", "opus-1m", "sonnet-1m",
-        "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m",
+        "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
+        "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m",
     ]
     for name in short_names:
         py = resolve_model_id(name)
@@ -101,13 +109,12 @@ def test_bash_python_parity():
 
 def test_bash_opus_default():
     """Standalone bash check — `opus` in shell pins the same default
-    as Python (currently 4.6)."""
-    assert _bash_resolve("opus") == "claude-opus-4-6"
+    as Python (currently 5)."""
+    assert _bash_resolve("opus") == "claude-opus-5"
 
 
 def test_bash_explicit_opus_4_6():
-    """The explicit `opus-4-6` pin works in bash (the operator's
-    escape hatch for token economy)."""
+    """The explicit `opus-4-6` pin works in bash."""
     assert _bash_resolve("opus-4-6") == "claude-opus-4-6"
 
 
@@ -115,22 +122,26 @@ def test_bash_explicit_opus_4_7():
     assert _bash_resolve("opus-4-7") == "claude-opus-4-7"
 
 
+def test_bash_explicit_opus_5():
+    assert _bash_resolve("opus-5") == "claude-opus-5"
+
+
 # ─── Config validation regex ────────────────────────────────────────────
 
 
 def test_config_regex_accepts_new_aliases():
-    """`default_model` config entry must validate the new opus-4-6/4-7
+    """`default_model` config entry must validate the new model
     aliases — otherwise users can't pin them via orchestration config."""
     from set_orch.config import _VALIDATORS as DIRECTIVE_VALIDATORS
 
     pattern = DIRECTIVE_VALIDATORS["default_model"][1]
     regex = re.compile(pattern)
-    for name in ("opus", "opus-4-6", "opus-4-7", "opus-4-6-1m", "opus-4-7-1m",
+    for name in ("opus", "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
+                 "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m",
                  "sonnet", "sonnet-1m", "haiku"):
         assert regex.match(name), f"regex rejects valid alias '{name}'"
     # Negative: random strings rejected
-    assert not regex.match("opus-5-0")
-    assert not regex.match("claude-opus-4-6")  # full IDs not accepted via config
+    assert not regex.match("claude-opus-5")  # full IDs not accepted via config
 
 
 def test_review_summarize_models_use_same_regex():

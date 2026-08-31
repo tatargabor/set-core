@@ -59,10 +59,10 @@ MODEL_NAME_RE: str = r"^(" + "|".join(ANTHROPIC_MODEL_NAMES) + r")$"
 # supervisor/canary checks. Trigger sub-dict maps trigger types to the
 # model used when that trigger fires.
 #
-# IMPORTANT: `agent` default is `opus-4-6` (NOT `opus`, which aliases
-# to `opus-4-7`). This is the new framework default introduced by the
-# `model-config-unified` change. Operators wanting the prior behavior
-# set `models.agent: opus-4-7` (or use `--model-profile all-opus-4-7`).
+# IMPORTANT: `agent` default is `opus-4-6` (an explicit version pin).
+# `opus` shorthand resolves to the current release (currently 5).
+# These pins keep orchestration on a known-good version; operators
+# wanting a different model set `models.agent: opus-5` etc.
 _DEFAULT_MODELS: dict[str, Any] = {
     "agent": "opus-4-6",
     "agent_small": "sonnet",
