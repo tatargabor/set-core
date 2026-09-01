@@ -36,6 +36,8 @@ let handler: ((e: KeyboardEvent) => boolean) | null = null
 let term: any = null
 let opened: string[] = []
 let execCommand: ReturnType<typeof vi.fn>
+let selChange: (() => void) | null = null
+let writes: Uint8Array[] = []
 
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { /* geometry is elsewhere */ } } }))
@@ -50,11 +52,14 @@ vi.mock('@xterm/xterm', () => ({
     focus() { /* no keyboard in jsdom */ }
     dispose() { /* nothing to release */ }
     resize() { /* geometry is elsewhere */ }
-    write() { /* no bytes here */ }
+    write(b: Uint8Array) { writes.push(b) }
     onData() { return { dispose() { /* no listener */ } } }
     attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { handler = fn }
     getSelection() { return this._sel }
-    clearSelection() { this._sel = '' }
+    // Real xterm fires its selection-change event when the selection clears —
+    // the component's pause machinery hangs off that event, so the mock must too.
+    clearSelection() { this._sel = ''; selChange?.() }
+    onSelectionChange(fn: () => void) { selChange = fn; return { dispose() { /* nothing */ } } }
   },
 }))
 
@@ -62,11 +67,13 @@ import FleetTerminal from '../../src/components/FleetTerminal'
 
 class FakeSocket {
   static OPEN = 1
+  static last: FakeSocket | null = null
   readyState = 1
   binaryType = ''
   onmessage: ((e: { data: unknown }) => void) | null = null
   onerror: (() => void) | null = null
   onclose: (() => void) | null = null
+  constructor() { FakeSocket.last = this }
   send() { /* nothing measured here */ }
   close() { /* nothing to tear down */ }
 }
@@ -96,6 +103,9 @@ const notice = () => document.querySelector('[data-fleet-terminal-copied]')
 
 beforeEach(async () => {
   handler = null; term = null; opened = []
+  selChange = null
+  writes = []
+  FakeSocket.last = null
   // jsdom does not implement execCommand; the stub stands in for the real
   // browser's synchronous copy. The REFUSAL path flips this to `false`.
   execCommand = vi.fn(() => true)
@@ -156,10 +166,70 @@ describe('the empty-selection Ctrl+C is not silent', () => {
     await waitFor(() => expect(notice()?.textContent).toContain('Shift'))
   })
 
-  it('stays the designed silence when the reader owns the mouse', () => {
+  it('says the interrupt was SENT when the reader owns the mouse', async () => {
+    // Changed deliberately in round 5 — this previously asserted silence. A
+    // bare Ctrl+C on a long-running agent session is a real act (SIGINT), and
+    // an act without a receipt is exactly how a reader confuses "my copy
+    // failed" with "nothing happened". The notice is the receipt.
     term._sel = ''
     expect(handler!(key({ ctrlKey: true, key: 'c' }))).toBe(true)
-    expect(notice()).toBeNull()
+    await waitFor(() => expect(notice()?.textContent).toContain('interrupt'))
+  })
+
+  it('carries the round tag on success and failure alike', async () => {
+    term._sel = 'tagged'
+    handler!(key({ ctrlKey: true, key: 'c' }))
+    await waitFor(() => expect(notice()?.textContent).toContain('r5'))
+    execCommand.mockReturnValue(false)
+    term._sel = 'tagged failure'
+    handler!(key({ ctrlKey: true, key: 'c' }))
+    await waitFor(() => expect(notice()?.textContent).toContain('not copied'))
+    expect(notice()?.textContent).toContain('r5')
+  })
+})
+
+describe('round 5 — the stream pauses while a selection is held', () => {
+  const feed = (bytes: number[]) =>
+    FakeSocket.last!.onmessage!({ data: new Uint8Array(bytes).buffer } as unknown as MessageEvent)
+
+  it('queues output while text is selected, and flushes when it clears', async () => {
+    term._sel = 'the reader is selecting'
+    selChange!()
+    feed([104, 105])
+    // Nothing written: a write would scroll and destroy the very selection.
+    expect(writes).toHaveLength(0)
+    await waitFor(() => expect(document.querySelector('[data-fleet-terminal-paused]')).toBeTruthy())
+    term._sel = ''
+    selChange!()
+    expect(writes).toHaveLength(1)
+    await waitFor(() => expect(document.querySelector('[data-fleet-terminal-paused]')).toBeNull())
+  })
+
+  it('releases the hold on Escape', async () => {
+    term._sel = 'held'
+    selChange!()
+    feed([104])
+    expect(writes).toHaveLength(0)
+    expect(handler!(key({ key: 'Escape' }))).toBe(false)
+    expect(term.getSelection()).toBe('')
+    expect(writes).toHaveLength(1)
+  })
+
+  it('resumes with an announcement when the pause buffer overflows', async () => {
+    vi.useFakeTimers()
+    term._sel = 'held against a firehose'
+    selChange!()
+    feed(new Array(16).fill(120)) // warm the queue
+    // Overflow: the component announces BEFORE clearing, and clearing flushes.
+    feed(new Array(20).fill(120).map((_, i) => i % 256))
+    // (sizes matter, not contents — send the cap itself)
+    FakeSocket.last!.onmessage!({ data: new Uint8Array(1_000_001).buffer } as unknown as MessageEvent)
+    await vi.advanceTimersByTimeAsync(0)
+    vi.useRealTimers()
+    await waitFor(() => expect(notice()?.textContent).toContain('output resumed'))
+    expect(term.getSelection()).toBe('')
+    // The queued bytes were flushed, not dropped: 16 + 20 + 1_000_001 arrived.
+    expect(writes).toHaveLength(3)
   })
 })
 

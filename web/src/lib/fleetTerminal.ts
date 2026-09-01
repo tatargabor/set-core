@@ -462,6 +462,21 @@ export function mouseIsTakenByAgent(el: Element | null | undefined): boolean {
 export type CopyOutcome = { ok: true; chars: number } | { ok: false; reason: string } | null
 
 /**
+ * The round tag the copy notices carry, so a reader's one-line report names the
+ * exact build that produced it. Four rounds of copy fixes passed every test and
+ * failed a real hand (B-60 → B-65); the tag turns "it doesn't work" into "the
+ * r5 notice said X", which is a measurement. Bump it with every mechanism change.
+ */
+export const COPY_FIX_TAG = 'r5'
+
+/**
+ * How much output may queue while the reader holds a selection and the stream
+ * is paused. Past this, resuming is honest: the alternative is an unbounded
+ * buffer on a chatty agent, or silently dropping bytes a terminal must show.
+ */
+export const SELECTION_PAUSE_CAP_BYTES = 1_000_000
+
+/**
  * Put the selection on the clipboard, and SAY what happened.
  *
  * The outcome is returned rather than swallowed because a clipboard write can be

@@ -6,11 +6,13 @@ import {
 } from '../lib/fleetFiles'
 import {
   type AttachedEvent,
+  COPY_FIX_TAG,
   type CopyOutcome,
   copySelection,
   isAmbiguousCopyKey,
   type PasteOutcome,
   pastedImage,
+  SELECTION_PAUSE_CAP_BYTES,
   uploadPastedImage,
   isCopyRequest,
   isPasteRequest,
@@ -225,6 +227,9 @@ interface TerminalLike {
   registerLinkProvider(provider: {
     provideLinks(lineNumber: number, callback: (links: TerminalLink[] | undefined) => void): void
   }): { dispose(): void }
+  /** Optional in the type and guarded at the call site: an emulator without
+   *  selection events must degrade the round-5 pause, not kill the pane. */
+  onSelectionChange?(fn: () => void): { dispose(): void }
 }
 
 type Phase =
@@ -266,6 +271,17 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   */
   const [mouseTaken, setMouseTaken] = useState(false)
   const [copied, setCopied] = useState<CopyOutcome>(null)
+  /*
+    Round 5 (B-65): the stream PAUSES while the reader holds a selection. An
+    agent that streams output scrolls the screen, and xterm clears the
+    selection on the scroll — which would make "select, then Ctrl+C" physically
+    impossible on any busy agent, and is the suspect that fits all four failed
+    rounds. While a selection exists, incoming bytes queue instead of writing;
+    the chip tells the reader the stream is held, and clearing the selection
+    flushes. Without the chip, a paused stream is a frozen terminal — the
+    false-calm shape this codebase refuses.
+  */
+  const [outputPaused, setOutputPaused] = useState(false)
   /*
     `pasted` is deliberately silent on SUCCESS — the reader's decision, and the
     typed path is its own receipt. It speaks while an upload is in flight and
@@ -412,7 +428,50 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         window.clearTimeout(copyNoticeTimer.current)
         copyNoticeTimer.current = window.setTimeout(() => setCopied(null), 2500)
       }
+
+      /*
+        ROUND 5 — THE STREAM PAUSES WHILE A SELECTION EXISTS.
+
+        The suspect that fits all four failed rounds: the agents on this screen
+        STREAM OUTPUT, xterm clears the selection when new bytes scroll the
+        screen, and so "select, then Ctrl+C" was a race the reader lost every
+        time — the highlight evaporated between the drag and the keypress,
+        nothing there was to copy, and (before round 4's notices) nothing said
+        so. The mechanics of copying were never the only defect; the HOLDING of
+        the selection was.
+
+        So the viewer behaves like tmux's copy-mode: while text is selected,
+        incoming bytes QUEUE instead of writing; clearing the selection — by
+        copy, by click, by Escape — flushes them in order. The pty keeps
+        flowing; only the render holds. The cap turns a chatty agent into an
+        honest announcement rather than an unbounded buffer.
+      */
+      let selectionPaused = false
+      let pausedChunks: Uint8Array[] = []
+      let pausedBytes = 0
+      const flushPaused = () => {
+        const batch = pausedChunks
+        pausedChunks = []
+        pausedBytes = 0
+        for (const chunk of batch) term.write(chunk)
+      }
+      const selectionWatch = term.onSelectionChange?.(() => {
+        const has = !!term.getSelection()
+        if (has === selectionPaused) return
+        selectionPaused = has
+        setOutputPaused(has)
+        if (!has) flushPaused()
+      })
+
       term.attachCustomKeyEventHandler(e => {
+        /*
+          Escape while the stream is held: release the hold — the same act as
+          clicking elsewhere, on the keyboard the reader is already using.
+        */
+        if (e.type === 'keydown' && e.key === 'Escape' && selectionPaused) {
+          term.clearSelection()
+          return false
+        }
         /*
           Declining the keystroke is the ENTIRE paste fix — see `isPasteRequest`.
           xterm consults this handler before it cancels the event, so returning
@@ -437,19 +496,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           const text = term.getSelection()
           if (!text) {
             /*
-              Round 4 closes the last SILENT path: a reader who dragged without
-              Shift while the agent owns the mouse selected nothing, pressed
-              Ctrl+C to copy, and got — nothing. The interrupt still goes to the
-              agent (that part is designed, and it is what a bare Ctrl+C means),
-              but now the notice says both halves: why nothing copied, and what
-              to do instead.
+              Round 4 closes the last SILENT paths, and round 5 makes the two
+              distinguishable — which one the reader sees IS the diagnostic:
+              "the agent is reading the mouse" means the drag selected nothing
+              (Shift was not held); "interrupt" means a selection was made and
+              then lost, most likely to streaming output before the pause
+              existed. Both halves are stated: why nothing copied, and what
+              happened to the key.
             */
             if (mouseIsTakenByAgent(host.current?.querySelector('.xterm'))) {
               announce({
                 ok: false,
                 reason:
-                  'nothing is selected — hold Shift and drag over the text, then Ctrl+C (a bare Ctrl+C goes to the agent as an interrupt)',
+                  'no selection: the agent is reading the mouse — hold Shift and drag, then Ctrl+C (this Ctrl+C still went to the agent as an interrupt)',
               })
+            } else {
+              announce({ ok: false, reason: 'no selection — Ctrl+C was sent to the agent as an interrupt' })
             }
             return true
           }
@@ -725,7 +787,6 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         }
         // Bytes, straight through. No decode: see the header of this file.
         const bytes = new Uint8Array(ev.data as ArrayBuffer)
-        term.write(bytes)
         // The replay is counted DOWN, not detected. `replayed_bytes` is exact
         // and the server sends it before a single byte, so the end of the
         // replay is arithmetic rather than a guess about timing.
@@ -733,6 +794,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           replayLeft -= bytes.length
           if (replayLeft <= 0) settle()
         }
+        /*
+          Round 5: while the reader holds a selection, the render holds — the
+          bytes queue and flush in order when the selection clears. Past the
+          cap, resuming beats an unbounded buffer: the announcement says why
+          the terminal started moving again.
+        */
+        if (selectionPaused) {
+          pausedChunks.push(bytes)
+          pausedBytes += bytes.length
+          if (pausedBytes > SELECTION_PAUSE_CAP_BYTES) {
+            announce({ ok: false, reason: 'output resumed — more than 1 MB arrived while the selection was held' })
+            term.clearSelection()
+          }
+          return
+        }
+        term.write(bytes)
       }
       ws.onerror = () => {
         setPhase(p => (p.kind === 'attached' ? p : { kind: 'refused', reason: 'the connection was not established' }))
@@ -809,6 +886,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         el.removeEventListener('copy', onCopy)
         el.removeEventListener('mousedown', onMouseDown, true)
         el.removeEventListener('contextmenu', onContextMenu)
+        selectionWatch?.dispose()
         classWatch.disconnect()
         termRef.current = null
         copyRef.current = null
@@ -1109,12 +1187,22 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
             label="the agent is reading the mouse — hold Shift while dragging to select text"
           />
         )}
+        {outputPaused && (
+          <span
+            className="text-xs shrink-0 text-sky-400"
+            data-fleet-terminal-paused="yes"
+            title="the stream resumes when the selection clears — copy it, click elsewhere, or press Escape"
+          >
+            output paused — copy, click away or Esc
+          </span>
+        )}
         {copied && (
           <span
             className={`text-xs shrink-0 ${copied.ok ? 'text-emerald-400' : 'text-amber-400'}`}
             data-fleet-terminal-copied={copied.ok ? 'yes' : 'no'}
           >
             {copied.ok ? `copied ${copied.chars} chars` : `not copied: ${copied.reason}`}
+            {` · ${COPY_FIX_TAG}`}
           </span>
         )}
         {/*
