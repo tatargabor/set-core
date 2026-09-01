@@ -70,10 +70,19 @@ describe('the count — the screen’s own needs-a-person classes', () => {
 
 describe('the title', () => {
   it('carries the count in parentheses', () => {
-    expect(tabTitle('SET', 2)).toBe('SET (2)')
+    expect(tabTitle('SET', 2)).toBe('⚠️ SET (2)')
   })
   it('is the plain base at zero — never “SET (0)”', () => {
     expect(tabTitle('SET', 0)).toBe('SET')
+  })
+  it('turns green when a process is ready and nobody needs input', () => {
+    expect(tabTitle('SET', 0, 3)).toBe('🟢 SET')
+  })
+  it('the warning wins over the green — a person needed outranks a result available', () => {
+    expect(tabTitle('SET', 1, 5)).toBe('⚠️ SET (1)')
+  })
+  it('green at zero ready is still plain', () => {
+    expect(tabTitle('SET', 0, 0)).toBe('SET')
   })
 })
 

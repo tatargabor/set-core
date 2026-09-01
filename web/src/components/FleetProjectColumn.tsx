@@ -1110,7 +1110,7 @@ export default function FleetProjectColumn({
   */
   const [tabBadge, setTabBadge] = useState<boolean>(() => loadTabBadge())
   useEffect(() => {
-    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0)
+    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0, tabBadge ? totals.quiet : 0)
     return () => {
       document.title = 'SET'
     }

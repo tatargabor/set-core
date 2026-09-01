@@ -42,9 +42,22 @@ export function needsPerson(t: Tally): number {
   return t.input + t.prompt
 }
 
-/** `SET (2)` while somebody is needed, plain `SET` when nobody is. */
-export function tabTitle(base: string, count: number): string {
-  return count > 0 ? `${base} (${count})` : base
+/**
+ * The title, with its tone — asked 2026-09-01, in the same breath as the badge:
+ * a warning emoji while input is needed, a green circle when a process is
+ * ready to be read.
+ *
+ * The warning wins over the green, and the ordering is the screen's own:
+ * a person being NEEDED is more urgent than a result being AVAILABLE, and a
+ * title that must be read at a glance cannot show both at once. Ready counts
+ * `quiet` agents — a turn that ended with nothing outstanding — so green means
+ * "something finished, come read it", and it yields the moment anybody needs
+ * you again.
+ */
+export function tabTitle(base: string, count: number, ready = 0): string {
+  if (count > 0) return `⚠️ ${base} (${count})`
+  if (ready > 0) return `🟢 ${base}`
+  return base
 }
 
 /** ON unless this browser said otherwise — the asker should not hunt for a setting. */
