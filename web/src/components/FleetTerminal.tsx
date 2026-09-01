@@ -328,8 +328,6 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   /** The copy act itself, installed by the effect once the emulator exists. */
   const copyRef = useRef<(() => void) | null>(null)
   const pasteNoticeTimer = useRef<number | undefined>(undefined)
-  /** Whether the browser asked us for the copy data — the proof a copy happened. */
-  const nativeCopy = useRef(false)
   /** The notice's own timer, so a second copy does not inherit the first's. */
   const copyNoticeTimer = useRef<number | undefined>(undefined)
 
@@ -392,21 +390,21 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
 
       /*
         COPY — B-60, reported 2026-08-22 as *"copy-pase mintha nem mene a
-        terminal ablakokban most"*.
+        terminal ablakokban most"*, and fixed in four rounds — each one's
+        refutation is recorded in `openspec/bugs/README.md` (B-60 → B-65).
+        Round 4 (2026-09-01) is the one that survived a real hand: the PANEL
+        performs the copy, synchronously, inside the gesture that asked for
+        it — Ctrl+C with a selection, or a right-click on one. It must never
+        go back to waiting for the browser to copy by itself: xterm's
+        selection is not a DOM selection, so the browser never had anything
+        to copy.
 
         Measured on a live agent: selection itself was never broken. What was
-        missing is the route into it and out of it, and both halves have the same
-        cause — the agent's TUI turns on mouse tracking, so the mouse belongs to
-        the program and every keystroke belongs to the pty.
-
-        `Ctrl+C` is deliberately NOT the copy key. In a terminal it is `SIGINT`,
-        and these are long-running sessions where an accidental interrupt costs
-        real work — so the key is the one Linux terminal emulators already use,
-        and it is intercepted BEFORE the emulator, because xterm's own `copy`
-        listener never fires: the core swallows the keystroke into the pty first.
-
-        Returning `false` means the keystroke does not reach the agent at all,
-        which is the point: a copy must not also be an input.
+        missing is the route into it and out of it, and the INTO half has a
+        permanent constraint — the agent's TUI turns on mouse tracking, so a
+        plain drag belongs to the program, and selecting needs Shift. The
+        empty-selection Ctrl+C below keeps that constraint from failing in
+        silence.
       */
       const announce = (outcome: CopyOutcome) => {
         if (outcome === null) return
@@ -437,53 +435,62 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         */
         if (isAmbiguousCopyKey(e)) {
           const text = term.getSelection()
-          if (!text) return true
+          if (!text) {
+            /*
+              Round 4 closes the last SILENT path: a reader who dragged without
+              Shift while the agent owns the mouse selected nothing, pressed
+              Ctrl+C to copy, and got — nothing. The interrupt still goes to the
+              agent (that part is designed, and it is what a bare Ctrl+C means),
+              but now the notice says both halves: why nothing copied, and what
+              to do instead.
+            */
+            if (mouseIsTakenByAgent(host.current?.querySelector('.xterm'))) {
+              announce({
+                ok: false,
+                reason:
+                  'nothing is selected — hold Shift and drag over the text, then Ctrl+C (a bare Ctrl+C goes to the agent as an interrupt)',
+              })
+            }
+            return true
+          }
           /*
-            B-65 — GET OUT OF THE WAY, exactly as the paste fix does.
+            B-65, round 4 — the panel performs the copy HERE, synchronously,
+            inside the keystroke. Round 3 assumed the browser's own copy would
+            act on xterm's selection, and the reader refuted that in their own
+            visible tab on 2026-09-01: both Ctrl+C and right-click copy failed
+            on the served, fixed bundle. The reason was structural, not
+            contextual: xterm's selection is not a DOM selection — the browser
+            never had anything to copy. The earlier refusals of `execCommand`
+            were measured in a HIDDEN automation tab, a context the reader is
+            never in; from a real keystroke in a real tab, the synchronous
+            copy inside the gesture is the one path that has always worked
+            (it is what clipboard libraries have used for a decade).
 
-            Two rounds were spent making the panel perform the copy itself, and
-            both failed in the browser while passing every test: the async
-            clipboard API never answered, and the synchronous one is refused
-            wherever the browser does not consider the document eligible. The
-            reader's last report is what redirects this — *"ha egér jobb gomb
-            akkor is eltűnik a kijelölés de nem másolja"*. A path that fails for
-            the KEY and for the MOUSE alike is not a keyboard problem.
-
-            So: decline the keystroke and let the browser copy. Declining is what
-            made paste work, and it is the same mechanism here — xterm consults
-            this handler before it cancels, so returning `false` leaves the
-            browser's own copy command running on the selection that is already
-            there. Nothing is cleared here: clearing it synchronously would
-            destroy the very selection the browser is about to copy.
+            `copySelection` runs its synchronous write first, within this call
+            stack, while the keystroke's transient activation is alive. The
+            selection is cleared only AFTER the outcome, so the interrupt
+            stays one keystroke away without destroying the copy in flight.
           */
-          nativeCopy.current = false
-          window.setTimeout(() => {
-            if (nativeCopy.current) return
-            // The browser never asked us for the data, so its copy did not
-            // happen. Only now is a clipboard API worth trying — and whatever it
-            // answers is announced, so this path cannot end in silence.
-            void copySelection(text).then(outcome => {
-              announce(outcome ?? { ok: false, reason: 'the browser did not copy' })
-              term.clearSelection()
-            })
-          }, 400)
+          void copySelection(text).then(outcome => {
+            announce(outcome)
+            term.clearSelection()
+          })
           return false
         }
         return true
       })
 
       /*
-        The copy EVENT is the proof, and that is why the announcement hangs off
-        it rather than off our own call. The browser fires it to ask who owns the
-        data; answering means the copy is really happening, for `Ctrl+C` and for
-        the context menu alike. Setting the data explicitly also guarantees what
-        lands is the terminal's selection rather than whatever the DOM happens to
-        have selected.
+        The copy EVENT stays as the safety net for a copy the BROWSER drives —
+        if one ever fires, the data it carries must be the terminal's selection
+        and not whatever the DOM happens to have selected. It is no longer the
+        primary path (round 4: the panel copies itself, inside the gesture),
+        because a native copy never had anything to act on — xterm's selection
+        is not a DOM selection.
       */
       const onCopy = (ev: ClipboardEvent) => {
         const text = term.getSelection()
         if (!text) return
-        nativeCopy.current = true
         ev.clipboardData?.setData('text/plain', text)
         ev.preventDefault()
         announce({ ok: true, chars: text.length })
@@ -492,6 +499,37 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         window.setTimeout(() => term.clearSelection(), 0)
       }
       host.current.addEventListener('copy', onCopy)
+
+      /*
+        RIGHT-CLICK COPIES — B-65, round 4, the gesture the reader actually
+        tried and the one that could never work as a menu action: the
+        right-button mousedown clears xterm's selection (measured by the
+        reader: *"eltűnik a kijelölés de nem másolja"*), and the menu's Copy
+        item acts on DOM selections xterm does not make. So the panel does the
+        copy itself: the selection is captured on the way DOWN, before the
+        emulator clears it, and the context menu turns into the copy.
+
+        With nothing selected the menu is left entirely alone — dev tools and
+        the browser's own actions stay reachable.
+      */
+      let rightDownSelection = ''
+      const onMouseDown = (ev: MouseEvent) => {
+        // Capture phase: this runs before xterm's own mousedown clears it.
+        if (ev.button === 2) rightDownSelection = term.getSelection()
+      }
+      const onContextMenu = (ev: MouseEvent) => {
+        const text = term.getSelection() || rightDownSelection
+        rightDownSelection = ''
+        if (!text) return
+        ev.preventDefault()
+        void copySelection(text).then(outcome => {
+          announce(outcome)
+          term.clearSelection()
+        })
+      }
+      host.current.addEventListener('mousedown', onMouseDown, true)
+      host.current.addEventListener('contextmenu', onContextMenu)
+
       copyRef.current = () => {
         const text = term.getSelection()
         if (!text) {
@@ -769,6 +807,8 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         window.clearTimeout(pasteNoticeTimer.current)
         el.removeEventListener('paste', onPaste, true)
         el.removeEventListener('copy', onCopy)
+        el.removeEventListener('mousedown', onMouseDown, true)
+        el.removeEventListener('contextmenu', onContextMenu)
         classWatch.disconnect()
         termRef.current = null
         copyRef.current = null

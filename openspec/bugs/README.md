@@ -1892,7 +1892,22 @@ consumer's name, path, or content.
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
 
 ### B-65 — the panel was doing the copy itself; the browser was going to do it
-- **state:** open (fix shipped, browser confirmation outstanding)
+- **state:** open (B-65's own fix REFUTED in the real browser 2026-09-01 — round 4 in flight)
+- **refuted, measured 2026-09-01:** the reader, in their own visible tab, on the served
+  bundle that verifiably contains the B-65 code (`index-BeWfgT0_.js` carries the fix's
+  strings; `set-web` restarted 09:13 that morning): **"I can't right click copy, or just
+  select then Ctrl+C."** Both gestures of the fixed-when condition, failing together, is
+  the finding: the design assumed the browser's own copy machinery would act on xterm's
+  selection. It cannot — **xterm's selection is not a DOM selection** (B-60's own
+  measurement: `window.getSelection()` empty), and the right-click mousedown clears the
+  xterm selection before the context menu opens, so the menu's Copy item acts on nothing.
+  The browser was never going to do this copy. Round 3's mechanism was derived from a
+  hidden-tab measurement of `execCommand` returning `false` — a context the reader is
+  never in — which is the same defect class the entry itself names: measuring a
+  different system. Round 4 returns the copy to the panel, performed synchronously
+  inside the user gesture (real keydown / contextmenu, transient activation intact —
+  the context `execCommand` has always worked in), and makes right-click-with-selection
+  a copy in its own right.
 - **reported:** 2026-08-23 by the user, third round — *"beillesztés szöveg ment copy még nem"*,
   and then the observation that redirected the whole thing: *"semmi nem jelenik meg es ha eger
   jobb gomb akkor is eltunik a kijeloles de nem masolja"*.
@@ -3749,3 +3764,11 @@ consumer's name, path, or content.
 - **measured:** the fleet discovery lists this session (pid 2445628, harness session id `2854f26e-8abe-…`, tile `set-core-subproject-lines`) with `seat=null`; the bus roster holds the SAME session as `set-core#e832b7ce` (`sac whoami`: "writer: set-core#e832b7ce (this session)"; `sac agents --json` contains `e832b7ce`). The join in `fleet/channels.py` keys the roster by harness session id, so a seat whose suffix derives from something other than the harness uuid never joins — the tile reads "no seat on the messaging bus", its writes reach the bus (channel file created in `channels/wpc-board/`) but never light up its own node. Sibling sessions whose sac suffix DOES match their harness id (e.g. `set-core#547efd3b` ↔ node `547efd3b-09c8…`) join fine, which is why the drift is invisible most of the time.
 - **fail direction:** false absence on the live view plus a misleading "no seat" instruction — the seat exists; the two identity systems disagree about the id.
 - **fixed when:** a live session whose sac seat exists joins its own node regardless of which id each system derived, with a test feeding a roster whose session id differs from the discovery session id.
+
+### B-135 — three web unit tests fail on a clean tree, none of them from the copy fix
+- **state:** open
+- **reported:** 2026-09-01 by this session, running the full web suite while verifying the B-65 round-4 fix.
+- **measured:** `npx vitest run` under Node v24 (Node 18 cannot even load jsdom 29 — see the environment note under B-60's round 4): 3 failed / 1422 passed, and the same 3 files fail with the copy fix stashed, so they pre-exist it: `tests/unit/designDrift.test.ts` ("carries no arbitrary font size — the scale is 12/14/16"), `tests/unit/fleetPanels.test.ts` ("is exactly this list, so adding a kind is a decision and not a drift"), `tests/unit/fleetSurface.test.tsx` ("leaves every other agent in a tab that carries its state", "drops the phase where the header is already shouting it").
+- **fail direction:** drift guards failing means drift may already be IN the tree — a font size off the scale, a panel kind added without a decision. These are exactly the guards that go quiet when everybody assumes the suite is green.
+- **fixed when:** each of the three tests passes on its own merits — either the guarded file is brought back under its guard, or the guard is widened as a recorded decision with the reason in the test.
+- **environment note:** `npx vitest` with the shell's default `/usr/bin/node` (v18.19.1) dies before running anything — `jsdom@29` → `html-encoding-sniffer@6` requires `@exodus/bytes` ESM, which only `require()`s on Node ≥ 22.12. The suite must run under the nvm Node (v24.15.0). Worth wiring into the test script so the next session does not re-derive this.
