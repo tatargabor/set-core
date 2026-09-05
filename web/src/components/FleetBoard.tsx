@@ -332,6 +332,12 @@ export default function FleetBoard({
   // which is a decision of the project's, not a gap of anyone's.
   const [declares, setDeclares] = useState<boolean | null>(() => declaresCache.get(project) ?? null)
   const [result, setResult] = useState<StatusCommandResult | null>(() => answerCache.get(project)?.result ?? null)
+  // Whether the status query has ANSWERED at all. `result` alone cannot carry
+  // this: an answer that names no board command leaves `result` null forever
+  // (the poll only stores a truthy board), and `!result` then renders a blank
+  // pane for a contract that SAID it has a board — silence where the reader
+  // was promised one. Same false-absence direction as `declares === false`.
+  const [answered, setAnswered] = useState(false)
   const [answeredAt, setAnsweredAt] = useState<number | null>(() => answerCache.get(project)?.at ?? null)
   const [failed, setFailed] = useState<string | null>(null)
   const [releaseChoice, setReleaseChoice] = useState<string | 'all' | null>(null)
@@ -366,6 +372,10 @@ export default function FleetBoard({
 
   useEffect(() => {
     if (!declares || !project) return
+    // A new query is NOT an answered one — switching projects must not inherit
+    // the previous project's answered flag, or its gap note would stand over
+    // an answer that has not arrived yet.
+    setAnswered(false)
     let timer: ReturnType<typeof setTimeout>
     let inFlight = false
 
@@ -383,6 +393,7 @@ export default function FleetBoard({
         .then(res => {
           if (!alive.current) return
           setFailed(null)
+          setAnswered(true)
           const board = res.commands?.board ?? null
           if (board) {
             const at = Date.now()
@@ -403,7 +414,26 @@ export default function FleetBoard({
     return () => { clearTimeout(timer); fetchRef.current = null }
   }, [declares, project])
 
-  if (declares === null || declares === false) return null
+  if (declares === null) return null
+
+  // A project that declares NO board is a decision of the project's, not a gap
+  // of anyone's — but a decision that renders as a blank pane is the
+  // false-absence shape: seen 2026-09-06 with this very repository selected,
+  // whose contract answers `configured: false` — the maximised board tab sat
+  // over a completely empty pane, saying nothing about why. The INLINE summary
+  // stays silent (that surface has its own open/close button and must not
+  // grow a permanent block); a PANEL the reader deliberately opened — or
+  // maximised — has to say what it is looking at.
+  if (declares === false) {
+    if (!projectName) return null
+    return (
+      <div data-fleet-board-strip="not-declared"
+           className="mt-1 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs text-amber-300">
+        board — {projectName} declares no status contract, so there is no board to show.
+        This is the project's own answer, not a read failure.
+      </div>
+    )
+  }
 
   // The transport route itself is unreachable. A gap answer (below) is the project
   // saying it cannot; this is set-core saying IT cannot. Both belong on screen.
@@ -416,7 +446,22 @@ export default function FleetBoard({
     )
   }
 
-  if (!result) return null
+  if (!result && !answered) return null
+
+  // The contract SAID this project has a board, the status route answered,
+  // and the answer named no board command. Not the reader's gap to guess at:
+  // name the contradiction where the board was promised. (Result-less only
+  // because a truthy board WOULD have been stored above; with a result the
+  // normal flow — gap or lanes — takes over below.)
+  if (!result) {
+    return (
+      <div data-fleet-board-strip="no-command"
+           className="mt-1 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs text-amber-300">
+        board — the status route answered but carried no board command, though the
+        contract declared one. The project's board contract has moved.
+      </div>
+    )
+  }
 
   if (!result.ok) {
     const hint = result.errorClass ? GAP_HINT[result.errorClass] : undefined

@@ -43,21 +43,23 @@ function agent(pid: number, name: string, extra: Json = {}): Json {
   }
 }
 
-const fleet = (agents: Json[]): Json => ({
+const fleet = (agents: Json[], name = 'demo'): Json => ({
   agents: agents.length,
   working: 0,
   unknown: 0,
   owner_reachable: true,
-  projects: [{ name: 'demo', root: '/home/x/demo', sources: ['process'], archived: false, agents }],
+  projects: [{ name, root: `/home/x/${name}`, sources: ['process'], archived: false, agents }],
   quiet_means: 'no outstanding tool call as of the session log’s last flush',
 })
 
 /**
  * The board answers its contract probe, or its tile renders null and there is
  * nothing to maximise — the probe is what stands between the test and the
- * panel's chrome.
+ * panel's chrome. `opts` lets a test vary the producer's own answers: a
+ * contract that declares nothing, or a status answer that carries no board
+ * command — the two producer shapes that used to render as blank panes.
  */
-function installFetch(body: Json) {
+function installFetch(body: Json, opts: { contract?: Json; boardCommand?: Json | null } = {}) {
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     const u = String(url)
     if (u.includes('/api/fleet/layout')) {
@@ -69,7 +71,7 @@ function installFetch(body: Json) {
     if (u.includes('/project-status/contract')) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({
+        json: () => Promise.resolve(opts.contract ?? {
           configured: true, source: 'manifest', command: 'set-project-status',
           commands: ['board'], writeCommands: [], primary: 'board',
         }),
@@ -82,7 +84,7 @@ function installFetch(body: Json) {
         // result without lanes is drawn as a shape-error strip, not a panel.
         json: () => Promise.resolve({
           project: 'demo', ok: true, gaps: {},
-          commands: { board: { ok: true, data: { lanes: [], unknown: 0, total: 0 } } },
+          commands: { board: { ok: true, data: { lanes: [], unknown: 0, total: 0 } }, ...opts.boardCommand },
         }),
       } as Response)
     }
@@ -93,8 +95,8 @@ function installFetch(body: Json) {
   }))
 }
 
-async function show(body: Json) {
-  installFetch(body)
+async function show(body: Json, opts: { contract?: Json; boardCommand?: Json | null } = {}) {
+  installFetch(body, opts)
   const view = render(<Fleet />)
   await waitFor(() => expect(view.container.querySelector('[data-fleet-ownership]')).toBeTruthy())
   return view
@@ -182,6 +184,39 @@ describe('a maximised board joins the tab strip', () => {
     fireEvent.click(panelTab(container, 'board'))
     await waitFor(() => expect(boardTile(container)!.getAttribute('data-fleet-board-max')).toBe('on'))
     expect(fileTile(container)!.getAttribute('data-fleet-file-max')).toBe('off')
+  })
+})
+
+describe('a board that is not there says so — seen 2026-09-06 on a real project', () => {
+  /**
+   * A project whose contract answers `configured: false` (this repository's
+   * own answer, measured live) used to render as a BLANK maximised pane under
+   * an active "board" tab — no title bar, no message, nothing. A gap is not a
+   * zero, and a deliberate "no" is not a blank either.
+   */
+  it('names a project that declares no board instead of rendering a blank pane', async () => {
+    const { container } = await show(fleet([agent(1, 'a1')]), {
+      contract: { configured: false, source: null, command: null, commands: [], writeCommands: [], primary: null },
+    })
+    // NOT `openBoard`: these two cases render a strip INSTEAD of the panel
+    // chrome, so the maximise control these tests wait on never arrives —
+    // that absence is the point under test.
+    fireEvent.click(container.querySelector('[data-fleet-board-open]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-board-strip="not-declared"]')).toBeTruthy())
+  })
+
+  /**
+   * The contract SAID there is a board, the route answered, the answer carried
+   * no board command — `result` stays null forever, which used to mean a blank
+   * pane under a promised board. The contradiction belongs on screen.
+   */
+  it('says the contract moved when the answer carries no board command', async () => {
+    // A DIFFERENT project than the tests above: the answer cache is
+    // module-level and by design renders its last valid board instantly on
+    // remount — reusing 'demo' would show test 1's cached board, not the gap.
+    const { container } = await show(fleet([agent(11, 'p2-a1')], 'demo-two'), { boardCommand: { board: null } })
+    fireEvent.click(container.querySelector('[data-fleet-board-open]')!)
+    await waitFor(() => expect(container.querySelector('[data-fleet-board-strip="no-command"]')).toBeTruthy())
   })
 })
 
