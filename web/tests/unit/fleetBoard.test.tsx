@@ -464,6 +464,66 @@ describe('the release selector', () => {
     expect(container.querySelector('[data-fleet-board-release-offboard]')).toBeNull()
   })
 
+  it('the tray narrows to the draft — the whole-board unknown must not head a draft column', async () => {
+    // ⚠ THE REGRESSION. `unknown` was taken from `data.unknown` unconditionally, so it was the
+    // ONE count on this surface that ignored the release filter. Measured on a real board,
+    // 2026-09-05: under the open draft every other column narrowed to the draft's 16 items
+    // while the tray still read `unknown 187` above ZERO rendered cards — the board said
+    // "16 real cards and 187 unknown ones". The direction is the damaging one: it overstates
+    // how little is understood, and the reader took the whole view for a bug.
+    const { container } = await renderDraft()
+    const tray = container.querySelector('[data-fleet-board-tray]')
+    // the draft places both its items in a lane (one on-board `specified`, one off-board),
+    // so the draft's own unknown is 0 — and the tray must not claim the board's 149
+    expect(tray?.textContent ?? '').not.toContain('149')
+
+    // …and "all cards" brings the whole-board figure straight back
+    fireEvent.change(container.querySelector('[data-fleet-board-release-selector]')!,
+                     { target: { value: 'all' } })
+    expect(container.querySelector('[data-fleet-board-tray]')!.textContent).toContain('149')
+  })
+
+  it("a draft item in NO lane counts as that draft's unknown — from its membership, not the board", async () => {
+    install(u => {
+      if (u.includes('/project-status/contract')) return CONTRACT
+      if (u.includes('commands=board')) {
+        const b = boardWithDraft()
+        // the producer places this member in no band at all
+        b.data.releasePlanned[0].items.push({
+          kind: 'ticket', ref: 'SET-0090', id: 'SET-0090', onBoard: true, lane: 'unknown',
+          title: 'no signal', openTarget: null, reason: null,
+        } as never)
+        b.data.releasePlanned[0].onBoardCount = 2
+        return { commands: { board: b } }
+      }
+      return undefined
+    })
+    const r = render(<FleetBoard project="p" />)
+    await rendered(r.container)
+    const tray = r.container.querySelector('[data-fleet-board-tray]')!
+    // ONE — the draft's own figure. Not 149 (the whole board), not 0 (a blanket narrowing).
+    expect(tray.textContent).toContain('1')
+    expect(tray.textContent).not.toContain('149')
+    expect(r.container.querySelector('[data-fleet-board-card="SET-0090"]')).toBeTruthy()
+  })
+
+  it('the columns SAY which population they count — a visible line, not a tooltip', async () => {
+    // Under a draft the strip counts the whole board and the columns count the draft. That is
+    // the 2026-08-30 design, and it is also what the same reader took for a bug on two separate
+    // days, from opposite directions. A `title=` cannot fix that: nobody hovers a number they
+    // already believe they understand.
+    const { container } = await renderDraft()
+    const note = container.querySelector('[data-fleet-board-scope-note]')!
+    expect(note.textContent).toContain('v1.24.0')
+    expect(note.textContent).toContain('columns')
+    expect(note.textContent).toContain('strip')
+
+    // it belongs to the FILTER, so the all-cards view drops it — there is nothing to explain
+    fireEvent.change(container.querySelector('[data-fleet-board-release-selector]')!,
+                     { target: { value: 'all' } })
+    expect(container.querySelector('[data-fleet-board-scope-note]')).toBeNull()
+  })
+
   it('no releasePlanned in the answer — no selector, every card shows', async () => {
     install(u => {
       if (u.includes('/project-status/contract')) return CONTRACT
