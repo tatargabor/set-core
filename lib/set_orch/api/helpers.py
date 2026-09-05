@@ -281,7 +281,12 @@ def _worktree_porcelain(project_path: Path) -> str:
         logger.warning("worktree list failed for %s: %s", project_path, type(exc).__name__)
         return ""
     if result.returncode != 0:
-        logger.warning("worktree list returned %s for %s", result.returncode, project_path)
+        # Debug, not warning: the common non-zero here is 128 — the path is
+        # simply not a git repository, which on a machine full of checkouts,
+        # dot-directories and archived runs is a normal answer, not an anomaly.
+        # Measured 2026-09-06 (B-139): 7 roots logged this on every fleet
+        # listing, so a healthy server produced the warning continuously.
+        logger.debug("worktree list returned %s for %s", result.returncode, project_path)
         return ""
     return result.stdout
 

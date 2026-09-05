@@ -445,10 +445,16 @@ def read(
 
     stored = document.get("projects", {}).get(project, {})
     last_round = document.get(LAST_ROUND_FIELD)
+    # One index scan serves every entry below. `_session_log_for` per id walks
+    # the whole transcript tree once PER ID — measured 2026-09-06 (B-139): a
+    # record holding 380 entries paid 380 full walks (~8 ms each) for one scan's
+    # (~14 ms) worth of answer. The index resolves each id to the same path that
+    # function returns — same search space, same first-of-duplicates rule.
+    log_index = discovery.session_log_index(log_root)
     entries: List[Dict[str, Any]] = []
     for key, entry in stored.items():
         session_id = entry.get("session_id")
-        log = discovery._session_log_for(session_id, log_root) if session_id else None
+        log = log_index.get(session_id) if session_id else None
         if log:
             resumable, reason = True, None
         elif not session_id:

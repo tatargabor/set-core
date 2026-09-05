@@ -384,9 +384,32 @@ def _declared_stage_axis(project_root: Optional[str]) -> Optional[tuple]:
     reads as "use the derived flow" — a broken or absent contract must never
     blank the fleet's stages, and must never take the fleet endpoint down.
     Logs a shape, never a value: what a project declares is its own vocabulary.
+
+    The ask is LAZY, and two measurements from 2026-09-06 (B-139) are why:
+
+    - **The walk stops at the first declarer.** `declared_axis_from_results`
+      returns the first answer that declares a stage order, so asking the
+      commands after it buys nothing. Queries run in declaration order, each
+      answer is checked as it lands, and the walk returns the moment one
+      declares — the winner is by construction the same answer the batch call
+      used to pick.
+    - **A catalogue that declares nothing is not re-walked every cycle.** A
+      project whose every command answers without declaring an axis — measured:
+      15 commands, 39 s of subprocess work per 30 s cache window, axis `None`
+      every time — used to pay that every cycle for a value that never arrives.
+      The empty verdict is remembered here for
+      `AXIS_ABSENT_RESCAN_SECONDS` (in memory, like everything on this path —
+      the verdict names no domain value) and the catalogue is re-walked only
+      after that, so a project adding a declaration is picked up, late by at
+      most the rescan window.
     """
     if not project_root:
         return None
+    deadline = _AXIS_ABSENT.get(project_root)
+    if deadline is not None:
+        if deadline > time.monotonic():
+            return None
+        _AXIS_ABSENT.pop(project_root, None)  # window over — re-walk once
     try:
         cfg = _status_config(project_root)
     except Exception as exc:  # a broken registry of one project must not blank the rest
@@ -394,23 +417,32 @@ def _declared_stage_axis(project_root: Optional[str]) -> Optional[tuple]:
         return None
     if cfg is None or not cfg.commands:
         return None
-    results = []
     for name in cfg.commands:
         if name in cfg.on_demand:
             continue  # too expensive to ask automatically — by the project's own word
         try:
-            results.append(_cached_query(Path(project_root), name, cfg, False))
+            result = _cached_query(Path(project_root), name, cfg, False)
         except Exception as exc:
             logger.debug("fleet stage: contract answer failed (%s)", type(exc).__name__)
-    if not results:
-        return None
-    return fleet_stage.declared_axis_from_results(results)
+            continue
+        axis = fleet_stage.declared_axis_from_results([result])
+        if axis is not None:
+            _AXIS_ABSENT.pop(project_root, None)
+            return axis
+    _AXIS_ABSENT[project_root] = time.monotonic() + AXIS_ABSENT_RESCAN_SECONDS
+    return None
 
 
 #: What the framework installs, read once per process. It is derived from THIS
 #: checkout's own template sources, so it changes only when the deployed code
 #: changes — re-deriving it per project per poll would walk the manifests 41
 #: times for an answer that cannot differ between them.
+#: project root → monotonic deadline, while the whole declared catalogue has been
+#: walked and answered WITHOUT declaring a stage axis. In memory only, like every
+#: other derived value on this path. See `_declared_stage_axis` for the measurement.
+_AXIS_ABSENT: Dict[str, float] = {}
+AXIS_ABSENT_RESCAN_SECONDS = 900.0
+
 _FRAMEWORK_CAPS: List[Any] = []
 
 
@@ -668,8 +700,12 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
         purposes = fleet_purpose.read_purposes(project.root) if project.root else []
         # The project's declared flow, asked ONCE for the project — the answer
         # is the same for every agent under it, and the cache it rides on is
-        # per project too.
-        declared = _declared_stage_axis(project.root)
+        # per project too. Only when the project HAS agents: the axis joins
+        # through an agent's stage (`_agent_payload` below), so a project with
+        # nobody in it has no reader for the answer. Measured 2026-09-06
+        # (B-139): the listing walked 49 projects against 7 live agents, and
+        # the contract ask was the dominant cost of the endpoint.
+        declared = _declared_stage_axis(project.root) if members else None
         grouped.append({
             "name": project.name,
             "root": project.root,

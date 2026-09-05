@@ -2685,3 +2685,30 @@ Live state, stated honestly: the producer RESTARTED its session right after arch
 and the new 26 KB record names no change yet — so the row currently shows the
 `join-failed` gap (⚠ stage?), which is true. When the session names a change, the strip
 resolves; if it re-references the archived one, the anchor holds it at `archive`.
+
+## 2026-09-06 — the contract read path stopped eating the machine (B-139)
+
+The user's report: the machine was being eaten continuously. Measured chain:
+`serve → <consumer contract command snapshot> → check-bug-regression-tests.sh →
+python3` — the fleet listing re-asked the project's whole declared catalogue
+every 30 s cache window (39 s of toolchain work per 30 s, for a stage axis that
+NO command declares), with no single-flight, so ~4 concurrent contract
+subprocesses ran continuously and the bug gate's python pass sat at 100 % CPU ×2.
+Load average 9.2; `GET /api/fleet/agents` 34–40 s against a 5 s poll.
+
+Three set-core-side mechanisms shipped (no contract change — what is asked,
+answered and displayed is untouched, only how often the framework chooses to
+ask): LAZY axis ask stopping at the first declarer with a 900 s absence
+re-walk; single-flight per (project, command) plus a duration-aware TTL; and
+the roster's transcript lookups collapsed from 380 per-id tree walks to one
+index scan. Verified live: contract children 4 → 0, load 9.2 → 1.8, warm
+endpoint 39 s → 0.32 s, `roster.read` ×21 2.68 s → 0.77 s. B-139 stays open on
+its sub-second HTTP pass condition — the remaining adder is GIL contention
+between the other pollers' intrinsic costs (`_enrich_changes` 0.85 s, roster
+0.77 s). Two pre-existing test debts surfaced while verifying: B-140, B-141.
+
+Note for the consumer side, raised on the channel: their `snapshot` contract
+command runs the fail-closed bug-regression gate on every read — a ~10 s
+100 %-CPU regex pass over the whole test corpus. With the framework's new TTL
+that is now asked at most ~once per 2.5 min instead of continuously, but a
+read command that gate-checks is worth a look on their side.

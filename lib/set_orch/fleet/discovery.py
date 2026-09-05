@@ -204,6 +204,12 @@ def _session_log_for(session_id: str, log_root: Path = SESSION_LOG_ROOT) -> Opti
     A missing log is reported as missing. There is deliberately no fallback to
     "the newest log in this project" — measured at 4 correct of 9, and its
     failures are confident wrong answers rather than absences.
+
+    One lookup walks every project directory under the root (measured 2026-09-06:
+    ~3000 of them, ~8 ms warm), which is the right price for a single question —
+    and pure waste for a caller that must answer many ids at once. That caller
+    should build `session_log_index()` once and read it; the two agree on every
+    id, including which path wins when two projects hold the same session id.
     """
     if not session_id:
         return None
@@ -211,6 +217,39 @@ def _session_log_for(session_id: str, log_root: Path = SESSION_LOG_ROOT) -> Opti
     if not matches:
         return None
     return str(matches[0])
+
+
+def session_log_index(log_root: Path = SESSION_LOG_ROOT) -> Dict[str, str]:
+    """Every transcript under the root, keyed by session id — one scan.
+
+    Selection matches `_session_log_for` exactly: when two project directories
+    hold the same session id, the lexicographically first path wins, which is
+    what that function's `sorted(...)[0]` picks. Measured 2026-09-06 (B-139): a
+    full scan of ~3000 project directories costs ~14 ms, against ~8 ms PER ID
+    for the per-id glob — a roster read over 380 entries paid 380 scans for one
+    scan's worth of answer.
+    """
+    index: Dict[str, str] = {}
+    try:
+        root_entries = list(os.scandir(log_root))
+    except OSError:
+        # A root that cannot be read holds no transcript — the same answer the
+        # per-id glob's empty match list gives for a missing root.
+        return index
+    for entry in root_entries:
+        try:
+            if not entry.is_dir():
+                continue
+            for child in os.scandir(entry.path):
+                name = child.name
+                if name.endswith(".jsonl"):
+                    session_id = name[:-len(".jsonl")]
+                    path = child.path
+                    if session_id not in index or path < index[session_id]:
+                        index[session_id] = path
+        except OSError:
+            continue  # a directory that cannot be read holds no answer we owe
+    return index
 
 
 # --------------------------------------------------------------------------- #
