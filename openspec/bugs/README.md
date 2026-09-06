@@ -3762,7 +3762,7 @@ consumer's name, path, or content.
 
 ### B-136 — the task 7.4 tab-strip tests in `fleetSurface.test.tsx` are flaky: the enlarge control is sometimes not in the DOM when the click fires
 - **state:** open
-- **reported:** 2026-09-05 by a peer session (wpc-pont-15) reading the full-suite results, then verified and narrowed by this session.
+- **reported:** 2026-09-05 by a peer session reading the full-suite results, then verified and narrowed by this session.
 - **measured:** `npx vitest run tests/unit/fleetSurface.test.tsx -t "one tile enlarged"` fails on COMMITTED code, repeatedly, in both worlds: with the tab-strip/maximise change (`736d6182`) 1–2 of 3 tests fail per run; with `736d6182`'s Fleet.tsx swapped out for its predecessor (`HEAD~1`) 1–3 of 3 fail per run — so the flake predates that change and is not caused by it. Failure shape: `Unable to fire a "click" event - please provide a DOM element` at the `fireEvent.click(container.querySelector('[data-fleet-enlarged-toggle…]'))` line — the control is queried without a `waitFor` and is not there yet. In FULL-suite runs the same tests pass or fail run-to-run on identical code (measured across four runs), which is why the suite sometimes reports them green. The enlarged-tile click is also the pivot of the maximise work, so this flake keeps implicating whichever change last touched the strip.
 - **fail direction:** intermittent red that reads as a regression by whoever touched the area last — and therefore risks training everybody to ignore the suite.
 - **fixed when:** the click is waited on (`waitFor`/`findBy`, or the control's arrival asserted before firing), and the three tests pass in isolation N runs in a row (say 5) on committed code, in both the current head and its predecessor.
@@ -3776,7 +3776,7 @@ consumer's name, path, or content.
 
 ### B-138 — designDrift: five off-scale font sizes in `FleetUsageStrip.tsx` and `FleetWirePanel.tsx`
 - **state:** open
-- **reported:** 2026-09-05 by the peer session (wpc-pont-15) from a full-suite run; verified deterministic in isolation by this session (2/2 red) and confirmed pre-existing (fails on committed code untouched by that day's changes; neither file was modified by the maximise work).
+- **reported:** 2026-09-05 by the peer session from a full-suite run; verified deterministic in isolation by this session (2/2 red) and confirmed pre-existing (fails on committed code untouched by that day's changes; neither file was modified by the maximise work).
 - **measured:** `npx vitest run tests/unit/designDrift.test.ts` — "carries no arbitrary font size — the scale is 12/14/16" reports exactly 5 findings: `src/components/FleetUsageStrip.tsx:113` (`text-[10px]`), `src/components/FleetWirePanel.tsx:155` (`text-[10px]`), `:166`, `:345` (arbitrary-value classes), `:356` (`text-[10px]`). These are absolute sizes outside the declared 12/14/16 scale, so the smallest text on those two surfaces falls below the design system's floor and drifts from every other surface.
 - **fixed when:** the findings list comes back empty (`expect(findings).toEqual([])` green in isolation), either by moving the sizes onto the scale or by a recorded, deliberate exception in the test — not by widening the assertion.
 
