@@ -818,7 +818,7 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
  * one honestly. The cost is one click — select the agent, then type into its
  * card — and it is stated here rather than discovered later.
  */
-function AgentTabs({ agents, selected, onSelect, onMove }: {
+function AgentTabs({ agents, selected, onSelect, onMove, panels = [] }: {
   agents: readonly FleetAgent[]
   selected: number | null
   onSelect: (pid: number) => void
@@ -832,6 +832,21 @@ function AgentTabs({ agents, selected, onSelect, onMove }: {
    * the drag attributes are only attached when this is here.
    */
   onMove?: (from: number, to: number) => void
+  /**
+   * PANEL TABS — the project's non-agent panels that share the strip, so a
+   * maximised board or file view is itself a tab (asked for 2026-09-05: *"a
+   * board nézet is tegye fel magát felülre mintha agent tab fül lenne"*).
+   *
+   * A maximised panel used to be reachable only through its own ⤢ and by
+   * knowing where it went; with the agents hidden into this strip there was no
+   * way back to an agent and no way in from one. A panel tab answers both, the
+   * same way an agent tab does: one click switches what the big tile is.
+   *
+   * Rendered AFTER the agent tabs, in the order given. A panel that is docked
+   * or closed has a place of its own and must not be listed here — the same
+   * rule `gridAgents` follows for docked agents.
+   */
+  panels?: readonly { key: string; label: string; active: boolean; onSelect: () => void }[]
 }) {
   const strip = useRef<HTMLDivElement | null>(null)
   /*
@@ -965,6 +980,24 @@ function AgentTabs({ agents, selected, onSelect, onMove }: {
           </button>
         )
       })}
+      {panels.map(p => (
+        <button
+          key={p.key}
+          role="tab"
+          aria-selected={p.active}
+          title={p.label}
+          data-fleet-panel-tab={p.key}
+          data-fleet-panel-tab-active={p.active ? 'on' : undefined}
+          onClick={p.onSelect}
+          className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
+            p.active
+              ? 'border-sky-400 text-fg-loud bg-surface-raised/60'
+              : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -2389,10 +2422,48 @@ export default function Fleet() {
   // placement; full screen is the instance's own root escaping to `fixed`, so
   // unsaved editor state survives the round trip.
   const [filesFullscreen, setFilesFullscreen] = useState<string | null>(null)
+  /*
+    WHICH FILE VIEW IS MAXIMISED — the panel's answer to the agents' `enlarged`.
+
+    A separate value rather than widening `enlarged`, which is a pid in the
+    stored view (`fleetViewState`): squeezing a non-agent into a number would
+    mean a sentinel that is not a pid, and a false value in a stored field is a
+    defect this repository has paid for before.
+
+    Held HERE, next to `boardMax`, because the two are kept exclusive at their
+    setters and a setter cannot clear a value declared beneath it without
+    reaching forward. Not remembered across a reload, unlike the agents'
+    choice — stated rather than hidden: `filesOpen` is not stored either, so a
+    reload starts with no file view unless the arrangement docked one.
+  */
+  const [filesMax, setFilesMax] = useState<string | null>(null)
+  /*
+    ONE BIG THING AT A TIME — agent, board, files. Every setter below clears the
+    other two, because the maximised board is the agents' `enlarged` in all but
+    name since it joined the tab strip (asked for 2026-09-05: *"a boardot
+    felteszem maximizera akkor eltakar minden mast es nem tudok ugy valtogatni
+    mintha normal agent tab lenne"*). A maximise that left the old big thing big
+    would be two panels claiming one space — the exact state the exclusivity
+    exists to make unrepresentable.
+  */
   const toggleBoardMax = useCallback((project: string | null, root: string) => {
     setBoardMax(prev => {
       const next = prev === root ? null : root
       if (next !== null) {
+        setFilesMax(null)
+        writeView(project, { enlarged: null })
+        setMemory({ project, view: readView(project) })
+      }
+      return next
+    })
+  }, [])
+
+  /** Maximise the file view, or put it back — the board's toggle, mirrored. */
+  const toggleFilesMax = useCallback((project: string | null, root: string) => {
+    setFilesMax(prev => {
+      const next = prev === root ? null : root
+      if (next !== null) {
+        setBoardMax(null)
         writeView(project, { enlarged: null })
         setMemory({ project, view: readView(project) })
       }
@@ -2469,28 +2540,11 @@ export default function Fleet() {
    * in the grid to be maximised within it.
    */
   const enlarged = resolveEnlarged(remembered, gridAgents.map(a => a.pid))
-  /*
-    WHICH FILE VIEW IS MAXIMISED — the panel's answer to the agents' `enlarged`.
-
-    A separate value rather than widening `enlarged`, which is a pid in the
-    stored view (`fleetViewState`): squeezing a non-agent into a number would
-    mean a sentinel that is not a pid, and a false value in a stored field is a
-    defect this repository has paid for before.
-
-    The two are kept EXCLUSIVE at their setters, so the screen never has two
-    things claiming to be the big one. That exclusivity is the whole reason this
-    is not simply a boolean somewhere in the panel.
-
-    Not remembered across a reload, unlike the agents' choice — stated rather
-    than hidden: `filesOpen` is not stored either, so a reload starts with no
-    file view unless the arrangement docked one.
-  */
-  const [filesMax, setFilesMax] = useState<string | null>(null)
-
   const setEnlarged = useCallback((project: string | null, pid: number | null) => {
     // One big thing at a time. Enlarging an agent puts a maximised file view
-    // back into the grid rather than leaving two panels both claiming the space.
-    if (pid !== null) setFilesMax(null)
+    // AND a maximised board back into the grid rather than leaving three
+    // panels claiming the space — see the exclusivity note at `toggleBoardMax`.
+    if (pid !== null) { setFilesMax(null); setBoardMax(null) }
     writeView(project, { enlarged: pid })
     setMemory({ project, view: readView(project) })
   }, [])
@@ -2523,17 +2577,6 @@ export default function Fleet() {
    */
   const [bandRestore, setBandRestore] = useState<Record<string, number>>({})
 
-  /** Maximise the file view, or put it back — the other half of the rule above. */
-  const toggleFilesMax = useCallback((project: string | null, root: string) => {
-    setFilesMax(prev => {
-      const next = prev === root ? null : root
-      if (next !== null) {
-        writeView(project, { enlarged: null })
-        setMemory({ project, view: readView(project) })
-      }
-      return next
-    })
-  }, [])
   /**
    * Which terminal is open — task 8.3's reattach half.
    *
@@ -2805,6 +2848,18 @@ export default function Fleet() {
     && !docks.some(d => d.kind === PANEL_FILES && d.id === filesMax)
 
   /*
+    Is the BOARD the big one right now — `filesBig`, mirrored, and for the same
+    reason: the maximised board is the agents' `enlarged` in all but name (asked
+    for 2026-09-05), so every branch that lays the column out — container, tab
+    strip, tile, agent hiding — must consult ONE answer about it, not re-derive
+    `boardMax` per branch and drift.
+  */
+  const boardBig = boardMax !== null
+    && boardMax === active?.root
+    && boardOpen.has(boardMax)
+    && !docks.some(d => d.kind === PANEL_BOARD && d.id === boardMax)
+
+  /*
     HOW MANY TILES THE GRID ACTUALLY DRAWS — the agents it lays out plus the
     file view when that is a tile rather than a docked band. The same two
     conditions the tile itself renders under, read once here so the layout, the
@@ -2827,6 +2882,37 @@ export default function Fleet() {
     + (fileTileInGrid ? 1 : 0) + (workCycleTileInGrid ? 1 : 0) + (boardTileInGrid ? 1 : 0)
   /* The preference, clamped to what there is to lay out — see `fitColumns`. */
   const fittedColumns = fitColumns(columns, gridTiles)
+
+  /*
+    THE PANEL TABS the strip carries beside the agent tabs — one per project
+    panel that is open as a tile (docked ones have a place of their own, the
+    same rule `gridAgents` follows), so a maximised board or file view is named
+    and reachable up top like an agent tab (asked for 2026-09-05).
+
+    `onSelect` SWITCHES to the panel rather than toggling it: clicking the tab
+    that is already big leaves it big — the way back is the panel's own ⤢,
+    exactly as an enlarged agent is collapsed by its tile and not by its tab.
+    The setters own the exclusivity, so switching stands the previous big thing
+    down without this handler repeating it.
+  */
+  const panelTabs = useMemo(() => {
+    if (!active?.root) return []
+    const root: string = active.root
+    const tabs: { key: string; label: string; active: boolean; onSelect: () => void }[] = []
+    if (fileTileInGrid) {
+      tabs.push({
+        key: 'files', label: 'files', active: filesBig,
+        onSelect: () => { if (!filesBig) toggleFilesMax(active.name, root) },
+      })
+    }
+    if (boardTileInGrid) {
+      tabs.push({
+        key: 'board', label: 'board', active: boardBig,
+        onSelect: () => { if (!boardBig) toggleBoardMax(active.name, root) },
+      })
+    }
+    return tabs
+  }, [active, fileTileInGrid, boardTileInGrid, filesBig, boardBig, toggleFilesMax, toggleBoardMax])
 
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.
@@ -3360,7 +3446,31 @@ export default function Fleet() {
           // overlay's old z-40 it painted ON TOP of the full-screen board — the
           // first column and the legend head sat hidden under it (seen on
           // screen, 2026-08-30). Full screen means the whole window.
-          <div className="fixed inset-0 z-[60] bg-surface-page/95 p-3 flex" data-fleet-board-fullscreen-root={project.root}>
+          <div className="fixed inset-0 z-[60] bg-surface-page/95 p-3 flex flex-col gap-2" data-fleet-board-fullscreen-root={project.root}>
+            {/* The tab strip travels WITH the overlay (asked for 2026-09-05:
+                "nem tudok ugy valtogatni mintha normal agent tab lenne"). A
+                whole-window board used to seal the reader in: every agent, the
+                file view and the project column were underneath it with
+                nothing naming them. From here a tab click leaves full screen
+                and lands on what was clicked — the same one-gesture switch an
+                enlarged agent's strip gives.
+                Only for the SELECTED project: the strip's agents and panels
+                are the active project's, and showing them over another
+                project's board would be tabs that lie. */}
+            {project.root === active?.root && gridAgents.length > 0 && (
+              <AgentTabs
+                agents={gridAgents}
+                selected={enlarged}
+                onSelect={pid => { setBoardFullscreen(null); setEnlarged(active.name, pid) }}
+                onMove={moveAgent}
+                panels={[
+                  ...panelTabs
+                    .filter(p => p.key === 'files')
+                    .map(p => ({ ...p, onSelect: () => { setBoardFullscreen(null); p.onSelect() } })),
+                  { key: 'board', label: 'board', active: true, onSelect: () => {} },
+                ]}
+              />
+            )}
             <div className="flex-1 min-w-0 rounded border border-surface-line bg-surface-panel/60">
               <FleetBoard
                 project={project.name}
@@ -3898,9 +4008,16 @@ export default function Fleet() {
                   onTyping={on => setTypingLabel(on ? focused.terminal_label ?? null : null)}
                 />
               ) : (
-              <div className={enlarged === null && !filesBig
+              <div className={enlarged === null && !filesBig && !boardBig
                 ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[fittedColumns] ?? GRID_COLS[2]}`
                 : 'flex-1 min-h-0 flex flex-col'}>
+              {/* A maximised BOARD joins the strip's world (asked for
+                  2026-09-05): the column becomes a stack, the agents move into
+                  the tabs above, and the board takes the rest — the exact
+                  treatment an enlarged agent already gets. Without the
+                  `boardBig` term here the maximise flag did nothing the eye
+                  could see: the column stayed a grid and `flex-1` on the tile
+                  had no height to take. */}
               {/* One enlarged tile: the others are a tab strip, not rows. The
                   strip is OUTSIDE the scrolling area so it stays put while the
                   enlarged tile scrolls — a tab bar that scrolls away is a tab
@@ -3926,14 +4043,19 @@ export default function Fleet() {
                   an agent enlarged, a single agent needs no strip — there is
                   nothing to switch TO, and rendering it would show the same
                   agent twice (which is exactly what a test caught). With the
-                  FILE view big, every agent is off screen, so even one of them
-                  needs the strip to stay reachable. */}
-              {((enlarged !== null && gridAgents.length > 1) || (filesBig && gridAgents.length > 0)) && (
+                  FILE view — or now the BOARD — big, every agent is off screen,
+                  so even one of them needs the strip to stay reachable; and a
+                  big panel with NO agents still gets its tab, because the strip
+                  is then the only place the maximised thing is named. An agent
+                  list of zero renders nothing either way — the panel tabs alone
+                  carry the strip. */}
+              {((enlarged !== null && gridAgents.length > 1) || filesBig || boardBig) && (
                 <AgentTabs
                   agents={gridAgents}
                   selected={enlarged}
                   onSelect={pid => setEnlarged(active.name, pid)}
                   onMove={moveAgent}
+                  panels={panelTabs}
                 />
               )}
               {/* `gridAgents`, not `active.agents`: a docked agent has MOVED to
@@ -4017,17 +4139,22 @@ export default function Fleet() {
                 && !docks.some(d => d.kind === PANEL_BOARD && d.id === active.root) && (
                 <div
                   className={`${cardClasses('ours', {})} flex flex-col min-h-0 overflow-hidden${
-                    boardMax === active.root ? ' flex-1' : ''}`}
+                    boardBig ? ' flex-1' : ''}${filesBig ? ' min-h-44' : ''}`}
                   data-fleet-board-tile={active.root}
-                  data-fleet-board-max={boardMax === active.root ? 'on' : 'off'}
+                  data-fleet-board-max={boardBig ? 'on' : 'off'}
                 >
+                  {/* min-h-44 while the FILE view is big: the same floor the
+                      2026-08-30 fix gave the file tile beside a maximised
+                      board, read the other way — the sibling panel keeps the
+                      smallest height the grid would ever draw it, and the big
+                      one takes what is left. One rule, both directions. */}
                   <FleetBoard
                     project={active.name}
                     projectName={active.name}
                     onClose={() => closeBoard(active.root)}
                     onDock={edge => dockPanel(PANEL_BOARD, active.root, edge)}
                     dockedEdge={null}
-                    maximised={boardMax === active.root}
+                    maximised={boardBig}
                     onMaximise={() => toggleBoardMax(active.name, active.root)}
                     fullscreen={boardFullscreen === active.root}
                     onFullscreen={() => setBoardFullscreen(
@@ -4092,9 +4219,9 @@ export default function Fleet() {
                 )
                 const open = openLogs.includes(a.pid)
                 const toggle = () => toggleLog(active.name, a.pid, !open)
-                return a.pid === enlarged && !filesBig
+                return a.pid === enlarged && !filesBig && !boardBig
                   ? card({ enlarged: true, open, onToggle: toggle })
-                  : enlarged !== null || filesBig
+                  : enlarged !== null || filesBig || boardBig
                     /* The unselected agents are in the tab strip above. They
                        used to be `AgentRow`s here — one line each, with an
                        input — and `AgentRow` is DELETED rather than left

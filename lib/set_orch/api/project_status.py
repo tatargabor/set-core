@@ -23,6 +23,7 @@ produce a flag when it does not.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -48,8 +49,41 @@ router = APIRouter()
 #: enough that a 5s poll and three open tabs do not become three subprocesses a second.
 CACHE_TTL_SECONDS = 30
 
+#: A slow answer also buys a longer reuse window: an answer that cost
+#: `duration` seconds of the project's own toolchain is reused for
+#: `DURATION_TTL_FACTOR × duration`, capped. Measured 2026-09-06 (B-139): a
+#: project whose `snapshot` command takes ~15 s was re-asked on a 30 s cycle —
+#: the subprocess was running essentially continuously. The floor stays
+#: `CACHE_TTL_SECONDS`, so cheap commands keep the panel's freshness.
+DURATION_TTL_FACTOR = 10
+DURATION_TTL_MAX_SECONDS = 600
+
 #: (project_path, command) → (monotonic deadline, result). In memory only. See module docstring.
 _CACHE: Dict[Tuple[str, str], Tuple[float, StatusResult]] = {}
+
+#: The routes here run in FastAPI's threadpool, so the cache and the in-flight
+#: table are touched from several threads at once.
+_CACHE_LOCK = threading.Lock()
+
+#: (project_path, command) → Event for the query currently running. Single-flight:
+#: however many pollers stack on an endpoint slower than its own answer — measured
+#: live at four concurrent `snapshot` children under the server pid — exactly one
+#: subprocess per (project, command) runs; the rest wait and share its answer.
+_INFLIGHT: Dict[Tuple[str, str], threading.Event] = {}
+_INFLIGHT_LOCK = threading.Lock()
+
+
+def _ttl_for(duration_seconds: float, ok: bool) -> float:
+    """The reuse window an answer earns.
+
+    A failure keeps the short window whatever it cost to produce: a command that
+    times out at 30 s must not buy itself five minutes of being unaskable — the
+    panel has to see it recover. Only a real answer extends its own lease.
+    """
+    if not ok:
+        return CACHE_TTL_SECONDS
+    return min(DURATION_TTL_MAX_SECONDS,
+               max(CACHE_TTL_SECONDS, DURATION_TTL_FACTOR * duration_seconds))
 
 
 def _cached_query(project_path: Path, command: str, cfg: StatusConfig,
@@ -57,16 +91,49 @@ def _cached_query(project_path: Path, command: str, cfg: StatusConfig,
     key = (str(project_path), command)
     now = time.monotonic()
     if not refresh:
-        hit = _CACHE.get(key)
+        with _CACHE_LOCK:
+            hit = _CACHE.get(key)
         if hit and hit[0] > now:
             return hit[1]
 
-    result = query(project_path, command, config=cfg)
+    # Single-flight: register before asking. The winner runs the subprocess and
+    # lands the answer in the cache; everyone who arrived meanwhile waits on the
+    # event and reads the same answer instead of spawning their own.
+    with _INFLIGHT_LOCK:
+        registered = _INFLIGHT.get(key)
+        winner = registered is None
+        if winner:
+            registered = threading.Event()
+            _INFLIGHT[key] = registered
+    if not winner:
+        registered.wait()
+        with _CACHE_LOCK:
+            hit = _CACHE.get(key)
+        if hit is not None:
+            return hit[1]
+        # The winner raised before it could cache anything. Fall through and ask
+        # once here — rare, and bounded by this branch: the next caller finds the
+        # key free and becomes the single flight again.
 
-    # A failure is cached too, and deliberately: a project whose contract is broken
-    # would otherwise be re-spawned on every poll, turning one defect into load.
-    _CACHE[key] = (now + CACHE_TTL_SECONDS, result)
-    return result
+    try:
+        started = time.monotonic()
+        result = query(project_path, command, config=cfg)
+        duration = time.monotonic() - started
+
+        # A failure is cached too, and deliberately: a project whose contract is broken
+        # would otherwise be re-spawned on every poll, turning one defect into load.
+        with _CACHE_LOCK:
+            _CACHE[key] = (time.monotonic() + _ttl_for(duration, getattr(result, "ok", False)),
+                           result)
+        return result
+    finally:
+        # Only the thread that registered the event may remove it — a fall-through
+        # waiter after a crashed winner must not un-register somebody else's query.
+        if winner:
+            with _INFLIGHT_LOCK:
+                if _INFLIGHT.get(key) is registered:
+                    _INFLIGHT.pop(key, None)
+        registered.set()
 
 
 def _contract_info(cfg: Optional[StatusConfig]) -> Dict[str, Any]:

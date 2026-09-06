@@ -332,6 +332,12 @@ export default function FleetBoard({
   // which is a decision of the project's, not a gap of anyone's.
   const [declares, setDeclares] = useState<boolean | null>(() => declaresCache.get(project) ?? null)
   const [result, setResult] = useState<StatusCommandResult | null>(() => answerCache.get(project)?.result ?? null)
+  // Whether the status query has ANSWERED at all. `result` alone cannot carry
+  // this: an answer that names no board command leaves `result` null forever
+  // (the poll only stores a truthy board), and `!result` then renders a blank
+  // pane for a contract that SAID it has a board — silence where the reader
+  // was promised one. Same false-absence direction as `declares === false`.
+  const [answered, setAnswered] = useState(false)
   const [answeredAt, setAnsweredAt] = useState<number | null>(() => answerCache.get(project)?.at ?? null)
   const [failed, setFailed] = useState<string | null>(null)
   const [releaseChoice, setReleaseChoice] = useState<string | 'all' | null>(null)
@@ -366,6 +372,10 @@ export default function FleetBoard({
 
   useEffect(() => {
     if (!declares || !project) return
+    // A new query is NOT an answered one — switching projects must not inherit
+    // the previous project's answered flag, or its gap note would stand over
+    // an answer that has not arrived yet.
+    setAnswered(false)
     let timer: ReturnType<typeof setTimeout>
     let inFlight = false
 
@@ -383,6 +393,7 @@ export default function FleetBoard({
         .then(res => {
           if (!alive.current) return
           setFailed(null)
+          setAnswered(true)
           const board = res.commands?.board ?? null
           if (board) {
             const at = Date.now()
@@ -403,7 +414,26 @@ export default function FleetBoard({
     return () => { clearTimeout(timer); fetchRef.current = null }
   }, [declares, project])
 
-  if (declares === null || declares === false) return null
+  if (declares === null) return null
+
+  // A project that declares NO board is a decision of the project's, not a gap
+  // of anyone's — but a decision that renders as a blank pane is the
+  // false-absence shape: seen 2026-09-06 with this very repository selected,
+  // whose contract answers `configured: false` — the maximised board tab sat
+  // over a completely empty pane, saying nothing about why. The INLINE summary
+  // stays silent (that surface has its own open/close button and must not
+  // grow a permanent block); a PANEL the reader deliberately opened — or
+  // maximised — has to say what it is looking at.
+  if (declares === false) {
+    if (!projectName) return null
+    return (
+      <div data-fleet-board-strip="not-declared"
+           className="mt-1 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs text-amber-300">
+        board — {projectName} declares no status contract, so there is no board to show.
+        This is the project's own answer, not a read failure.
+      </div>
+    )
+  }
 
   // The transport route itself is unreachable. A gap answer (below) is the project
   // saying it cannot; this is set-core saying IT cannot. Both belong on screen.
@@ -416,7 +446,22 @@ export default function FleetBoard({
     )
   }
 
-  if (!result) return null
+  if (!result && !answered) return null
+
+  // The contract SAID this project has a board, the status route answered,
+  // and the answer named no board command. Not the reader's gap to guess at:
+  // name the contradiction where the board was promised. (Result-less only
+  // because a truthy board WOULD have been stored above; with a result the
+  // normal flow — gap or lanes — takes over below.)
+  if (!result) {
+    return (
+      <div data-fleet-board-strip="no-command"
+           className="mt-1 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs text-amber-300">
+        board — the status route answered but carried no board command, though the
+        contract declared one. The project's board contract has moved.
+      </div>
+    )
+  }
 
   if (!result.ok) {
     const hint = result.errorClass ? GAP_HINT[result.errorClass] : undefined
@@ -520,12 +565,36 @@ export default function FleetBoard({
   // cards; a mismatch between this figure and the rendered cards still renders
   // unreconciled, both visible.
   const draftLaneCounts = new Map<string, number>()
+  // The same aggregation for the tray: a draft item the producer places in NO band is that
+  // draft's unknown. Counted here rather than taken from `data.unknown`, for the reason the
+  // block above states — and because `data.unknown` is a WHOLE-BOARD figure, which under a
+  // draft is the one number on this surface that would answer a different question than the
+  // column it heads.
+  let draftUnknownCount = 0
   if (selectedDraft) {
     for (const it of releaseItems(selectedDraft)) {
-      if (it.onBoard !== true || typeof it.lane !== 'string' || !inBand(it.lane)) continue
-      draftLaneCounts.set(it.lane, (draftLaneCounts.get(it.lane) ?? 0) + 1)
+      if (it.onBoard !== true) continue
+      if (typeof it.lane === 'string' && inBand(it.lane)) {
+        draftLaneCounts.set(it.lane, (draftLaneCounts.get(it.lane) ?? 0) + 1)
+      } else {
+        draftUnknownCount += 1
+      }
     }
   }
+  // What the tray column HEADS. Under a draft it is that draft's figure; otherwise the
+  // project's own whole-board count, exactly as before.
+  //
+  // ⚠ This was `data.unknown` unconditionally, and it was the only count on the surface that
+  // ignored the release filter. Measured 2026-09-05 on a real board: under the v1.25.0 draft
+  // every other column narrowed to the draft's 16 items, while the tray still read `unknown
+  // 187` above ZERO rendered cards — so the board said "16 real cards and 187 unknown ones".
+  // The direction is the damaging one: it overstates how little is understood, and the reader
+  // (the same person, on a second day) took the whole view for a bug.
+  const trayCount = filtered ? draftUnknownCount : (unknown ?? trayCards.length)
+  /** How many items the chosen draft places on the board — the population the columns count. */
+  const draftItemCount = selectedDraft
+    ? releaseItems(selectedDraft).filter(it => it.onBoard === true).length
+    : 0
 
   // Windowed (panel/fullscreen) contexts FILL their window; the inline strip
   // under the project header stays bounded. See the note on the panel body.
@@ -676,6 +745,19 @@ export default function FleetBoard({
               placed by their own lane value and never re-sorted into agreement
               with the counts. Scroll lives in each column — the board is bounded
               so 180 cards cannot take the screen. */}
+          {/* ⚠ A VISIBLE line, deliberately not a tooltip. Under a draft the strip above counts
+              the WHOLE board and the columns count the DRAFT — two populations on one screen.
+              That is the intended design (2026-08-30), and it is also what the same reader took
+              for a bug on TWO separate days, from opposite directions: first the strip's figure
+              against a column's, then a column's against the strip's. A `title=` cannot fix it,
+              because nobody hovers a number they already believe they understand. Naming the two
+              populations where they are drawn is the cheapest thing that can. */}
+          {showBoard && cards !== null && filtered && (
+            <div data-fleet-board-scope-note className="text-xs text-fg-ghost min-w-0 truncate">
+              columns: the <span className="text-fg-muted">{selectedRelease}</span> draft
+              {' '}({draftItemCount} item{draftItemCount === 1 ? '' : 's'}) — the whole board is the strip above
+            </div>
+          )}
           {showBoard && cards !== null && (
             <div className={`flex gap-1.5 min-w-0 overflow-x-auto ${fill ? 'flex-1 min-h-0' : ''}`} data-fleet-board-columns>
               {bandNames.map(name => (
@@ -700,7 +782,7 @@ export default function FleetBoard({
                   </div>
                 </div>
               ))}
-              {(unknown !== null || trayCards.length > 0) && (
+              {(trayCount > 0 || trayCards.length > 0) && (
                 <div data-fleet-board-tray
                      className={`flex-1 min-w-28 space-y-1 ${fill ? 'flex flex-col min-h-0' : ''}`}>
                   <div
@@ -711,13 +793,15 @@ export default function FleetBoard({
                   >
                     <span className="shrink-0">unknown</span>
                     <span className="tabular-nums shrink-0"
-                          title="the project's own unknown figure">{unknown ?? trayCards.length}</span>
+                          title={filtered
+                            ? 'items the chosen draft places in no lane, as its membership reports — the whole board\'s unknown is the strip legend above'
+                            : "the project's own unknown figure"}>{trayCount}</span>
                   </div>
                   <div className={`space-y-1 overflow-y-auto ${fill ? 'flex-1 min-h-0' : 'max-h-72'}`}>
                     {trayCards.map((c, i) => (
                       <BoardCardFace key={cardId(c) ?? i} c={c} onOpenTarget={onOpenTarget} />
                     ))}
-                    <ColumnEmpty count={unknown ?? trayCards.length} placed={trayCards.length}
+                    <ColumnEmpty count={trayCount} placed={trayCards.length}
                                  explainable={filtered} />
                   </div>
                 </div>

@@ -540,3 +540,38 @@ def test_a_loose_directory_does_not_borrow_a_neighbouring_project_s_name(tmp_pat
 
     entries = discovery.discover_projects([_A(), _B()], registered=[], messaging=[])
     assert sorted(e.name for e in entries) == ["alpha", "beta"]
+
+
+# --------------------------------------------------------------------------- #
+# the transcript index — the bulk form of `_session_log_for` (B-139)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_index_agrees_with_the_single_lookup(tmp_path):
+    """Same search space, same winner — for hits, misses and duplicates.
+
+    `_session_log_for` is the per-id primitive the single lookups keep using;
+    the index exists because one roster read asks hundreds of ids at once. An
+    index that answered a DIFFERENT question than the primitive would make the
+    screen's resumability depend on which form answered it.
+    """
+    a = tmp_path / "-home-a-proj"
+    b = tmp_path / "-home-b-proj"
+    a.mkdir()
+    b.mkdir()
+    _log(a, "S1")
+    _log(b, "S2")
+    _log(b, "S1")          # the same id in a second project — a real situation:
+    _log(a, "notes.md")    #  not a transcript, and not an answer
+    (tmp_path / "not-a-project").write_text("x")  # a file at the root, not a dir
+
+    ids = ["S1", "S2", "GONE", ""]
+    index = discovery.session_log_index(tmp_path)
+    for sid in ids:
+        assert index.get(sid) == discovery._session_log_for(sid, tmp_path), sid
+    assert index["S1"] == str(a / "S1.jsonl"), \
+        "the tie must break the same way the primitive's sorted()[0] breaks it"
+
+
+def _log(project_dir, session_id):
+    project_dir.joinpath(f"{session_id}.jsonl").write_text("", encoding="utf-8")

@@ -151,7 +151,16 @@ describe('the registry stays domain-free — task 4.4', () => {
     // The domain arrives INSIDE the panel (a change is named by the project, a
     // gate step is a command the project declared) and stops there, which is
     // exactly where the abstraction is meant to stop. It holds.
-    expect([...KNOWN_PANEL_KINDS]).toEqual(['agent', 'files', 'work-cycle'])
+    //
+    // LOOKED AT on 2026-09-05, adding `board` (landed with the board panel on
+    // 2026-08-30; the list here was not carried through, and this detector —
+    // masked in full-suite runs, see B-137 — kept failing in isolation since):
+    // the board is a framework concept the same way `files` is. It names the
+    // panel that LISTS a project's published lanes and cards; the framework
+    // knows the panel EXISTS and never what a card says — lane names, card
+    // titles and refs arrive as the producer's data, exactly where the
+    // abstraction is meant to stop. It holds.
+    expect([...KNOWN_PANEL_KINDS]).toEqual(['agent', 'files', 'work-cycle', 'board'])
   })
 
   it('an unknown kind is carried as data, never executed or interpolated anywhere but a message', () => {
