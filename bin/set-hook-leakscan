@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """set-hook-leakscan — Claude Code PreToolUse hook: refuse a publishing command
-that would carry a consumer name, a credential, a local path or a phone number.
+that would carry a consumer name, a credential, a local path or a phone number,
+and refuse a commit that would carry environment-specific identity.
 
 WHY A SECOND GATE
-    The `pre-push` git hook binds a human at a terminal. It does NOT bind an
-    agent, which can pass `-c core.hooksPath=` or `--no-verify` without meaning
-    any harm — an instruction is not a constraint; what an agent cannot do is
-    decided by the tools it holds. This hook is the half that binds the agent.
-    Neither gate is redundant: they cover different actors.
+    The git hooks (pre-push, pre-commit, commit-msg) bind a human at a
+    terminal. They do NOT reliably bind an agent, which can pass
+    `-c core.hooksPath=` or `--no-verify` without meaning any harm — an
+    instruction is not a constraint; what an agent cannot do is decided by the
+    tools it holds. This hook is the half that binds the agent. Neither gate
+    is redundant: they cover different actors.
 
 Referenced by name in .claude/settings.json:
     {"matcher": "Bash", "hooks": [{"type": "command", "command": "set-hook-leakscan"}]}
@@ -21,17 +23,25 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # A publishing verb, at the start of the command or after a separator. A local
 # commit is not a publication, and gating one trains the user to disable the hook.
 #
-# `push` ONLY — B-70, and the reason it is not "push or tag" is that a tag does
-# not publish anything. Measured 2026-08-24: `git tag <name> HEAD && git
-# filter-branch --msg-filter …` was refused, and that command IS the repair — a
-# local backup tag is the step `release-safety.md` prescribes before a history
-# rewrite. So the gate stood in front of the fix for the very findings it had
-# just reported, while its own message says not to work around it. A guard that
-# refuses the documented repair is how a guard earns its way into `--no-verify`.
+# `commit` joined the verbs for a different reason than publication: the git
+# hooks bind agents too, but an agent can pass `--no-verify` or
+# `-c core.hooksPath=` without meaning any harm, so the PreToolUse gate is the
+# only half that reliably binds it at commit time. The scan it runs is the
+# commit gate (`--staged` / `--message`), not the publication scan.
+#
+# `push` ONLY for publication — B-70, and the reason it is not "push or tag" is
+# that a tag does not publish anything. Measured 2026-08-24: `git tag <name>
+# HEAD && git filter-branch --msg-filter …` was refused, and that command IS the
+# repair — a local backup tag is the step `release-safety.md` prescribes before
+# a history rewrite. So the gate stood in front of the fix for the very findings
+# it had just reported, while its own message says not to work around it. A
+# guard that refuses the documented repair is how a guard earns its way into
+# `--no-verify`.
 #
 # Nothing is lost by dropping it: a tag reaches a remote only through a push —
 # `git push --tags`, `git push <remote> <tag>`, `git push … refs/tags/…` — and
@@ -40,7 +50,7 @@ import sys
 # safety gate may take.
 PUBLISH_RX = re.compile(
     r"(?:^|[;&|\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
-    r"git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*push(?:\s|$)"
+    r"git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*(push|commit)(?:\s|$)"
 )
 
 HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -69,6 +79,51 @@ def strip_heredocs(cmd):
             continue
         out.append(line)
     return "\n".join(out)
+
+
+# Message extraction is deliberately BEST-EFFORT, and the whole command string
+# is never scanned instead. A compound command's `cd /home/<user>/...` prefix
+# would otherwise become the finding — the gate reporting the operator's own
+# directory rather than the message, which is a false block of exactly the kind
+# that trains people to bypass gates. What the extraction misses (exotic
+# quoting) the commit-msg git hook still covers; this PreToolUse branch exists
+# for the agent that would bypass hooks.
+MESSAGE_ARG_RX = re.compile(
+    r"""(?:^|\s)(?:-m|--message)(?:=|\s+)"""
+    r"""("((?:[^"\\]|\\.)*)"|'([^']*)'|[^\s]+)"""
+)
+FILE_ARG_RX = re.compile(
+    r"""(?:^|\s)(?:-F|--file)(?:=|\s+)("([^"]+)"|'([^']+)'|[^\s]+)"""
+)
+
+
+def extract_commit_message(cmd, cwd):
+    """Collect -m/--message texts and -F/--file contents as one message body.
+
+    Returns a single string (paragraphs joined the way git joins multiple -m),
+    or "" when nothing usable was found — an empty result means the message
+    scan is skipped, never that a fake clean verdict is produced for it.
+    """
+    parts = []
+    for m in MESSAGE_ARG_RX.finditer(cmd):
+        val = m.group(1)
+        if val.startswith('"'):
+            parts.append(val[1:-1].replace('\\"', '"').replace("\\\\", "\\"))
+        elif val.startswith("'"):
+            parts.append(val[1:-1])
+        elif val not in ("-m", "--message"):
+            parts.append(val)
+    for m in FILE_ARG_RX.finditer(cmd):
+        val = m.group(1).strip("\"'")
+        if val.startswith("~"):
+            val = os.path.expanduser(val)
+        path = val if os.path.isabs(val) else os.path.join(cwd, val)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                parts.append(fh.read())
+        except OSError:
+            pass
+    return "\n\n".join(p for p in parts if p)
 
 
 def target_repo(payload, cmd):
@@ -103,30 +158,70 @@ def main():
     if not cmd:
         return 0
 
-    if not PUBLISH_RX.search(strip_heredocs(cmd)):
+    m = PUBLISH_RX.search(strip_heredocs(cmd))
+    if not m:
         return 0
+    verb = m.group(1)
 
     if not shutil.which("set-leakscan"):
-        print("set-hook-leakscan: set-leakscan is not on PATH, so this push cannot",
+        print(f"set-hook-leakscan: set-leakscan is not on PATH, so this {verb} cannot",
               file=sys.stderr)
-        print("be checked. Refusing rather than allowing an unchecked publication —",
+        print("be checked. Refusing rather than allowing an unchecked action —",
               file=sys.stderr)
         print("a gate that cannot run must not report clean.", file=sys.stderr)
         return 2
 
     target = target_repo(payload, cmd)
-    proc = subprocess.run(["set-leakscan"], cwd=target,
-                          capture_output=True, text=True)
-    if proc.returncode == 0:
+
+    if verb == "push":
+        proc = subprocess.run(["set-leakscan"], cwd=target,
+                              capture_output=True, text=True)
+        msg_proc = None
+    else:
+        # The commit gate: staged content first, then the message text. The
+        # message scan runs only when extraction found something — a miss is
+        # reported neither as clean nor as a finding (see the note at the
+        # extraction regexes).
+        proc = subprocess.run(["set-leakscan", "--staged"], cwd=target,
+                              capture_output=True, text=True)
+        msg_proc = None
+        message = extract_commit_message(cmd, target)
+        if message:
+            with tempfile.NamedTemporaryFile(
+                    "w", suffix=".commit-msg", delete=False,
+                    encoding="utf-8") as fh:
+                fh.write(message)
+                tmp_path = fh.name
+            try:
+                msg_proc = subprocess.run(
+                    ["set-leakscan", "--message", tmp_path], cwd=target,
+                    capture_output=True, text=True)
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+    if (proc.returncode == 0) and (msg_proc is None or msg_proc.returncode == 0):
         return 0
 
-    print("BLOCKED by set-hook-leakscan — this push would publish content that must",
+    if verb == "push":
+        print("BLOCKED by set-hook-leakscan — this push would publish content that must",
+              file=sys.stderr)
+    else:
+        print("BLOCKED by set-hook-leakscan — this commit would carry content that must",
+              file=sys.stderr)
+    print(f"not enter the repository's history (repository: {target}):\n",
           file=sys.stderr)
-    print(f"not leave the repository (repository: {target}):\n", file=sys.stderr)
-    print(proc.stdout + proc.stderr, file=sys.stderr)
+    for p in (proc, msg_proc):
+        if p is not None and p.returncode != 0:
+            print(p.stdout + p.stderr, file=sys.stderr)
     print("\nDo NOT work around this with --no-verify or core.hooksPath. Fix the",
           file=sys.stderr)
-    print("findings, or add a deliberate exception to", file=sys.stderr)
+    print("findings, move a machine-local value to local config "
+          "(set-config set <key> <value>,", file=sys.stderr)
+    print("stored under ~/.config/set-core/), or add a deliberate exception to",
+          file=sys.stderr)
     print("~/.config/set-core/leakscan-allow.txt and say so to the user.",
           file=sys.stderr)
     return 2

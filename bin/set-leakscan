@@ -3,29 +3,44 @@
 
 Usage:
     set-leakscan [--range <rev-range>] [--staged] [--tree] [--json] [--quiet]
-    set-leakscan --list-patterns     # show WHAT is searched for, not the values
+    set-leakscan --message <file>     # scan a commit message (commit-msg hook)
+    set-leakscan --install-hooks      # write pre-commit / commit-msg / pre-push
+    set-leakscan --list-patterns      # show WHAT is searched for, not the values
 
 Exit status: 0 = clean, 1 = findings, 2 = the scan itself could not run.
 
 WHY THIS EXISTS
     set-core and its sibling `set-*` projects are public. The consumer projects
     they are developed against are not. A rule in prose cannot stop a push; this
-    can. It is meant to be wired to a `pre-push` git hook and to a `PreToolUse`
-    Claude hook, because a git hook does not bind an agent that sets
-    `core.hooksPath`, and a Claude hook does not bind a human at a terminal.
+    can. It is wired to a `pre-push` git hook and to a `PreToolUse` Claude hook,
+    because a git hook does not bind an agent that sets `core.hooksPath`, and a
+    Claude hook does not bind a human at a terminal. Since the env-marker
+    category it also sits at COMMIT time through `pre-commit`/`commit-msg` and
+    the same PreToolUse hook — a commit is the unit that accumulates, and by
+    push time the only repair is a history rewrite.
 
-THE NAME LIST IS NEVER STORED IN THE REPOSITORY
-    Consumer names are exactly what must not be committed, so a checked-in
-    pattern file would BE the leak — the same trap the project rules describe
-    for `.gitignore`. The names are resolved at run time from the local project
-    registry (`~/.config/set-core/projects.json`) and from an optional
-    user-level allow/deny file. Neither path is inside any repository.
+THE NAME LISTS ARE NEVER STORED IN THE REPOSITORY
+    Consumer names and this machine's identity (the local user's name tokens,
+    git email, username, hostname) are exactly what must not be committed, so a
+    checked-in pattern file would BE the leak — the same trap the project rules
+    describe for `.gitignore`. Both lists are resolved at run time: consumer
+    names from the local project registry (`~/.config/set-core/projects.json`),
+    env-markers from the machine itself. Neither path is inside any repository.
+
+THE ENV-MARKER CHECK MEASURES WHAT A DIFF ADDS
+    A repository that follows the confidentiality rules still legitimately
+    carries identity — clone URLs pointing at the author's own public account,
+    doc examples that use the author's handle. A whole-file check would block
+    every commit that touches those files and be removed within a week. The
+    category is therefore evaluated against ADDED LINES only (staged added
+    lines, new files in full, range added lines) and never in `--tree` mode.
 
 IT REPORTS WHAT IT COULD NOT CHECK
     If the registry is unreadable the consumer-name check is SKIPPED, and that
-    is stated loudly instead of being folded into a clean result. A scan that
-    cannot see a category must not report zero for it: a gap is not a zero, and
-    the failure direction of a silent skip is the expensive one.
+    is stated loudly instead of being folded into a clean result. The same
+    holds for an identity source that cannot be resolved. A scan that cannot
+    see a category must not report zero for it: a gap is not a zero, and the
+    failure direction of a silent skip is the expensive one.
 """
 
 import argparse
@@ -62,6 +77,16 @@ SECRET_PATTERNS = [
 # run of digits that a human would recognise as a phone number.
 PHONE_PATTERN = r"\+\d{1,3}[- ]?\d{2}[- ]?\d{3}[- ]?\d{4}\b|\"\+?\d{11,13}\""
 
+# Identity tokens so generic that flagging them would cry daily on nothing:
+# documentation and code legitimately teem with these words. The list guards
+# the TOKEN side of the env-marker check only; a full email address or a
+# hostname is never stoplisted.
+MARKER_STOPLIST = {
+    "user", "admin", "test", "main", "local", "home", "host", "dev",
+    "git", "root", "info", "mail", "gmail", "example", "com", "org",
+    "net", "name", "proj",
+}
+
 def home_path_pattern():
     """A path under THIS user's home — not any `/home/<something>/`.
 
@@ -86,6 +111,101 @@ def home_path_pattern():
 
 
 HOME_PATH_PATTERN = home_path_pattern()
+
+
+def fold(text):
+    """ASCII-fold and lowercase: `Írón` and `iron` become the same string.
+
+    The env-marker check must catch a name written with its diacritics, and a
+    name is written with diacritics exactly when it is written correctly. The
+    result is used for MATCHING only — findings always report the original
+    line — so the index shifts folding introduces do not matter.
+    """
+    import unicodedata
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+
+
+def identity_markers(cwd):
+    """This machine's identity tokens, resolved at run time.
+
+    Sources, in the order they are trusted: the local part of the repository's
+    resolved `git config user.email` and `git config user.name` (tokens of four
+    or more letters — on this machine the email local part is the ONLY place
+    the user's actual name appears, the GECOS field being empty), the login
+    name, and the hostname in full plus its first dot label.
+
+    Returns (sorted tokens, missing-source notes). The notes are the gate's
+    honesty obligation: an unresolved source is a partially blind category and
+    must be announced, never folded into a clean result.
+
+    The full email address is carried as its own token — it is identity even
+    where its individual parts are too short or too generic to be.
+    """
+    tokens, missing = set(), []
+
+    def name_tokens(text, min_len):
+        out = set()
+        for tok in re.split(r"[^a-z]+", fold(text or "")):
+            if len(tok) >= min_len and tok not in MARKER_STOPLIST:
+                out.add(tok)
+        return out
+
+    email = sh(["git", "config", "user.email"], cwd=cwd).strip()
+    name = sh(["git", "config", "user.name"], cwd=cwd).strip()
+    if email:
+        tokens |= name_tokens(email.split("@")[0], 4)
+        tokens.add(fold(email))
+    else:
+        missing.append("git user.email unset — its tokens are not searched")
+    if name:
+        tokens |= name_tokens(name, 4)
+    else:
+        missing.append("git user.name unset — its tokens are not searched")
+
+    try:
+        import getpass
+        user = fold(getpass.getuser())
+    except Exception:
+        user = ""
+        missing.append("local username unavailable")
+    if len(user) >= 2 and user not in MARKER_STOPLIST:
+        tokens.add(user)
+
+    try:
+        import socket
+        host = fold(socket.gethostname())
+    except Exception:
+        host = ""
+        missing.append("hostname unavailable")
+    for part in ([host, host.split(".")[0]] if host else []):
+        if len(part) >= 3 and part not in MARKER_STOPLIST:
+            tokens.add(part)
+
+    return sorted(tokens), missing
+
+
+class _EnvMarkerCheck:
+    """A word-boundary match on FOLDED text.
+
+    The word boundary is the load-bearing half. Measured on this repository
+    before the gate was written: the tree legitimately carries the author's
+    PUBLIC account handle inside `github.com/<handle>/...` clone URLs — one
+    unbroken word, no boundary — while prose uses of the name carry boundaries
+    and must fire. Substring matching would have flagged the deliberate URLs
+    and made the gate unusable on day one. That the handle stays clean is
+    stated in the spec as the rule, not left to look like an accident; a
+    `literal:` allow entry closes it for anyone who wants it closed.
+    """
+
+    def __init__(self, tokens):
+        self._rx = (re.compile(r"\b(" + "|".join(re.escape(t) for t in tokens) + r")\b")
+                    if tokens else None)
+
+    def search(self, line):
+        if self._rx is None:
+            return None
+        return self._rx.search(fold(line))
 
 
 def _looks_synthetic(digits):
@@ -210,6 +330,10 @@ def remote_visibility(cwd):
     that is its job, and none of it leaves a private remote. A gate that cries
     on every push in the repositories somebody actually works in is a gate that
     gets removed, and it takes the public-repo protection with it.
+
+    Not consulted in commit mode: a commit is history whoever can see the
+    remote, and skipping the `gh` subprocesses is part of what keeps a
+    pre-commit call fast.
     """
     urls = sorted({u for u in sh(["git", "remote", "-v"], cwd=cwd).split()
                    if "://" in u or "@" in u})
@@ -257,6 +381,29 @@ def tracked_files(cwd):
     return [f for f in out.split("\0") if f]
 
 
+def _scan_pairs(pairs, path, checks, findings):
+    """Match every check against (line number, text) pairs of one path.
+
+    The shared inner loop of whole-file and added-line scanning. One finding
+    per line, first matching category wins — the same shape the whole-file
+    scanner has always had.
+    """
+    for lineno, line in pairs:
+        if len(line) > 4000:
+            line = line[:4000]
+        for label, rx in checks:
+            if rx.search(line):
+                findings.append({
+                    "category": label, "file": path,
+                    "line": lineno, "text": line.strip()[:160],
+                })
+                break
+
+
+def _scan_text(lines, path, checks, findings):
+    _scan_pairs(enumerate(lines, 1), path, checks, findings)
+
+
 def scan_blob(cwd, path, checks, findings, self_paths):
     if path in self_paths:
         return  # the scanner's own patterns are not findings — see module docstring
@@ -273,18 +420,148 @@ def scan_blob(cwd, path, checks, findings, self_paths):
         return
     try:
         with open(full, encoding="utf-8", errors="replace") as fh:
-            for lineno, line in enumerate(fh, 1):
-                if len(line) > 4000:
-                    line = line[:4000]
-                for label, rx in checks:
-                    if rx.search(line):
-                        findings.append({
-                            "category": label, "file": path,
-                            "line": lineno, "text": line.strip()[:160],
-                        })
-                        break
+            _scan_text(fh, path, checks, findings)
     except (OSError, UnicodeError):
         pass
+
+
+HUNK_RX = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
+
+
+def diff_added_lines(cwd, diff_args):
+    """Added lines per path as (FILE line number, text), from ONE diff run.
+
+    The env-marker category's line source in staged and range modes. One
+    subprocess per scan, not per file — a pre-commit hook that shells out once
+    per staged file is a hook people wait for and then disable.
+
+    The number comes from the hunk header's `+start`, not from enumerating the
+    collected lines: the first version reported its list index wearing a line
+    number, and a finding that names the wrong line is a false value — the
+    whole-file scanner reports true file lines, and this one must not lie
+    where it points.
+    """
+    out = sh(["git", "diff", *diff_args, "-U0"], cwd=cwd)
+    result, current, lineno = {}, None, 0
+    for line in out.splitlines():
+        if line.startswith("+++ b/"):
+            current = line[len("+++ b/"):]
+            lineno = 0
+        elif line.startswith("+++ "):
+            current = None            # /dev/null — a deletion adds nothing
+        elif line.startswith("@@"):
+            m = HUNK_RX.match(line)
+            lineno = int(m.group(1)) if (m and current) else 0
+        elif line.startswith("+") and current:
+            result.setdefault(current, []).append((lineno, line[1:]))
+            lineno += 1
+    return result
+
+
+def staged_entries(cwd):
+    """(path, status-letter) pairs for the staged diff, NUL-safe."""
+    fields = sh(["git", "diff", "--cached", "--name-status", "-z"], cwd=cwd).split("\0")
+    entries, i = [], 0
+    while i < len(fields):
+        f = fields[i]
+        if not f:
+            i += 1
+            continue
+        if f and f[0] in "RC":          # R100 <old> <new> / CNN <old> <new>
+            if i + 2 < len(fields):
+                entries.append((fields[i + 2], f[0]))
+            i += 3
+        else:
+            if i + 1 < len(fields):
+                entries.append((fields[i + 1], f[0]))
+            i += 2
+    return entries
+
+
+# ─── the hook installer ──────────────────────────────────────────────
+# The shipped pre-push header has said "Installed by set-leakscan" since the
+# gate first shipped, but the installer itself did not exist — hooks were
+# hand-installed, and a fresh clone had none. `--install-hooks` makes the
+# claim true. Marker-guarded: a hook that exists without the marker was
+# written by a human and is NEVER touched.
+
+HOOK_MARKER = "# Installed by set-leakscan."
+
+_HOOK_BODY_PREFIX = """#!/usr/bin/env bash
+""" + HOOK_MARKER + """ {purpose}
+#
+# The scan reads its lists from the local machine at run time — nothing
+# identifying is stored in this repository.
+#
+# NEVER bypass with --no-verify: fix the finding, or record a deliberate
+# exception in ~/.config/set-core/leakscan-allow.txt and say so out loud.
+if ! command -v set-leakscan >/dev/null 2>&1; then
+  echo "{name}: set-leakscan not found on PATH — refusing blind." >&2
+  echo "          A gate that cannot run must not report clean." >&2
+  exit 1
+fi
+"""
+
+HOOK_TEMPLATES = {
+    "pre-commit": _HOOK_BODY_PREFIX.format(
+        name="pre-commit",
+        purpose="Refuses a commit whose STAGED content introduces environment-specific\n"
+                "# identity (name, username, email, hostname), a consumer name, a credential\n"
+                "# or a phone number — regardless of remote visibility.",
+    ) + "exec set-leakscan --staged\n",
+    "commit-msg": _HOOK_BODY_PREFIX.format(
+        name="commit-msg",
+        purpose="Refuses a commit MESSAGE carrying environment-specific identity, a\n"
+                "# consumer name or a credential — before the commit exists.",
+    ) + 'exec set-leakscan --message "$1"\n',
+    "pre-push": _HOOK_BODY_PREFIX.format(
+        name="pre-push",
+        purpose="Refuses a push that would publish a consumer name, a credential, a local\n"
+                "# filesystem path or a phone number.",
+    ) + 'exec set-leakscan --range "$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo HEAD)..HEAD"\n',
+}
+
+
+def install_hooks():
+    """Write the three hooks, marker-guarded and idempotent."""
+    git_dir = sh(["git", "rev-parse", "--git-path", "hooks"]).strip()
+    if not git_dir:
+        print("set-leakscan --install-hooks: not inside a git repository",
+              file=sys.stderr)
+        return 2
+    git_dir = os.path.abspath(git_dir)
+    os.makedirs(git_dir, exist_ok=True)
+
+    written, fresh, untouched = [], [], []
+    for name, body in HOOK_TEMPLATES.items():
+        path = os.path.join(git_dir, name)
+        if os.path.exists(path):
+            try:
+                content = open(path, encoding="utf-8", errors="replace").read()
+            except OSError:
+                content = ""
+            if HOOK_MARKER not in "\n".join(content.splitlines()[:3]):
+                untouched.append(name)
+                continue          # a human wrote this hook; it is not ours to touch
+            if content == body:
+                fresh.append(name)   # already in place — AC: report, don't rewrite
+                continue
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        os.chmod(path, 0o755)
+        written.append(name)
+
+    for name in written:
+        print(f"  wrote   .git/hooks/{name}")
+    for name in fresh:
+        print(f"  in place .git/hooks/{name}")
+    for name in untouched:
+        print(f"  LEFT UNTOUCHED .git/hooks/{name} — no installer marker; "
+              f"a hand-written hook is never overwritten")
+    if untouched:
+        print("  (the scan does not run through that hook — wire it up by hand "
+              "if it should)")
+    return 0
 
 
 def main():
@@ -293,6 +570,9 @@ def main():
     ap.add_argument("--staged", action="store_true")
     ap.add_argument("--tree", action="store_true",
                     help="scan the whole tracked tree, not only the range")
+    ap.add_argument("--message", dest="message_file", default=None, metavar="FILE",
+                    help="scan one commit-message file (commit-msg hook)")
+    ap.add_argument("--install-hooks", dest="install_hooks", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--list-patterns", action="store_true")
@@ -303,17 +583,33 @@ def main():
         print(__doc__)
         return 0
 
+    if args.install_hooks:
+        return install_hooks()
+
     slugs, skip_note = private_slugs()
 
     if args.list_patterns:
-        print("categories: consumer-name, secret, home-path, phone")
+        cwd = sh(["git", "rev-parse", "--show-toplevel"]).strip()
+        env_tokens, env_missing = identity_markers(cwd) if cwd else ([],
+            ["not inside a git repository"])
+        print("categories: consumer-name, secret, home-path, phone, env-marker")
         print(f"consumer-name patterns resolved at run time: {len(slugs)}")
         print(f"  source   : {REGISTRY}")
         print(f"  allowlist: {ALLOWLIST}")
+        print(f"env-marker tokens resolved at run time: {len(env_tokens)}")
+        print("  sources  : git user.email local part, git user.name, username, hostname")
+        print("  measured : added lines only — never whole files, never --tree")
         print("  (values deliberately not printed — that is the thing being protected)")
         if skip_note:
             print(f"  WARNING  : {skip_note}")
+        for note in env_missing:
+            print(f"  WARNING  : {note}")
         return 0
+
+    mode = ("message" if args.message_file
+            else "staged" if args.staged
+            else "tree" if args.tree
+            else "range")
 
     cwd = sh(["git", "rev-parse", "--show-toplevel"]).strip()
     if not cwd:
@@ -336,7 +632,10 @@ def main():
                 own.add(tail.lower())
     slugs = {s for s in slugs if s not in own}
 
-    checks = []
+    env_tokens, env_missing = identity_markers(cwd)
+    env_tokens = [t for t in env_tokens if t not in own]
+
+    checks = []                    # whole-file checks — env-marker is never one
     if slugs:
         checks.append(("consumer-name",
                        re.compile(r"\b(" + "|".join(re.escape(s) for s in sorted(slugs)) + r")\b",
@@ -346,14 +645,39 @@ def main():
     checks.append(("home-path", re.compile(HOME_PATH_PATTERN)))
     checks.append(("phone", _PhoneCheck()))
 
-    findings = []
+    env_check = _EnvMarkerCheck(env_tokens) if env_tokens else None
+    # New files and added lines get the env-marker check too — for a new file
+    # every line is an added line, so the whole-file scan may as well carry it.
+    commit_checks = checks + ([("env-marker", env_check)] if env_check else [])
 
-    # --- which files ---------------------------------------------------------
-    if args.staged:
-        files = [f for f in sh(["git", "diff", "--cached", "--name-only", "-z"],
-                               cwd=cwd).split("\0") if f]
-    elif args.tree:
+    findings = []
+    added = {}                     # path -> added lines (staged / range modes)
+
+    # --- which content -------------------------------------------------------
+    if mode == "message":
+        try:
+            with open(args.message_file, encoding="utf-8", errors="replace") as fh:
+                _scan_text(fh, "<commit-message>", commit_checks, findings)
+        except OSError as exc:
+            print(f"set-leakscan: message file unreadable ({exc}) — refusing",
+                  file=sys.stderr)
+            return 2
+        files = []
+    elif mode == "staged":
+        entries = staged_entries(cwd)
+        added = diff_added_lines(cwd, ["--cached"])
+        new_paths = {p for p, s in entries if s in "AC"}
+        for f in sorted(new_paths):
+            scan_blob(cwd, f, commit_checks, findings, self_paths)
+        for path, pairs in added.items():
+            if path in new_paths:
+                continue           # already scanned whole
+            _scan_pairs(pairs, path, commit_checks, findings)
+        files = [p for p, _ in entries]
+    elif mode == "tree":
         files = tracked_files(cwd)
+        for f in files:
+            scan_blob(cwd, f, checks, findings, self_paths)
     else:
         rng = args.rev_range
         if not rng:
@@ -363,25 +687,35 @@ def main():
         if rng:
             files = [f for f in sh(["git", "diff", "--name-only", "-z", rng],
                                    cwd=cwd).split("\0") if f]
+            added = diff_added_lines(cwd, [rng])
         else:
             files = tracked_files(cwd)
         args.rev_range = rng
-
-    for f in files:
-        scan_blob(cwd, f, checks, findings, self_paths)
+        for f in files:
+            scan_blob(cwd, f, checks, findings, self_paths)
+        if env_check:
+            # Range mode: whole-file scanning above carries the pre-existing
+            # categories; the env-marker category measures ONLY what the range
+            # adds. Old contamination the range does not touch must not block.
+            for path, pairs in added.items():
+                if path in self_paths:
+                    continue
+                _scan_pairs(pairs, path, [("env-marker", env_check)], findings)
 
     # --- file NAMES ----------------------------------------------------------
-    if slugs:
-        name_rx = checks[0][1]
+    name_checks = ([("consumer-name", checks[0][1])] if slugs else []) + \
+                  ([("env-marker:filename", env_check)] if env_check else [])
+    if mode in ("staged", "range", "tree"):
         for f in files:
-            if name_rx.search(f):
-                findings.append({"category": "consumer-name:filename",
-                                 "file": f, "line": 0, "text": f})
+            for label, rx in name_checks:
+                if rx.search(f):
+                    findings.append({"category": label, "file": f, "line": 0, "text": f})
 
     # --- commit and tag MESSAGES --------------------------------------------
     # A message is in no diff and in no tree, so the content checks above are
-    # structurally blind to it.
-    if slugs and not args.staged:
+    # structurally blind to it. (Staged and message modes are excluded: staged
+    # is the pre-commit fast path, and message mode IS the message scan.)
+    if slugs and mode in ("range", "tree"):
         rng = args.rev_range
         log_args = ["git", "log", "--format=%H%x1f%s%n%b%x1e"]
         log_args.append(rng if rng else "--all")
@@ -406,11 +740,14 @@ def main():
     # path ignored, so the check answers "clean" for exactly the condition it
     # exists to find. The instrument hit the wall it was built to measure and
     # returned a reassuring zero — caught by a unit test, not by inspection.
-    for f in tracked_files(cwd):
-        if subprocess.run(["git", "check-ignore", "--no-index", "-q", f],
-                          cwd=cwd).returncode == 0:
-            findings.append({"category": "ignored-but-tracked",
-                             "file": f, "line": 0, "text": f})
+    # Skipped in the commit modes: it walks every tracked file with one
+    # subprocess each, and a pre-commit hook must cost milliseconds.
+    if mode in ("range", "tree"):
+        for f in tracked_files(cwd):
+            if subprocess.run(["git", "check-ignore", "--no-index", "-q", f],
+                              cwd=cwd).returncode == 0:
+                findings.append({"category": "ignored-but-tracked",
+                                 "file": f, "line": 0, "text": f})
 
     # --- deliberate exceptions -------------------------------------------
     # The allow file holds slugs for the name check, but the same entries also
@@ -431,26 +768,38 @@ def main():
                     if not any(a in f["text"].lower() for a in allow_literals)]
 
     # --- what actually blocks --------------------------------------------
-    visibility = remote_visibility(cwd)
-    if visibility == "private":
-        blocking = [f for f in findings
-                    if f["category"].startswith(ALWAYS_ENFORCED)]
-    else:
+    if mode in ("staged", "message"):
+        # A commit is history whoever can see the remote — publication is only
+        # one of the ways content escapes, and by the time it publishes the
+        # repair is a rewrite. Everything blocks; visibility is not consulted.
+        visibility = "not consulted (commit gate)"
         blocking = findings
+    else:
+        visibility = remote_visibility(cwd)
+        if visibility == "private":
+            blocking = [f for f in findings
+                        if f["category"].startswith(ALWAYS_ENFORCED)]
+        else:
+            blocking = findings
 
     # --- report --------------------------------------------------------------
     if args.json:
         print(json.dumps({"findings": findings, "blocking": blocking,
                           "visibility": visibility, "skipped": skip_note,
-                          "scanned_files": len(files)}, indent=2))
+                          "env_marker_sources_missing": env_missing,
+                          "mode": mode, "scanned_files": len(files)}, indent=2))
     elif not args.quiet or findings or skip_note:
         if skip_note:
             print(f"⚠ set-leakscan: {skip_note}", file=sys.stderr)
+        for note in env_missing:
+            print(f"⚠ set-leakscan: env-marker check partially blind — {note}",
+                  file=sys.stderr)
         if findings:
             mark = "✖" if blocking else "•"
-            print(f"{mark} set-leakscan: {len(findings)} finding(s) in "
-                  f"{len(files)} scanned file(s) — remote is {visibility}\n",
-                  file=sys.stderr)
+            head = (f"{mark} set-leakscan: {len(findings)} finding(s) — "
+                    f"{'COMMIT REFUSED' if mode == 'staged' else 'commit message REFUSED' if mode == 'message' else f'{len(files)} scanned file(s), remote is {visibility}'}")
+            print(head, file=sys.stderr)
+            print("", file=sys.stderr)
             by_cat = {}
             for f in findings:
                 by_cat.setdefault(f["category"], []).append(f)
@@ -464,9 +813,19 @@ def main():
                 if len(items) > 8:
                     print(f"    … and {len(items) - 8} more", file=sys.stderr)
             if blocking:
-                print("\n  Nothing is pushed. Fix the findings, or record a deliberate",
-                      file=sys.stderr)
-                print(f"  exception in {ALLOWLIST} (one slug per line).", file=sys.stderr)
+                if mode in ("staged", "message"):
+                    print("\n  Environment-specific content does not belong in history. If the value is",
+                          file=sys.stderr)
+                    print("  legitimately machine-local, move it to local config "
+                          "(set-config set <key> <value>,", file=sys.stderr)
+                    print(f"  stored under ~/.config/set-core/ — never committed) or record a deliberate",
+                          file=sys.stderr)
+                    print(f"  exception in {ALLOWLIST} as a `literal:` line and say so out loud.",
+                          file=sys.stderr)
+                else:
+                    print("\n  Nothing is pushed. Fix the findings, or record a deliberate",
+                          file=sys.stderr)
+                    print(f"  exception in {ALLOWLIST} (one slug per line).", file=sys.stderr)
             else:
                 # Reported, not enforced — and SAID so. A gate that silently
                 # downgrades itself is indistinguishable from one that found
@@ -477,8 +836,9 @@ def main():
                       file=sys.stderr)
                 print("  becomes public — nothing about them is retroactive.", file=sys.stderr)
         elif not args.quiet:
+            n_marks = len(slugs) + len(env_tokens)
             print(f"✔ set-leakscan: clean ({len(files)} file(s), "
-                  f"{len(slugs)} consumer pattern(s), remote {visibility})")
+                  f"{n_marks} pattern(s), remote {visibility})")
 
     return 1 if blocking else 0
 

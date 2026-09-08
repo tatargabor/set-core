@@ -9,6 +9,7 @@ because a scan that cannot see a category must say so instead of reporting zero.
 import getpass
 import json
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -321,6 +322,318 @@ class TestARepositoryMayNameItself:
                            env=dict(os.environ, HOME=str(home)))
         assert r.returncode == 1
         assert "other-client" in r.stderr
+
+
+# ─── the env-marker category and the commit gate ─────────────────────
+# Identity for these fixtures is FICTIONAL on purpose, and derived from the
+# fixture repository's own git config rather than from this machine: a test
+# file carrying the real user's name is exactly what the gate must refuse at
+# commit time — the measurement sitting inside the corpus it measures, again.
+
+@pytest.fixture
+def identity_repo(tmp_path):
+    """A repo whose git identity is a fictional name with real token shape."""
+    r = tmp_path / "proj"
+    r.mkdir()
+    git("init", "-q", cwd=r)
+    git("config", "user.email", "ada.lovelace@example.com", cwd=r)
+    git("config", "user.name", "Ada Lovelace", cwd=r)
+    return r
+
+
+def stage(repo, name, body):
+    (repo / name).write_text(body)
+    git("add", name, cwd=repo)
+
+
+def run_scan(repo, *args, allow=None):
+    """Run the scanner with a redirected HOME and an EMPTY registry, so the
+    env-marker assertions answer only for the env-marker machinery."""
+    home = repo.parent / "home"
+    cfg = home / ".config" / "set-core"
+    cfg.mkdir(parents=True, exist_ok=True)
+    (cfg / "projects.json").write_text(json.dumps({"projects": {}}))
+    if allow is not None:
+        (cfg / "leakscan-allow.txt").write_text(allow)
+    return subprocess.run([sys.executable, str(SCANNER), *args],
+                          cwd=repo, capture_output=True, text=True,
+                          env=dict(os.environ, HOME=str(home)))
+
+
+class TestEnvMarkersResolveAtRunTime:
+    def test_a_name_with_diacritics_is_still_found(self, tmp_path):
+        repo = tmp_path / "proj"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        git("config", "user.email", "iron@test.io", cwd=repo)
+        git("config", "user.name", "Írón Teszt", cwd=repo)
+        stage(repo, "a.md", "plain text about Írón Teszt\n")
+        r = run_scan(repo, "--staged")
+        assert r.returncode == 1, r.stderr
+        assert "env-marker" in r.stderr
+
+    def test_the_account_handle_in_a_url_is_not_the_prose_name(
+            self, identity_repo):
+        # The word boundary is the rule, and it is stated, not accidental: the
+        # tree legitimately carries the author's PUBLIC handle inside clone
+        # URLs — one unbroken word — while prose uses of the name must fire.
+        stage(identity_repo, "a.md",
+              "clone https://github.com/adalovelace/set-core.git\n")
+        r = run_scan(identity_repo, "--staged")
+        assert r.returncode == 0, r.stderr
+
+    def test_but_the_prose_name_still_fires(self, identity_repo):
+        stage(identity_repo, "a.md", "as Ada Lovelace noted\n")
+        r = run_scan(identity_repo, "--staged")
+        assert r.returncode == 1, r.stderr
+        assert "env-marker" in r.stderr
+
+    def test_a_stoplisted_identity_token_does_not_fire(self, tmp_path):
+        repo = tmp_path / "proj"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        git("config", "user.email", "test.admin@example.com", cwd=repo)
+        git("config", "user.name", "Test Admin", cwd=repo)
+        stage(repo, "a.md", "Test Admin wrote the test docs\n")
+        r = run_scan(repo, "--staged")
+        assert r.returncode == 0, r.stderr
+
+    def test_the_username_and_hostname_fire(self, tmp_path):
+        # The real login name and hostname are env-specific whatever the git
+        # config says — resolved from the machine, not the repository.
+        repo = tmp_path / "proj"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        git("config", "user.email", "n@example.com", cwd=repo)
+        git("config", "user.name", "n", cwd=repo)
+        candidates = [getpass.getuser(),
+                      socket.gethostname(), socket.gethostname().split(".")[0]]
+        marker = next((c for c in candidates
+                       if len(c) >= 2 and c.lower() not in
+                       {"user", "admin", "test", "main", "local", "home",
+                        "host", "dev", "git", "root", "info", "mail",
+                        "gmail", "example", "com", "org", "net"}), None)
+        assert marker, "this machine offers no usable identity to test with"
+        stage(repo, "a.md", f"configured for {marker} on this box\n")
+        r = run_scan(repo, "--staged")
+        assert r.returncode == 1, r.stderr
+        assert "env-marker" in r.stderr
+
+    def test_the_repositorys_own_tokens_are_suppressed(self, tmp_path):
+        repo = tmp_path / "lovelace"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)
+        git("config", "user.email", "ada@lovelace.io", cwd=repo)
+        git("config", "user.name", "Ada", cwd=repo)
+        stage(repo, "a.md", "lovelace is this project\n")
+        r = run_scan(repo, "--staged")
+        assert r.returncode == 0, r.stderr
+
+
+class TestDeliberateExceptionsAreRecorded:
+    def test_a_literal_allow_entry_suppresses_its_line_only(
+            self, identity_repo):
+        stage(identity_repo, "a.md", "noted by Ada Lovelace\na clean line\n")
+        r = run_scan(identity_repo, "--staged", allow="literal:ada lovelace\n")
+        assert r.returncode == 0, r.stderr
+
+    def test_the_exception_is_line_local_not_blanket(self, identity_repo):
+        stage(identity_repo, "a.md", "nothing to see\nnoted by Ada Lovelace\n")
+        r = run_scan(identity_repo, "--staged", allow="literal:a clean line\n")
+        assert r.returncode == 1, "an unrelated literal opened the gate"
+        assert "env-marker" in r.stderr
+
+
+class TestAGapInTheEnvironmentIsAnnounced:
+    def test_unset_git_identity_is_a_loud_partial_blindness_not_a_clean(
+            self, tmp_path):
+        repo = tmp_path / "proj"
+        repo.mkdir()
+        git("init", "-q", cwd=repo)          # no user.email / user.name set
+        stage(repo, "a.md", "key: sk-ant-api03-" + "A" * 24 + "\n")
+        r = run_scan(repo, "--staged")
+        assert r.returncode == 1
+        assert "partially blind" in r.stderr, r.stderr
+        assert "secret" in r.stderr, "the checks that COULD run went silent"
+
+
+class TestTheCommitGateMeasuresAddedLines:
+    def test_a_new_file_carrying_the_hostname_is_refused(self, identity_repo):
+        host = socket.gethostname().split(".")[0]
+        stage(identity_repo, "a.md", f"server {host} internal\n")
+        r = run_scan(identity_repo, "--staged")
+        assert r.returncode == 1, r.stderr
+
+    def test_preexisting_contamination_beside_a_clean_edit_does_not_block(
+            self, identity_repo):
+        commit(identity_repo, "a.md", "as Ada Lovelace noted long ago\n",
+               msg="seed")
+        stage(identity_repo, "a.md",
+              "as Ada Lovelace noted long ago\nan unrelated clean line\n")
+        r = run_scan(identity_repo, "--staged")
+        assert r.returncode == 0, r.stderr
+
+    def test_an_added_leaking_line_blocks_at_its_own_line(
+            self, identity_repo):
+        commit(identity_repo, "a.md", "clean seed line\n", msg="seed")
+        stage(identity_repo, "a.md", "clean seed line\nadded by Ada Lovelace\n")
+        r = run_scan(identity_repo, "--staged")
+        assert r.returncode == 1, r.stderr
+        assert "a.md:2" in r.stderr, r.stderr
+
+    def test_visibility_is_not_consulted_at_commit(self, identity_repo):
+        # A commit is history whoever can see the remote. The JSON reports the
+        # decision so the block is distinguishable from a public-remote block.
+        host = socket.gethostname().split(".")[0]
+        stage(identity_repo, "a.md", f"host {host}\n")
+        r = run_scan(identity_repo, "--staged", "--json")
+        payload = json.loads(r.stdout)
+        assert payload["visibility"].startswith("not consulted")
+        assert payload["blocking"], "nothing blocked"
+
+
+class TestTheCommitMessageGate:
+    def test_a_message_naming_the_user_is_refused(self, identity_repo):
+        msg = identity_repo / "msg.txt"
+        msg.write_text("fix thanks to Ada Lovelace\n")
+        r = run_scan(identity_repo, "--message", str(msg))
+        assert r.returncode == 1, r.stderr
+        assert "env-marker" in r.stderr
+
+    def test_a_credential_in_a_message_is_refused(self, identity_repo):
+        msg = identity_repo / "msg.txt"
+        msg.write_text("key: sk-ant-api03-" + "A" * 24 + "\n")
+        r = run_scan(identity_repo, "--message", str(msg))
+        assert r.returncode == 1
+        assert "secret" in r.stderr
+
+    def test_a_clean_message_passes(self, identity_repo):
+        msg = identity_repo / "msg.txt"
+        msg.write_text("fix: the tray ignored the release filter\n")
+        r = run_scan(identity_repo, "--message", str(msg))
+        assert r.returncode == 0, r.stderr
+
+
+class TestRangeModeKeepsThePublicationPolicy:
+    def _with_upstream(self, repo, ref):
+        """Point the CURRENT branch's upstream at a local 'remote' ref.
+
+        The branch name is read, not assumed: `git init`'s default is the
+        machine's configuration, and `branch.main.*` config on a branch named
+        `master` configures a branch nobody is on.
+        """
+        head = git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).stdout.strip()
+        git("update-ref", f"refs/remotes/origin/{head}", ref, cwd=repo)
+        # A remote-tracking ref alone is not enough: @{u} resolves only when
+        # the remote itself is configured, so git can validate the mapping.
+        git("config", "remote.origin.url", str(repo.parent / "no-such-remote"),
+            cwd=repo)
+        git("config", "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*", cwd=repo)
+        git("config", f"branch.{head}.remote", "origin", cwd=repo)
+        git("config", f"branch.{head}.merge", f"refs/heads/{head}", cwd=repo)
+
+    def test_old_contamination_does_not_block_a_clean_push(
+            self, identity_repo):
+        commit(identity_repo, "a.md", "as Ada Lovelace noted\n", msg="old")
+        commit(identity_repo, "b.md", "a clean new file\n", msg="new")
+        self._with_upstream(identity_repo, "HEAD~1")   # range = b.md only
+        r = run_scan(identity_repo)
+        assert r.returncode == 0, r.stderr
+
+    def test_but_a_range_that_adds_the_name_still_reports(
+            self, identity_repo):
+        commit(identity_repo, "a.md", "clean\n", msg="seed")
+        commit(identity_repo, "b.md", "clean too\n", msg="mid")
+        self._with_upstream(identity_repo, "HEAD~1")   # range = mid..HEAD
+        commit(identity_repo, "c.md", "noted by Ada Lovelace\n", msg="new")
+        r = run_scan(identity_repo)
+        assert r.returncode == 1, r.stderr
+        assert "env-marker" in r.stderr
+
+
+class TestTheInstaller:
+    def test_fresh_repo_gets_all_three_hooks_then_reports_in_place(
+            self, identity_repo):
+        r1 = run_scan(identity_repo, "--install-hooks")
+        assert r1.returncode == 0, r1.stderr
+        hooks = identity_repo / ".git" / "hooks"
+        for name in ("pre-commit", "commit-msg", "pre-push"):
+            p = hooks / name
+            assert p.exists(), name
+            assert os.access(p, os.X_OK), f"{name} not executable"
+            first = p.read_text(encoding="utf-8").splitlines()[0]
+            assert first == "#!/usr/bin/env bash"
+        r2 = run_scan(identity_repo, "--install-hooks")
+        assert "in place" in r2.stdout
+        assert "wrote" not in r2.stdout, "a re-run must not rewrite"
+
+    def test_a_hand_written_hook_is_never_touched(self, identity_repo):
+        hooks = identity_repo / ".git" / "hooks"
+        hooks.mkdir(parents=True, exist_ok=True)
+        (hooks / "pre-commit").write_text("#!/bin/sh\necho mine\n")
+        r = run_scan(identity_repo, "--install-hooks")
+        assert r.returncode == 0
+        assert "LEFT UNTOUCHED" in r.stdout
+        assert (hooks / "pre-commit").read_text() == "#!/bin/sh\necho mine\n"
+
+
+class TestTheHookBindsCommits:
+    """The PreToolUse gate's commit branch — the half that binds an agent even
+    if it reaches for --no-verify or core.hooksPath."""
+
+    @pytest.fixture
+    def commit_repos(self, tmp_path):
+        """A repo with fictional identity; nothing staged, one commit in."""
+        r = tmp_path / "proj"
+        r.mkdir()
+        git("init", "-q", cwd=r)
+        git("config", "user.email", "ada.lovelace@example.com", cwd=r)
+        git("config", "user.name", "Ada Lovelace", cwd=r)
+        (r / "a.md").write_text("clean\n")
+        git("add", "-A", cwd=r)
+        git("commit", "-q", "-m", "seed", cwd=r)
+        home = tmp_path / "home"
+        cfg = home / ".config" / "set-core"
+        cfg.mkdir(parents=True)
+        (cfg / "projects.json").write_text(json.dumps({"projects": {}}))
+        return r, home
+
+    def test_a_leaking_message_is_blocked_before_git_runs(
+            self, commit_repos):
+        repo, home = commit_repos
+        r = _hook(repo, "git commit -m 'noted by Ada Lovelace'", home)
+        assert r.returncode == 2, r.stdout + r.stderr
+
+    def test_leaking_staged_content_is_blocked(self, commit_repos):
+        repo, home = commit_repos
+        (repo / "b.md").write_text(f"server {socket.gethostname()} \n")
+        git("add", "b.md", cwd=repo)
+        r = _hook(repo, "git commit -m 'wip'", home)
+        assert r.returncode == 2, r.stdout + r.stderr
+
+    def test_a_cd_prefix_is_not_the_finding(self, commit_repos):
+        # The whole command string is never scanned: a `cd /home/<user>/...`
+        # prefix in a compound command must not become the finding.
+        repo, home = commit_repos
+        r = _hook(
+            repo,
+            f"cd /home/{getpass.getuser()}/no-such-dir 2>/dev/null; "
+            f"git commit -m 'clean message'",
+            home)
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_a_heredoc_writing_about_committing_is_not_a_commit(
+            self, commit_repos):
+        repo, home = commit_repos
+        cmd = "cat > t.py <<'XEOF'\nrun('git commit -m x')\nXEOF"
+        r = _hook(repo, cmd, home)
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_a_clean_commit_passes(self, commit_repos):
+        repo, home = commit_repos
+        r = _hook(repo, "git commit -m 'clean message'", home)
+        assert r.returncode == 0, r.stdout + r.stderr
 
 
 class TestASyntheticPhoneNumberIsNotSomebodysNumber:

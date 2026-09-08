@@ -178,6 +178,11 @@ def test_two_accounts_sharing_a_NAME_do_not_share_an_organization():
     accounts had just cached. Nothing errored at the lookup — it failed one step
     later, at the usage read, which is the shape that hides a cause: the log named
     the wrong step, and the uuid in flight belonged to a different credential.
+
+    Since 2026-09-07 the OAuth account has no lookup at all — it reads the CLI
+    endpoint, account-scoped by its own token — so the same-name pair now proves
+    the narrower fact: the web account's organization stays the web account's,
+    and the OAuth account's upstream does not touch the web path.
     """
     seen: list[tuple[str, str]] = []
 
@@ -195,8 +200,10 @@ def test_two_accounts_sharing_a_NAME_do_not_share_an_organization():
     usage_urls = [url for kind, url in seen if url.endswith("/usage")]
     assert usage_urls == [
         "https://claude.ai/api/organizations/org-web/usage",
-        "https://claude.ai/api/organizations/org-cc/usage",
+        "https://api.anthropic.com/api/oauth/usage",
     ]
+    # nothing of the web account's lookup leaks into the oauth path
+    assert not any(kind == "cc" and "organizations" in url for kind, url in seen)
 
 
 def test_a_rejected_usage_read_drops_the_cached_organization():
@@ -252,3 +259,38 @@ def test_an_authentication_failure_is_logged_without_the_credential(caplog):
 
     assert caplog.records
     assert "sk-secret-value" not in caplog.text
+
+
+def test_an_oauth_account_reads_the_cli_endpoint_and_skips_the_organization_lookup():
+    """Measured 2026-09-07: the claude.ai web API rejects a fresh, working CC
+    bearer token with 403 at every endpoint — for this account the organizations
+    lookup was a loop that never ended, three log lines a minute. The CC
+    upstream is the CLI's own usage endpoint, account-scoped by the token."""
+    transport = Transport(MEASURED_DOC)
+
+    usage = UsageClient(transport=transport).fetch(_account(kind=KIND_CC))
+
+    assert transport.calls == ["https://api.anthropic.com/api/oauth/usage"]
+    assert usage.outcome == OUTCOME_MEASURED
+
+
+def test_the_cli_endpoint_legacy_shape_parses_without_limits():
+    """The CLI endpoint also answers without the banded form; the plain pair
+    must keep carrying the figure (measured live: five_hour/seven_day at 200)."""
+    legacy = {"five_hour": {"utilization": 32.0, "resets_at": "2026-09-08T00:50:00+00:00"},
+              "seven_day": {"utilization": 73.0, "resets_at": "2026-09-11T13:00:00+00:00"}}
+
+    usage = UsageClient(transport=Transport(legacy)).fetch(_account(kind=KIND_CC))
+
+    assert [(w.kind, w.utilization) for w in usage.windows] == [
+        ("session", 32.0), ("weekly_all", 73.0),
+    ]
+
+
+def test_an_oauth_failure_is_unreachable_without_an_organization_call():
+    transport = Transport({}, fail_usage=True)
+
+    usage = UsageClient(transport=transport).fetch(_account(kind=KIND_CC))
+
+    assert usage.outcome == OUTCOME_UNREACHABLE
+    assert transport.calls == ["https://api.anthropic.com/api/oauth/usage"]

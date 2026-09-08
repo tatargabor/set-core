@@ -117,3 +117,68 @@ def test_the_credential_is_not_in_the_repr(tmp_path):
 
     assert "sk-secret-value" not in repr(account)
     assert account.credential == "sk-secret-value"
+
+
+def test_the_active_cc_token_comes_from_the_live_cli_store(tmp_path):
+    """The stored cc token is a snapshot of a credential the CLI keeps rotating.
+
+    Measured 2026-09-07: the snapshot 403'd at the organization lookup for
+    hours while the live store answered. Discovery reads the live store for
+    the active account, so the figure rides the rotation.
+    """
+    _write(tmp_path, "cc-accounts.json", {
+        "active": "beta@example.invalid",
+        "accounts": [{
+            "email": "beta@example.invalid",
+            "credentials": {"claudeAiOauth": {"accessToken": "tok-stored"}},
+        }],
+    })
+    live = tmp_path / "live-credentials.json"
+    live.write_text(json.dumps({"claudeAiOauth": {"accessToken": "tok-rotated"}}))
+
+    accounts = discover_accounts(tmp_path, live_path=live)
+
+    cc = [a for a in accounts if a.kind == KIND_CC][0]
+    assert cc.credential == "tok-rotated"
+
+
+def test_without_a_live_store_the_snapshot_still_discovers(tmp_path):
+    """The live store is machine state; its absence must not lose the account."""
+    _write(tmp_path, "cc-accounts.json", {
+        "active": "beta@example.invalid",
+        "accounts": [{
+            "email": "beta@example.invalid",
+            "credentials": {"claudeAiOauth": {"accessToken": "tok-stored"}},
+        }],
+    })
+
+    accounts = discover_accounts(tmp_path, live_path=tmp_path / "nincs-ilyen.json")
+
+    cc = [a for a in accounts if a.kind == KIND_CC][0]
+    assert cc.credential == "tok-stored"
+
+
+def test_a_non_active_cc_entry_keeps_its_stored_token(tmp_path):
+    """Only the account the CLI is holding rides the live store.
+
+    An inactive entry's snapshot is the best fact available about it —
+    substituting someone else's live token would measure the wrong account
+    and print it under this name.
+    """
+    _write(tmp_path, "cc-accounts.json", {
+        "active": "beta@example.invalid",
+        "accounts": [
+            {"email": "beta@example.invalid",
+             "credentials": {"claudeAiOauth": {"accessToken": "tok-stored-beta"}}},
+            {"email": "gamma@example.invalid",
+             "credentials": {"claudeAiOauth": {"accessToken": "tok-stored-gamma"}}},
+        ],
+    })
+    live = tmp_path / "live-credentials.json"
+    live.write_text(json.dumps({"claudeAiOauth": {"accessToken": "tok-rotated"}}))
+
+    accounts = discover_accounts(tmp_path, live_path=live)
+
+    by_name = {a.name: a for a in accounts if a.kind == KIND_CC}
+    assert by_name["beta@example.invalid"].credential == "tok-rotated"
+    assert by_name["gamma@example.invalid"].credential == "tok-stored-gamma"

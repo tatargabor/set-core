@@ -61,25 +61,32 @@ async function readJson<T>(url: string): Promise<T | null> {
   }
 }
 
-function OutcomeList({ summary }: { summary: RestoreSummary }) {
-  if (!summary.unfinished.length) return null
+/**
+ * One entry that did not start, as ONE truncated item in the result row.
+ *
+ * Compacted 2026-09-07 on the user's report with the strip on screen: the list
+ * used to be a block of one row per entry, and a server reason carries a full
+ * session id plus a sentence — the header grew a wrapped paragraph for a
+ * single skip. The full text moves into the tooltip; `truncate` keeps it in the
+ * DOM, so nothing that reads the fact loses it, and amber stays where the
+ * reader is standing (compacting must never hide a failure — it hides the
+ * *length*, not the fact).
+ */
+function OutcomeItem({ o }: { o: RestoreSummary['unfinished'][number] }) {
+  const whole = `${o.label || o.key} — ${o.status}${o.reason ? ` — ${o.reason}` : ''}`
   return (
-    <ul className="mt-1.5 space-y-1" data-fleet-restore-unfinished={summary.unfinished.length}>
-      {summary.unfinished.map(o => (
-        <li key={o.key} className="flex items-start gap-1.5 text-xs">
-          <TriangleAlert
-            size={12}
-            strokeWidth={1.75}
-            className={`mt-0.5 shrink-0 ${o.status === 'failed' ? 'text-red-400' : 'text-amber-400'}`}
-          />
-          <span className="min-w-0">
-            <span className="text-fg-strong">{o.label || o.key}</span>
-            <span className="text-fg-ghost"> — {o.status} — </span>
-            <span className="text-fg-muted">{o.reason}</span>
-          </span>
-        </li>
-      ))}
-    </ul>
+    <li key={o.key} className="flex min-w-0 items-center gap-1 text-xs" title={whole}>
+      <TriangleAlert
+        size={12}
+        strokeWidth={1.75}
+        className={`shrink-0 ${o.status === 'failed' ? 'text-red-400' : 'text-amber-400'}`}
+      />
+      <span className="truncate">
+        <span className="text-fg-strong">{o.label || o.key}</span>
+        <span className="text-fg-ghost"> — {o.status}{o.reason ? ' — ' : ''}</span>
+        <span className="text-fg-muted">{o.reason}</span>
+      </span>
+    </li>
   )
 }
 
@@ -94,29 +101,57 @@ function OutcomeList({ summary }: { summary: RestoreSummary }) {
 function NameList({ summary }: { summary: RestoreSummary }) {
   if (!summary.unnamed.length) return null
   return (
-    <ul className="mt-1.5 space-y-1" data-fleet-restore-unnamed={summary.unnamed.length}>
-      {summary.unnamed.map(o => (
-        <li key={o.key} className="text-xs text-fg-muted">
-          <span className="text-fg-strong">{o.label_used}</span>
-          {o.name_source === 'renamed'
-            ? <> — came back as this because <span className="text-fg-strong">{o.wanted_label}</span> was taken</>
-            : <> — the framework named this one; no name was recorded for it</>}
-        </li>
-      ))}
+    <ul className="contents" data-fleet-restore-unnamed={summary.unnamed.length}>
+      {summary.unnamed.map(o => {
+        const whole = o.name_source === 'renamed'
+          ? `${o.label_used} — came back as this because ${o.wanted_label} was taken`
+          : `${o.label_used} — the framework named this one; no name was recorded for it`
+        return (
+          <li key={o.key} className="min-w-0 text-xs text-fg-muted" title={whole}>
+            <span className="truncate">
+              <span className="text-fg-strong">{o.label_used}</span>
+              {o.name_source === 'renamed'
+                ? <> — came back as this because <span className="text-fg-strong">{o.wanted_label}</span> was taken</>
+                : <> — the framework named this one; no name was recorded for it</>}
+            </span>
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
+/**
+ * The restore outcome, as ONE compact row in the project strip.
+ *
+ * Compacted 2026-09-07 on the user's report: *"nem elég compact a felső menu,
+ * sok a szöveg"*. The headline, every non-started entry and every renamed one
+ * sit in a single wrapping line — each item truncated to the strip's width,
+ * full text on hover — instead of a stacked block that wrapped a session id
+ * and a sentence across the header. The colour still splits complete from
+ * partial, and the `data-fleet-restore-*` count markers are unchanged, so the
+ * DOM still states the shape a reader (or a test) can assert on.
+ */
 function Result({ summary }: { summary: RestoreSummary }) {
   return (
     <div
-      className="mt-1.5 text-xs"
+      className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs"
       data-fleet-restore-result={summary.complete ? 'complete' : 'partial'}
     >
-      <span className={summary.complete ? 'text-emerald-400' : 'text-amber-400'}>
+      <span
+        className={summary.complete ? 'text-emerald-400' : 'text-amber-400'}
+        title={summary.headline}
+      >
         {summary.headline}
       </span>
-      <OutcomeList summary={summary} />
+      {/* `contents` lifts the list items into the row above rather than letting
+          the ul draw a block of its own — the lists remain in the DOM with
+          their count markers, and the strip stays one visual line. */}
+      {summary.unfinished.length > 0 && (
+        <ul className="contents" data-fleet-restore-unfinished={summary.unfinished.length}>
+          {summary.unfinished.map(o => <OutcomeItem key={o.key} o={o} />)}
+        </ul>
+      )}
       <NameList summary={summary} />
     </div>
   )

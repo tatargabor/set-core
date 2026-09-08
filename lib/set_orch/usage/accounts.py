@@ -3,9 +3,14 @@
 Two credential stores exist and they are not interchangeable. The browser store
 holds session cookies harvested from a logged-in Chrome profile; the CLI store
 holds OAuth bearer tokens. Both grant access to the same account API, but they
-fail differently: a scanned cookie expires with no notice and no event, a token
-does not. A caller that cannot see which kind it is holding cannot tell which
-failure it is looking at, so the kind travels with the account.
+fail differently: a scanned cookie expires with no notice and no event, and so
+— *corrected 2026-09-07, measured* — does the CLI token's snapshot: the CLI
+rotates its access token during ordinary use, so the copy in `cc-accounts.json`
+drifts out of date within hours (the itline account answered 403 at the
+organization lookup all day while the live CLI store answered 200). Discovery
+therefore takes the active account's token from the live CLI store; see
+`_cc_accounts`. A caller that cannot see which kind it is holding cannot tell
+which failure it is looking at, so the kind travels with the account.
 """
 
 import json
@@ -13,7 +18,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +45,12 @@ def config_dir() -> Path:
     """
     override = os.environ.get("WT_CONFIG_DIR")
     return Path(override) if override else Path.home() / ".config" / "set-core"
+
+
+#: The Claude CLI's own credential store — the credential actually in use on
+#: this machine right now. Read here, never written: writing it is the router's
+#: job, with its own ownership check and file lock.
+LIVE_CC_STORE = Path.home() / ".claude" / ".credentials.json"
 
 
 @dataclass
@@ -111,8 +122,23 @@ def _web_accounts(data) -> List[Account]:
     return []
 
 
-def _cc_accounts(data) -> List[Account]:
-    """OAuth-token accounts written by the CLI account manager."""
+def _cc_accounts(data, live_token: Optional[str] = None) -> List[Account]:
+    """OAuth-token accounts written by the CLI account manager.
+
+    The stored access token is a SNAPSHOT of a credential the CLI keeps
+    rotating. Measured 2026-09-07: the store's token and the live CLI store's
+    token had drifted apart, and the account answered 403 at the organization
+    lookup for hours while the live store answered — so where the store names
+    an active account, that account's token comes from the live store at
+    discovery time. The poller re-discovers on every refresh, so the figure
+    rides the rotation instead of chasing it.
+
+    Matching is by the `active` name, deliberately not by token shape: a
+    rotated token shares nothing with its predecessor. If the live file is
+    actually holding a different account, the result is a 403 and an
+    `unreachable` minute — a wrong figure is not possible, only a missing one,
+    and the next poll re-reads.
+    """
     if not isinstance(data, dict):
         return []
 
@@ -126,6 +152,8 @@ def _cc_accounts(data) -> List[Account]:
         if not token:
             continue
         name = entry.get("email") or entry.get("name") or "unknown"
+        if live_token and name == active_name:
+            token = live_token
         out.append(
             Account(
                 name=name,
@@ -137,16 +165,23 @@ def _cc_accounts(data) -> List[Account]:
     return out
 
 
-def discover_accounts(directory: Path | None = None) -> List[Account]:
+def discover_accounts(directory: Path | None = None,
+                      live_path: Path | None = None) -> List[Account]:
     """Every account with a usable credential, browser-derived ones first.
 
     An entry with no credential is not an account: reporting it would make the
     list longer without making anything measurable, and a row that can never
     carry a figure is indistinguishable on screen from one that failed today.
+
+    `live_path` exists for tests: the live CLI store is machine state, and a
+    fixture must be able to stand in for it the same way `directory` stands in
+    for the owned stores.
     """
     base = directory or config_dir()
+    live = _load_json(live_path or LIVE_CC_STORE)
+    live_token = (live or {}).get("claudeAiOauth", {}).get("accessToken") or None
     web = _web_accounts(_load_json(base / "claude-session.json"))
-    cc = _cc_accounts(_load_json(base / "cc-accounts.json"))
+    cc = _cc_accounts(_load_json(base / "cc-accounts.json"), live_token)
     logger.debug("discovered %d account(s): %d web, %d cc", len(web) + len(cc), len(web), len(cc))
     return web + cc
 

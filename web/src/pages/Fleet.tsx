@@ -1707,6 +1707,16 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
     return `${project.name}-${stamp}`
   }, [project.name])
 
+  // Escape closes the dialog, because a layer that covers the page and can only
+  // be dismissed with the mouse is a trap for anyone reading with the keyboard.
+  // The same rule the restore dialog states, for the same reason.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   // Not asked yet. Silence here would read as "you cannot start one".
   if (owner === null) {
     return <span className="text-xs text-fg-ghost">start: asking the owner service…</span>
@@ -1736,147 +1746,187 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
 
   const preview = previewResolution(catalogue, provider, model)
 
+  /* A DIALOG, not an inline form — asked for by the user 2026-09-07, with both
+     states on screen: the open form lay across the whole project strip as a
+     fourth row of it, and on a narrow window it did not fit at all (*"újabban
+     inkább valami modal kellene, kicsi, mert így beágyazva nem jó, sokszor nem
+     fér ki"*). The strip is a row of controls; a form with four fields in it is
+     not a control, it is a panel, and it now takes the house dialog — the same
+     three ways out the restore dialog carries (×, Escape, backdrop click).
+
+     The dialog is `fixed`, so this wrapper only ever holds it; nothing in the
+     strip reflows while it is open. Every `data-fleet-start` marker and
+     aria-label is unchanged, because the contract this form is tested by reads
+     those, not the layout. */
   return (
-    <form
-      data-fleet-start="form"
-      className="inline-flex items-baseline gap-1.5"
-      onSubmit={e => {
-        e.preventDefault()
-        const name = label.trim()
-        if (!name || busy) return
-        setBusy(true)
-        setError(null)
-        fetch('/api/fleet/agents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Only what was CHOSEN travels. Sending the previewed default would
-          // record it as `request` provenance — a level nobody selected, which
-          // then reads on the screen as a deliberate choice.
-          body: JSON.stringify({
-            label: name,
-            cwd: cwd || project.root,
-            ...(provider ? { provider } : {}),
-            ...(model ? { model } : {}),
-          }),
-        })
-          .then(async r => {
-            if (!r.ok) {
-              const body = await r.json().catch(() => null)
-              throw new Error(String(body?.detail ?? `HTTP ${r.status}`))
-            }
-            return r.json()
-          })
-          .then((agent: { label?: string }) => {
-            setOpen(false)
-            onStarted(String(agent.label ?? name))
-          })
-          .catch(e => setError(String(e?.message ?? e)))
-          .finally(() => setBusy(false))
-      }}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-page/60"
+      onClick={() => setOpen(false)}
+      role="dialog"
+      aria-modal="true"
+      data-fleet-start-dialog="open"
     >
-      <input
-        autoFocus
-        value={label}
-        onChange={e => setLabel(e.target.value)}
-        aria-label="name for the agent to start"
-        className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-48"
-      />
-      {locations && selectorWorthShowing(locations) && (
-        <select
-          data-fleet-start="location"
-          value={cwd}
-          onChange={e => setCwd(e.target.value)}
-          aria-label="working tree to start the agent in"
-          title={cwd}
-          className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong max-w-[14rem]"
+      <div
+        className="w-96 max-w-[92vw] flex flex-col rounded border border-surface-line
+                   bg-surface-page shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-line shrink-0">
+          <CirclePlus size={13} strokeWidth={1.75} className="shrink-0 text-sky-300" />
+          <span className="text-sm text-fg-strong">Start an agent in {project.name}</span>
+          <button
+            onClick={() => setOpen(false)}
+            className="ml-auto text-fg-muted hover:text-fg-strong px-1 text-base leading-none"
+            aria-label="close"
+            data-fleet-start-close
+          >×</button>
+        </div>
+        <form
+          data-fleet-start="form"
+          className="flex flex-col gap-2 px-3 py-2.5"
+          onSubmit={e => {
+            e.preventDefault()
+            const name = label.trim()
+            if (!name || busy) return
+            setBusy(true)
+            setError(null)
+            fetch('/api/fleet/agents', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              // Only what was CHOSEN travels. Sending the previewed default would
+              // record it as `request` provenance — a level nobody selected, which
+              // then reads on the screen as a deliberate choice.
+              body: JSON.stringify({
+                label: name,
+                cwd: cwd || project.root,
+                ...(provider ? { provider } : {}),
+                ...(model ? { model } : {}),
+              }),
+            })
+              .then(async r => {
+                if (!r.ok) {
+                  const body = await r.json().catch(() => null)
+                  throw new Error(String(body?.detail ?? `HTTP ${r.status}`))
+                }
+                return r.json()
+              })
+              .then((agent: { label?: string }) => {
+                setOpen(false)
+                onStarted(String(agent.label ?? name))
+              })
+              .catch(e => setError(String(e?.message ?? e)))
+              .finally(() => setBusy(false))
+          }}
         >
-          {offerable(locations).map(loc => (
-            <option key={loc.path} value={loc.path}>{locationLabel(loc)}</option>
-          ))}
-        </select>
-      )}
-      {/* 8.1 / 8.3. Every declared provider is offered; the unusable ones are
-          DISABLED with the reason rather than omitted, because a provider that
-          is missing from the list and one that does not exist look identical. */}
-      {catalogue && (
-        <select
-          data-fleet-start="provider"
-          value={provider ?? ''}
-          onChange={e => { setProvider(e.target.value || null); setModel(null) }}
-          aria-label="provider to start the agent on"
-          /* ⚠ CAPPED, and it is not cosmetic. A select sizes itself to its
-             LONGEST option, and the longest one here is a sentence explaining
-             why a provider is unusable — so the closed control grew to ~370px
-             and pushed `start` to the far edge of the viewport. Found by
-             looking at the screen; every test was green. Same shape a peer
-             measured on this screen the same morning, where a column grew to
-             its longest sentence and slid the start button out of reach. */
-          className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong max-w-[11rem]"
-        >
-          <option value="">provider: default</option>
-          {offerableProviders(catalogue).map(p => (
-            <option key={p.name} value={p.name} disabled={p.disabledReason !== null}
-                    title={p.disabledReason ?? undefined}>
-              {p.name}{p.disabledReason ? ' — ' + p.disabledReason : ''}
-            </option>
-          ))}
-        </select>
-      )}
-      {catalogue && modelsFor(catalogue, preview.provider).length > 0 && (
-        <select
-          data-fleet-start="model"
-          value={model ?? ''}
-          onChange={e => setModel(e.target.value || null)}
-          aria-label="model to start the agent on"
-          className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong"
-        >
-          <option value="">model: default</option>
-          {modelsFor(catalogue, preview.provider).map(m => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
-      )}
-      {/* 8.2. The frame, before the click — with the LEVEL that supplies each
-          half, so a start on somebody else's account is visible rather than
-          discoverable afterwards from a bill. */}
-      {catalogue && (
-        <span
-          data-fleet-start="resolved"
-          className="text-xs text-fg-muted whitespace-nowrap"
-          /* The levels move into the tooltip when both say the same thing. On
-             screen `(machine default / machine default)` wrapped onto a second
-             line and said one word twice — it is a distinction only when the
-             two halves DIFFER, which is exactly when a start is spending
-             somebody else's budget. */
-          title={`Provider from ${levelLabel(preview.providerLevel)}, model from ${levelLabel(preview.modelLevel)}.`}
-        >
-          → {preview.provider ?? 'no provider'} · {preview.model ?? 'no model'}
-          <span className="text-fg-ghost">
-            {' '}({preview.providerLevel === preview.modelLevel
-              ? levelLabel(preview.providerLevel)
-              : `${levelLabel(preview.providerLevel)} / ${levelLabel(preview.modelLevel)}`})
-          </span>
-        </span>
-      )}
-      {catalogueFailed && (
-        <span data-fleet-start="catalogue-unread" className="text-xs text-amber-400"
-              title="The provider catalogue could not be read. This is not the same as a machine that declares none — the start will use whatever the owner resolves.">
-          providers could not be read — the owner will resolve
-        </span>
-      )}
-      <button type="submit" disabled={busy} className="text-xs text-sky-300 hover:underline disabled:opacity-50">
-        {busy ? 'starting…' : 'start'}
-      </button>
-      <button type="button" onClick={() => setOpen(false)} className="text-xs text-fg-muted hover:text-fg-strong">
-        cancel
-      </button>
-      {locationsFailed && (
-        <span data-fleet-start="locations-unread" className="text-xs text-amber-400">
-          worktrees could not be read — starting in the project root
-        </span>
-      )}
-      {error && <span className="text-xs text-red-400" title={error}>did not start: {error}</span>}
-    </form>
+          <input
+            autoFocus
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            aria-label="name for the agent to start"
+            placeholder="agent name"
+            className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-full"
+          />
+          {locations && selectorWorthShowing(locations) && (
+            <select
+              data-fleet-start="location"
+              value={cwd}
+              onChange={e => setCwd(e.target.value)}
+              aria-label="working tree to start the agent in"
+              title={cwd}
+              className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-full"
+            >
+              {offerable(locations).map(loc => (
+                <option key={loc.path} value={loc.path}>{locationLabel(loc)}</option>
+              ))}
+            </select>
+          )}
+          {/* 8.1 / 8.3. Every declared provider is offered; the unusable ones are
+              DISABLED with the reason rather than omitted, because a provider that
+              is missing from the list and one that does not exist look identical.
+              The old `max-w` cap is gone with the inline row it guarded: a select
+              here is `w-full` in a fixed-width dialog, so its longest option can
+              no longer size the control. */}
+          {catalogue && (
+            <select
+              data-fleet-start="provider"
+              value={provider ?? ''}
+              onChange={e => { setProvider(e.target.value || null); setModel(null) }}
+              aria-label="provider to start the agent on"
+              className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-full"
+            >
+              <option value="">provider: default</option>
+              {offerableProviders(catalogue).map(p => (
+                <option key={p.name} value={p.name} disabled={p.disabledReason !== null}
+                        title={p.disabledReason ?? undefined}>
+                  {p.name}{p.disabledReason ? ' — ' + p.disabledReason : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          {catalogue && modelsFor(catalogue, preview.provider).length > 0 && (
+            <select
+              data-fleet-start="model"
+              value={model ?? ''}
+              onChange={e => setModel(e.target.value || null)}
+              aria-label="model to start the agent on"
+              className="bg-surface-panel border border-surface-line rounded px-1.5 py-0.5 text-xs text-fg-strong w-full"
+            >
+              <option value="">model: default</option>
+              {modelsFor(catalogue, preview.provider).map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
+          {/* 8.2. The frame, before the click — with the LEVEL that supplies each
+              half, so a start on somebody else's account is visible rather than
+              discoverable afterwards from a bill. */}
+          {catalogue && (
+            <span
+              data-fleet-start="resolved"
+              className="text-xs text-fg-muted whitespace-nowrap overflow-hidden text-ellipsis"
+              /* The levels move into the tooltip when both say the same thing. On
+                 screen `(machine default / machine default)` wrapped onto a second
+                 line and said one word twice — it is a distinction only when the
+                 two halves DIFFER, which is exactly when a start is spending
+                 somebody else's budget. */
+              title={`Provider from ${levelLabel(preview.providerLevel)}, model from ${levelLabel(preview.modelLevel)}.`}
+            >
+              → {preview.provider ?? 'no provider'} · {preview.model ?? 'no model'}
+              <span className="text-fg-ghost">
+                {' '}({preview.providerLevel === preview.modelLevel
+                  ? levelLabel(preview.providerLevel)
+                  : `${levelLabel(preview.providerLevel)} / ${levelLabel(preview.modelLevel)}`})
+              </span>
+            </span>
+          )}
+          {catalogueFailed && (
+            <span data-fleet-start="catalogue-unread" className="text-xs text-amber-400"
+                  title="The provider catalogue could not be read. This is not the same as a machine that declares none — the start will use whatever the owner resolves.">
+              providers could not be read — the owner will resolve
+            </span>
+          )}
+          {locationsFailed && (
+            <span data-fleet-start="locations-unread" className="text-xs text-amber-400">
+              worktrees could not be read — starting in the project root
+            </span>
+          )}
+          {error && <span className="text-xs text-red-400" title={error}>did not start: {error}</span>}
+          <div className="flex items-center gap-2 pt-0.5">
+            <button
+              type="submit"
+              disabled={busy}
+              className="px-2 py-0.5 rounded border border-sky-500/50 text-xs text-sky-300
+                         hover:bg-sky-500/10 disabled:opacity-50"
+            >
+              {busy ? 'starting…' : 'start'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-fg-muted hover:text-fg-strong">
+              cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
 

@@ -53,6 +53,16 @@ __all__ = [
 ]
 
 API_BASE = "https://claude.ai/api"
+#: CC (OAuth) accounts are not web sessions. Measured 2026-09-07: the claude.ai
+#: web API rejects a fresh, working CC bearer token at every endpoint (403 at
+#: `/api/organizations` — the lookup loop this file used to spin in, three log
+#: lines a minute), while the CLI's own usage endpoint answers 200 to the same
+#: token. That endpoint is account-scoped by the token itself, so it needs no
+#: organization lookup, and it carries the same document shape (banded `limits`
+#: with severity, plus the legacy pair).
+OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+#: The beta opt-in the CLI itself sends; without it the endpoint does not answer.
+_OAUTH_BETA = "oauth-2025-04-20"
 _USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) set-core/1.0"
 _TIMEOUT = 15
 
@@ -148,6 +158,7 @@ class UsageClient:
         headers = {"Accept": "application/json", "User-Agent": _USER_AGENT}
         if account.is_oauth:
             headers["Authorization"] = f"Bearer {account.credential}"
+            headers["anthropic-beta"] = _OAUTH_BETA
             cookies = None
         else:
             cookies = {"sessionKey": account.credential}
@@ -172,7 +183,8 @@ class UsageClient:
 
         cmd = ["curl", "-s", "-H", "Accept: application/json", "-H", f"User-Agent: {_USER_AGENT}"]
         if account.is_oauth:
-            cmd += ["-H", f"Authorization: Bearer {account.credential}"]
+            cmd += ["-H", f"Authorization: Bearer {account.credential}",
+                    "-H", f"anthropic-beta: {_OAUTH_BETA}"]
         else:
             cmd += ["-H", f"Cookie: sessionKey={account.credential}"]
         cmd += ["--max-time", str(_TIMEOUT), url]
@@ -310,6 +322,16 @@ class UsageClient:
         shipped requirement with its own scenarios, so moving the plumbing must
         not quietly move the meaning too.
         """
+        if account.is_oauth:
+            # Account-scoped by the bearer token itself — there is nothing to
+            # look up, and the web API's lookup is the 403 loop measured into
+            # OAUTH_USAGE_URL's comment.
+            document = self._transport(OAUTH_USAGE_URL, account)
+            if document is None:
+                logger.warning("account unreachable at usage read: kind=%s", account.kind)
+                return None
+            return document if isinstance(document, dict) else None
+
         org = self._organization(account)
         if not org:
             logger.warning("account unreachable at organization lookup: kind=%s", account.kind)

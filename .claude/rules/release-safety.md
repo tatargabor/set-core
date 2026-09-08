@@ -17,8 +17,10 @@ never runs.** The checks below are now implemented:
 
 ```bash
 set-leakscan                 # the unpushed range — what a push would publish
+set-leakscan --staged        # the COMMIT gate — staged added lines, blocks always
+set-leakscan --message <file>  # a commit message (the commit-msg hook calls this)
+set-leakscan --install-hooks # write/update pre-commit, commit-msg, pre-push
 set-leakscan --tree          # the whole tracked tree, for an audit
-set-leakscan --staged        # before a commit
 set-leakscan --list-patterns # what it looks for, without printing the values
 ```
 
@@ -28,20 +30,51 @@ this project's rules already describe for `.gitignore`. Deliberate exceptions go
 `~/.config/set-core/leakscan-allow.txt`, one slug per line; the user's own public repos are
 already listed there.
 
-Two gates run it, and they bind **different actors** — neither is redundant:
+Three gates run it, and they bind **different actors** — none is redundant:
 
 | gate | binds | file |
 |---|---|---|
-| `.git/hooks/pre-push` | a human at a terminal | per-repo, installed by hand |
-| `set-hook-leakscan` (`PreToolUse`, matcher `Bash`) | an agent | `.claude/settings.json` |
+| `.git/hooks/pre-commit` + `commit-msg` | a human, at COMMIT time | `set-leakscan --install-hooks` (marker-guarded, idempotent) |
+| `.git/hooks/pre-push` | a human, at push time | `set-leakscan --install-hooks`, or by hand |
+| `set-hook-leakscan` (`PreToolUse`, matcher `Bash`) | an agent, on `git commit` and `git push` | `.claude/settings.json` |
 
 An agent can pass `-c core.hooksPath=` without meaning any harm, because **an instruction is
 not a constraint — what an agent cannot do is decided by the tools it holds.** A human can
 disable a Claude hook. Hence both.
 
-**If a gate blocks you, do not reach for `--no-verify`.** Fix the finding, or record the
-exception in the allow file and say so out loud. A bypassed gate and an absent one are the
-same thing, except the bypassed one also tells you it is fine.
+## The commit gate — environment-specific identity dies at commit (2026-09-07)
+
+A commit is the unit that accumulates; by push time the only repair is a history rewrite.
+So the gate also runs at commit, on BOTH actors, in two modes:
+
+- **`--staged`** — the `pre-commit` scan: staged **added lines**, new files in full, staged
+  file names. Blocks EVERYTHING regardless of remote visibility (a commit is history whoever
+  can see the remote). Skips the tree-wide checks to stay fast.
+- **`--message <file>`** — the `commit-msg` scan: the message text against the same checks.
+  The class `dda47de797e4` proves it needed: a consumer name sat in a pushed commit message
+  because nothing scanned messages before the commit existed.
+
+**The env-marker category** — the machine's own identity, resolved at run time and never
+stored in any repository: name tokens from `git config user.email`'s local part and
+`user.name`, the login name, the hostname. Matched ASCII-folded on word boundaries, so a
+name written with its diacritics fires. Two properties are RULES, not accidents:
+
+- **The public account handle inside `github.com/<handle>/...` URLs does not fire** — it is
+  one unbroken word, and the tree legitimately carries it in clone instructions. Prose uses
+  of the name fire. A `literal:` allow entry closes this for anyone who wants it closed.
+- **The check measures what a diff ADDS, never what a file already holds** — the tree
+  deliberately carries identity in docs, and a whole-file check would block every commit
+  touching README and be removed within a week. It also never runs in `--tree` mode.
+
+If the gate blocks a commit over a value that is legitimately machine-local, the fix is to
+move the value to **local config** — `set-config set <key> <value> [--project P]`, stored
+under `~/.config/set-core/` outside every repository — and have the code read it with
+`set_orch.local_config.get()`. That is the layer's whole purpose: the gate says no, the
+config says where the value belongs instead.
+
+**If a gate blocks you, do not reach for `--no-verify`.** Fix the finding, move the value
+to local config, or record the exception in the allow file and say so out loud. A bypassed
+gate and an absent one are the same thing, except the bypassed one also tells you it is fine.
 
 ## The checks
 

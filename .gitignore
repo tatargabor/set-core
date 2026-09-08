@@ -38,6 +38,7 @@ activity.json
 .claude/orchestration.log
 .claude/scheduled_tasks.lock
 .claude/settings.json.bak
+.claude/settings.json.bak.*
 orchestration-events.jsonl
 orchestration-events-*.jsonl
 orchestration-state.json

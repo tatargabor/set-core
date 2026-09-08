@@ -148,7 +148,10 @@ export function summarise(result: RestoreResult): RestoreSummary {
   } else if (result.complete === true) {
     headline = `All ${started} restored.`
   } else if (started === 0) {
-    headline = `None of the ${attempted} started — see the reason on each.`
+    // The pointing tail — "see the reason on each" — was trimmed 2026-09-07:
+    // the reasons now sit in the same compact row as this headline, so the
+    // sentence would point at what the reader is already looking at.
+    headline = `None of the ${attempted} started.`
   } else {
     headline = `${started} of ${attempted} restored; ${unfinished.length} did not start.`
   }
