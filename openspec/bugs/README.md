@@ -68,6 +68,23 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-144 — the Control Center's dialogs never got their native level raise, so a modal message box hides UNDER the always-on-top window and the app reads as frozen
+- **state:** open
+- **reported:** 2026-09-09 by the user — "set-control gui felülete be van fagyva ... kiadott 3 keychaines ablakot aztan lecsuktam és befagyott"
+- **measured:** the running GUI (PID 1839) was sampled with `sample 1839 3`. The main thread is **not** hung — it sits in `QDialog::exec()` inside a nested event loop, 2280 of 2389 samples idle in `mach_msg`, still servicing paint events, and every worker thread kept polling (`/tmp/set-control.log` still writing at 22:36, eight minutes after the freeze). `/tmp/set-control.log:32-36` shows the manual Chrome scan finishing at 22:28:02 with **no sessions**, which routes to `_on_manual_scan_finished` -> `show_information(...)` -> an application-modal `QMessageBox`. The reason it is invisible is `_raise_above_cc` in `gui/dialogs/helpers.py`: it compared `int(widget.winId())` against `NSApp.windows()[i].windowNumber()`. Measured directly in a probe process — `winId() = 32974968064 (0x7ad761500)`, an NSView pointer; `windowNumbers = [-1, 264]`; **`match = False`**. The loop can never match, so the raise silently did nothing and the dialog kept Qt's `WindowStaysOnTopHint` level of **8**, below the CC's **25**. The correct resolution, which `main_window._get_ns_window` has always used, gives window 264.
+- **fail direction:** the worst available, and the module's own docstring predicted it — "Qt's WindowStaysOnTopHint only sets NSFloatingWindowLevel (~3-8), which is BELOW the CC". An application-modal dialog under an always-on-top window blocks every click while being invisible, so a perfectly healthy process is indistinguishable from a hung one. Both failure paths were silent: the never-matching loop fell out of the function, and the `except Exception: pass` swallowed anything else.
+- **why the existing tests could not catch it:** `tests/gui/test_15_dialog_helpers.py` asserted only that `WindowStaysOnTopHint` was set — and that flag *is* what produces level 8. The tests verified the MECHANISM and were silent about the RESULT, so they passed on precisely the broken state.
+- **fixed when:** `_raise_above_cc` resolves the NSView to its NSWindow and the dialog's level actually reads 26, with a test asserting the resulting level rather than the flag, and the failure path logging instead of passing.
+- **scope note:** this affects every dialog routed through `gui/dialogs/helpers.py` — every `show_warning`, `show_information`, `show_question`, `get_text`, `get_item` and file dialog in the GUI, on macOS. It is not specific to the Chrome scan; the scan is only what happened to raise one.
+
+### B-145 — the Chrome session scan finds zero accounts, and one profile fails to decrypt
+- **state:** open — reported alongside B-144, NOT fixed by it
+- **reported:** 2026-09-09 by the user, who set out to sync Claude accounts and got none
+- **measured:** `/tmp/set-control.log:32-36` — two scans, four profiles each, **0 sessions found**. Three profiles report `No Claude session in profile`, and one reports `Failed to extract cookie from <profile>: 'utf-8' codec can't decode byte 0xe7 in position 0: invalid continuation byte` — a decrypt producing garbage, not an absent cookie, so that path is a wrong-key symptom rather than a missing-login one. The two are different failures reported the same way to the caller: `_extract_session_cookie` returns `None` for both (`gui/workers/chrome_cookies.py:160-162`), so the UI cannot distinguish "not logged in" from "could not decrypt".
+- **fail direction:** silent conflation. A user with a working Chrome login is told "No Chrome profiles with Claude sessions found", which points them at re-logging in rather than at the decryption.
+- **fixed when:** a scan on a machine with a logged-in claude.ai Chrome profile returns that session; and a decrypt failure is surfaced to the user as distinct from an absent cookie, with a test covering both branches.
+
+
 ### B-128 — an open/reveal request that arrives while the file tree is hidden is a silent no-op
 - **state:** CLOSED (2026-08-29, `98f0df93`) — the entry stays; evidence below.
 - **reported:** 2026-08-29 by this session, from `FleetFileView.tsx` read end to end

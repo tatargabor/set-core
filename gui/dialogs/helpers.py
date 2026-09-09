@@ -11,32 +11,71 @@ Usage:
     show_warning(self, "Error", "Something went wrong")
 """
 
+import logging
 import sys
 from PySide6.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 from PySide6.QtCore import Qt
 
+logger = logging.getLogger("set-control.dialogs")
+
 
 def _raise_above_cc(widget):
-    """Set native NSWindow level to 26 (above CC's 25) on macOS."""
+    """Set native NSWindow level to 26 (above CC's 25) on macOS.
+
+    winId() is a pointer to the widget's NSView, NOT an NSWindow number, so it
+    must be resolved through the view — the same way main_window._get_ns_window
+    does it. Comparing it against NSApp.windows()[i].windowNumber() never
+    matches, and the failure is silent: the dialog stays at Qt's floating level
+    (~8), below the CC's 25, where an application-modal dialog is invisible and
+    blocks every click on the CC.
+    """
     if sys.platform != "darwin":
-        return
+        return False
     try:
-        from objc import objc_object  # noqa: F401
-        ns_view = int(widget.winId())
-        from AppKit import NSApp
-        for win in NSApp.windows():
-            if win.windowNumber() == ns_view:
-                win.setLevel_(26)
-                return
-    except Exception:
-        pass
+        from ctypes import c_void_p
+        import objc
+
+        win_id = int(widget.winId())
+        if not win_id:
+            logger.warning("dialog raise: winId() is 0, cannot resolve NSWindow")
+            return False
+
+        ns_view = objc.objc_object(c_void_p=c_void_p(win_id))
+        ns_window = ns_view.window() if hasattr(ns_view, "window") else None
+        if ns_window is None:
+            logger.warning("dialog raise: NSView %#x has no window", win_id)
+            return False
+
+        old_level = ns_window.level()
+        ns_window.setLevel_(26)
+        logger.debug(
+            "dialog raise: window %d level %d -> %d",
+            ns_window.windowNumber(), old_level, ns_window.level(),
+        )
+        return True
+    except Exception as e:
+        logger.warning("dialog raise failed: %s: %s", type(e).__name__, e)
+        return False
 
 
 def _exec_above_cc(widget):
-    """Show widget, raise above CC, then exec modally."""
+    """Show widget, raise above CC, then exec modally.
+
+    The raise is not cosmetic. These dialogs are application-modal, so one that
+    ends up below the CC's window level blocks all input while being invisible —
+    the app looks frozen. If the raise fails, say so rather than exec a dialog
+    nobody can see.
+    """
     widget.setWindowFlags(widget.windowFlags() | Qt.WindowStaysOnTopHint)
     widget.show()
-    _raise_above_cc(widget)
+    if not _raise_above_cc(widget):
+        logger.warning(
+            "dialog %r shown WITHOUT a native level raise — it may sit below the "
+            "Control Center and block input while invisible",
+            widget.windowTitle(),
+        )
+    widget.raise_()
+    widget.activateWindow()
     return widget.exec()
 
 
