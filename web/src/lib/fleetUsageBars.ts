@@ -283,6 +283,37 @@ export function shortLabel(name: string): string {
 }
 
 /**
+ * Which product a kind belongs to, for the kinds whose NAME does not say.
+ *
+ * A browser account is named after its Chrome context (`gmail`, `itline`) and a
+ * Claude Code account after its email — neither says whose subscription it is,
+ * and once a third and fourth provider joined the strip, "gmail" beside "GLM"
+ * and "ChatGPT" reads as a provider nobody can name.
+ *
+ * `glm` and `astra` are deliberately absent: their names already carry the
+ * vendor, and prefixing them would render "GLM GLM".
+ */
+const VENDOR: Record<string, string> = {
+  web: 'Claude',
+  cc: 'Claude Code',
+}
+
+/**
+ * The label a compact mark carries: the product, then the account.
+ *
+ * The two halves are both load-bearing. Measured on the built screen: the strip
+ * showed `itline` TWICE — once as a browser session and once as a Claude Code
+ * account — two different subscriptions rendered as one repeated word, which is
+ * worse than an unlabelled bar because it looks like a duplicate rather than a
+ * distinction. The product name is what tells them apart.
+ */
+export function accountLabel(kind: string, name: string): string {
+  const vendor = VENDOR[kind]
+  const short = shortLabel(name)
+  return vendor ? `${vendor} ${short}` : short
+}
+
+/**
  * One line naming everything about an account, for the compact mark's tooltip.
  *
  * The name has to go SOMEWHERE. Compacting to icons and numbers was asked for by

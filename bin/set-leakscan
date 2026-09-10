@@ -517,8 +517,51 @@ HOOK_TEMPLATES = {
     "pre-push": _HOOK_BODY_PREFIX.format(
         name="pre-push",
         purpose="Refuses a push that would publish a consumer name, a credential, a local\n"
-                "# filesystem path or a phone number.",
-    ) + 'exec set-leakscan --range "$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo HEAD)..HEAD"\n',
+                "# filesystem path, a phone number or environment-specific identity.",
+    ) + '''# The scan range comes from the refs the push actually publishes (stdin),
+# not from @{u}: the upstream is unset exactly on the FIRST push of a branch —
+# the push that carries every commit — and the old derivation scanned nothing
+# there (measured 2026-09-08, a leaking HEAD pushed clean).
+ranges=""
+saw_any=0
+while read -r lref lsha rref rsha; do
+  [ -n "${lsha:-}" ] || continue
+  saw_any=1
+  [ "$lsha" = "0000000000000000000000000000000000000000" ] && continue
+  if [ "${rsha:-0000000000000000000000000000000000000000}" = "0000000000000000000000000000000000000000" ]; then
+    # New remote ref: everything unique to the local side is being published.
+    # Scan from the merge-base with any remote-tracking ref; with no common
+    # history at all, fall back to the whole-tree scan — it still enforces
+    # every whole-file category, and the scanner announces loudly that the
+    # env-marker check has no base there. Announced blindness, never a
+    # silent zero.
+    anyremote="$(git for-each-ref --format='%(refname)' refs/remotes | head -n 1)"
+    base="$(git merge-base "$lsha" "$anyremote" 2>/dev/null || true)"
+    if [ -n "$base" ]; then
+      ranges="$ranges ${base}..${lsha}"
+    else
+      ranges="$ranges ALL"
+    fi
+  else
+    ranges="$ranges ${rsha}..${lsha}"
+  fi
+done
+rc=0
+if [ -z "$ranges" ]; then
+  if [ "$saw_any" = "1" ]; then
+    exit 0                       # only ref deletions — nothing is published
+  fi
+  exec set-leakscan              # no stdin at all — scan the whole tree
+fi
+for r in $ranges; do
+  if [ "$r" = "ALL" ]; then
+    set-leakscan || rc=1
+  else
+    set-leakscan --range "$r" || rc=1
+  fi
+done
+exit $rc
+''',
 }
 
 
@@ -684,7 +727,31 @@ def main():
             up = sh(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
                     cwd=cwd).strip()
             rng = f"{up}..HEAD" if up else None
+        if not rng:
+            # No base to measure added lines against — a push with no
+            # derivable range. The whole-tree checks below still run and
+            # still block; the env-marker category is line-addition-based by
+            # design and has nothing to measure. It is ANNOUNCED, never
+            # folded into a clean result — the same honesty rule as a
+            # registry that could not be read.
+            env_missing.append(
+                "no range derivable (no upstream) — whole-tree checks ran; "
+                "the env-marker check has no base and is blind for this push")
         if rng:
+            # An unresolvable range (a stale remote-tracking ref, a typo) makes
+            # every git invocation here fail into an empty stdout — which the
+            # rest of this branch reads as a clean, zero-file scan. Measured
+            # 2026-09-08: `--range refs/heads/nope..HEAD` exited 0. The gate
+            # must refuse blind when it cannot see what it scans, exactly like
+            # the hook refuses when the binary is missing.
+            chk = subprocess.run(["git", "rev-list", "-1", rng], cwd=cwd,
+                                 capture_output=True)
+            if chk.returncode != 0:
+                print(f"set-leakscan: range does not resolve ({rng}) — refusing blind",
+                      file=sys.stderr)
+                print("          A scan that cannot see its range must not report clean.",
+                      file=sys.stderr)
+                return 2
             files = [f for f in sh(["git", "diff", "--name-only", "-z", rng],
                                    cwd=cwd).split("\0") if f]
             added = diff_added_lines(cwd, [rng])

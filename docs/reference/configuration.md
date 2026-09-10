@@ -217,6 +217,18 @@ nothing copies it into a project tree, and the deploy path never writes one.
       "env": { "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "900000" },
       "args": ["--autocompact", "700k"],
       "model_aliases": { "sonnet": "glm-5.3" }
+    },
+    "astra": {
+      "models": ["gpt-6-astra", "gpt-5.6-luna"],
+      "requires_credential": true,
+      "default_model": "gpt-6-astra",
+      "credential": { "token": "local", "base_url": "http://127.0.0.1:17645/anthropic" },
+      "env": { "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "272000" },
+      "args": ["--autocompact", "200k"],
+      "model_aliases": { "opus": "gpt-6-astra", "sonnet": "gpt-6-astra",
+                         "fable": "gpt-6-astra", "haiku": "gpt-5.6-luna" },
+      "model_ids": { "gpt-6-astra": "anthropic-openai-oauth__gpt-6-astra",
+                     "gpt-5.6-luna": "anthropic-openai-oauth__gpt-5.6-luna" }
     }
   },
   "projects": {
@@ -264,6 +276,63 @@ failure modes (gateway-prefixed model names, autocompact needing
 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, compact thrashing that looks like a slow model) are in
 `.claude/skills/set/glm/SKILL.md`; `set-glm --check` verifies the configuration with a live
 probe call.
+
+### Two kinds of provider: direct, and gateway-backed
+
+`anthropic` and `glm` are **direct**: their `base_url` names a vendor host that already speaks
+the Anthropic protocol, and the credential is the upstream token.
+
+`astra` in the example above is **gateway-backed**, and the difference is worth stating because
+the shape of the entry looks alarming otherwise. Some vendors do not speak the Anthropic
+protocol at all, so the harness reaches them through a **local translating gateway**, and the
+provider entry then points at loopback:
+
+- **`base_url` is `127.0.0.1`, not a vendor host.** The gateway is the endpoint.
+- **`token` is a local placeholder, not a secret.** The gateway holds the real credential (an
+  OAuth login of its own) and accepts any non-empty key from the loopback side. **Never put the
+  upstream OAuth token in `providers.json`** — it would be a credential stored where it buys
+  nothing and can leak.
+- **`model_ids` carries the gateway's own ids.** A gateway rewrites model names (commonly
+  `<something>__<model>`), and the catalogue name is what a human reads while the id is what
+  the CLI sends. This is exactly the block that mapping exists for.
+- **`env` and `args` still describe the MODEL, not the gateway** — the context window and the
+  autocompact point belong to whatever answers on the far side.
+
+### Wiring a gateway-backed provider
+
+The gateway is a separate tool, installed and signed in once per machine; set-core neither
+ships nor installs it, and never sees its credential.
+
+```bash
+# 1. install the gateway and sign in (its own OAuth flow, a browser or device code)
+# 2. run it as a user service so it survives a reboot, then:
+set-providers path                    # where the entry belongs
+$EDITOR "$(set-providers path)"       # add the block, keep the file at mode 0600
+set-providers list                    # the entry appears; `usable` says whether it can start
+set-providers show --provider astra   # the resolved launch, credential never printed
+```
+
+`set-providers list` reporting `"usable": false, "reason": "no credential configured"` is a
+**correct** answer for a declared-but-unfinished provider, not a failure — see
+`requires_credential` above.
+
+⚠ **One measured trap when the gateway runs under systemd.** A user unit is handed a minimal
+`PATH`, so a `#!/usr/bin/env node`-style launcher can resolve to an interpreter old enough to
+fail while parsing the gateway itself — the service then restart-loops on a `SyntaxError` and
+nothing on the dashboard says the provider is unreachable, because a provider that never
+answers looks like one nobody started. Name the interpreter by absolute path in `ExecStart`,
+and set an explicit `Environment=PATH=…`.
+
+**Launching.** Any declared provider can be chosen when starting an agent from the fleet
+surface — the owner service resolves it through the same resolver as everything else. `set-glm`
+is a GLM-specific convenience wrapper and has no per-provider counterpart; for anything else
+the fleet's provider selection (or a project override) is the shipped path.
+
+**Quota.** A provider whose plan exposes a usage endpoint also appears in the fleet header's
+account strip beside the Claude accounts and GLM, with its own rolling windows. That
+measurement is discovered independently of `providers.json` — it reads the gateway tool's own
+login — so an account can show there while the provider entry is still unfinished, and vice
+versa. Neither implies the other.
 
 ## Environment Variables
 

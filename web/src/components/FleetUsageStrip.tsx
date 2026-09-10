@@ -46,7 +46,7 @@ import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Gauge, TriangleAlert, Unplug } from 'lucide-react'
 
 import {
-  headlineWindows, rowTitle, shortLabel, stripState,
+  accountLabel, headlineWindows, rowTitle, stripState,
   type AccountRow, type UsageSnapshot, type WindowMark,
 } from '../lib/fleetUsageBars'
 
@@ -110,9 +110,14 @@ function CompactAccount({ row }: { row: AccountRow }) {
     <span className="inline-flex items-center gap-1 shrink-0"
           data-fleet-usage-compact={row.name}
           title={rowTitle(row)}>
-      <span className="text-[10px] text-fg-ghost shrink-0"
+      {/* The product, then the account. `fg-ghost` sat at 1.79:1 against this
+          ground — legible only if you already knew what it said — and the
+          arbitrary 10px was below the type scale as well. Asked for by the user
+          on the built screen: name the product, and make the characters
+          brighter. */}
+      <span className="text-xs text-fg-strong shrink-0"
             data-fleet-usage-compact-label={row.name}>
-        {shortLabel(row.name)}
+        {accountLabel(row.kind, row.name)}
       </span>
       {windows.map((w, i) => <WindowBar key={i} mark={w} compact />)}
     </span>

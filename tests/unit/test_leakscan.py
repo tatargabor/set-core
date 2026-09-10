@@ -612,6 +612,18 @@ class TestTheHookBindsCommits:
         r = _hook(repo, "git commit -m 'wip'", home)
         assert r.returncode == 2, r.stdout + r.stderr
 
+    def test_a_config_override_form_is_still_a_commit(self, commit_repos):
+        # `git -c core.hooksPath=/dev/null commit` walked past the first
+        # version of PUBLISH_RX and created the commit this gate exists to
+        # refuse — measured live on 2026-09-08. The two-token `-c`/`-C`
+        # option forms must gate like plain `git commit` does.
+        repo, home = commit_repos
+        (repo / "b.md").write_text(f"server {socket.gethostname()} \n")
+        git("add", "b.md", cwd=repo)
+        r = _hook(
+            repo, "git -c core.hooksPath=/dev/null commit -m 'wip'", home)
+        assert r.returncode == 2, r.stdout + r.stderr
+
     def test_a_cd_prefix_is_not_the_finding(self, commit_repos):
         # The whole command string is never scanned: a `cd /home/<user>/...`
         # prefix in a compound command must not become the finding.
@@ -634,6 +646,35 @@ class TestTheHookBindsCommits:
         repo, home = commit_repos
         r = _hook(repo, "git commit -m 'clean message'", home)
         assert r.returncode == 0, r.stdout + r.stderr
+
+
+class TestPublishRxSeesEveryCommitShape:
+    """Regex-level, because the failure mode is 'the hook never ran at all' —
+    a dead end-to-end assertion (rc 0 with no output) looks identical to the
+    bypass it was meant to catch."""
+
+    @staticmethod
+    def _mod():
+        from importlib.machinery import SourceFileLoader
+        return SourceFileLoader("hook_mod", str(HOOK)).load_module()
+
+    def test_the_two_token_option_forms_match(self):
+        rx = self._mod().PUBLISH_RX
+        assert rx.search("git -c core.hooksPath=/dev/null commit -m x")
+        assert rx.search("git -c commit.gpgsign=false commit -m x")
+        assert rx.search("git -C /somewhere push origin main")
+
+    def test_the_single_token_forms_still_match(self):
+        rx = self._mod().PUBLISH_RX
+        assert rx.search("git push origin main")
+        assert rx.search("git --no-verify commit -m x")
+        assert rx.search("cd /x && git push")
+
+    def test_non_publishing_git_commands_do_not_match(self):
+        rx = self._mod().PUBLISH_RX
+        assert not rx.search("git status")
+        assert not rx.search("git log --oneline")
+        assert not rx.search("echo 'git push later'")
 
 
 class TestASyntheticPhoneNumberIsNotSomebodysNumber:
@@ -673,3 +714,121 @@ class TestASyntheticPhoneNumberIsNotSomebodysNumber:
         ]
         for digits in cases:
             assert not mod._looks_synthetic(digits), digits
+
+
+class TestThePushGateScansWhatThePushPublishes:
+    """Two holes measured on 2026-09-08, both failing in the publish direction:
+
+    the pre-push hook derived its range from @{u}, which is unset exactly on
+    the FIRST push of a branch — the push that carries every commit — so a
+    leaking HEAD pushed unscanned; and an unresolvable range (a stale remote
+    ref, a typo) made `git diff` fail into an empty stdout, which reported
+    clean. The instrument hit the wall it was built to measure and returned
+    a zero, twice in one gate.
+    """
+
+    ZEROS = "0" * 40
+
+    @pytest.fixture
+    def push_repo(self, tmp_path):
+        """A clone with fictional identity, a real origin to merge-base
+        against, and the installer's hooks in place."""
+        origin = tmp_path / "origin"
+        origin.mkdir()
+        git("init", "-q", "-b", "main", cwd=origin)
+        git("config", "user.email", "ada.lovelace@example.com", cwd=origin)
+        git("config", "user.name", "Ada Lovelace", cwd=origin)
+        (origin / "seed.md").write_text("seed\n")
+        git("add", "-A", cwd=origin)
+        git("commit", "-q", "-m", "seed", cwd=origin)
+
+        clone = tmp_path / "clone"
+        git("clone", "-q", str(origin), str(clone), cwd=tmp_path)
+        git("config", "user.email", "ada.lovelace@example.com", cwd=clone)
+        git("config", "user.name", "Ada Lovelace", cwd=clone)
+        r = run_scan(clone, "--install-hooks")
+        assert r.returncode == 0, r.stderr
+        return clone
+
+    def _pre_push(self, repo, *lines):
+        home = repo.parent / "home"
+        return subprocess.run(
+            [str(repo / ".git" / "hooks" / "pre-push")],
+            cwd=repo, input="".join(line + "\n" for line in lines),
+            capture_output=True, text=True,
+            env=dict(os.environ, HOME=str(home)))
+
+    def _commit(self, repo, name, body, msg):
+        # The hook bypass is deliberate, not a workaround being smuggled in:
+        # these tests exercise the PRE-PUSH gate, and the installed pre-commit
+        # gate refusing the setup commit is the other gate doing its job.
+        (repo / name).write_text(body)
+        git("add", name, cwd=repo)
+        git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", msg,
+            cwd=repo)
+
+    def test_the_first_push_of_a_new_branch_is_scanned(self, push_repo):
+        # rsha all zeros and no upstream: the old derivation produced
+        # HEAD..HEAD here and scanned nothing while everything was publishing.
+        git("checkout", "-q", "-b", "feature", cwd=push_repo)
+        self._commit(push_repo, "leak.md", "noted by Ada Lovelace\n", msg="add")
+        lsha = git("rev-parse", "HEAD", cwd=push_repo).stdout.strip()
+        r = self._pre_push(
+            push_repo,
+            f"refs/heads/feature {lsha} refs/heads/feature {self.ZEROS}")
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "env-marker" in r.stderr
+
+    def test_a_new_branch_with_no_common_history_is_announced_blind_not_silent(
+            self, identity_repo):
+        # No remote ref to merge-base against: the whole-tree checks still run
+        # and still block, but the env-marker category is line-addition-based
+        # and has no base to measure. The one thing it may not do is fold that
+        # gap into a clean result — a leak the size of one word must not ride
+        # on a warning nobody printed.
+        r = run_scan(identity_repo, "--install-hooks")
+        assert r.returncode == 0, r.stderr
+        self._commit(identity_repo, "leak.md", "as Ada Lovelace noted\n",
+                     msg="add")
+        lsha = git("rev-parse", "HEAD", cwd=identity_repo).stdout.strip()
+        r = self._pre_push(
+            identity_repo,
+            f"refs/heads/main {lsha} refs/heads/main {self.ZEROS}")
+        assert "blind for this push" in r.stderr, r.stdout + r.stderr
+
+    def test_an_ordinary_push_keeps_its_exact_range(self, push_repo):
+        self._commit(push_repo, "leak.md", "noted by Ada Lovelace\n", msg="add")
+        lsha = git("rev-parse", "HEAD", cwd=push_repo).stdout.strip()
+        rsha = git("rev-parse", "@{u}", cwd=push_repo).stdout.strip()
+        r = self._pre_push(
+            push_repo, f"refs/heads/main {lsha} refs/heads/main {rsha}")
+        assert r.returncode == 1, r.stdout + r.stderr
+
+    def test_a_clean_push_still_passes(self, push_repo):
+        self._commit(push_repo, "ok.md", "a clean line\n", msg="add")
+        lsha = git("rev-parse", "HEAD", cwd=push_repo).stdout.strip()
+        rsha = git("rev-parse", "@{u}", cwd=push_repo).stdout.strip()
+        r = self._pre_push(
+            push_repo, f"refs/heads/main {lsha} refs/heads/main {rsha}")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_a_push_that_only_deletes_publishes_nothing(self, push_repo):
+        r = self._pre_push(
+            push_repo,
+            f"refs/heads/gone {self.ZEROS} refs/heads/gone "
+            f"{git('rev-parse', 'HEAD', cwd=push_repo).stdout.strip()}")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_an_unresolvable_range_refuses_blind(self, identity_repo):
+        # A stale remote ref or a typo made `git diff` fail into an empty
+        # stdout, which the old code reported as a clean, zero-file scan.
+        r = run_scan(identity_repo, "--range", "refs/heads/nope..HEAD")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "refus" in r.stderr.lower(), r.stderr
+
+    def test_an_empty_but_valid_range_is_still_clean(self, identity_repo):
+        # The refusal is for a range that cannot RESOLVE, not for one that
+        # resolves to nothing — a no-op push publishes nothing.
+        commit(identity_repo, "ok.md", "clean\n", msg="seed")
+        r = run_scan(identity_repo, "--range", "HEAD..HEAD")
+        assert r.returncode == 0, r.stderr

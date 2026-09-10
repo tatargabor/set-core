@@ -166,7 +166,7 @@ merged, tested, done
 | :art: | **Design Bridge** | v0.app export → manifest → per-change design slice → Tailwind tokens + shell components injected into every agent's context. [Guide](docs/guide/design-integration.md) |
 | :chart_with_upwards_trend: | **Cross-Run Learnings** | Review findings and gate failures become rules for the next run. The system gets better with use. [Dashboard](docs/guide/dashboard.md) |
 | :repeat: | **Account Manager** | Manage multiple Claude Code accounts — register, monitor usage, manually switch. [Docs](docs/account-manager.md) |
-| :electric_plug: | **Model Providers** | Run sessions and agents on GLM behind the same harness — one machine-level `providers.json`, per-project overrides, no silent fallback. [Docs](docs/reference/configuration.md#provider-configuration-providersjson) |
+| :electric_plug: | **Model Providers** | Run sessions and agents on GLM or a ChatGPT/Codex plan behind the same harness — one machine-level `providers.json`, per-project overrides, no silent fallback. Each plan's remaining quota shows on the fleet header beside the Claude accounts. [Docs](docs/reference/configuration.md#provider-configuration-providersjson) |
 
 ---
 
@@ -278,14 +278,16 @@ cd set-core && ./install.sh
 
 After install, the **web dashboard** starts automatically as a background service (launchd on macOS, systemd on Linux). Open http://localhost:7400 — you should see the manager page.
 
-**Optional — run on a non-Anthropic model:** set-core can drive the same pipeline through GLM. Declare the provider once in `~/.config/set-core/providers.json` (mode `0600` — the framework refuses to read a credential file that is group-readable), then verify with a live probe call:
+**Optional — run on a non-Anthropic model:** set-core can drive the same pipeline through another provider. Two shapes are shipped and measured: **direct** ones such as GLM, whose endpoint already speaks the Anthropic protocol, and **gateway-backed** ones such as a ChatGPT/Codex plan, reached through a local translating gateway so the provider entry points at loopback instead of a vendor host. Declare either once in `~/.config/set-core/providers.json` (mode `0600` — the framework refuses to read a credential file that is group-readable):
 
 ```bash
-set-providers migrate    # only if an older ~/.config/set-core/glm.env exists
-set-glm --check          # config check + live probe — the smoke test for the token
+set-providers path                    # where the file belongs
+set-providers list                    # the catalogue, and whether each entry is usable
+set-providers show --provider <name>  # the resolved launch; never prints a credential
+set-glm --check                       # GLM only: config check + live probe
 ```
 
-Switching is always explicit: an absent configuration stops loudly and never falls back silently. The full `providers.json` shape, the GLM launch parameters, and the three measured failure modes are in [provider configuration](docs/reference/configuration.md#provider-configuration-providersjson).
+Switching is always explicit: an absent configuration stops loudly and never falls back silently. The full `providers.json` shape, how to wire a gateway-backed provider, and the measured failure modes are in [provider configuration](docs/reference/configuration.md#provider-configuration-providersjson).
 
 ### Step 2: Try an E2E test first
 

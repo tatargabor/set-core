@@ -23,6 +23,7 @@ Two rules run through all three modules and are worth stating once:
 """
 
 from .accounts import Account, discover_accounts
+from .astra import KIND_ASTRA, AstraUsageClient, discover_astra_account
 from .glm import KIND_GLM, GlmUsageClient, discover_glm_account
 from .poller import DEFAULT_INTERVAL_SECONDS, UsagePoller, UsageSource
 from .client import (
@@ -34,7 +35,7 @@ from .client import (
 
 
 def default_sources() -> list:
-    """The sources this machine measures: the Claude accounts, then GLM.
+    """The sources this machine measures: the Claude accounts, GLM, then the ChatGPT plan.
 
     Injected at the server rather than defaulted in `UsagePoller`, so a bare
     constructor — every existing test — stays hermetic and never reads this
@@ -43,6 +44,7 @@ def default_sources() -> list:
     return [
         UsageSource(discover=discover_accounts, client=UsageClient()),
         UsageSource(discover=discover_glm_account, client=GlmUsageClient()),
+        UsageSource(discover=discover_astra_account, client=AstraUsageClient()),
     ]
 
 
@@ -52,6 +54,9 @@ __all__ = [
     "KIND_GLM",
     "GlmUsageClient",
     "discover_glm_account",
+    "KIND_ASTRA",
+    "AstraUsageClient",
+    "discover_astra_account",
     "AccountUsage",
     "UsageClient",
     "UsageWindow",

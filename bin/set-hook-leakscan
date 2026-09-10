@@ -50,8 +50,15 @@ import tempfile
 # safety gate may take.
 PUBLISH_RX = re.compile(
     r"(?:^|[;&|\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
-    r"git\s+(?:-[^\s]+\s+|--[^\s]+\s+)*(push|commit)(?:\s|$)"
+    r"git\s+(?:-c\s+\S+\s+|-C\s+\S+\s+|-[^\s]+\s+|--[^\s]+\s+)*(push|commit)(?:\s|$)"
 )
+# The `-c`/`-C` alternatives come first because each consumes a SECOND token:
+# `git -c core.hooksPath=/dev/null commit` left `core.hooksPath=/dev/null`
+# unconsumed in the first version, so the command shape sailed past this gate
+# and created a commit the gate exists to refuse — measured live on
+# 2026-09-08, not hypothesised. `git -c commit.gpgsign=false commit` is an
+# ordinary, non-malicious command; it must be gated exactly like plain
+# `git commit` is.
 
 HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 CD_RX = re.compile(r"""(?:^|[;&|\n])\s*cd\s+("[^"]+"|'[^']+'|[^;&|\s]+)""")

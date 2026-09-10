@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  accountLabel,
   criticalCount,
   elapsedFraction,
   shortLabel,
@@ -332,5 +333,32 @@ describe('the compact label before the bars', () => {
 
   it('falls back to the name when there is nothing after the at-sign', () => {
     expect(shortLabel('weird@')).toBe('weird@')
+  })
+})
+
+describe('accountLabel — the product, then the account', () => {
+  it('names Claude for a browser session, whose Chrome context does not', () => {
+    expect(accountLabel('web', 'user@gmail.com')).toBe('Claude gmail')
+  })
+
+  it('tells the two itline accounts apart, which was the whole problem', () => {
+    // Measured on the built screen: `itline` appeared TWICE — a browser session
+    // and a Claude Code account — reading as a duplicate rather than as two
+    // different subscriptions.
+    const web = accountLabel('web', 'user@acme.example')
+    const cc = accountLabel('cc', 'user@acme.example')
+    expect(web).toBe('Claude acme')
+    expect(cc).toBe('Claude Code acme')
+    expect(web).not.toBe(cc)
+  })
+
+  it('does not prefix a name that already carries its vendor', () => {
+    // "GLM GLM" and "ChatGPT ChatGPT" are the failure this guards.
+    expect(accountLabel('glm', 'GLM')).toBe('GLM')
+    expect(accountLabel('astra', 'ChatGPT')).toBe('ChatGPT')
+  })
+
+  it('falls back to the bare name for a kind it does not know', () => {
+    expect(accountLabel('something-new', 'whatever')).toBe('whatever')
   })
 })

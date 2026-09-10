@@ -55,6 +55,7 @@ from ..fleet import stage as fleet_stage
 from ..fleet import capabilities as fleet_caps
 from ..fleet.conversation import read_conversation
 from ..fleet.cache_heat import read_cache_heat
+from ..fleet.context_fill import context_payload
 from ..fleet import workcycle_plan as wc_plan
 from ..fleet import layout as fleet_layout
 from ..fleet import state as attention_state
@@ -108,6 +109,32 @@ def _descendants_index(agents, owned) -> Dict[str, List[int]]:
         if who:
             index.setdefault(str(who), []).append(a.pid)
     return index
+
+
+def _context_payload(cache_block: Dict[str, Any]) -> Dict[str, Any]:
+    """How full this seat's context window is — a SIBLING of `cache`, not a field on it.
+
+    `cache` answers "what does a keystroke cost here" and drives the cache-heat
+    marks. Context fill is a different question that happens to share an input,
+    and overloading `cache` would couple two marks that must be able to change
+    independently.
+
+    Unlike `_cache_payload`, this always returns its key: an agent that could not
+    be measured has to be COUNTABLE on the header, and an absent key cannot be
+    counted — it looks exactly like an agent that is not there.
+    """
+    return context_payload(cache_block.get("cache"))
+
+
+def _cache_and_context_payload(agent) -> Dict[str, Any]:
+    """Both marks, from ONE read of the transcript.
+
+    They share an input, so they are produced together: reading the cache twice
+    would let the two marks describe different requests, and every payload that
+    carries one carries the other.
+    """
+    cache_block = _cache_payload(agent)
+    return {**cache_block, **_context_payload(cache_block)}
 
 
 def _cache_payload(agent) -> Dict[str, Any]:
@@ -235,7 +262,7 @@ def _agent_payload(agent, state, owned: Optional[Dict[int, Dict[str, Any]]] = No
         # ⚠ Computed per request and written down nowhere. Sizes and costs
         # derived from a consumer's session are that consumer's data, and
         # CLAUDE.md's boundary is persistence, not naming.
-        **_cache_payload(agent),
+        **_cache_and_context_payload(agent),
         "sources": agent.sources,
         # Which sources were asked and did not know. A shorter `sources` list is
         # only meaningful against the set that was consulted: without this,
@@ -1755,7 +1782,7 @@ def fleet_agent_state(pid: int) -> Dict[str, Any]:
         "binding_confirmed": agent.binding_confirmed,
         # Same field as the list payload, from the same helper — two payloads
         # computing this separately is two chances to disagree.
-        **_cache_payload(agent),
+        **_cache_and_context_payload(agent),
         "sources": agent.sources,
         # Which sources were asked and did not know. A shorter `sources` list is
         # only meaningful against the set that was consulted: without this,

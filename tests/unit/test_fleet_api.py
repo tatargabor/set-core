@@ -1429,11 +1429,21 @@ def test_both_payload_builders_report_the_same_cache(tmp_path):
     """The list payload and the single-agent route build their bodies
     separately. Two computations of one fact is two chances to disagree, which
     is why both call the same helper — asserted, because 'they call the same
-    helper' is exactly the kind of claim that stops being true."""
+    helper' is exactly the kind of claim that stops being true.
+
+    The helper is now `_cache_and_context_payload`, which carries the context
+    fill alongside the cache. The guarantee is UNCHANGED in kind and wider in
+    scope: the two marks share an input, so reading it twice would let them
+    describe different requests. Hence the second assertion — one read, not two.
+    """
     import inspect
 
     source = inspect.getsource(fleet_api)
-    assert source.count("**_cache_payload(agent),") == 2
+    assert source.count("**_cache_and_context_payload(agent),") == 2
+    # The shared helper reads the transcript exactly once. Without this, the
+    # rename above could be satisfied by a helper that calls `_cache_payload`
+    # twice, which is the disagreement this test exists to prevent.
+    assert source.count("cache_block = _cache_payload(agent)") == 1
 
 
 # --------------------------------------------------------------------------- #

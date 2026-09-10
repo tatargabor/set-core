@@ -488,7 +488,25 @@ describe('the compact label', () => {
 
     await waitFor(() => {
       const labels = Array.from(container.querySelectorAll('[data-fleet-usage-compact-label]'))
-      expect(labels.map(l => l.textContent)).toEqual(['beta', 'GLM'])
+      // The label now names the PRODUCT before the account, because the account
+      // half alone does not say whose subscription it is — and a name that
+      // already carries its vendor is not prefixed twice.
+      expect(labels.map(l => l.textContent)).toEqual(['Claude beta', 'GLM'])
+    })
+  })
+
+  it('the label is bright enough to read, not the bottom of the ramp', async () => {
+    // `fg-ghost` measured 1.79:1 against this ground — legible only to a reader
+    // who already knew what it said. Asserted so a later tidy cannot quietly
+    // return the label to the dimmest token on the scale.
+    installFetch(snapshot({ accounts: [usageAccount({ name: 'alpha@beta.invalid' })] }))
+    const { container } = render(<FleetUsageStrip />)
+
+    await waitFor(() => {
+      const label = container.querySelector('[data-fleet-usage-compact-label]')
+      expect(label).not.toBeNull()
+      expect(label!.className).toContain('text-fg-strong')
+      expect(label!.className).not.toContain('text-fg-ghost')
     })
   })
 })
