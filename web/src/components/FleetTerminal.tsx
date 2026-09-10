@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointerClick, Scissors, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, Scissors, X } from 'lucide-react'
 import {
   buildListingIndex, terminalReferences, type FileRef, type ListingIndex,
 } from '../lib/fleetFiles'
@@ -1179,13 +1179,20 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
           onClick={() => copyRef.current?.()}
         />
         {mouseTaken && (
-          <IconButton
-            icon={MousePointerClick}
-            tone="amber"
-            testId="mouse-taken"
-            mark={{ 'data-fleet-terminal-mouse-taken': 'yes' }}
-            label="the agent is reading the mouse — hold Shift while dragging to select text"
-          />
+          /*
+            Standing TEXT, not an icon with a tooltip. A week of "copy doesn't
+            work" ended on this chip: the drag that selects nothing is the
+            agent reading the mouse, and the instruction that fixes it was
+            previously reachable only by hovering an icon — invisible exactly
+            in the moment the reader asks why their drag did nothing.
+          */
+          <span
+            className="text-xs shrink-0 text-amber-400"
+            data-fleet-terminal-mouse-taken="yes"
+            title="the agent is reading the mouse — hold Shift while dragging to select text, then Ctrl+C copies it"
+          >
+            agent reads the mouse — Shift+drag selects, Ctrl+C copies
+          </span>
         )}
         {outputPaused && (
           <span

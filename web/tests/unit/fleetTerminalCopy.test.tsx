@@ -47,7 +47,14 @@ vi.mock('@xterm/xterm', () => ({
     rows = 40
     _sel = ''
     constructor() { term = this }
-    open() { opened.push('open') }
+    // Real xterm creates its `.terminal.xterm` root under the host during
+    // open() — before the component reads that element for the mouse-tracking
+    // class. The mock must create it too, or the component observes nothing
+    // and every mouse-taken assertion measures a mock artifact.
+    open(el: HTMLElement) {
+      opened.push('open')
+      el?.insertAdjacentHTML('beforeend', '<div class="terminal xterm"></div>')
+    }
     loadAddon() { /* stubbed */ }
     focus() { /* no keyboard in jsdom */ }
     dispose() { /* nothing to release */ }
@@ -96,7 +103,7 @@ function fireCopy() {
 
 /** The mouse-tracking class the agent's TUI sets, on the element the component reads. */
 function agentTakesTheMouse() {
-  host().insertAdjacentHTML('beforeend', '<div class="terminal xterm enable-mouse-events"></div>')
+  host().querySelector('.xterm')!.classList.add('enable-mouse-events')
 }
 
 const notice = () => document.querySelector('[data-fleet-terminal-copied]')
@@ -293,5 +300,34 @@ describe('the copy event stays as the browser-driven safety net', () => {
     // clipboard content with nothing.
     expect(written['text/plain']).toBeUndefined()
     expect(ev.defaultPrevented).toBe(false)
+  })
+})
+
+describe('the mouse-taken state is standing text, not a hover-only icon', () => {
+  it('shows the Shift-drag instruction on the header while the agent owns the mouse', () => {
+    agentTakesTheMouse()
+    // The MutationObserver reads the class asynchronously; give it a tick.
+    return waitFor(() => {
+      const chip = document.querySelector('[data-fleet-terminal-mouse-taken="yes"]')
+      expect(chip).toBeTruthy()
+      // VISIBLE text, not a tooltip: a reader whose drag selected nothing must
+      // meet the instruction without hovering anything. This is the assertion
+      // the icon-plus-label version could never pass.
+      expect(chip!.textContent).toContain('Shift+drag')
+      expect(chip!.textContent).toContain('Ctrl+C')
+    })
+  })
+
+  it('shows nothing when the reader owns the mouse', async () => {
+    agentTakesTheMouse()
+    await waitFor(() => expect(
+      document.querySelector('[data-fleet-terminal-mouse-taken="yes"]'),
+    ).toBeTruthy())
+    // Drop the class the way xterm does when the agent's program exits its
+    // mouse mode; the chip must go with it, not linger as a stale warning.
+    host().querySelector('.xterm')!.classList.remove('enable-mouse-events')
+    await waitFor(() => expect(
+      document.querySelector('[data-fleet-terminal-mouse-taken="yes"]'),
+    ).toBeNull())
   })
 })
