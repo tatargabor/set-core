@@ -1191,7 +1191,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
             data-fleet-terminal-mouse-taken="yes"
             title="the agent is reading the mouse — hold Shift while dragging to select text, then Ctrl+C copies it"
           >
-            agent reads the mouse — Shift+drag selects, Ctrl+C copies
+            agent reads the mouse — Shift+drag selects
           </span>
         )}
         {outputPaused && (

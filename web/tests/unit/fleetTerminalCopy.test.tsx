@@ -312,9 +312,12 @@ describe('the mouse-taken state is standing text, not a hover-only icon', () => 
       expect(chip).toBeTruthy()
       // VISIBLE text, not a tooltip: a reader whose drag selected nothing must
       // meet the instruction without hovering anything. This is the assertion
-      // the icon-plus-label version could never pass.
+      // the icon-plus-label version could never pass. Shift+drag is the half
+      // that must stand visibly — it is the step that fails silently — and it
+      // is also the half that fits a narrow dock without truncating; the copy
+      // key lives in the tooltip, measurable here.
       expect(chip!.textContent).toContain('Shift+drag')
-      expect(chip!.textContent).toContain('Ctrl+C')
+      expect(chip!.getAttribute('title')).toContain('Ctrl+C')
     })
   })
 
