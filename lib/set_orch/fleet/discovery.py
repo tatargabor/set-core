@@ -174,6 +174,27 @@ def _kind_of(argv: Sequence[str]) -> str:
     return "interactive"
 
 
+def _argv_belies_identity(argv: Sequence[str]) -> bool:
+    """True when the argv PROVES the process is not an agent, despite its comm.
+
+    The third identity, found live on 2026-09-11 (B-143): the harness's own tool
+    children can wear the agent's comm AND exe while their argv names the tool —
+    measured on five Monitor grep stages at once, each with `/proc/<pid>/comm` =
+    the agent name, `/proc/<pid>/exe` = the agent binary, and a `cmdline` whose
+    argv[0] was the grep's own name. Executable identity cannot refuse them; a
+    real session's argv[0] is always the binary path or the bare binary name, so
+    the basename is the test — the same structural shape `_is_waiter_argv` uses
+    for waiters.
+
+    An UNREADABLE argv proves nothing and excludes nothing: the false direction
+    here hides a real session, and a reader who could not see the argv has not
+    seen a tool name either.
+    """
+    if not argv:
+        return False
+    return os.path.basename(argv[0]) != AGENT_COMM
+
+
 # --------------------------------------------------------------------------- #
 # the runtime's session records
 # --------------------------------------------------------------------------- #
@@ -343,7 +364,17 @@ def discover_agents(
         if cwd is None:
             logger.debug("fleet discovery: pid %s has no readable cwd, skipping", pid)
             continue
-        kind = _kind_of(argvs.get(pid, []))
+        argv = argvs.get(pid, [])
+        # Refused on the argv's positive testimony, never on a missing record —
+        # a session at its start-up trust prompt has neither argv trouble nor a
+        # record, and must stay visible (measured, see _argv_belies_identity).
+        if _argv_belies_identity(argv):
+            logger.debug(
+                "fleet discovery: pid %s wears the agent identity but argv names %s, skipping",
+                pid, argv[0],
+            )
+            continue
+        kind = _kind_of(argv)
         if kind != "interactive" and not include_oneshot:
             continue
 

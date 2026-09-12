@@ -77,6 +77,37 @@ def test_a_one_shot_subprocess_is_classified_and_excluded_by_default(tmp_path):
     assert {a.pid: a.kind for a in both} == {20: "interactive", 21: "oneshot"}
 
 
+def test_a_tool_child_wearing_the_agent_identity_is_not_an_agent(tmp_path):
+    """B-143, measured live on 2026-09-11: the harness's tool children can wear
+    the agent's comm AND exe while their argv names the tool — five Monitor
+    grep stages at once on the machine this was measured on, each admitted as
+    an unnamed interactive session, each given a chat tile with a dead input
+    box ("no seat can be resolved"). The argv's testimony is the refusal; the
+    record's absence is NOT — a session at its start-up trust prompt has no
+    record either and must stay visible.
+    """
+    proc = _make_proc(tmp_path, {
+        50: {"comm": "claude", "argv": ["/home/x/.local/bin/claude", "--dangerously-skip-permissions"], "cwd": "a"},
+        51: {"comm": "claude", "argv": ["ugrep", "-G", "--line-buffered", "-E", "Error|Killed"], "cwd": "a"},
+    })
+    empty = tmp_path / "none"
+    agents = discovery.discover_agents(proc_root=proc, record_dir=empty)
+    assert [a.pid for a in agents] == [50]
+    # the oneshot lane gets the same refusal: a tool argv is not a `-p` child
+    both = discovery.discover_agents(proc_root=proc, record_dir=empty, include_oneshot=True)
+    assert [a.pid for a in both] == [50]
+
+
+def test_an_unreadable_argv_excludes_nothing(tmp_path):
+    """The refusal must be evidence-based, and an unreadable cmdline is no
+    evidence. Failing open here is the load-bearing direction: closing it on a
+    missing argv would hide a real session whose /proc entry was mid-read.
+    """
+    proc = _make_proc(tmp_path, {52: {"comm": "claude", "argv": [], "cwd": "a"}})
+    agents = discovery.discover_agents(proc_root=proc, record_dir=tmp_path / "none")
+    assert [a.pid for a in agents] == [52]
+
+
 def test_an_agent_with_no_session_record_is_still_an_agent(tmp_path):
     """Measured twice on 2026-08-18, from two unrelated causes: a session at its
     start-up trust prompt, and a session that inherited a child-session marker
