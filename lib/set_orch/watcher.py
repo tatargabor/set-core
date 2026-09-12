@@ -189,6 +189,13 @@ class ProjectWatcher:
             return
 
         try:
+            # The state file's basename depends only on the project path, so it is
+            # resolved ONCE per watch — never per changed path. Resolving it builds
+            # LineagePaths -> SetRuntime -> two `git rev-parse` subprocesses, on the
+            # event loop; done per path it froze the dashboard for 177 s on one
+            # 12 639-path batch (a build output inside a watched root) — B-146.
+            from .paths import LineagePaths as _LP_wn
+            _state_base = os.path.basename(_LP_wn(str(self.project_path)).state_file)
             refresh_counter = 0
             async for changes in awatch(*watch_dirs, poll_delay_ms=500):
                 # Periodically re-resolve state/log paths (every ~50 events)
@@ -198,8 +205,6 @@ class ProjectWatcher:
                     self._refresh_paths()
                 for change_type, change_path in changes:
                     path = Path(change_path)
-                    from .paths import LineagePaths as _LP_wn
-                    _state_base = os.path.basename(_LP_wn(str(self.project_path)).state_file)
                     if path.name in ("orchestration-" + _state_base, _state_base):
                         self._refresh_paths()
                         await self._handle_state_change(callback)
