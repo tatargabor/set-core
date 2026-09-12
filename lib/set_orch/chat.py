@@ -44,6 +44,11 @@ class ChatSession:
         self._generation: int = 0  # Incremented on stop/new_session to invalidate stale tasks
         self._state_watcher: asyncio.Task | None = None
         self._last_state_mtime: float = 0.0
+        # Handoff rotation (lib/set_orch/handoff_rotation.py): the resumed transcript is the
+        # live context and grows across messages — at the threshold the next message boundary
+        # rotates the session instead of letting auto-compact eat it silently.
+        self._last_usage: dict[str, Any] = {}
+        self._pending_load: str | None = None
 
     async def send_message(self, text: str) -> None:
         """Send a user message — spawns a claude subprocess.
@@ -52,11 +57,17 @@ class ChatSession:
         prevent races between WS message arrival and task scheduling.
         """
         gen = self._generation
+        if self._pending_load:
+            # A rotation just happened: the fresh (non-resumed) run gets the handoff path
+            # as its first input — that is what carries the thread across the boundary.
+            text = f"Read and load {self._pending_load} — it is this thread's state. Then: {text}"
+            self._pending_load = None
         self.messages.append({"role": "user", "content": text, "timestamp": _now_ms()})
         await self._broadcast({"type": "status", "status": "thinking"})
 
         try:
             await self._run_claude(text)
+            await self._maybe_rotate()
         except Exception as e:
             logger.error(f"Claude run failed [{self.project_name}]: {e}")
             if self._generation == gen:
@@ -92,6 +103,81 @@ class ChatSession:
         self.session_id = None
         self.messages = []
         self.status = "idle"
+
+    async def _maybe_rotate(self) -> bool:
+        """Rotate the session when the resumed transcript is full (handoff_rotation.py).
+
+        The resumed transcript IS the live context and it grows across messages;
+        left alone, auto-compact eats it silently. Rotation replaces that boundary
+        with a measured one: one more resumed run writes the handoff, the write-time
+        gate drops the marker, and ONLY on the marker do we drop the resume lineage.
+        Timeout or unreadable marker keeps the lineage and says so loudly — a rotation
+        without a fresh handoff is exactly the loss this exists to prevent.
+        Returns True when a rotation happened.
+        """
+        from .handoff_rotation import (
+            MARKER_WAIT_TIMEOUT_S,
+            marker_path,
+            read_handoff_from_marker,
+            rotate_threshold,
+            session8,
+            usage_total,
+            wait_for_marker,
+        )
+
+        total = usage_total(self._last_usage)
+        threshold = rotate_threshold()
+        if total < threshold or not self.session_id:
+            return False
+
+        k = total // 1000
+        logger.info(
+            f"Context [{self.project_name}]: {k}k >= {threshold // 1000}k — rotating "
+            f"(handoff flush, then a fresh resume lineage)"
+        )
+        await self._broadcast({"type": "status", "status": "rotating"})
+
+        flush = (
+            f"Context is at {k}k — the resumed transcript is full. Write the session "
+            "handoff now (/handoff conventions, the project profile applies; declare "
+            "background work in it). End your reply with 'handoff written'."
+        )
+        await self._run_claude(flush)
+        self._current_process = None
+
+        marker = marker_path(self.project_path, session8(self.session_id))
+        if not await wait_for_marker(marker, MARKER_WAIT_TIMEOUT_S):
+            logger.error(
+                f"Rotation [{self.project_name}]: no handoff marker in "
+                f"{MARKER_WAIT_TIMEOUT_S:.0f}s — resume lineage KEPT, rotation aborted"
+            )
+            await self._broadcast({
+                "type": "error",
+                "message": "rotation aborted: handoff marker never arrived — session kept",
+            })
+            return False
+        body = read_handoff_from_marker(marker)
+        if not body:
+            logger.error(
+                f"Rotation [{self.project_name}]: marker unreadable ({marker}) — "
+                f"resume lineage KEPT"
+            )
+            await self._broadcast({
+                "type": "error",
+                "message": "rotation aborted: handoff marker unreadable — session kept",
+            })
+            return False
+
+        self._pending_load = f".set/handoff/{body}"
+        self._last_usage = {}
+        self.new_session()
+        self.status = "idle"
+        logger.info(
+            f"Rotation [{self.project_name}]: handoff {body} armed — the next message "
+            f"starts on a fresh lineage and loads it"
+        )
+        await self._broadcast({"type": "status", "status": "idle"})
+        return True
 
     def _build_claude_cmd(self, text: str, context: str) -> list[str]:
         """Build the claude subprocess argv.
@@ -188,6 +274,11 @@ class ChatSession:
                         self.session_id = sid
                         logger.info(f"Session ID [{self.project_name}]: {sid}")
                     continue
+
+                # Raw usage of the final result event — the rotation signal (the mapped
+                # event deliberately drops it; see handoff_rotation.py).
+                if evt_type == "result":
+                    self._last_usage = event.get("usage") or {}
 
                 mapped = self._map_event(event)
                 if not mapped:
