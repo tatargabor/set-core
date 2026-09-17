@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, CircleDashed, History, RotateCcw, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleDashed, History, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import { Chip } from './Chip'
 import {
   ageLabel, allBlocked, canRestore, composition, groupByLabel, offerFor,
@@ -206,6 +206,34 @@ function useRestore(project: string | null, onDone?: () => void) {
 }
 
 /**
+ * One FORGET act: drop an entry from the project's record.
+ *
+ * The server route has existed since the roster gained the `set-fleet-roster
+ * forget` CLI; this is the surface reaching it. What the act removes is the
+ * RECORD entry only — the conversation file on disk stays — and the copy on
+ * every control that calls this says so, because a delete that reads wider
+ * than it acts is not read at all the second time it is needed.
+ *
+ * Like the restore ACT (not the reads), a failure is returned rather than
+ * swallowed: the user asked for something and must see whether it happened.
+ * Returns `null` on success, the reason on failure.
+ */
+async function forgetOne(project: string, key: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `/api/fleet/roster/${encodeURIComponent(project)}/${encodeURIComponent(key)}`,
+      { method: 'DELETE' })
+    if (!res || !res.ok) {
+      const detail = res ? await res.json().catch(() => null) : null
+      return detail?.detail || `delete failed (${res?.status ?? 'no answer'})`
+    }
+    return null
+  } catch (e) {
+    return String(e)
+  }
+}
+
+/**
  * One armed act: state the blast radius, wait, then run.
  *
  * Shared by both offers rather than written twice. The arming is not a nicety —
@@ -352,25 +380,61 @@ function Peeked({ project, entry, onClose }: {
 }
 
 /**
- * One recorded entry: pick it, or look at what it was.
+ * One recorded entry: pick it, look at what it was, or remove it from the
+ * record.
  *
- * The two are deliberately separate controls. Peeking is a READ and must not be
- * able to arm, select or start anything — the whole point of it is to decide
- * before acting.
+ * The three are deliberately separate controls. Peeking is a READ and must not
+ * be able to arm, select or start anything — the whole point of it is to decide
+ * before acting. Forgetting is a DESTROY and is armed like every other act on
+ * this screen: the trash icon only opens the question, and the question carries
+ * the blast radius of one named entry.
  */
-function RecordedEntry({ project, entry, picked, onPick, now }: {
+function RecordedEntry({ project, entry, picked, onPick, now, onForget, forgetBusy }: {
   project: string
   entry: RosterEntry
   picked: boolean
   onPick: (key: string, on: boolean) => void
   now: number
+  onForget: (key: string) => void
+  forgetBusy: boolean
 }) {
   const [peeking, setPeeking] = useState(false)
+  const [armed, setArmed] = useState(false)
   // Why an entry cannot be picked is said next to it. A checkbox that is simply
   // dead teaches the reader the screen is broken.
   const blocked = entry.running === true
     ? 'running now — a resume would fork its conversation'
     : !entry.resumable ? (entry.not_resumable_reason || 'not resumable') : null
+  const name = entry.label || entry.key
+
+  const forgetControl = armed ? (
+    <span className="inline-flex items-baseline gap-1" data-fleet-forget-confirm={entry.key}>
+      <span className="text-amber-300">Remove {name} from the record?</span>
+      <button
+        onClick={() => { setArmed(false); onForget(entry.key) }}
+        disabled={forgetBusy}
+        data-fleet-forget-go={entry.key}
+        className="px-1.5 py-0.5 rounded border border-amber-500/60 text-amber-200
+                   hover:bg-amber-500/10 disabled:opacity-50"
+      >
+        {forgetBusy ? 'removing…' : 'yes, remove'}
+      </button>
+      <button onClick={() => setArmed(false)} className="text-fg-muted hover:text-fg-strong">
+        cancel
+      </button>
+    </span>
+  ) : (
+    <button
+      onClick={() => setArmed(true)}
+      disabled={forgetBusy}
+      aria-label={`Remove ${name} from the recorded list`}
+      data-fleet-forget={entry.key}
+      title={`Removes only this entry from the project's recorded list — the conversation file on disk stays, and nothing running is stopped.`}
+      className="inline-flex items-center text-fg-muted hover:text-red-400 disabled:opacity-50"
+    >
+      <Trash2 size={11} strokeWidth={1.75} aria-hidden />
+    </button>
+  )
 
   return (
     <li className="text-xs" data-fleet-recorded-entry={entry.key}>
@@ -384,7 +448,7 @@ function RecordedEntry({ project, entry, picked, onPick, now }: {
           onChange={ev => onPick(entry.key, ev.target.checked)}
         />
         <span className="min-w-0">
-          <span className={blocked ? 'text-fg-ghost' : 'text-fg-strong'}>{entry.label || entry.key}</span>
+          <span className={blocked ? 'text-fg-ghost' : 'text-fg-strong'}>{name}</span>
           <span className="text-fg-ghost tabular-nums"> · last seen {ageLabel(now - entry.last_seen)} ago</span>
           {blocked && <span className="text-fg-ghost"> — {blocked}</span>}
           {' '}
@@ -396,6 +460,8 @@ function RecordedEntry({ project, entry, picked, onPick, now }: {
           >
             {peeking ? 'hide' : 'what was this?'}
           </button>
+          {' '}
+          {forgetControl}
         </span>
       </span>
       {peeking && <Peeked project={project} entry={entry} onClose={() => setPeeking(false)} />}
@@ -418,15 +484,20 @@ function RecordedEntry({ project, entry, picked, onPick, now }: {
  * conversation. The lineage is a way of SHOWING rows — the selection stays per
  * entry, and there is no act that restores a lineage as a unit.
  */
-function TheRest({ project, entries, busy, onRun }: {
+function TheRest({ project, entries, busy, onRun, onChanged }: {
   project: string
   entries: RosterEntry[]
   busy: boolean
   onRun: (keys: string[] | null) => void
+  /** Called after any forget succeeded — the parent re-reads the record. */
+  onChanged?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<Record<string, boolean>>({})
+  const [forgetBusy, setForgetBusy] = useState(false)
+  const [forgetError, setForgetError] = useState<string | null>(null)
+  const [armDeleteAll, setArmDeleteAll] = useState(false)
 
   // Escape closes it, because a layer that covers the page and can only be
   // dismissed with the mouse is a trap for anyone reading with the keyboard.
@@ -438,13 +509,50 @@ function TheRest({ project, entries, busy, onRun }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  // An armed question must not outlive the selection it was armed about: a
+  // confirm re-opened later would carry a count the ticks no longer state.
+  useEffect(() => { if (!open) setArmDeleteAll(false) }, [open])
+
   if (!entries.length) return null
 
   const chosen = entries.filter(e => picked[e.key])
   const offer = offerFor(chosen)
   const now = Date.now() / 1000
   const lineages = groupByLabel(entries)
-  const pick = (key: string, on: boolean) => setPicked(p => ({ ...p, [key]: on }))
+  const pick = (key: string, on: boolean) => {
+    setPicked(p => ({ ...p, [key]: on }))
+    setArmDeleteAll(false)
+  }
+
+  /**
+   * The forget act, for one entry or for the whole selection.
+   *
+   * Sequential rather than parallel on purpose: the record is one document
+   * rewritten per forget, and racing the writes would trade a slow delete for
+   * a lost one. Every failure is collected and shown together — a delete of
+   * nine of which two failed must not read as either nine or seven.
+   */
+  const forget = async (keys: string[]) => {
+    if (!keys.length) return
+    setForgetBusy(true)
+    setForgetError(null)
+    const failures: string[] = []
+    for (const key of keys) {
+      const err = await forgetOne(project, key)
+      if (err) failures.push(`${key}: ${err}`)
+      else setPicked(p => {
+        const next = { ...p }
+        delete next[key]
+        return next
+      })
+    }
+    setForgetBusy(false)
+    setArmDeleteAll(false)
+    if (failures.length) setForgetError(failures.join(' · '))
+    // Even a partial success changed the record — the parent must re-read it
+    // rather than go on showing entries that are no longer there.
+    if (failures.length < keys.length) onChanged?.()
+  }
 
   return (
     /* Not a column and not indented: the dialog it opens is `fixed`, so this
@@ -514,7 +622,8 @@ function TheRest({ project, entries, busy, onRun }: {
                 if (line.entries.length === 1) {
                   return (
                     <RecordedEntry key={line.key} project={project} entry={line.entries[0]}
-                                   picked={!!picked[line.entries[0].key]} onPick={pick} now={now} />
+                                   picked={!!picked[line.entries[0].key]} onPick={pick} now={now}
+                                   onForget={k => void forget([k])} forgetBusy={forgetBusy} />
                   )
                 }
                 const shown = !!expanded[line.key]
@@ -540,7 +649,8 @@ function TheRest({ project, entries, busy, onRun }: {
                       <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-surface-line pl-2">
                         {line.entries.map(e => (
                           <RecordedEntry key={e.key} project={project} entry={e}
-                                         picked={!!picked[e.key]} onPick={pick} now={now} />
+                                         picked={!!picked[e.key]} onPick={pick} now={now}
+                                         onForget={k => void forget([k])} forgetBusy={forgetBusy} />
                         ))}
                       </ul>
                     )}
@@ -551,23 +661,71 @@ function TheRest({ project, entries, busy, onRun }: {
 
             <div className="flex items-center gap-3 px-3 py-2 border-t border-surface-line shrink-0"
                  data-fleet-restore-selected={offer.restorable}>
-              {offer.actionable ? (
-                <ArmedRestore
-                  project={project}
-                  offer={offer}
-                  keys={offer.keys}
-                  busy={busy}
-                  onRun={onRun}
-                  label={`Restore ${offer.restorable} selected`}
-                  title="Resumes only the conversations you ticked."
-                  mark={{ 'data-fleet-restore-selection': offer.restorable }}
-                />
-              ) : (
-                <span className="text-xs text-fg-ghost">Tick the ones to bring back.</span>
+              <span className="flex min-w-0 flex-col">
+                {offer.actionable ? (
+                  <ArmedRestore
+                    project={project}
+                    offer={offer}
+                    keys={offer.keys}
+                    busy={busy}
+                    onRun={onRun}
+                    label={`Restore ${offer.restorable} selected`}
+                    title="Resumes only the conversations you ticked."
+                    mark={{ 'data-fleet-restore-selection': offer.restorable }}
+                  />
+                ) : (
+                  <span className="text-xs text-fg-ghost">Tick the ones to bring back.</span>
+                )}
+                {forgetError && (
+                  <span className="text-xs text-red-400" data-fleet-forget-error>{forgetError}</span>
+                )}
+              </span>
+              {/*
+                Bottom right, as asked for by the user 2026-09-17: the record
+                only ever grew, so old conversations accumulated with no way to
+                take one — or many — off the list. Armed like every act here:
+                the button opens the question, the question carries the count.
+                Only a ticked entry can be in it, and removing a record entry
+                leaves the conversation file on disk untouched — said on the
+                confirm, because a delete that reads wider than it acts is a
+                delete nobody dares press.
+              */}
+              {chosen.length > 0 && !armDeleteAll && (
+                <button
+                  onClick={() => setArmDeleteAll(true)}
+                  disabled={forgetBusy}
+                  data-fleet-forget-all={chosen.length}
+                  title="Removes every ticked entry from the recorded list. The conversation files stay on disk."
+                  className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-surface-line
+                             text-xs text-fg-strong hover:bg-surface-raised hover:text-red-400 disabled:opacity-50"
+                >
+                  <Trash2 size={11} strokeWidth={1.75} aria-hidden />
+                  Delete all selected
+                </button>
+              )}
+              {chosen.length > 0 && armDeleteAll && (
+                <span className="ml-auto inline-flex items-baseline gap-2" data-fleet-forget-all-confirm={chosen.length}>
+                  <span className="text-xs text-amber-300">
+                    Remove {chosen.length} recorded session{chosen.length === 1 ? '' : 's'} from the list?
+                  </span>
+                  <button
+                    onClick={() => void forget(chosen.map(e => e.key))}
+                    disabled={forgetBusy}
+                    data-fleet-forget-all-go={chosen.length}
+                    className="px-1.5 py-0.5 rounded border border-amber-500/60 text-xs text-amber-200
+                               hover:bg-amber-500/10 disabled:opacity-50"
+                  >
+                    {forgetBusy ? 'removing…' : `yes, remove ${chosen.length}`}
+                  </button>
+                  <button
+                    onClick={() => setArmDeleteAll(false)}
+                    className="text-xs text-fg-muted hover:text-fg-strong"
+                  >cancel</button>
+                </span>
               )}
               <button
                 onClick={() => setOpen(false)}
-                className="ml-auto text-xs text-fg-muted hover:text-fg-strong"
+                className={`${chosen.length === 0 ? 'ml-auto ' : ''}text-xs text-fg-muted hover:text-fg-strong`}
               >close</button>
             </div>
           </div>
@@ -591,12 +749,17 @@ function TheRest({ project, entries, busy, onRun }: {
  * count was honest about what the code would do, and what the code would do was
  * start nine sessions nobody left open.
  */
-export function RestoreForProject({ project, onRestored }: {
+export function RestoreForProject({ project, onRestored, onChanged }: {
   project: string
   onRestored?: () => void
+  /** Called when a forget changed the record — the caller re-reads its list. */
+  onChanged?: () => void
 }) {
   const [answer, setAnswer] = useState<RosterAnswer | null>(null)
   const [now] = useState(() => Date.now() / 1000)
+  // Bumped by a forget: the read below keys on it, so the record the screen
+  // shows is re-read rather than going on listing entries that are gone.
+  const [tick, setTick] = useState(0)
   const { busy, summary, error, run } = useRestore(project, onRestored)
 
   useEffect(() => {
@@ -604,7 +767,7 @@ export function RestoreForProject({ project, onRestored }: {
     void readJson<RosterAnswer>(`/api/fleet/roster/${encodeURIComponent(project)}`)
       .then(d => { if (live) setAnswer(d) })
     return () => { live = false }
-  }, [project])
+  }, [project, tick])
 
   if (!canRestore(answer)) return null
   const comp = composition(answer)
@@ -692,7 +855,8 @@ export function RestoreForProject({ project, onRestored }: {
           label={comp.reason ?? 'the composition is not known'}
         />
       )}
-      {comp.known && <TheRest project={project} entries={comp.rest} busy={busy} onRun={run} />}
+      {comp.known && <TheRest project={project} entries={comp.rest} busy={busy} onRun={run}
+                              onChanged={() => { setTick(t => t + 1); onChanged?.() }} />}
       </span>
       {result}
     </span>
@@ -739,7 +903,7 @@ export function RestoreFromEmpty() {
                 {ageLabel(now - p.last_seen)} ago
               </span>
             </span>
-            <RestoreForProject project={p.project} onRestored={load} />
+            <RestoreForProject project={p.project} onRestored={load} onChanged={load} />
           </li>
         ))}
       </ul>
