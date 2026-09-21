@@ -56,7 +56,13 @@ router = APIRouter()
 
 #: How many paths a listing may carry. A tree larger than this is answered
 #: truncated AND says so — see `list_files`.
-MAX_FILES = 20_000
+#:
+#: Was 20 000 until 2026-09-21, when a consumer checkout with 33 589 TRACKED
+#: files hit it. The cap was never the expensive part: the client builds the
+#: tree for all 33 589 in ~100 ms and renders only expanded folders. It stays a
+#: bound, not a budget — a runaway untracked directory must not ship a million
+#: rows.
+MAX_FILES = 200_000
 
 #: The largest file this will serve AS TEXT or accept as a write. Beyond it the
 #: answer is a refusal naming the size, never a truncated prefix: a prefix looks
@@ -401,10 +407,23 @@ def list_files(root: str, ignored: bool = False) -> Dict[str, Any]:
                     status[rel] = "!!"
     total = len(tracked)
     truncated = total > MAX_FILES
+    if truncated:
+        # SHALLOWEST first, never the alphabetical head. git answers sorted, so
+        # a prefix cut hands the whole cap to whichever big directory sorts
+        # early — measured 2026-09-21: `external/` (20 823 files) consumed the
+        # 20 000, and `scripts/`, `src/` and `tests/` vanished from the tree
+        # while the counter said only "20000 of 33619". Cutting the deepest
+        # paths keeps every top-level folder present; what is missing is deep
+        # inside something, which is where a reader expects a limit to bite.
+        kept = sorted(tracked, key=lambda rel: (rel.count("/"), rel))[:MAX_FILES]
+        logger.warning("files: %s lists %d paths, over the cap of %d; the deepest are dropped",
+                       project_root, total, MAX_FILES)
+    else:
+        kept = tracked
     return {
         "root": str(project_root),
         "source": source,
-        "files": sorted(tracked[:MAX_FILES]),
+        "files": sorted(kept),
         "total": total,
         "cap": MAX_FILES,
         "truncated": truncated,

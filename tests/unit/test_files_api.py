@@ -867,3 +867,25 @@ def test_a_utf16_file_does_not_reach_the_editor_as_mojibake(client, project):
                    params={"root": str(root), "path": "notes.txt"})
     assert r.status_code == 415
     assert r.json()["detail"]["reason"] == "no-view"
+
+
+def test_a_truncated_listing_keeps_every_top_level_folder(client, project, monkeypatch):
+    """The cap drops the DEEPEST paths, never the alphabetical tail.
+
+    A prefix cut of git's sorted answer gave the whole cap to one big directory
+    that sorted early, and every folder after it vanished from the tree.
+    """
+    root, _ = project
+    (root / "aaa" / "deep" / "er").mkdir(parents=True)
+    for i in range(5):
+        (root / "aaa" / "deep" / "er" / f"f{i}.txt").write_text("x\n")
+    (root / "zzz").mkdir()
+    (root / "zzz" / "last.txt").write_text("x\n")
+    _repo(root)
+    total = len(client.get("/api/fleet/files", params={"root": str(root)}).json()["files"])
+    monkeypatch.setattr(files_module, "MAX_FILES", total - 3)
+    body = client.get("/api/fleet/files", params={"root": str(root)}).json()
+    assert body["truncated"] is True
+    assert "zzz/last.txt" in body["files"]
+    assert "README.md" in body["files"]
+    assert sum(f.startswith("aaa/deep/er/") for f in body["files"]) == 2

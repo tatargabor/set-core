@@ -139,6 +139,34 @@ def test_a_recorded_binding_is_used_and_marked_confirmed(tmp_path):
     assert agents[0].sources == ["process", "session-record"]
 
 
+def test_many_agents_bind_their_logs_from_one_scan_not_one_glob_each(tmp_path, monkeypatch):
+    """Each per-id glob walks every transcript directory on the machine.
+
+    Measured 2026-09-21 on ~6400 of them: 10 agents cost 205 ms warm and 0.8 s
+    under load, on every fleet poll and inside the file panel's root check. The
+    per-id lookup must not run here at all, and the binding must survive.
+    """
+    proc = _make_proc(tmp_path, {
+        pid: {"comm": "claude", "argv": ["claude"], "cwd": f"t{pid}"} for pid in (41, 42, 43)
+    })
+    records = tmp_path / "records"
+    records.mkdir()
+    logs = tmp_path / "logs" / "proj"
+    logs.mkdir(parents=True)
+    for pid in (41, 42, 43):
+        (records / f"{pid}.json").write_text(json.dumps({"pid": pid, "sessionId": f"s-{pid}"}))
+        (logs / f"s-{pid}.jsonl").write_text("")
+
+    def per_id(*_a, **_k):
+        raise AssertionError("per-id transcript glob called from discover_agents")
+
+    monkeypatch.setattr(discovery, "_session_log_for", per_id)
+    agents = discovery.discover_agents(proc_root=proc, record_dir=records, log_root=tmp_path / "logs")
+    assert {a.pid: a.session_log for a in agents} == {
+        pid: str(logs / f"s-{pid}.jsonl") for pid in (41, 42, 43)
+    }
+
+
 # --------------------------------------------------------------------------- #
 # one agent by pid — task 6.2
 # --------------------------------------------------------------------------- #
