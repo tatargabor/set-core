@@ -174,6 +174,13 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
         async def spa_catchall(request: Request, file_path: str):
             real_file = dist_path / file_path
             if file_path and real_file.is_file() and ".." not in file_path:
+                # `/index.html` reached by NAME is the same document as `/`, and
+                # it is the one the stale-build probe (`buildFreshness.ts`)
+                # fetches — so it revalidates too. Measured 2026-09-21: `/` said
+                # no-cache and `/index.html` said nothing, leaving the probe to
+                # heuristic caching, the very thing it exists to see past.
+                if real_file.suffix == ".html":
+                    return FileResponse(str(real_file), headers={"Cache-Control": "no-cache"})
                 return FileResponse(str(real_file))
             # The HTML must revalidate on every load: it names the hashed
             # bundles, and a tab that trusts it from cache runs the JS it
