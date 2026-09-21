@@ -3860,3 +3860,10 @@ consumer's name, path, or content.
 - **fail direction:** a blank page with no error, so it reads as "the dashboard is down" rather than as a load that never started.
 - **open question, and it decides whether this is ours:** whether a visible, human-driven tab ever shows it. Nothing measured so far rules out the browser deferring module loads in a hidden automation tab.
 - **fixed when:** either a visible tab is shown to reproduce it and the cause is fixed with a check that `#root` is populated after a cold load, or it is shown to happen only in hidden tabs and this entry is closed as not a product defect, with that measurement.
+
+### B-146 — every file-panel read re-runs full agent discovery just to confirm the root is known
+- **state:** OPEN
+- **reported:** 2026-09-21 by this session, while measuring a user report that the file panel loads slowly
+- **measured:** `/api/fleet/files/content`, `/files/raw` and `/files` all start with `_known_root` (`lib/set_orch/api/files.py:117`) → `_start_location_verdict` → `_known_roots()` (`lib/set_orch/api/fleet.py:1015`) → `discover_agents(include_oneshot=True)`. cProfile of one `_known_root` call: 0.34 s, of which 0.30 s is `_session_log_for` globbing `~/.claude/projects/*/<id>.jsonl` once per agent — 64 330 `lstat`s over 6 433 transcript directories for 10 agents. Warm, a 5 KB file read is 0.27–0.87 s end to end. `session_log_index()` (B-139) already exists as the one-scan alternative and is not used on this path.
+- **fail direction:** slowness only — the guard's verdict is correct; the cost scales with the transcript-directory count, not with the request.
+- **fixed when:** one file read costs one discovery-free (or one-scan) root check — measured as `_known_root` under 50 ms on a machine with ≥6 000 transcript dirs — with the verdict unchanged for a worktree of a known project and for an unknown directory (both already covered by the `_known_root` tests).

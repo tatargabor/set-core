@@ -12,6 +12,8 @@ import logging
 import os
 from pathlib import Path
 
+import anyio
+
 logger = logging.getLogger("set-web.watcher")
 
 
@@ -347,6 +349,17 @@ class WatcherManager:
         """Start a watcher for a single project."""
         watcher = ProjectWatcher(name, path)
         self._watchers[name] = watcher
+        # `awatch` runs its blocking Rust loop through `anyio.to_thread.run_sync`
+        # on the DEFAULT limiter — the same 40 slots every sync endpoint and
+        # StaticFiles use — and holds its slot for the server's lifetime. With
+        # 48 registered projects the pool was permanently full: measured
+        # 2026-09-21, 40 threads in nanosleep and ~2-4 s on every request,
+        # `index.html` included. So each watcher brings its own slot instead of
+        # taking one from the request path.
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        limiter.total_tokens += 1
+        logger.debug("watcher %s: default thread limiter now %d tokens",
+                     name, limiter.total_tokens)
         self._tasks[name] = asyncio.create_task(
             watcher.watch(self._on_event),
             name=f"watcher-{name}",
