@@ -1892,7 +1892,22 @@ consumer's name, path, or content.
   Ctrl+Shift+C, paste elsewhere. The entry stays open until somebody has.
 
 ### B-65 — the panel was doing the copy itself; the browser was going to do it
-- **state:** open (fix shipped, browser confirmation outstanding)
+- **state:** open (B-65's own fix REFUTED in the real browser 2026-09-01 — round 4 in flight)
+- **refuted, measured 2026-09-01:** the reader, in their own visible tab, on the served
+  bundle that verifiably contains the B-65 code (`index-BeWfgT0_.js` carries the fix's
+  strings; `set-web` restarted 09:13 that morning): **"I can't right click copy, or just
+  select then Ctrl+C."** Both gestures of the fixed-when condition, failing together, is
+  the finding: the design assumed the browser's own copy machinery would act on xterm's
+  selection. It cannot — **xterm's selection is not a DOM selection** (B-60's own
+  measurement: `window.getSelection()` empty), and the right-click mousedown clears the
+  xterm selection before the context menu opens, so the menu's Copy item acts on nothing.
+  The browser was never going to do this copy. Round 3's mechanism was derived from a
+  hidden-tab measurement of `execCommand` returning `false` — a context the reader is
+  never in — which is the same defect class the entry itself names: measuring a
+  different system. Round 4 returns the copy to the panel, performed synchronously
+  inside the user gesture (real keydown / contextmenu, transient activation intact —
+  the context `execCommand` has always worked in), and makes right-click-with-selection
+  a copy in its own right.
 - **reported:** 2026-08-23 by the user, third round — *"beillesztés szöveg ment copy még nem"*,
   and then the observation that redirected the whole thing: *"semmi nem jelenik meg es ha eger
   jobb gomb akkor is eltunik a kijeloles de nem masolja"*.
@@ -3773,6 +3788,8 @@ consumer's name, path, or content.
 - **measured:** `tests/unit/fleetPanels.test.ts` "is exactly this list" (the KNOWN_PANEL_KINDS change-detector) failed 3/3 isolation runs while `PANEL_BOARD` was already committed (since 2026-08-30) — the detector was RED and the drift survived five days. In full-suite runs the same test failed once and PASSED in at least two later runs on identical code. `tests/unit/designDrift.test.ts` behaves the same: deterministic red in isolation (2/2), absent from some full-suite failure sets (run 4 of 2026-09-05: 3 failures, neither file among them). So a full-suite green is NOT evidence for these files; only isolation runs decide. Root cause NOT yet measured — candidate class is test-order/module-state pollution (FleetBoard's module-level `declaresCache` and localStorage-carrying fleet tests run in the same worker pool); entered as the measured behaviour, not the guessed cause.
 - **fail direction:** the reassuring one — a deterministic, real defect reads as green depending on what ran before it.
 - **fixed when:** a deterministic test's verdict is the same in isolation and in the full suite, demonstrated by running the fleet unit files in both orders and getting identical failure sets twice; then the detector tests get a scheduled isolation run so a committed drift cannot again survive on suite-order luck.
+- **addendum, merged from a parallel session's register (measured 2026-09-01, same phenomenon, entered here so the evidence survives the merge):** three full `vitest run` executions (Node v24) of the SAME tree gave 5 failed / 1434 passed, then 9 failed / 1430 passed, then 6 failed / 1433 passed — and the extra failures (`fleetArrangement` "renders a waiting agent as waiting", `fleetSurface` "selects back"/"costs one click"/"keeps the phase", `srOnlyNotCopied`) all PASS when their file runs in isolation (e.g. `fleetArrangement` 23/23 alone), so the tests are not wrong about the code; the files pollute each other's state in the shared pool. The same session's earlier full run put three drift-guard files red on a clean tree (`designDrift.test.ts`, `fleetPanels.test.ts` known-list, `fleetSurface.test.tsx` tab-state guards), pre-existing the change under verification — the same masking class this entry measures.
+- **environment note, same source:** `npx vitest` with the shell's default `/usr/bin/node` (v18.19.1) dies before running anything — `jsdom@29` → `html-encoding-sniffer@6` requires `@exodus/bytes` ESM, which only `require()`s on Node ≥ 22.12. The suite must run under the nvm Node (v24.15.0). Worth wiring into the test script so the next session does not re-derive this.
 
 ### B-138 — designDrift: five off-scale font sizes in `FleetUsageStrip.tsx` and `FleetWirePanel.tsx`
 - **state:** open

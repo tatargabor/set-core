@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, Bot, CircleDashed, Clock, ClockArrowDown, GitBranch, History, SearchX, TriangleAlert } from 'lucide-react'
+import { Archive, BellOff, BellRing, Bot, CircleDashed, Clock, ClockArrowDown, GitBranch, History, SearchX, TriangleAlert } from 'lucide-react'
 
 import { age, freshestSeconds, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
@@ -41,8 +41,10 @@ import {
   tallyOf,
   waitingReported,
 } from '../lib/fleetAttention'
+import { loadTabBadge, needsPerson, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
 import { Chip, Dot } from './Chip'
+import SrOnly from './SrOnly'
 import { AgentStageStrip } from './AgentStageStrip'
 import type { FleetAgent } from '../lib/fleetTypes'
 
@@ -1098,6 +1100,22 @@ export default function FleetProjectColumn({
     () => tallyOf(order, byName as ReadonlyMap<string, AttentionProject>, data?.input_wait_thresholds),
     [order, byName, data?.input_wait_thresholds],
   )
+  /*
+    The browser tab badge — `SET (2)` while an agent is standing in front of a
+    person. The attention header cannot follow the reader into other tabs; the
+    document title can. The preference is per-browser (localStorage), because
+    the ask was explicitly personal: the badge is this reader's, not the
+    deployment's. The cleanup restores the plain title, so leaving the fleet
+    screen never leaves a stale count behind in a tab that now shows something
+    else.
+  */
+  const [tabBadge, setTabBadge] = useState<boolean>(() => loadTabBadge())
+  useEffect(() => {
+    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0, tabBadge ? totals.quiet : 0)
+    return () => {
+      document.title = 'SET'
+    }
+  }, [tabBadge, totals])
   /**
    * The rows the CURRENT way of looking leaves. `totals` above is deliberately
    * NOT derived from this: the attention header counts the whole order in every
@@ -1351,6 +1369,33 @@ export default function FleetProjectColumn({
               marks: every project's recorded sessions in one window, with no
               project selected. Draws nothing when nothing is recorded. */}
           <RestoreAcrossProjects />
+          {/* The tab badge's own toggle, on the strip the badge is derived from.
+              Per-browser by design (see fleetTabBadge.ts): one reader's tab is
+              not a deployment-wide setting. Shown as its own state, not only
+              when off — a control that appears only in its negative state is
+              invisible exactly when somebody goes looking for how to turn the
+              badge back ON. */}
+          <button
+            type="button"
+            data-fleet-tab-badge-toggle={tabBadge ? 'on' : 'off'}
+            onClick={() => {
+              const next = !tabBadge
+              setTabBadge(next)
+              saveTabBadge(next)
+            }}
+            className="ml-auto shrink-0 text-fg-muted hover:text-fg"
+            title={
+              tabBadge
+                ? 'The browser tab shows “SET (N)” while an agent needs you — click to turn that off for this browser'
+                : 'The tab badge is off for this browser — click to show “SET (N)” in the tab while an agent needs you'
+            }
+            aria-pressed={tabBadge}
+          >
+            {tabBadge
+              ? <BellRing size={13} strokeWidth={1.75} aria-hidden />
+              : <BellOff size={13} strokeWidth={1.75} aria-hidden />}
+            <SrOnly>tab badge {tabBadge ? 'on' : 'off'}</SrOnly>
+          </button>
         </div>
       </div>
 

@@ -655,3 +655,208 @@ describe('the recorded list opens as a dialog that can be closed', () => {
       .toContain('Restore 1 selected')
   })
 })
+
+/**
+ * Forgetting recorded entries — reported by the user 2026-09-17: the recorded
+ * list only ever grew, with no way to take an entry off it. The DELETE route is
+ * older than the surface; what is under test here is the SURFACE's discipline:
+ * a destroy is armed like every act on this screen, a confirmed act is the only
+ * one that reaches the server, a failure is shown, and the record is re-read
+ * after anything actually changed.
+ */
+describe('forgetting recorded entries', () => {
+  const forgetUrl = (key: string) => `DELETE /api/fleet/roster/proj/${key}`
+
+  it('the trash sits after "what was this?", and the first click deletes nothing', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+
+    const row = container.querySelector('[data-fleet-recorded-entry="OLD1"]') as HTMLElement
+    const peekToggle = row.querySelector('[data-fleet-peek-toggle="OLD1"]') as HTMLElement
+    const trash = row.querySelector('[data-fleet-forget="OLD1"]') as HTMLElement
+    // Present, and AFTER the peek toggle in the row — the placement that was asked for.
+    expect(trash).toBeTruthy()
+    expect(peekToggle.compareDocumentPosition(trash) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await act(async () => { fireEvent.click(trash) })
+    // Armed, not done: the confirm names the entry before anything is sent.
+    expect(row.querySelector('[data-fleet-forget-confirm="OLD1"]')).toBeTruthy()
+    expect(fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'DELETE')).toEqual([])
+  })
+
+  it('the confirmed click sends DELETE and the record is re-read', async () => {
+    const roster = rosterWithRound(
+      [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000)
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': roster,
+      [forgetUrl('OLD1')]: { project: 'proj', forgotten: 'OLD1' },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-recorded-entry="OLD1"]')).toBeTruthy())
+    const countReads = () => fetchMock.mock.calls.filter(
+      (c: unknown[]) => c[0] === '/api/fleet/roster/proj'
+        && (c[1] as RequestInit | undefined)?.method === undefined).length
+    const readsAfterLoad = countReads()
+
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget="OLD1"]') as HTMLElement)
+    })
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget-go="OLD1"]') as HTMLElement)
+    })
+
+    const deletes = fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'DELETE')
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0][0]).toBe('/api/fleet/roster/proj/OLD1')
+    // The screen must not go on showing what is no longer in the record.
+    await waitFor(() => expect(countReads()).toBeGreaterThan(readsAfterLoad))
+  })
+
+  it('cancelling forgets nothing', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20)], 1000),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget="OLD1"]') as HTMLElement)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('cancel'))
+    })
+    expect(container.querySelector('[data-fleet-forget="OLD1"]')).toBeTruthy()
+    expect(fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'DELETE')).toEqual([])
+  })
+
+  it('a failed delete is shown, never silent', async () => {
+    // The route is not in the mock, so the server answers 404 — the act was
+    // asked for and did not happen, which is the restore-act rule: visible.
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('GONE', 'proj-gone', 20)], 1000),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget="GONE"]') as HTMLElement)
+    })
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget-go="GONE"]') as HTMLElement)
+    })
+    await waitFor(() => expect(container.querySelector('[data-fleet-forget-error]')).toBeTruthy())
+  })
+})
+
+describe('delete all selected', () => {
+  const forgetUrl = (key: string) => `DELETE /api/fleet/roster/proj/${key}`
+
+  it('is not drawn with nothing ticked — a control that does nothing is not drawn', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    expect(container.querySelector('[data-fleet-restore-selected]')).toBeTruthy()
+    expect(container.querySelector('[data-fleet-forget-all]')).toBeNull()
+  })
+
+  it('sits at the bottom right, states the count, and is armed', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-a')) })
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-b')) })
+
+    const btn = container.querySelector('[data-fleet-forget-all="2"]') as HTMLElement
+    expect(btn).toBeTruthy()
+    expect(btn.textContent).toContain('Delete all selected')
+    // Bottom right: after the restore control in the footer row.
+    const footer = container.querySelector('[data-fleet-restore-selected]') as HTMLElement
+    const restoreCtl = footer.querySelector('[data-fleet-restore-selection]') as HTMLElement
+    expect(restoreCtl.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // First click arms; nothing is sent.
+    await act(async () => { fireEvent.click(btn) })
+    expect(container.querySelector('[data-fleet-forget-all-confirm="2"]')).toBeTruthy()
+    expect(fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'DELETE')).toEqual([])
+  })
+
+  it('the confirmed click sends one DELETE per ticked entry and clears the ticks', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+      [forgetUrl('OLD1')]: { project: 'proj', forgotten: 'OLD1' },
+      [forgetUrl('OLD2')]: { project: 'proj', forgotten: 'OLD2' },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-a')) })
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-b')) })
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget-all="2"]') as HTMLElement)
+    })
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget-all-go="2"]') as HTMLElement)
+    })
+
+    const deletes = fetchMock.mock.calls.filter(
+      (c: unknown[]) => (c[1] as RequestInit | undefined)?.method === 'DELETE')
+      .map(c => `${'DELETE'} ${String(c[0])}`).sort()
+    expect(deletes).toEqual([
+      'DELETE /api/fleet/roster/proj/OLD1',
+      'DELETE /api/fleet/roster/proj/OLD2',
+    ])
+    // The ticks of the removed entries are gone with them — the selection must
+    // not go on naming entries the record no longer holds.
+    expect((screen.getByLabelText('proj-a') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('proj-b') as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('a partial failure is reported, and the successful ones still refresh the record', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+      [forgetUrl('OLD1')]: { project: 'proj', forgotten: 'OLD1' },
+      // OLD2 is not in the mock → 404.
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-a')) })
+    await act(async () => { fireEvent.click(screen.getByLabelText('proj-b')) })
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget-all="2"]') as HTMLElement)
+    })
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-forget-all-go="2"]') as HTMLElement)
+    })
+
+    await waitFor(() => expect(container.querySelector('[data-fleet-forget-error]')).toBeTruthy())
+    expect((container.querySelector('[data-fleet-forget-error]') as HTMLElement).textContent)
+      .toContain('OLD2')
+    // The one that succeeded is no longer ticked; the one that failed still is.
+    expect((screen.getByLabelText('proj-a') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('proj-b') as HTMLInputElement).checked).toBe(true)
+  })
+})
