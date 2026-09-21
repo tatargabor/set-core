@@ -3,6 +3,7 @@ import { Archive, Bot, CircleDashed, Clock, ClockArrowDown, GitBranch, History, 
 
 import { age, freshestSeconds, stalestSeconds } from '../lib/fleetAge'
 import { capabilityStanding, extraSources, shortSource } from '../lib/fleetCapabilityMarks'
+import { RestoreAcrossProjects } from './FleetRestore'
 import type { FleetProject, FleetResponse } from '../lib/fleetTypes'
 import { type ColumnMode, type ColumnSort, buildColumnView, mergeByName } from '../lib/fleetColumnView'
 import {
@@ -1346,6 +1347,10 @@ export default function FleetProjectColumn({
               label={`${missingCount} arranged names missing`}
             />
           )}
+          {/* The fleet-wide reopen — asked for 2026-09-21 right after these
+              marks: every project's recorded sessions in one window, with no
+              project selected. Draws nothing when nothing is recorded. */}
+          <RestoreAcrossProjects />
         </div>
       </div>
 
