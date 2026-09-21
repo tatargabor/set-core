@@ -175,6 +175,11 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
             real_file = dist_path / file_path
             if file_path and real_file.is_file() and ".." not in file_path:
                 return FileResponse(str(real_file))
-            return FileResponse(str(index_html))
+            # The HTML must revalidate on every load: it names the hashed
+            # bundles, and a tab that trusts it from cache runs the JS it
+            # loaded the day the tab opened — every fix shipped since is
+            # invisible to a dashboard that stays open for days. The assets
+            # themselves are content-hashed, so they can cache freely.
+            return FileResponse(str(index_html), headers={"Cache-Control": "no-cache"})
 
     return app

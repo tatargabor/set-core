@@ -1,7 +1,7 @@
 /**
  * Bringing back what was here before the machine went down.
  *
- * Three placements, and only two of them are controls:
+ * Four placements, and three of them are controls:
  *
  *  - **`RestoreFromEmpty`** — the panel shown when discovery answered and
  *    nothing is running. This is the PRIMARY one, and it is not the obvious
@@ -10,6 +10,9 @@
  *    unreachable in exactly the state this feature exists for.
  *  - **`RestoreForProject`** — the per-project act, in the selected project's
  *    header, where the per-entry outcome is rendered.
+ *  - **`RestoreAcrossProjects`** — the fleet-wide act, at the end of the project
+ *    column's attention row: one dialog over every project's record, so a person
+ *    can bring back sessions of several projects without selecting each one.
  *  - the column row gets an INDICATOR only, in `FleetProjectColumn` — a count,
  *    not a button. That row already carries seven things.
  *
@@ -24,12 +27,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, CircleDashed, History, RotateCcw, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleDashed, History, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import { Chip } from './Chip'
 import {
-  ageLabel, allBlocked, canRestore, composition, groupByLabel, offerFor,
-  restoreOffer, summarise, turnSummary,
-  type Peek, type RestoreOffer, type RestoreResult, type RestoreSummary,
+  ageLabel, allBlocked, canRestore, composition, groupByLabel, offerAcross, offerFor,
+  restoreOffer, summarise, summariseAcross, turnSummary,
+  type AcrossPart,
+  type Peek, type RestoreResult, type RestoreSummary,
   type RosterAnswer, type RosterEntry, type RosterProject,
 } from '../lib/fleetRoster'
 
@@ -206,6 +210,34 @@ function useRestore(project: string | null, onDone?: () => void) {
 }
 
 /**
+ * One FORGET act: drop an entry from the project's record.
+ *
+ * The server route has existed since the roster gained the `set-fleet-roster
+ * forget` CLI; this is the surface reaching it. What the act removes is the
+ * RECORD entry only — the conversation file on disk stays — and the copy on
+ * every control that calls this says so, because a delete that reads wider
+ * than it acts is not read at all the second time it is needed.
+ *
+ * Like the restore ACT (not the reads), a failure is returned rather than
+ * swallowed: the user asked for something and must see whether it happened.
+ * Returns `null` on success, the reason on failure.
+ */
+async function forgetOne(project: string, key: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `/api/fleet/roster/${encodeURIComponent(project)}/${encodeURIComponent(key)}`,
+      { method: 'DELETE' })
+    if (!res || !res.ok) {
+      const detail = res ? await res.json().catch(() => null) : null
+      return detail?.detail || `delete failed (${res?.status ?? 'no answer'})`
+    }
+    return null
+  } catch (e) {
+    return String(e)
+  }
+}
+
+/**
  * One armed act: state the blast radius, wait, then run.
  *
  * Shared by both offers rather than written twice. The arming is not a nicety —
@@ -218,28 +250,28 @@ function useRestore(project: string | null, onDone?: () => void) {
  * A smaller default set is a reason to keep this guard proportionate, never a
  * reason to drop it.
  */
-function ArmedRestore({ project, offer, keys, busy, onRun, label, title, mark }: {
-  project: string
-  offer: RestoreOffer
-  /** `null` — the whole recorded list, posted with no body. */
-  keys: string[] | null
+function ArmedRestore({ where, count, busy, onRun, label, title, mark }: {
+  /** Where the agents would start — a project name, or "3 projects". */
+  where: string
+  /** The blast radius: how many agents the act would start. */
+  count: number
   busy: boolean
-  onRun: (keys: string[] | null) => void
+  onRun: () => void
   label: string
   title: string
   mark: Record<string, string | number>
 }) {
   const [armed, setArmed] = useState(false)
-  const n = offer.restorable
+  const n = count
 
   if (armed) {
     return (
       <span className="inline-flex items-baseline gap-2" data-fleet-restore-confirm={n}>
         <span className="text-xs text-amber-300">
-          Start {n} agent{n === 1 ? '' : 's'} in {project}?
+          Start {n} agent{n === 1 ? '' : 's'} in {where}?
         </span>
         <button
-          onClick={() => { setArmed(false); onRun(keys) }}
+          onClick={() => { setArmed(false); onRun() }}
           disabled={busy}
           data-fleet-restore-go={n}
           className="px-1.5 py-0.5 rounded border border-amber-500/60 text-xs text-amber-200
@@ -352,25 +384,62 @@ function Peeked({ project, entry, onClose }: {
 }
 
 /**
- * One recorded entry: pick it, or look at what it was.
+ * One recorded entry: pick it, look at what it was, or remove it from the
+ * record.
  *
- * The two are deliberately separate controls. Peeking is a READ and must not be
- * able to arm, select or start anything — the whole point of it is to decide
- * before acting.
+ * The three are deliberately separate controls. Peeking is a READ and must not
+ * be able to arm, select or start anything — the whole point of it is to decide
+ * before acting. Forgetting is a DESTROY and is armed like every other act on
+ * this screen: the trash icon only opens the question, and the question carries
+ * the blast radius of one named entry.
  */
-function RecordedEntry({ project, entry, picked, onPick, now }: {
+function RecordedEntry({ project, entry, picked, onPick, now, onForget, forgetBusy }: {
   project: string
   entry: RosterEntry
   picked: boolean
   onPick: (key: string, on: boolean) => void
   now: number
+  /** Absent where this surface offers no forget — the fleet-wide dialog. */
+  onForget?: (key: string) => void
+  forgetBusy?: boolean
 }) {
   const [peeking, setPeeking] = useState(false)
+  const [armed, setArmed] = useState(false)
   // Why an entry cannot be picked is said next to it. A checkbox that is simply
   // dead teaches the reader the screen is broken.
   const blocked = entry.running === true
     ? 'running now — a resume would fork its conversation'
     : !entry.resumable ? (entry.not_resumable_reason || 'not resumable') : null
+  const name = entry.label || entry.key
+
+  const forgetControl = !onForget ? null : armed ? (
+    <span className="inline-flex items-baseline gap-1" data-fleet-forget-confirm={entry.key}>
+      <span className="text-amber-300">Remove {name} from the record?</span>
+      <button
+        onClick={() => { setArmed(false); onForget(entry.key) }}
+        disabled={forgetBusy}
+        data-fleet-forget-go={entry.key}
+        className="px-1.5 py-0.5 rounded border border-amber-500/60 text-amber-200
+                   hover:bg-amber-500/10 disabled:opacity-50"
+      >
+        {forgetBusy ? 'removing…' : 'yes, remove'}
+      </button>
+      <button onClick={() => setArmed(false)} className="text-fg-muted hover:text-fg-strong">
+        cancel
+      </button>
+    </span>
+  ) : (
+    <button
+      onClick={() => setArmed(true)}
+      disabled={forgetBusy}
+      aria-label={`Remove ${name} from the recorded list`}
+      data-fleet-forget={entry.key}
+      title={`Removes only this entry from the project's recorded list — the conversation file on disk stays, and nothing running is stopped.`}
+      className="inline-flex items-center text-fg-muted hover:text-red-400 disabled:opacity-50"
+    >
+      <Trash2 size={11} strokeWidth={1.75} aria-hidden />
+    </button>
+  )
 
   return (
     <li className="text-xs" data-fleet-recorded-entry={entry.key}>
@@ -384,7 +453,7 @@ function RecordedEntry({ project, entry, picked, onPick, now }: {
           onChange={ev => onPick(entry.key, ev.target.checked)}
         />
         <span className="min-w-0">
-          <span className={blocked ? 'text-fg-ghost' : 'text-fg-strong'}>{entry.label || entry.key}</span>
+          <span className={blocked ? 'text-fg-ghost' : 'text-fg-strong'}>{name}</span>
           <span className="text-fg-ghost tabular-nums"> · last seen {ageLabel(now - entry.last_seen)} ago</span>
           {blocked && <span className="text-fg-ghost"> — {blocked}</span>}
           {' '}
@@ -396,10 +465,78 @@ function RecordedEntry({ project, entry, picked, onPick, now }: {
           >
             {peeking ? 'hide' : 'what was this?'}
           </button>
+          {' '}
+          {forgetControl}
         </span>
       </span>
       {peeking && <Peeked project={project} entry={entry} onClose={() => setPeeking(false)} />}
     </li>
+  )
+}
+
+/**
+ * The recorded entries of ONE project, as lineages with per-entry picks.
+ *
+ * Shared by the per-project dialog and the fleet-wide one, so the grouping,
+ * the blocked-entry reasons and the peek cannot drift into two versions. The
+ * selection lives with the caller: this only shows rows and reports ticks.
+ */
+function RecordedList({ project, entries, picked, onPick, now, onForget, forgetBusy }: {
+  project: string
+  entries: RosterEntry[]
+  picked: Record<string, boolean>
+  onPick: (key: string, on: boolean) => void
+  now: number
+  onForget?: (key: string) => void
+  forgetBusy?: boolean
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const lineages = groupByLabel(entries)
+  const pick = onPick
+  return (
+    <ul className="space-y-0.5" data-fleet-restore-lineages={lineages.length}>
+      {lineages.map(line => {
+        // One entry under a name is that entry. Wrapping it in a group
+        // would make the reader open something to find one row.
+        if (line.entries.length === 1) {
+          return (
+            <RecordedEntry key={line.key} project={project} entry={line.entries[0]}
+                           picked={!!picked[line.entries[0].key]} onPick={pick} now={now}
+                           onForget={onForget} forgetBusy={forgetBusy} />
+          )
+        }
+        const shown = !!expanded[line.key]
+        const dead = allBlocked(line.entries)
+        return (
+          <li key={line.key} data-fleet-lineage={line.label}>
+            <button
+              onClick={() => setExpanded(p => ({ ...p, [line.key]: !shown }))}
+              className="flex items-center gap-1 text-xs text-left"
+              data-fleet-lineage-toggle={shown ? 'open' : 'closed'}
+            >
+              {shown ? <ChevronDown size={11} strokeWidth={1.75} className="shrink-0" />
+                     : <ChevronRight size={11} strokeWidth={1.75} className="shrink-0" />}
+              <span className={dead ? 'text-fg-ghost' : 'text-fg-strong'}>{line.label}</span>
+              <span className="text-fg-ghost tabular-nums">
+                · {line.entries.length} conversations · newest {ageLabel(now - line.entries[0].last_seen)} ago
+              </span>
+              {/* A compacted row must not be able to hide that nothing
+                  inside it can come back. */}
+              {dead && <span className="text-fg-ghost">· none can be resumed</span>}
+            </button>
+            {shown && (
+              <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-surface-line pl-2">
+                {line.entries.map(e => (
+                  <RecordedEntry key={e.key} project={project} entry={e}
+                                 picked={!!picked[e.key]} onPick={pick} now={now}
+                                 onForget={onForget} forgetBusy={forgetBusy} />
+                ))}
+              </ul>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -418,15 +555,19 @@ function RecordedEntry({ project, entry, picked, onPick, now }: {
  * conversation. The lineage is a way of SHOWING rows — the selection stays per
  * entry, and there is no act that restores a lineage as a unit.
  */
-function TheRest({ project, entries, busy, onRun }: {
+function TheRest({ project, entries, busy, onRun, onChanged }: {
   project: string
   entries: RosterEntry[]
   busy: boolean
   onRun: (keys: string[] | null) => void
+  /** Called after any forget succeeded — the parent re-reads the record. */
+  onChanged?: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<Record<string, boolean>>({})
+  const [forgetBusy, setForgetBusy] = useState(false)
+  const [forgetError, setForgetError] = useState<string | null>(null)
+  const [armDeleteAll, setArmDeleteAll] = useState(false)
 
   // Escape closes it, because a layer that covers the page and can only be
   // dismissed with the mouse is a trap for anyone reading with the keyboard.
@@ -438,13 +579,50 @@ function TheRest({ project, entries, busy, onRun }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  // An armed question must not outlive the selection it was armed about: a
+  // confirm re-opened later would carry a count the ticks no longer state.
+  useEffect(() => { if (!open) setArmDeleteAll(false) }, [open])
+
   if (!entries.length) return null
 
   const chosen = entries.filter(e => picked[e.key])
   const offer = offerFor(chosen)
   const now = Date.now() / 1000
   const lineages = groupByLabel(entries)
-  const pick = (key: string, on: boolean) => setPicked(p => ({ ...p, [key]: on }))
+  const pick = (key: string, on: boolean) => {
+    setPicked(p => ({ ...p, [key]: on }))
+    setArmDeleteAll(false)
+  }
+
+  /**
+   * The forget act, for one entry or for the whole selection.
+   *
+   * Sequential rather than parallel on purpose: the record is one document
+   * rewritten per forget, and racing the writes would trade a slow delete for
+   * a lost one. Every failure is collected and shown together — a delete of
+   * nine of which two failed must not read as either nine or seven.
+   */
+  const forget = async (keys: string[]) => {
+    if (!keys.length) return
+    setForgetBusy(true)
+    setForgetError(null)
+    const failures: string[] = []
+    for (const key of keys) {
+      const err = await forgetOne(project, key)
+      if (err) failures.push(`${key}: ${err}`)
+      else setPicked(p => {
+        const next = { ...p }
+        delete next[key]
+        return next
+      })
+    }
+    setForgetBusy(false)
+    setArmDeleteAll(false)
+    if (failures.length) setForgetError(failures.join(' · '))
+    // Even a partial success changed the record — the parent must re-read it
+    // rather than go on showing entries that are no longer there.
+    if (failures.length < keys.length) onChanged?.()
+  }
 
   return (
     /* Not a column and not indented: the dialog it opens is `fixed`, so this
@@ -506,68 +684,77 @@ function TheRest({ project, entries, busy, onRun }: {
               >×</button>
             </div>
 
-            <ul className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5"
-                data-fleet-restore-lineages={lineages.length}>
-              {lineages.map(line => {
-                // One entry under a name is that entry. Wrapping it in a group
-                // would make the reader open something to find one row.
-                if (line.entries.length === 1) {
-                  return (
-                    <RecordedEntry key={line.key} project={project} entry={line.entries[0]}
-                                   picked={!!picked[line.entries[0].key]} onPick={pick} now={now} />
-                  )
-                }
-                const shown = !!expanded[line.key]
-                const dead = allBlocked(line.entries)
-                return (
-                  <li key={line.key} data-fleet-lineage={line.label}>
-                    <button
-                      onClick={() => setExpanded(p => ({ ...p, [line.key]: !shown }))}
-                      className="flex items-center gap-1 text-xs text-left"
-                      data-fleet-lineage-toggle={shown ? 'open' : 'closed'}
-                    >
-                      {shown ? <ChevronDown size={11} strokeWidth={1.75} className="shrink-0" />
-                             : <ChevronRight size={11} strokeWidth={1.75} className="shrink-0" />}
-                      <span className={dead ? 'text-fg-ghost' : 'text-fg-strong'}>{line.label}</span>
-                      <span className="text-fg-ghost tabular-nums">
-                        · {line.entries.length} conversations · newest {ageLabel(now - line.entries[0].last_seen)} ago
-                      </span>
-                      {/* A compacted row must not be able to hide that nothing
-                          inside it can come back. */}
-                      {dead && <span className="text-fg-ghost">· none can be resumed</span>}
-                    </button>
-                    {shown && (
-                      <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-surface-line pl-2">
-                        {line.entries.map(e => (
-                          <RecordedEntry key={e.key} project={project} entry={e}
-                                         picked={!!picked[e.key]} onPick={pick} now={now} />
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+              <RecordedList project={project} entries={entries} picked={picked} onPick={pick} now={now}
+                            onForget={k => void forget([k])} forgetBusy={forgetBusy} />
+            </div>
 
             <div className="flex items-center gap-3 px-3 py-2 border-t border-surface-line shrink-0"
                  data-fleet-restore-selected={offer.restorable}>
-              {offer.actionable ? (
-                <ArmedRestore
-                  project={project}
-                  offer={offer}
-                  keys={offer.keys}
-                  busy={busy}
-                  onRun={onRun}
-                  label={`Restore ${offer.restorable} selected`}
-                  title="Resumes only the conversations you ticked."
-                  mark={{ 'data-fleet-restore-selection': offer.restorable }}
-                />
-              ) : (
-                <span className="text-xs text-fg-ghost">Tick the ones to bring back.</span>
+              <span className="flex min-w-0 flex-col">
+                {offer.actionable ? (
+                  <ArmedRestore
+                    where={project}
+                    count={offer.restorable}
+                    busy={busy}
+                    onRun={() => onRun(offer.keys)}
+                    label={`Restore ${offer.restorable} selected`}
+                    title="Resumes only the conversations you ticked."
+                    mark={{ 'data-fleet-restore-selection': offer.restorable }}
+                  />
+                ) : (
+                  <span className="text-xs text-fg-ghost">Tick the ones to bring back.</span>
+                )}
+                {forgetError && (
+                  <span className="text-xs text-red-400" data-fleet-forget-error>{forgetError}</span>
+                )}
+              </span>
+              {/*
+                Bottom right, as asked for by the user 2026-09-17: the record
+                only ever grew, so old conversations accumulated with no way to
+                take one — or many — off the list. Armed like every act here:
+                the button opens the question, the question carries the count.
+                Only a ticked entry can be in it, and removing a record entry
+                leaves the conversation file on disk untouched — said on the
+                confirm, because a delete that reads wider than it acts is a
+                delete nobody dares press.
+              */}
+              {chosen.length > 0 && !armDeleteAll && (
+                <button
+                  onClick={() => setArmDeleteAll(true)}
+                  disabled={forgetBusy}
+                  data-fleet-forget-all={chosen.length}
+                  title="Removes every ticked entry from the recorded list. The conversation files stay on disk."
+                  className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-surface-line
+                             text-xs text-fg-strong hover:bg-surface-raised hover:text-red-400 disabled:opacity-50"
+                >
+                  <Trash2 size={11} strokeWidth={1.75} aria-hidden />
+                  Delete all selected
+                </button>
+              )}
+              {chosen.length > 0 && armDeleteAll && (
+                <span className="ml-auto inline-flex items-baseline gap-2" data-fleet-forget-all-confirm={chosen.length}>
+                  <span className="text-xs text-amber-300">
+                    Remove {chosen.length} recorded session{chosen.length === 1 ? '' : 's'} from the list?
+                  </span>
+                  <button
+                    onClick={() => void forget(chosen.map(e => e.key))}
+                    disabled={forgetBusy}
+                    data-fleet-forget-all-go={chosen.length}
+                    className="px-1.5 py-0.5 rounded border border-amber-500/60 text-xs text-amber-200
+                               hover:bg-amber-500/10 disabled:opacity-50"
+                  >
+                    {forgetBusy ? 'removing…' : `yes, remove ${chosen.length}`}
+                  </button>
+                  <button
+                    onClick={() => setArmDeleteAll(false)}
+                    className="text-xs text-fg-muted hover:text-fg-strong"
+                  >cancel</button>
+                </span>
               )}
               <button
                 onClick={() => setOpen(false)}
-                className="ml-auto text-xs text-fg-muted hover:text-fg-strong"
+                className={`${chosen.length === 0 ? 'ml-auto ' : ''}text-xs text-fg-muted hover:text-fg-strong`}
               >close</button>
             </div>
           </div>
@@ -591,12 +778,17 @@ function TheRest({ project, entries, busy, onRun }: {
  * count was honest about what the code would do, and what the code would do was
  * start nine sessions nobody left open.
  */
-export function RestoreForProject({ project, onRestored }: {
+export function RestoreForProject({ project, onRestored, onChanged }: {
   project: string
   onRestored?: () => void
+  /** Called when a forget changed the record — the caller re-reads its list. */
+  onChanged?: () => void
 }) {
   const [answer, setAnswer] = useState<RosterAnswer | null>(null)
   const [now] = useState(() => Date.now() / 1000)
+  // Bumped by a forget: the read below keys on it, so the record the screen
+  // shows is re-read rather than going on listing entries that are gone.
+  const [tick, setTick] = useState(0)
   const { busy, summary, error, run } = useRestore(project, onRestored)
 
   useEffect(() => {
@@ -604,7 +796,7 @@ export function RestoreForProject({ project, onRestored }: {
     void readJson<RosterAnswer>(`/api/fleet/roster/${encodeURIComponent(project)}`)
       .then(d => { if (live) setAnswer(d) })
     return () => { live = false }
-  }, [project])
+  }, [project, tick])
 
   if (!canRestore(answer)) return null
   const comp = composition(answer)
@@ -646,11 +838,10 @@ export function RestoreForProject({ project, onRestored }: {
         />
       ) : offer.actionable ? (
         <ArmedRestore
-          project={project}
-          offer={offer}
-          keys={comp.known ? offer.keys : null}
+          where={project}
+          count={offer.restorable}
           busy={busy}
-          onRun={run}
+          onRun={() => run(comp.known ? offer.keys : null)}
           label={comp.known
             ? `${offer.label}${observed ? ` — open ${observed} ago` : ''}`
             : offer.label}
@@ -692,7 +883,8 @@ export function RestoreForProject({ project, onRestored }: {
           label={comp.reason ?? 'the composition is not known'}
         />
       )}
-      {comp.known && <TheRest project={project} entries={comp.rest} busy={busy} onRun={run} />}
+      {comp.known && <TheRest project={project} entries={comp.rest} busy={busy} onRun={run}
+                              onChanged={() => { setTick(t => t + 1); onChanged?.() }} />}
       </span>
       {result}
     </span>
@@ -739,10 +931,277 @@ export function RestoreFromEmpty() {
                 {ageLabel(now - p.last_seen)} ago
               </span>
             </span>
-            <RestoreForProject project={p.project} onRestored={load} />
+            <RestoreForProject project={p.project} onRestored={load} onChanged={load} />
           </li>
         ))}
       </ul>
     </div>
+  )
+}
+
+/**
+ * One project inside the fleet-wide dialog: a row that opens to its record.
+ *
+ * The record is read on the FIRST open and not before — at 34 projects, reading
+ * every one when the dialog opens would be 34 liveness-asking reads to draw a
+ * list of names the listing already gave. Held only while the dialog is open;
+ * nothing here persists a project's data (the same rule `Peeked` states).
+ */
+function AcrossProjectRow({ item, now, picked, onPick }: {
+  item: RosterProject
+  now: number
+  picked: Record<string, boolean>
+  onPick: (project: string, entry: RosterEntry, on: boolean) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [answer, setAnswer] = useState<RosterAnswer | null | 'failed'>(null)
+  // The ages inside are measured against the moment THIS record was read. The
+  // dialog's own clock is taken when it opens, and an entry seen after that —
+  // a running one, say — would be "last seen in the future", which `ageLabel`
+  // prints as `unknown`. Found by looking at the live screen, 2026-09-21.
+  const [readAt, setReadAt] = useState(now)
+
+  useEffect(() => {
+    if (!open || answer !== null) return
+    let live = true
+    void readJson<RosterAnswer>(`/api/fleet/roster/${encodeURIComponent(item.project)}`)
+      .then(d => {
+        if (!live) return
+        setReadAt(Date.now() / 1000)
+        setAnswer(d && Array.isArray(d.entries) ? d : 'failed')
+      })
+    return () => { live = false }
+  }, [open, answer, item.project])
+
+  const entries = answer && answer !== 'failed' ? answer.entries : []
+  const ticked = Object.values(picked).filter(Boolean).length
+  const byKey = new Map(entries.map(e => [e.key, e]))
+
+  return (
+    <li data-fleet-across-project={item.project}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center gap-1.5 text-xs text-left py-0.5"
+        data-fleet-across-toggle={open ? 'open' : 'closed'}
+      >
+        {open ? <ChevronDown size={11} strokeWidth={1.75} className="shrink-0" />
+              : <ChevronRight size={11} strokeWidth={1.75} className="shrink-0" />}
+        <span className="text-fg-strong">{item.project}</span>
+        <span className="text-fg-ghost tabular-nums">
+          · {item.entries} recorded
+          {typeof item.running === 'number' && item.running > 0 ? ` · ${item.running} running` : ''}
+          {' '}· newest {ageLabel(now - item.last_seen)} ago
+        </span>
+        {ticked > 0 && <span className="text-amber-300 tabular-nums">· {ticked} ticked</span>}
+      </button>
+      {open && (
+        <div className="ml-4 mt-0.5 mb-1 border-l border-surface-line pl-2">
+          {answer === null ? (
+            <span className="text-xs text-fg-muted">reading the record…</span>
+          ) : answer === 'failed' ? (
+            // A read that failed is not an empty record — say which it is.
+            <span className="text-xs text-amber-400" data-fleet-across-unreadable>
+              this project's record could not be read
+            </span>
+          ) : entries.length === 0 ? (
+            <span className="text-xs text-fg-ghost">nothing recorded here</span>
+          ) : (
+            <RecordedList
+              project={item.project}
+              entries={entries}
+              picked={picked}
+              onPick={(key, on) => { const e = byKey.get(key); if (e) onPick(item.project, e, on) }}
+              now={readAt}
+            />
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+/**
+ * The fleet-wide reopen: every project's record, in ONE dialog.
+ *
+ * Asked for by the user 2026-09-21 (dictated): reopen past sessions of
+ * different projects *in one window, without doing it one by one from the
+ * project folder*, from an icon right after the status marks at the top of the
+ * project column. The per-project dialog needs a selected project, and
+ * `RestoreFromEmpty` only shows when nothing runs anywhere — so with any agent
+ * alive there was no route to a second project's history but walking to it.
+ *
+ * **Nothing is ticked on open, and there is no "all" act.** The blast radius
+ * here spans projects, which makes the 21-agent mis-click behind `ArmedRestore`
+ * larger, not smaller. The confirmation names both numbers.
+ *
+ * The act posts each project's keys to that project's own restore route, one
+ * after another, so the server stays the only judge of each project's outcome
+ * and `summariseAcross()` only adds them up.
+ */
+export function RestoreAcrossProjects({ onRestored }: { onRestored?: () => void }) {
+  const [projects, setProjects] = useState<RosterProject[] | null>(null)
+  const [open, setOpen] = useState(false)
+  const [now, setNow] = useState(() => Date.now() / 1000)
+  const [picked, setPicked] = useState<Record<string, Record<string, RosterEntry>>>({})
+  const [busy, setBusy] = useState(false)
+  const [parts, setParts] = useState<AcrossPart[] | null>(null)
+
+  const load = useCallback(() => {
+    void readJson<{ projects: RosterProject[] }>('/api/fleet/roster')
+      .then(d => setProjects(d && Array.isArray(d.projects) ? d.projects : []))
+  }, [])
+  useEffect(load, [load])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const onPick = useCallback((project: string, entry: RosterEntry, on: boolean) => {
+    setPicked(p => {
+      const mine = { ...(p[project] ?? {}) }
+      if (on) mine[entry.key] = entry
+      else delete mine[entry.key]
+      return { ...p, [project]: mine }
+    })
+  }, [])
+
+  const run = useCallback(async (plan: { project: string; keys: string[] }[]) => {
+    setBusy(true)
+    const out: AcrossPart[] = []
+    // Sequential on purpose: each post starts agents through the owner service,
+    // and N projects at once is a load the per-project path never produces.
+    for (const { project, keys } of plan) {
+      try {
+        const res = await fetch(`/api/fleet/roster/${encodeURIComponent(project)}/restore`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keys }),
+        })
+        if (!res || !res.ok) {
+          const detail = res ? await res.json().catch(() => null) : null
+          out.push({ project, error: detail?.detail || `restore failed (${res?.status ?? 'no answer'})` })
+          continue
+        }
+        out.push({ project, summary: summarise(await res.json() as RestoreResult) })
+      } catch (e) {
+        out.push({ project, error: String(e) })
+      }
+    }
+    setParts(out)
+    setPicked({})
+    setBusy(false)
+    load()
+    onRestored?.()
+  }, [load, onRestored])
+
+  if (!projects || !projects.length) return null
+
+  const total = projects.reduce((n, p) => n + p.entries, 0)
+  const running = projects.reduce((n, p) => n + (typeof p.running === 'number' ? p.running : 0), 0)
+  const selection = Object.fromEntries(
+    Object.entries(picked).map(([proj, m]) => [proj, Object.values(m)]))
+  const offer = offerAcross(selection)
+  const across = parts ? summariseAcross(parts) : null
+
+  return (
+    <span className="inline-flex" data-fleet-across={projects.length}>
+      <Chip
+        jump="restore-across"
+        onClick={() => { setNow(Date.now() / 1000); setOpen(true) }}
+        data={{ 'data-fleet-across-open': open ? 'open' : 'closed' }}
+        mark={<History size={13} strokeWidth={1.75} aria-hidden />}
+        count={total - running}
+        title={`Reopen earlier sessions — ${total} recorded across ${projects.length} project(s)${running ? `, ${running} running now` : ''}. Opens one window over every project; nothing starts until you tick and confirm.`}
+        label={`reopen recorded sessions across ${projects.length} projects`}
+      />
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-surface-page/60"
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          data-fleet-across-dialog={projects.length}
+        >
+          <div
+            className="w-[70vw] max-w-4xl h-[76vh] flex flex-col rounded border border-surface-line
+                       bg-surface-page shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-line shrink-0">
+              <History size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" />
+              <span className="text-sm text-fg-strong">Reopen recorded sessions</span>
+              <span className="text-xs text-fg-ghost tabular-nums">
+                {total} recorded · {projects.length} project{projects.length === 1 ? '' : 's'}
+              </span>
+              <button
+                onClick={() => setOpen(false)}
+                className="ml-auto text-fg-muted hover:text-fg-strong px-1 text-base leading-none"
+                aria-label="close"
+                data-fleet-across-close
+              >×</button>
+            </div>
+
+            <ul className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5">
+              {projects.map(p => (
+                <AcrossProjectRow
+                  key={p.project}
+                  item={p}
+                  now={now}
+                  picked={Object.fromEntries(Object.keys(picked[p.project] ?? {}).map(k => [k, true]))}
+                  onPick={onPick}
+                />
+              ))}
+            </ul>
+
+            {across && parts && (
+              <div
+                className="px-3 py-1.5 border-t border-surface-line shrink-0 space-y-0.5 max-h-40 overflow-y-auto"
+                data-fleet-across-result={across.complete ? 'complete' : 'partial'}
+              >
+                <div className={`text-xs ${across.complete ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {across.headline}
+                </div>
+                <ul className="space-y-0.5">
+                  {parts.map(part => (
+                    <li key={part.project} className="text-xs min-w-0" data-fleet-across-part={part.project}>
+                      <span className="text-fg-strong">{part.project}</span>
+                      {part.error !== undefined ? (
+                        <span className="text-red-400" data-fleet-across-part-error> — {part.error}</span>
+                      ) : (
+                        <Result summary={part.summary} />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 px-3 py-2 border-t border-surface-line shrink-0"
+                 data-fleet-across-selected={offer.restorable}>
+              {offer.actionable ? (
+                <ArmedRestore
+                  where={`${offer.projects} project${offer.projects === 1 ? '' : 's'}`}
+                  count={offer.restorable}
+                  busy={busy}
+                  onRun={() => void run(offer.parts)}
+                  label={`Restore ${offer.restorable} selected in ${offer.projects} project${offer.projects === 1 ? '' : 's'}`}
+                  title="Resumes only the conversations you ticked, each in its own project."
+                  mark={{ 'data-fleet-across-selection': offer.restorable }}
+                />
+              ) : (
+                <span className="text-xs text-fg-ghost">Open a project and tick the sessions to bring back.</span>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                className="ml-auto text-xs text-fg-muted hover:text-fg-strong"
+              >close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </span>
   )
 }

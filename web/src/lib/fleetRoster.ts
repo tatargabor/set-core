@@ -71,6 +71,11 @@ export interface RosterProject {
   project: string
   entries: number
   last_seen: number
+  /**
+   * How many of those entries a live process is on now. `null` when liveness
+   * could not be asked — never read as zero running.
+   */
+  running?: number | null
 }
 
 export interface RestoreOutcome {
@@ -396,4 +401,90 @@ export function turnSummary(turn: PeekTurn): string {
   if (turn.results) return `${turn.results} tool result${turn.results === 1 ? "" : "s"}`
   if (turn.thinking) return "thought"
   return "(nothing recorded for this turn)"
+}
+
+/**
+ * A selection that spans projects — what the fleet-wide reopen dialog posts.
+ *
+ * Built from `offerFor()` per project, never from the listing's counts: the
+ * listing's `entries - running` includes entries with no transcript, so a
+ * number derived from it would promise agents the act cannot start. One
+ * derivation means the count on the button and the keys in the requests cannot
+ * come apart.
+ */
+export interface AcrossOffer {
+  /** Only the projects with at least one restorable pick, in the given order. */
+  parts: { project: string; keys: string[] }[]
+  restorable: number
+  projects: number
+  actionable: boolean
+}
+
+export function offerAcross(selection: Record<string, readonly RosterEntry[]>): AcrossOffer {
+  const parts: AcrossOffer['parts'] = []
+  for (const [project, entries] of Object.entries(selection)) {
+    const offer = offerFor(entries)
+    if (offer.keys.length) parts.push({ project, keys: offer.keys })
+  }
+  const restorable = parts.reduce((n, p) => n + p.keys.length, 0)
+  return { parts, restorable, projects: parts.length, actionable: restorable > 0 }
+}
+
+/** One project's part of a cross-project restore: its summary, or why it had none. */
+export type AcrossPart =
+  | { project: string; summary: RestoreSummary; error?: undefined }
+  | { project: string; error: string; summary?: undefined }
+
+export interface AcrossSummary {
+  started: number
+  /** Entries that were attempted and did not start, summed over answered projects. */
+  unfinished: number
+  /** Projects whose request failed — nothing was attempted there. */
+  failedProjects: string[]
+  /** True only when every project answered AND every answer was complete. */
+  complete: boolean
+  headline: string
+}
+
+/**
+ * The sum of per-project results — and the one place "complete" is decided
+ * across projects.
+ *
+ * A project whose request failed is NOT a project where zero started: nothing
+ * was attempted, and folding it into the counts would describe an attempt that
+ * never happened. It is carried by name instead, and it makes the whole result
+ * partial. Each project's own `complete` comes from `summarise()`, which takes
+ * it from the server — this adds no second definition of it.
+ */
+export function summariseAcross(parts: readonly AcrossPart[]): AcrossSummary {
+  let started = 0
+  let unfinished = 0
+  const failedProjects: string[] = []
+  let allComplete = parts.length > 0
+  for (const p of parts) {
+    if (p.error !== undefined) {
+      failedProjects.push(p.project)
+      allComplete = false
+      continue
+    }
+    started += p.summary.started
+    unfinished += p.summary.unfinished.length
+    if (!p.summary.complete) allComplete = false
+  }
+  const n = parts.length
+  const where = `${n} project${n === 1 ? '' : 's'}`
+  let headline: string
+  if (n === 0) {
+    headline = 'Nothing was attempted.'
+  } else if (allComplete) {
+    headline = `All ${started} restored across ${where}.`
+  } else {
+    const bits = [`${started} started`]
+    if (unfinished) bits.push(`${unfinished} did not start`)
+    if (failedProjects.length) {
+      bits.push(`${failedProjects.length} project${failedProjects.length === 1 ? '' : 's'} could not be asked`)
+    }
+    headline = `Partial, across ${where}: ${bits.join('; ')}.`
+  }
+  return { started, unfinished, failedProjects, complete: allComplete, headline }
 }

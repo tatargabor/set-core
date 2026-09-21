@@ -2712,3 +2712,31 @@ command runs the fail-closed bug-regression gate on every read — a ~10 s
 100 %-CPU regex pass over the whole test corpus. With the framework's new TTL
 that is now asked at most ~once per 2.5 min instead of continuously, but a
 read command that gate-checks is worth a look on their side.
+
+## 2026-09-12 — handoff rotation: the fleet `-p` plane got its context boundary (no keystrokes, by design)
+
+The consumer's handoff package shipped its auto-clear feature (`set-claude-handoff`,
+openspec change `auto-clear-with-handoff-reload`, commits `d2ad8e8`+`b035ab1`): interactive
+TUI sessions get a measured `/clear` at the 500k soft limit once their own handoff marker
+exists (tmux send-keys executor, armed in the consumer repo). **Category error caught and
+corrected before it cost anything:** the fleet's agents are `claude -p` (chat.py
+stream-json, subprocess_utils one-shot) — `/clear` typed into an owner-held pty is
+meaningless there (no TUI parses slash commands; in stream-json mode raw text is not a
+valid frame). Two planes, never conflated: TUI sessions rotate by keystrokes; **headless
+runs rotate by process lifecycle.**
+
+Shipped in set-core (this commit): `lib/set_orch/handoff_rotation.py` + a `_maybe_rotate`
+step in `ChatSession.send_message` — after each resumed run, usage from the raw result
+event (input + cache_creation + cache_read; cache_read dominates) is checked against
+`SET_HANDOFF_ROTATE_THRESHOLD` (default 500 000, the consumer-decided soft limit); at the
+threshold one more resumed run writes the handoff, the run waits for THIS run's marker
+(`.set/handoff/.written-<session8>`, dropped only by the consumer's write-time content
+gate — a failed gate never arms a rotation), then the resume lineage is dropped
+(`new_session`) and the next user message is prefixed with a load instruction pointing at
+the handoff file. **No-silent-rotation rule:** marker timeout (180 s) or unreadable marker
+keeps the lineage and broadcasts the abort — a rotation without a fresh handoff is exactly
+the loss the mechanism exists to prevent. Tests: `tests/lib/test_handoff_rotation.py`
+(7 passed). How it was verified: unit level (usage identity, marker roundtrip, bounded
+wait both directions); the end-to-end rotation still needs one live consumer session to
+cross 500k — first occurrence lands in the chat log (`rotation ... armed`) and the strip
+shows the `rotating` status.

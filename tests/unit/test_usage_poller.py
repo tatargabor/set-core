@@ -236,6 +236,15 @@ def test_the_default_source_list_contains_no_provider_backed_source():
     assert len(poller._sources) == 1
     assert poller._sources[0].discover() == []
 
+    # Named rather than counted. A bare count fails an off-by-one on every new
+    # source and says nothing about which one arrived; the names make an
+    # unintended addition readable, and adding a source that reads a credential
+    # store stays a deliberate edit to this line.
     sources = default_sources()
-    assert len(sources) == 2
+    names = [getattr(s.discover, "__name__", "") for s in sources]
+    assert names == [
+        "discover_accounts",        # the Claude accounts
+        "discover_glm_account",     # the provider credential's plan
+        "discover_astra_account",   # the ChatGPT/Codex plan's own login
+    ]
     assert all(not hasattr(s, "credential") for s in sources)
