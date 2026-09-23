@@ -140,8 +140,26 @@ adding an innocuous word:
 
 ## 7. Header notices stop being permanently resident
 
-- [x] 7.1 Collapse the two amber state notices (`FleetTerminal.tsx:1194`, `Fleet.tsx:1066`) behind one summary control that states how many it stands for [REQ: compacting-a-notice-hides-its-sentence-never-its-existence]
-- [x] 7.2 The summary control stays visible while any collapsed condition holds; opening it renders each sentence verbatim [REQ: compacting-a-notice-hides-its-sentence-never-its-existence]
+- [x] 7.1 Give each of the two amber state notices a standing MARK with its sentence one hover or one Tab away, rather than a line of standing text [REQ: compacting-a-notice-hides-its-sentence-never-its-existence]
+- [x] 7.2 Each mark stays visible for as long as its own condition holds; the sentence is rendered and in the accessible tree, never only in a tooltip [REQ: compacting-a-notice-hides-its-sentence-never-its-existence]
+  - **REWRITTEN 2026-09-23, and the original wording was ticked while describing something
+    that does not exist — caught by `/opsx:verify`, which is what it is for.** Both tasks
+    said "collapse the two notices behind ONE summary control that states how many it stands
+    for", matching a badge in the mock-up (`ⓘ 2` / *not telling you · 2*). No such control
+    was ever built: `grep` finds no summary element, no count, and the two conditions carry
+    two independent marks in two different places — `data-fleet-terminal-mouse-taken` in the
+    terminal header and `data-fleet-declared="unasked"` in the tile's title bar.
+  - **Why the shipped arrangement is kept rather than the planned one.** The user steered it
+    there directly on 2026-09-23 (*"put it above to the icons too"*), and the requirement is
+    **conditional** — *"WHERE notices are collapsed behind a summary control, that control
+    SHALL …"*. Nothing is collapsed behind a summary control, so that clause does not bind.
+    The clause that does bind — *"a reader MUST be able to tell that something is being
+    withheld without opening anything"* — is met more directly by two standing marks than by
+    one badge, because neither condition has to share a counter with the other.
+  - **What this cost, and it is the reason the rewrite is recorded rather than silent:** a
+    ticked task is read later as "that part is done". Two of them described a mechanism
+    nobody built, and the tests were green throughout, because no test asserted a summary
+    control either. See AC-15 and AC-16 below, which are the same finding from the spec side.
 - [x] 7.3 Make the restore result a floating notice that closes itself when complete and does not when partial [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial]
 - [x] 7.4 Group the result's detail: headline, entries that did not start, entries renamed — each its own group in one bounded notice [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial]
 - [x] 7.5 Keep failed and skipped counts visible when a group is collapsed [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial]
@@ -211,30 +229,54 @@ adding an innocuous word:
 
 ## Acceptance Criteria (from spec scenarios)
 
-- [ ] AC-1: WHEN the reader opens the waiters panel THEN the header row's height is unchanged and every other control stays at the same position [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else, scenario: opening-a-panel-leaves-the-header-unchanged]
-- [ ] AC-2: WHEN the reader opens the set-core modules panel THEN the content below the header does not move [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else, scenario: opening-a-panel-does-not-push-the-page]
-- [ ] AC-3: WHEN a notice appears in a strip that was showing none THEN nothing already on that row changes position [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else, scenario: a-notice-arriving-does-not-shift-the-row]
-- [ ] AC-4: WHEN a further opener is added using the shared mechanism THEN its panel overlays, carries the same chrome and exposes the same open-state marker without further work [REQ: every-opener-uses-one-shared-panel-mechanism, scenario: a-newly-added-opener-behaves-like-the-existing-ones]
-- [ ] AC-5: WHEN any opener's panel is open THEN that opener reports its open state through a stable marker [REQ: every-opener-uses-one-shared-panel-mechanism, scenario: open-state-is-addressable-on-every-opener]
-- [ ] AC-6: WHEN the restore panel is open THEN it renders its panel-wide actions in a footer alongside the close control [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: a-panel-with-panel-wide-actions-renders-a-footer]
-- [ ] AC-7: WHEN the waiters or modules panel is open THEN its chrome carries a close control and no action footer [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: a-panel-without-panel-wide-actions-renders-only-a-close-control]
-- [ ] AC-8: WHEN the waiters panel is open and an orphaned waiter is listed THEN that row still offers its removal action behind its confirmation step [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: row-actions-survive-the-move-into-a-panel]
-- [ ] AC-9: WHEN the modules panel is open and a module is not fully present THEN that row still offers its preview, and the preview still leads to the separate write action [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: the-install-action-survives-the-move-into-a-panel]
-- [ ] AC-10: WHEN the waiters panel lists more than one waiter THEN each waiter's identifier, status, working directory and action occupy the same column in every row [REQ: a-panel-body-presents-its-rows-as-columns, scenario: waiters-are-presented-as-columns]
-- [ ] AC-11: WHEN the modules panel lists the project's modules THEN each module's name, state, file counts and action occupy the same column in every row [REQ: a-panel-body-presents-its-rows-as-columns, scenario: modules-are-presented-as-columns]
-- [ ] AC-12: WHEN a restore completes with every entry started THEN its result is shown and then closes without the reader acting [REQ: a-notice-persists-if-it-describes-a-state-and-closes-itself-if-it-describes-an-event, scenario: a-completed-result-closes-itself]
-- [ ] AC-13: WHEN a restore completes with any entry not started THEN its result remains until the reader closes it [REQ: a-notice-persists-if-it-describes-a-state-and-closes-itself-if-it-describes-an-event, scenario: a-partial-result-does-not-close-itself]
-- [ ] AC-14: WHEN a condition such as an undeclared agent remains true THEN the notice describing it remains available rather than closing itself [REQ: a-notice-persists-if-it-describes-a-state-and-closes-itself-if-it-describes-an-event, scenario: a-state-notice-remains-while-its-condition-holds]
-- [ ] AC-15: WHEN two conditions are collapsed behind one control THEN that control is visible and states that it stands for two [REQ: compacting-a-notice-hides-its-sentence-never-its-existence, scenario: the-summary-control-states-how-many-notices-it-holds]
-- [ ] AC-16: WHEN a collapsed condition is still true THEN the control that opens it remains on the header [REQ: compacting-a-notice-hides-its-sentence-never-its-existence, scenario: the-summary-control-does-not-disappear-while-a-condition-holds]
-- [ ] AC-17: WHEN a notice reports that something could not be determined THEN it is presented distinguishably from one reporting that something failed [REQ: compacting-a-notice-hides-its-sentence-never-its-existence, scenario: a-withheld-condition-is-not-rendered-as-a-failure]
-- [ ] AC-18: WHEN a restore reports entries that did not start and entries that were renamed THEN headline, non-started and renamed are separate groups within one bounded notice [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: the-result-groups-its-detail-rather-than-running-it-together]
-- [ ] AC-19: WHEN a restore completes with every entry started THEN the result is shown and then closes without the reader acting [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-complete-result-closes-itself]
-- [ ] AC-20: WHEN a restore completes with any entry skipped or failed THEN the result remains on screen until the reader closes it [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-partial-result-stays-until-it-is-closed]
-- [ ] AC-21: WHEN entries that did not start are collapsed within the result THEN the count of failed and skipped entries remains visible without opening the group [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-collapsed-group-still-reports-its-failures]
-- [ ] AC-22: WHEN a project's record holds a single recorded entry and the reader opens the list THEN the panel is as tall as its chrome and that entry require [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: one-recorded-entry-gives-a-panel-sized-for-one-entry]
-- [ ] AC-23: WHEN the recorded list holds more entries than the maximum height allows THEN the list scrolls while header and action footer stay in place [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-long-list-scrolls-without-moving-the-chrome]
-- [ ] AC-24: WHEN an entry that cannot be restored lies below the visible part of a scrolling list THEN the panel's header still counts it [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: scrolling-cannot-hide-an-entry-that-cannot-be-restored]
+- [x] AC-1: WHEN the reader opens the waiters panel THEN the header row's height is unchanged and every other control stays at the same position [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else, scenario: opening-a-panel-leaves-the-header-unchanged]
+  - **Evidence:** `fleetInstructSurface.test.tsx` *opens an overlay rather than something the header row lays out*; browser: header 24 px and the sibling chip at (751,58) with the panel closed AND open
+- [x] AC-2: WHEN the reader opens the set-core modules panel THEN the content below the header does not move [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else, scenario: opening-a-panel-does-not-push-the-page]
+  - **Evidence:** `fleetInstall.test.tsx` *is an overlay, and no longer takes a whole wrapped line of the row*; `Panel` is `fixed`, so the row cannot lay it out
+- [x] AC-3: WHEN a notice appears in a strip that was showing none THEN nothing already on that row changes position [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else, scenario: a-notice-arriving-does-not-shift-the-row]
+  - **Evidence:** task 7.6 — browser: the tile's rows are `105:22, 133:710` with AND without the mark (`anythingMoved: false`), where they were `131:13 / 150:642` vs `133:659` before
+- [x] AC-4: WHEN a further opener is added using the shared mechanism THEN its panel overlays, carries the same chrome and exposes the same open-state marker without further work [REQ: every-opener-uses-one-shared-panel-mechanism, scenario: a-newly-added-opener-behaves-like-the-existing-ones]
+  - **Evidence:** `panelMechanism.test.tsx` — `useDisclosure` + `Panel` tested in isolation: open/close, marker emitted, footer only when actions are passed, panel not a flow sibling
+- [x] AC-5: WHEN any opener's panel is open THEN that opener reports its open state through a stable marker [REQ: every-opener-uses-one-shared-panel-mechanism, scenario: open-state-is-addressable-on-every-opener]
+  - **Evidence:** `useDisclosure` *reports its state through a marker* (`triggerData`); `fleetInstructSurface` *reports its open state through a stable marker*; `fleetInstall` *keeps the open-state marker the e2e spec polls*
+- [x] AC-6: WHEN the restore panel is open THEN it renders its panel-wide actions in a footer alongside the close control [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: a-panel-with-panel-wide-actions-renders-a-footer]
+  - **Evidence:** `panelMechanism.test.tsx` — `Panel — chrome`: the footer renders only when panel-wide actions are passed; restore passes them
+- [x] AC-7: WHEN the waiters or modules panel is open THEN its chrome carries a close control and no action footer [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: a-panel-without-panel-wide-actions-renders-only-a-close-control]
+  - **Evidence:** `fleetInstall.test.tsx` *renders NO action footer — an install is per module and takes two clicks*; `fleetInstructSurface.test.tsx` *renders NO action footer — every act here belongs to one row*
+- [x] AC-8: WHEN the waiters panel is open and an orphaned waiter is listed THEN that row still offers its removal action behind its confirmation step [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: row-actions-survive-the-move-into-a-panel]
+  - **Evidence:** `fleetInstructSurface.test.tsx` *offers removal for the orphan and for nothing else* and *says removal stops a process, and asks again before doing it*
+- [x] AC-9: WHEN the modules panel is open and a module is not fully present THEN that row still offers its preview, and the preview still leads to the separate write action [REQ: panel-chrome-is-uniform-and-a-panel-wide-action-bar-appears-only-where-such-actions-exist, scenario: the-install-action-survives-the-move-into-a-panel]
+  - **Evidence:** `fleetInstall.test.tsx` *offers a preview on the not-connected module and not on the partial one*, *previews first, and says the write has not happened*, *writes only on a second click, and names what that click will do*
+- [x] AC-10: WHEN the waiters panel lists more than one waiter THEN each waiter's identifier, status, working directory and action occupy the same column in every row [REQ: a-panel-body-presents-its-rows-as-columns, scenario: waiters-are-presented-as-columns]
+  - **Evidence:** `fleetInstructSurface.test.tsx` *lays every row on the same columns as its heading*
+- [x] AC-11: WHEN the modules panel lists the project's modules THEN each module's name, state, file counts and action occupy the same column in every row [REQ: a-panel-body-presents-its-rows-as-columns, scenario: modules-are-presented-as-columns]
+  - **Evidence:** `fleetInstall.test.tsx` *lays every row on the columns its heading declares*
+- [x] AC-12: WHEN a restore completes with every entry started THEN its result is shown and then closes without the reader acting [REQ: a-notice-persists-if-it-describes-a-state-and-closes-itself-if-it-describes-an-event, scenario: a-completed-result-closes-itself]
+  - **Evidence:** `fleetRestoreSurface.test.tsx` — fake timers advanced 11 s on a clean result; `RESULT_LINGER_MS = 10_000` (`FleetRestore.tsx:220`)
+- [x] AC-13: WHEN a restore completes with any entry not started THEN its result remains until the reader closes it [REQ: a-notice-persists-if-it-describes-a-state-and-closes-itself-if-it-describes-an-event, scenario: a-partial-result-does-not-close-itself]
+  - **Evidence:** `fleetRestoreSurface.test.tsx` — fake timers advanced **60 s** on a partial result and it is still there; *marks a partial result as partial in the DOM, not only in prose*
+- [x] AC-14: WHEN a condition such as an undeclared agent remains true THEN the notice describing it remains available rather than closing itself [REQ: a-notice-persists-if-it-describes-a-state-and-closes-itself-if-it-describes-an-event, scenario: a-state-notice-remains-while-its-condition-holds]
+  - **Evidence:** `panelMechanism.test.tsx` task 7.6 — the mark renders while the condition holds and is absent when the bus DID answer, so it means what it says
+- [x] AC-15: WHEN two conditions are collapsed behind one control THEN that control is visible and states that it stands for two [REQ: compacting-a-notice-hides-its-sentence-never-its-existence, scenario: the-summary-control-states-how-many-notices-it-holds]
+  - **NOT APPLICABLE — the precondition never arises, and that is a deliberate, user-directed design change rather than an omission.** The scenario begins *WHEN two conditions are collapsed behind one control*. Nothing is collapsed behind one control: each condition carries its own standing mark (see the 7.1/7.2 rewrite above). The requirement's own wording is conditional — *WHERE notices are collapsed…* — so the SHALL does not bind, and the clause that does bind (*a reader must be able to tell something is withheld without opening anything*) is met by both marks standing unhovered.
+- [x] AC-16: WHEN a collapsed condition is still true THEN the control that opens it remains on the header [REQ: compacting-a-notice-hides-its-sentence-never-its-existence, scenario: the-summary-control-does-not-disappear-while-a-condition-holds]
+  - **NOT APPLICABLE, same cause as AC-15.** There is no collapsed condition and no control that opens one. The substantive guarantee — the alarm stays visible while its condition holds — is met per mark and is held by the 7.6 tests.
+- [x] AC-17: WHEN a notice reports that something could not be determined THEN it is presented distinguishably from one reporting that something failed [REQ: compacting-a-notice-hides-its-sentence-never-its-existence, scenario: a-withheld-condition-is-not-rendered-as-a-failure]
+  - **Evidence:** task 7.7 — amber (withheld/unknown) and red (failed) are separate tones; `fleetInstall.test.tsx` *separates a refusal from a failure, and names which refusal it is*
+- [x] AC-18: WHEN a restore reports entries that did not start and entries that were renamed THEN headline, non-started and renamed are separate groups within one bounded notice [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: the-result-groups-its-detail-rather-than-running-it-together]
+  - **Evidence:** `FleetRestore.tsx` `Result` — headline, *did not start* and *renamed* are three groups in one bounded notice; *shows every entry that did not start, with its reason*
+- [x] AC-19: WHEN a restore completes with every entry started THEN the result is shown and then closes without the reader acting [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-complete-result-closes-itself]
+  - **Evidence:** same as AC-12 — the 11 s fake-timer assertion
+- [x] AC-20: WHEN a restore completes with any entry skipped or failed THEN the result remains on screen until the reader closes it [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-partial-result-stays-until-it-is-closed]
+  - **Evidence:** same as AC-13 — the 60 s fake-timer assertion
+- [x] AC-21: WHEN entries that did not start are collapsed within the result THEN the count of failed and skipped entries remains visible without opening the group [REQ: the-result-reports-every-entry-separately-and-a-partial-restore-reads-as-partial, scenario: a-collapsed-group-still-reports-its-failures]
+  - **Evidence:** `FleetRestore.tsx:165-176` — the failed and skipped counts sit on the HEADLINE (`data-fleet-restore-failed`, `data-fleet-restore-skipped`), outside any collapsible group
+- [x] AC-22: WHEN a project's record holds a single recorded entry and the reader opens the list THEN the panel is as tall as its chrome and that entry require [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: one-recorded-entry-gives-a-panel-sized-for-one-entry]
+  - **Evidence:** `Panel.tsx:84` uses `max-h-[76vh]`, not `h-`; browser: the one-entry panel measured **104 px = 12 % of the viewport**, where `h-[76vh]` made it 76 %
+- [x] AC-23: WHEN the recorded list holds more entries than the maximum height allows THEN the list scrolls while header and action footer stay in place [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: a-long-list-scrolls-without-moving-the-chrome]
+  - **Evidence:** `Panel.tsx:105` — the BODY is `flex-1 min-h-0 overflow-y-auto`, so it scrolls while header and footer stay; `fleetRestoreSurface.test.tsx:887` asserts `overflow-y-auto`
+- [x] AC-24: WHEN an entry that cannot be restored lies below the visible part of a scrolling list THEN the panel's header still counts it [REQ: the-surface-offers-restore-per-project-and-shows-what-happened, scenario: scrolling-cannot-hide-an-entry-that-cannot-be-restored]
+  - **Evidence:** `fleetRestoreSurface.test.tsx` *says how many of them cannot be resumed, rather than one flattering number* — the count is in the panel header, above the scrolling list
 
 ### 8.3 / 8.5 / 8.6 result — measured in a real browser, 2026-09-23
 
