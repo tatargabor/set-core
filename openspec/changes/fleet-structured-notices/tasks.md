@@ -125,7 +125,34 @@ adding an innocuous word:
 
 - [x] 6.1 Replace the `basis-full` in-place body (`FleetInstall.tsx:233-246`) with the shared panel [REQ: an-opened-panel-never-changes-the-size-or-position-of-anything-else]
 - [x] 6.2 Present rows as columns: module, state, file counts, action [REQ: a-panel-body-presents-its-rows-as-columns]
-- [ ] 6.3 Preserve `data-fleet-modules-open`, which `web/tests/e2e/fleet-install.spec.ts:74` polls; run that spec [REQ: every-opener-uses-one-shared-panel-mechanism]
+- [x] 6.3 Preserve `data-fleet-modules-open`, which `web/tests/e2e/fleet-install.spec.ts:74` polls; run that spec [REQ: every-opener-uses-one-shared-panel-mechanism]
+  - **RUN 2026-09-23, and the reason it stayed open was WRONG.** This task and the handoff
+    both said the spec *"writes files into that project's repo"*, so it was deferred for a
+    throwaway fixture and explicit approval. It does not write, and that was checkable in
+    seconds — three independent ways:
+    - the file's own header: *"Nothing in this file ever writes into a repository"*;
+    - `[data-fleet-install-for-real]` appears four times and is **never clicked** — three
+      assertions (`toBeVisible`, `toContainText` ×2) and two `toHaveCount(0)`;
+    - a route guard aborts any body whose `dry_run !== true` before it reaches the
+      installer, and the LIVE test asserts `sent` equals exactly `[{module, dry_run: true}]`.
+  - **And it never targeted a foreign repo either.** `PROJECT_NAME` comes from
+    `E2E_FLEET_CWD || process.cwd()` — this repository. `E2E_PROJECT` is a precondition of
+    `playwright.config.ts` that this spec never reads. The file documents the one time that
+    went wrong (the selection click silently did nothing and the suite drove another
+    project's panel) and carries the guard added for it: nothing proceeds until the panel
+    asserts it belongs to this repository.
+  - **Result: 5 passed, 1 skipped, 9.8 s.** The skip is the LIVE anchor, on a documented
+    environmental condition — `test.skip(offered.count() === 0)`, the offer being made for
+    `not-connected` modules only. Measured against the live API: every set-core module is
+    `partial` (`core-rules` 5/12, `starter` 2/3, `capacitor-nextjs` 3/4), so there is nothing
+    to offer a preview for. Not a failure, and not something this change caused.
+  - **What that does NOT weaken.** `openModules` — the helper that polls
+    `data-fleet-modules-open`, which is the whole subject of this task — runs BEFORE the skip
+    and therefore ran in all six tests. The marker is exercised, and the panel asserted itself
+    as this repository's, so the shared mechanism keeps emitting what the e2e spec consumes.
+  - **Left for anyone who wants the LIVE anchor exercised:** it needs a project with a
+    `not-connected` module, which set-core has none of. That is an environment to find, not
+    work to do here, and it still writes nothing when it is found.
   - **Half done, and left OPEN deliberately.** The attribute is preserved and unit-tested
     (`fleetInstall.test.tsx` — *keeps the open-state marker the e2e spec polls*), and `dist` was
     rebuilt so the dashboard serves this code rather than the 2026-09-21 build.
