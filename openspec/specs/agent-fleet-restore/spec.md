@@ -70,6 +70,15 @@ The restore result SHALL carry one outcome per entry with its reason, and SHALL 
 counts of started, skipped and failed. A restore in which any entry did not start MUST NOT
 be presented as a completed restore.
 
+The result SHALL be presented as a bounded notice rather than as a run of text sharing a line with
+its own detail. Its headline, the entries that did not start, and the entries that came back under
+another name SHALL each occupy their own group within that notice.
+
+A result in which every entry started SHALL close itself after a bounded interval, since it
+describes a finished act. A result in which any entry did not start MUST NOT close itself, and
+remains until the reader closes it. Where entries are grouped or collapsed, the counts of failed
+and skipped entries SHALL remain visible without the reader opening anything.
+
 #### Scenario: A mixed restore reports its parts
 
 - **WHEN** restore runs over 9 entries of which 3 start, 4 are skipped and 2 fail
@@ -79,6 +88,26 @@ be presented as a completed restore.
 
 - **WHEN** an entry fails to start
 - **THEN** the remaining entries are still attempted, and the failure is reported against that entry alone
+
+#### Scenario: The result groups its detail rather than running it together
+
+- **WHEN** a restore reports entries that did not start and entries that were renamed
+- **THEN** the headline, the entries that did not start and the renamed entries are presented as separate groups within one bounded notice
+
+#### Scenario: A complete result closes itself
+
+- **WHEN** a restore completes with every entry started
+- **THEN** the result is shown and then closes without the reader acting
+
+#### Scenario: A partial result stays until it is closed
+
+- **WHEN** a restore completes with any entry skipped or failed
+- **THEN** the result remains on screen until the reader closes it
+
+#### Scenario: A collapsed group still reports its failures
+
+- **WHEN** entries that did not start are collapsed within the result
+- **THEN** the count of failed and skipped entries remains visible without opening the group
 
 ### Requirement: The surface offers restore per project and shows what happened
 
@@ -97,6 +126,13 @@ SHALL offer an explicit way out — a close control, the Escape key, and a click
 a click inside it SHALL NOT close it. A row is as wide as a row: a record of dozens of entries
 carrying a transcript excerpt does not fit in one, and a surface that can be opened and not
 obviously closed is a trap rather than a compact layout.
+
+**That dialog's height SHALL follow its contents**, up to a maximum. It MUST NOT reserve a fixed
+proportion of the viewport regardless of what it holds: a single recorded entry separated from the
+panel's own footer by an expanse of empty space misreports how much there is to read. Where the
+contents exceed the maximum, the list SHALL scroll while the chrome and any action footer stay in
+place, and any entry that cannot be restored SHALL remain counted in the panel's header so that
+scrolling can never hide it.
 
 **Entries sharing a label SHALL be presented as one lineage** rather than as that many equal
 rows. An entry is keyed on the session id and a resume mints a new one, so one named agent
@@ -190,6 +226,21 @@ nothing.
 
 - **WHEN** the reader clicks inside the open list
 - **THEN** it stays open
+
+#### Scenario: One recorded entry gives a panel sized for one entry
+
+- **WHEN** a project's record holds a single recorded entry and the reader opens the list
+- **THEN** the panel is as tall as its chrome and that entry require, rather than a fixed proportion of the viewport
+
+#### Scenario: A long list scrolls without moving the chrome
+
+- **WHEN** the recorded list holds more entries than the panel's maximum height allows
+- **THEN** the list scrolls while the panel's header and any action footer stay in place
+
+#### Scenario: Scrolling cannot hide an entry that cannot be restored
+
+- **WHEN** an entry that cannot be restored lies below the visible part of a scrolling list
+- **THEN** the panel's header still counts it
 
 ### Requirement: Restore takes an explicit selection, or the whole recorded list
 
