@@ -167,6 +167,31 @@ describe('the controls', () => {
     expect(onToggleCollapsed).not.toHaveBeenCalled()
   })
 
+  it('closes in ONE click when the panel can be closed — the X is not an undock in disguise', () => {
+    // Reported 2026-09-23: a right-pinned file panel took two clicks to close.
+    // The band's X undocked it into the grid, and the panel's own X then closed
+    // it — two controls drawn with the same glyph, so the first click read as a
+    // close that had failed. Close is one act; undocking stays on the panel's
+    // own dock controls.
+    const onClose = vi.fn()
+    const onUndock = vi.fn()
+    show({ onClose, onUndock })
+    expect(screen.queryByRole('button', { name: /undock changes/i })).toBeNull()
+    screen.getByRole('button', { name: /close changes/i }).click()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onUndock).not.toHaveBeenCalled()
+  })
+
+  it('keeps meaning UNDOCK where nothing can close the panel — an agent band', () => {
+    // The fail direction that matters: no close handler must not silently
+    // remove the only control that gets the space back.
+    const onUndock = vi.fn()
+    show({ onUndock })
+    expect(screen.queryByRole('button', { name: /close changes/i })).toBeNull()
+    screen.getByRole('button', { name: /undock changes/i }).click()
+    expect(onUndock).toHaveBeenCalledTimes(1)
+  })
+
   it('offers collapsing separately from undocking', () => {
     // Two acts, two controls. One button that did both would make every reader
     // who wanted to tidy the screen close the thing they were tidying — the

@@ -2464,6 +2464,23 @@ export default function Fleet() {
       dockPanel(PANEL_BOARD, root, null)
     }
   }, [docks, dockPanel])
+  /**
+   * What the band's own X does: CLOSE the panel, not merely undock it.
+   *
+   * Reported 2026-09-23 on a right-pinned file panel: the X took the panel out
+   * of the band and left it open in the grid, so closing it took two clicks on
+   * two different controls both drawn as an X. Undocking stays reachable — the
+   * panel's own dock controls return the edge it sits on to the grid — and an
+   * AGENT band gets no close (there is nothing to close it to), so its X keeps
+   * meaning undock. Kinds with no close handler behave exactly as before.
+   */
+  const closePanelOfBand = useCallback((band: { kind: string; id: string }) => {
+    if (band.kind === PANEL_FILES) return () => closeFiles(band.id)
+    if (band.kind === PANEL_WORK_CYCLE) return () => closeWorkCycle(band.id)
+    if (band.kind === PANEL_BOARD) return () => closeBoard(band.id)
+    return undefined
+  }, [closeFiles, closeWorkCycle, closeBoard])
+
   const [boardMax, setBoardMax] = useState<string | null>(null)
   // FULL SCREEN — the whole layout, not a grid cell. Held by project ROOT; the
   // overlay carries its own exit, so leaving the project is not the only way out.
@@ -3646,6 +3663,7 @@ export default function Fleet() {
               onResize={px => resizeBand(dockSplitKey(band), px, false)}
               onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
               onUndock={() => dockPanel(band.kind, band.id, null)}
+              onClose={closePanelOfBand(band)}
             >
               {renderDocked(band)}
             </FleetDockBand>
@@ -3664,6 +3682,7 @@ export default function Fleet() {
                 onResize={px => resizeBand(dockSplitKey(band), px, false)}
                 onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
                 onUndock={() => dockPanel(band.kind, band.id, null)}
+              onClose={closePanelOfBand(band)}
               >
                 {renderDocked(band)}
               </FleetDockBand>
@@ -4303,6 +4322,7 @@ export default function Fleet() {
                 onResize={px => resizeBand(dockSplitKey(band), px, false)}
                 onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
                 onUndock={() => dockPanel(band.kind, band.id, null)}
+              onClose={closePanelOfBand(band)}
               >
                 {renderDocked(band)}
               </FleetDockBand>
@@ -4326,6 +4346,7 @@ export default function Fleet() {
               onResize={px => resizeBand(dockSplitKey(band), px, false)}
               onResizeCommit={px => resizeBand(dockSplitKey(band), px, true)}
               onUndock={() => dockPanel(band.kind, band.id, null)}
+              onClose={closePanelOfBand(band)}
             >
               {renderDocked(band)}
             </FleetDockBand>

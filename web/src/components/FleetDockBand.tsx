@@ -41,6 +41,8 @@ export interface FleetDockBandProps {
   onToggleCollapsed?: () => void
   /** Undock this view, returning its space to the grid. */
   onUndock?: () => void
+  /** Closes the panel outright. Given it, the band's X means CLOSE, not undock. */
+  onClose?: () => void
   onResize: (px: number) => void
   onResizeCommit: (px: number) => void
   /** The largest this band may become, measured against the shell by the caller. */
@@ -77,7 +79,7 @@ export interface FleetDockBandProps {
 export const COLLAPSED_SIZE = 34
 
 export default function FleetDockBand({
-  band, children, collapsed = false, onToggleCollapsed, onUndock,
+  band, children, collapsed = false, onToggleCollapsed, onUndock, onClose,
   onResize, onResizeCommit, max, failing, title, showTitle = true,
 }: FleetDockBandProps) {
   const vertical = band.edge === 'left' || band.edge === 'right'
@@ -163,7 +165,17 @@ export default function FleetDockBand({
               onClick={onToggleCollapsed}
             />
           )}
-          {onUndock && <IconButton icon={X} label={`undock ${title}`} onClick={onUndock} />}
+          {/* The X CLOSES when the panel can be closed, and only means "undock"
+              where nothing can close it (an agent band). Reported 2026-09-23:
+              a pinned file panel took TWO clicks to close — the X undocked it
+              back into the grid, and the panel's own close button then closed
+              it. Both clicks were on a control marked with the same glyph the
+              whole UI uses for "make this go away", so the first one read as a
+              close that had failed. Undocking is not lost: the panel's own dock
+              controls put the edge it is on back into the grid. */}
+          {onClose
+            ? <IconButton icon={X} label={`close ${title}`} testId="dock-close" onClick={onClose} />
+            : onUndock && <IconButton icon={X} label={`undock ${title}`} onClick={onUndock} />}
         </span>
       </div>
       {/* `[&>*]:flex-1` — the content FILLS the band. Without it the child sizes
