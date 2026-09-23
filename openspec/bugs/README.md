@@ -68,6 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-147 — a docked panel's X undocks instead of closing, so closing a pinned panel takes two clicks
+- **state:** CLOSED (2026-09-23, `976e8ae7`) — the entry stays; evidence below.
+- **reported:** 2026-09-23 by the user, dictated, on a file panel pinned to the right edge: *"if the panel already pinned to the right … then remove during the closing, just enter to normal mode, instead of closing, and have to click again to be closed"*
+- **measured:** `web/src/components/FleetDockBand.tsx:166` (before the fix) rendered the band's only X as `label={`undock ${title}`} onClick={onUndock}`, and the four call sites in `web/src/pages/Fleet.tsx` passed `onUndock={() => dockPanel(band.kind, band.id, null)}` and nothing else. So the first click undocked the panel into the grid and left it open; the panel's own `close the file view` (`FleetFileView.tsx:950`) was the second click. Read live from the running dashboard: the docked band's first three buttons were `collapse files · …`, `undock files · …`, `put the files on the left …` — no close at all in the band chrome.
+- **fail direction:** two controls, one glyph. Both X's are the UI's "make this go away" mark, so the first click reads as a close that failed rather than as a different act that succeeded — the reader clicks again and learns to distrust the control, which is the same class as a control that appears to do nothing.
+- **fixed when:** one click on a pinned panel's X removes the band AND leaves no panel open in the grid, with a unit test that fails on the unfixed component.
+- **CLOSED by `976e8ae7`:** the band's X closes when the panel has a close action (files, work cycle, board) and still means undock where nothing can close it (an agent band — asserted in both directions). Undocking stays on the panel's own dock controls. `web/tests/unit/fleetDockBand.test.tsx` fails with the branch removed and passes with it; looked at it in a real browser against the running dashboard — pinned right, one click, the band is gone and no file view is left in the grid.
+
 ### B-128 — an open/reveal request that arrives while the file tree is hidden is a silent no-op
 - **state:** CLOSED (2026-08-29, `98f0df93`) — the entry stays; evidence below.
 - **reported:** 2026-08-29 by this session, from `FleetFileView.tsx` read end to end
