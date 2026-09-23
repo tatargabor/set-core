@@ -2,6 +2,9 @@ import { useCallback, useState } from 'react'
 import { Blocks, CircleDashed } from 'lucide-react'
 
 import { Chip } from './Chip'
+import { Panel, PanelRow, PanelTable } from './Panel'
+import type { PanelColumn } from './Panel'
+import { useDisclosure } from '../lib/useDisclosure'
 
 import {
   type Capability,
@@ -44,6 +47,20 @@ import {
  *    so the tense comes from the report rather than from the caller's memory of
  *    which button was pressed.
  */
+
+/**
+ * The columns, declared once so every row lines up with its own heading.
+ *
+ * The rows used to be a `flex-wrap` line of name, state, file counts and a
+ * button, which meant a long module name pushed the counts out of line with the
+ * row above it and nothing could be compared down a column.
+ */
+const MODULE_COLUMNS: PanelColumn[] = [
+  { key: 'module', label: 'Module', width: '12rem' },
+  { key: 'state', label: 'State', width: '9rem' },
+  { key: 'files', label: 'Files', width: '10rem' },
+  { key: 'action', label: 'Action', width: 'minmax(0,1fr)', align: 'end' },
+]
 
 const STATE_STYLE: Record<string, string> = {
   connected: 'text-emerald-400',
@@ -155,7 +172,7 @@ export default function FleetInstall({ project, root, capabilities }: {
   root?: string
   capabilities?: CapabilityReport | null
 }) {
-  const [open, setOpen] = useState(false)
+  const { open, toggle, close, triggerData } = useDisclosure('modules')
   const [attempts, setAttempts] = useState<Record<string, Attempt>>({})
 
   const run = useCallback(async (module: string, dryRun: boolean) => {
@@ -221,28 +238,51 @@ export default function FleetInstall({ project, root, capabilities }: {
     <>
       <Chip
         jump="modules"
-        onClick={() => setOpen(v => !v)}
-        data={{ 'data-fleet-modules': 'measured', 'data-fleet-modules-open': open ? 'on' : 'off' }}
+        onClick={toggle}
+        // `data-fleet-modules-open` now comes from the shared disclosure. It is
+        // NOT cosmetic: `tests/e2e/fleet-install.spec.ts:93` polls it to decide
+        // whether it still needs to click.
+        data={{ 'data-fleet-modules': 'measured', ...triggerData }}
         tone={standing.notConnected > 0 || standing.unknown > 0 ? 'text-fg-muted' : 'text-fg-ghost'}
         mark={<Blocks size={13} strokeWidth={1.75} aria-hidden />}
         count={wrong > 0 ? wrong : standing.total}
-        trailing={<span className="text-fg-ghost">{open ? '▾' : '▸'}</span>}
         title={`set-core modules here: ${summary || `all ${standing.total} connected`}. Click to install one that is missing.`}
         label={summary || `${standing.total} modules connected`}
       />
       {open && (
-        <div className="basis-full mt-1.5 space-y-1.5" data-fleet-install-panel={project}>
-          {caps.map(cap => (
-            <CapabilityRow
-              key={cap.name}
-              cap={cap}
-              root={root}
-              attempt={attempts[cap.name]}
-              onPreview={() => void run(cap.name, true)}
-              onInstall={() => void run(cap.name, false)}
-            />
-          ))}
-        </div>
+        /*
+          Was `basis-full`, which is the strongest form of the defect this
+          change exists to remove: it deliberately claimed a whole new wrapped
+          line of the header row, so opening it pushed everything below down the
+          page. The panel is `fixed`, so the row cannot lay it out at all.
+
+          No footer. The install is per module and takes two deliberate clicks;
+          a panel-wide button is precisely how "install everything" would arrive
+          without anybody deciding on it — into a repository set-core does not own.
+        */
+        <Panel
+          icon={<Blocks size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" aria-hidden />}
+          title="set-core modules"
+          counts={`${standing.total} here`}
+          headerExtra={wrong > 0 ? (
+            <span className="text-xs text-amber-300" data-fleet-modules-wrong={wrong}>{summary}</span>
+          ) : undefined}
+          onClose={close}
+          data={{ 'data-fleet-install-panel': project }}
+        >
+          <PanelTable columns={MODULE_COLUMNS}>
+            {caps.map(cap => (
+              <CapabilityRow
+                key={cap.name}
+                cap={cap}
+                root={root}
+                attempt={attempts[cap.name]}
+                onPreview={() => void run(cap.name, true)}
+                onInstall={() => void run(cap.name, false)}
+              />
+            ))}
+          </PanelTable>
+        </Panel>
       )}
     </>
   )
@@ -258,24 +298,36 @@ function CapabilityRow({ cap, root, attempt, onPreview, onInstall }: {
   const note = noOfferNote(cap)
   const running = attempt?.running === true
   return (
+    /*
+      The marker stays on a WRAPPER, not on the grid row: the e2e spec locates
+      the refusal and the install button as DESCENDANTS of
+      `[data-fleet-capability]`, so moving the marker down onto the row alone
+      would quietly break those locators while every unit test stayed green.
+      The grid template is a custom property, so it inherits through this div
+      and the row still lines up with the heading.
+    */
     <div className="text-xs" data-fleet-capability={cap.name} data-fleet-capability-state={cap.state}>
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-fg-normal">{cap.name}</span>
+      <PanelRow>
+        <span className="text-fg-normal truncate">{cap.name}</span>
         <span className={STATE_STYLE[cap.state] ?? 'text-fg-muted'}>{String(cap.state).replace('-', ' ')}</span>
-        {typeof cap.present === 'number' && typeof cap.total === 'number' && (
-          <span className="text-fg-ghost tabular-nums">{cap.present}/{cap.total} file(s)</span>
-        )}
-        {installOffered(cap) && !attempt?.report && (
-          <button
-            onClick={onPreview}
-            disabled={running}
-            data-fleet-install-preview={cap.name}
-            className="text-sky-300 hover:text-sky-200 disabled:opacity-40 underline-offset-2 hover:underline"
-          >
-            {running ? 'looking…' : 'preview the install'}
-          </button>
-        )}
-      </div>
+        <span className="text-fg-ghost tabular-nums">
+          {typeof cap.present === 'number' && typeof cap.total === 'number'
+            ? `${cap.present}/${cap.total} file(s)`
+            : ''}
+        </span>
+        <span className="text-right">
+          {installOffered(cap) && !attempt?.report && (
+            <button
+              onClick={onPreview}
+              disabled={running}
+              data-fleet-install-preview={cap.name}
+              className="text-sky-300 hover:text-sky-200 disabled:opacity-40 underline-offset-2 hover:underline"
+            >
+              {running ? 'looking…' : 'preview the install'}
+            </button>
+          )}
+        </span>
+      </PanelRow>
 
       {note && <div className="text-fg-ghost mt-0.5" data-fleet-capability-note={cap.name}>{note}</div>}
 

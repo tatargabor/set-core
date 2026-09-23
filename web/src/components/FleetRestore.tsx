@@ -29,6 +29,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, CircleDashed, History, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import { Chip } from './Chip'
+import { Panel } from './Panel'
+import { useDisclosure } from '../lib/useDisclosure'
 import {
   ageLabel, allBlocked, canRestore, composition, groupByLabel, offerAcross, offerFor,
   restoreOffer, summarise, summariseAcross, turnSummary,
@@ -105,7 +107,7 @@ function OutcomeItem({ o }: { o: RestoreSummary['unfinished'][number] }) {
 function NameList({ summary }: { summary: RestoreSummary }) {
   if (!summary.unnamed.length) return null
   return (
-    <ul className="contents" data-fleet-restore-unnamed={summary.unnamed.length}>
+    <ul className="mt-0.5 space-y-0.5" data-fleet-restore-unnamed={summary.unnamed.length}>
       {summary.unnamed.map(o => {
         const whole = o.name_source === 'renamed'
           ? `${o.label_used} — came back as this because ${o.wanted_label} was taken`
@@ -136,30 +138,86 @@ function NameList({ summary }: { summary: RestoreSummary }) {
  * partial, and the `data-fleet-restore-*` count markers are unchanged, so the
  * DOM still states the shape a reader (or a test) can assert on.
  */
-function Result({ summary }: { summary: RestoreSummary }) {
+function Result({ summary, onClose }: { summary: RestoreSummary; onClose?: () => void }) {
+  const failed = summary.unfinished.filter(o => o.status === 'failed').length
+  const skipped = summary.unfinished.length - failed
   return (
+    /*
+      A floating notice, not a line in the header row.
+ 
+      It used to be the second line of the project strip, which made the whole
+      top bar two rows tall for one sentence — and its detail ran together with
+      its own headline on one `flex-wrap` row, because `contents` lifted both
+      lists into it. `absolute` costs the row no height at all, and the groups
+      below can now be groups.
+    */
     <div
-      className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs"
+      className="absolute left-0 top-full z-40 mt-1 w-max max-w-[40rem] rounded border
+                 border-surface-line bg-surface-panel px-2 py-1.5 text-xs shadow-lg"
       data-fleet-restore-result={summary.complete ? 'complete' : 'partial'}
     >
-      <span
-        className={summary.complete ? 'text-emerald-400' : 'text-amber-400'}
-        title={summary.headline}
-      >
-        {summary.headline}
-      </span>
-      {/* `contents` lifts the list items into the row above rather than letting
-          the ul draw a block of its own — the lists remain in the DOM with
-          their count markers, and the strip stays one visual line. */}
+      <div className="flex items-center gap-2">
+        <span
+          className={summary.complete ? 'text-emerald-400' : 'text-amber-400'}
+          title={summary.headline}
+        >
+          {summary.headline}
+        </span>
+        {/* The counts sit on the HEADLINE, so a grouped or scrolled detail
+            cannot take a failure out of sight. */}
+        {failed > 0 && (
+          <span className="rounded-full bg-red-500/15 px-1.5 text-red-400" data-fleet-restore-failed={failed}>
+            {failed} failed
+          </span>
+        )}
+        {skipped > 0 && (
+          <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-300" data-fleet-restore-skipped={skipped}>
+            {skipped} skipped
+          </span>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="close"
+            data-fleet-restore-result-close
+            className="ml-auto px-1 leading-none text-fg-muted hover:text-fg-strong"
+          >×</button>
+        )}
+      </div>
+
       {summary.unfinished.length > 0 && (
-        <ul className="contents" data-fleet-restore-unfinished={summary.unfinished.length}>
-          {summary.unfinished.map(o => <OutcomeItem key={o.key} o={o} />)}
-        </ul>
+        <div className="mt-1.5">
+          <div className="text-xs uppercase tracking-wide text-fg-dim">
+            did not start · {summary.unfinished.length}
+          </div>
+          <ul className="mt-0.5 space-y-0.5" data-fleet-restore-unfinished={summary.unfinished.length}>
+            {summary.unfinished.map(o => <OutcomeItem key={o.key} o={o} />)}
+          </ul>
+        </div>
       )}
-      <NameList summary={summary} />
+
+      {summary.unnamed.length > 0 && (
+        <div className="mt-1.5">
+          <div className="text-xs uppercase tracking-wide text-fg-dim">
+            came back under another name · {summary.unnamed.length}
+          </div>
+          <NameList summary={summary} />
+        </div>
+      )}
     </div>
   )
 }
+
+/**
+ * How long a CLEAN restore result stays before it closes itself.
+ *
+ * Ten seconds, asked for by the user 2026-09-23. Long enough to read one
+ * sentence, short enough that the header is not permanently carrying a fact
+ * about something that already finished. A partial result ignores this entirely
+ * — see `resultDismissed`.
+ */
+const RESULT_LINGER_MS = 10_000
 
 function useRestore(project: string | null, onDone?: () => void) {
   const [busy, setBusy] = useState(false)
@@ -563,21 +621,15 @@ function TheRest({ project, entries, busy, onRun, onChanged }: {
   /** Called after any forget succeeded — the parent re-reads the record. */
   onChanged?: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  // Open state, Escape and the open-state marker come from the shared
+  // disclosure now — the same one the waiters and the modules use. This panel
+  // already behaved correctly, which is exactly why it adopts the mechanism
+  // first: a failure here is the abstraction being wrong, not this surface.
+  const { open, toggle: toggleOpen, close: closeRest, triggerData } = useDisclosure('restore-rest')
   const [picked, setPicked] = useState<Record<string, boolean>>({})
   const [forgetBusy, setForgetBusy] = useState(false)
   const [forgetError, setForgetError] = useState<string | null>(null)
   const [armDeleteAll, setArmDeleteAll] = useState(false)
-
-  // Escape closes it, because a layer that covers the page and can only be
-  // dismissed with the mouse is a trap for anyone reading with the keyboard.
-  // The same rule the follow panel already states, for the same reason.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
 
   // An armed question must not outlive the selection it was armed about: a
   // confirm re-opened later would carry a count the ticks no longer state.
@@ -589,6 +641,10 @@ function TheRest({ project, entries, busy, onRun, onChanged }: {
   const offer = offerFor(chosen)
   const now = Date.now() / 1000
   const lineages = groupByLabel(entries)
+  // Counted for the header. The body scrolls once it outgrows the cap, so an
+  // entry that cannot be resumed can sit below the fold — and a blocked restore
+  // the reader never learns about is the failure a tidier layout creates.
+  const blocked = entries.filter(e => !e.resumable).length
   const pick = (key: string, on: boolean) => {
     setPicked(p => ({ ...p, [key]: on }))
     setArmDeleteAll(false)
@@ -630,8 +686,8 @@ function TheRest({ project, entries, busy, onRun, onChanged }: {
     <span className="inline-flex" data-fleet-restore-rest={entries.length}>
       <Chip
         jump="restore-rest"
-        onClick={() => setOpen(true)}
-        data={{ 'data-fleet-restore-rest-toggle': open ? 'open' : 'closed' }}
+        onClick={toggleOpen}
+        data={{ 'data-fleet-restore-rest-toggle': open ? 'open' : 'closed', ...triggerData }}
         mark={<History size={13} strokeWidth={1.75} aria-hidden />}
         count={entries.length}
         title={`${entries.length} session(s) recorded in this project that are not open — click to look at them`}
@@ -657,40 +713,33 @@ function TheRest({ project, entries, busy, onRun, onChanged }: {
         click on the backdrop.
       */}
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-surface-page/60"
-          onClick={() => setOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          data-fleet-restore-dialog={entries.length}
-        >
-          <div
-            className="w-[70vw] max-w-4xl h-[76vh] flex flex-col rounded border border-surface-line
-                       bg-surface-page shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-line shrink-0">
-              <History size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" />
-              <span className="text-sm text-fg-strong">Recorded in {project}, not open</span>
-              <span className="text-xs text-fg-ghost">
-                {entries.length} conversation{entries.length === 1 ? '' : 's'} · {lineages.length} agent
-                {lineages.length === 1 ? '' : 's'}
-              </span>
-              <button
-                onClick={() => setOpen(false)}
-                className="ml-auto text-fg-muted hover:text-fg-strong px-1 text-base leading-none"
-                aria-label="close"
-                data-fleet-restore-dialog-close
-              >×</button>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-              <RecordedList project={project} entries={entries} picked={picked} onPick={pick} now={now}
-                            onForget={k => void forget([k])} forgetBusy={forgetBusy} />
-            </div>
-
-            <div className="flex items-center gap-3 px-3 py-2 border-t border-surface-line shrink-0"
-                 data-fleet-restore-selected={offer.restorable}>
+        <Panel
+          icon={<History size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" aria-hidden />}
+          title={`Recorded in ${project}, not open`}
+          counts={
+            <>
+              {entries.length} conversation{entries.length === 1 ? '' : 's'} · {lineages.length} agent
+              {lineages.length === 1 ? '' : 's'}
+            </>
+          }
+          /*
+            The blocked entries are counted on the HEADER, not only beside the
+            rows they belong to. The list scrolls once it passes the cap, and a
+            reason that sits below the fold would otherwise be a blocked restore
+            the reader never learns about — the compaction rule applied to a
+            scroll instead of to a collapse.
+          */
+          headerExtra={blocked > 0 ? (
+            <span className="text-xs text-amber-300" data-fleet-restore-blocked={blocked}>
+              {blocked} cannot be resumed
+            </span>
+          ) : undefined}
+          onClose={closeRest}
+          data={{ 'data-fleet-restore-dialog': String(entries.length) }}
+          closeData={{ 'data-fleet-restore-dialog-close': '' }}
+          footerData={{ 'data-fleet-restore-selected': String(offer.restorable) }}
+          footer={
+            <>
               <span className="flex min-w-0 flex-col">
                 {offer.actionable ? (
                   <ArmedRestore
@@ -753,12 +802,15 @@ function TheRest({ project, entries, busy, onRun, onChanged }: {
                 </span>
               )}
               <button
-                onClick={() => setOpen(false)}
+                onClick={closeRest}
                 className={`${chosen.length === 0 ? 'ml-auto ' : ''}text-xs text-fg-muted hover:text-fg-strong`}
               >close</button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <RecordedList project={project} entries={entries} picked={picked} onPick={pick} now={now}
+                        onForget={k => void forget([k])} forgetBusy={forgetBusy} />
+        </Panel>
       )}
     </span>
   )
@@ -790,6 +842,19 @@ export function RestoreForProject({ project, onRestored, onChanged }: {
   // shows is re-read rather than going on listing entries that are gone.
   const [tick, setTick] = useState(0)
   const { busy, summary, error, run } = useRestore(project, onRestored)
+  /*
+    The result is an EVENT — it describes something that already finished — so a
+    clean one closes itself and stops occupying the header. A PARTIAL one never
+    does: a failure that dismisses itself after ten seconds is a failure nobody
+    saw, which is the whole reason `ui-quality.md` forbids compacting one away.
+  */
+  const [resultDismissed, setResultDismissed] = useState(false)
+  useEffect(() => { setResultDismissed(false) }, [summary])
+  useEffect(() => {
+    if (!summary?.complete) return
+    const t = setTimeout(() => setResultDismissed(true), RESULT_LINGER_MS)
+    return () => clearTimeout(t)
+  }, [summary])
 
   useEffect(() => {
     let live = true
@@ -809,7 +874,9 @@ export function RestoreForProject({ project, onRestored, onChanged }: {
   const result = (
     <>
       {error && <span className="mt-1 text-xs text-red-400">{error}</span>}
-      {summary && <Result summary={summary} />}
+      {summary && !resultDismissed && (
+        <Result summary={summary} onClose={() => setResultDismissed(true)} />
+      )}
     </>
   )
 
@@ -818,7 +885,7 @@ export function RestoreForProject({ project, onRestored, onChanged }: {
        It used to be a plain column, which put `55 more recorded here` on a
        second line of the project header and made the whole strip two rows tall
        for two numbers. */
-    <span className="inline-flex flex-col ml-4 pl-4 border-l border-surface-line"
+    <span className="relative inline-flex flex-col ml-4 pl-4 border-l border-surface-line"
           data-fleet-restore-project={project}>
       <span className="inline-flex items-center gap-2">
       {comp.known && comp.entries.length === 0 ? (

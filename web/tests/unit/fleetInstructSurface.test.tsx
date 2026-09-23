@@ -381,3 +381,79 @@ describe('waiters: only an orphan, only one at a time', () => {
     expect(chip.getAttribute('aria-label')).toMatch(/none orphaned/)
   })
 })
+
+describe('waiters open as a panel, not by growing the header row', () => {
+  const waiters = () => ({
+    measured: true,
+    reason: null,
+    waiters: [
+      { pid: 1, session_id: 'a', cwd: '/p/a', rooms: [], status: 'orphaned', removable: true },
+      { pid: 2, session_id: 'b', cwd: '/p/b', rooms: [], status: 'live', removable: false },
+    ],
+    orphaned: [1],
+    orphaned_count: 1,
+  })
+
+  it('reports its open state through a stable marker', async () => {
+    // Before this, the trigger had NO selector: its tests reached it as "the
+    // only button" in an isolated render, which works exactly until the
+    // component renders a second button.
+    answerWith(200, waiters())
+    const { container } = render(<FleetWaiters />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters="measured"]')).toBeTruthy())
+    const trigger = container.querySelector('[data-fleet-waiters-open]') as HTMLElement
+    expect(trigger.getAttribute('data-fleet-waiters-open')).toBe('off')
+    fireEvent.click(trigger)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters-panel]')).toBeTruthy())
+    expect(trigger.getAttribute('data-fleet-waiters-open')).toBe('on')
+  })
+
+  it('opens an overlay rather than something the header row lays out', async () => {
+    answerWith(200, waiters())
+    const { container } = render(<FleetWaiters />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters="measured"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-waiters-open]') as HTMLElement)
+    const panel = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-waiters-panel]') as HTMLElement | null
+      if (!el) throw new Error('no panel')
+      return el
+    })
+    expect(panel.className).toContain('fixed')
+    expect(panel.getAttribute('role')).toBe('dialog')
+  })
+
+  it('renders NO action footer — every act here belongs to one row', async () => {
+    // A footer is where a bulk act arrives by accident. The no-bulk contract is
+    // also asserted textually elsewhere; this is the structural half.
+    answerWith(200, waiters())
+    const { container } = render(<FleetWaiters />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters="measured"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-waiters-open]') as HTMLElement)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters-panel]')).toBeTruthy())
+    expect(container.querySelector('[data-fleet-panel-footer]')).toBeNull()
+    expect(container.textContent).not.toMatch(/remove all|clean up all|remove orphans/i)
+  })
+
+  it('lays every row on the same columns as its heading', async () => {
+    answerWith(200, waiters())
+    const { container } = render(<FleetWaiters />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters="measured"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-waiters-open]') as HTMLElement)
+    await waitFor(() => expect(container.querySelector('[data-fleet-panel-head]')).toBeTruthy())
+    const heads = [...container.querySelector('[data-fleet-panel-head]')!.children].map(c => c.textContent)
+    expect(heads).toEqual(['PID', 'Status', 'Working directory', 'Action'])
+    for (const row of container.querySelectorAll('[data-fleet-waiter]')) {
+      expect((row as HTMLElement).style.gridTemplateColumns).toBe('var(--panel-cols)')
+    }
+  })
+
+  it('closes on its own close control', async () => {
+    answerWith(200, waiters())
+    const { container } = render(<FleetWaiters />)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters="measured"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-waiters-open]') as HTMLElement)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters-panel]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-panel-close]') as HTMLElement)
+    await waitFor(() => expect(container.querySelector('[data-fleet-waiters-panel]')).toBeNull())
+  })
+})

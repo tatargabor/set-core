@@ -303,21 +303,63 @@ describe('the copy event stays as the browser-driven safety net', () => {
   })
 })
 
-describe('the mouse-taken state is standing text, not a hover-only icon', () => {
-  it('shows the Shift-drag instruction on the header while the agent owns the mouse', () => {
+/**
+ * The mouse-taken state: a standing ALARM, with the instruction in its own panel.
+ *
+ * This block replaces one named *"standing text, not a hover-only icon"*, and the
+ * change is deliberate rather than a drift — asked for by the user 2026-09-23,
+ * who wanted the header's width back. It partly reverses `4ce5b3b7`.
+ *
+ * **What that commit was right about is kept, and it is the half these tests
+ * guard.** A week of "copy doesn't work" ended on this chip: a drag that selects
+ * nothing IS the agent reading the mouse, and the fix used to be reachable only
+ * by hovering an icon — invisible in the exact moment the reader asks why their
+ * drag did nothing. So the amber MARK still stands unhovered, unconditionally,
+ * for as long as the agent owns the mouse. That is the alarm, and an overlay may
+ * never hide one.
+ *
+ * **What moved is the SENTENCE.** It is still rendered and still in the accessible
+ * tree — deliberately not a `title`, which is a thing you must already suspect in
+ * order to find — but it now sits in an absolutely-positioned panel, so it costs
+ * no width while closed and pushes nothing when it opens.
+ */
+describe('the mouse-taken state is a standing alarm with its instruction in a panel', () => {
+  it('stands an amber mark on the header while the agent owns the mouse', () => {
     agentTakesTheMouse()
     // The MutationObserver reads the class asynchronously; give it a tick.
     return waitFor(() => {
       const chip = document.querySelector('[data-fleet-terminal-mouse-taken="yes"]')
       expect(chip).toBeTruthy()
-      // VISIBLE text, not a tooltip: a reader whose drag selected nothing must
-      // meet the instruction without hovering anything. This is the assertion
-      // the icon-plus-label version could never pass. Shift+drag is the half
-      // that must stand visibly — it is the step that fails silently — and it
-      // is also the half that fits a narrow dock without truncating; the copy
-      // key lives in the tooltip, measurable here.
-      expect(chip!.textContent).toContain('Shift+drag')
+      // The alarm itself needs no hover and no pointer at all.
+      expect(chip!.querySelector('svg')).toBeTruthy()
       expect(chip!.getAttribute('title')).toContain('Ctrl+C')
+    })
+  })
+
+  it('keeps the instruction in the DOM, not only in a tooltip', () => {
+    agentTakesTheMouse()
+    return waitFor(() => {
+      const note = document.querySelector('[data-fleet-terminal-mouse-note]')
+      expect(note).toBeTruthy()
+      // Shift+drag is the step that fails silently, so it is the half that must
+      // survive anywhere the reader can reach — including a screen reader.
+      expect(note!.textContent).toContain('Shift+drag')
+      expect(note!.getAttribute('role')).toBe('note')
+    })
+  })
+
+  it('costs the header no width: the panel is out of flow', () => {
+    // The whole point of the change. A panel laid out in the row would simply
+    // be the old standing text with extra steps.
+    agentTakesTheMouse()
+    return waitFor(() => {
+      const note = document.querySelector('[data-fleet-terminal-mouse-note]') as HTMLElement
+      expect(note.className).toContain('absolute')
+      expect(note.className).toContain('opacity-0')
+      expect(note.className).toMatch(/group-hover:opacity-100/)
+      // Reachable without a pointer, or it is a hover-only icon again.
+      expect(note.className).toMatch(/group-focus(-within)?:opacity-100/)
+      expect((note.parentElement as HTMLElement).getAttribute('tabindex')).toBe('0')
     })
   })
 

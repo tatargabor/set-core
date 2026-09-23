@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, Scissors, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointer2, Scissors, X } from 'lucide-react'
 import {
   buildListingIndex, terminalReferences, type FileRef, type ListingIndex,
 } from '../lib/fleetFiles'
@@ -1180,18 +1180,42 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         />
         {mouseTaken && (
           /*
-            Standing TEXT, not an icon with a tooltip. A week of "copy doesn't
-            work" ended on this chip: the drag that selects nothing is the
-            agent reading the mouse, and the instruction that fixes it was
-            previously reachable only by hovering an icon — invisible exactly
-            in the moment the reader asks why their drag did nothing.
+            An amber MARKER that always stands, with the instruction in a panel
+            of its own beside it — asked for by the user 2026-09-23, and it
+            partly reverses `4ce5b3b7` ("the Shift caveat stands visible").
+            Read that commit before changing this again.
+
+            What that commit was right about, and what is kept: a week of "copy
+            doesn't work" ended here, because the drag that selects nothing IS
+            the agent reading the mouse, and the fix was previously reachable
+            only by hovering an icon — invisible in the very moment the reader
+            asks why their drag did nothing. So the ALARM never moves: while the
+            agent owns the mouse, an amber mark is on the header, unhoverd,
+            unconditionally.
+
+            What changes is only where the SENTENCE lives. It is still in the
+            DOM and still in the accessible tree — not a `title` — so a screen
+            reader reaches it and it can be found without a pointer. The panel
+            is absolutely positioned, so it costs no width when closed and
+            pushes nothing when it opens.
           */
           <span
-            className="text-xs shrink-0 text-amber-400"
+            className="group relative shrink-0 text-amber-400 leading-none"
             data-fleet-terminal-mouse-taken="yes"
+            tabIndex={0}
             title="the agent is reading the mouse — hold Shift while dragging to select text, then Ctrl+C copies it"
           >
-            agent reads the mouse — Shift+drag selects
+            <MousePointer2 size={13} strokeWidth={1.75} aria-hidden />
+            <span
+              role="note"
+              data-fleet-terminal-mouse-note
+              className="pointer-events-none absolute right-0 top-full z-50 mt-1 w-max rounded border
+                         border-amber-500/60 bg-surface-panel px-2 py-1 text-xs text-amber-300
+                         shadow-lg opacity-0 transition-opacity
+                         group-hover:opacity-100 group-focus:opacity-100 group-focus-within:opacity-100"
+            >
+              agent reads the mouse — Shift+drag selects
+            </span>
           </span>
         )}
         {outputPaused && (

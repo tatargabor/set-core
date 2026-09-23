@@ -1060,12 +1060,31 @@ function Declared({ standing, full, blockShown, contentShown }: {
   blockShown?: boolean
 }) {
   if (standing.kind === 'unasked') {
-    return (
-      <div className="text-xs text-amber-400 mt-1" data-fleet-declared="unasked"
-           title="The messaging bus could not be asked, so nothing is known about what this agent says it is doing. That is not the same as an agent that says nothing.">
-        ⚠ we could not ask what this agent says about itself
-      </div>
-    )
+    /*
+      NOTHING HERE — the mark lives in the title bar, beside the other icons
+      (`TileControls`, `declaredUnasked`). Moved there 2026-09-23 on the user's
+      report: *"The yellow warning triangle icon shouldn'T have a whole line for
+      itself, put it above to the icons too. And remove it's description, since
+      when I'm hovering it the default description appears"*.
+
+      Two things about that, and both are the point rather than detail:
+
+      - **The alarm did not move, only its ROW did.** *We could not ask* is an
+        absence in the framework rather than a fact about the agent — a failure —
+        and `ui-quality.md` does not let a compaction hide one. In the title bar
+        it is still amber, still unhovered, still standing for as long as the
+        condition holds. What it no longer costs is a line.
+      - **One tooltip, not two.** This used to carry a `title` AND a hover panel
+        of its own, so hovering produced the browser's tooltip on top of the
+        panel saying the same thing twice. `IconButton` renders the sentence
+        into `title` and into the accessible name, which is the one the reader
+        was already getting.
+
+      Measured before the move, on the running screen: this line was 1411 × 13 px
+      and its arrival pushed the terminal below it from y=150 to y=133 — the
+      17 px shift that task 7.6 exists to remove.
+    */
+    return null
   }
   if (standing.kind === 'silent') {
     // An agent that says nothing, on a tile that is already showing something:
@@ -1533,6 +1552,8 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
              be — a control that opened a sentence would be a control that does
              nothing, which this screen's own rule calls worse than none. */
           onInstruct={instructability(agent).kind !== 'no' ? () => setInstructOpen(o => !o) : undefined}
+          /* The one fact `Declared` no longer has a row for — task 7.6. */
+          declaredUnasked={standing.kind === 'unasked'}
         />
         {/* The cooling bar, on the header's bottom edge — the tile's equivalent
             of the tab's. Length is time, thickness is the stake, and both come

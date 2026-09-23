@@ -860,3 +860,161 @@ describe('delete all selected', () => {
     expect((screen.getByLabelText('proj-b') as HTMLInputElement).checked).toBe(true)
   })
 })
+
+describe('the recorded panel is sized by what it holds, and counts what a scroll could hide', () => {
+  it('caps its height instead of reserving a fixed slice of the viewport', async () => {
+    // `h-[76vh]` is what left ONE recorded session stranded above roughly
+    // 380px of nothing, with the footer stranded at the bottom — a panel
+    // covering most of the screen to say one sentence.
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), past('OLD1', 'proj-a', 20)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    const box = container.querySelector('[data-fleet-restore-dialog] > div') as HTMLElement
+    expect(box.className).toContain('max-h-[76vh]')
+    expect(box.className).not.toMatch(/(^|\s)h-\[\d+vh\]/)
+  })
+
+  it('keeps the chrome out of the scroll, so a long list never carries the footer away', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    const body = container.querySelector('[data-fleet-restore-dialog] > div > div:nth-child(2)') as HTMLElement
+    expect(body.className).toContain('overflow-y-auto')
+    expect(body.className).toContain('min-h-0')
+    const footer = container.querySelector('[data-fleet-restore-selected]') as HTMLElement
+    expect(footer.className).toContain('shrink-0')
+  })
+
+  it('counts entries that cannot be resumed on the HEADER, not only beside their rows', async () => {
+    // The body scrolls past the cap. A reason sitting below the fold would be
+    // a blocked restore the reader never learns about, which is the failure a
+    // tidier layout creates rather than removes.
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound(
+        [openEntry('A'), past('OLD1', 'proj-a', 20), past('OLD2', 'proj-b', 10, { resumable: false })], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    const marker = container.querySelector('[data-fleet-restore-blocked]') as HTMLElement
+    expect(marker).toBeTruthy()
+    expect(marker.getAttribute('data-fleet-restore-blocked')).toBe('1')
+    expect(marker.textContent).toMatch(/cannot be resumed/)
+  })
+
+  it('says nothing about blocked entries when none are blocked', async () => {
+    // A zero printed where nothing was blocked is a fact the screen did not
+    // measure — the same shape as reporting "none orphaned" for an unmeasured
+    // waiters list.
+    vi.stubGlobal('fetch', mockFetch({
+      'GET /api/fleet/roster/proj': rosterWithRound([openEntry('A'), past('OLD1', 'proj-a', 20)], 1000),
+    }))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await openTheRest(container)
+    expect(container.querySelector('[data-fleet-restore-blocked]')).toBeNull()
+  })
+})
+
+describe('the result is an event: a clean one goes, a partial one stays', () => {
+  const rosterAndRestore = (restore: unknown) => mockFetch({
+    'GET /api/fleet/roster/proj': rosterAnswer([entry('A'), entry('B')]),
+    'POST /api/fleet/roster/proj/restore': restore,
+  })
+
+  const cleanRun = {
+    project: 'proj', attempted: 1, complete: true, record_exists: true,
+    started: [outcome('started', null, 'A')], skipped: [], failed: [],
+  }
+  const partialRun = {
+    project: 'proj', attempted: 2, complete: false, record_exists: true,
+    started: [outcome('started', null, 'A')],
+    skipped: [outcome('skipped', 'bound to a live process', 'B')],
+    failed: [],
+  }
+
+  it('costs the header row no height — the notice is out of flow', async () => {
+    // It used to be the second LINE of the project strip, which made the whole
+    // top bar two rows tall for one sentence.
+    vi.stubGlobal('fetch', rosterAndRestore(cleanRun))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await armAndRun()
+    const notice = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-restore-result]') as HTMLElement | null
+      if (!el) throw new Error('no result')
+      return el
+    })
+    expect(notice.className).toContain('absolute')
+  })
+
+  it('closes a CLEAN result by itself once it has been readable', async () => {
+    // The clock has to be fake BEFORE the component schedules its close, or the
+    // timeout is created on the real one and advancing fake time moves nothing
+    // — a test that would then pass on a notice that never closes.
+    // `shouldAdvanceTime` keeps the fetch promises resolving meanwhile.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      vi.stubGlobal('fetch', rosterAndRestore(cleanRun))
+      const { container } = render(<RestoreForProject project="proj" />)
+      await armAndRun()
+      await waitFor(() =>
+        expect(container.querySelector('[data-fleet-restore-result="complete"]')).toBeTruthy())
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(11_000) })
+      expect(container.querySelector('[data-fleet-restore-result]')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('NEVER closes a partial result by itself', async () => {
+    // The load-bearing direction. A failure that dismisses itself after ten
+    // seconds is a failure nobody saw — the same rule that forbids compacting
+    // one out of sight, applied to time instead of to layout.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      vi.stubGlobal('fetch', rosterAndRestore(partialRun))
+      const { container } = render(<RestoreForProject project="proj" />)
+      await armAndRun()
+      await waitFor(() =>
+        expect(container.querySelector('[data-fleet-restore-result="partial"]')).toBeTruthy())
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+      expect(container.querySelector('[data-fleet-restore-result="partial"]')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('puts the skipped count on the headline, where a grouped detail cannot hide it', async () => {
+    vi.stubGlobal('fetch', rosterAndRestore(partialRun))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await armAndRun()
+    const chip = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-restore-skipped]') as HTMLElement | null
+      if (!el) throw new Error('no count')
+      return el
+    })
+    expect(chip.getAttribute('data-fleet-restore-skipped')).toBe('1')
+    expect(chip.textContent).toMatch(/1 skipped/)
+    // And the reason is still there, in its own group rather than run together
+    // with the headline on one wrapping line.
+    expect(container.querySelector('[data-fleet-restore-unfinished]')).toBeTruthy()
+    expect(container.textContent).toMatch(/did not start/)
+  })
+
+  it('offers a close control even on the clean one', async () => {
+    vi.stubGlobal('fetch', rosterAndRestore(cleanRun))
+    const { container } = render(<RestoreForProject project="proj" />)
+    await armAndRun()
+    await waitFor(() =>
+      expect(container.querySelector('[data-fleet-restore-result]')).toBeTruthy())
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-fleet-restore-result-close]') as HTMLElement)
+    })
+    expect(container.querySelector('[data-fleet-restore-result]')).toBeNull()
+  })
+})

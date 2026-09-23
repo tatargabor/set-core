@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Expand, Maximize2, Minimize2, MessageSquare, PanelBottom, PanelLeft, PanelRight, PanelTop,
-  ScrollText, Shrink, SquareTerminal,
+  ScrollText, Shrink, SquareTerminal, TriangleAlert,
 } from 'lucide-react'
 import type { DockEdge } from '../lib/fleetDocks'
 import SrOnly from './SrOnly'
@@ -104,10 +104,26 @@ export function IconButton({ icon: Icon, label, active, tone, onClick, testId, m
 
 export default function TileControls({
   agent, ownerReachable, logOpen, onLog, enlarged, onEnlarge, focused, onFocus, terminalOpen, onTerminal,
-  onDock, dockedEdge, instructOpen, onInstruct,
+  onDock, dockedEdge, instructOpen, onInstruct, declaredUnasked,
 }: {
   agent: FleetAgent
   ownerReachable?: boolean
+  /**
+   * The bus could not be asked what this agent says about itself — a failure in
+   * the FRAMEWORK, not a fact about the agent, and therefore a thing
+   * `ui-quality.md` does not let a compaction hide.
+   *
+   * It lives HERE, in the title bar, because it used to be a line of its own
+   * under the header. Measured on the running screen 2026-09-23: that line was
+   * 1411 × 13 px, and its arrival pushed the terminal below it from y=150 to
+   * y=133 — a 17 px shift of content the reader was already looking at, which
+   * is exactly what "a notice arriving does not shift the row" forbids. As an
+   * icon among icons it costs no row at all.
+   *
+   * Reported by the user the same day: *"The yellow warning triangle icon
+   * shouldn'T have a whole line for itself, put it above to the icons too."*
+   */
+  declaredUnasked?: boolean
   logOpen: boolean
   onLog: () => void
   enlarged?: boolean
@@ -143,6 +159,19 @@ export default function TileControls({
   const dockable = onDock && agent.terminal_label
   return (
     <span className="ml-auto flex items-center gap-0.5 shrink-0" data-tile-controls={agent.pid}>
+      {/* FIRST in the row, and not a button: it reports a condition, it does not
+          offer an act. `IconButton` without `onClick` renders a span, so it is
+          not in the tab order and cannot be clicked to no effect — while still
+          carrying the sentence in `title` and in the accessible name. */}
+      {declaredUnasked && (
+        <IconButton
+          icon={TriangleAlert}
+          tone="amber"
+          testId="declared-unasked"
+          mark={{ 'data-fleet-declared': 'unasked' }}
+          label="we could not ask what this agent says about itself — the messaging bus did not answer, which is not the same as an agent that says nothing"
+        />
+      )}
       {onInstruct && (
         <IconButton
           icon={MessageSquare}
