@@ -20,7 +20,11 @@ tests/unit/fleetSurface.test.tsx :: task 7.4 … costs one click to instruct an 
 tests/unit/fleetSurface.test.tsx :: task 7.4 … selects back: clicking a tab enlarges that agent instead
 ```
 
-Full names: `/tmp/claude-1000/-home-szluka-projects-set-core/a87ce246-6883-4094-b2a6-e9f4d3a5ad34/scratchpad/baseline/web-unit-fail-set.txt`
+Full names were captured in a session scratchpad, which does not survive the session — and that
+is fine, because a baseline here is **reproducible rather than archived**: re-run the suite three
+times and union the failures (the `regression-baseline` skill has the recipe). An absolute path
+into somebody's scratchpad is also not something a committed artifact may carry — it leaks the
+local layout and is unopenable for every other reader, so it is deliberately not restored here.
 
 **`designDrift.test.ts` is in the baseline and this change writes new markup** — watch that one
 specifically; it is already red, so it cannot go redder in a way a count would reveal.
