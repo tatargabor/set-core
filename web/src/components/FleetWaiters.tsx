@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Hourglass } from 'lucide-react'
 import { Chip } from './Chip'
+import { Panel, PanelRow, PanelTable } from './Panel'
+import type { PanelColumn } from './Panel'
+import { useDisclosure } from '../lib/useDisclosure'
+
 
 import type { Waiter, WaitersResponse } from '../lib/fleetTypes'
 
@@ -34,6 +38,20 @@ import type { Waiter, WaitersResponse } from '../lib/fleetTypes'
  * "No orphans" invites installing another waiter; "we could not look" does not.
  * The two render differently and the second never shows a clean list.
  */
+
+/**
+ * The columns, declared once.
+ *
+ * The list used to read `105989 live /a/project/checkout not
+ * offered` — four fields run together in one wrapping row, so nothing could be
+ * compared down a column and the eye had no edge to follow.
+ */
+const WAITER_COLUMNS: PanelColumn[] = [
+  { key: 'pid', label: 'PID', width: '5rem' },
+  { key: 'status', label: 'Status', width: '8rem' },
+  { key: 'cwd', label: 'Working directory', width: 'minmax(0,1fr)' },
+  { key: 'action', label: 'Action', width: '14rem', align: 'end' },
+]
 
 const STATUS_TONE: Record<string, string> = {
   orphaned: 'text-amber-400',
@@ -74,22 +92,26 @@ function WaiterRow({ w, onRemoved }: { w: Waiter; onRemoved: () => void }) {
   }, [w.pid, onRemoved])
 
   return (
-    <li className="flex items-baseline gap-2 flex-wrap py-0.5" data-fleet-waiter={w.pid}>
-      <span className="text-xs text-fg-ghost tabular-nums shrink-0 w-16">{w.pid}</span>
+    <>
+    <PanelRow data={{ 'data-fleet-waiter': String(w.pid) }}>
+      <span className="text-xs text-fg-ghost tabular-nums">{w.pid}</span>
       <span
-        className={`text-xs shrink-0 ${STATUS_TONE[w.status] ?? 'text-fg-muted'}`}
+        className={`text-xs ${STATUS_TONE[w.status] ?? 'text-fg-muted'}`}
         data-fleet-waiter-status={w.status}
         title={STATUS_NOTE[w.status] ?? 'a status this screen does not recognise'}
       >
         {w.status}
       </span>
-      <span className="text-xs text-fg-muted truncate min-w-0 max-w-[22rem]" title={w.cwd ?? ''}>
+      {/* The directory and the rooms share one cell: an extra top-level child
+          would become an extra COLUMN, and the row would stop lining up with
+          its own heading. */}
+      <span className="min-w-0 truncate text-xs text-fg-muted" title={w.cwd ?? ''}>
         {w.cwd ?? 'no working directory'}
+        {w.rooms && w.rooms.length > 0 && (
+          <span className="text-fg-ghost"> · rooms: {w.rooms.join(', ')}</span>
+        )}
       </span>
-      {w.rooms && w.rooms.length > 0 && (
-        <span className="text-xs text-fg-ghost truncate">rooms: {w.rooms.join(', ')}</span>
-      )}
-      <span className="ml-auto shrink-0">
+      <span className="text-right">
         {w.removable ? (
           confirming ? (
             <button
@@ -117,15 +139,21 @@ function WaiterRow({ w, onRemoved }: { w: Waiter; onRemoved: () => void }) {
           </span>
         )}
       </span>
-      {error && <span className="text-xs text-red-400 w-full">refused: {error}</span>}
-    </li>
+    </PanelRow>
+    {/* Full width, outside the grid: a refusal is a sentence, and a sentence
+        squeezed into the action column is a sentence nobody reads. */}
+    {error && <div className="px-1 pb-1 text-xs text-red-400">refused: {error}</div>}
+    </>
   )
 }
 
 export default function FleetWaiters({ compact }: { compact?: boolean }) {
   const [data, setData] = useState<WaitersResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
+  // Shared with every other header opener, so this trigger finally has a stable
+  // open-state marker: its test used to find it as "the only button" in an
+  // isolated render, which is not a selector so much as an accident.
+  const { open, toggle, close, triggerData } = useDisclosure('waiters')
 
   const load = useCallback(() => {
     fetch('/api/fleet/waiters')
@@ -164,14 +192,16 @@ export default function FleetWaiters({ compact }: { compact?: boolean }) {
           number on the calmer fact. The colour carries which one it is. */}
       <Chip
         jump="waiters"
-        onClick={() => setOpen(v => !v)}
+        onClick={toggle}
+        data={triggerData}
         tone={orphans.length > 0 || undeterminable.length > 0 ? 'text-amber-400' : 'text-fg-muted'}
         mark={<Hourglass size={13} strokeWidth={1.75} aria-hidden />}
         count={orphans.length > 0 ? orphans.length : data.waiters.length}
-        trailing={<>
-          {undeterminable.length > 0 && <span className="text-amber-400">+{undeterminable.length}?</span>}
-          <span className="text-fg-ghost">{open ? '▾' : '▸'}</span>
-        </>}
+        // No caret: a caret promises the row is about to grow, and nothing
+        // grows any more — the list opens as a panel over the page.
+        trailing={undeterminable.length > 0
+          ? <span className="text-amber-400">+{undeterminable.length}?</span>
+          : undefined}
         title={[
           orphans.length > 0
             ? `${orphans.length} orphaned waiter(s) of ${data.waiters.length}`
@@ -187,22 +217,42 @@ export default function FleetWaiters({ compact }: { compact?: boolean }) {
       />
 
       {open && (
-        <ul className="mt-1 space-y-0.5 border-l border-surface-line pl-2">
-          {data.waiters.length === 0 && (
-            <li className="text-xs text-fg-muted">
+        <Panel
+          icon={<Hourglass size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" aria-hidden />}
+          title="Waiters"
+          counts={`${data.waiters.length} measured`}
+          headerExtra={orphans.length > 0 ? (
+            <span className="text-xs text-amber-300" data-fleet-waiters-orphaned-mark={orphans.length}>
+              {orphans.length} orphaned
+            </span>
+          ) : undefined}
+          onClose={close}
+          data={{ 'data-fleet-waiters-panel': String(data.waiters.length) }}
+          /*
+            NO footer. Every action here belongs to one row — an orphan, one at
+            a time — and a footer is exactly where a bulk act would arrive by
+            accident. A structural test already asserts the absence of one
+            (`fleetInstructSurface.test.tsx:355`).
+          */
+        >
+          {data.waiters.length === 0 ? (
+            <div className="text-xs text-fg-muted">
               measured: no waiter process is running on this machine
-            </li>
+            </div>
+          ) : (
+            <PanelTable columns={WAITER_COLUMNS}>
+              {data.waiters.map(w => (
+                <WaiterRow key={w.pid} w={w} onRemoved={load} />
+              ))}
+            </PanelTable>
           )}
-          {data.waiters.map(w => (
-            <WaiterRow key={w.pid} w={w} onRemoved={load} />
-          ))}
           {!compact && (
-            <li className="text-xs text-fg-ghost pt-1">
+            <div className="pt-2 text-xs text-fg-ghost">
               Only an orphan is offered, and only one at a time — there is deliberately no bulk
               removal. Removing a live waiter is invisible: its agent merely looks quiet.
-            </li>
+            </div>
           )}
-        </ul>
+        </Panel>
       )}
     </div>
   )

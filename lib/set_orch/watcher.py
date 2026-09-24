@@ -181,6 +181,8 @@ class ProjectWatcher:
             await self._poll_fallback(callback)
             return
 
+        # Resolved ONCE per watch, never per changed path: LineagePaths spawns two
+        # `git rev-parse` subprocesses on the event loop (B-146).
         from .paths import LineagePaths
         state_base = os.path.basename(LineagePaths(str(self.project_path)).state_file)
         state_names = ("orchestration-" + state_base, state_base)
@@ -192,7 +194,7 @@ class ProjectWatcher:
                 # Non-recursive: only files directly inside these dirs are matched
                 # below, and a recursive watch of the project root registered an
                 # inotify watch on every directory of the tree (36k for one project)
-                # and pushed every build-output write through this loop.
+                # and pushed every build-output write through this loop (B-155).
                 # yield_on_timeout wakes us with an empty set so a state/log dir
                 # that appears later is picked up without watching the whole tree.
                 async for changes in awatch(
@@ -200,7 +202,9 @@ class ProjectWatcher:
                     rust_timeout=DIR_RECHECK_MS, yield_on_timeout=True,
                 ):
                     if not changes:
-                        self._refresh_paths()
+                        # is_dir checks only: _refresh_paths resolves LineagePaths,
+                        # which spawns git on the event loop (B-146), and this wake
+                        # fires every DIR_RECHECK_MS for every registered project.
                         if self._watch_dirs() != watch_dirs:
                             break
                         continue
@@ -215,7 +219,8 @@ class ProjectWatcher:
                             self._refresh_paths()
                             await self._handle_state_change(callback)
                         elif name == "orchestration.log":
-                            self._refresh_paths()
+                            if Path(change_path) != self.log_path:
+                                self._refresh_paths()
                             await self._handle_log_change(callback)
                 else:
                     return

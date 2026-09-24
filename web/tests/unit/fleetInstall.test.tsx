@@ -255,3 +255,57 @@ describe('the surface — what the reader is actually shown', () => {
     expect(document.querySelector('[data-fleet-install-panel]')).toBeNull()
   })
 })
+describe('the modules list opens as a panel, not by claiming a line of the header', () => {
+  it('keeps the open-state marker the e2e spec polls', () => {
+    // `tests/e2e/fleet-install.spec.ts:93` clicks while
+    // `data-fleet-modules-open !== "on"`. Dropping this attribute would leave
+    // that spec clicking forever with nothing saying why.
+    render(<FleetInstall project="demo" root="/home/x/demo" capabilities={caps} />)
+    const trigger = document.querySelector('[data-fleet-modules="measured"]') as HTMLElement
+    expect(trigger.getAttribute('data-fleet-modules-open')).toBe('off')
+    openPanel()
+    expect(trigger.getAttribute('data-fleet-modules-open')).toBe('on')
+    expect(document.querySelector('[data-fleet-install-panel="demo"]')).toBeTruthy()
+  })
+
+  it('is an overlay, and no longer takes a whole wrapped line of the row', () => {
+    // It was `basis-full`, which is the strongest form of the push: it asked
+    // the wrapping header row for a line of its own.
+    render(<FleetInstall project="demo" root="/home/x/demo" capabilities={caps} />)
+    openPanel()
+    const panel = document.querySelector('[data-fleet-install-panel="demo"]') as HTMLElement
+    expect(panel.className).toContain('fixed')
+    expect(panel.className).not.toContain('basis-full')
+    expect(panel.getAttribute('role')).toBe('dialog')
+  })
+
+  it('renders NO action footer — an install is per module and takes two clicks', () => {
+    // A panel-wide button is how "install everything" would arrive without
+    // anybody deciding on it, into a repository set-core does not own.
+    render(<FleetInstall project="demo" root="/home/x/demo" capabilities={caps} />)
+    openPanel()
+    expect(document.querySelector('[data-fleet-panel-footer]')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/install all|connect all/i)
+  })
+
+  it('keeps the refusal INSIDE the capability row the e2e spec scopes to', async () => {
+    // `row.locator('[data-fleet-install-refusal="refused"]')` — a descendant
+    // query. Moving the marker onto the grid row alone would break it while
+    // every unit test stayed green.
+    installFetch({ ok: false, status: 409, body: { detail: { error: "requires 'starter'" } } })
+    render(<FleetInstall project="demo" root="/home/x/demo" capabilities={caps} />)
+    openPanel()
+    fireEvent.click(document.querySelector('[data-fleet-install-preview="starter"]')!)
+    await waitFor(() => {
+      const row = document.querySelector('[data-fleet-capability="starter"]')!
+      expect(row.querySelector('[data-fleet-install-refusal]')).toBeTruthy()
+    })
+  })
+
+  it('lays every row on the columns its heading declares', () => {
+    render(<FleetInstall project="demo" root="/home/x/demo" capabilities={caps} />)
+    openPanel()
+    const heads = [...document.querySelector('[data-fleet-panel-head]')!.children].map(c => c.textContent)
+    expect(heads).toEqual(['Module', 'State', 'Files', 'Action'])
+  })
+})

@@ -29,6 +29,33 @@ This is the same rule as "a gap is not a zero", applied to layout instead of to 
 tidy screen that reports calm it has not verified is worse than a cluttered one that does
 not, because it is more convincing.
 
+## An overlay NEVER pushes — stated by the user, 2026-09-23
+
+**Anything that opens — a popover, a detail panel, a toast, an expander — floats above the
+layout. It does not add height to the strip it belongs to, and it does not move what sits
+under it.** The user's words: *"never push on the elements, or sizes. I think that's a common
+request on UIs"*, said after a mock-up in which opening a header badge made the header taller.
+
+Concretely, and all four are the rule rather than taste:
+
+- **Absolutely positioned, above everything** (`position: absolute/fixed` + a `z-index`), never
+  a sibling in the flow that participates in sizing.
+- **Closable by the reader** — an explicit control, not only click-outside.
+- **Transient things close themselves.** A result that describes a finished event auto-closes
+  (10 s is the agreed figure); a *state* that is still true does not, and neither does a
+  failure — see the exception below.
+- **The reserved space stays reserved.** A strip that shows a notice sometimes keeps its
+  height when it shows nothing, so arrival does not shift the row.
+
+**Why this outranks tidiness:** a layout that reflows on open moves the thing the reader was
+about to click. The cost is not ugliness, it is a mis-click and a lost position — and it lands
+every single time the control is used, which is what makes it expensive rather than annoying.
+
+**The exception, which is the compaction rule above applied here.** An overlay may hide a
+*sentence*; it may never hide a *fact*. Whatever summons it — a badge, a count, a marker —
+stays visible while the condition holds, and a notice reporting a failure or a partial result
+does not auto-close. A failure that dismisses itself is a failure nobody saw.
+
 ## A UI change is not done until somebody LOOKED at it — stated by the user, 2026-08-20
 
 **Every change that touches the UI carries a visual check, in the browser, as a
