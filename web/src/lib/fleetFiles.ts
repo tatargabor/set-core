@@ -767,6 +767,33 @@ function suffixMatches(listing: ListingIndex | undefined, token: string): string
   return bucket.filter(path => path.endsWith(needle))
 }
 
+/**
+ * Whether a target was placed in `base` WITHOUT the listing vouching for it —
+ * the one case a fresh listing could change.
+ *
+ * Reported 2026-09-24 from a live screen: an agent wrote a file, then printed
+ * its path relative to a subdirectory. The terminal's listing had been fetched
+ * when the terminal opened, minutes before the file existed, so the suffix
+ * lookup that would have found it found nothing, and the token fell through to
+ * the shape rule — joined onto the project root, where no such file is. The
+ * panel answered "no such file" about a file that was on disk.
+ *
+ * A listing is a measurement with a timestamp, and agents create files. So a
+ * target this answers `true` for is re-resolved against a fresh listing before
+ * anything opens; a proven one never costs a fetch.
+ */
+export function unprovenInBase(
+  target: TerminalTarget,
+  listing: ListingIndex | undefined,
+  base: string,
+): boolean {
+  if (!target || !listing) return false
+  if ((target.kind !== 'file' && target.kind !== 'directory')) return false
+  if (target.root.replace(/\/+$/, '') !== base.replace(/\/+$/, '')) return false
+  if (target.kind === 'file') return !listing.files.has(target.ref.path)
+  return target.path !== '' && !listing.dirs.has(target.path)
+}
+
 /** One recognised reference in a terminal row, with where it sits. */
 export interface Reference {
   /** 0-based column in the row where the token starts. */

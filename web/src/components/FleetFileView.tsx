@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown, ChevronRight, Expand, EyeOff, File as FileIcon, Maximize2, Minimize2,
+  ChevronDown, ChevronRight, Expand, ExternalLink, EyeOff, File as FileIcon, Maximize2, Minimize2,
   PanelLeftClose, PanelLeftOpen, RefreshCw, Save, Shrink, WrapText, X,
 } from 'lucide-react'
 
@@ -466,7 +466,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       const res = await fetch('/api/desktop/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: `${readRoot.replace(/\/+$/, '')}/${rel}` }),
+        body: JSON.stringify({ path: rel ? `${readRoot.replace(/\/+$/, '')}/${rel}` : readRoot }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
@@ -478,6 +478,11 @@ export default function FleetFileView({ root, projectName, request, initial, onC
       setHandOverOutcome({ ok: false, reason: String((e as Error)?.message ?? e) })
     }
   }, [readRoot])
+
+  // An outcome is about ONE path; switching files must not leave it standing
+  // next to another.
+  const handOverSubject = opened.kind === 'none' ? null : opened.path
+  useEffect(() => { setHandOverOutcome(null) }, [handOverSubject])
 
   const objectUrl = useRef<string | null>(null)
   const releaseObjectUrl = useCallback(() => {
@@ -928,6 +933,21 @@ export default function FleetFileView({ root, projectName, request, initial, onC
               : 'show the files this project ignores — they are being withheld now'}
             onClick={() => setShowIgnored(v => !v)}
           />
+          {/* The desktop's own application, for WHATEVER is open — asked for
+              2026-09-24, because the panel is a viewer and the reader often wants
+              the real program (a browser for a page, an image editor). With
+              nothing open it hands over the checkout itself, which a desktop
+              opens in its file manager. Same endpoint and same refusals as the
+              terminal's route; a refusal is shown, never swallowed. */}
+          <IconButton
+            icon={ExternalLink}
+            testId="file-desktop-open"
+            mark={{ 'data-fleet-file-desktop': openPath ?? '.' }}
+            label={openPath
+              ? `open ${openPath} with this machine's own application`
+              : `open ${readRoot} in this machine's file manager`}
+            onClick={() => { void handOver(openPath ?? '') }}
+          />
           <IconButton
             icon={RefreshCw}
             testId="file-refresh"
@@ -954,6 +974,18 @@ export default function FleetFileView({ root, projectName, request, initial, onC
           />
         </span>
       </div>
+
+      {/* The toolbar hand-over's outcome, where the reader is standing. The
+          refused view carries its own copy beside its own button, so it is not
+          repeated there. */}
+      {handOver_outcome && opened.kind !== 'refused' && (
+        <div className={`px-2 py-1 text-xs border-b border-surface-line ${handOver_outcome.ok ? 'text-fg-muted' : 'text-amber-400'}`}
+             data-fleet-file-handover-outcome={handOver_outcome.ok ? 'ok' : 'failed'}>
+          {handOver_outcome.ok
+            ? 'handed to the desktop'
+            : `could not hand it over: ${handOver_outcome.reason}`}
+        </div>
+      )}
 
       {save.kind === 'conflict' && (
         <div className="px-2 py-1 text-xs text-amber-400 border-b border-surface-line"

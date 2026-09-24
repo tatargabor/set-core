@@ -274,6 +274,46 @@ describe('a file that cannot be shown', () => {
     expect(container.querySelector('[data-fleet-file-handover]')).toBeNull()
   })
 
+  it('hands WHATEVER is open to the desktop from the toolbar, and the checkout when nothing is', async () => {
+    // Asked for 2026-09-24: the panel is a viewer, and the reader often wants
+    // the real program. Unlike the refused-view offer, this one is always there.
+    const { container } = view()
+    const desktopCalls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(c => String(c[0]).includes('/api/desktop/open'))
+      .map(c => JSON.parse(String((c[1] as RequestInit).body)).path)
+
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-desktop="."]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-file-desktop]')!)
+    await waitFor(() => expect(desktopCalls()).toEqual([ROOT]))
+
+    await open(container, 'a.ts')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-desktop="a.ts"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-file-desktop]')!)
+    await waitFor(() => expect(desktopCalls()).toEqual([ROOT, `${ROOT}/a.ts`]))
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-handover-outcome="ok"]')).toBeTruthy())
+  })
+
+  it('shows the desktop\'s REFUSAL where the reader is standing', async () => {
+    const base = server()
+    vi.stubGlobal('fetch', vi.fn((url: string | URL, init?: RequestInit) =>
+      String(url).includes('/api/desktop/open')
+        ? Promise.resolve({ ok: false, status: 400,
+          json: () => Promise.resolve({ detail: 'a .html file opens as a local page' }) } as Response)
+        : base(url, init)))
+    const { container } = view()
+    await open(container, 'a.ts')
+    await waitFor(() => expect(container.querySelector('[data-fleet-file-desktop="a.ts"]')).toBeTruthy())
+    fireEvent.click(container.querySelector('[data-fleet-file-desktop]')!)
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-handover-outcome="failed"]')?.textContent)
+      .toMatch(/local page/))
+    // And it does not outlive the file it was about.
+    await open(container, 'b.ts')
+    await waitFor(() => expect(
+      container.querySelector('[data-fleet-file-handover-outcome]')).toBeNull())
+  })
+
   it('shows an EMPTY file as empty, which is not a failure', async () => {
     const { container } = view()
     await open(container, 'empty.ts')

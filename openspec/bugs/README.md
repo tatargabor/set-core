@@ -68,6 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-148 — a terminal path to a file created after the terminal opened resolves against the project root, and the panel says "no such file"
+- **state:** CLOSED (2026-09-24, see the commit that carries this entry) — the entry stays; evidence below.
+- **reported:** 2026-09-24 by the user, with a screenshot: ctrl-clicking a path in an agent's terminal opened the file panel on `<subdir-relative path> cannot be read: no such file`.
+- **measured:** the file was on disk and tracked — the live `/api/fleet/files` listing carried it under a deeper directory, and a suffix lookup of the printed token matched it uniquely. Its birth time (`stat %w`) was minutes before the click, and the terminal's listing is fetched ONCE per checkout when a terminal opens (`Fleet.tsx`, the `knownFiles` effect skips any root already present). So the recogniser held a listing that predated the file, the suffix lookup found nothing, and `classify` fell through to the shape rule: `<root>/<token>` inside the checkout, unproven, opened as a file → 404.
+- **fail direction:** a false absence. The panel stated a real file does not exist.
+- **fixed when:** a ctrl-click on a target the terminal's listing does not vouch for re-reads that checkout's listing and resolves the token again before anything opens; a proven target costs no fetch; a unit test fails with the re-read disabled.
+- **CLOSED:** `unprovenInBase` (`web/src/lib/fleetFiles.ts`) names the case; `FleetTerminal`'s `activate` re-fetches `/api/fleet/files` for the base checkout, re-runs `terminalTarget` on the fresh listing, and keeps it for later hovers. `web/tests/unit/fleetTerminalDesktopOpen.test.tsx` — "re-reads a STALE listing…" fails with the branch mutated off (`if (false && …)`) and passes restored; "asks for no listing when the one it has already proves the path" holds the no-fetch half. The page-level listing is still fetched once per checkout; only a missed click refreshes it, per terminal.
+
 ### B-147 — a docked panel's X undocks instead of closing, so closing a pinned panel takes two clicks
 - **state:** CLOSED (2026-09-23, `976e8ae7`) — the entry stays; evidence below.
 - **reported:** 2026-09-23 by the user, dictated, on a file panel pinned to the right edge: *"if the panel already pinned to the right … then remove during the closing, just enter to normal mode, instead of closing, and have to click again to be closed"*

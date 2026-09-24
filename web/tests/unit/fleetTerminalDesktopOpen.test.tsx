@@ -218,8 +218,12 @@ describe('when the project IS known', () => {
     expect(found.map(l => l.text)).toEqual(['openspec/changes/mobil-nezet-reszponziv/'])
 
     click(found[0], { ctrl: true })
-    expect(reveal).toHaveBeenCalledWith('openspec/changes/mobil-nezet-reszponziv', root)
-    expect(fetchMock).not.toHaveBeenCalled()
+    // Unproven by the listing, so the listing is asked again first — but the
+    // desktop is never asked.
+    await waitFor(() =>
+      expect(reveal).toHaveBeenCalledWith('openspec/changes/mobil-nezet-reszponziv', root))
+    expect(fetchMock.mock.calls.map(c => String(c[0])).filter(u => u.includes('/api/desktop/')))
+      .toEqual([])
   })
 
   it('reveals a worktree agent\'s directory in ITS OWN checkout', async () => {
@@ -238,8 +242,40 @@ describe('when the project IS known', () => {
     })
 
     click(links()[0], { ctrl: true })
-    expect(reveal).toHaveBeenCalledWith(
-      'openspec/changes/mobil-nezet-reszponziv', '/home/x/proj-wt-mobil')
+    await waitFor(() => expect(reveal).toHaveBeenCalledWith(
+      'openspec/changes/mobil-nezet-reszponziv', '/home/x/proj-wt-mobil'))
+  })
+
+  it('re-reads a STALE listing before opening a path it does not vouch for', async () => {
+    // Reported 2026-09-24 from a live screen: the agent wrote a file AFTER the
+    // terminal's listing was fetched, then printed its path relative to a
+    // subdirectory. The suffix lookup found nothing, the token was joined onto
+    // the project root, and the panel said "no such file" about a file on disk.
+    line = 'a levél: clients/acme/html/letter.html kész'
+    const openFile = vi.fn()
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => (String(url).startsWith('/api/fleet/files')
+        ? { files: ['src/app.ts', 'docs/sales/clients/acme/html/letter.html'] }
+        : { opened: true }),
+    }))
+    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: openFile })
+
+    click(links()[0], { ctrl: true })
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith(
+      { path: 'docs/sales/clients/acme/html/letter.html' }, root))
+    expect(openFile).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0][0]))
+      .toBe(`/api/fleet/files?root=${encodeURIComponent(root)}`)
+  })
+
+  it('asks for no listing when the one it has already proves the path', async () => {
+    line = 'wrote src/app.ts'
+    const openFile = vi.fn()
+    await mount({ projectRoot: root, knownFiles: new Set(['src/app.ts']), onOpenFile: openFile })
+    click(links()[0], { ctrl: true })
+    expect(openFile).toHaveBeenCalledWith({ path: 'src/app.ts' }, root)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('still hands a directory under NO known checkout to the desktop', async () => {

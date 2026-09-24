@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, Scissors, X } from 'lucide-react'
 import {
-  buildListingIndex, terminalReferences, type FileRef, type ListingIndex,
+  buildListingIndex, terminalReferences, terminalTarget, unprovenInBase, type FileRef, type ListingIndex,
+  type TerminalTarget,
 } from '../lib/fleetFiles'
 import {
   type AttachedEvent,
@@ -321,9 +322,16 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     the cost the recogniser's own limits exist to bound; this is the other half
     of that bound and it belongs where the listing arrives.
   */
+  /*
+    A listing THIS terminal re-fetched because a click missed the one it was
+    given — see `unprovenInBase`. It supersedes the prop only until the parent
+    sends a new one, which is then the newer measurement.
+  */
+  const [fresh, setFresh] = useState<{ from: ReadonlySet<string> | undefined; files: ReadonlySet<string> } | null>(null)
+  const files = fresh && fresh.from === knownFiles ? fresh.files : knownFiles
   const listing: ListingIndex | undefined = useMemo(
-    () => (knownFiles && knownFiles.size > 0 ? buildListingIndex(knownFiles) : undefined),
-    [knownFiles],
+    () => (files && files.size > 0 ? buildListingIndex(files) : undefined),
+    [files],
   )
   const openedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (openedTimer.current) clearTimeout(openedTimer.current) }, [])
@@ -989,6 +997,35 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       ...(open && checkouts && checkouts.length > 0 ? { checkouts } : {}),
       ...(home ? { home } : {}),
     }
+    const base = (agentCwd || projectRoot || '').replace(/\/+$/, '')
+    const act = (target: NonNullable<TerminalTarget>) => {
+      if (target.kind === 'file') { open?.(target.ref, target.root); return }
+      if (target.kind === 'directory') {
+        onReveal?.(target.path, target.root)
+        return
+      }
+      if (target.kind === 'choice') {
+        // Nothing opens. The matches are put on screen and the reader
+        // picks one — see `choice`.
+        setChoice({ matches: target.matches, root: target.root })
+        return
+      }
+      void openExternal(target.path)
+    }
+    const refetch = async (root: string): Promise<ReadonlySet<string> | null> => {
+      try {
+        const res = await fetch(`/api/fleet/files?root=${encodeURIComponent(root)}`)
+        if (!res.ok) return null
+        const body = await res.json()
+        const got = new Set<string>(body.files ?? [])
+        setFresh({ from: knownFiles, files: got })
+        return got
+      } catch {
+        // No fresher answer: act on the one we had, which is what happened
+        // before this re-fetch existed.
+        return null
+      }
+    }
     const registration = term.registerLinkProvider({
       provideLinks(lineNumber, callback) {
         const row = term.buffer.active.getLine(lineNumber - 1)
@@ -1041,18 +1078,17 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
             */
             activate: (event: MouseEvent) => {
               if (!event.ctrlKey && !event.metaKey) return
-              if (target.kind === 'file') { open?.(target.ref, target.root); return }
-              if (target.kind === 'directory') {
-                onReveal?.(target.path, target.root)
+              // Unproven against a listing that may predate the file: ask again
+              // once, then act on whatever the fresh listing says.
+              if (base && unprovenInBase(target, listing, base)) {
+                void refetch(base).then(got => {
+                  if (!got) { act(target); return }
+                  const again = terminalTarget(token, { ...where, listing: buildListingIndex(got) })
+                  act(again ?? target)
+                })
                 return
               }
-              if (target.kind === 'choice') {
-                // Nothing opens. The matches are put on screen and the reader
-                // picks one — see `choice`.
-                setChoice({ matches: target.matches, root: target.root })
-                return
-              }
-              void openExternal(target.path)
+              act(target)
             },
           })
         }
@@ -1061,7 +1097,7 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
     })
     return () => registration.dispose()
   }, [projectRoot, listing, agentCwd, onOpenFile, onReveal, openExternal, checkouts, home,
-      phase.kind])
+      knownFiles, phase.kind])
 
   const stop = useCallback(async () => {
     setStopping(true)
