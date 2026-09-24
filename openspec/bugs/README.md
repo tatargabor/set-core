@@ -68,6 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-149 — every project watcher watched its whole tree recursively, so a consumer build starved the dashboard's event loop
+- **state:** CLOSED (2026-09-24, see the commit that carries this entry) — the entry stays; evidence below.
+- **reported:** 2026-09-24 by the user: the fleet screen would not take keystrokes, "annyira le van terhelve".
+- **measured:** `set-web` (the `serve --port 7400` process) held 48 inotify instances, one per registered project, with **123 637 watches** in total; per-instance counts matched each project's directory count (`find -type d | wc -l`): 36 302 vs 36 838, 14 662 vs 14 657, 11 449 vs 11 448. Cause: `ProjectWatcher.watch` (`lib/set_orch/watcher.py`) passed the project root to `awatch`, which is recursive by default, while the handler only matches the state file and `orchestration.log` by name. The main thread held 24 min of CPU over 13 h and ran ~53 % of a core at idle over a 10 s sample; a consumer `next build` into a build-output dir (not in watchfiles' default ignore list) streamed its writes through the loop, and `LineagePaths` was rebuilt for every changed path. Separately the process had 642 MB in swap, so the first request after idle took >10 s, the next 3.5 s, the third 2 ms.
+- **fail direction:** latency only — no event was lost; the dashboard became unusable under a build in any registered project.
+- **fixed when:** a watcher on a project with a deep tree adds a bounded number of inotify watches independent of tree depth, with a unit test that fails on the recursive watcher.
+- **CLOSED:** `awatch(..., recursive=False)` over the state dir, the log dir, the root and the project-local orchestration dir; `rust_timeout`/`yield_on_timeout` wake the loop every `DIR_RECHECK_MS` to pick up a dir that appears later (what the recursive root watch used to cover). `tests/unit/test_watcher_not_recursive.py`: the depth test measured **50** watches on the old watcher for a 40-deep tree (fails) and ≤4 on the new one; the late-dir test holds the pick-up half.
+
 ### B-148 — a terminal path to a file created after the terminal opened resolves against the project root, and the panel says "no such file"
 - **state:** CLOSED (2026-09-24, see the commit that carries this entry) — the entry stays; evidence below.
 - **reported:** 2026-09-24 by the user, with a screenshot: ctrl-clicking a path in an agent's terminal opened the file panel on `<subdir-relative path> cannot be read: no such file`.

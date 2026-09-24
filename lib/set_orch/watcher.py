@@ -16,6 +16,9 @@ import anyio
 
 logger = logging.getLogger("set-web.watcher")
 
+# How often an idle watcher re-checks whether a state or log dir has appeared.
+DIR_RECHECK_MS = 5000
+
 
 def _claude_mangle(path: str) -> str:
     """Mangle a path the same way Claude CLI does for ~/.claude/projects/ dirs."""
@@ -173,44 +176,66 @@ class ProjectWatcher:
             await self._poll_fallback(callback)
             return
 
-        # Collect directories to watch (state and log may be in different dirs)
-        watch_dirs: set[Path] = set()
-        state_dir = self.state_path.parent
-        log_dir = self.log_path.parent
-        if state_dir.exists():
-            watch_dirs.add(state_dir)
-        if log_dir.exists():
-            watch_dirs.add(log_dir)
-        # Always watch project root for legacy file creation
-        if self.project_path.exists():
-            watch_dirs.add(self.project_path)
-
-        if not watch_dirs:
+        if not self._watch_dirs():
             logger.info(f"No orchestration dir for {self.project_name}, polling for creation")
             await self._poll_fallback(callback)
             return
 
+        from .paths import LineagePaths
+        state_base = os.path.basename(LineagePaths(str(self.project_path)).state_file)
+        state_names = ("orchestration-" + state_base, state_base)
+
         try:
-            refresh_counter = 0
-            async for changes in awatch(*watch_dirs, poll_delay_ms=500):
-                # Periodically re-resolve state/log paths (every ~50 events)
-                # in case the engine started writing to a different location
-                refresh_counter += 1
-                if refresh_counter % 50 == 0:
-                    self._refresh_paths()
-                for change_type, change_path in changes:
-                    path = Path(change_path)
-                    from .paths import LineagePaths as _LP_wn
-                    _state_base = os.path.basename(_LP_wn(str(self.project_path)).state_file)
-                    if path.name in ("orchestration-" + _state_base, _state_base):
+            while True:
+                watch_dirs = self._watch_dirs()
+                refresh_counter = 0
+                # Non-recursive: only files directly inside these dirs are matched
+                # below, and a recursive watch of the project root registered an
+                # inotify watch on every directory of the tree (36k for one project)
+                # and pushed every build-output write through this loop.
+                # yield_on_timeout wakes us with an empty set so a state/log dir
+                # that appears later is picked up without watching the whole tree.
+                async for changes in awatch(
+                    *watch_dirs, recursive=False, poll_delay_ms=500,
+                    rust_timeout=DIR_RECHECK_MS, yield_on_timeout=True,
+                ):
+                    if not changes:
                         self._refresh_paths()
-                        await self._handle_state_change(callback)
-                    elif path.name == "orchestration.log":
-                        await self._handle_log_change(callback)
+                        if self._watch_dirs() != watch_dirs:
+                            break
+                        continue
+                    # Periodically re-resolve state/log paths (every ~50 events)
+                    # in case the engine started writing to a different location
+                    refresh_counter += 1
+                    if refresh_counter % 50 == 0:
+                        self._refresh_paths()
+                    for change_type, change_path in changes:
+                        name = os.path.basename(change_path)
+                        if name in state_names:
+                            self._refresh_paths()
+                            await self._handle_state_change(callback)
+                        elif name == "orchestration.log":
+                            self._refresh_paths()
+                            await self._handle_log_change(callback)
+                else:
+                    return
         except Exception as e:
             logger.error(f"Watcher error for {self.project_name}: {e}")
             # Fall back to polling
             await self._poll_fallback(callback)
+
+    def _watch_dirs(self) -> set[Path]:
+        """The existing dirs the state file and the log can live in, plus the root.
+
+        The project-local orchestration dir is listed even while the paths still
+        resolve elsewhere: `_find_log` prefers a file there, and without the
+        recursive root watch nothing else would see that file appear.
+        """
+        dirs = {
+            self.state_path.parent, self.log_path.parent, self.project_path,
+            self.project_path / "set" / "orchestration",
+        }
+        return {d for d in dirs if d.is_dir()}
 
     async def _poll_fallback(self, callback):
         """Simple polling fallback when watchfiles is unavailable."""
