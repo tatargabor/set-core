@@ -732,19 +732,21 @@ except Exception:
     case "$name" in
         haiku)        echo "${prefix}claude-haiku-4-5-20251001" ;;
         sonnet)       echo "${prefix}claude-sonnet-4-6" ;;
-        # `opus` alias resolves to 5 (the current release). Pin
-        # `opus-4-6` or `opus-4-7` explicitly for older versions. Mirrors
+        # `opus` alias resolves to 5.5 (the current release, 2026-09-24). Pin
+        # `opus-5`, `opus-4-6` or `opus-4-7` explicitly for older versions. Mirrors
         # DEFAULT_MODEL_IDS in lib/set_orch/providers/defaults.py.
-        opus)         echo "${prefix}claude-opus-5" ;;
-        opus-1m)      echo "${prefix}claude-opus-5[1m]" ;;
+        opus)         echo "${prefix}claude-opus-5-5" ;;
+        opus-1m)      echo "${prefix}claude-opus-5-5[1m]" ;;
         sonnet-1m)    echo "${prefix}claude-sonnet-4-6[1m]" ;;
         opus-4-6)     echo "${prefix}claude-opus-4-6" ;;
         opus-4-7)     echo "${prefix}claude-opus-4-7" ;;
         opus-4-8)     echo "${prefix}claude-opus-4-8" ;;
         opus-5)       echo "${prefix}claude-opus-5" ;;
+        opus-5-5)     echo "${prefix}claude-opus-5-5" ;;
         opus-4-6-1m)  echo "${prefix}claude-opus-4-6[1m]" ;;
         opus-4-7-1m)  echo "${prefix}claude-opus-4-7[1m]" ;;
         opus-5-1m)    echo "${prefix}claude-opus-5[1m]" ;;
+        opus-5-5-1m)  echo "${prefix}claude-opus-5-5[1m]" ;;
         *)            echo "$name" ;;  # pass through full IDs
     esac
 }

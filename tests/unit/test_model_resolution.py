@@ -29,14 +29,14 @@ SET_COMMON = REPO_ROOT / "bin" / "set-common.sh"
 
 
 def test_opus_default_pins_current_release():
-    """`opus` shorthand resolves to the current release (currently 5).
+    """`opus` shorthand resolves to the current release (currently 5.5).
     Update this test together with DEFAULT_MODEL_IDS when the default
     moves — that change is intentional, not accidental."""
-    assert resolve_model_id("opus") == "claude-opus-5"
+    assert resolve_model_id("opus") == "claude-opus-5-5"
 
 
 def test_opus_1m_default_pins_current_release():
-    assert resolve_model_id("opus-1m") == "claude-opus-5[1m]"
+    assert resolve_model_id("opus-1m") == "claude-opus-5-5[1m]"
 
 
 def test_explicit_opus_4_6_pin():
@@ -53,6 +53,11 @@ def test_explicit_opus_4_7_pin_still_available():
 def test_explicit_opus_5_pin():
     assert resolve_model_id("opus-5") == "claude-opus-5"
     assert resolve_model_id("opus-5-1m") == "claude-opus-5[1m]"
+
+
+def test_explicit_opus_5_5_pin():
+    assert resolve_model_id("opus-5-5") == "claude-opus-5-5"
+    assert resolve_model_id("opus-5-5-1m") == "claude-opus-5-5[1m]"
 
 
 def test_explicit_opus_4_8_pin():
@@ -109,8 +114,8 @@ def test_bash_python_parity():
 
 def test_bash_opus_default():
     """Standalone bash check — `opus` in shell pins the same default
-    as Python (currently 5)."""
-    assert _bash_resolve("opus") == "claude-opus-5"
+    as Python (currently 5.5)."""
+    assert _bash_resolve("opus") == "claude-opus-5-5"
 
 
 def test_bash_explicit_opus_4_6():
@@ -124,6 +129,7 @@ def test_bash_explicit_opus_4_7():
 
 def test_bash_explicit_opus_5():
     assert _bash_resolve("opus-5") == "claude-opus-5"
+    assert _bash_resolve("opus-5-5") == "claude-opus-5-5"
 
 
 # ─── Config validation regex ────────────────────────────────────────────
@@ -137,7 +143,7 @@ def test_config_regex_accepts_new_aliases():
     pattern = DIRECTIVE_VALIDATORS["default_model"][1]
     regex = re.compile(pattern)
     for name in ("opus", "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
-                 "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m",
+                 "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m", "opus-5-5", "opus-5-5-1m",
                  "sonnet", "sonnet-1m", "haiku"):
         assert regex.match(name), f"regex rejects valid alias '{name}'"
     # Negative: random strings rejected

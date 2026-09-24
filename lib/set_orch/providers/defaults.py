@@ -37,6 +37,8 @@ ANTHROPIC_MODEL_NAMES: tuple[str, ...] = (
     "haiku", "sonnet", "opus", "sonnet-1m", "opus-1m",
     "opus-4-6", "opus-4-7", "opus-4-8", "opus-5",
     "opus-4-6-1m", "opus-4-7-1m", "opus-5-1m",
+    # Opus 5.5 — the `opus` default since 2026-09-24; explicit pins alongside `opus-5`.
+    "opus-5-5", "opus-5-5-1m",
     # `fable` — CLI-native: measured 2026-08-29 with an unreachable endpoint,
     # `--model fable` in a clean environment produced no unrecognized_model and
     # attempted the call, while `--model sonnet-1m` was refused under its own
@@ -51,17 +53,19 @@ ANTHROPIC_MODEL_NAMES: tuple[str, ...] = (
 DEFAULT_MODEL_IDS: Dict[str, str] = {
     "haiku": "claude-haiku-4-5-20251001",
     "sonnet": "claude-sonnet-4-6",
-    "opus": "claude-opus-5",
-    "opus-1m": "claude-opus-5[1m]",
+    "opus": "claude-opus-5-5",
+    "opus-1m": "claude-opus-5-5[1m]",
     "sonnet-1m": "claude-sonnet-4-6[1m]",
     # Explicit version pins — bypass the shorthand default.
     "opus-4-6": "claude-opus-4-6",
     "opus-4-7": "claude-opus-4-7",
     "opus-4-8": "claude-opus-4-8",
     "opus-5": "claude-opus-5",
+    "opus-5-5": "claude-opus-5-5",
     "opus-4-6-1m": "claude-opus-4-6[1m]",
     "opus-4-7-1m": "claude-opus-4-7[1m]",
     "opus-5-1m": "claude-opus-5[1m]",
+    "opus-5-5-1m": "claude-opus-5-5[1m]",
 }
 
 #: Which provider name the default mapping belongs to. A provider whose
