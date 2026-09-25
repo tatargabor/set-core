@@ -106,9 +106,13 @@ class OpenRequest(BaseModel):
     """
 
     path: str
+    #: The reader has THIS file open in the file view and pressed its own
+    #: desktop button. Lifts the local-page refusal and nothing else — see
+    #: `refusal(allow_pages=...)`.
+    viewed: bool = False
 
 
-def refusal(path: str) -> str | None:
+def refusal(path: str, allow_pages: bool = False) -> str | None:
     """Why this path must not be handed to the desktop, or `None` if it may be.
 
     Kept as a function of its own, and returning a REASON rather than a boolean,
@@ -174,7 +178,17 @@ def refusal(path: str) -> str | None:
             return (f"a {suffix} file is RUN by whatever the desktop associates with it, "
                     "whatever its permissions say")
 
-    for suffix in _ASSOCIATION_INTERPRETS:
+    # `allow_pages`, asked for by the user on 2026-09-25: from the file view's
+    # own button the reader has the page OPEN and presses a control whose only
+    # job is to hand it to the desktop — a browser is the program they want.
+    # It lifts THIS rule alone. The rules above (launchers, association-runs)
+    # and the executable bit below stay, so nothing that RUNS becomes reachable.
+    #
+    # Stated rather than implied: the server cannot verify the flag — any
+    # caller can set it. What it rests on is the same thing every open here
+    # rests on, a person's click; the terminal route does not send it, because
+    # there the page was merely NAMED by text an agent printed.
+    for suffix in () if allow_pages else _ASSOCIATION_INTERPRETS:
         if lowered.endswith(suffix):
             return (f"a {suffix} file opens as a local page that can read this "
                     "machine's files")
@@ -201,9 +215,9 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
     """
     path = (req.path or "").strip()
 
-    why = refusal(path)
+    why = refusal(path, allow_pages=req.viewed)
     if why:
-        logger.info("desktop_open: refused path=%s reason=%s", path, why)
+        logger.info("desktop_open: refused path=%s viewed=%s reason=%s", path, req.viewed, why)
         raise HTTPException(status_code=400, detail=why)
 
     opener = shutil.which(_OPENER)
@@ -226,7 +240,7 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
         logger.error("desktop_open: could not start %s for %s — %s", _OPENER, path, exc)
         raise HTTPException(status_code=500, detail=f"could not start {_OPENER}: {exc}")
 
-    logger.info("desktop_open: handed over path=%s", path)
+    logger.info("desktop_open: handed over path=%s viewed=%s", path, req.viewed)
     # `opened` means ASKED. The message is what reaches the reader, so it is
     # worded as the weaker claim the endpoint can actually stand behind.
     return {"opened": True, "path": path, "message": "handed to the desktop"}

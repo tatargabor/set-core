@@ -56,11 +56,11 @@ const LAYOUT = {
   parked: [], parked_order: [], ungrouped: [], missing: [],
 }
 
-function install(body: Json = BODY) {
+function install(body: Json = BODY, layout: Json = LAYOUT) {
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     const u = String(url)
     if (u.includes('/api/fleet/layout')) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(LAYOUT) } as Response)
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(layout) } as Response)
     }
     if (u.includes('/log')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ turns: [] }) } as Response)
@@ -106,6 +106,20 @@ describe('the tree', () => {
     expect(indexes).toEqual(['1', '2', '3', '4', '5'])
     expect(strip.querySelector('[data-stage-chip="apply"]')!.getAttribute('data-stage-state')).toBe('running')
     expect(strip.querySelector('[data-testid="fleet-stage-current"]')!.textContent).toBe('apply')
+  })
+
+  it('lists a project\'s agents in the order the tabs are ARRANGED, not discovery order', async () => {
+    // Asked for 2026-09-25: the tree under a project must follow the same
+    // hand-made order the tab strip uses. Stored reversed here, so discovery
+    // order and the arranged order cannot coincide.
+    install(BODY, { ...LAYOUT, agent_order: { alpha: ['a2', 'a1'] } })
+    const { container } = render(<Fleet />)
+    await ready(container)
+    await wait(() => {
+      const pids = Array.from(container.querySelectorAll('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row]'))
+        .map(el => el.getAttribute('data-fleet-agent-row'))
+      expect(pids).toEqual(['2', '1'])
+    })
   })
 
   it('shows branch and worktree on the line between name and pipeline', async () => {
