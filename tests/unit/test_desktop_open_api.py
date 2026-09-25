@@ -67,7 +67,7 @@ def test_existing_file_is_handed_to_the_opener(client, spawned, tmp_path):
     assert res.status_code == 200
     assert res.json()["opened"] is True
     assert len(spawned) == 1
-    assert spawned[0]["argv"] == ["/usr/bin/xdg-open", str(doc)]
+    assert spawned[0]["argv"] == ["/usr/bin/" + desktop_module._opener_name(), str(doc)]
 
 
 def test_directory_is_handed_over_despite_its_execute_bits(client, spawned, tmp_path):
@@ -231,7 +231,7 @@ def test_missing_opener_is_a_refusal_naming_it(client, monkeypatch, tmp_path):
     res = post(client, str(doc))
 
     assert res.status_code == 501
-    assert "xdg-open" in res.json()["detail"]
+    assert desktop_module._opener_name() in res.json()["detail"]
     assert started == []
 
 
@@ -349,3 +349,130 @@ def test_the_guard_asks_the_local_desktop_NOTHING(monkeypatch, tmp_path):
 
     assert "RUN by whatever the desktop associates" in (desktop_module.refusal(str(jar)) or "")
     assert desktop_module.refusal(str(doc)) is None
+
+
+# ─── The opener belongs to the platform, not to Linux ───────────────────────
+#
+# Both branches run on BOTH machines, because `_opener_name` is patched rather
+# than the host platform being asked. A test gated on `sys.platform` passes as a
+# skip on the other machine, and a green suite that skipped the half you care
+# about says nothing — the failure this whole section exists to avoid.
+
+
+@pytest.mark.parametrize(
+    "platform,expected",
+    [("darwin", "open"), ("linux", "xdg-open"), ("freebsd14", "xdg-open")],
+)
+def test_the_opener_is_chosen_by_platform(monkeypatch, platform, expected):
+    monkeypatch.setattr(desktop_module.sys, "platform", platform)
+    assert desktop_module._opener_name() == expected
+
+
+@pytest.mark.parametrize("opener", ["open", "xdg-open"])
+def test_each_platforms_opener_is_the_one_spawned(client, spawned, tmp_path, monkeypatch, opener):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: opener)
+    doc = tmp_path / "report.pdf"
+    doc.write_bytes(b"%PDF-1.4 not really")
+
+    res = post(client, str(doc))
+
+    assert res.status_code == 200
+    assert spawned[0]["argv"] == ["/usr/bin/" + opener, str(doc)]
+
+
+@pytest.mark.parametrize("opener", ["open", "xdg-open"])
+def test_a_missing_opener_names_that_platforms_own_and_tries_nothing_else(
+    client, monkeypatch, tmp_path, opener
+):
+    """No fallback: the other platform's name must not appear, and nothing starts.
+
+    A stray program called `open` on a Linux box would otherwise be handed a path
+    whose text an agent wrote. The contract is a reported refusal, never a guess.
+    """
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: opener)
+    doc = tmp_path / "note.txt"
+    doc.write_text("hello")
+    started = []
+    monkeypatch.setattr(desktop_module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(desktop_module.subprocess, "Popen", lambda *a, **k: started.append(a))
+
+    res = post(client, str(doc))
+
+    other = "xdg-open" if opener == "open" else "open"
+    detail = res.json()["detail"]
+    assert res.status_code == 501
+    assert opener in detail
+    assert other not in detail.replace(opener, "")
+    assert started == []
+
+
+# ─── macOS launcher classes ─────────────────────────────────────────────────
+
+
+def test_an_app_bundle_is_refused_although_it_is_a_directory(client, spawned, tmp_path):
+    """The one macOS class a correct Linux-shaped guard waves through.
+
+    A `.app` is a DIRECTORY, and the executable-bit rule deliberately exempts
+    directories — so nothing but the suffix can catch it. Built here as a real
+    directory with a real `Contents/MacOS` inside, because a `.app` that is
+    secretly a regular file would be caught by a rule this test is not about.
+    """
+    bundle = tmp_path / "Calculator.app"
+    (bundle / "Contents" / "MacOS").mkdir(parents=True)
+    assert bundle.is_dir() and os.access(bundle, os.X_OK)
+
+    res = post(client, str(bundle))
+
+    assert res.status_code == 400
+    assert "launcher" in res.json()["detail"]
+    assert ".app" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_an_ordinary_directory_still_opens_beside_the_bundle_rule(client, spawned, tmp_path):
+    """The control for the test above: refusing bundles must not refuse folders."""
+    folder = tmp_path / "Reports"
+    folder.mkdir()
+
+    res = post(client, str(folder))
+
+    assert res.status_code == 200
+    assert len(spawned) == 1
+
+
+@pytest.mark.parametrize("name", ["install.dmg", "run-it.command", "profile.terminal"])
+def test_a_644_macos_file_its_association_executes_is_refused(client, spawned, tmp_path, name):
+    """Measured with `mdls -name kMDItemContentType` on 2026-09-25:
+
+    `.command` -> com.apple.terminal.shell-script, `.terminal` ->
+    com.apple.terminal.settings, `.dmg` -> com.apple.disk-image-udif. All three
+    are data by permission and a program (or an install) by association, which is
+    the same shape as the `.jar` case that produced this list.
+    """
+    f = tmp_path / name
+    f.write_bytes(b"harmless bytes")
+    os.chmod(f, 0o644)
+    assert not os.access(f, os.X_OK), "fixture must have no executable bit"
+
+    res = post(client, str(f))
+
+    assert res.status_code == 400
+    detail = res.json()["detail"]
+    assert "associates" in detail, detail
+    assert "permission" not in detail.split("whatever its permissions")[0]
+    assert spawned == []
+
+
+def test_workflow_is_deliberately_not_refused(tmp_path):
+    """Measured in the same pass and left OUT: `.workflow` came back a dynamic UTI.
+
+    Held as a test so the absence reads as a decision rather than an oversight —
+    the list is a floor widened by measurement, and a name that sounds executable
+    is not a measurement.
+    """
+    f = tmp_path / "Rename Files.workflow"
+    f.write_bytes(b"x")
+    os.chmod(f, 0o644)
+
+    assert desktop_module.refusal(str(f)) is None
+
