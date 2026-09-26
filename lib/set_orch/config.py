@@ -59,21 +59,22 @@ MODEL_NAME_RE: str = r"^(" + "|".join(ANTHROPIC_MODEL_NAMES) + r")$"
 # supervisor/canary checks. Trigger sub-dict maps trigger types to the
 # model used when that trigger fires.
 #
-# IMPORTANT: `agent` default is `opus-4-6` (an explicit version pin).
-# `opus` shorthand resolves to the current release (currently 5).
-# These pins keep orchestration on a known-good version; operators
-# wanting a different model set `models.agent: opus-5` etc.
+# IMPORTANT: the Opus roles default to the `opus` shorthand, which resolves to
+# the current release (Opus 5.5 since 2026-09-24, `providers/defaults.py`).
+# Until 2026-09-26 they were pinned to `opus-4-6`; the operator retired that
+# pin (orchestration follows the current Opus). Operators who need an older
+# version pin it explicitly: `models.agent: opus-5`, or the `all-opus-4-6` preset.
 _DEFAULT_MODELS: dict[str, Any] = {
-    "agent": "opus-4-6",
+    "agent": "opus",
     "agent_small": "sonnet",
-    "digest": "opus-4-6",
-    "decompose_brief": "opus-4-6",
-    "decompose_domain": "opus-4-6",
-    "decompose_merge": "opus-4-6",
+    "digest": "opus",
+    "decompose_brief": "opus",
+    "decompose_domain": "opus",
+    "decompose_merge": "opus",
     "review": "sonnet",
-    "review_escalation": "opus-4-6",
+    "review_escalation": "opus",
     "spec_verify": "sonnet",
-    "spec_verify_escalation": "opus-4-6",
+    "spec_verify_escalation": "opus",
     "classifier": "sonnet",
     "supervisor": "sonnet",
     "canary": "sonnet",
@@ -83,9 +84,9 @@ _DEFAULT_MODELS: dict[str, Any] = {
     # whole fleet in a single call per cycle.
     "pm": "sonnet",
     "trigger": {
-        "integration_failed": "opus-4-6",
-        "non_periodic_checkpoint": "opus-4-6",
-        "terminal_state": "opus-4-6",
+        "integration_failed": "opus",
+        "non_periodic_checkpoint": "opus",
+        "terminal_state": "opus",
         "default": "sonnet",
     },
 }
