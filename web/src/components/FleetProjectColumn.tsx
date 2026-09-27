@@ -27,6 +27,7 @@ import {
   toPutBody,
 } from '../lib/fleetLayout'
 import { WaitThresholdsContext, useWaitThresholds } from '../lib/fleetWaitThresholds'
+import { orderAgents, type AgentOrderMap } from '../lib/fleetAgentOrder'
 import {
   type AttentionProject,
   type Tally,
@@ -489,6 +490,7 @@ function toneRow(tone: string | null, active: boolean): string {
 
 function ProjectRow(p: RowProps) {
   const thresholds = useWaitThresholds()
+  const agentOrders = useContext(AgentOrderContext)
   const t = p.project
     ? tallyOf([p.name], new Map([[p.name, p.project as AttentionProject]]), thresholds)
     : EMPTY_TALLY
@@ -640,7 +642,7 @@ function ProjectRow(p: RowProps) {
       {p.onSelectAgent && (p.project?.agents?.length ?? 0) > 0 && (
         <div data-fleet-agent-rows={p.name}
             className="mt-0.5 mb-1 ml-3 mr-1 space-y-px rounded-md border-l-2 border-surface-edge-soft bg-surface-raised/40 py-0.5 pl-1">
-          {p.project!.agents.map(a => (
+          {orderAgents(p.project!.agents, agentOrders[p.name]).map(a => (
             <AgentSubRow key={a.pid} agent={a} project={p.name}
                          focused={p.focusedPid === a.pid}
                          onSelectAgent={p.onSelectAgent!} />
@@ -898,6 +900,16 @@ function GroupBlock(p: GroupProps) {
   )
 }
 
+/*
+  The reader's hand-made agent order, per project — the SAME list the tab strip
+  and the grid are arranged by (asked for 2026-09-25: the tree under a project
+  showed discovery order while the tabs showed the arranged one). A context
+  rather than a prop because the sub-rows sit several components down, and one
+  list read in three places cannot disagree with itself.
+*/
+const NO_ORDERS: AgentOrderMap = {}
+const AgentOrderContext = createContext<AgentOrderMap>(NO_ORDERS)
+
 // --------------------------------------------------------------------------- //
 // The column
 // --------------------------------------------------------------------------- //
@@ -911,7 +923,10 @@ export default function FleetProjectColumn({
   width,
   wiresShown,
   onToggleWires,
+  agentOrders,
 }: {
+  /** Each project's arranged agent order — the tab strip's. */
+  agentOrders?: AgentOrderMap
   data: FleetResponse
   selected: string | null
   onSelect: (name: string) => void
@@ -1207,6 +1222,7 @@ export default function FleetProjectColumn({
 
   return (
     <RosterCounts.Provider value={rosterCounts}>
+    <AgentOrderContext.Provider value={agentOrders ?? NO_ORDERS}>
     <WaitThresholdsContext.Provider value={data?.input_wait_thresholds ?? null}>
     <div
       className="shrink-0 border-r border-surface-line flex flex-col min-h-0"
@@ -1895,6 +1911,7 @@ export default function FleetProjectColumn({
       </div>
     </div>
     </WaitThresholdsContext.Provider>
+    </AgentOrderContext.Provider>
     </RosterCounts.Provider>
   )
 }

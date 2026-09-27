@@ -306,6 +306,31 @@ def test_a_local_page_that_can_read_this_machine_is_refused(client, spawned, tmp
     assert spawned == []
 
 
+def test_a_page_the_reader_has_open_is_handed_over_from_the_view(client, spawned, tmp_path):
+    """Asked for 2026-09-25: the file view's own button may hand over a page.
+
+    The flag lifts the local-page rule ONLY — a launcher, a runtime-executed
+    archive and an executable are refused with it exactly as without it.
+    """
+    page = tmp_path / "letter.html"
+    page.write_text("<p>hello</p>\n")
+    res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
+    assert res.status_code == 200, res.text
+    assert [c["argv"] for c in spawned] == [["/usr/bin/xdg-open", str(page)]]
+
+    entry = tmp_path / "x.desktop"
+    entry.write_text("[Desktop Entry]\nExec=true\n")
+    jar = tmp_path / "a.jar"
+    jar.write_bytes(b"PK")
+    exe = tmp_path / "run.sh"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    for target in (entry, jar, exe):
+        res = client.post("/api/desktop/open", json={"path": str(target), "viewed": True})
+        assert res.status_code == 400, target.name
+    assert len(spawned) == 1
+
+
 def test_an_ordinary_file_is_still_handed_over(client, spawned, tmp_path):
     """The widening must refuse NOTHING that was already working.
 

@@ -3612,6 +3612,7 @@ export default function Fleet() {
           width={projectWidth}
           wiresShown={wiresShown}
           onToggleWires={toggleWires}
+          agentOrders={agentOrders}
         />
 
         {/* The wire gutter, when shown: it takes the strip between the project

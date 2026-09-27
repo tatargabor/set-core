@@ -280,7 +280,8 @@ describe('a file that cannot be shown', () => {
     const { container } = view()
     const desktopCalls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
       .filter(c => String(c[0]).includes('/api/desktop/open'))
-      .map(c => JSON.parse(String((c[1] as RequestInit).body)).path)
+      .map(c => JSON.parse(String((c[1] as RequestInit).body)))
+      .map(b => (b.viewed === true ? b.path : `NOT VIEWED ${b.path}`))
 
     await waitFor(() => expect(container.querySelector('[data-fleet-file-desktop="."]')).toBeTruthy())
     fireEvent.click(container.querySelector('[data-fleet-file-desktop]')!)
