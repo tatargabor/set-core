@@ -117,10 +117,28 @@ _ASSOCIATION_RUNS = (
 #: local page can read this machine's files, and the text that named it was
 #: written by whatever an agent ran.
 #:
-#: `.svg` is deliberately NOT here even though it is XML a browser interprets.
-#: An image that opened before this change must still open — the widening is a
-#: widening of refusals, not a place to add ones nobody measured.
-_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml")
+#: `.svg` and `.svgz` were deliberately NOT here, on the stated grounds that an
+#: image which opened before must still open and that nobody had measured them.
+#: Added 2026-09-28 because both halves of that premise have changed, and the
+#: order matters — the measurement alone would not have been enough:
+#:
+#: - **Measured**, which the exclusion asked for. Sweeping this machine's own
+#:   association table for every suffix the "ordinary file" test hands over:
+#:   `.png`/`.pdf`/`.webp`/`.gif` → Preview, `.mp4` → VLC, `.docx` → Pages,
+#:   `.md`/`.py`/`.xml`/`.json` → Xcode, `.txt` → TextEdit — and `.svg` and
+#:   `.svgz` → **the browser**. So on this desktop an SVG is not an image that
+#:   opens in a viewer; it is a document a browser renders, with `<script>` in
+#:   it executing, which is the property this whole class exists for.
+#: - **`viewed` now exists**, and it did not when the exclusion was written. The
+#:   cost of refusing was then "an SVG cannot be opened at all"; it is now "an
+#:   SVG cannot be opened from a path an agent PRINTED", because the file view's
+#:   own button lifts this class for a file the reader already has open.
+#:
+#: The capability's own spec settles the remainder: a refusal that lets one of
+#: these through is a hole, one that stops an ordinary file is an inconvenience,
+#: and when the two are in tension the refusal wins.
+_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml",
+                           ".svg", ".svgz")
 
 
 class OpenRequest(BaseModel):

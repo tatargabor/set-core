@@ -306,6 +306,59 @@ def test_a_local_page_that_can_read_this_machine_is_refused(client, spawned, tmp
     assert spawned == []
 
 
+def test_an_svg_is_a_page_the_browser_renders_not_an_image_the_viewer_shows(
+    client, spawned, tmp_path
+):
+    """`.svg` sat in the "still handed over" list until 2026-09-28.
+
+    The exclusion was explicit and its stated ground was that nobody had
+    measured it. Sweeping this machine's association table did: every other
+    suffix that list hands over resolves to a viewer or an editor — Preview,
+    VLC, Pages, Xcode, TextEdit — and `.svg` and `.svgz` resolve to the
+    BROWSER. An SVG rendered as a document executes the `<script>` in it, which
+    is the property the local-page class exists for.
+
+    Asserted at the endpoint rather than against the tuple, so this holds if the
+    list is ever restructured: what is under test is the verdict, not the
+    membership.
+    """
+    for name in ("diagram.svg", "chart.svgz"):
+        target = tmp_path / name
+        target.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n')
+
+        res = post(client, str(target))
+
+        assert res.status_code == 400, name
+        assert "local page" in res.json()["detail"], name
+    assert spawned == []
+
+
+def test_an_svg_the_reader_has_open_is_handed_over_like_any_other_page(
+    client, spawned, tmp_path
+):
+    """The widening costs the file view nothing, and that is why it is affordable.
+
+    Written alongside the refusal above because the two together are the whole
+    decision: the terminal route loses SVG (the path was NAMED by text an agent
+    printed), the file view keeps it (the reader has the file open). A test for
+    only the refusal would describe a harsher change than the one that shipped.
+
+    Stated because it would otherwise read as proof and is not: this test passes
+    on the UNFIXED list too, since an `.svg` that is refused by nothing is also
+    handed over with the flag set. The refusal test above is the one that goes
+    red without the widening. This one holds the boundary, not the change.
+    """
+    page = tmp_path / "diagram.svg"
+    page.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n')
+
+    res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
+
+    assert res.status_code == 200, res.text
+    assert [c["argv"] for c in spawned] == [
+        ["/usr/bin/" + desktop_module._opener_name(), str(page)]
+    ]
+
+
 def test_a_page_the_reader_has_open_is_handed_over_from_the_view(client, spawned, tmp_path):
     """Asked for 2026-09-25: the file view's own button may hand over a page.
 
@@ -340,14 +393,14 @@ def test_an_ordinary_file_is_still_handed_over(client, spawned, tmp_path):
     directions. These are the four kinds an agent actually prints the path of.
     """
     for name in ("shot.png", "clip.mp4", "report.pdf", "notes.docx", "plan.md",
-                 "diagram.svg", "script.py"):
+                 "script.py"):
         target = tmp_path / name
         target.write_text("x")
 
         res = post(client, str(target))
 
         assert res.status_code == 200, f"{name}: {res.json()}"
-    assert len(spawned) == 7
+    assert len(spawned) == 6
 
 
 def test_the_guard_asks_the_local_desktop_NOTHING(monkeypatch, tmp_path):
