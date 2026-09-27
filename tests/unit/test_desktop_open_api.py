@@ -316,7 +316,9 @@ def test_a_page_the_reader_has_open_is_handed_over_from_the_view(client, spawned
     page.write_text("<p>hello</p>\n")
     res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
     assert res.status_code == 200, res.text
-    assert [c["argv"] for c in spawned] == [["/usr/bin/xdg-open", str(page)]]
+    assert [c["argv"] for c in spawned] == [
+        ["/usr/bin/" + desktop_module._opener_name(), str(page)]
+    ]
 
     entry = tmp_path / "x.desktop"
     entry.write_text("[Desktop Entry]\nExec=true\n")
