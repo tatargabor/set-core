@@ -5,6 +5,7 @@
     set-providers list                    the catalogue a surface is offered
     set-providers migrate [--overwrite]   convert an older single-provider file
     set-providers path                    where the configuration is expected
+    set-providers upstream [--refresh]    does Anthropic list a model set-core does not ship?
 
 ⚠ No subcommand here ever prints a credential. `show` names the endpoint and the
 precedence level; that is the half a person needs and the half that is safe in a
@@ -79,6 +80,18 @@ def cmd_migrate(args) -> int:
     return 0
 
 
+def cmd_upstream(args) -> int:
+    """Advice only: exit 0 current, 1 behind, 2 unknown. Edits nothing."""
+    from set_orch.providers import upstream
+    report = upstream.check(refresh=args.refresh)
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        for line in upstream.advice(report):
+            print(line)
+    return {upstream.CURRENT: 0, upstream.BEHIND: 1}.get(report.verdict, 2)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="set-providers", description=__doc__,
@@ -101,6 +114,11 @@ def main(argv=None) -> int:
     mig.add_argument("--overwrite", action="store_true",
                      help="replace an existing configuration (it is never replaced silently)")
     mig.set_defaults(func=cmd_migrate)
+
+    up = sub.add_parser("upstream", help="compare Anthropic's public model list with what set-core ships")
+    up.add_argument("--refresh", action="store_true", help="fetch even if the 24 h cache is fresh")
+    up.add_argument("--json", action="store_true")
+    up.set_defaults(func=cmd_upstream)
 
     args = parser.parse_args(argv)
     try:

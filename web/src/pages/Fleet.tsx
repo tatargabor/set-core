@@ -80,10 +80,10 @@ import {
 } from '../lib/fleetStartLocations'
 import type { StartLocation } from '../lib/fleetStartLocations'
 import {
-  fetchProviderCatalogue, levelLabel, modelsFor, offerableProviders,
+  fetchProviderCatalogue, fetchUpstreamModels, levelLabel, modelsFor, offerableProviders, upstreamNotice,
   previewResolution, providerMark,
 } from '../lib/fleetProviders'
-import type { ProviderCatalogue } from '../lib/fleetProviders'
+import type { ProviderCatalogue, UpstreamModelReport } from '../lib/fleetProviders'
 import { blockUnexpectedFrom, declaredStanding, instructability, phaseRepeatsBlock, purposeStanding } from '../lib/fleetDeclared'
 import { mark as cacheMark, UNMEASURED_TITLE } from '../lib/fleetCacheHeat'
 import type { DeclaredStanding } from '../lib/fleetDeclared'
@@ -1679,6 +1679,8 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
   const [catalogueFailed, setCatalogueFailed] = useState(false)
   const [provider, setProvider] = useState<string | null>(null)
   const [model, setModel] = useState<string | null>(null)
+  // `undefined` = not asked yet (render nothing); `null` = asked and could not read.
+  const [upstream, setUpstream] = useState<UpstreamModelReport | null | undefined>(undefined)
 
   useEffect(() => {
     let cancelled = false
@@ -1700,6 +1702,15 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
     })
     return () => { cancelled = true }
   }, [open, project.name])
+
+  // Does Anthropic list a model set-core does not ship? Advice only; asked when
+  // the form opens, never awaited by the start itself.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetchUpstreamModels().then(r => { if (!cancelled) setUpstream(r) })
+    return () => { cancelled = true }
+  }, [open])
 
   // Asked when the form opens, not on every poll: a `git worktree list` per
   // project on the fleet's polling path would be paid by every reader for a
@@ -1926,6 +1937,15 @@ function StartAgent({ project, onStarted }: { project: FleetProject; onStarted: 
               providers could not be read — the owner will resolve
             </span>
           )}
+          {upstream !== undefined && (() => {
+            const notice = upstreamNotice(upstream)
+            return notice && (
+              <span data-fleet-start="upstream-models" data-verdict={upstream?.verdict ?? 'unread'}
+                    className="text-xs text-amber-400" title={notice.title}>
+                {notice.text}
+              </span>
+            )
+          })()}
           {locationsFailed && (
             <span data-fleet-start="locations-unread" className="text-xs text-amber-400">
               worktrees could not be read — starting in the project root

@@ -1336,6 +1336,20 @@ def fleet_providers(project: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+@router.get("/api/fleet/models/upstream")
+def fleet_models_upstream(refresh: bool = False) -> Dict[str, Any]:
+    """Does Anthropic list a model set-core does not ship, or does this machine's
+    catalogue lack a shipped name? Advice only — see `providers.upstream`.
+
+    A sync route, so it runs in the thread pool: a cold cache costs one fetch with
+    a 10 s timeout and never blocks the event loop. `unknown` is a 200 with a
+    reason, not an error — the check ran and could not measure, which the screen
+    must be able to say.
+    """
+    from ..providers import upstream
+    return upstream.check(refresh=refresh).to_dict()
+
+
 @router.post("/api/fleet/agents")
 def fleet_start_agent(body: StartAgentBody) -> Dict[str, Any]:
     """Start an agent through the owner service.

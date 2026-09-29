@@ -69,7 +69,7 @@ consumer's name, path, or content.
 ## Open
 
 ### B-156 — a machine's Anthropic model catalogue is frozen at migration, so a model the framework ships never reaches the start dialog
-- **state:** OPEN — worked around on one machine 2026-09-29 by extending its `providers.json` by hand; the mechanism is unfixed.
+- **state:** OPEN, now DETECTED — worked around on one machine 2026-09-29 by extending its `providers.json` by hand. Change `upstream-model-watch` reports the gap (`set-providers upstream`, and the start dialog) but does not close it: the user chose advice over automatic update.
 - **reported:** 2026-09-29 by the user: "Start an agent here" offered no Opus 5.5, and asked whether the list could follow new models on its own.
 - **measured:** the dialog's model list is `/api/fleet/providers` → `resolver.catalogue()` → `providers.json`'s `providers.anthropic.models`, read per request. `migrate.build()` (`lib/set_orch/providers/migrate.py`) copies `ANTHROPIC_MODEL_NAMES` into that file ONCE. `108366ae` added `opus-5-5`/`opus-5-5-1m` to `ANTHROPIC_MODEL_NAMES` and `DEFAULT_MODEL_IDS`; this machine's file still listed 10 names and was missing `opus-4-8`, `opus-5`, `opus-5-1m`, `opus-5-5`, `opus-5-5-1m`. After appending them, the endpoint returned 15 and the dialog, checked in the browser, offered `opus-5-5` → `anthropic · opus-5-5 (this start)`.
 - **fail direction:** a false absence. Nothing warns, and the framework already accepts and translates the missing names.
