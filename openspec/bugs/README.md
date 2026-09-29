@@ -68,6 +68,14 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-156 — a machine's Anthropic model catalogue is frozen at migration, so a model the framework ships never reaches the start dialog
+- **state:** OPEN — worked around on one machine 2026-09-29 by extending its `providers.json` by hand; the mechanism is unfixed.
+- **reported:** 2026-09-29 by the user: "Start an agent here" offered no Opus 5.5, and asked whether the list could follow new models on its own.
+- **measured:** the dialog's model list is `/api/fleet/providers` → `resolver.catalogue()` → `providers.json`'s `providers.anthropic.models`, read per request. `migrate.build()` (`lib/set_orch/providers/migrate.py`) copies `ANTHROPIC_MODEL_NAMES` into that file ONCE. `108366ae` added `opus-5-5`/`opus-5-5-1m` to `ANTHROPIC_MODEL_NAMES` and `DEFAULT_MODEL_IDS`; this machine's file still listed 10 names and was missing `opus-4-8`, `opus-5`, `opus-5-1m`, `opus-5-5`, `opus-5-5-1m`. After appending them, the endpoint returned 15 and the dialog, checked in the browser, offered `opus-5-5` → `anthropic · opus-5-5 (this start)`.
+- **fail direction:** a false absence. Nothing warns, and the framework already accepts and translates the missing names.
+- **not available as a fix, measured:** a live list from Anthropic's models endpoint needs an API key. This machine has none (`ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` unset); it only has the agent CLI's own subscription login, and reading that credential would borrow another tool's token.
+- **fixed when:** a name added to `ANTHROPIC_MODEL_NAMES` appears in the start dialog of a machine whose `providers.json` predates it, with no hand edit. Held by a test that loads a file listing the old 10 names and asserts that the catalogue contains the shipped names. (Open design question: whether a machine can deliberately hide a shipped name, e.g. with an `exclude` list, since a plain union makes removal impossible.) This is a contract change to the provider catalogue, so it goes through OpenSpec.
+
 ### B-155 — every project watcher watched its whole tree recursively, so a consumer build starved the dashboard's event loop
 - **renumbered:** B-149 → B-155 in the 2026-09-24 merge with origin; the other machine had already published B-149. Commit messages written before the merge cite B-149.
 - **state:** CLOSED (2026-09-24, see the commit that carries this entry) — the entry stays; evidence below.
