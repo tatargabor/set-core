@@ -114,9 +114,9 @@ RATE_LIMIT_WINDOW_SECONDS = 3600
 # This dict is kept ONLY as a fallback for legacy callers that imported
 # it directly. New code should use `default_model_for_trigger()`.
 DEFAULT_MODEL_BY_TRIGGER: dict[str, str] = {
-    "integration_failed": "opus-4-6",
-    "non_periodic_checkpoint": "opus-4-6",
-    "terminal_state": "opus-4-6",
+    "integration_failed": "opus",
+    "non_periodic_checkpoint": "opus",
+    "terminal_state": "opus",
 }
 
 

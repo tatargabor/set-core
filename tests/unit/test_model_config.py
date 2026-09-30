@@ -56,8 +56,8 @@ def test_every_default_value_is_a_valid_short_name():
 
 
 def test_agent_default_is_opus_4_6():
-    assert resolve_model("agent") == "opus-4-6"
-    assert DIRECTIVE_DEFAULTS["models"]["agent"] == "opus-4-6"
+    assert resolve_model("agent") == "opus"
+    assert DIRECTIVE_DEFAULTS["models"]["agent"] == "opus"
 
 
 def test_opus_4_6_short_name_maps_to_claude_opus_4_6():
@@ -93,7 +93,7 @@ def test_yaml_beats_profile_and_defaults(tmp_path, monkeypatch):
 def test_defaults_are_last_resort(tmp_path, monkeypatch):
     monkeypatch.delenv("SET_ORCH_MODEL_AGENT", raising=False)
     # tmp_path has no orchestration.yaml
-    assert resolve_model("agent", project_dir=str(tmp_path)) == "opus-4-6"
+    assert resolve_model("agent", project_dir=str(tmp_path)) == "opus"
 
 
 def test_nested_trigger_role_resolves_dotted_path():
@@ -188,7 +188,7 @@ def test_preset_cost_optimized_uses_haiku_for_classifier_and_review():
     assert p["classifier"] == "haiku"
     assert p["review"] == "haiku"
     assert p["spec_verify"] == "haiku"
-    assert p["agent"] == "sonnet"  # downgraded from default opus-4-6
+    assert p["agent"] == "sonnet"  # downgraded from default opus
     assert p["agent_small"] == "haiku"
 
 

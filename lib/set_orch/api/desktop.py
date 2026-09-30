@@ -19,7 +19,7 @@ in this repository and mean whichever one its last reader assumed.
 The paths that reach here come from a fleet terminal, where every character was
 written by whatever an agent ran. A person's activation is what starts a
 request — nothing here fires on its own — but the TEXT that person activated is
-still data, not an instruction. `xdg-open` does not distinguish: handed a JPEG it
+still data, not an instruction. The desktop's opener does not distinguish: handed a JPEG it
 shows a picture, handed an executable or a `.desktop` entry it starts a program.
 So the refusals below are about that difference and nothing else, and they fail
 in the direction of not starting anything.
@@ -39,6 +39,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
@@ -48,16 +49,32 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-#: The program that knows the desktop's file associations. Linux's answer, and
-#: the only one wired up: on a platform without it the endpoint refuses rather
-#: than guessing at `open` or `start`, because a wrong guess would be a silent
-#: no-op and this endpoint's whole contract is that every outcome is reported.
-_OPENER = "xdg-open"
+#: The program that knows the desktop's file associations, per platform: macOS
+#: answers `open`, everything else `xdg-open`. Measured 2026-09-25 on a Mac mini,
+#: where the endpoint refused every request because this was the Linux constant.
+#:
+#: A FUNCTION rather than a constant, for a reason that is about the tests and not
+#: about style: a value computed at import is invisible to a test that wants the
+#: other platform's branch, so each machine would only ever exercise its own half
+#: and a green suite would say nothing about the other one.
+#:
+#: There is deliberately NO fallback from one to the other. On a platform without
+#: its own opener the endpoint refuses, because a stray program of the other name
+#: would be handed an agent-written path, and this endpoint's whole contract is
+#: that every outcome is reported rather than guessed at.
+def _opener_name() -> str:
+    return "open" if sys.platform == "darwin" else "xdg-open"
 
 #: Suffixes that are launchers whatever their permission bits say. A `.desktop`
 #: entry carries its own `Exec=` line, so the executable-bit check below would
 #: wave through a file whose entire purpose is to run a command.
-_LAUNCHER_SUFFIXES = (".desktop",)
+#:
+#: `.app` is here and not with the executable bit because a macOS bundle is a
+#: DIRECTORY (measured 2026-09-25: `mdls -name kMDItemContentType` on
+#: `Calculator.app` gives `com.apple.application-bundle`). The bit check below
+#: exempts directories deliberately — every traversable directory carries the bit —
+#: so a bundle is the one launcher class a correct Linux-shaped guard waves through.
+_LAUNCHER_SUFFIXES = (".desktop", ".app")
 
 #: Suffixes whose desktop association RUNS the file, whatever its permissions.
 #:
@@ -78,6 +95,15 @@ _ASSOCIATION_RUNS = (
     ".wsf", ".wsh", ".hta",
     # an installer package — opening one is starting an install
     ".deb", ".rpm", ".pkg", ".snap", ".flatpak", ".flatpakref",
+    # macOS, measured 2026-09-25 with `mdls -name kMDItemContentType`:
+    #   .command  -> com.apple.terminal.shell-script  (Terminal executes it)
+    #   .terminal -> com.apple.terminal.settings      (a profile that can carry a command)
+    #   .dmg      -> com.apple.disk-image-udif        (opening one MOUNTS it — the
+    #                                                  installer act `.pkg` is here for)
+    # `.workflow` was measured in the same pass and is deliberately ABSENT: it came
+    # back a dynamic UTI (nothing registered), and this list is widened by
+    # measurement, never by a name that sounds executable.
+    ".command", ".terminal", ".dmg",
     # macro-ENABLED office formats. The `m` suffixes are the ones that exist to
     # carry code; the ordinary `.docx`/`.xlsx` cannot, and are not refused.
     ".docm", ".dotm", ".xlsm", ".xltm", ".xlam", ".xlsb",
@@ -91,10 +117,28 @@ _ASSOCIATION_RUNS = (
 #: local page can read this machine's files, and the text that named it was
 #: written by whatever an agent ran.
 #:
-#: `.svg` is deliberately NOT here even though it is XML a browser interprets.
-#: An image that opened before this change must still open — the widening is a
-#: widening of refusals, not a place to add ones nobody measured.
-_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml")
+#: `.svg` and `.svgz` were deliberately NOT here, on the stated grounds that an
+#: image which opened before must still open and that nobody had measured them.
+#: Added 2026-09-28 because both halves of that premise have changed, and the
+#: order matters — the measurement alone would not have been enough:
+#:
+#: - **Measured**, which the exclusion asked for. Sweeping this machine's own
+#:   association table for every suffix the "ordinary file" test hands over:
+#:   `.png`/`.pdf`/`.webp`/`.gif` → Preview, `.mp4` → VLC, `.docx` → Pages,
+#:   `.md`/`.py`/`.xml`/`.json` → Xcode, `.txt` → TextEdit — and `.svg` and
+#:   `.svgz` → **the browser**. So on this desktop an SVG is not an image that
+#:   opens in a viewer; it is a document a browser renders, with `<script>` in
+#:   it executing, which is the property this whole class exists for.
+#: - **`viewed` now exists**, and it did not when the exclusion was written. The
+#:   cost of refusing was then "an SVG cannot be opened at all"; it is now "an
+#:   SVG cannot be opened from a path an agent PRINTED", because the file view's
+#:   own button lifts this class for a file the reader already has open.
+#:
+#: The capability's own spec settles the remainder: a refusal that lets one of
+#: these through is a hole, one that stops an ordinary file is an inconvenience,
+#: and when the two are in tension the refusal wins.
+_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml",
+                           ".svg", ".svgz")
 
 
 class OpenRequest(BaseModel):
@@ -170,8 +214,14 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
         return "not a regular file or directory"
 
     lowered = target.lower()
-    if lowered.endswith(_LAUNCHER_SUFFIXES):
-        return "desktop entries are launchers, not documents"
+    for suffix in _LAUNCHER_SUFFIXES:
+        if lowered.endswith(suffix):
+            # Named per suffix rather than one sentence for both: "desktop entries
+            # are launchers" said about a `.app` sends the reader looking for a
+            # file that is not there, which is the whole reason a REASON is
+            # returned instead of a boolean.
+            what = "a .desktop entry" if suffix == ".desktop" else f"a {suffix} bundle"
+            return f"{what} is a launcher, not a document"
 
     for suffix in _ASSOCIATION_RUNS:
         if lowered.endswith(suffix):
@@ -220,12 +270,13 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
         logger.info("desktop_open: refused path=%s viewed=%s reason=%s", path, req.viewed, why)
         raise HTTPException(status_code=400, detail=why)
 
-    opener = shutil.which(_OPENER)
+    wanted = _opener_name()
+    opener = shutil.which(wanted)
     if not opener:
-        logger.warning("desktop_open: no %s on PATH", _OPENER)
+        logger.warning("desktop_open: no %s on PATH", wanted)
         raise HTTPException(
             status_code=501,
-            detail=f"no desktop handler available ({_OPENER} not found)",
+            detail=f"no desktop handler available ({wanted} not found)",
         )
 
     try:
@@ -237,8 +288,8 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
             stderr=subprocess.DEVNULL,
         )
     except OSError as exc:
-        logger.error("desktop_open: could not start %s for %s — %s", _OPENER, path, exc)
-        raise HTTPException(status_code=500, detail=f"could not start {_OPENER}: {exc}")
+        logger.error("desktop_open: could not start %s for %s — %s", wanted, path, exc)
+        raise HTTPException(status_code=500, detail=f"could not start {wanted}: {exc}")
 
     logger.info("desktop_open: handed over path=%s viewed=%s", path, req.viewed)
     # `opened` means ASKED. The message is what reaches the reader, so it is

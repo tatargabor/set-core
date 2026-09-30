@@ -36,7 +36,7 @@ class ChatSession:
         self.messages: list[dict[str, Any]] = []
         self.status: str = "idle"  # idle | running
         # Resolve model via the unified config; falls back to the framework
-        # default (opus-4-6) when no operator override is set.
+        # default (`opus`, the current Opus) when no operator override is set.
         from .model_config import resolve_model
         self.model: str = resolve_model("agent", project_dir=str(project_path))
         self._current_process: asyncio.subprocess.Process | None = None
