@@ -23,6 +23,7 @@ import {
   sayCount,
   speakerLabel,
   speakerOf,
+  notificationLine,
   toolSummary,
 } from '../../src/lib/fleetConversation'
 import type { LogTurn, SayAct, WorkAct } from '../../src/lib/fleetConversation'
@@ -301,5 +302,37 @@ describe('B-8 — a run of tool work between two sentences is ONE act', () => {
       call('1'), result('2'), say('3', 'halfway'), call('4'), result('5'),
     ] as never)
     expect(acts.map(a => a.kind)).toEqual(['work', 'say', 'work'])
+  })
+})
+
+describe('a task notification is the runtime waking the session, not the person', () => {
+  const monitor = [
+    '<task-notification>',
+    '<task-id>b0332gy14</task-id>',
+    '<summary>Monitor event: "Call transcript batches (meeting copilot)"</summary>',
+    '<event>{"ts":474060,"speaker":"system","text":"Shall we start?","final":true}',
+    '{"ts":477360,"speaker":"mic","text":"Yes.","final":true}</event>',
+    'If this event is something the user would act on now, send a PushNotification.',
+    '</task-notification>',
+  ].join('\n')
+
+  it('is attributed to the runtime, never to `you`', () => {
+    expect(speakerOf('user', monitor)).toBe('runtime')
+  })
+
+  it('folds to one line: the summary and what was said, without the XML or the boilerplate', () => {
+    const line = notificationLine(monitor)!
+    expect(line).toBe('Call transcript batches (meeting copilot) — system: Shall we start? · mic: Yes.')
+    expect(line).not.toMatch(/task-id|PushNotification|</)
+  })
+
+  it('keeps a non-transcript event as written and marks typed events', () => {
+    const t = '<task-notification><summary>Background command "build" completed (exit code 0)</summary><event>{"type":"silence","duration_ms":3000}</event></task-notification>'
+    expect(notificationLine(t)).toBe('Background command "build" completed (exit code 0) — [silence]')
+  })
+
+  it('is not a notification when the person merely mentions one', () => {
+    expect(notificationLine('mi ez a <task-notification> blokk?')).toBeNull()
+    expect(speakerOf('user', 'mi ez a <task-notification> blokk?')).toBe('person')
   })
 })

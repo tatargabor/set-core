@@ -123,8 +123,47 @@ const RUNTIME_PREFIXES = [
   '<local-command-stderr>',
   '<system-reminder>',
   '<user-prompt-submit-hook>',
+  '<task-notification>',
   'Caveat: The messages below',
 ]
+
+/**
+ * A `<task-notification>` turn as one readable line, or `null` if the text is not one.
+ *
+ * The runtime wakes a session this way for every background-task and monitor event
+ * — a meeting copilot gets one per transcript batch, so they are most of its log.
+ * Printed raw, each is a dozen lines of XML and standing boilerplate around one or
+ * two sentences that matter. This keeps the summary and the event's own content:
+ * transcript JSONL lines (`{"speaker","text"}`) become `speaker: text`; anything
+ * else is passed through with its whitespace collapsed. Nothing is interpreted.
+ */
+export function notificationLine(text: string): string | null {
+  const head = text.trimStart()
+  if (!head.startsWith('<task-notification>')) return null
+  const tag = (name: string) => head.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim() ?? ''
+  const summary = tag('summary').replace(/^Monitor event:\s*/, '').replace(/^"|"$/g, '')
+  const body = tag('event') || tag('result') || tag('status')
+  const said: string[] = []
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    try {
+      const o = JSON.parse(line)
+      if (o && typeof o.text === 'string') {
+        said.push(typeof o.speaker === 'string' ? `${o.speaker}: ${o.text}` : o.text)
+        continue
+      }
+      if (o && typeof o.type === 'string') {
+        said.push(`[${o.type}]`)
+        continue
+      }
+    } catch { /* not JSON — keep the line as written */ }
+    said.push(line)
+  }
+  const content = said.join(' · ').replace(/\s+/g, ' ').trim()
+  if (summary && content) return `${summary} — ${content}`
+  return summary || content || 'task notification'
+}
 
 /**
  * The speaker of a piece of text under a given role.
