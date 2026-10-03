@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointer2, Scissors, X } from 'lucide-react'
 import {
-  buildListingIndex, terminalReferences, terminalTarget, unprovenInBase, type FileRef, type ListingIndex,
+  buildListingIndex, referenceAtColumn, terminalReferences, terminalTarget, unprovenInBase, type FileRef, type ListingIndex,
   type TerminalTarget,
 } from '../lib/fleetFiles'
 import {
@@ -224,6 +224,7 @@ interface TerminalLink {
  * a test can hand it a stub without constructing an emulator.
  */
 interface TerminalLike {
+  cols: number
   buffer: { active: { getLine(y: number): { translateToString(trim?: boolean): string } | undefined } }
   registerLinkProvider(provider: {
     provideLinks(lineNumber: number, callback: (links: TerminalLink[] | undefined) => void): void
@@ -1095,7 +1096,67 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
         callback(links.length ? links : undefined)
       },
     })
-    return () => registration.dispose()
+
+    /*
+      CTRL+CLICK ON A CONFIRMED REFERENCE WINS — measured 2026-10-03, on a live
+      tile, in both of the states the agent's TUI randomly leaves the terminal
+      in:
+
+      - with mouse tracking ON, xterm marks its root `enable-mouse-events` and
+        hands EVERY mouse event to the pty: the hover decoration renders, the
+        link never activates, and the reader sees an underline that does
+        nothing — the report behind this fix ("a link that doesn't work" about
+        a token the recogniser had made a link; plain paths die the same death
+        on such tiles).
+      - with tracking OFF, activation is xterm's own element-level mousedown/
+        mouseup pair, gated on its internal hover state — nothing the reader
+        can see when it will not fire.
+
+      Real terminals resolve the conflict one way, and this screen's own
+      convention agrees: the reader holding CTRL means the link, not the
+      application. So a confirmed reference under the pointer is stolen HERE,
+      in the capture phase on the host, before any of xterm's listeners run —
+      whatever mode the TUI left behind. Without CTRL, without a hit, or on any
+      other button, this returns untouched and the terminal keeps its event.
+
+      The matching itself is `referenceAtColumn` in the lib, so the cell
+      arithmetic here stays arithmetic and the verdict stays measurable. The
+      same-target debounce is the double-fire guard for the tracking-OFF case,
+      where xterm's own path would also have acted.
+    */
+    let stolen: { key: string; at: number } | null = null
+    const stealForLink = (down: boolean) => (ev: MouseEvent) => {
+      if (ev.button !== 0 || (!ev.ctrlKey && !ev.metaKey)) return
+      const term = termRef.current
+      const rowsHost = host.current?.querySelector('.xterm-rows')
+      if (!term || !rowsHost) return
+      let rowEl = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null
+      while (rowEl && rowEl.parentElement !== rowsHost) rowEl = rowEl.parentElement
+      if (!rowEl) return
+      const rect = rowEl.getBoundingClientRect()
+      if (!rect.width) return
+      const col = Math.floor((ev.clientX - rect.left) / (rect.width / term.cols))
+      const rowText = rowEl.textContent ?? ''
+      const target = referenceAtColumn(rowText, col, where)
+      if (!target) return
+      ev.preventDefault()
+      ev.stopPropagation()
+      if (down) return
+      const key = JSON.stringify(target)
+      const now = Date.now()
+      if (stolen && stolen.key === key && now - stolen.at < 600) return
+      stolen = { key, at: now }
+      act(target)
+    }
+    const stealDown = stealForLink(true)
+    const stealUp = stealForLink(false)
+    host.current?.addEventListener('mousedown', stealDown, true)
+    host.current?.addEventListener('mouseup', stealUp, true)
+    return () => {
+      registration.dispose()
+      host.current?.removeEventListener('mousedown', stealDown, true)
+      host.current?.removeEventListener('mouseup', stealUp, true)
+    }
   }, [projectRoot, listing, agentCwd, onOpenFile, onReveal, openExternal, checkouts, home,
       knownFiles, phase.kind])
 
