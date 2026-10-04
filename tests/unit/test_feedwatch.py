@@ -330,3 +330,13 @@ def test_import_copies_and_leaves_the_source_byte_identical(proj, home, tmp_path
 def test_bad_times_are_refused(proj, home):
     assert cli.main(["optin", "on", "--times", "25:00"]) == 1
     assert optin.entry(proj) is None
+
+
+def test_importing_a_disabled_optin_says_so(proj, home, tmp_path, capsys):
+    """Measured 2026-10-04: switching the old pane off before importing gave a silently OFF opt-in."""
+    src = tmp_path / "old-optin.json"
+    src.write_text(json.dumps({"enabled": False, "user": "owner@example.com", "times": ["10:00", "16:00"]}))
+    assert cli.main(["optin", "import", str(src)]) == 0
+    assert optin.entry(proj)["enabled"] is False
+    err = capsys.readouterr().err
+    assert "switched OFF" in err and "set-feed-watch optin on --times 10:00,16:00" in err

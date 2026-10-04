@@ -32,6 +32,7 @@
 - [x] 5.2 Opt-in storage under `~/.config/set-core/feed-watch.json`, keyed by project; `optin on|off|status` [REQ: per-account-opt-in-outside-the-repository]
 - [x] 5.3 Lease in `feed-watch.state.json` so only one session shows a slot [REQ: one-session-asks]
 - [x] 5.4 `optin import <path>`, which does not touch the source file [REQ: import-of-an-existing-opt-in]
+- [x] 5.6 Importing a switched-off opt-in warns and prints the command that switches it on. Reported by the consumer on 2026-10-04: the order set-core itself prescribed ("switch the old pane off, then import") produced a silently disabled opt-in [REQ: import-of-an-existing-opt-in]
 - [ ] 5.5 VISUAL CHECK: open the pane in a real Claude Code session at a due slot, look at it, and record what was seen; this stays open if it could not be looked at [REQ: scheduled-pane-with-four-actions] — OWNER (user, 2026-10-04): the user looks, in the consumer project, after `optin import`; requested over the bus
 
 ## 6. Migration proof against the first version
@@ -49,14 +50,14 @@
 - [x] AC-3: WHEN the deployed skill is read THEN it forbids posting, commenting, reacting and sending, and names only the declared feeds [REQ: read-only-collection, scenario: the-skill-forbids-writes-to-the-source] — skill text: Iron rules
 
 ### collection-stops-on-a-stall-or-challenge
-- [ ] AC-4: WHEN a login wall appears THEN the run stops and reports the reason and the count so far [REQ: collection-stops-on-a-stall-or-challenge, scenario: login-wall] — OPEN: needs a live collection run in Chrome; OWNER (user, 2026-10-04): the consumer's session, on its next scheduled run
-- [ ] AC-5: WHEN a run collects zero with placeholders visible THEN a stall is reported, not "no new items" [REQ: collection-stops-on-a-stall-or-challenge, scenario: empty-run-with-the-feed-visible] — OPEN: needs a live collection run in Chrome; OWNER (user, 2026-10-04): the consumer's session, on its next scheduled run
+- [ ] AC-4: WHEN a login wall appears THEN the run stops and reports the reason and the count so far [REQ: collection-stops-on-a-stall-or-challenge, scenario: login-wall] — OPEN: not met in the first live run (no login wall appeared)
+- [x] AC-5: WHEN a run collects zero with placeholders visible THEN a stall is reported, not "no new items" [REQ: collection-stops-on-a-stall-or-challenge, scenario: empty-run-with-the-feed-visible] — MEASURED in the first live run (consumer session, 2026-10-04): after one item, two consecutive scrolls showed only placeholder cards; the run stopped and reported STALL, with no refresh and no retry
 
 ### run-report-keeps-the-counts-separate
-- [ ] AC-6: WHEN 12 are seen, 3 are duplicates and 4 are filtered THEN the report shows 12/5/3/4 plus the stop reason [REQ: run-report-keeps-the-counts-separate, scenario: mixed-run] — OPEN: needs a live collection run in Chrome; OWNER (user, 2026-10-04): the consumer's session, on its next scheduled run
+- [ ] AC-6: WHEN 12 are seen, 3 are duplicates and 4 are filtered THEN the report shows 12/5/3/4 plus the stop reason [REQ: run-report-keeps-the-counts-separate, scenario: mixed-run] — PARTLY MEASURED (2026-10-04): the live report gave seen 1 · new 0 · duplicate 1 (found by permalink id, exit 3) · filtered 0 + stop reason, all as separate figures; the 12/5/3/4 mix itself has not occurred yet
 
 ### one-file-per-item-with-the-verbatim-text
-- [ ] AC-7: WHEN an item with typos is collected THEN the body equals the source exactly [REQ: one-file-per-item-with-the-verbatim-text, scenario: verbatim-body] — OPEN: needs a live collection run in Chrome; OWNER (user, 2026-10-04): the consumer's session, on its next scheduled run
+- [ ] AC-7: WHEN an item with typos is collected THEN the body equals the source exactly [REQ: one-file-per-item-with-the-verbatim-text, scenario: verbatim-body] — OPEN: the first live run wrote no new item (1 seen, a duplicate)
 
 ### dedupe-by-item-id-or-text-hash
 - [x] AC-8: WHEN the same normalised text arrives with an unknown link THEN check-new exits 3 and prints the stored path [REQ: dedupe-by-item-id-or-text-hash, scenario: same-text-different-link] — test_same_text_different_link_is_known

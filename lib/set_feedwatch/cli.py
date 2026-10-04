@@ -141,7 +141,13 @@ def cmd_optin(a, root: Path):
             print(str(err), file=sys.stderr)
             return 1
         print(f"imported into {optin.optin_path()}: enabled={e['enabled']}, times={', '.join(e['times'])}")
-        if e["enabled"] and optin.load_plugin():
+        if not e["enabled"]:
+            # The source said off, so the import is off — faithfully. Measured 2026-10-04: the
+            # natural order "switch the old pane off, then import" produced a silently disabled
+            # opt-in. Say it where the reader is standing, and say how to turn it on.
+            print(f"WARNING: the source opt-in is switched OFF, so the imported one is OFF too. "
+                  f"To switch it on: set-feed-watch optin on --times {','.join(e['times'])}", file=sys.stderr)
+        elif optin.load_plugin():
             print("pane plugin added to env.CLAUDE_CODE_PLUGIN_DIRS (backup written)")
         return 0
     e = optin.entry(root)
