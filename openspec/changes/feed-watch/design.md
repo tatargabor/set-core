@@ -127,9 +127,17 @@ live only in the consumer's tree.
    Both are supported, and the consumer decides when.
 4. Rollback: delete the declaration file. The consumer's own script is untouched throughout.
 
+## Decided (user, 2026-10-04)
+
+- **Sources: Facebook only.** The adapter boundary stays an interface with one implementation
+  until a second source is actually asked for.
+- **The opt-in moves to `~/.config/set-core/`**, copied across once by `set-feed-watch optin import`.
+  set-core reads no consumer-named path.
+- **Implementation starts now.** The threshold and the place the daily list is viewed are
+  project-side declarations in this design, so the consumer's open points do not block the
+  framework part.
+
 ## Open Questions
 
 - Should the module offer a FleetView surface later? That would be a separate change that needs a
   panel API first.
-- Is a second source kind wanted soon? If not, the adapter boundary stays an interface with one
-  implementation.
