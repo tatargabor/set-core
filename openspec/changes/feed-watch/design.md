@@ -127,6 +127,24 @@ live only in the consumer's tree.
    Both are supported, and the consumer decides when.
 4. Rollback: delete the declaration file. The consumer's own script is untouched throughout.
 
+## Changed during implementation (2026-10-04)
+
+- **D1's opt-in carrier is the declaration file, not a manifest `modules:` entry.** Manifest
+  modules belong to a project-type template, and feed-watch is orthogonal to the project type,
+  so it would have needed one entry per template. `_deploy_skills` deploys the skill when
+  `.set/feed-watch.yaml` exists, and only then. Measured with `set-project init --dry-run` on
+  two scratch repositories: the one with the file plans the skill, and the one without it
+  mentions feed-watch zero times.
+- **The pane plugin lives in set-core (`plugins/feed-watch-pane/`) and is never deployed into a
+  project.** `optin on` adds its path to the user's own `CLAUDE_CODE_PLUGIN_DIRS`, as the first
+  version did. The opt-in and the slot state are keyed by project root, because one plugin now
+  serves many projects.
+- **Migration criterion, narrowed from "diff empty".** The digest's wording is the module's
+  own and is in English, so a textual diff against the first version cannot be empty. What
+  must match is the substance: the `seen` id and hash columns, and in the digest the item set,
+  the order, the totals, the verdicts and the warnings. All of these matched on the consumer's
+  files (2 items).
+
 ## Decided (user, 2026-10-04)
 
 - **Sources: Facebook only.** The adapter boundary stays an interface with one implementation
