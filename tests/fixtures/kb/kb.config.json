@@ -1,0 +1,35 @@
+{
+  "_about": "Fixture configuration for the kb-search oracle. It drives the reference engine (via --config) and the Python engine (read by the differential test) IDENTICALLY: same sources, same priorities, same channel rules, same ranking. Keys starting with _ are documentation.",
+  "_exclude": "Explicit list — the engine-own defaults live in the engine (wave W2); this fixture states what both engines must apply here, including the trees that hold the session dump and the build/virtualenv markdown.",
+  "language": "hu",
+  "sources": [
+    { "ref": "corpus/planning", "priority": 30 },
+    { "ref": "corpus/meetings", "priority": 20 },
+    { "ref": "corpus/clients", "priority": 10 },
+    { "ref": "corpus/archive", "priority": 0 }
+  ],
+  "channels": [
+    { "channel": "client", "roots": ["corpus/clients"], "include": ["client-*/**"] },
+    { "channel": "meetings", "roots": ["corpus/meetings"], "include": ["meetings/**", "minutes/**"] }
+  ],
+  "exclude": [
+    "**/claude-sessions/**",
+    "**/tool-calls/**",
+    "**/copilot/**",
+    "**/sessions/**",
+    "**/.venv/**",
+    "**/dist/**"
+  ],
+  "extensions": [".md"],
+  "dbPath": "kb-index.db",
+  "ranking": {
+    "fieldWeights": { "headingPath": 10, "heading": 3, "body": 1 },
+    "proximityBoost": true,
+    "diversity": { "enabled": false, "lambda": 0.7 },
+    "sourceDedup": true,
+    "laneChannels": ["client"],
+    "laneQuota": 0.7,
+    "laneLeadMargin": 0.2,
+    "coverageRerank": false
+  }
+}

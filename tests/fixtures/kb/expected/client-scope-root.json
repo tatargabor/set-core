@@ -1,0 +1,33 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": "client",
+      "chunkId": "79232549:0",
+      "docType": "doc",
+      "headingPath": "Pricing request",
+      "path": "client-alfa/alfa-emails.md",
+      "root": "corpus/clients",
+      "score": -4.510007517124061,
+      "snippet": "\nThe client asks for the [pricing] breakdown of the current offer. The … ",
+      "suppressedSections": 0
+    },
+    {
+      "channel": "client",
+      "chunkId": "4e74fe57:0",
+      "docType": "doc",
+      "headingPath": "Notes from the beta account",
+      "path": "client-beta/beta-notes.md",
+      "root": "corpus/clients",
+      "score": -2.036950720732542,
+      "snippet": " … The [pricing] question came up once, then the talk moved to scheduling … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "pricing",
+  "total": 2
+}

@@ -1,0 +1,23 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**",
+    "working directory excluded from this search: corpus/clients"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "a0658017:0",
+      "docType": "doc",
+      "headingPath": "Scope brief",
+      "path": "scope-brief.md",
+      "root": "corpus/planning",
+      "score": -2.900325316897117,
+      "snippet": " … The [pricing] module is out of scope for now; the [pricing] work … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "pricing",
+  "total": 1
+}

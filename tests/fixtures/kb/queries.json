@@ -1,0 +1,17 @@
+[
+  { "id": "budget-sections", "q": "budget planning", "args": [] },
+  { "id": "vendor-duplicate", "q": "vendor onboarding", "args": [] },
+  { "id": "accented-invoice", "q": "szamlazas dijbekero", "args": [] },
+  { "id": "recording-title", "q": "őszi sprint tervező megbeszélés", "args": [] },
+  { "id": "client-lane", "q": "pricing", "args": [] },
+  { "id": "client-lane-off", "q": "pricing", "args": ["--no-lane-quota"] },
+  { "id": "client-lane-reorder", "q": "zaffron", "args": [] },
+  { "id": "client-scope-root", "q": "pricing", "args": ["--root", "corpus/clients"] },
+  { "id": "exclude-clients", "q": "pricing", "args": ["--exclude-path", "corpus/clients"] },
+  { "id": "zero-hits", "q": "xyzzyplugh qwertyfoo", "args": [] },
+  { "id": "archive-decision", "q": "engine adoption decision", "args": [] },
+  { "id": "raw-transcript", "q": "kékeslila", "args": [] },
+  { "id": "limit-paging", "q": "megbeszélés", "args": ["--limit", "2"] },
+  { "id": "agent-instructions", "q": "agent instructions", "args": [] },
+  { "id": "helper-scripts", "q": "helper scripts", "args": [] }
+]
