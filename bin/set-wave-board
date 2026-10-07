@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import hashlib
+import html
 import json
 import logging
 import os
@@ -536,6 +537,11 @@ def render_html(state: dict, bare: bool) -> str:
     seed = (json.dumps(state, ensure_ascii=False)
             .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
     page = tpl.replace(SEED_MARKER, f'<script type="application/json" id="seed">{seed}</script>')
+    # The <title> names the published artifact in every listing, so a generic one makes
+    # every board look alike. Name it after the job.
+    title = html.escape(state.get("title") or state.get("job") or "", quote=False)
+    if title:
+        page = page.replace("<title>Wave Board</title>", f"<title>{title} · Wave Board</title>", 1)
     if bare:
         return page
     return ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'

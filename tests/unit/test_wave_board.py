@@ -237,6 +237,15 @@ def test_render_embeds_the_state_as_seed(env, repo, tmp_path):
     assert Path(run(env, repo, "page").stdout.strip()).is_file()
 
 
+def test_render_names_the_page_after_the_job(env, repo, tmp_path):
+    # The <title> names the published artifact; a generic one makes every board look alike.
+    new_job(env, repo, ("a", None))
+    run(env, repo, "init", "k", "--title", "Plan <A&B>")
+    out = tmp_path / "k.html"
+    run(env, repo, "render", "k", "-o", str(out), "--bare")
+    assert out.read_text().startswith("<title>Plan &lt;A&amp;B&gt; · Wave Board</title>")
+
+
 # ── the Stop hook ────────────────────────────────────────────────────────────
 
 def hook(env, cwd, event=None, **extra_env):
