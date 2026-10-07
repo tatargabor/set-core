@@ -29,9 +29,9 @@ Read incoming messages directed to this agent.
    ```
    INBOX (3 unread messages)
 
-   [2026-02-08 10:30:15] tg@linux: Can you review the auth changes?
+   [2026-02-08 10:30:15] alice@laptop: Can you review the auth changes?
    [2026-02-08 10:45:22] peter@laptop: LGTM, merging now
-   [2026-02-08 11:00:01] tg@linux: BUG: Start button doesn't work
+   [2026-02-08 11:00:01] alice@laptop: BUG: Start button doesn't work
      Steps: 1. Click start
      Expected: Game starts
      Actual: Nothing happens
