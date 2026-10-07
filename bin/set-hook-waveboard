@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""set-hook-waveboard — Claude Code Stop hook: make the agent push a wave board.
+
+A wave board's live data is a claude.ai Artifact database, and only the agent can write
+it. This hook runs `set-wave-board sync` on every Stop and, when a job's payload differs
+from what this machine last pushed, blocks the stop ONCE with the exact push procedure —
+so the push happens whether or not the agent remembered the board.
+
+Silent (exit 0, no output) when:
+  - the Stop event carries `stop_hook_active: true` (the continuation this hook caused),
+  - SET_WAVEBOARD_PUSH is off / 0 / false / no,
+  - the working directory is not in a git repository, or it has no docs/waveboard/,
+  - it is a linked git worktree (unless SET_WAVEBOARD_PUSH=worktree): the board follows
+    the main checkout, and worktree agents are usually orchestrated ones,
+  - the job was already reminded within the backoff (SET_WAVEBOARD_NAG_SECONDS, 1800),
+  - anything at all goes wrong: a Stop hook that errors is noise on every turn.
+
+Never touches the network. The sync runs under a timeout well inside the hook's own.
+
+Designed to be referenced by name in .claude/settings.json ("command": "set-hook-waveboard");
+on PATH through install.sh.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+logger = logging.getLogger("set-hook-waveboard")
+
+SYNC_TIMEOUT = 10
+OFF = ("off", "0", "false", "no")
+
+
+def _tool() -> str | None:
+    sibling = Path(os.path.realpath(__file__)).parent / "set-wave-board"
+    if sibling.is_file() and os.access(sibling, os.X_OK):
+        return str(sibling)
+    return shutil.which("set-wave-board")
+
+
+def _root(cwd: str, allow_worktree: bool) -> Path | None:
+    """The main checkout's root, or None (not a repo, or a linked worktree)."""
+    try:
+        r = subprocess.run(["git", "rev-parse", "--show-toplevel", "--absolute-git-dir",
+                            "--git-common-dir"], cwd=cwd, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.debug("git rev-parse failed: %s", e)
+        return None
+    lines = r.stdout.strip().splitlines()
+    if r.returncode != 0 or len(lines) < 3:
+        return None
+    top, git_dir, common = lines[0], lines[1], lines[2]
+    # a relative --git-common-dir is relative to cwd, not to the top level
+    common_abs = os.path.realpath(os.path.join(cwd, common))
+    if not allow_worktree and os.path.realpath(git_dir) != common_abs:
+        # A linked worktree holds a branch's copy of the job file. Pushing from it and from
+        # the main checkout would flip the board between two branches' evidence, and the
+        # agents that run in worktrees are usually orchestrated ones with no Artifact access.
+        logger.debug("linked worktree, skipping: %s", top)
+        return None
+    return Path(top)
+
+
+def _backoff() -> float:
+    try:
+        return float(os.environ.get("SET_WAVEBOARD_NAG_SECONDS", "1800"))
+    except ValueError:
+        return 1800.0
+
+
+def procedure(root: Path, jobs: list, backoff: float) -> str:
+    lines = [
+        f"Wave board: {len(jobs)} job(s) in this repository have state this machine has not "
+        "pushed to the board page. Push each one now with your ArtifactData tool, then carry on "
+        "where you left off.",
+    ]
+    for r in jobs:
+        version = r.get("pushed_version")
+        pin = (f"if_version={version}" if version else
+               "no if_version (no push is recorded on this machine, so this creates the document)")
+        lines += [
+            "",
+            f"Job `{r['job']}`:",
+            f"1. ArtifactData action=set, url={r['artifact_url']}, collection=board, doc_id=state, "
+            f"file_path={r['payload']}, {pin}.",
+            "2. If the write is refused because the document changed or already exists: "
+            f"ArtifactData action=get, url={r['artifact_url']}, collection=board, doc_id=state; "
+            "then redo step 1 with if_version set to the version that get returned.",
+            f"3. Then run: set-wave-board pushed {r['job']} --repo {root} --version <the version "
+            f"the set returned> --hash {r['content_hash']}",
+        ]
+    minutes = int(backoff // 60)
+    lines += [
+        "",
+        "Send the file as it is; do not retype or edit the payload. If you cannot write this "
+        "artifact (only its owner and invited editors can), say so in one line and continue — "
+        f"this reminder backs off for {minutes} minutes per job. SET_WAVEBOARD_PUSH=off "
+        "silences it.",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.DEBUG if os.environ.get("SET_WAVEBOARD_DEBUG") else logging.WARNING,
+                        format="set-hook-waveboard: %(levelname)s %(message)s", stream=sys.stderr)
+    try:
+        event = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        event = {}
+    if not isinstance(event, dict):
+        event = {}
+    if event.get("stop_hook_active"):
+        return 0
+    mode = os.environ.get("SET_WAVEBOARD_PUSH", "").strip().lower()
+    if mode in OFF:
+        return 0
+    root = _root(event.get("cwd") or os.getcwd(), allow_worktree=(mode == "worktree"))
+    if root is None or not (root / "docs" / "waveboard").is_dir():
+        return 0
+    tool = _tool()
+    if not tool:
+        logger.debug("set-wave-board not found")
+        return 0
+    try:
+        r = subprocess.run([tool, "sync", "--repo", str(root), "--json"], capture_output=True,
+                           text=True, timeout=SYNC_TIMEOUT)
+        results = json.loads(r.stdout or "[]")
+    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+        logger.debug("sync failed: %s", e)
+        return 0
+    pending = [x for x in results if isinstance(x, dict) and x.get("push_needed")]
+    if not pending:
+        return 0
+
+    backoff, now = _backoff(), time.time()
+    state = root / ".set" / "waveboard"
+    due = []
+    for x in pending:
+        nag = state / f"{x['job']}.nag"
+        try:
+            last = float(nag.read_text().strip())
+        except (OSError, ValueError):
+            last = 0.0
+        if now - last >= backoff:
+            due.append(x)
+    if not due:
+        return 0
+    for x in due:
+        try:
+            (state / f"{x['job']}.nag").write_text(f"{now:.0f}\n")
+        except OSError as e:
+            logger.debug("cannot write nag stamp for %s: %s", x["job"], e)
+    print(json.dumps({"decision": "block", "reason": procedure(root, due, backoff)}))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as e:  # a Stop hook must never fail a turn
+        logging.getLogger("set-hook-waveboard").debug("unexpected: %s", e)
+        sys.exit(0)
