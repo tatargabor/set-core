@@ -8,21 +8,22 @@ evidence; nothing from it is copied into set-core). No module code is touched.
 ## 1. W0 — Reference freeze and oracle
 
 - [ ] 1.1 [consumer] Freeze edits to the local engine; record the reference commit SHA in the consumer's planning notes [REQ: moving-a-project-onto-the-shared-engine-is-gated-by-a-re-measurement]
-- [ ] 1.2 [core] Write a synthetic fixture corpus under `tests/fixtures/kb/` (no project content): several roots, a client-channel root, duplicates at two priorities, a file matching in many sections, accented file names, a recording `.md` + `.jsonl` pair, a `-raw-` named transcript, an agent-session dump with frontmatter type, an archive folder, build-output markdown [REQ: the-shared-engine-matches-the-reference-engine-on-a-synthetic-corpus]
-- [ ] 1.3 [core] Write the fixture query list and run the reference engine over the fixture (at the pinned commit) to record expected pages as JSON under `tests/fixtures/kb/expected/` [REQ: the-shared-engine-matches-the-reference-engine-on-a-synthetic-corpus]
-- [ ] 1.4 [core] Copy the upstream MIT text, upstream repo URL + commit and the port lineage into `lib/set_kb/LICENSE-UPSTREAM`; add the third-party entry to `README.md` [REQ: the-upstream-licence-notice-travels-with-the-engine]
+- [x] 1.2 [core] Write a synthetic fixture corpus under `tests/fixtures/kb/` (no project content): several roots, a client-channel root, duplicates at two priorities, a file matching in many sections, accented file names, a recording `.md` + `.jsonl` pair, a `-raw-` named transcript, an agent-session dump with frontmatter type, an archive folder, build-output markdown [REQ: the-shared-engine-matches-the-reference-engine-on-a-synthetic-corpus]
+- [x] 1.3 [core] Write the fixture query list and run the reference engine over the fixture (at the pinned commit) to record expected pages as JSON under `tests/fixtures/kb/expected/` [REQ: the-shared-engine-matches-the-reference-engine-on-a-synthetic-corpus]
+- [x] 1.4 [core] Copy the upstream MIT text, upstream repo URL + commit and the port lineage into `lib/set_kb/LICENSE-UPSTREAM`; add the third-party entry to `README.md` [REQ: the-upstream-licence-notice-travels-with-the-engine]
+  - Note: the user's decision of 2026-10-07 (design.md) narrows this — the public tree keeps the MIT copyright line and the upstream commit, and does NOT name the upstream repository or organisation.
 
 ## 2. W1 — Engine port (core)
 
-- [ ] 2.1 [core] `lib/set_kb/store.py`: schema (FTS5 `porter unicode61`, files, properties, meta), bm25 weight order tied to column order, `kb_meta` with schema + SQLite version [REQ: the-engine-runs-on-set-cores-existing-runtime]
-- [ ] 2.2 [core] Runtime probe: FTS5 + tokenizer check with a remediation message; no fallback [REQ: the-engine-runs-on-set-cores-existing-runtime]
-- [ ] 2.3 [core] `frontmatter.py`, `chunker.py` (section chunks, heading path, parent link), `lang.py` + `lang_hu.py` [REQ: search-returns-ranked-sections-one-slot-per-source]
-- [ ] 2.4 [core] `indexer.py`: walk, NFC + POSIX relative paths, layered mtime+size → sha256 change detection, deletions, atomic first build [REQ: paths-are-stored-repository-relative-and-normalised] [REQ: the-index-refreshes-incrementally-on-every-search]
-- [ ] 2.5 [core] `search.py`: BM25F, source dedup with section counts, duplicate marking by priority, diversity, limit by distinct sources [REQ: search-returns-ranked-sections-one-slot-per-source]
-- [ ] 2.6 [core] `channels.py` + reserved lane (quota, lead margin; empty = no lane) [REQ: channels-classify-sources-by-root-scoped-rules] [REQ: a-project-can-reserve-part-of-the-page-for-named-channels]
-- [ ] 2.7 [core] `get_section.py`: verbatim section fetch, leaf resolution, ambiguous-leaf listing [REQ: a-section-can-be-fetched-verbatim]
-- [ ] 2.8 [core] Attribution first line on every ported module; none on new ones [REQ: the-upstream-licence-notice-travels-with-the-engine]
-- [ ] 2.9 [core] Unit tests per module + the differential test against `tests/fixtures/kb/expected/`; all green before W2 [REQ: the-shared-engine-matches-the-reference-engine-on-a-synthetic-corpus]
+- [x] 2.1 [core] `lib/set_kb/store.py`: schema (FTS5 `porter unicode61`, files, properties, meta), bm25 weight order tied to column order, `kb_meta` with schema + SQLite version [REQ: the-engine-runs-on-set-cores-existing-runtime]
+- [x] 2.2 [core] Runtime probe: FTS5 + tokenizer check with a remediation message; no fallback [REQ: the-engine-runs-on-set-cores-existing-runtime]
+- [x] 2.3 [core] `frontmatter.py`, `chunker.py` (section chunks, heading path, parent link), `lang.py` + `lang_hu.py` [REQ: search-returns-ranked-sections-one-slot-per-source]
+- [x] 2.4 [core] `indexer.py`: walk, NFC + POSIX relative paths, layered mtime+size → sha256 change detection, deletions, atomic first build [REQ: paths-are-stored-repository-relative-and-normalised] [REQ: the-index-refreshes-incrementally-on-every-search]
+- [x] 2.5 [core] `search.py`: BM25F, source dedup with section counts, duplicate marking by priority, diversity, limit by distinct sources [REQ: search-returns-ranked-sections-one-slot-per-source]
+- [x] 2.6 [core] `channels.py` + reserved lane (quota, lead margin; empty = no lane) [REQ: channels-classify-sources-by-root-scoped-rules] [REQ: a-project-can-reserve-part-of-the-page-for-named-channels]
+- [x] 2.7 [core] `get_section.py`: verbatim section fetch, leaf resolution, ambiguous-leaf listing [REQ: a-section-can-be-fetched-verbatim]
+- [x] 2.8 [core] Attribution first line on every ported module; none on new ones [REQ: the-upstream-licence-notice-travels-with-the-engine]
+- [x] 2.9 [core] Unit tests per module + the differential test against `tests/fixtures/kb/expected/`; all green before W2 [REQ: the-shared-engine-matches-the-reference-engine-on-a-synthetic-corpus]
 
 ## 3. W2 — Corpus defaults and index lifecycle (core)
 
