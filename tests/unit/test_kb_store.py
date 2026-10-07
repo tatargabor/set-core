@@ -38,9 +38,9 @@ def _chunk(**over):
 
 
 def test_bm25_weights_bind_to_column_order():
-    # 8 unindexed columns pinned to 0, then headingPath/heading/body.
-    assert len(FTS_COLUMNS) == 11
-    assert bm25_weights(10, 3, 1) == "0,0,0,0,0,0,0,0,10,3,1"
+    # 9 unindexed columns pinned to 0, then headingPath/heading/body.
+    assert len(FTS_COLUMNS) == 12
+    assert bm25_weights(10, 3, 1) == "0,0,0,0,0,0,0,0,0,10,3,1"
 
 
 def test_bm25_weight_arity_is_loud(monkeypatch):

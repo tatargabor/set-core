@@ -19,12 +19,20 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from typing import Callable, Optional
 
 from set_kb.channels import ChannelRule, classify_channel, compile_channel_rules
 from set_kb.chunker import chunk_markdown
-from set_kb.frontmatter import DEFAULT_FACET_KEYS, DEFAULT_SEARCHABLE_KEYS, build_meta, build_properties
+from set_kb.frontmatter import (
+    DEFAULT_FACET_KEYS,
+    DEFAULT_SEARCHABLE_KEYS,
+    build_meta,
+    build_properties,
+    parse_frontmatter,
+)
 from set_kb.glob import glob_to_re, match_any
+from set_kb.scopes import capture_scope, compile_scope_rules
 from set_kb.store import SCHEMA_VERSION, SqliteFtsStore
 from set_kb.types import Chunk, DocType, FileState, GraphEdge, GraphNode, PropertyRow
 
@@ -52,6 +60,21 @@ class IndexOptions:
     # and the reserved lane simply finds nothing — the engine degrades to no
     # lane rather than misclassifying.
     channels: Optional[list] = None
+    # Scope capture rules (set_kb.scopes.ScopeRule). Absent = no chunk carries
+    # a scope, and a scope-filtered search finds nothing.
+    scopes: Optional[list] = None
+    # Frontmatter-marked exclusions: {frontmatter key: [glob patterns matched
+    # against the value]}. A file whose frontmatter matches is NOT indexed,
+    # wherever it is saved — the agent-session dump rule (design D5) is the
+    # default carrier of this.
+    exclude_frontmatter: Optional[dict] = None
+    # The deploy ledger (`set/.deploy-manifest.json`): {project-relative POSIX
+    # path: sha256 the framework deployed}. An entry whose on-disk hash still
+    # matches is an UNMODIFIED framework file and is not indexed; a project
+    # that edited one owns it, and it is indexed. None = no ledger → nothing
+    # is excluded this way (and `includeFrameworkFiles` is the config layer's
+    # opt-OUT, expressed by passing None here).
+    framework_ledger: Optional[dict] = None
 
 
 @dataclass
@@ -67,9 +90,22 @@ class IndexStats:
     # source back (whole-run semantics kept).
     read_failures: int = 0
     missing: bool = False  # source dir did not exist → skipped (degrade, not abort)
+    # Excluded files per RULE — the pattern that matched, or the name of the
+    # structural rule ("excludeFrontmatter:<key>", "framework-deployed"). The
+    # key is what a "why is this file not on the page" answer names.
+    excluded: dict = field(default_factory=dict)
 
 
-DEFAULT_EXCLUDE = re.compile(r"(^|/)(node_modules|\.git|dist|build|\.next|coverage|\.kb)(/|$)")
+# The plumbing directories. NOT part of the configurable default exclusions:
+# no opt-out key lifts these, because no corpus question is answered by the
+# git internals or by the engine's own runtime directory. Everything else in
+# the default corpus lives in `config.DEFAULT_EXCLUSION_GROUPS`, where a
+# project can lift a group on purpose.
+PERMANENT_PRUNE = re.compile(r"(^|/)(\.git|\.set)(/|$)")
+
+# Fallback extension filter when the options name none — the .md family, as
+# before the corpus became config-driven.
+DEFAULT_EXT_RE = re.compile(r"\.(md|mdx|markdown)$", re.IGNORECASE)
 
 # Files processed between batch commits. Committing per batch also releases
 # the WAL write lock so a concurrent reader is served.
@@ -80,7 +116,20 @@ def _sha_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _walk(dir: str, base: str, out: list) -> list:
+def _ext_regex(extensions: Optional[list]):
+    if not extensions:
+        return DEFAULT_EXT_RE
+    return re.compile("(" + "|".join(e.replace(".", "\\.") for e in extensions) + ")$", re.IGNORECASE)
+
+
+def _walk(dir: str, base: str, out: list, prune=(), ext_re=None) -> list:
+    """Collect candidate files under `base`. `prune` is the compiled exclusion
+    set: a DIRECTORY whose relative path can only produce excluded children is
+    skipped whole — descending into `.venv` to hash-exclude thousands of files
+    on every refresh is the cost this prune exists to avoid. The probe is
+    `regex.search(rel + "/x")`: a dir-style pattern matches something BELOW the
+    directory, a file-style pattern (rare) simply never prunes. The permanent
+    plumbing prune (`.git`, `.set`) applies regardless of configuration."""
     try:
         entries = sorted(os.scandir(dir), key=lambda e: e.name)
     except FileNotFoundError:
@@ -88,11 +137,13 @@ def _walk(dir: str, base: str, out: list) -> list:
     for e in entries:
         abs = os.path.join(dir, e.name)
         rel = os.path.relpath(abs, base).replace(os.sep, "/")
-        if DEFAULT_EXCLUDE.search(rel):
+        if PERMANENT_PRUNE.search(rel):
             continue
         if e.is_dir(follow_symlinks=False):
-            _walk(abs, base, out)
-        elif re.search(r"\.(md|mdx|markdown)$", e.name, re.IGNORECASE):
+            if any(rx.search(rel + "/x") for rx in prune):
+                continue
+            _walk(abs, base, out, prune, ext_re)
+        elif (ext_re or DEFAULT_EXT_RE).search(e.name):
             out.append(abs)
     return out
 
@@ -121,25 +172,26 @@ def index_source(store: SqliteFtsStore, src: IndexSource, opts: Optional[IndexOp
         logger.warning("kb index: source directory does not exist, skipping: %s", src.dir)
         return IndexStats(missing=True)
 
-    exts = opts.extensions or []
-    if exts:
-        ext_re = re.compile("(" + "|".join(e.replace(".", "\\.") for e in exts) + ")$", re.IGNORECASE)
-    else:
-        ext_re = re.compile(r"\.(md|mdx|markdown)$", re.IGNORECASE)
+    ext_re = _ext_regex(opts.extensions)
     inc = [glob_to_re(p) for p in opts.include] if opts.include else None
-    exc = [glob_to_re(p) for p in opts.exclude] if opts.exclude else None
+    # Named exclusions: (pattern, compiled) pairs, so the stats and the page
+    # footer can name the RULE that excluded a file, not just a count.
+    exc = [(p, glob_to_re(p)) for p in opts.exclude] if opts.exclude else []
     include_source_md = opts.include_source_markdown
     # Compiled once per source: glob compilation per file would be a measurable
     # walk cost.
     channel_rules = compile_channel_rules(opts.channels)
+    scope_rules = compile_scope_rules(opts.scopes)
+    fm_exclude = opts.exclude_frontmatter or {}
+    ledger = opts.framework_ledger or None
     files = []
-    for abs in _walk(src.dir, src.dir, []):
+    for abs in _walk(src.dir, src.dir, [], prune=[rx for _p, rx in exc], ext_re=ext_re):
         rel = os.path.relpath(abs, src.dir).replace(os.sep, "/")
         if src.include and not src.include(rel):
             continue
         if inc and not match_any(inc, rel):
             continue
-        if exc and match_any(exc, rel):
+        if exc and match_any([rx for _p, rx in exc], rel):
             continue
         if doc_type_of(rel, include_source_md) == "agents" and opts.index_agents_files is False:
             continue
@@ -187,12 +239,40 @@ def index_source(store: SqliteFtsStore, src: IndexSource, opts: Optional[IndexOp
             # Classified from the root AND the root-relative path. Computed per
             # FILE, not per chunk: every section of a file shares its origin.
             channel = classify_channel(channel_rules, src.root, rel)
-            parsed = chunk_markdown(root=src.root, path=rel, text=buf.decode("utf-8"), doc_type=dt)
+            # Scope captured from the root-relative path (design D9), also per
+            # FILE — every section of a file shares its origin.
+            scope = capture_scope(scope_rules, rel) if scope_rules else None
+            # Unmodified framework-deployed file (design D5): the ledger's hash
+            # still matches, so the project has not edited it and it is not
+            # project knowledge. A project without a ledger (ledger=None)
+            # indexes every file like any other — doctor reports that.
+            if ledger is not None:
+                proj_rel = f"{src.root}/{rel}" if src.root else rel
+                recorded = ledger.get(proj_rel, ledger.get(unicodedata.normalize("NFC", proj_rel)))
+                if recorded is not None and recorded == digest:
+                    store.set_file_state(src.root, rel, FileState(mtime_ms=mtime_ms, size=st.st_size, sha256=digest))
+                    stats.excluded["framework-deployed"] = stats.excluded.get("framework-deployed", 0) + 1
+                    continue
+            text = buf.decode("utf-8")
+            # Frontmatter-marked exclusion (design D5): an agent-session dump
+            # is kept out wherever it is saved, so a folder-level exclusion can
+            # never hide a readable transcript beside it again. The file state
+            # is still recorded — the decision is content-addressed and an
+            # unchanged dump must not be re-parsed on every refresh — and a
+            # config change forces a re-chunk via the corpus-config hash.
+            if fm_exclude:
+                rule = _frontmatter_exclusion(text, fm_exclude)
+                if rule:
+                    store.set_file_state(src.root, rel, FileState(mtime_ms=mtime_ms, size=st.st_size, sha256=digest))
+                    stats.excluded[rule] = stats.excluded.get(rule, 0) + 1
+                    continue
+            parsed = chunk_markdown(root=src.root, path=rel, text=text, doc_type=dt)
             chunks = parsed.chunks
             # file node
             store.add_node(GraphNode(type="file", name=rel, path=rel))
             for c in chunks:
                 c.channel = channel
+                c.scope = scope
                 store.insert_chunk(c)
                 if c.level > 0:
                     store.add_node(GraphNode(type="heading", name=c.heading_path, path=rel))
@@ -234,6 +314,7 @@ def index_source(store: SqliteFtsStore, src: IndexSource, opts: Optional[IndexOp
                             parent_chunk_id=None,
                             doc_type=dt,
                             channel=channel,
+                            scope=scope,
                             body=meta_body,
                             body_hash=_sha_bytes(meta_text.encode("utf-8")),
                         )
@@ -258,6 +339,30 @@ def index_source(store: SqliteFtsStore, src: IndexSource, opts: Optional[IndexOp
         store.rollback()
         raise
     return stats
+
+
+def _frontmatter_exclusion(text: str, fm_exclude: dict) -> Optional[str]:
+    """The exclusion rule a file's frontmatter fires, or None.
+
+    `fm_exclude` maps a frontmatter key to glob patterns matched against the
+    value (`fnmatchcase`, so the decision is identical on macOS and Linux).
+    A file whose frontmatter matches is a structural exclusion — the agent-
+    session dump rule — not a corpus pattern, which is why the rule NAME (not
+    the file path) is what gets counted and reported. A file with no or
+    malformed frontmatter simply never matches.
+    """
+    if not text.lstrip("﻿").startswith("---"):
+        return None
+    parsed = parse_frontmatter(text)
+    if parsed.fm is None:
+        return None
+    for key, patterns in fm_exclude.items():
+        v = parsed.fm.get(key)
+        values = v if isinstance(v, list) else [v]
+        for pat in patterns or ():
+            if any(isinstance(x, str) and fnmatchcase(x, pat) for x in values):
+                return f"excludeFrontmatter:{key}"
+    return None
 
 
 # ── atomic index-run orchestration ──
@@ -381,12 +486,26 @@ def run_index_atomic(opts: RunIndexAtomicOpts) -> dict:
         ver = probe.get_user_version()
         stored_hash = probe.get_meta("facetConfigHash")
         stored_row_hash = probe.get_meta("storedRowConfigHash")
+        stored_sqlite = probe.get_meta("sqlite_version")
         probe.close()
         if ver < SCHEMA_VERSION:
+            logger.info("kb index: schema version changed (%s < %s) — rebuilding from scratch", ver, SCHEMA_VERSION)
             preexisting = False  # → build into a temp path and rename over the old DB
+        elif stored_sqlite is not None and stored_sqlite != sqlite3.sqlite_version:
+            # The index is per machine (design D2); a different SQLite builds a
+            # different FTS index, so the old file is not reusable. Recorded,
+            # not assumed: an index stamped by another SQLite must not be
+            # silently served (nor silently kept without its stamp).
+            logger.info(
+                "kb index: SQLite version changed (%s → %s) — rebuilding from scratch",
+                stored_sqlite,
+                sqlite3.sqlite_version,
+            )
+            preexisting = False
         elif (opts.facet_config_hash is not None and stored_hash != opts.facet_config_hash) or (
             opts.stored_row_config_hash is not None and stored_row_hash != opts.stored_row_config_hash
         ):
+            logger.info("kb index: corpus configuration changed — re-indexing every file")
             eff_opts = IndexOptions(**{**eff_opts.__dict__, "force": True})
 
     target = db_path if preexisting else f"{db_path}.tmp-{os.getpid()}"

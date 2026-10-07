@@ -13,6 +13,7 @@ from set_kb.indexer import (
     AtomicIndexSource,
     IndexOptions,
     RunIndexAtomicOpts,
+    _walk,
     doc_type_of,
     index_source,
     run_index_atomic,
@@ -132,13 +133,50 @@ def test_agents_files_excluded_by_option(tmp_path):
     assert res["counts"]["files"] == 2
 
 
-def test_default_walk_excludes_build_trees(tmp_path):
+def test_walk_prunes_excluded_directories(tmp_path):
+    """Since W2 the default corpus lives in `config`; the walk's own job is to
+    PRUNE a directory an exclusion covers whole, instead of descending into it
+    to hash-exclude every file one by one."""
+    from set_kb.glob import glob_to_re
+
     src = make_source(tmp_path)
     (src / "dist").mkdir()
     (src / "dist" / "report.md").write_text("# build\n", encoding="utf-8")
     (src / "keep.md").write_text("# keep\n\n" + "word " * 30 + "\n", encoding="utf-8")
-    res = index(tmp_path, src)
-    assert res["scanned"] == 1, "dist/ is excluded by the walk itself"
+    out = _walk(str(src), str(src), [], prune=[glob_to_re("dist/")])
+    assert out == [str(src / "keep.md")], "a dir-style exclusion prunes the subtree at the walk"
+    # and the indexed run agrees
+    res = index(tmp_path, src, exclude=["dist/"])
+    assert res["scanned"] == 1 and res["counts"]["files"] == 1
+
+
+def test_file_style_exclusion_names_the_pattern(tmp_path):
+    """A file-style pattern cannot prune a directory, so the per-file check
+    fires — and records WHICH pattern excluded the file."""
+    from set_kb.glob import glob_to_re
+
+    src = make_source(tmp_path)
+    (src / "internal-draft.md").write_text("# draft\n", encoding="utf-8")
+    (src / "keep.md").write_text("# keep\n\n" + "word " * 30 + "\n", encoding="utf-8")
+    res = index(tmp_path, src, exclude=["internal-*.md"])
+    assert res["counts"]["files"] == 1
+
+
+def test_git_and_set_are_permanently_pruned(tmp_path):
+    """`.git/` and `.set/` are plumbing, not corpus: no configuration key can
+    lift them, because no corpus question is answered by the git internals or
+    by the engine's own runtime directory."""
+    from set_kb.glob import glob_to_re
+
+    src = make_source(tmp_path)
+    (src / ".git").mkdir()
+    (src / ".git" / "COMMIT_EDITMSG.md").write_text("# git internal\n", encoding="utf-8")
+    (src / ".set").mkdir()
+    (src / ".set" / "kb").mkdir()
+    (src / ".set" / "kb" / "note.md").write_text("# runtime\n", encoding="utf-8")
+    (src / "keep.md").write_text("# keep\n\n" + "word " * 30 + "\n", encoding="utf-8")
+    out = _walk(str(src), str(src), [], prune=[glob_to_re("nope/")])
+    assert out == [str(src / "keep.md")], "the permanent prune applies regardless of configuration"
 
 
 def test_interrupted_first_build_leaves_no_index(tmp_path, monkeypatch):

@@ -252,6 +252,14 @@ class _Clauses:
         f_clauses, f_args = build_filter_clauses(opts.filters, "chunks")
         where.extend(f_clauses)
         args.extend(f_args)
+        # Scope restriction (`--scope client=alfa`), in the exact stored
+        # "<name>=<value>" form. Same SQL-WHERE reasoning as the exclusions
+        # above: a post-filter would shrink the page below `limit`. A scope
+        # nothing carries (NULL `scope` never equals a value) is therefore a
+        # zero-hit page stating its exclusions — the honest answer.
+        if opts.scope:
+            where.append("scope = ?")
+            args.append(opts.scope)
         self.where = where
         self.args = args
 
@@ -307,7 +315,7 @@ def search(store: SqliteFtsStore, query: str, opts: Optional[SearchOpts] = None)
     def do_pass(match: str, lane: Optional[dict] = None, depth: int = fetch) -> list:
         cl = _Clauses(match, opts, lane)
         sql = (
-            "SELECT root, path, chunk_id chunkId, doc_type docType, channel, body_hash bodyHash, "
+            "SELECT root, path, chunk_id chunkId, doc_type docType, channel, scope, body_hash bodyHash, "
             "parent_chunk_id parentChunkId, heading_path headingPath, heading, body, "
             f"bm25(chunks, {bm25_weights(w['headingPath'], w['heading'], w['body'])}) score, "
             f"snippet(chunks, {BODY_COLUMN_INDEX}, '[', ']', ' … ', 12) snippet "
@@ -371,6 +379,7 @@ def search(store: SqliteFtsStore, query: str, opts: Optional[SearchOpts] = None)
                     chunk_id=r["chunkId"],
                     doc_type=r["docType"],
                     channel=r["channel"],
+                    scope=r["scope"],
                     score=score,
                     snippet=snippet,
                     _parent_chunk_id=r["parentChunkId"],

@@ -35,9 +35,21 @@ logger = logging.getLogger(__name__)
 # 4 = files gained `size` — the incremental cheap-check compares mtime AND
 # size now; a preserved-mtime content swap used to be skipped forever with the
 # stale body served.
-SCHEMA_VERSION = 4
+# 5 = chunks gained `scope` (design D9: the value captured from the path by a
+# scope pattern, stored per chunk and filtered with `--scope`).
+SCHEMA_VERSION = 5
 
-FTS_UNINDEXED_COLUMNS = ["root", "path", "chunk_id", "doc_type", "parent_chunk_id", "level", "body_hash", "channel"]
+FTS_UNINDEXED_COLUMNS = [
+    "root",
+    "path",
+    "chunk_id",
+    "doc_type",
+    "parent_chunk_id",
+    "level",
+    "body_hash",
+    "channel",
+    "scope",
+]
 FTS_RANKED_COLUMNS = ["heading_path", "heading", "body"]
 FTS_COLUMNS = FTS_UNINDEXED_COLUMNS + FTS_RANKED_COLUMNS
 
@@ -298,9 +310,22 @@ class SqliteFtsStore:
 
     def insert_chunk(self, c: Chunk) -> None:
         self.db.execute(
-            "INSERT INTO chunks(root,path,chunk_id,doc_type,parent_chunk_id,level,body_hash,channel,heading_path,heading,body) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (c.root, c.path, c.chunk_id, c.doc_type, c.parent_chunk_id, c.level, c.body_hash, c.channel, c.heading_path, c.heading, c.body),
+            "INSERT INTO chunks(root,path,chunk_id,doc_type,parent_chunk_id,level,body_hash,channel,scope,heading_path,heading,body) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                c.root,
+                c.path,
+                c.chunk_id,
+                c.doc_type,
+                c.parent_chunk_id,
+                c.level,
+                c.body_hash,
+                c.channel,
+                c.scope,
+                c.heading_path,
+                c.heading,
+                c.body,
+            ),
         )
 
     def add_node(self, n: GraphNode) -> None:
@@ -454,6 +479,7 @@ def _row_to_chunk(r) -> Chunk:
         parent_chunk_id=r["parent_chunk_id"],
         doc_type=r["doc_type"],
         channel=r["channel"],
+        scope=r["scope"],
         body=r["body"],
         body_hash=r["body_hash"],
     )

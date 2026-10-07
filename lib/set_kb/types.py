@@ -37,6 +37,10 @@ class Chunk:
     # never in code. None = the configuration classifies this file into no
     # channel.
     channel: Optional[str] = None
+    # Scope captured from the path at index time (design D9), stored as
+    # "<name>=<value>" — the exact string `--scope` filters on. None = the file
+    # matched no scope pattern.
+    scope: Optional[str] = None
     # Further sections of this file NOT returned by a path-only fetch, so a
     # fetch can never silently truncate a multi-chunk file. None/0 = this is
     # the whole story.
@@ -112,13 +116,17 @@ class KbHit:
     parent: Optional[dict] = None
     # Source channel of the hit; None = classified into no channel.
     channel: Optional[str] = None
+    # Scope of the hit ("<name>=<value>"); None = the file matched no scope
+    # pattern at index time.
+    scope: Optional[str] = None
 
     def to_json_dict(self) -> dict:
         """The oracle/CLI field set: the reference engine's hit keys, camelCase.
 
         Absent optional fields are omitted (as the reference JSON omits them);
         `suppressedSections` is always present once source dedup ran, `channel`
-        is always present (null when unclassified)."""
+        and `scope` are always present (null when unclassified / uncaptured —
+        the JSON contract names both per hit)."""
         out: dict = {
             "root": self.root,
             "path": self.path,
@@ -126,6 +134,7 @@ class KbHit:
             "chunkId": self.chunk_id,
             "docType": self.doc_type,
             "channel": self.channel,
+            "scope": self.scope,
             "score": self.score,
             "snippet": self.snippet,
         }
@@ -178,6 +187,11 @@ class SearchOpts:
     # Cross-encoder rerank hook: no-op without an injected callable.
     rerank: bool = False
     reranker: Optional[Callable] = None
+    # Restrict the page to one captured scope, in the stored "<name>=<value>"
+    # form. Applied in the SQL WHERE (see `_Clauses`): a post-filter would
+    # shrink the page below `limit` instead of letting the next hit take the
+    # freed slot.
+    scope: Optional[str] = None
 
 
 @dataclass
