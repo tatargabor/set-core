@@ -92,6 +92,12 @@ its own real path, then `PATH`) with a timeout well inside the hook's own. Sync 
 runs `git log`; nothing touches the network. Every early exit is silent and exits 0, because a
 Stop hook that errors is noise on every turn of every session in the project.
 
+The hook also stays silent in a **linked git worktree**. A worktree holds a branch's copy of
+the job file, so pushing from it and from the main checkout would flip the board between two
+branches' evidence; and the agents that run in worktrees here are usually orchestrated ones
+with no Artifact access, for whom a block is a wasted turn. `SET_WAVEBOARD_PUSH=worktree`
+lifts this for a person who runs a job from a worktree on purpose.
+
 ### D9. Deployment: extend the canonical check, keep the additive merge
 
 `set-deploy-hooks` merges by matcher, then by command, and never removes a project's hook.

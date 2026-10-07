@@ -1,24 +1,11 @@
-# wave-board
+# wave-board Specification
 
-## IN SCOPE
+## Purpose
+The live execution status of a multi-step job that runs in waves: a tracked job file per job,
+status derived from evidence by a hook-run sync, the agent's own report as the fast lane, and a
+read-only Artifact page whose database only the agent writes.
 
-- A per-job registration file in the consumer repository, and its schema
-- Status derived from deterministic evidence, and its precedence over manual status
-- Evidence from another registered project, resolved by name
-- An idempotent sync that writes a database payload and says when a push is needed
-- The machine-local record of what was pushed
-- A Stop hook that makes the agent push, with a backoff and a loop guard
-- A read-only board page with an offline fallback
-- Delivery of the hook to projects initialised before this capability existed
-
-## OUT OF SCOPE
-
-- Writing the Artifact database from a script or a hook — the platform does not allow it
-- Publishing or sharing the Artifact page automatically
-- Editing the board from the page; the page never writes
-- Scheduling, assignment, estimates, or any product-roadmap concept
-
-## ADDED Requirements
+## Requirements
 
 ### Requirement: A job is a tracked registration file
 
@@ -140,8 +127,9 @@ current payload hash differs from the recorded one.
 ### Requirement: A Stop hook makes the agent push
 
 `set-hook-waveboard` SHALL run on the Stop event. It SHALL exit 0 without output when
-`stop_hook_active` is true, outside a git repository, when `docs/waveboard/` does not exist, or
-when `SET_WAVEBOARD_PUSH=off`. Otherwise it SHALL run sync quietly and, for each pending job not
+`stop_hook_active` is true, outside a git repository, in a linked git worktree (unless
+`SET_WAVEBOARD_PUSH=worktree`), when `docs/waveboard/` does not exist, or when
+`SET_WAVEBOARD_PUSH=off`. Otherwise it SHALL run sync quietly and, for each pending job not
 reminded within the backoff (default 30 minutes, timestamp in `.set/waveboard/<job>.nag`),
 print one `{"decision":"block","reason":...}` whose reason is the exact push procedure: the
 `ArtifactData` `set` call with the URL, `collection=board`, `doc_id=state`, the payload path,
@@ -153,6 +141,11 @@ SHALL finish well inside its timeout.
 
 - **WHEN** the Stop event carries `stop_hook_active: true`
 - **THEN** the hook prints nothing and exits 0
+
+#### Scenario: A linked worktree is not the board's source
+
+- **WHEN** the Stop event comes from a linked git worktree of a repository with a pending job
+- **THEN** the hook prints nothing
 
 #### Scenario: Backoff
 

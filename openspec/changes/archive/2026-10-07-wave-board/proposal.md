@@ -22,8 +22,8 @@ state and writes a payload file, and a hook makes the agent push it.
 
 - **`bin/set-wave-board`** (Python 3, stdlib only, macOS + Linux): one tracked job file per job
   at `docs/waveboard/<job>.json` in the consumer repo; commands `init`, `add`, `set` (fast
-  lane), `sync` (derive status from evidence, write the payload), `pushed`, `pending`, `page`,
-  `render`.
+  lane), `link` (record the published page URL), `sync` (derive status from evidence, write
+  the payload), `pushed`, `pending`, `page`, `render`.
 - **Four evidence types**, evaluated deterministically: an OpenSpec change's task boxes (with
   the archive as "done"), a path that exists, a commit whose message matches, and any of these
   evaluated in **another registered project** resolved by name through the set-core registry —
@@ -64,5 +64,6 @@ is stated inside `wave-board`, where it can be checked against the code that shi
   a job; machine-local state lives under `.set/waveboard/`, which the tool keeps ignored itself.
 - No new dependency: Python 3 standard library and `git`.
 - New environment variables: `SET_CORE_REGISTRY` (registry path override, default
-  `~/.config/set-core/projects.json`), `SET_WAVEBOARD_PUSH=off` (silence the hook),
+  `~/.config/set-core/projects.json`), `SET_WAVEBOARD_PUSH=off` (silence the hook; `worktree` lets it run in a
+  linked worktree), `SET_WAVEBOARD_BY` (the `by` label, default the short hostname),
   `SET_WAVEBOARD_NAG_SECONDS` (backoff override, default 1800).
