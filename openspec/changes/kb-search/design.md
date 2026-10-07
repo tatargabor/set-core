@@ -320,3 +320,15 @@ returns every project to its prior state, and the index under `.set/` can be del
   re-targeting, with the local engine frozen meanwhile).
 - Whether the upstream repository may be named in set-core's public tree — the MIT notice
   requires the copyright line regardless.
+
+## Decisions taken by the user (2026-10-07)
+
+1. **The originating project's open change (chronology, usage self-measurement) moves to a set-core
+   follow-up**; that project's local engine is frozen (W0) and replaced through the W6 gate.
+2. **Upstream credit: the MIT copyright line only.** The ported files and `LICENSE-UPSTREAM` keep the
+   copyright notice the licence requires; set-core's public tree does not name the upstream repository
+   or its organisation beyond that line.
+3. **macOS proof (W4) runs on the Mac mini**, after a pull there.
+4. **Client scoping is on by default where a project declares client folders** (working inside a
+   declared client folder searches that folder plus the project's cross-client shared docs;
+   `--scope all` for internal work).
