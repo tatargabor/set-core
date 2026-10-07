@@ -1,0 +1,635 @@
+#!/usr/bin/env python3
+"""set-wave-board — the live execution status of a job that runs in waves.
+
+Usage:
+    set-wave-board init <job> --title T [--artifact-url URL]
+    set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
+    set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
+    set-wave-board link <job> <artifact-url>
+    set-wave-board sync [<job>...]
+    set-wave-board pushed <job> --version N [--hash H]
+    set-wave-board pending
+    set-wave-board page
+    set-wave-board render <job> [-o FILE] [--bare]
+
+Common options (after the command): --repo DIR, --json, --quiet, -v.
+
+WHAT A WAVE BOARD IS
+    A process roadmap, not a product roadmap: which wave a multi-step job is in, which
+    item is done, in progress or blocked, and what is left. One job is one tracked file,
+    `docs/waveboard/<job>.json`, in the repository that runs the job.
+
+THREE LAYERS, IN FALLING ORDER OF RELIABILITY
+    1. the job file — waves, items, and the evidence that proves each item;
+    2. `sync`, run by the Stop hook whether or not the agent remembered anything — it
+       derives status from evidence;
+    3. `set`, the agent's own report — the fast lane, overwritten wherever evidence speaks.
+
+WHY THE SCRIPT DOES NOT PUSH
+    The board is a claude.ai Artifact page whose live data is the Artifact's database,
+    and only the agent can write that database (its ArtifactData tool). So `sync` writes
+    the exact document body to `.set/waveboard/<job>.state.json` and prints a PUSH line;
+    the agent sends that file as collection `board`, document `state`, and records the
+    push with `pushed`. `set-hook-waveboard` makes sure it is not forgotten.
+
+EVIDENCE (paths relative to the repository root; never absolute)
+    {"type":"openspec-tasks","path":"openspec/changes/<x>/tasks.md"}
+        all boxes checked = done, some = doing, none = todo; gone but archived = done
+    {"type":"path-exists","path":"..."}          exists = done
+    {"type":"commit","grep":"<pattern>"}         `git log --grep` on HEAD finds one = done
+    {"type":"project","project":"<registry name>","evidence":{...}}
+        the nested evidence, evaluated in another project resolved by its set-core
+        registry name (SET_CORE_REGISTRY, default ~/.config/set-core/projects.json)
+
+    Absence of evidence is NOT a verdict: a missing path, a missing tasks file with no
+    archive, or no matching commit leaves the status as it is — absence cannot tell
+    "not yet" from "not on this machine". Where evidence speaks it wins, except over a
+    manual `blocked` or `skipped`, which are human decisions no evidence can see.
+
+Exit status: 0 = ok, 1 = a job could not be processed, 2 = usage or input error.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as _dt
+import hashlib
+import json
+import logging
+import os
+import re
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+logger = logging.getLogger("set-wave-board")
+
+SCHEMA = "set-wave-board/1"
+STATUSES = ("todo", "doing", "done", "blocked", "skipped")
+STICKY = ("blocked", "skipped")
+EVIDENCE_FIELDS = {
+    "openspec-tasks": ("path",),
+    "path-exists": ("path",),
+    "commit": ("grep",),
+    "project": ("project", "evidence"),
+}
+JOB_DIR = Path("docs") / "waveboard"
+STATE_DIR = Path(".set") / "waveboard"
+ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+BOX_RE = re.compile(r"^\s*[-*]\s+\[([ xX])\]")
+SEED_MARKER = '<script type="application/json" id="seed">null</script>'
+GIT_TIMEOUT = 20
+
+
+class UsageError(Exception):
+    """Bad input from the caller — exit 2, nothing written."""
+
+
+# ── small helpers ────────────────────────────────────────────────────────────
+
+def now_iso() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def host_label() -> str:
+    override = os.environ.get("SET_WAVEBOARD_BY", "").strip()
+    if override:
+        return override
+    return (socket.gethostname() or "unknown").split(".")[0]
+
+
+def dump(obj) -> str:
+    return json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+
+
+def write_if_changed(path: Path, text: str) -> bool:
+    """Atomic write, skipped when the bytes are already there. Returns True if written."""
+    try:
+        if path.read_text(encoding="utf-8") == text:
+            return False
+    except FileNotFoundError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    logger.debug("wrote %s", path)
+    return True
+
+
+def read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        logger.warning("unreadable %s: %s", path, e)
+        return None
+
+
+def git(args, cwd: Path):
+    try:
+        return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True,
+                              timeout=GIT_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.warning("git %s failed in %s: %s", args[0], cwd, e)
+        return None
+
+
+def repo_root(start: str) -> Path:
+    r = git(["rev-parse", "--show-toplevel"], Path(start))
+    if r is None or r.returncode != 0 or not r.stdout.strip():
+        raise UsageError(f"not inside a git repository: {start}")
+    return Path(r.stdout.strip())
+
+
+def registry_path() -> Path:
+    env = os.environ.get("SET_CORE_REGISTRY", "").strip()
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / ".config" / "set-core" / "projects.json"
+
+
+def resolve_project(name: str):
+    reg = read_json(registry_path())
+    if not isinstance(reg, dict):
+        return None
+    entry = (reg.get("projects") or {}).get(name)
+    if not isinstance(entry, dict) or not entry.get("path"):
+        return None
+    return Path(entry["path"]).expanduser()
+
+
+def check_id(kind: str, value: str) -> str:
+    if not ID_RE.match(value or ""):
+        raise UsageError(f"invalid {kind} id {value!r}: letters, digits, . _ - (max 64)")
+    return value
+
+
+def check_rel_path(value) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise UsageError("evidence path must be a non-empty string")
+    if (value.startswith(("/", "~", "\\")) or re.match(r"^[A-Za-z]:[\\/]", value)
+            or ".." in Path(value).parts):
+        raise UsageError(f"evidence path must be relative to the repository root: {value!r}")
+    return value
+
+
+def validate_evidence(ev, nested: bool = False) -> dict:
+    if not isinstance(ev, dict):
+        raise UsageError("evidence must be a JSON object")
+    kind = ev.get("type")
+    if kind not in EVIDENCE_FIELDS:
+        raise UsageError(f"unknown evidence type {kind!r}; known: {', '.join(EVIDENCE_FIELDS)}")
+    for field in EVIDENCE_FIELDS[kind]:
+        if field not in ev:
+            raise UsageError(f"evidence type {kind!r} needs {field!r}")
+    if kind in ("openspec-tasks", "path-exists"):
+        check_rel_path(ev["path"])
+    elif kind == "commit":
+        if not isinstance(ev["grep"], str) or not ev["grep"].strip():
+            raise UsageError("commit evidence needs a non-empty 'grep' pattern")
+    elif kind == "project":
+        if nested:
+            raise UsageError("project evidence cannot be nested inside project evidence")
+        if not isinstance(ev["project"], str) or not ev["project"].strip():
+            raise UsageError("project evidence needs a registry name in 'project'")
+        validate_evidence(ev["evidence"], nested=True)
+    return ev
+
+
+# ── evidence ─────────────────────────────────────────────────────────────────
+
+def _tasks_status(path: Path):
+    total = checked = 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = BOX_RE.match(line)
+        if m:
+            total += 1
+            checked += m.group(1) in "xX"
+    if total and checked == total:
+        return "done"
+    return "doing" if checked else "todo"
+
+
+def evaluate(ev: dict, base: Path):
+    """Return (status or None, unresolved reason or None). None status = no verdict."""
+    kind = ev.get("type")
+    if kind == "openspec-tasks":
+        p = base / ev["path"]
+        if p.is_file():
+            return _tasks_status(p), None
+        # openspec/changes/<x>/tasks.md, archived as openspec/changes/archive/<date>-<x>/tasks.md
+        rel = Path(ev["path"])
+        change = rel.parent
+        archive = base / change.parent / "archive"
+        if change.name and archive.is_dir():
+            for d in sorted(archive.iterdir()):
+                if d.name.endswith("-" + change.name) and (d / rel.name).is_file():
+                    logger.debug("archived tasks for %s found at %s", ev["path"], d)
+                    return "done", None
+        return None, None
+    if kind == "path-exists":
+        return ("done" if (base / ev["path"]).exists() else None), None
+    if kind == "commit":
+        r = git(["log", "-1", "--format=%H", f"--grep={ev['grep']}", "HEAD"], base)
+        if r is not None and r.returncode == 0 and r.stdout.strip():
+            return "done", None
+        return None, None
+    if kind == "project":
+        root = resolve_project(ev["project"])
+        if root is None:
+            return None, f"project {ev['project']!r} is not registered on this machine"
+        if not root.is_dir():
+            return None, f"project {ev['project']!r} is registered but its directory is missing"
+        return evaluate(ev["evidence"], root)
+    return None, f"unknown evidence type {kind!r}"
+
+
+# ── the job file ─────────────────────────────────────────────────────────────
+
+def job_path(root: Path, job: str) -> Path:
+    return root / JOB_DIR / f"{job}.json"
+
+
+def state_dir(root: Path) -> Path:
+    d = root / STATE_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    # Machine-local state never shows up as untracked, whatever the project's own
+    # ignore file says (`.set/` is ignored in set-core consumers, but not everywhere).
+    write_if_changed(d / ".gitignore", "*\n")
+    return d
+
+
+def load_job(root: Path, job: str) -> dict:
+    check_id("job", job)
+    p = job_path(root, job)
+    data = read_json(p)
+    if data is None:
+        raise UsageError(f"no such job (or unreadable): {p}")
+    if not isinstance(data, dict) or data.get("schema") != SCHEMA:
+        raise UsageError(f"{p} is not a {SCHEMA} file")
+    data.setdefault("waves", [])
+    return data
+
+
+def save_job(root: Path, job: str, data: dict) -> bool:
+    return write_if_changed(job_path(root, job), dump(data))
+
+
+def find_item(data: dict, item_id: str):
+    for wave in data["waves"]:
+        for item in wave.get("items", []):
+            if item.get("id") == item_id:
+                return wave, item
+    return None, None
+
+
+def all_jobs(root: Path):
+    d = root / JOB_DIR
+    if not d.is_dir():
+        return []
+    return sorted(p.stem for p in d.glob("*.json"))
+
+
+def content_of(data: dict) -> dict:
+    return {"schema": SCHEMA, "job": data["job"], "title": data.get("title", ""),
+            "waves": data["waves"]}
+
+
+def content_hash(content: dict) -> str:
+    canon = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+
+# ── sync ─────────────────────────────────────────────────────────────────────
+
+def sync_job(root: Path, job: str) -> dict:
+    data = load_job(root, job)
+    if data.get("job") != job:
+        logger.warning("job file %s names job %r; using the file name", job_path(root, job),
+                       data.get("job"))
+        data["job"] = job
+    unresolved, changed_items = [], []
+    stamp, who = now_iso(), host_label()
+    for wave in data["waves"]:
+        for item in wave.get("items", []):
+            ev = item.get("evidence")
+            if not ev:
+                continue
+            status, reason = evaluate(ev, root)
+            if reason:
+                unresolved.append({"item": item.get("id"), "reason": reason})
+                logger.warning("UNRESOLVED %s/%s: %s", job, item.get("id"), reason)
+            if status is None or item.get("status") in STICKY or item.get("status") == status:
+                continue
+            logger.info("%s/%s: %s -> %s (evidence)", job, item.get("id"), item.get("status"), status)
+            changed_items.append({"item": item.get("id"), "old": item.get("status"), "new": status})
+            item["status"], item["updated"], item["by"] = status, stamp, who
+    file_changed = save_job(root, job, data)
+
+    content = content_of(data)
+    h = content_hash(content)
+    sdir = state_dir(root)
+    payload = sdir / f"{job}.state.json"
+    old = read_json(payload)
+    state_changed = False
+    if not isinstance(old, dict) or old.get("content_hash") != h:
+        state = dict(content, synced_at=stamp, synced_by=who, content_hash=h)
+        state_changed = write_if_changed(payload, dump(state))
+    pushed = read_json(sdir / f"{job}.pushed.json") or {}
+    url = data.get("artifact_url")
+    return {
+        "job": job,
+        "artifact_url": url,
+        "payload": str(payload),
+        "content_hash": h,
+        "file_changed": file_changed,
+        "state_changed": state_changed,
+        "changed_items": changed_items,
+        "unresolved": unresolved,
+        "pushed_version": pushed.get("version"),
+        "push_needed": bool(url) and pushed.get("hash") != h,
+    }
+
+
+# ── commands ─────────────────────────────────────────────────────────────────
+
+def out(args, obj, text_lines):
+    if args.json:
+        print(json.dumps(obj, indent=2, ensure_ascii=False))
+    elif not args.quiet:
+        for line in text_lines:
+            print(line)
+
+
+def push_line(r: dict) -> str:
+    return f"PUSH {r['job']} {r['artifact_url']} {r['payload']}"
+
+
+def cmd_init(args, root):
+    job = check_id("job", args.job)
+    p = job_path(root, job)
+    if p.exists():
+        raise UsageError(f"job already exists: {p}")
+    if args.artifact_url:
+        check_url(args.artifact_url)
+    data = {"schema": SCHEMA, "job": job, "title": args.title,
+            "artifact_url": args.artifact_url or None,
+            "created": _dt.date.today().isoformat(), "waves": []}
+    save_job(root, job, data)
+    logger.info("created %s", p)
+    out(args, {"job": job, "file": str(p)}, [str(p)])
+    return 0
+
+
+def cmd_add(args, root):
+    data = load_job(root, args.job)
+    wave_id, item_id = check_id("wave", args.wave), check_id("item", args.item)
+    ev = None
+    if args.evidence:
+        try:
+            ev = json.loads(args.evidence)
+        except ValueError as e:
+            raise UsageError(f"--evidence is not valid JSON: {e}")
+        validate_evidence(ev)
+    if find_item(data, item_id)[1] is not None:
+        raise UsageError(f"item {item_id!r} already exists in job {args.job!r}")
+    wave = next((w for w in data["waves"] if w.get("id") == wave_id), None)
+    if wave is None:
+        wave = {"id": wave_id, "title": args.wave_title or wave_id, "items": []}
+        data["waves"].append(wave)
+    elif args.wave_title:
+        wave["title"] = args.wave_title
+    wave.setdefault("items", []).append({
+        "id": item_id, "title": args.title, "status": "todo", "evidence": ev,
+        "note": "", "updated": now_iso(), "by": host_label()})
+    save_job(root, args.job, data)
+    logger.info("added %s/%s to wave %s", args.job, item_id, wave_id)
+    out(args, {"job": args.job, "wave": wave_id, "item": item_id}, [f"added {args.job}/{item_id}"])
+    return 0
+
+
+def cmd_set(args, root):
+    if args.status not in STATUSES:
+        raise UsageError(f"status must be one of {', '.join(STATUSES)}")
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    old = item.get("status")
+    if old != args.status or (args.note is not None and args.note != item.get("note")):
+        item["status"] = args.status
+        if args.note is not None:
+            item["note"] = args.note
+        item["updated"], item["by"] = now_iso(), host_label()
+        save_job(root, args.job, data)
+        logger.info("%s/%s: %s -> %s (manual)", args.job, args.item, old, args.status)
+    # Evidence is evaluated straight away, so a report the evidence contradicts is
+    # corrected — and said — now, not at the next Stop.
+    r = sync_job(root, args.job)
+    final = find_item(load_job(root, args.job), args.item)[1].get("status")
+    if final != args.status:
+        logger.warning("%s/%s: evidence says %s, not %s", args.job, args.item, final, args.status)
+    lines = [f"{args.job}/{args.item}: {final}"] + ([push_line(r)] if r["push_needed"] else [])
+    out(args, dict(r, item=args.item, status=final), lines)
+    return 0
+
+
+def check_url(url: str) -> str:
+    if not re.match(r"^https://\S+$", url or ""):
+        raise UsageError(f"artifact url must be an https URL: {url!r}")
+    return url
+
+
+def cmd_link(args, root):
+    data = load_job(root, args.job)
+    data["artifact_url"] = check_url(args.url)
+    save_job(root, args.job, data)
+    out(args, {"job": args.job, "artifact_url": args.url}, [f"{args.job} -> {args.url}"])
+    return 0
+
+
+def cmd_sync(args, root):
+    jobs = args.jobs or all_jobs(root)
+    results, rc = [], 0
+    for job in jobs:
+        try:
+            results.append(sync_job(root, job))
+        except UsageError as e:
+            logger.error("%s: %s", job, e)
+            rc = 1
+    out(args, results, [push_line(r) for r in results if r["push_needed"]])
+    return rc
+
+
+def pending_jobs(root: Path):
+    res = []
+    for job in all_jobs(root):
+        try:
+            data = load_job(root, job)
+        except UsageError as e:
+            logger.error("%s: %s", job, e)
+            continue
+        url = data.get("artifact_url")
+        if not url:
+            continue
+        sdir = root / STATE_DIR
+        state = read_json(sdir / f"{job}.state.json") or {}
+        pushed = read_json(sdir / f"{job}.pushed.json") or {}
+        if not state.get("content_hash") or state.get("content_hash") != pushed.get("hash"):
+            res.append({"job": job, "artifact_url": url,
+                        "payload": str(sdir / f"{job}.state.json"),
+                        "synced": bool(state.get("content_hash")),
+                        "content_hash": state.get("content_hash"),
+                        "pushed_version": pushed.get("version")})
+    return res
+
+
+def cmd_pending(args, root):
+    res = pending_jobs(root)
+    lines = []
+    for r in res:
+        extra = f" if_version={r['pushed_version']}" if r["pushed_version"] else ""
+        lines.append(f"PENDING {r['job']} {r['artifact_url']} {r['payload']}{extra}"
+                     + ("" if r["synced"] else " (not synced yet — run sync)"))
+    out(args, res, lines)
+    return 0
+
+
+def cmd_pushed(args, root):
+    load_job(root, args.job)
+    sdir = state_dir(root)
+    h = args.hash
+    if not h:
+        state = read_json(sdir / f"{args.job}.state.json") or {}
+        h = state.get("content_hash")
+        if not h:
+            raise UsageError(f"no payload for {args.job}; run sync first")
+    rec = {"hash": h, "version": args.version, "pushed_at": now_iso(), "by": host_label()}
+    write_if_changed(sdir / f"{args.job}.pushed.json", dump(rec))
+    try:
+        (sdir / f"{args.job}.nag").unlink()
+    except FileNotFoundError:
+        pass
+    logger.info("recorded push of %s: version %s hash %s", args.job, args.version, h[:12])
+    out(args, dict(rec, job=args.job), [f"pushed {args.job} version {args.version}"])
+    return 0
+
+
+def template_path() -> Path:
+    return Path(os.path.realpath(__file__)).parent.parent / "templates" / "waveboard" / "page.html"
+
+
+def cmd_page(args, root):
+    p = template_path()
+    if not p.is_file():
+        raise UsageError(f"page template missing: {p}")
+    out(args, {"page": str(p)}, [str(p)])
+    return 0
+
+
+def render_html(state: dict, bare: bool) -> str:
+    tpl = template_path().read_text(encoding="utf-8")
+    if SEED_MARKER not in tpl:
+        raise UsageError("page template has no seed marker")
+    seed = (json.dumps(state, ensure_ascii=False)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
+    page = tpl.replace(SEED_MARKER, f'<script type="application/json" id="seed">{seed}</script>')
+    if bare:
+        return page
+    return ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+            '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+            '</head>\n<body>\n' + page + '\n</body>\n</html>\n')
+
+
+def cmd_render(args, root):
+    r = sync_job(root, args.job)
+    state = read_json(Path(r["payload"]))
+    target = Path(args.output) if args.output else state_dir(root) / f"{args.job}.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_html(state, args.bare), encoding="utf-8")
+    out(args, {"job": args.job, "file": str(target.resolve())}, [str(target.resolve())])
+    return 0
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--repo", default=".", help="any path inside the repository (default: cwd)")
+    common.add_argument("--json", action="store_true", help="machine-readable output")
+    common.add_argument("-q", "--quiet", action="store_true", help="no text output")
+    common.add_argument("-v", "--verbose", action="count", default=0, help="log to stderr (-vv: debug)")
+
+    p = argparse.ArgumentParser(prog="set-wave-board",
+                                description="Live execution status of a job that runs in waves.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init", parents=[common], help="create docs/waveboard/<job>.json")
+    s.add_argument("job")
+    s.add_argument("--title", required=True)
+    s.add_argument("--artifact-url")
+    s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("add", parents=[common], help="add an item (and its wave if new)")
+    s.add_argument("job")
+    s.add_argument("--wave", required=True)
+    s.add_argument("--wave-title")
+    s.add_argument("--item", required=True)
+    s.add_argument("--title", required=True)
+    s.add_argument("--evidence", help="evidence object as JSON")
+    s.set_defaults(fn=cmd_add)
+
+    s = sub.add_parser("set", parents=[common], help="report an item's status (fast lane)")
+    s.add_argument("job")
+    s.add_argument("item")
+    s.add_argument("status", choices=STATUSES)
+    s.add_argument("--note")
+    s.set_defaults(fn=cmd_set)
+
+    s = sub.add_parser("link", parents=[common], help="record the published board page URL")
+    s.add_argument("job")
+    s.add_argument("url")
+    s.set_defaults(fn=cmd_link)
+
+    s = sub.add_parser("sync", parents=[common], help="derive status from evidence, write payloads")
+    s.add_argument("jobs", nargs="*")
+    s.set_defaults(fn=cmd_sync)
+
+    s = sub.add_parser("pushed", parents=[common], help="record that the payload was pushed")
+    s.add_argument("job")
+    s.add_argument("--version", type=int, required=True, help="the db document version after the write")
+    s.add_argument("--hash", help="the content hash pushed (default: the current payload's)")
+    s.set_defaults(fn=cmd_pushed)
+
+    s = sub.add_parser("pending", parents=[common], help="list jobs whose payload is not pushed")
+    s.set_defaults(fn=cmd_pending)
+
+    s = sub.add_parser("page", parents=[common], help="print the page template path")
+    s.set_defaults(fn=cmd_page)
+
+    s = sub.add_parser("render", parents=[common], help="the page with the current state as seed")
+    s.add_argument("job")
+    s.add_argument("-o", "--output")
+    s.add_argument("--bare", action="store_true",
+                   help="no document skeleton (for publishing as an Artifact)")
+    s.set_defaults(fn=cmd_render)
+    return p
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    level = logging.WARNING - 10 * min(args.verbose, 2)
+    logging.basicConfig(level=level, format="set-wave-board: %(levelname)s %(message)s",
+                        stream=sys.stderr)
+    try:
+        root = Path(args.repo) if args.cmd == "page" else repo_root(args.repo)
+        return args.fn(args, root)
+    except UsageError as e:
+        logger.error("%s", e)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
