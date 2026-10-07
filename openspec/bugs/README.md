@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-157 — the tab title's green "ready" circle fires for a WORKING agent and almost never for a finished one
+- **state:** open
+- **reported:** 2026-10-07 by this session, from code reading while answering the user's question of how the fleet screen shows that an agent is ready
+- **measured (code reading only, not yet seen in a browser):** `FleetProjectColumn.tsx:1129` passes `totals.quiet` as `ready` to `tabTitle` (`fleetTabBadge.ts:57`), which renders `🟢` only when `needsPerson` (= `input + prompt`) is 0. `tally` (`fleetAttention.ts`) counts `quiet` on `state === 'quiet'` whatever the attention class is. So a finished agent (`quiet` + attention `input`) always raises `⚠️` instead, and `🟢` survives only for `quiet` agents whose attention is `working` (the loop is running and the log flushed between calls; see `Fleet.tsx` StateLine) or `unmeasured` (headless).
+- **fail direction:** a false value in the acting direction. The title says "something finished, come read it" about a session that is still running, and it never says it about one that actually finished.
+- **fixed when:** a unit test over `tally` + `tabTitle` asserts that one `quiet`/`working` agent gives the plain title, and that one fresh `quiet`/`input` agent gives whatever the agreed "ready" signal is, red on the unfixed source (stash-and-rerun), plus a browser look at the title.
+
 ### B-156 — a machine's Anthropic model catalogue is frozen at migration, so a model the framework ships never reaches the start dialog
 - **state:** OPEN, now DETECTED — worked around on one machine 2026-09-29 by extending its `providers.json` by hand. Change `upstream-model-watch` reports the gap (`set-providers upstream`, and the start dialog) but does not close it: the user chose advice over automatic update.
 - **reported:** 2026-09-29 by the user: "Start an agent here" offered no Opus 5.5, and asked whether the list could follow new models on its own.
