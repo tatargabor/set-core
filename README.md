@@ -450,4 +450,9 @@ Model providers (Anthropic included) will build orchestration into their platfor
 
 MIT — See [LICENSE](LICENSE) for details.
 
+**Third-party notices.** The knowledge-base search engine (`lib/set_kb/`) is a
+port of MIT-licensed upstream code; its copyright and permission notice, the
+upstream commit it derives from and the port lineage are in
+[`lib/set_kb/LICENSE-UPSTREAM`](lib/set_kb/LICENSE-UPSTREAM).
+
 **Website:** [setcode.dev](https://setcode.dev) · **Source:** [git.setcode.dev/root/set-core](https://git.setcode.dev/root/set-core)
