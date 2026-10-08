@@ -42,9 +42,13 @@ that act.
 ### Requirement: The reference is reachable while the agent holds the mouse
 
 An agent's own program commonly enables mouse tracking, and while it does, the terminal's
-mouse belongs to that program. The framework SHALL provide a way to open a referenced file
-that works in that state, and the screen SHALL say how — a control that silently does nothing
-under the ordinary condition is worse than an absent one.
+mouse belongs to that program: xterm hands every mouse event to the pty and never activates
+a link, so a drawn link does nothing at click time. The framework SHALL provide a way to
+open a referenced file that works in that state, and the screen SHALL say how — a control
+that silently does nothing under the ordinary condition is worse than an absent one. The
+route SHALL be the same gesture in both tracking states — the reader holding CTRL means the
+link, not the application — so what works does not depend on which mode the agent's program
+left behind, a state the reader cannot see and the terminal does not announce.
 
 #### Scenario: Mouse activation is available
 
@@ -54,8 +58,15 @@ under the ordinary condition is worse than an absent one.
 #### Scenario: Mouse activation does not reach the terminal
 
 - **WHEN** the agent's program consumes the click, so mouse activation cannot work
-- **THEN** the same file is still reachable without the mouse, and the screen states that
-  route rather than offering a control that does nothing
+- **THEN** the same modifier-gesture still activates a confirmed reference, because the
+  terminal recognises the reference itself before the mouse event can reach the program
+
+#### Scenario: The gesture does not take the program's mouse away
+
+- **WHEN** the reader presses the mouse without the modifier, or where no confirmed
+  reference sits under the pointer
+- **THEN** the event reaches the terminal's ordinary handling untouched — the program keeps
+  its mouse, and selection keeps its own modifier
 
 ### Requirement: An external URL keeps its existing behaviour
 
@@ -93,6 +104,14 @@ project root is known. The shape test is what keeps prose out — a terminal is 
 sentences, and "contains a slash" alone would turn `and/or` and `24/7` into links that fail
 when activated. Without a root there is nothing to resolve against, and resolving against a
 working directory the reader cannot see would name a stranger's file.
+
+A `file:` URI SHALL be recognised as the path it names — it is the desktop's spelling of a
+path, which desktop tools print as readily as the bare form. The translation accepts only a
+local file: the URI's host must be empty or `localhost`, the pathname must be absolute, and
+a percent-escape that cannot be decoded leaves the token as text. Every other scheme keeps
+the behaviour the recognition rules already give it, and the destination rules run on the
+translated PATH unchanged, so the hand-over guard rules on exactly the string the bare form
+would have produced.
 
 #### Scenario: A relative path with a line number
 
@@ -132,6 +151,27 @@ working directory the reader cannot see would name a stranger's file.
 
 - **WHEN** a relative token appears in a terminal whose project root is not known
 - **THEN** it is left as ordinary text
+
+#### Scenario: A file: URI spelling of a path
+
+- **WHEN** the output contains a `file:` URI whose host is empty or `localhost` and whose
+  pathname is absolute
+- **THEN** it is recognised as the path it names — the same reference the bare path would
+  produce, destination and guards included
+
+#### Scenario: A file: URI that names another machine
+
+- **WHEN** the output contains a `file:` URI carrying another host, such as
+  `file://server/share/report.pdf`
+- **THEN** it is left as ordinary text — the path it names is on a machine this framework
+  does not hold
+
+#### Scenario: A file: URI with an undecodable escape
+
+- **WHEN** the output contains a `file:` URI whose pathname carries a percent-escape that
+  cannot be decoded
+- **THEN** it is left as ordinary text — a half-parsed URI is a guess, and a guess that
+  opens is worse than text that does nothing
 
 ### Requirement: A relative reference belongs to the agent's own working directory
 

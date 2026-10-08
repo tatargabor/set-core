@@ -1,0 +1,33 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": true,
+  "hits": [
+    {
+      "channel": "client",
+      "chunkId": "0619313f:0",
+      "docType": "doc",
+      "headingPath": "Megbeszélés a Client Alfa ajánlatról",
+      "path": "client-alfa/meetings/alfa-meeting.md",
+      "root": "corpus/clients",
+      "score": -4.075768046004768,
+      "snippet": " … A [megbeszélés] jegyzőkönyve rögzíti, hogy az árazás modulonkénti bontását elkérjük.",
+      "suppressedSections": 0
+    },
+    {
+      "channel": null,
+      "chunkId": "d20aea09:meta",
+      "docType": "doc",
+      "headingPath": "Őszi sprint tervező megbeszélés",
+      "path": "2026-09-12-tervezes-part1.md",
+      "root": "corpus/meetings",
+      "score": -4.231625276687377,
+      "snippet": "Az őszi sprint tervét átbeszéltük: a tervező munka első köre a keresőt érinti, a második kör a jelentéseket. A tervezés határideje péntek, a megbeszélés jegyzőkönyvét a tervező csatolja.",
+      "suppressedSections": 1
+    }
+  ],
+  "limit": 2,
+  "query": "megbeszélés",
+  "total": 3
+}

@@ -1,0 +1,44 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "d20aea09:0",
+      "docType": "doc",
+      "headingPath": "Őszi sprint tervező megbeszélés",
+      "path": "2026-09-12-tervezes-part1.md",
+      "root": "corpus/meetings",
+      "score": -21.03394137425461,
+      "snippet": "\nAz [őszi] [sprint] tervét átbeszéltük: a [tervező] munka első köre a keresőt … ",
+      "suppressedSections": 1
+    },
+    {
+      "channel": "client",
+      "chunkId": "0619313f:0",
+      "docType": "doc",
+      "headingPath": "Megbeszélés a Client Alfa ajánlatról",
+      "path": "client-alfa/meetings/alfa-meeting.md",
+      "root": "corpus/clients",
+      "score": -4.075768046004768,
+      "snippet": " … A [megbeszélés] jegyzőkönyve rögzíti, hogy az árazás modulonkénti bontását elkérjük.",
+      "suppressedSections": 0
+    },
+    {
+      "channel": "meetings",
+      "chunkId": "e08b2bc4:0",
+      "docType": "doc",
+      "headingPath": "Kickoff megbeszélés jegyzőkönyv",
+      "path": "minutes/kickoff.md",
+      "root": "corpus/meetings",
+      "score": -4.102922798965598,
+      "snippet": "\nA kickoff [megbeszélés] rögzítette a mérföldköveket és a felelősöket. A megbeszélésen döntés … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "őszi sprint tervező megbeszélés",
+  "total": 3
+}

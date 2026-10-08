@@ -1,0 +1,55 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": "client",
+      "chunkId": "a5149bff:0",
+      "docType": "doc",
+      "headingPath": "Zaffron brief",
+      "path": "client-alfa/zaffron-brief.md",
+      "root": "corpus/clients",
+      "score": -3.648111544191074,
+      "snippet": "\nThe client asks about the [zaffron] option in one short brief. The … ",
+      "suppressedSections": 0
+    },
+    {
+      "channel": null,
+      "chunkId": "9b586ac5:0",
+      "docType": "doc",
+      "headingPath": "Quarterly notes",
+      "path": "zaffron-notes.md",
+      "root": "corpus/planning",
+      "score": -2.4656760496122225,
+      "snippet": "\nThe quarterly notes mention [zaffron] twice, because the [zaffron] line item moved … ",
+      "suppressedSections": 1
+    },
+    {
+      "channel": "client",
+      "chunkId": "4e74fe57:0",
+      "docType": "doc",
+      "headingPath": "Notes from the beta account",
+      "path": "client-beta/beta-notes.md",
+      "root": "corpus/clients",
+      "score": -1.5814318754151757,
+      "snippet": " … One later mail mentions [zaffron] in passing.",
+      "suppressedSections": 0
+    },
+    {
+      "channel": null,
+      "chunkId": "3a7877d6:0",
+      "docType": "doc",
+      "headingPath": "Plan for the specialty line",
+      "path": "zaffron-plan.md",
+      "root": "corpus/planning",
+      "score": -2.1884357925917537,
+      "snippet": " … The [zaffron] item needs a slot in the schedule, and the plan … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "zaffron",
+  "total": 4
+}

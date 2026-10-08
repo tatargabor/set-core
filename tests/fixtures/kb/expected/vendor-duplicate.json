@@ -1,0 +1,25 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": true,
+  "hits": [
+    {
+      "akaPaths": [
+        "duplicate-note.md"
+      ],
+      "channel": null,
+      "chunkId": "ab1529a9:0",
+      "docType": "doc",
+      "headingPath": "Vendor onboarding",
+      "path": "duplicate-note.md",
+      "root": "corpus/planning",
+      "score": -9.954711872116452,
+      "snippet": "\n[Vendor] [onboarding] starts with the registration form. The [vendor] record is created … ",
+      "suppressedSections": 1
+    }
+  ],
+  "limit": 10,
+  "query": "vendor onboarding",
+  "total": 2
+}

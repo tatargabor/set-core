@@ -1,0 +1,10 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [],
+  "limit": 10,
+  "query": "xyzzyplugh qwertyfoo",
+  "total": 0
+}

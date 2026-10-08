@@ -1,0 +1,319 @@
+<title>Wave Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a wave ladder — one band per wave, top to bottom in run order, each with a
+   segmented strip (one segment per item) so the job's shape reads before its rows. */
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --ink: #161a23;
+  --muted: #5b6273;
+  --line: #dde0e7;
+  --accent: #3446a8;
+  --done: #23854f;
+  --doing: #b86e00;
+  --blocked: #c23a32;
+  --todo: #c9cdd6;
+  --skipped: #9aa0ad;
+  --chip-done: #e3f3ea;
+  --chip-doing: #fbefdb;
+  --chip-blocked: #fbe4e2;
+  --chip-todo: #eef0f4;
+  --chip-skipped: #f0f1f3;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141a; --surface: #1a1d25; --ink: #e8eaf0; --muted: #9aa1b2; --line: #2c303b;
+    --accent: #8d9cff; --done: #4cc184; --doing: #f0a63a; --blocked: #f07068; --todo: #3a3f4c;
+    --skipped: #6c7280; --chip-done: #173527; --chip-doing: #3a2a10; --chip-blocked: #3d1d1b;
+    --chip-todo: #232733; --chip-skipped: #20232b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12141a; --surface: #1a1d25; --ink: #e8eaf0; --muted: #9aa1b2; --line: #2c303b;
+  --accent: #8d9cff; --done: #4cc184; --doing: #f0a63a; --blocked: #f07068; --todo: #3a3f4c;
+  --skipped: #6c7280; --chip-done: #173527; --chip-doing: #3a2a10; --chip-blocked: #3d1d1b;
+  --chip-todo: #232733; --chip-skipped: #20232b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body);
+  font-size: 15px; line-height: 1.5; margin: 0;
+}
+.wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 48px; display: grid; gap: 28px; }
+header { display: grid; gap: 14px; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+}
+h1 {
+  font-family: var(--font-display); font-stretch: 112%; font-weight: 750; font-size: clamp(26px, 5vw, 38px);
+  line-height: 1.1; margin: 0; text-wrap: balance;
+}
+.source { display: inline-flex; align-items: center; gap: 6px; }
+.source::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--skipped); }
+.source[data-kind="live"]::before { background: var(--done); }
+.summary { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.summary .big { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+.summary .big small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.strip { display: flex; gap: 3px; height: 10px; }
+.strip.big-strip { height: 14px; }
+.seg { flex: 1 1 0; min-width: 4px; border-radius: 2px; background: var(--todo); }
+.seg.done { background: var(--done); }
+.seg.doing { background: var(--doing); }
+.seg.blocked { background: var(--blocked); }
+.seg.skipped { background: repeating-linear-gradient(135deg, var(--skipped) 0 3px, transparent 3px 6px); }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap; background: var(--chip-todo); color: var(--muted);
+}
+.chip::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--todo); border: 1px solid var(--skipped); }
+.chip.done { background: var(--chip-done); color: var(--done); }
+.chip.done::before { background: var(--done); border-color: var(--done); }
+.chip.doing { background: var(--chip-doing); color: var(--doing); }
+.chip.doing::before { background: var(--doing); border-color: var(--doing); }
+.chip.blocked { background: var(--chip-blocked); color: var(--blocked); }
+.chip.blocked::before { background: var(--blocked); border-color: var(--blocked); }
+.chip.skipped { background: var(--chip-skipped); color: var(--skipped); }
+.chip.skipped::before { background: transparent; border-style: dashed; }
+.waves { display: grid; gap: 18px; }
+.wave {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 0 16px;
+  padding-block: 16px; border-top: 1px solid var(--line);
+}
+.wave-tag { font-family: var(--font-mono); font-size: 13px; color: var(--muted); padding-top: 4px; overflow-wrap: anywhere; }
+.wave.current .wave-tag { color: var(--accent); font-weight: 500; }
+.wave-body { display: grid; gap: 10px; min-width: 0; }
+.wave-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; justify-content: space-between; }
+.wave-head h2 {
+  font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 19px; margin: 0;
+  text-wrap: balance; min-width: 0;
+}
+.wave-count { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.current-flag {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--accent); border-radius: 3px; padding: 0 6px; margin-left: 8px;
+}
+.items { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.item {
+  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline;
+  padding: 10px 12px; border-top: 1px solid var(--line);
+}
+.item:first-child { border-top: 0; }
+.item-title { min-width: 0; overflow-wrap: anywhere; }
+.item-title .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-right: 8px; }
+.item.skipped .item-title .t { text-decoration: line-through; color: var(--muted); }
+.item-note { grid-column: 2 / -1; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.item-meta { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.empty {
+  border: 1px dashed var(--line); border-radius: 8px; padding: 22px; color: var(--muted); background: var(--surface);
+}
+.empty code, .foot code { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+.foot { font-size: 13px; color: var(--muted); }
+@media (max-width: 560px) {
+  .wave { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .item { grid-template-columns: minmax(0, 1fr) auto; }
+  .item .chip { grid-row: 1; grid-column: 1; justify-self: start; }
+  .item .item-meta { grid-row: 1; grid-column: 2; }
+  .item-title { grid-column: 1 / -1; }
+  .item-note { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .seg { transition: background-color .4s ease; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">
+      <span id="job-id">wave board</span>
+      <span class="source" id="source" data-kind="none">No data yet</span>
+      <span id="synced"></span>
+    </div>
+    <h1 id="title">Wave Board</h1>
+    <div class="summary" id="summary" hidden>
+      <span class="big" id="overall"></span>
+      <span class="legend" id="legend"></span>
+    </div>
+    <div class="strip big-strip" id="overall-strip" aria-hidden="true"></div>
+  </header>
+  <main class="waves" id="waves">
+    <div class="empty" id="empty">
+      This board shows the live status of a job that runs in waves. Nothing has been pushed to it
+      yet: the agent pushes the state after <code>set-wave-board sync</code>, and it appears here
+      without a reload.
+    </div>
+  </main>
+  <p class="foot">Read-only. Status comes from evidence in the repository (task boxes, files,
+    commits); an agent's own report fills the gaps until evidence speaks. Updated by
+    <code>set-wave-board</code>.</p>
+</div>
+
+<script type="application/json" id="seed">null</script>
+<script>
+(function () {
+  "use strict";
+  var STATUSES = ["done", "doing", "blocked", "todo", "skipped"];
+  var LABEL = { done: "done", doing: "in progress", blocked: "blocked", todo: "to do", skipped: "skipped" };
+  var current = null;
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function norm(s) { return STATUSES.indexOf(s) >= 0 ? s : "todo"; }
+  function tally(items) {
+    var c = { done: 0, doing: 0, blocked: 0, todo: 0, skipped: 0, total: items.length };
+    items.forEach(function (it) { c[norm(it.status)] += 1; });
+    c.remaining = c.doing + c.blocked + c.todo;
+    return c;
+  }
+  function ago(iso) {
+    var t = Date.parse(iso);
+    if (isNaN(t)) return "";
+    var s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 60) return "just now";
+    var m = Math.round(s / 60);
+    if (m < 60) return m + " min ago";
+    var h = Math.round(m / 60);
+    if (h < 48) return h + " h ago";
+    return Math.round(h / 24) + " days ago";
+  }
+  function stamp(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  }
+  function strip(target, items) {
+    target.textContent = "";
+    items.forEach(function (it) {
+      var s = el("span", "seg " + norm(it.status));
+      s.title = (it.id || "") + " — " + LABEL[norm(it.status)];
+      target.appendChild(s);
+    });
+  }
+  function setSource(kind, text) {
+    var s = document.getElementById("source");
+    s.dataset.kind = kind;
+    s.textContent = text;
+  }
+  function renderSynced() {
+    var out = document.getElementById("synced");
+    if (!current || !current.synced_at) { out.textContent = ""; return; }
+    out.textContent = "synced " + stamp(current.synced_at) + " · " + ago(current.synced_at) +
+      (current.synced_by ? " · " + current.synced_by : "");
+  }
+
+  function render(state) {
+    current = state;
+    var waves = (state && Array.isArray(state.waves)) ? state.waves : [];
+    var all = [];
+    waves.forEach(function (w) { (w.items || []).forEach(function (it) { all.push(it); }); });
+    var title = (state && state.title) || "Wave Board";
+    document.getElementById("title").textContent = title;
+    document.title = state && state.title ? state.title + " · Wave Board" : "Wave Board";
+    document.getElementById("job-id").textContent = (state && state.job) || "wave board";
+    renderSynced();
+
+    var host = document.getElementById("waves");
+    var empty = document.getElementById("empty");
+    var summary = document.getElementById("summary");
+    host.textContent = "";
+    if (!all.length) {
+      host.appendChild(empty);
+      summary.hidden = true;
+      document.getElementById("overall-strip").textContent = "";
+      return;
+    }
+
+    var c = tally(all);
+    var counted = c.total - c.skipped;
+    var overall = document.getElementById("overall");
+    overall.textContent = c.done + " of " + counted + " done ";
+    overall.appendChild(el("small", null, "· " + c.remaining + " remaining"));
+    var legend = document.getElementById("legend");
+    legend.textContent = "";
+    STATUSES.forEach(function (s) {
+      if (c[s]) legend.appendChild(el("span", "chip " + s, c[s] + " " + LABEL[s]));
+    });
+    summary.hidden = false;
+    strip(document.getElementById("overall-strip"), all);
+
+    var currentIdx = -1;
+    waves.forEach(function (w, i) {
+      if (currentIdx < 0 && tally(w.items || []).remaining > 0) currentIdx = i;
+    });
+
+    waves.forEach(function (w, i) {
+      var items = w.items || [];
+      var wc = tally(items);
+      var sec = el("section", "wave" + (i === currentIdx ? " current" : ""));
+      sec.appendChild(el("div", "wave-tag", w.id || "w" + i));
+      var body = el("div", "wave-body");
+      var head = el("div", "wave-head");
+      var h2 = el("h2", null, w.title || w.id || "");
+      if (i === currentIdx) h2.appendChild(el("span", "current-flag", "current"));
+      head.appendChild(h2);
+      var cnt = wc.done + "/" + (wc.total - wc.skipped) + " done";
+      if (wc.remaining) cnt += " · " + wc.remaining + " left";
+      if (wc.blocked) cnt += " · " + wc.blocked + " blocked";
+      head.appendChild(el("span", "wave-count", cnt));
+      body.appendChild(head);
+      var st = el("div", "strip");
+      st.setAttribute("aria-hidden", "true");
+      strip(st, items);
+      body.appendChild(st);
+      var ul = el("ul", "items");
+      items.forEach(function (it) {
+        var s = norm(it.status);
+        var li = el("li", "item " + s);
+        li.appendChild(el("span", "chip " + s, LABEL[s]));
+        var t = el("div", "item-title");
+        t.appendChild(el("span", "id", it.id || ""));
+        t.appendChild(el("span", "t", it.title || ""));
+        li.appendChild(t);
+        var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
+        li.appendChild(el("span", "item-meta", meta + (it.by ? " · " + it.by : "")));
+        if (it.note) li.appendChild(el("div", "item-note", it.note));
+        ul.appendChild(li);
+      });
+      if (!items.length) ul.appendChild(el("li", "item", "No items in this wave yet."));
+      body.appendChild(ul);
+      sec.appendChild(body);
+      host.appendChild(sec);
+    });
+  }
+
+  var seed = null;
+  try { seed = JSON.parse(document.getElementById("seed").textContent || "null"); } catch (e) { seed = null; }
+  if (seed) { setSource("snapshot", "Snapshot"); }
+  render(seed);
+  setInterval(renderSynced, 60000);
+
+  // Live data: the db capability's board/state document. The page only reads it.
+  var c = window.claude;
+  if (c && typeof c.use === "function") {
+    c.use("db").then(function (db) {
+      if (!db) return;
+      db.doc("board/state").onSnapshot(function (snap) {
+        if (snap.exists) {
+          setSource("live", "Live");
+          render(snap.data());
+        } else if (!seed) {
+          setSource("live", "Live · waiting for the first push");
+        }
+      }, function () {
+        setSource("snapshot", current ? "Snapshot · live updates stopped" : "Live updates unavailable");
+      });
+    }, function () { /* no db on this view: the seed stays */ });
+  }
+})();
+</script>

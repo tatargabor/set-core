@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { buildActs, errorStanding, sayCount, speakerLabel, toolSummary } from '../lib/fleetConversation'
+import { buildActs, errorStanding, notificationLine, sayCount, speakerLabel, toolSummary } from '../lib/fleetConversation'
 import type { Act, LogTurn, SayAct, Speaker, WorkAct } from '../lib/fleetConversation'
 import { plainExcerpt } from '../lib/excerptText'
 
@@ -146,6 +146,26 @@ export function SayRow({ act, showThinking, expanded, onExpand, compact }: {
   compact?: boolean
 }) {
   const style = SAY_STYLE[act.speaker]
+  /*
+   * A background-task / monitor wake-up: one dim line, like a tool act, not a card.
+   * A meeting copilot receives one per transcript batch — printed as written they
+   * were most of the column and pushed the agent's own sentences off screen. The
+   * full text is one click away; nothing is hidden, only folded.
+   */
+  const notice = act.speaker === 'runtime' ? notificationLine(act.text) : null
+  if (notice !== null && !expanded) {
+    return (
+      <div data-log-act="say" data-log-speaker={act.speaker} data-log-notice="" className="pl-3 py-0.5">
+        <button
+          onClick={onExpand}
+          title={`${style.note ?? ''} — click for the full notification`}
+          className="w-full text-left text-xs text-fg-ghost hover:text-fg-muted truncate"
+        >
+          <span className="tabular-nums mr-2">{clock(act.at)}</span>⏵ {notice}
+        </button>
+      </div>
+    )
+  }
   const long = act.text.length > CLIP
   const shown = compact ? plainExcerpt(act.text) : (long && !expanded ? act.text.slice(0, CLIP) : act.text)
   return (

@@ -497,6 +497,49 @@ export function fileReference(
 }
 
 /**
+ * The local absolute path a `file:` URI names, or `null` for any other string.
+ *
+ * A `file:` URI is the desktop's SPELLING of a path, not a scheme the browser
+ * could follow: desktop tools print it, so an agent's output carries it as
+ * often as the bare form — and until 2026-10-03 it was the one spelling that
+ * produced no link at all (`://` filtered it in both routes), which a reader
+ * experiences as a dead token. Measured live: the page itself opened fine
+ * through the endpoint (`viewed: true`, Chrome history 11:46:33); only the
+ * recogniser never offered it.
+ *
+ * Translated here, the path reaches exactly the pipes a printed absolute path
+ * already reaches — the file view when a served checkout contains it, the
+ * desktop hand-over otherwise, where `desktop.py`'s refusal list runs on the
+ * PATH either way. Nothing navigates a browser frame, so the fear the `://`
+ * skip was written for — a refused scheme getting a second chance at being
+ * FOLLOWED — does not apply to the one scheme this accepts. `javascript:` and
+ * every other scheme still fall through to the skip.
+ *
+ * Refusals, each a rule rather than an oversight:
+ *  - another HOST (`file://server/share`) names a path on ANOTHER machine —
+ *    not this machine's file, so not ours to offer.
+ *  - a non-absolute pathname, or a malformed percent-escape, stays text: a
+ *    half-parsed URI is a guess, and a guess that opens is worse than text
+ *    that does nothing.
+ */
+export function fileUriPath(candidate: string): string | null {
+  if (!candidate.toLowerCase().startsWith('file://')) return null
+  let parsed: URL
+  try {
+    parsed = new URL(candidate)
+  } catch {
+    return null
+  }
+  if (parsed.hostname !== '' && parsed.hostname !== 'localhost') return null
+  if (!parsed.pathname.startsWith('/')) return null
+  try {
+    return decodeURIComponent(parsed.pathname)
+  } catch {
+    return null
+  }
+}
+
+/**
  * The absolute path a terminal token names, for the route that hands a path to
  * the DESKTOP — or `null` when the token is not one.
  *
@@ -508,9 +551,12 @@ export function fileReference(
  *
  * ## The rules, and why each one is a refusal
  *
- *  - **no `://`.** A URL is the other link provider's business, and handing one
- *    to a desktop opener is how a `file:` or a `javascript:` scheme gets a
- *    second chance at being followed.
+ *  - **no `://` — except the `file:` scheme, which `fileUriPath` translates to
+ *    its path first.** A URL is the other link provider's business, and handing
+ *    one to a desktop opener is how a `javascript:` scheme gets a second chance
+ *    at being followed. A `file:` URI is the exception because nothing follows
+ *    it: translated, it is the same string the bare path already is, and it
+ *    lands in the same guarded pipes.
  *  - **a trailing `:<line>` is dropped.** A desktop handler takes no line
  *    number, and `/tmp/run.log:42` should still open `/tmp/run.log`.
  *  - **a relative token needs a BASE to resolve against.** Without one it stays
@@ -526,6 +572,12 @@ export function fileReference(
  */
 export function desktopReference(token: string, base?: string): string | null {
   for (const candidate of unwrapCandidates(token)) {
+    // A `file:` URI is translated rather than skipped — see `fileUriPath`.
+    const fromUri = fileUriPath(candidate)
+    if (fromUri !== null) {
+      const stripped = withoutTrailingSlash(pathAndLine(fromUri)[0]?.path ?? fromUri)
+      return stripped.length >= 2 ? stripped : null
+    }
     if (candidate.includes('://') || candidate.startsWith('//')) continue
     const written = (pathAndLine(candidate)[0]?.path ?? candidate).replace(/^\.\//, '')
     if (!written) continue
@@ -646,6 +698,7 @@ export function terminalTarget(token: string, where: TerminalWhere): TerminalTar
     A token carrying a star is offered ONLY to the listing — see `carriesGlob`.
   */
   const candidates = unwrapCandidates(token)
+    .map(c => fileUriPath(c) ?? c)
     .filter(c => !c.includes('://') && !c.startsWith('//'))
     .reverse()
   const provenOnly = carriesGlob(token)
@@ -800,6 +853,25 @@ export interface Reference {
   index: number
   token: string
   target: NonNullable<TerminalTarget>
+}
+
+/**
+ * The target whose token covers `col` in ONE visual row, or `null`.
+ *
+ * This is the click-side half of `terminalReferences` — the provider draws the
+ * links, and the reader activates one by pointing at a CELL. It exists as its
+ * own function because of a measured platform fact, not taste: while the
+ * agent's TUI holds mouse tracking (xterm marks its own root with
+ * `enable-mouse-events`), xterm hands EVERY mouse event to the pty and never
+ * activates a link, so the component must be able to re-ask the recogniser for
+ * one row and one column itself. Same recogniser, same `where`, one question:
+ * *what is under the reader's finger.*
+ */
+export function referenceAtColumn(row: string, col: number, where: TerminalWhere): TerminalTarget | null {
+  for (const { index, token, target } of terminalReferences(row, where)) {
+    if (col >= index && col < index + token.length) return target
+  }
+  return null
 }
 
 /**

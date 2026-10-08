@@ -1,0 +1,47 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "7a798740:1",
+      "docType": "doc",
+      "headingPath": "Delivery Handbook > Budget planning",
+      "parent": {
+        "headingPath": "Delivery Handbook"
+      },
+      "path": "overview.md",
+      "root": "corpus/planning",
+      "score": -7.598535812105727,
+      "snippet": "\n[Budget] [planning] starts each quarter. The [budget] owner collects the estimates, and … ",
+      "suppressedSections": 7
+    },
+    {
+      "channel": null,
+      "chunkId": "6ebdb617:0",
+      "docType": "agents",
+      "headingPath": "Agent instructions",
+      "path": "CLAUDE.md",
+      "root": "corpus/planning",
+      "score": -3.207596940690647,
+      "snippet": " … short, and check the handbook before [planning] anything that touches the [budget].",
+      "suppressedSections": 0
+    },
+    {
+      "channel": null,
+      "chunkId": "3a7877d6:0",
+      "docType": "doc",
+      "headingPath": "Plan for the specialty line",
+      "path": "zaffron-plan.md",
+      "root": "corpus/planning",
+      "score": -3.1427030662334303,
+      "snippet": "\nThe [plan] reserves capacity for the specialty line. The zaffron item needs … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "budget planning",
+  "total": 3
+}

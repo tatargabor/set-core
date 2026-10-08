@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ancestorsOf, buildListingIndex, buildTree, desktopReference, fileReference, languageOf,
-  fileToOpen, RECOGNISER_LIMITS, statusKind, terminalReferences, terminalTarget,
+  fileToOpen, RECOGNISER_LIMITS, referenceAtColumn, statusKind, terminalReferences, terminalTarget,
 } from '../../src/lib/fleetFiles'
 
 describe('a flat listing becomes a structure', () => {
@@ -178,7 +178,45 @@ describe('a path the file view cannot open', () => {
     // Handing a URL to a desktop opener is how a scheme that was already
     // refused in the browser gets a second chance at being followed.
     expect(desktopReference('http://localhost:7400/x', root)).toBeNull()
-    expect(desktopReference('file:///etc/passwd', root)).toBeNull()
+    expect(desktopReference('javascript:void(0)', root)).toBeNull()
+  })
+
+  it('translates a file: URI to the path it names — the reported case', () => {
+    // Measured 2026-10-03: an agent built a status page and printed its
+    // `file:///home/...` address; the URI was the ONE spelling of a path that
+    // produced no link at all, so Ctrl+click and copy both led nowhere while
+    // the endpoint itself worked. A file: URI is the desktop's spelling of a
+    // path, not a scheme the browser follows — translated, it names the same
+    // file the bare form already names, and every downstream guard still runs.
+    expect(desktopReference('file:///tmp/shot.png', root)).toBe('/tmp/shot.png')
+    expect(desktopReference('file:///home/x/proj/src/app.ts', root))
+      .toBe('/home/x/proj/src/app.ts')
+  })
+
+  it('still drops a trailing line number from a file: URI', () => {
+    expect(desktopReference('file:///tmp/run.log:42', root)).toBe('/tmp/run.log')
+  })
+
+  it('decodes percent-escapes in a file: URI', () => {
+    expect(desktopReference('file:///tmp/my%20reports/shot-2.png', root))
+      .toBe('/tmp/my reports/shot-2.png')
+  })
+
+  it('refuses a file: URI that names another machine', () => {
+    // `file://server/share` is a path on ANOTHER host, not this machine's file.
+    expect(desktopReference('file://nas.local/share/report.pdf', root)).toBeNull()
+  })
+
+  it('refuses a file: URI with an undecodable escape', () => {
+    // A half-parsed URI is a guess, and a guess that opens is worse than text
+    // that does nothing — the spec's own refusal scenario.
+    expect(desktopReference('file:///tmp/a%ZZb.png', root)).toBeNull()
+  })
+
+  it('refuses a file: URI with no path', () => {
+    // `file:///` names the root, which the bare form also refuses (`/` is
+    // below the two-character floor) — the translation stays consistent.
+    expect(desktopReference('file:///', root)).toBeNull()
   })
 
   it('resolves a relative DIRECTORY against the project root — the reported case', () => {
@@ -320,6 +358,22 @@ describe('where a terminal token should be opened', () => {
       .toEqual({ kind: 'desktop', path: '/tmp/shot.png', confidence: 'high' })
   })
 
+  it('routes a file: URI exactly where the bare path would go', () => {
+    // The reported case, 2026-10-03: an agent printed a built page as
+    // `file:///home/...` and the token was dead — no link in either route.
+    // In a served checkout the destination is the file view (whose desktop
+    // button is the one place a local page may be handed over); outside one,
+    // the desktop route, whose endpoint refusals are REPORTED rather than
+    // silent.
+    expect(terminalTarget('file:///home/x/proj/src/app.ts', { root, cwd: wt, listing, checkouts }))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+    expect(terminalTarget('file:///tmp/shot.png', { root, cwd: wt, listing, checkouts }))
+      .toEqual({ kind: 'desktop', path: '/tmp/shot.png', confidence: 'high' })
+    // Another host is not this machine's path — text, as before.
+    expect(terminalTarget('file://nas.local/share/report.pdf', { root, cwd: root, known }))
+      .toBeNull()
+  })
+
   it('offers an absolute path with no project context, and refuses a relative one', () => {
     expect(terminalTarget('/tmp/shot.png', {}))
       .toEqual({ kind: 'desktop', path: '/tmp/shot.png', confidence: 'high' })
@@ -329,6 +383,41 @@ describe('where a terminal token should be opened', () => {
   it('leaves prose alone wherever the agent stands', () => {
     expect(terminalTarget('és/vagy', { root, cwd: wt, known })).toBeNull()
     expect(terminalTarget('24/7', { root, cwd: root, known })).toBeNull()
+  })
+})
+
+/**
+ * THE CLICK-SIDE HALF of the recogniser — `referenceAtColumn`. While the
+ * agent's TUI holds mouse tracking, xterm hands mouse events to the pty and
+ * never activates a link, so the component re-asks the recogniser for one row
+ * and one column. These hold the verdict where it is measurable: which cell
+ * hits which target, and what the misses answer.
+ */
+describe('what is under the reader\'s finger', () => {
+  const root = '/home/x/proj'
+  const wt = '/home/x/proj-wt-mobil'
+  const known = new Set(['src/app.ts'])
+  const where = { root, cwd: wt, known }
+
+  it('answers with the target whose token covers the column', () => {
+    const row = '  see file:///home/x/proj/src/app.ts printed in the log'
+    // the real payload: the server's list of served checkouts
+    const where = { root, cwd: wt, known, checkouts: [root, wt] }
+    const col = row.indexOf('file://') + 4
+    expect(referenceAtColumn(row, col, where))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+    // the token's LAST character still hits; the first character past it does not
+    const end = row.indexOf('app.ts') + 'app.ts'.length
+    expect(referenceAtColumn(row, end - 1, where))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+    expect(referenceAtColumn(row, end, where)).toBeNull()
+  })
+
+  it('answers null beside the token, and on a row with none', () => {
+    const row = '  see file:///home/x/proj/src/app.ts printed in the log'
+    const where = { root, cwd: wt, known, checkouts: [root, wt] }
+    expect(referenceAtColumn(row, 2, where)).toBeNull()
+    expect(referenceAtColumn('no paths on this row at all', 5, where)).toBeNull()
   })
 })
 

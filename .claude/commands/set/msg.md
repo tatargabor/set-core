@@ -2,7 +2,7 @@ Send a directed message to another agent or team member.
 
 **Usage**: `/set:msg <recipient> <message>`
 
-**Input**: The first argument is the recipient (e.g., `tg@linux` or `tg@linux/gep2-linux` for a specific worktree). The rest is the message text.
+**Input**: The first argument is the recipient (e.g., `alice@laptop` or `alice@laptop/wt-feature` for a specific worktree). The rest is the message text.
 
 **What to do**:
 

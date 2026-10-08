@@ -591,6 +591,106 @@ def get_inbox(since: str = None) -> str:
 
 
 # ============================================================================
+# KNOWLEDGE-BASE TOOLS - thin shells over the set-kb CLI (the single surface)
+# ============================================================================
+
+# Long timeout: the FIRST search in a project builds the whole index before it
+# answers, and the largest registered corpora are thousands of files. Every
+# later call is an incremental refresh.
+_KB_TIMEOUT_S = 600
+
+
+def _run_set_kb(args: list[str], timeout: int = _KB_TIMEOUT_S) -> tuple[int, str, str]:
+    """Run `bin/set-kb` in THIS project. The project is CLAUDE_PROJECT_DIR —
+    the directory this server was registered for — so an agent in any
+    initialized project gets hits from its OWN index (AC: agent in a project
+    calls the tool)."""
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    exe = str(SCRIPT_DIR / "set-kb")
+    try:
+        result = subprocess.run(
+            [exe, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=project_dir,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", f"set-kb {' '.join(args[:1])} timed out after {timeout}s"
+    except OSError as e:
+        return 127, "", f"could not run {exe}: {e}"
+
+
+def _kb_result(code: int, out: str, err: str, what: str) -> str:
+    """Success passes the JSON contract through verbatim; failure returns the
+    engine's error text, never an empty result (AC: engine failure surfaces —
+    an empty hit list would read as 'the corpus has nothing', which is a
+    different and FALSE statement than 'the engine could not run')."""
+    if code == 0:
+        return out
+    detail = (err.strip() or out.strip() or f"exit {code}")
+    return f"set-kb {what} failed (exit {code}): {detail}"
+
+
+@mcp.tool
+def kb_search(
+    query: str,
+    limit: int = 10,
+    root: Optional[str] = None,
+    channel: Optional[str] = None,
+    scope: Optional[str] = None,
+    exclude_path: Optional[str] = None,
+) -> str:
+    """Search this project's knowledge base (markdown, section-level BM25).
+
+    Returns the versioned JSON contract: hits (repository-relative path,
+    headingPath, heading, snippet, score, channel, scope, suppressedSections,
+    duplicateCount), plus what the page did NOT search (total, hasMore,
+    exclusions, refreshed, notes).
+
+    Args:
+        query: The search text.
+        limit: Maximum hits on the page (default 10).
+        root: Restrict to one configured source root.
+        channel: Restrict to one configured channel.
+        scope: Restrict to one captured scope (name=value).
+        exclude_path: A path fragment to exclude from the page.
+    """
+    args = ["search", query, "--limit", str(int(limit)), "--json"]
+    if root:
+        args += ["--root", root]
+    if channel:
+        args += ["--channel", channel]
+    if scope:
+        args += ["--scope", scope]
+    if exclude_path:
+        args += ["--exclude-path", exclude_path]
+    code, out, err = _run_set_kb(args)
+    return _kb_result(code, out, err, "search")
+
+
+@mcp.tool
+def kb_get(path: str, section: Optional[str] = None) -> str:
+    """Print a file from this project's knowledge base, or one section of it,
+    verbatim. `path` is a hit's repository-relative path, accepted unchanged.
+
+    With `section` (a heading path, or an unambiguous leaf heading), prints
+    exactly that section. An ambiguous leaf lists its full heading paths and
+    prints neither section.
+
+    Args:
+        path: Repository-relative path, exactly as a hit carried it.
+        section: Optional heading path / unambiguous leaf heading.
+    """
+    args = ["get", path, "--json"]
+    if section:
+        args += ["--section", section]
+    code, out, err = _run_set_kb(args)
+    return _kb_result(code, out, err, "get")
+
+
+# ============================================================================
 # RESOURCES - Data that agents can read
 # ============================================================================
 

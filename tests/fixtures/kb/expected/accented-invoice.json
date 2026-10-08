@@ -1,0 +1,22 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "98481b46:0",
+      "docType": "doc",
+      "headingPath": "Költségvetés és számlázás",
+      "path": "költségvetés-jegyzet.md",
+      "root": "corpus/planning",
+      "score": -7.665692095481923,
+      "snippet": "\nA [díjbekérő] kiállítása után a [számlázás] akkor következik, ha a megrendelő visszaigazolta … ",
+      "suppressedSections": 1
+    }
+  ],
+  "limit": 10,
+  "query": "szamlazas dijbekero",
+  "total": 1
+}

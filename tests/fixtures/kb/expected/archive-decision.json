@@ -1,0 +1,22 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "fc0cd169:meta",
+      "docType": "doc",
+      "headingPath": "Archived decision — engine adoption",
+      "path": "2026-08-14-decision.md",
+      "root": "corpus/archive",
+      "score": -16.77863686104953,
+      "snippet": "The archived change records why the engine was adopted, what the measurement showed on the mined question set, and which alternatives were rejected. The archive is the decision history: it stays index",
+      "suppressedSections": 1
+    }
+  ],
+  "limit": 10,
+  "query": "engine adoption decision",
+  "total": 1
+}

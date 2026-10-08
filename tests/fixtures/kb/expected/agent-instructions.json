@@ -1,0 +1,22 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "6ebdb617:0",
+      "docType": "agents",
+      "headingPath": "Agent instructions",
+      "path": "CLAUDE.md",
+      "root": "corpus/planning",
+      "score": -13.100978554778003,
+      "snippet": "\nKeep the answers short, and check the handbook before planning anything that … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "agent instructions",
+  "total": 1
+}
