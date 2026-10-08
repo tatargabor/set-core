@@ -52,3 +52,34 @@ a file that already carried another session's uncommitted edit (`.gitignore`,
 `.claude/settings.json`, `.claude/.set-version`, `CLAUDE.md`, an orchestration config) —
 left uncommitted, to travel with that work. `install.sh` had no `set-kb` in its link list,
 so the deployed skill and rule would have hit "command not found" (`81f96c5d`).
+
+## 7.2 — doctor and findability in every registered project (2026-10-08)
+
+31 registered projects on this machine (E2E run directories excluded). Per-project JSON is
+kept machine-local, outside set-core (`~/.local/share/set-core/kb-rollout/2026-10-08/`).
+
+- `set-kb doctor`: **exit 0 in 31/31**, no blocking finding.
+- `set-kb findability`: **exit 0 in 31/31**, level-1 misses 0 everywhere; the four projects
+  that hold saved recordings find every one by its own title (level 2 = 1.0).
+- **One anomaly, not reproduced:** in the largest project the first `set-kb index` died
+  after 26 s with `sqlite3.DatabaseError: database disk image is malformed` (in `add_edge`,
+  writing the `.tmp-<pid>` build file). The failure-atomic path held — no file appeared at
+  the real index path, `doctor` reported "not built yet", and the next command built the
+  index cleanly. Two repeat first builds over the same live tree (index in a scratch path)
+  both succeeded (5,792 files, 51,309 chunks, 143–155 s). At the time another session was
+  clearing disk caches on that machine; deleting a live build's WAL produces exactly this
+  error, but that is a candidate, not a finding. If it recurs, the place to look is who
+  touches `.set/kb/*.tmp-*` while a build runs.
+
+## 7.3 / 7.4 — per-project configuration and client scope
+
+- Only one project keeps client material — recordings included — in per-client folders.
+  It got its own `set/knowledge/kb.json` in its own repository: a `client` scope over the
+  client folders, `meetings` and `client` channels, language `hu`, **no lane** (the quota
+  needs an eval sweep first). findability after the change: 134/134 indexed, 47/47 by
+  title.
+- **Isolation measured:** every client × 3 queries with `--scope client=<c>` — 534 hits,
+  **0** outside that client's folder.
+- Every other project's markdown corpus has no per-client folders (the remaining matches for
+  client-ish folder names were a test fixture, YAML and JSON captures); defaults are enough.
+  The project with its own engine moves its configuration in W6 (8.3), after the gate.
