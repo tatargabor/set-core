@@ -109,6 +109,44 @@ def test_title_query_miss_is_listed(tmp_path):
     assert a.query and a.rank is not None, "a title like nothing else in the corpus must rank first"
 
 
+def test_agent_session_dump_is_excluded_by_design_not_a_miss(tmp_path):
+    """W3 review, item 3 — measured on a real project: a meeting-notes folder
+    holds the recording + its readable transcript (`-raw-partN`) AND an
+    agent-session dump (`-session-partN`, frontmatter `type:
+    copilot-session-claude-code`). The date-and-part prefix discovery picks
+    the dump up as a candidate, and the frontmatter rule (AC-7) correctly
+    excludes it — which used to surface as a level-1 MISS and exit 1. The
+    dump is excluded BY DESIGN: not a miss, exit stays 0, and it is named in
+    the report. The readable transcript of the same date-and-part is still
+    checked and found."""
+    project = make_project(tmp_path)  # default config: excludeFrontmatter type: *-session-claude-code
+    meetings = Path(project.root) / "meetings"
+    write(meetings / "2026-10-01-tervezes-raw-part1.jsonl", "{}\n")
+    write(meetings / "2026-10-01-tervezes-raw-part1.md", TRANSCRIPT)
+    write(
+        meetings / "2026-10-01-tervezes-session-part1.md",
+        "---\ntype: copilot-session-claude-code\n---\n\n# Session dump\n\nraw agent transcript" + BODY,
+    )
+    from set_kb.findability import run_findability
+
+    report = run_findability(project)
+    assert report.ok, "a by-design exclusion is not a miss — it cannot make the exit non-zero"
+    assert report.level1_missed == []
+    transcript = {r.candidate.path: r for r in report.results}["meetings/2026-10-01-tervezes-raw-part1.md"]
+    assert transcript.indexed and transcript.rank is not None, "the transcript of the same date-and-part is still checked"
+    dumps = [(r.candidate.path, r.reason) for r in report.excluded_by_design]
+    assert dumps == [("meetings/2026-10-01-tervezes-session-part1.md", "excludeFrontmatter:type")]
+    d = report.to_json_dict(str(project.root))
+    assert d["excludedByDesign"][0]["path"] == "meetings/2026-10-01-tervezes-session-part1.md"
+    assert d["level1"]["missed"] == 0
+    # And through the CLI — the measured defect was the non-zero exit.
+    from test_kb_cli import run_cli
+
+    ok = run_cli(["findability", "--json"], cwd=Path(project.root))
+    assert ok.returncode == 0
+    assert json.loads(ok.stdout)["ok"] is True
+
+
 def test_cli_findability_exit_codes(tmp_path):
     """The command exits non-zero exactly on level-1 misses."""
     from test_kb_cli import run_cli

@@ -87,6 +87,11 @@ class FindabilityReport:
     results: list = field(default_factory=list)
     top_k: int = DEFAULT_TOP_K
     notes: list = field(default_factory=list)  # how the index was produced (snapshot, …)
+    # Candidates a structural frontmatter rule excludes (agent-session dumps,
+    # spec AC-7). Excluded BY DESIGN, so they are neither level-1 misses nor
+    # part of `results` — but they are named, because silence would read as
+    # "the candidate was never seen".
+    excluded_by_design: list = field(default_factory=list)
 
     @property
     def level1_missed(self) -> list:
@@ -112,6 +117,15 @@ class FindabilityReport:
             "ok": self.ok,
             "topK": self.top_k,
             "notes": list(self.notes),
+            "excludedByDesign": [
+                {
+                    "path": r.candidate.path,
+                    "kind": r.candidate.kind,
+                    "recording": r.candidate.recording,
+                    "reason": r.reason,
+                }
+                for r in self.excluded_by_design
+            ],
             "level1": {"checked": len(self.results), "missed": len(self.level1_missed)},
             "level2": {
                 "checked": len(self.level2_checked),
@@ -267,6 +281,17 @@ def run_findability(project, top_k: int = DEFAULT_TOP_K) -> FindabilityReport:
     try:
         for candidate in discover(project.root, project.config):
             reason = _level1_reason(project.root, project.config, index_opts, ledger, candidate)
+            if reason is not None and reason.startswith("excludeFrontmatter:"):
+                # A candidate the frontmatter rule excludes is an agent-session
+                # dump (AC-7) — not a recording whose readable form went
+                # missing, so it is neither a miss nor exit-relevant. Only the
+                # frontmatter rule gets this treatment: a project PATTERN
+                # hiding a candidate stays a level-1 miss, because that is the
+                # failure findability exists to catch.
+                report.excluded_by_design.append(
+                    CandidateResult(candidate=candidate, indexed=False, reason=reason)
+                )
+                continue
             indexed = reason is None and indexed_under_any_root(candidate.path)
             if reason is None and not indexed and store is None:
                 reason = "no index exists yet"

@@ -557,6 +557,10 @@ def cmd_findability(args) -> int:
         print(f"  candidates: {len(report.results)} ({recordings} recording(s), {globs} from globs)   top-k = {report.top_k}")
         for n in report.notes:
             print(f"  note: {n}")
+        if report.excluded_by_design:
+            print(f"  excluded by design: agent-session dumps — {len(report.excluded_by_design)}")
+            for r in report.excluded_by_design:
+                print(f"    {r.candidate.path} — {r.reason}")
         l1_missed = report.level1_missed
         print(f"  level 1 — indexed: {len(report.results) - len(l1_missed)}/{len(report.results)}")
         for r in l1_missed:
