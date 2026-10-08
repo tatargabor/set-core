@@ -143,11 +143,69 @@ def test_walk_prunes_excluded_directories(tmp_path):
     (src / "dist").mkdir()
     (src / "dist" / "report.md").write_text("# build\n", encoding="utf-8")
     (src / "keep.md").write_text("# keep\n\n" + "word " * 30 + "\n", encoding="utf-8")
-    out = _walk(str(src), str(src), [], prune=[glob_to_re("dist/")])
+    out = _walk(str(src), str(src), [], prune=[("dist/", glob_to_re("dist/"))])
     assert out == [str(src / "keep.md")], "a dir-style exclusion prunes the subtree at the walk"
     # and the indexed run agrees
     res = index(tmp_path, src, exclude=["dist/"])
     assert res["scanned"] == 1 and res["counts"]["files"] == 1
+
+
+def test_pruned_directories_are_counted_per_pattern(tmp_path):
+    """The W2-review gap, pinned: a repo whose corpus sits mostly inside
+    EXCLUDED trees (build output, a virtualenv, node_modules) used to report
+    `scanned: 3, excluded: {}` — a shrunken corpus that looked like a full one.
+    The walk prunes whole directories, so the prune itself must count the files
+    it removes, per pattern."""
+    from set_kb.config import KbConfig, index_options
+
+    src = make_source(tmp_path)
+    for rel in (
+        "app/dist/report.md",
+        "web/.next/standalone/nested/page.md",
+        "sub/.venv/lib/site-packages/readme.md",
+        "sub/node_modules/pkg/readme.md",
+        "keep-one.md",
+        "keep-two.md",
+        "keep-three.md",
+    ):
+        p = src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# generated or kept\n", encoding="utf-8")
+    # The default corpus exclusions live in the config layer (W2); the measured
+    # repo ran with them in force, so the census does too.
+    res = run_index_atomic(
+        RunIndexAtomicOpts(
+            db_path=str(tmp_path / "idx.db"),
+            sources=[AtomicIndexSource(id=src.name, dir=str(src))],
+            index_opts=index_options(KbConfig(sources=[], channels=[], scopes=[], exclude=[])),
+        )
+    )
+    assert res["scanned"] == 3
+    # The four pruned trees are named by the pattern that removed them, with
+    # the files each one takes out of the corpus.
+    assert res["excluded"].get("dist/") == 1
+    assert res["excluded"].get(".next*/") == 1
+    assert res["excluded"].get(".venv*/") == 1
+    assert res["excluded"].get("node_modules/") == 1
+
+
+def test_scan_exclusions_census_matches_the_indexer(tmp_path):
+    """`scan_exclusions` (doctor's census) decides with the same predicates as
+    the indexer: pattern rules from the walk, frontmatter and framework-ledger
+    rules per file — counted fresh, over the whole tree."""
+    from set_kb.config import DEFAULT_EXCLUDE_FRONTMATTER
+    from set_kb.indexer import scan_exclusions
+
+    src = make_source(tmp_path)
+    (src / "dist" / "x.md").parent.mkdir(parents=True)
+    (src / "dist" / "x.md").write_text("# build\n", encoding="utf-8")
+    (src / "dump.md").write_text("---\ntype: claude-session\n---\n\nsession dump\n", encoding="utf-8")
+    (src / "note.md").write_text("# Note\n\nbody text\n", encoding="utf-8")
+    opts = IndexOptions(exclude=["dist/"], exclude_frontmatter=dict(DEFAULT_EXCLUDE_FRONTMATTER))
+    census = scan_exclusions([AtomicIndexSource(id="", dir=str(src))], opts)
+    assert census["excluded"] == {"dist/": 1, "excludeFrontmatter:type": 1}
+    assert census["indexed"] == {"": 1}
+    assert census["scanned"] == 2, "pruned directories never become candidates"
 
 
 def test_file_style_exclusion_names_the_pattern(tmp_path):
@@ -175,7 +233,7 @@ def test_git_and_set_are_permanently_pruned(tmp_path):
     (src / ".set" / "kb").mkdir()
     (src / ".set" / "kb" / "note.md").write_text("# runtime\n", encoding="utf-8")
     (src / "keep.md").write_text("# keep\n\n" + "word " * 30 + "\n", encoding="utf-8")
-    out = _walk(str(src), str(src), [], prune=[glob_to_re("nope/")])
+    out = _walk(str(src), str(src), [], prune=[("nope/", glob_to_re("nope/"))])
     assert out == [str(src / "keep.md")], "the permanent prune applies regardless of configuration"
 
 

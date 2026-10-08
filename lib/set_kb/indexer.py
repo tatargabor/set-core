@@ -122,14 +122,46 @@ def _ext_regex(extensions: Optional[list]):
     return re.compile("(" + "|".join(e.replace(".", "\\.") for e in extensions) + ")$", re.IGNORECASE)
 
 
-def _walk(dir: str, base: str, out: list, prune=(), ext_re=None) -> list:
+def _count_matches(dir: str, ext_re) -> int:
+    """Count extension-matching files under a pruned directory — the number of
+    corpus files that directory keeps off the page. A plain walk, no stat of
+    file contents: the prune exists to avoid HASHING and CHUNKING these files,
+    not to stay blind to how many there are (doctor reports the share a rule
+    removes, and a rule that pruned 4000 files must not read as zero). `.git`
+    and `.set` are skipped here too — plumbing inside an excluded tree is no
+    part of any corpus."""
+    n = 0
+    stack = [dir]
+    while stack:
+        d = stack.pop()
+        try:
+            with os.scandir(d) as entries:
+                for e in entries:
+                    if e.is_dir(follow_symlinks=False):
+                        if e.name in (".git", ".set"):
+                            continue
+                        stack.append(e.path)
+                    elif ext_re.search(e.name):
+                        n += 1
+        except OSError:
+            continue
+    return n
+
+
+def _walk(dir: str, base: str, out: list, prune=(), ext_re=None, pruned: Optional[dict] = None) -> list:
     """Collect candidate files under `base`. `prune` is the compiled exclusion
-    set: a DIRECTORY whose relative path can only produce excluded children is
-    skipped whole — descending into `.venv` to hash-exclude thousands of files
-    on every refresh is the cost this prune exists to avoid. The probe is
-    `regex.search(rel + "/x")`: a dir-style pattern matches something BELOW the
-    directory, a file-style pattern (rare) simply never prunes. The permanent
-    plumbing prune (`.git`, `.set`) applies regardless of configuration."""
+    set as (pattern, compiled) pairs: a DIRECTORY whose relative path can only
+    produce excluded children is skipped whole — descending into `.venv` to
+    hash-exclude thousands of files on every refresh is the cost this prune
+    exists to avoid. The probe is `regex.search(rel + "/x")`: a dir-style
+    pattern matches something BELOW the directory, a file-style pattern (rare)
+    simply never prunes. The permanent plumbing prune (`.git`, `.set`) applies
+    regardless of configuration.
+
+    When `pruned` is given, every prune is ATTRIBUTED to its pattern as
+    `[directories, files]` — the per-rule exclusion counts doctor reports. The
+    first matching pattern in `prune` order takes the count, the same order the
+    footer lists the rules in."""
     try:
         entries = sorted(os.scandir(dir), key=lambda e: e.name)
     except FileNotFoundError:
@@ -140,9 +172,14 @@ def _walk(dir: str, base: str, out: list, prune=(), ext_re=None) -> list:
         if PERMANENT_PRUNE.search(rel):
             continue
         if e.is_dir(follow_symlinks=False):
-            if any(rx.search(rel + "/x") for rx in prune):
+            hit = next((p for p, rx in prune if rx.search(rel + "/x")), None)
+            if hit is not None:
+                if pruned is not None:
+                    d = pruned.setdefault(hit, [0, 0])
+                    d[0] += 1
+                    d[1] += _count_matches(abs, ext_re or DEFAULT_EXT_RE)
                 continue
-            _walk(abs, base, out, prune, ext_re)
+            _walk(abs, base, out, prune, ext_re, pruned)
         elif (ext_re or DEFAULT_EXT_RE).search(e.name):
             out.append(abs)
     return out
@@ -184,20 +221,34 @@ def index_source(store: SqliteFtsStore, src: IndexSource, opts: Optional[IndexOp
     scope_rules = compile_scope_rules(opts.scopes)
     fm_exclude = opts.exclude_frontmatter or {}
     ledger = opts.framework_ledger or None
+    # Per-rule exclusion accounting from the WALK phase: whole pruned
+    # directories `[directories, files]` per pattern, plus file-style patterns
+    # that fire on single candidates below. Without this a repo whose corpus is
+    # mostly inside excluded trees reported `excluded: {}` — a shrunken corpus
+    # that looked like a full one.
+    pruned: dict = {}
+    pattern_excluded: dict = {}
     files = []
-    for abs in _walk(src.dir, src.dir, [], prune=[rx for _p, rx in exc], ext_re=ext_re):
+    for abs in _walk(src.dir, src.dir, [], prune=exc, ext_re=ext_re, pruned=pruned):
         rel = os.path.relpath(abs, src.dir).replace(os.sep, "/")
         if src.include and not src.include(rel):
             continue
         if inc and not match_any(inc, rel):
             continue
-        if exc and match_any([rx for _p, rx in exc], rel):
+        pat = next((p for p, rx in exc if rx.search(rel)), None)
+        if pat is not None:
+            pattern_excluded[pat] = pattern_excluded.get(pat, 0) + 1
             continue
         if doc_type_of(rel, include_source_md) == "agents" and opts.index_agents_files is False:
             continue
         files.append(abs)
 
     stats = IndexStats(scanned=len(files))
+    for pat, (dirs, n) in pruned.items():
+        stats.excluded[pat] = stats.excluded.get(pat, 0) + n
+        logger.debug("kb index: pattern %s pruned %d director(ies), ~%d file(s)", pat, dirs, n)
+    for pat, n in pattern_excluded.items():
+        stats.excluded[pat] = stats.excluded.get(pat, 0) + n
     live: set = set()
     fm_cfg = opts.frontmatter or {"searchableKeys": DEFAULT_SEARCHABLE_KEYS, "facetKeys": DEFAULT_FACET_KEYS}
 
@@ -363,6 +414,88 @@ def _frontmatter_exclusion(text: str, fm_exclude: dict) -> Optional[str]:
             if any(isinstance(x, str) and fnmatchcase(x, pat) for x in values):
                 return f"excludeFrontmatter:{key}"
     return None
+
+
+def exclusion_rule(abs_path: str, rel: str, opts: IndexOptions, ledger: Optional[dict] = None, ledger_key: Optional[str] = None) -> "tuple[Optional[str], Optional[str]]":
+    """Why ONE file is not indexed: `(rule, digest)` — rule names the first
+    predicate that fires, in index_source's decision order (pattern →
+    frontmatter → framework ledger; extension and the `.git`/`.set` plumbing
+    are decided before any caller reaches here for a walked candidate). None =
+    the file is indexed. The digest is returned so a caller that also needs the
+    content hash never reads the file twice. A file whose stat/read throws is
+    reported as `unreadable` rather than guessed about.
+
+    `ledger_key` is the PROJECT-relative path the deploy ledger is keyed by —
+    index_source builds it as `<root>/<rel>`; a caller that already knows it
+    passes it, because recomputing it here would need the root label."""
+    exc = [(p, glob_to_re(p)) for p in opts.exclude] if opts.exclude else []
+    pat = next((p for p, rx in exc if rx.search(rel)), None)
+    if pat is not None:
+        return pat, None
+    fm_exclude = opts.exclude_frontmatter or {}
+    ledger = ledger or None
+    if not fm_exclude and ledger is None:
+        return None, None
+    try:
+        with open(abs_path, "rb") as f:
+            buf = f.read()
+    except OSError:
+        return "unreadable", None
+    digest = _sha_bytes(buf)
+    try:
+        text = buf.decode("utf-8")
+    except UnicodeDecodeError:
+        return "not utf-8", digest
+    if fm_exclude:
+        rule = _frontmatter_exclusion(text, fm_exclude)
+        if rule:
+            return rule, digest
+    if ledger is not None and ledger_key is not None:
+        recorded = ledger.get(ledger_key, ledger.get(unicodedata.normalize("NFC", ledger_key)))
+        if recorded is not None and recorded == digest:
+            return "framework-deployed", digest
+    return None, digest
+
+
+def scan_exclusions(sources: list, opts: IndexOptions) -> dict:
+    """The per-rule exclusion census doctor reports, decided with the SAME
+    predicates index_source applies — but over the whole tree, freshly walked.
+
+    WHY NOT THE LAST REFRESH'S STATS: the incremental path cheap-skips
+    unchanged files BEFORE their frontmatter/ledger checks run, so refresh
+    stats undercount whatever did not change this run, and a doctor that
+    quoted them would report a corpus that was measured on some earlier day.
+    This scan reads what is on disk now. The cost is a walk plus one read per
+    candidate when a content rule is configured — the diagnostic is allowed
+    what the per-search hot path is not.
+
+    Returns `{"excluded": {rule: file_count}, "indexed": {root: count},
+    "scanned": n}`. Pruned directories are attributed to their pattern by
+    `_walk`; the counts are files, the unit every other count in doctor speaks.
+    """
+    ext_re = _ext_regex(opts.extensions)
+    excluded: dict = {}
+    indexed: dict = {}
+    scanned = 0
+    for src in sources:
+        pruned: dict = {}
+        candidates = _walk(src.dir, src.dir, [], prune=[(p, glob_to_re(p)) for p in opts.exclude] if opts.exclude else [], ext_re=ext_re, pruned=pruned)
+        for pat, (dirs, n) in pruned.items():
+            excluded[pat] = excluded.get(pat, 0) + n
+            logger.debug("kb doctor: pattern %s pruned %d director(ies), ~%d file(s)", pat, dirs, n)
+        n_here = 0
+        for abs in candidates:
+            rel = os.path.relpath(abs, src.dir).replace(os.sep, "/")
+            rel = unicodedata.normalize("NFC", rel)
+            scanned += 1
+            ledger_key = f"{src.id}/{rel}" if src.id else rel
+            rule, _digest = exclusion_rule(abs, rel, opts, ledger=opts.framework_ledger, ledger_key=ledger_key)
+            if rule:
+                excluded[rule] = excluded.get(rule, 0) + 1
+                continue
+            n_here += 1
+        indexed[src.id] = indexed.get(src.id, 0) + n_here
+    return {"excluded": excluded, "indexed": indexed, "scanned": scanned}
 
 
 # ── atomic index-run orchestration ──
