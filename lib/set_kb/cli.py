@@ -34,6 +34,7 @@ from pathlib import Path
 from set_kb.config import CONFIG_REL, ConfigError, LEGACY_REL, index_options, load_config, read_framework_ledger
 from set_kb.get_section import leaf_of, resolve_section
 from set_kb.indexer import IndexSource, scan_exclusions
+from set_kb.findability import run_findability
 from set_kb.lifecycle import ProjectError, load_project, refresh, search_project
 from set_kb.project import ensure_ignored, index_paths, resolve_root
 from set_kb.runtime import KbRuntimeError, ensure_runtime
@@ -44,6 +45,9 @@ logger = logging.getLogger(__name__)
 CONTRACT_VERSION = 1
 
 PROG = "set-kb"
+
+# from set_kb.findability — re-exported for the CLI default
+DEFAULT_TOP_K = 10
 
 
 # ── shared helpers ───────────────────────────────────────────────────────────
@@ -537,6 +541,39 @@ def _report_doctor(args, checks: list, root=None, index=None, roots=None, channe
         print(f"  excluded by {rule}: {n} file(s)")
 
 
+# ── findability (recordings and named notes must be findable) ────────────────
+
+
+def cmd_findability(args) -> int:
+    project = load_project(os.getcwd())
+    report = run_findability(project, top_k=args.top or DEFAULT_TOP_K)
+    if args.json:
+        emit_json(report.to_json_dict(project.root))
+    else:
+        recordings = sum(1 for r in report.results if r.candidate.kind == "recording")
+        globs = len(report.results) - recordings
+        print(f"set-kb findability — {project.root}")
+        print(f"  candidates: {len(report.results)} ({recordings} recording(s), {globs} from globs)   top-k = {report.top_k}")
+        for n in report.notes:
+            print(f"  note: {n}")
+        l1_missed = report.level1_missed
+        print(f"  level 1 — indexed: {len(report.results) - len(l1_missed)}/{len(report.results)}")
+        for r in l1_missed:
+            print(f"    MISS {r.candidate.path} — {r.reason}")
+        l2_checked = report.level2_checked
+        l2_found = report.level2_found
+        if l2_checked:
+            rate = 100.0 * len(l2_found) / len(l2_checked)
+            print(f"  level 2 — title query in the top {report.top_k}: {len(l2_found)}/{len(l2_checked)} found ({rate:.0f}%)")
+            for r in l2_checked:
+                if r.rank is None:
+                    where = f"rank {r.rank}" if r.rank else "not in the top %d" % report.top_k
+                    print(f"    MISS {r.candidate.path} — query {r.query!r} → {where}")
+        elif report.results:
+            print("  level 2 — nothing to query (no candidate carries a title or heading)")
+    return 0 if report.ok else 1
+
+
 # ── argument parsing ─────────────────────────────────────────────────────────
 
 
@@ -574,7 +611,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", parents=[common], help="whether search works in this project (blocking vs informational checks)")
     p.set_defaults(func=cmd_doctor)
 
-    # findability / eval are registered by their own sections below.
+    p = sub.add_parser("findability", parents=[common], help="saved recordings and named notes must be indexed and retrievable")
+    p.add_argument("--top", type=int, default=None, help="top-k for the title query (default 10)")
+    p.set_defaults(func=cmd_findability)
+
+    # eval is registered by its own section below.
 
     return parser
 
