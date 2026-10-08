@@ -74,7 +74,7 @@ evidence; nothing from it is copied into set-core). No module code is touched.
 
 ## 9. W7 — Close
 
-- [ ] 9.1 [core] Document `set-kb` in `docs/` (config keys, defaults, exclusion rationale, lane, scope, verification commands) [REQ: per-project-configuration-is-project-owned-layered-and-validated]
+- [x] 9.1 [core] Document `set-kb` in `docs/` (config keys, defaults, exclusion rationale, lane, scope, verification commands) [REQ: per-project-configuration-is-project-owned-layered-and-validated]
 - [ ] 9.2 [core] `openspec validate kb-search --strict`, verify, archive so the three capability specs reach `openspec/specs/` [REQ: one-command-line-is-the-single-implementation-surface]
 
 ## Acceptance Criteria (from spec scenarios)
