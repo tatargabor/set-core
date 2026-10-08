@@ -1,0 +1,22 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "973edde2:0",
+      "docType": "doc",
+      "headingPath": "Ügyfélhívás leirat — nyers",
+      "path": "2026-09-19-megbeszeles-raw-part1.md",
+      "root": "corpus/meetings",
+      "score": -2.444187160420953,
+      "snippet": " … A [kékeslila] mintaszó itt áll a leiratban, hogy a keresés ezen a … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "kékeslila",
+  "total": 1
+}

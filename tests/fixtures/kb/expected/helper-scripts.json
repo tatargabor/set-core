@@ -1,0 +1,22 @@
+{
+  "exclusions": [
+    "indexed corpus excludes: **/claude-sessions/**, **/tool-calls/**, **/copilot/**, **/sessions/**, **/.venv/**, **/dist/**"
+  ],
+  "hasMore": false,
+  "hits": [
+    {
+      "channel": null,
+      "chunkId": "a8491f48:0",
+      "docType": "source-md",
+      "headingPath": "Helper scripts",
+      "path": "lib/helpers.md",
+      "root": "corpus/planning",
+      "score": -14.713656887487142,
+      "snippet": "\nNotes about the [helper] [scripts] used by the build pipeline. The [helper] … ",
+      "suppressedSections": 0
+    }
+  ],
+  "limit": 10,
+  "query": "helper scripts",
+  "total": 1
+}

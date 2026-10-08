@@ -1,0 +1,73 @@
+Upstream licence and provenance — lib/set_kb/
+
+The retrieval core in this package is a PORT (a derivation by translation, not
+a verbatim copy) of MIT-licensed upstream code: an upstream `kb` package, taken
+via an intermediate TypeScript port that itself carried the notice below. A
+Python translation of that logic is a derivative work, so the licence notice
+travels even though no line of the original source text survives here.
+
+Per decision of 2026-10-07 recorded in openspec/changes/kb-search/design.md,
+set-core's public tree credits the upstream with the MIT copyright line only —
+it does not name the upstream repository or organisation beyond that line. The
+upstream commit SHA is kept because it is the reference that identifies the
+exact source tree the port was taken from, without naming anything.
+
+## Source coordinates
+
+| | |
+|---|---|
+| upstream commit the port derives from | `02bd182e7747a045277e89861ef51d57ada60f3e` |
+| licence file upstream | `LICENSE`, in the repository root (there is no licence file inside the ported subtree) |
+
+## Port lineage
+
+upstream (TypeScript, `packages/kb/src/`)
+  → an intermediate TypeScript port (fork; divergences listed below)
+  → this package (Python, standard library only, `sqlite3` + FTS5)
+
+Divergences carried from the intermediate TypeScript port: the query tokenizer
+accepts every Unicode letter/number (an ASCII-only tokenizer wipes out accented
+queries), the language-pack seam with shipped Hungarian stopwords, the lane
+semantics (a named-channel reserved lane), the excluded-tree defaults (agent
+logs out, the archive in), the chunk parent link resolved after merge/split,
+and the upstream trust/DOX machinery deliberately dropped.
+
+Divergences added by this port: NFC path normalisation, a sorted (reproducible)
+walk order, and — from the change's design (D8) — an EMPTY `laneChannels`
+means NO reserved lane, where the intermediate port fell back to a lane for
+agent-instruction files.
+
+## Per-file attribution
+
+Every ported module carries a one-line reference to this file in its header,
+as the first line. Modules that are new (written for set-core, not carried
+over) do NOT carry that line — the distinction is what makes the attribution
+meaningful.
+
+---
+
+## MIT License — full text, as it stands in the upstream repository root
+
+```text
+MIT License
+
+Copyright (c) 2026 Robert Csakany
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

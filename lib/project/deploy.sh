@@ -292,6 +292,58 @@ _deploy_mcp() {
     _register_mcp_server "$project_path" "$@"
 }
 
+# Deploy the knowledge-base search support (kb-search change, wave W3).
+#
+# The set:kb skill and the short search rule go through the provenance-guarded
+# trees in _deploy_skills (`.claude/skills/set/` and `templates/core/rules/`),
+# and the MCP tools arrive with the set-core MCP server registration — this
+# function owns only what those paths cannot express: the git-ignore entry the
+# engine's own guard REQUIRES before it will build an index (its WAL carries
+# corpus text verbatim, so an unignored index is a leak one `git add -A` away).
+#
+# THE CONFIG BOUNDARY: deploy NEVER creates or writes the project's search
+# configuration (`set/knowledge/kb.json`). That file is project-owned — a
+# deploy that seeded it would overwrite project vocabulary decisions on every
+# run, and a seeded default would read as a decision the project took. Its
+# absence is the engine's zero-config default working as designed.
+_deploy_kb() {
+    local project_path="$1"
+    local claude_dir="$project_path/.claude"
+
+    # The sources must exist — a silently missing source would deploy nothing
+    # and still report success.
+    if [[ ! -f "$SET_TOOLS_ROOT/.claude/skills/set/kb/SKILL.md" ]]; then
+        warn "  kb skill source missing: .claude/skills/set/kb/SKILL.md"
+        return 1
+    fi
+    if [[ ! -f "$SET_TOOLS_ROOT/templates/core/rules/kb-search.md" ]]; then
+        warn "  kb rule source missing: templates/core/rules/kb-search.md"
+        return 1
+    fi
+    info "  kb skill + rule deploy via .claude/skills/set/ and .claude/rules/set-kb-search.md (provenance-guarded)"
+
+    # AC: project without ignore entry — deploy adds it and reports it.
+    if git -C "$project_path" check-ignore -q .set/ 2>/dev/null; then
+        info "  .set/ already ignored — the kb index path is safe"
+        return 0
+    fi
+    local gitignore="$project_path/.gitignore"
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        info "  Would add '.set/' to .gitignore (the kb index lives there and must never be committed)"
+        return 0
+    fi
+    # A non-empty file whose last byte is not a newline would glue the entry
+    # onto the last pattern — 'node_modules' with no trailing newline plus the
+    # append below produced 'node_modules.set/', which ignores nothing. The
+    # $( ) strips a trailing newline, so a file ENDING in one yields empty
+    # here and gets no separator; anything else yields its last byte.
+    if [[ -s "$gitignore" && -n "$(tail -c 1 "$gitignore")" ]]; then
+        printf '\n' >> "$gitignore"
+    fi
+    printf '.set/\n' >> "$gitignore"
+    success "  Added .set/ to .gitignore — the kb index and its WAL carry corpus text and must never be committed"
+}
+
 # Deploy memory-related setup: clean deprecated refs, CLAUDE.md sections, seed import
 _deploy_memory() {
     local project_path="$1"
