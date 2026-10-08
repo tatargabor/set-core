@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import pytest
-
 from conftest_kb import git, make_repo, write
 from set_kb.indexer import AtomicIndexSource, RunIndexAtomicOpts, run_index_atomic
-from set_kb.project import ProjectError, ensure_ignored, index_paths, main_checkout, resolve_root, seed_from_main
+from set_kb.project import (
+    ProjectError,
+    ensure_ignored,
+    index_paths,
+    main_checkout,
+    resolve_root,
+    seed_from_main,
+)
 
 
 def test_resolve_root_from_a_subdirectory(tmp_path):

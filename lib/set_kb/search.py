@@ -494,8 +494,12 @@ def _coverage_rerank(store: SqliteFtsStore, hits: list, bodies: dict, qterms: li
     cov: dict = {}
     for h in hits:
         # Folded on both sides: the body may legitimately spell a term with the
-        # accents the query omitted.
-        toks = set(fold(t) for t in tokenize(f"{h.heading_path} {bodies.get(f'{h.root}\u001f{h.chunk_id}', '')}", lang))
+        # accents the query omitted. The key is hoisted into a variable, not
+        # built inside the f-string: a backslash escape inside an f-string
+        # EXPRESSION is a SyntaxError before Python 3.12, and 3.10 is the
+        # engine's floor.
+        key = f"{h.root}\u001f{h.chunk_id}"
+        toks = set(fold(t) for t in tokenize(f"{h.heading_path} {bodies.get(key, '')}", lang))
         c = 0.0
         for t in qterms:
             if has_stem(toks, fold(t)):

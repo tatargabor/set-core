@@ -7,14 +7,11 @@ import json
 import logging
 
 import pytest
-
 from conftest_kb import make_repo, write
 from set_kb.config import (
     CONFIG_REL,
     DEFAULT_EXCLUSION_GROUPS,
-    DEFAULT_GROUP_NAMES,
     ConfigError,
-    KbConfig,
     corpus_config_hash,
     footer_exclusions,
     index_options,
@@ -218,4 +215,4 @@ def test_footer_exclusions_state_the_active_list(tmp_path):
     assert "node_modules/" in joined, "the rest of the defaults are shown as in force"
     assert "unmodified framework-deployed files excluded" in joined
     all_on = footer_exclusions(cfg_of(tmp_path, {"excludeDefaults": True}, name="r2"))
-    assert any("excludes:" in l for l in all_on)
+    assert any("excludes:" in line for line in all_on)

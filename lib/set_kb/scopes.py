@@ -57,15 +57,15 @@ def _fragment(frag: str) -> str:
     `**` forms go through placeholder tokens, exactly like `glob.glob_to_re`:
     expanding `**` to `.*` before `*` is translated would let the second
     replace re-write the star INSIDE the `.*` it just produced."""
-    _GS, _G = "«GS»", "«G»"
+    star_star_slash, star_star = "«GS»", "«G»"
     out = re.sub(r"[.+^$(){}|\[\]\\]", lambda m: "\\" + m.group(0), frag)
     return (
-        out.replace("**/", _GS)
-        .replace("**", _G)
+        out.replace("**/", star_star_slash)
+        .replace("**", star_star)
         .replace("*", "[^/]*")
         .replace("?", "[^/]")
-        .replace(_GS, "(?:.*/)?")
-        .replace(_G, ".*")
+        .replace(star_star_slash, "(?:.*/)?")
+        .replace(star_star, ".*")
     )
 
 

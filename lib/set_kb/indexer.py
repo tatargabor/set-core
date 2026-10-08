@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from typing import Callable, Optional
 
-from set_kb.channels import ChannelRule, classify_channel, compile_channel_rules
+from set_kb.channels import classify_channel, compile_channel_rules
 from set_kb.chunker import chunk_markdown
 from set_kb.frontmatter import (
     DEFAULT_FACET_KEYS,

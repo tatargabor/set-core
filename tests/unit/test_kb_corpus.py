@@ -12,7 +12,13 @@ import hashlib
 import json
 
 from conftest_kb import index_root, make_repo, write
-from set_kb.config import CONFIG_REL, footer_exclusions, index_options, load_config, read_framework_ledger
+from set_kb.config import (
+    CONFIG_REL,
+    footer_exclusions,
+    index_options,
+    load_config,
+    read_framework_ledger,
+)
 from set_kb.indexer import AtomicIndexSource, RunIndexAtomicOpts, run_index_atomic
 from set_kb.search import SearchOpts, search
 

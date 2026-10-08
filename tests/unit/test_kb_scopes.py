@@ -4,7 +4,6 @@ the `--scope` filter (design D9)."""
 from __future__ import annotations
 
 import pytest
-
 from conftest_kb import index_root, make_repo, write
 from set_kb.indexer import IndexOptions
 from set_kb.scopes import ScopeRule, capture_scope, check_pattern, compile_scope_rules

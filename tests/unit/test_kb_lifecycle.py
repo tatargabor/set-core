@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from conftest_kb import git, make_repo, write
 from set_kb.config import CONFIG_REL
 from set_kb.lifecycle import RefreshLock, load_project, refresh, search_project
