@@ -55,7 +55,7 @@ evidence; nothing from it is copied into set-core). No module code is touched.
 
 - [ ] 6.1 [core] Run the unit suite and `set-kb doctor` on a macOS machine and a Linux machine; record Python + SQLite versions and outcome in the change's verification notes [REQ: the-engine-runs-on-set-cores-existing-runtime]
 - [ ] 6.2 [core] Clone the fixture at two different absolute paths on each OS; confirm identical JSON pages (paths, order) across all four [REQ: paths-are-stored-repository-relative-and-normalised]
-- [ ] 6.3 [core] Time a full build and a no-change refresh on the largest registered corpus; target: no-change refresh under 1 s on ~4k files; record numbers (no project names) [REQ: the-index-refreshes-incrementally-on-every-search]
+- [x] 6.3 [core] Time a full build and a no-change refresh on the largest registered corpus; target: no-change refresh under 1 s on ~4k files; record numbers (no project names) [REQ: the-index-refreshes-incrementally-on-every-search]
 
 ## 7. W5 — Rollout to every registered project
 
