@@ -59,7 +59,7 @@ evidence; nothing from it is copied into set-core). No module code is touched.
 
 ## 7. W5 — Rollout to every registered project
 
-- [ ] 7.1 [deploy] Re-deploy set-core to all registered projects on this machine [REQ: deploy-delivers-search-to-every-registered-project]
+- [x] 7.1 [deploy] Re-deploy set-core to all registered projects on this machine [REQ: deploy-delivers-search-to-every-registered-project]
 - [ ] 7.2 [deploy] Run `set-kb doctor` and `set-kb findability` in every registered project (E2E run directories excluded); keep the per-project results machine-local, outside set-core [REQ: saved-recordings-and-named-notes-are-findable]
 - [ ] 7.3 [consumer] For each project where defaults are not enough (client channels, scopes, extra roots, lane), add `set/knowledge/kb.json` in that project's own repository and re-run findability [REQ: per-project-configuration-is-project-owned-layered-and-validated]
 - [ ] 7.4 [consumer] In projects that keep recordings in client folders, configure a scope over the client folders and verify a scoped search returns no other client's material [REQ: a-project-can-capture-a-scope-from-the-path-and-filter-by-it]

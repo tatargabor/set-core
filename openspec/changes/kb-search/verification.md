@@ -40,3 +40,15 @@ tree untouched): 5,732 files scanned, 51,004 chunks.
 The full build is the one-time cost on a fresh clone or after `--full`; at 3 minutes it is
 worth naming in the rollout notes (W5) so a first `set-kb search` in a big project is not
 mistaken for a hang.
+
+## 7.1 — re-deploy on this machine (2026-10-08)
+
+`set-project init` at `81f96c5d` in every registered project and each of its worktrees:
+**50 trees, init exit 0 in all 50**, one commit per tree carrying only the files the deploy
+wrote (pathspec; the set:kb skill and the `set-kb-search` rule in every tree, the wave-board
+Stop hook in 18 worktrees the 2026-10-07 rollout had missed). Skipped: two registrations that
+are not git repositories, one throwaway `/tmp` worktree. In 7 trees the deploy also wrote into
+a file that already carried another session's uncommitted edit (`.gitignore`,
+`.claude/settings.json`, `.claude/.set-version`, `CLAUDE.md`, an orchestration config) —
+left uncommitted, to travel with that work. `install.sh` had no `set-kb` in its link list,
+so the deployed skill and rule would have hit "command not found" (`81f96c5d`).
