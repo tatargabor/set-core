@@ -223,6 +223,7 @@ deploy_set_tools() {
         # project-owned files — so a dry run must show exactly what they would keep.
         _deploy_commands "$project_path"
         _deploy_skills "$project_path"
+        _deploy_kb "$project_path"
         # The deprecated-memory migration edits files in place; it is provenance-guarded
         # and DRY_RUN-aware, so it belongs in the plan for the same reason.
         _cleanup_deprecated_memory_refs "$project_path"
@@ -238,6 +239,7 @@ deploy_set_tools() {
     _deploy_hooks "$project_path" || ((_warnings++)) || true
     _deploy_commands "$project_path"
     _deploy_skills "$project_path"
+    _deploy_kb "$project_path" || ((_warnings++)) || true
     _deploy_memory "$project_path"
     scaffold_set_directory "$project_path"
     _deploy_mcp "$project_path" "$@" || ((_warnings++)) || true
