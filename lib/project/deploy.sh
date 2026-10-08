@@ -332,6 +332,14 @@ _deploy_kb() {
         info "  Would add '.set/' to .gitignore (the kb index lives there and must never be committed)"
         return 0
     fi
+    # A non-empty file whose last byte is not a newline would glue the entry
+    # onto the last pattern — 'node_modules' with no trailing newline plus the
+    # append below produced 'node_modules.set/', which ignores nothing. The
+    # $( ) strips a trailing newline, so a file ENDING in one yields empty
+    # here and gets no separator; anything else yields its last byte.
+    if [[ -s "$gitignore" && -n "$(tail -c 1 "$gitignore")" ]]; then
+        printf '\n' >> "$gitignore"
+    fi
     printf '.set/\n' >> "$gitignore"
     success "  Added .set/ to .gitignore — the kb index and its WAL carry corpus text and must never be committed"
 }

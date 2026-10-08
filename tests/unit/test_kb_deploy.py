@@ -94,6 +94,20 @@ def test_sources_exist_so_the_deploy_cannot_silently_deploy_nothing():
     assert (REPO_ROOT / "templates" / "core" / "rules" / "kb-search.md").is_file()
 
 
+def test_gitignore_without_trailing_newline_stays_line_separated(tmp_path):
+    """W3 review, item 2: '.gitignore' ending in a non-newline byte glued the
+    append onto the last pattern — 'node_modules' + '.set/' became
+    'node_modules.set/', which ignores nothing. The entry must land on its
+    own line and git must see it."""
+    root = make_repo(tmp_path, "nonewline", gitignored=False)
+    write(root / ".gitignore", "node_modules")  # no trailing newline, by construction
+    r = run_deploy_kb(root)
+    assert r.returncode == 0, r.stderr
+    assert (root / ".gitignore").read_text() == "node_modules\n.set/\n", "both entries on their own lines"
+    assert subprocess.run(["git", "-C", str(root), "check-ignore", "-q", ".set/"]).returncode == 0, \
+        "git ignores .set/ after the append"
+
+
 def test_set_project_wires_deploy_kb_into_both_deploy_paths():
     """A defined-but-never-called _deploy_kb is dead code that still reads as
     'the deploy delivers search'. bin/set-project must call it — in the real
