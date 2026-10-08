@@ -57,6 +57,11 @@
             "type": "command",
             "command": "set-hook-stop",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "set-hook-waveboard",
+            "timeout": 15
           }
         ]
       }
