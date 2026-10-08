@@ -9,6 +9,7 @@ entry exactly once, and writes `set/knowledge/kb.json` never."""
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -91,3 +92,20 @@ def test_the_deployed_rule_is_at_most_15_lines():
 def test_sources_exist_so_the_deploy_cannot_silently_deploy_nothing():
     assert (REPO_ROOT / ".claude" / "skills" / "set" / "kb" / "SKILL.md").is_file()
     assert (REPO_ROOT / "templates" / "core" / "rules" / "kb-search.md").is_file()
+
+
+def test_set_project_wires_deploy_kb_into_both_deploy_paths():
+    """A defined-but-never-called _deploy_kb is dead code that still reads as
+    'the deploy delivers search'. bin/set-project must call it — in the real
+    path in the same warning-guarded style as the other subsystem steps,
+    directly after the skills/rules pass — and the DRY_RUN plan must name it
+    too."""
+    text = (REPO_ROOT / "bin" / "set-project").read_text()
+    assert re.search(
+        r'_deploy_skills "\$project_path"\n\s*_deploy_kb "\$project_path" \|\| \(\(_warnings\+\+\)\) \|\| true',
+        text,
+    ), "bin/set-project never calls _deploy_kb in the real deploy path"
+    assert re.search(
+        r'_deploy_skills "\$project_path"\n\s*_deploy_kb "\$project_path"\n',
+        text,
+    ), "the DRY_RUN plan does not report the kb step"
