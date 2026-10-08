@@ -153,6 +153,10 @@ class SearchOpts:
 
     limit: int = 10
     root: Optional[str] = None
+    # Restrict the page to one channel's hits, in the exact configured name.
+    # Applied in the SQL WHERE next to `root`/`scope` (a post-filter would
+    # shrink the page below `limit` instead of letting the next hit move up).
+    channel: Optional[str] = None
     doc_type: Optional[DocType] = None
     dedup: bool = True  # exact-content collapse
     source_dedup: bool = True  # collapse to one hit per (root, path)

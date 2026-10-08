@@ -188,6 +188,7 @@ def search_project(
     query: str,
     limit: int = 10,
     root: Optional[str] = None,
+    channel: Optional[str] = None,
     scope: Optional[str] = None,
     exclude_paths: tuple = (),
     lane: bool = True,
@@ -212,6 +213,8 @@ def search_project(
         overrides: dict = {"limit": limit, "exclude_paths": list(exclude_paths)}
         if root is not None:
             overrides["root"] = root
+        if channel is not None:
+            overrides["channel"] = channel
         if scope is not None:
             overrides["scope"] = scope
         if not lane:

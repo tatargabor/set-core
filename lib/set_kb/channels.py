@@ -33,12 +33,19 @@ class ChannelRule:
     `roots` is mandatory (see above); `include` narrows within those roots,
     `exclude` vetoes. Patterns are ROOT-RELATIVE, the same anchoring the
     indexer's include/exclude uses.
+
+    `about` is the project's own one-line description of the layer, shown by
+    `set-kb sources` — the mechanism that keeps the DEPLOYED skill generic
+    (design D3): project-specific prose lives in project config, never in a
+    framework file. Display-only: it never touches rows, so it stays out of
+    the corpus-config hash.
     """
 
     channel: str
     roots: Sequence[str]
     include: Optional[Sequence[str]] = None  # omitted = the whole root belongs
     exclude: Optional[Sequence[str]] = None  # vetoes even when include matched
+    about: Optional[str] = None
 
 
 @dataclass

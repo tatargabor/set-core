@@ -231,6 +231,9 @@ class _Clauses:
         if opts.root:
             where.append("root = ?")
             args.append(opts.root)
+        if opts.channel:
+            where.append("channel = ?")
+            args.append(opts.channel)
         if lane and lane.get("doc_type"):
             where.append("doc_type = ?")
             args.append(lane["doc_type"])

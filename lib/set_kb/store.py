@@ -467,6 +467,27 @@ class SqliteFtsStore:
             "edges": c("SELECT COUNT(*) n FROM edges"),
         }
 
+    def root_counts(self) -> list:
+        """(root, files, chunks) per stored root — doctor's per-root corpus
+        counts, read from the CHUNKS table so an excluded-but-recorded file
+        (frontmatter dump, unmodified framework file) is never counted as
+        indexed corpus."""
+        return [
+            (r["root"], r["files"], r["chunks"])
+            for r in self.db.execute(
+                "SELECT root, COUNT(DISTINCT path) files, COUNT(*) chunks FROM chunks GROUP BY root ORDER BY root"
+            )
+        ]
+
+    def channel_counts(self) -> list:
+        """(channel, files, chunks) per stored channel, NULL last. The same
+        chunks-table basis as `root_counts`: a channel's share of the corpus is
+        what search can actually return."""
+        rows = self.db.execute(
+            "SELECT channel, COUNT(DISTINCT path) files, COUNT(*) chunks FROM chunks GROUP BY channel ORDER BY channel IS NULL, channel"
+        ).fetchall()
+        return [(r["channel"], r["files"], r["chunks"]) for r in rows]
+
 
 def _row_to_chunk(r) -> Chunk:
     return Chunk(

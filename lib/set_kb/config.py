@@ -129,10 +129,13 @@ DEFAULTS: dict = {
 @dataclass
 class SourceConfig:
     """One indexed root: a directory under the project root, plus the priority
-    that decides the exact-content dedup winner."""
+    that decides the exact-content dedup winner. `about` is the project's own
+    one-line description, shown by `set-kb sources` (design D3) — display-only,
+    like a channel's `about`, and out of the corpus-config hash."""
 
     ref: str
     priority: int = 0
+    about: Optional[str] = None
 
 
 @dataclass
@@ -295,7 +298,10 @@ def _validate(d: dict) -> KbConfig:
         prio = s.get("priority", 0)
         if not _is_num(prio):
             raise ConfigError(f"config.sources[{i}].priority: expected a number, got {type(prio).__name__}")
-        cfg.sources.append(SourceConfig(ref=ref, priority=int(prio)))
+        about = s.get("about")
+        if about is not None and not isinstance(about, str):
+            raise ConfigError(f"config.sources[{i}].about: expected a string, got {type(about).__name__}")
+        cfg.sources.append(SourceConfig(ref=ref, priority=int(prio), about=about))
     if not cfg.sources:
         raise ConfigError("config.sources: at least one source root is required")
 
@@ -353,12 +359,16 @@ def _validate(d: dict) -> KbConfig:
         for key in ("include", "exclude"):
             if r.get(key) is not None:
                 _req_str_list(r[key], f"config.channels[{i}].{key}")
+        about = r.get("about")
+        if about is not None and not isinstance(about, str):
+            raise ConfigError(f"config.channels[{i}] (rule {name!r}).about: expected a string, got {type(about).__name__}")
         cfg.channels.append(
             ChannelRule(
                 channel=name,
                 roots=list(roots),
                 include=list(r["include"]) if r.get("include") else None,
                 exclude=list(r["exclude"]) if r.get("exclude") else None,
+                about=about,
             )
         )
 
