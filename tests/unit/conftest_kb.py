@@ -20,12 +20,14 @@ GIT_ID = ["-c", "user.email=kb-test@example.invalid", "-c", "user.name=kb test"]
 
 
 def make_repo(tmp_path, name="repo", gitignored=True) -> Path:
-    """A throwaway project directory. `gitignored=True` writes the `.set/`
-    ignore entry a real deploy guarantees; the guard tests turn it off."""
+    """A throwaway PROJECT — a real git repository under tmp_path.
+    `gitignored=True` writes the `.set/` ignore entry a real deploy
+    guarantees; the guard tests turn it off."""
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
     if gitignored:
         (root / ".gitignore").write_text(".set/\n", encoding="utf-8")
+    git(root, "init", "-q")
     return root
 
 
