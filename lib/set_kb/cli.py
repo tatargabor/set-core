@@ -25,14 +25,18 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import sys
+import time
 import unicodedata
 from pathlib import Path
 
-from set_kb.config import CONFIG_REL, ConfigError, LEGACY_REL
+from set_kb.config import CONFIG_REL, ConfigError, LEGACY_REL, index_options, load_config, read_framework_ledger
 from set_kb.get_section import leaf_of, resolve_section
+from set_kb.indexer import IndexSource, scan_exclusions
 from set_kb.lifecycle import ProjectError, load_project, refresh, search_project
-from set_kb.runtime import KbRuntimeError
+from set_kb.project import ensure_ignored, index_paths, resolve_root
+from set_kb.runtime import KbRuntimeError, ensure_runtime
 from set_kb.store import SqliteFtsStore
 
 logger = logging.getLogger(__name__)
@@ -377,6 +381,162 @@ def cmd_index(args) -> int:
     return 0
 
 
+# ── doctor (whether search works in THIS project) ────────────────────────────
+
+
+def _age_text(seconds: float) -> str:
+    for unit, div in (("days", 86400), ("hours", 3600), ("minutes", 60)):
+        if seconds >= div:
+            return f"{seconds / div:.0f} {unit} ago"
+    return f"{max(0, int(seconds))} s ago"
+
+
+def cmd_doctor(args) -> int:
+    """Health check: Python, FTS5, config, git-ignore status, index presence
+    and freshness, corpus counts per root and channel, excluded-file counts
+    per rule. Blocking findings exit non-zero; everything else reports.
+
+    The exclusion census is a fresh whole-tree scan (`scan_exclusions`), not
+    the last refresh's stats: the incremental path cheap-skips unchanged files
+    BEFORE their content rules run, so quoting refresh stats would report the
+    corpus as it was measured on some earlier day."""
+    checks: list = []
+
+    def check(name: str, status: str, detail: str) -> None:
+        checks.append({"name": name, "status": status, "detail": detail})
+
+    blocked = False
+    root = None
+    try:
+        root = resolve_root(os.getcwd())
+        check("project", "ok", root)
+    except ProjectError as e:
+        blocked = True
+        check("project", "blocked", str(e))
+        _report_doctor(args, checks)
+        return 1
+
+    py = sys.version_info
+    if (py.major, py.minor) >= (3, 10):
+        check("python", "ok", f"{py.major}.{py.minor}.{py.micro} (requires >= 3.10)")
+    else:
+        blocked = True
+        check("python", "blocked", f"{py.major}.{py.minor}.{py.micro} — the engine requires Python >= 3.10")
+
+    try:
+        info = ensure_runtime()
+        check("runtime", "ok", f"SQLite {info['sqlite']} — FTS5 + 'porter unicode61' tokenizer available")
+    except KbRuntimeError as e:
+        blocked = True
+        check("runtime", "blocked", str(e))
+
+    db_path, _lock_path = index_paths(root)
+    cfg = None
+    try:
+        cfg = load_config(root)
+        check("config", "ok", config_path_label_for(root, cfg))
+    except ConfigError as e:
+        blocked = True
+        check("config", "blocked", str(e))
+
+    try:
+        ensure_ignored(root, db_path)
+        check("ignore", "ok", f"{os.path.relpath(db_path, root)} is ignored by git")
+    except ProjectError as e:
+        blocked = True
+        check("ignore", "blocked", str(e))
+
+    index_info: dict = {"present": False}
+    roots_table: list = []
+    channels_table: list = []
+    store, exists = None, os.path.exists(db_path)
+    if exists:
+        age = time.time() - os.path.getmtime(db_path)
+        try:
+            store = SqliteFtsStore(db_path)
+            store.init()
+            counts = store.counts()
+            index_info = {"present": True, "writtenAgoSeconds": round(age), "counts": counts}
+            check(
+                "index",
+                "ok" if counts["files"] else "warn",
+                f"present — {counts['files']} files, {counts['chunks']} chunks (written {_age_text(age)})",
+            )
+            roots_table = store.root_counts()
+            channels_table = store.channel_counts()
+        except sqlite3.DatabaseError as e:
+            # An unreadable index is a finding, not a crash — the next search
+            # rebuilds it, and doctor says so instead of dying.
+            check("index", "warn", f"present but unreadable ({e}) — the next search rebuilds it")
+        finally:
+            if store is not None:
+                store.close()
+    else:
+        check("index", "warn", "not built yet — the first search builds it")
+
+    census: dict = {}
+    if cfg is not None:
+        sources = [IndexSource(root=s.ref, dir=os.path.join(root, s.ref)) for s in cfg.sources]
+        census = scan_exclusions(sources, index_options(cfg, framework_ledger=read_framework_ledger(root)))
+        missing = [s.id for s in sources if not os.path.isdir(s.dir)]
+        if missing:
+            check("sources", "warn", f"configured root(s) missing on disk: {', '.join(missing)}")
+        rules = sorted(census.get("excluded", {}).items(), key=lambda kv: -kv[1])
+        if rules:
+            detail = "; ".join(f"{rule}: {n} file(s)" for rule, n in rules)
+            check("exclusions", "info", detail)
+        else:
+            check("exclusions", "info", "nothing excluded — every candidate is indexed")
+
+    _report_doctor(args, checks, root=root, index=index_info, roots=roots_table, channels=channels_table, census=census)
+    return 1 if blocked else 0
+
+
+def config_path_label_for(root, cfg) -> str:
+    if (Path(root) / CONFIG_REL).is_file():
+        return CONFIG_REL
+    if cfg.legacy:
+        return f"{LEGACY_REL} (legacy — move to {CONFIG_REL})"
+    return "built-in defaults (no project config)"
+
+
+def _report_doctor(args, checks: list, root=None, index=None, roots=None, channels=None, census=None) -> None:
+    glyph = {"ok": "ok  ", "warn": "warn", "info": "info", "blocked": "BLOCKED"}
+    if args.json:
+        emit_json(
+            {
+                "version": CONTRACT_VERSION,
+                "command": "doctor",
+                "root": root,
+                "ok": all(c["status"] != "blocked" for c in checks),
+                "checks": checks,
+                "index": index,
+                "roots": [
+                    {"root": r, "files": f, "chunks": c}
+                    for r, f, c in (roots or [])
+                ],
+                "channels": [
+                    {"channel": c, "files": f, "chunks": n}
+                    for c, f, n in (channels or [])
+                ],
+                "exclusions": [{"rule": rule, "files": n} for rule, n in sorted((census or {}).get("excluded", {}).items(), key=lambda kv: -kv[1])],
+            }
+        )
+        return
+    if root:
+        print(f"set-kb doctor — {root}")
+    for c in checks:
+        print(f"  {glyph.get(c['status'], '    ')} {c['name']}: {c['detail']}")
+    for r, f, n in roots or []:
+        label = r if r else "(repository root)"
+        print(f"  root {label}: {f} files, {n} chunks")
+    for c, f, n in channels or []:
+        label = c if c else "(unclassified)"
+        print(f"  channel {label}: {f} files, {n} chunks")
+    for rule, n in sorted((census or {}).get("excluded", {}).items(), key=lambda kv: -kv[1]):
+        print(f"  excluded by {rule}: {n} file(s)")
+
+
 # ── argument parsing ─────────────────────────────────────────────────────────
 
 
@@ -411,7 +571,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("sources", parents=[common], help="roots, channels and the lane, with the config's own descriptions")
     p.set_defaults(func=cmd_sources)
 
-    # doctor / findability / eval are registered by their own sections below.
+    p = sub.add_parser("doctor", parents=[common], help="whether search works in this project (blocking vs informational checks)")
+    p.set_defaults(func=cmd_doctor)
+
+    # findability / eval are registered by their own sections below.
 
     return parser
 

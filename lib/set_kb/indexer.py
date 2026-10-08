@@ -488,13 +488,13 @@ def scan_exclusions(sources: list, opts: IndexOptions) -> dict:
             rel = os.path.relpath(abs, src.dir).replace(os.sep, "/")
             rel = unicodedata.normalize("NFC", rel)
             scanned += 1
-            ledger_key = f"{src.id}/{rel}" if src.id else rel
+            ledger_key = f"{src.root}/{rel}" if src.root else rel
             rule, _digest = exclusion_rule(abs, rel, opts, ledger=opts.framework_ledger, ledger_key=ledger_key)
             if rule:
                 excluded[rule] = excluded.get(rule, 0) + 1
                 continue
             n_here += 1
-        indexed[src.id] = indexed.get(src.id, 0) + n_here
+        indexed[src.root] = indexed.get(src.root, 0) + n_here
     return {"excluded": excluded, "indexed": indexed, "scanned": scanned}
 
 

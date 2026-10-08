@@ -194,7 +194,7 @@ def test_scan_exclusions_census_matches_the_indexer(tmp_path):
     the indexer: pattern rules from the walk, frontmatter and framework-ledger
     rules per file — counted fresh, over the whole tree."""
     from set_kb.config import DEFAULT_EXCLUDE_FRONTMATTER
-    from set_kb.indexer import scan_exclusions
+    from set_kb.indexer import IndexSource, scan_exclusions
 
     src = make_source(tmp_path)
     (src / "dist" / "x.md").parent.mkdir(parents=True)
@@ -202,7 +202,7 @@ def test_scan_exclusions_census_matches_the_indexer(tmp_path):
     (src / "dump.md").write_text("---\ntype: claude-session\n---\n\nsession dump\n", encoding="utf-8")
     (src / "note.md").write_text("# Note\n\nbody text\n", encoding="utf-8")
     opts = IndexOptions(exclude=["dist/"], exclude_frontmatter=dict(DEFAULT_EXCLUDE_FRONTMATTER))
-    census = scan_exclusions([AtomicIndexSource(id="", dir=str(src))], opts)
+    census = scan_exclusions([IndexSource(root="", dir=str(src))], opts)
     assert census["excluded"] == {"dist/": 1, "excludeFrontmatter:type": 1}
     assert census["indexed"] == {"": 1}
     assert census["scanned"] == 2, "pruned directories never become candidates"
