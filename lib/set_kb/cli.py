@@ -32,6 +32,7 @@ import unicodedata
 from pathlib import Path
 
 from set_kb.config import CONFIG_REL, ConfigError, LEGACY_REL, index_options, load_config, read_framework_ledger
+from set_kb.eval import DEFAULT_GOLDEN_REL, EvalError, golden_path_for, load_golden, run_eval
 from set_kb.get_section import leaf_of, resolve_section
 from set_kb.indexer import IndexSource, scan_exclusions
 from set_kb.findability import run_findability
@@ -574,6 +575,56 @@ def cmd_findability(args) -> int:
     return 0 if report.ok else 1
 
 
+# ── eval (golden set, control arm, fail-closed denominator) ──────────────────
+
+
+def cmd_eval(args) -> int:
+    project = load_project(os.getcwd())
+    golden_file = golden_path_for(project.root, args.golden)
+    pairs, control = load_golden(golden_file)
+    if args.control_query:
+        control = {"q": args.control_query, "targets": list(args.control_target or [])}
+    report = run_eval(project, pairs, k=args.k, lane=not args.no_lane, control=control, no_reindex=args.no_reindex)
+    report.golden = os.path.relpath(golden_file, project.root)
+    if args.json:
+        emit_json(report.to_json_dict(project.root))
+    else:
+        m = report.metrics()
+        lane_channels = project.config.ranking.get("laneChannels", [])
+        print(f"set-kb eval — {project.root}")
+        print(
+            f"  golden set: {report.golden} — {len(report.results)} pair(s), k = {report.k}, "
+            f"lane {'on (' + ', '.join(lane_channels) + ')' if (not args.no_lane and lane_channels) else 'off'}"
+        )
+        for n in report.notes:
+            print(f"  note: {n}")
+        print(
+            "  recall@{k}: {recall:.3f}   MRR: {mrr:.3f}   rank-1: {r1:.1%}   top-3: {t3:.1%}   top-5: {t5:.1%}".format(
+                k=report.k, recall=m["recallAtK"], mrr=m["mrr"], r1=m["rank1"], t3=m["top3"], t5=m["top5"]
+            )
+        )
+        failures = report.failures
+        if failures:
+            print(f"  failures: {len(failures)} (counted as misses — the denominator stays {len(report.results)})")
+            for r in failures:
+                print(f"    FAIL {r.id}: {r.error}")
+        if report.control_q is not None:
+            control_recall = (
+                f"recall@{report.k} {report.control_found}/{report.control_targets} = {report.control_found / report.control_targets:.3f}"
+                if report.control_found is not None and report.control_targets
+                else "no recall (no targets configured)"
+            )
+            print(f'  control arm: query "{report.control_q}" — {control_recall}')
+            if report.control_note:
+                print(f"    note: {report.control_note}")
+        misses = report.misses
+        if misses:
+            print(f"  misses ({len(misses)}):")
+            for r in misses:
+                print(f"    {r.id} {r.q!r} → best rank none (found {r.found}/{len(r.targets)} targets)")
+    return 0
+
+
 # ── argument parsing ─────────────────────────────────────────────────────────
 
 
@@ -615,7 +666,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top", type=int, default=None, help="top-k for the title query (default 10)")
     p.set_defaults(func=cmd_findability)
 
-    # eval is registered by its own section below.
+    p = sub.add_parser("eval", parents=[common], help="retrieval eval over the project's golden set, with a control arm")
+    p.add_argument("--golden", default=None, help=f"golden-set path (default {DEFAULT_GOLDEN_REL})")
+    p.add_argument("--k", type=int, default=10, help="top-k the metrics measure (default 10)")
+    p.add_argument("--no-lane", action="store_true", help="disable the reserved lane for every query in this run")
+    p.add_argument("--no-reindex", action="store_true", help="measure the index as it stands (no refresh)")
+    p.add_argument("--control-query", default=None, help="run this fixed control query as the control arm")
+    p.add_argument("--control-target", action="append", default=None, help="a target path for --control-query (repeatable)")
+    p.set_defaults(func=cmd_eval)
 
     return parser
 
@@ -630,7 +688,7 @@ def main(argv=None) -> int:
     )
     try:
         return args.func(args)
-    except (ProjectError, ConfigError, KbRuntimeError, FileNotFoundError) as e:
+    except (ProjectError, ConfigError, KbRuntimeError, EvalError, FileNotFoundError) as e:
         # The error a caller shows is the engine's words plus ours — the MCP
         # layer returns this text verbatim (requirement: engine failure
         # surfaces), so the message must be complete on one channel.
