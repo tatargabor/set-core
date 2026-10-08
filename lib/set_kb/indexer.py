@@ -533,6 +533,8 @@ def run_index_atomic(opts: RunIndexAtomicOpts) -> dict:
             total.chunks += st.chunks
             total.parse_failures += st.parse_failures
             total.read_failures += st.read_failures
+            for rule, n in st.excluded.items():
+                total.excluded[rule] = total.excluded.get(rule, 0) + n
             if st.missing:
                 total.missing_roots.append(s.id)
         # Ghost-root sweep: a root that indexed before but is NOT part of this
@@ -565,6 +567,7 @@ def run_index_atomic(opts: RunIndexAtomicOpts) -> dict:
         ok = True
         return {"scanned": total.scanned, "changed": total.changed, "deleted": total.deleted, "chunks": total.chunks,
                 "parse_failures": total.parse_failures, "read_failures": total.read_failures,
+                "excluded": dict(total.excluded),
                 "missing_roots": total.missing_roots, "swept_roots": total.swept_roots, "counts": counts}
     finally:
         if not ok:

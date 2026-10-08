@@ -426,6 +426,28 @@ def _validate(d: dict) -> KbConfig:
 # ── the factories the engine runs on ─────────────────────────────────────────
 
 
+def read_framework_ledger(project_root) -> Optional[dict]:
+    """The deploy ledger's `files` map ({project-relative path: sha256}), or
+    None when there is no usable ledger. A project WITHOUT a ledger indexes
+    every file like any other — the framework-noise cost is visible through
+    doctor, never through a silent wrong corpus. An UNREADABLE ledger degrades
+    the same way, loudly logged: a half-written ledger must not decide what is
+    project knowledge."""
+    path = Path(project_root) / FRAMEWORK_LEDGER_REL
+    if not path.is_file():
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        files = data.get("files")
+        if not isinstance(files, dict):
+            raise ValueError("'files' is not an object")
+        return {str(k): str(v) for k, v in files.items()}
+    except (OSError, ValueError) as e:
+        logger.warning("kb config: unreadable framework ledger at %s (%s) — indexing everything", path, e)
+        return None
+
+
 def index_options(cfg: KbConfig, framework_ledger: Optional[dict] = None) -> IndexOptions:
     """The IndexOptions one refresh runs with. `framework_ledger` is the
     loaded deploy ledger; `includeFrameworkFiles: true` simply passes None."""
