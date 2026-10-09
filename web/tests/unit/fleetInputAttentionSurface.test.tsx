@@ -318,6 +318,56 @@ describe('the escalation on the project row', () => {
   })
 })
 
+describe('an open question on the project column — B-161', () => {
+  // Reported 2026-10-10 with a screenshot: the tile said "asking you ·
+  // AskUserQuestion 7s" while the project row showed only the grey `1 7s`
+  // that every finished turn shows for its first 15 seconds.
+  const asking = (seconds: number) => agent(1, 'q', {
+    state: 'asking', tool: 'AskUserQuestion', tool_elapsed_seconds: seconds,
+    attention: 'prompt', input_wait_seconds: seconds,
+  })
+
+  it('marks and tints the row from the first second, inside the 15-second grace', async () => {
+    const el = await column(fleet([project('visible', [asking(5)])]))
+    await waitFor(() => expect(el.querySelector('[data-fleet-asking="1"]')).toBeTruthy())
+    expect(el.querySelector('[data-fleet-row-tone="asking"]')).toBeTruthy()
+  })
+
+  it('a finished turn under 15 seconds still gets neither', async () => {
+    const el = await column(fleet([
+      project('visible', [agent(1, 'a', { attention: 'input', input_wait_seconds: 5 })]),
+    ]))
+    await waitFor(() => expect(el.querySelector('[data-fleet-input-wait]')).toBeTruthy())
+    expect(el.querySelector('[data-fleet-asking]')).toBeNull()
+    expect(el.querySelector('[data-fleet-row-tone]')).toBeNull()
+  })
+
+  it('lets amber and red win once the question has waited', async () => {
+    const el = await column(fleet([project('visible', [asking(400)])]))
+    await waitFor(() => expect(el.querySelector('[data-fleet-row-tone="red"]')).toBeTruthy())
+    expect(el.querySelector('[data-fleet-asking="1"]')).toBeTruthy()
+  })
+
+  it('does not hold a sky tint on a question nobody came for', async () => {
+    const el = await column(fleet([project('visible', [asking(3000)])]))
+    await waitFor(() => expect(el.querySelector('[data-fleet-parked]')).toBeTruthy())
+    expect(el.querySelector('[data-fleet-asking]')).toBeNull()
+    expect(el.querySelector('[data-fleet-row-tone]')).toBeNull()
+  })
+
+  it('carries the question onto a COLLAPSED group header', async () => {
+    install(fleet([project('hidden', [asking(5)]), project('visible')]))
+    const { container } = render(<Fleet />)
+    const group = await waitFor(() => {
+      const el = container.querySelector('[data-fleet-group="g-closed"]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    await waitFor(() => expect(group.querySelector('[data-fleet-group-tone="asking"]')).toBeTruthy())
+    expect(group.querySelector('[data-fleet-asking="1"]')).toBeTruthy()
+  })
+})
+
 describe('the agent tile says what would happen if you typed', () => {
   async function tileFor(over: Json): Promise<HTMLElement> {
     install(fleet([project('visible', [agent(1, 'a', over)])]))

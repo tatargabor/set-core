@@ -264,6 +264,16 @@ export interface Tally {
   waiting: number
   /** Measured: a question tool is outstanding — see `ASKING`. */
   asking: number
+  /**
+   * `asking` agents whose question is still LIVE — parked ones left out.
+   *
+   * The left column's question marker counts this, not `asking`: a question
+   * nobody has come for in 45 minutes must not hold a sky tint forever, the
+   * same reason a parked wait does not own the row's colour. Reported
+   * 2026-10-10 (B-161): the tile said "asking you" while the project row
+   * showed only the grey, 15-second-grace wait every finished turn shows.
+   */
+  askingNow: number
   /** The turn ended and nothing is outstanding. Counted, never called idle. */
   quiet: number
   /**
@@ -324,7 +334,7 @@ export interface Tally {
 }
 
 export const EMPTY_TALLY: Tally = {
-  agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, quiet: 0, unbucketed: 0,
+  agents: 0, working: 0, unknown: 0, waiting: 0, asking: 0, askingNow: 0, quiet: 0, unbucketed: 0,
   conflicts: 0, awaiting: 0, unmeasured: 0,
   input: 0, prompt: 0, background: 0, attentionUnbucketed: 0, worstInputWaitSeconds: null,
   attWorking: 0, attUnmeasured: 0, attentionReported: false, parked: 0,
@@ -334,7 +344,7 @@ export function tally(
   projects: readonly AttentionProject[],
   thresholds?: InputWaitThresholds | null,
 ): Tally {
-  let agents = 0, working = 0, unknown = 0, waiting = 0, asking = 0, quiet = 0, unbucketed = 0
+  let agents = 0, working = 0, unknown = 0, waiting = 0, asking = 0, askingNow = 0, quiet = 0, unbucketed = 0
   let conflicts = 0, awaiting = 0, unmeasured = 0
   let input = 0, prompt = 0, background = 0, attentionUnbucketed = 0
   let attWorking = 0, attUnmeasured = 0, attentionReported = false
@@ -369,6 +379,7 @@ export function tally(
       if (typeof a.attention === 'string' && a.attention !== '') attentionReported = true
       const asleep = isParked(a, thresholds)
       if (asleep) parked += 1
+      if (a.state === ASKING && !asleep) askingNow += 1
       // `background` is counted BOTH as a waiter and as a background marker:
       // the wait is what the reader acts on, the background command is why the
       // session may look busy. Two facts, and dropping either one loses a
@@ -389,7 +400,7 @@ export function tally(
     }
   }
   return {
-    agents, working, unknown, waiting, asking, quiet, unbucketed, conflicts, awaiting, unmeasured,
+    agents, working, unknown, waiting, asking, askingNow, quiet, unbucketed, conflicts, awaiting, unmeasured,
     input, prompt, background, attentionUnbucketed, worstInputWaitSeconds,
     attWorking, attUnmeasured, attentionReported, parked,
   }
