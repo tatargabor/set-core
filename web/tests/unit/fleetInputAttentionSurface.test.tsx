@@ -331,6 +331,8 @@ describe('an open question on the project column — B-161', () => {
     const el = await column(fleet([project('visible', [asking(5)])]))
     await waitFor(() => expect(el.querySelector('[data-fleet-asking="1"]')).toBeTruthy())
     expect(el.querySelector('[data-fleet-row-tone="asking"]')).toBeTruthy()
+    // The label the user chose, 2026-10-10: "Q1", not "?1".
+    expect(el.querySelector('[data-fleet-asking]')!.textContent).toBe('Q1')
   })
 
   it('a finished turn under 15 seconds still gets neither', async () => {

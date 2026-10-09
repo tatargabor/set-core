@@ -161,7 +161,7 @@ function Counts({ t, showAgents = true, waitingKnown }: { t: Tally; showAgents?:
           className="inline-flex items-center gap-1 text-sky-300 font-semibold"
           title="an agent here is asking you a question — AskUserQuestion or ExitPlanMode is open"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse" />?{t.askingNow}
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse" />Q{t.askingNow}
         </span>
       )}
       {(t.input > 0 || t.prompt > 0) && (
