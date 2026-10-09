@@ -77,7 +77,7 @@ consumer's name, path, or content.
 
 ### B-160 — the tab title's green "ready" circle fires for a WORKING agent and almost never for a finished one
 - **renumbered:** B-157 → B-160 in the 2026-10-09 merge with origin; the other machine had already published B-157. Commit `9bb4594f` cites B-157.
-- **state:** open
+- **state:** closed (`8d2cd662`) — ⚠️ now counts `prompt` only, 🟢 counts `input` with its own number; seen live 2026-10-10 as `🟢 SET (3)` with three finished agents and no question
 - **reported:** 2026-10-07 by this session, from code reading while answering the user's question of how the fleet screen shows that an agent is ready
 - **measured (code reading only, not yet seen in a browser):** `FleetProjectColumn.tsx:1129` passes `totals.quiet` as `ready` to `tabTitle` (`fleetTabBadge.ts:57`), which renders `🟢` only when `needsPerson` (= `input + prompt`) is 0. `tally` (`fleetAttention.ts`) counts `quiet` on `state === 'quiet'` whatever the attention class is. So a finished agent (`quiet` + attention `input`) always raises `⚠️` instead, and `🟢` survives only for `quiet` agents whose attention is `working` (the loop is running and the log flushed between calls; see `Fleet.tsx` StateLine) or `unmeasured` (headless).
 - **fail direction:** a false value in the acting direction. The title says "something finished, come read it" about a session that is still running, and it never says it about one that actually finished.
