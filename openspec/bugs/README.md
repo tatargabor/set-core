@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-161 — an open AskUserQuestion is unmarked on the project column for its first 15 seconds, and looks like a finished turn after that
+- **state:** closed (`7011be1b`)
+- **reported:** 2026-10-10 by the user, with a screenshot: the tile header said `asking you · AskUserQuestion 7s`, the left panel showed nothing distinct
+- **measured:** `GET /api/fleet/agents` carried the agent correctly (`state: asking`, `attention: prompt`, `tool: AskUserQuestion`). The row's only marker was the input-wait counter, which is deliberately unmarked under 15 s (`escalationTone` → `plain`) and amber afterwards — the same rendering as an agent whose turn merely ended. Verified narrower than "no representation": a grey `1 7s` counter was there; nothing said *question*.
+- **fail direction:** calm — a request addressed to the reader rendered like a finished turn.
+- **fixed when:** a live question shows a sky `?n` chip and (below amber/red) a sky row/group tint from its first second; parked questions excluded. Tests in `web/tests/unit/fleetInputAttentionSurface.test.tsx` (`B-161` describe) — the three positive cases fail on the reverted source. Seen live 2026-10-10 on a 4-minute question (sky `?1` + red row); the sub-15 s sky tint was not on screen to look at.
+
 ### B-160 — the tab title's green "ready" circle fires for a WORKING agent and almost never for a finished one
 - **renumbered:** B-157 → B-160 in the 2026-10-09 merge with origin; the other machine had already published B-157. Commit `9bb4594f` cites B-157.
 - **state:** open
