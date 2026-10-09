@@ -50,7 +50,7 @@ import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Fold
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
-import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
+import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, treeClickAct, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
@@ -2658,23 +2658,6 @@ export default function Fleet() {
   }, [])
 
   /**
-   * The TREE shortcut — clicking an agent's sub-row in the project column.
-   *
-   * Deliberately the SAME two acts as selecting a tile by hand: select the
-   * project, then enlarge that agent. Going through `setEnlarged` rather than
-   * poking the stored view directly is the whole point — one code path owns
-   * the exclusivity rules (a maximised file view stands down, the memory is
-   * refreshed), so a tree click cannot produce a state a tile click could not.
-   * And because the enlarged pid is remembered per project and resolved
-   * against the live answer on return, leaving and coming back restores the
-   * same agent without this handler doing anything extra.
-   */
-  const focusAgentFromTree = useCallback((project: string, pid: number) => {
-    setSelected(project)
-    setEnlarged(project, pid)
-  }, [setEnlarged])
-
-  /**
    * A DOCKED band's size before it was maximised, so it can be put back.
    *
    * Asked for 2026-08-22: *"a teljes képernyő kell akkor is ha ki van téve 4
@@ -2923,6 +2906,35 @@ export default function Fleet() {
     an agent: an entry means an edge, no entry means the grid.
   */
   const [filesOpen, setFilesOpen] = useState<ReadonlySet<string>>(new Set())
+
+  /**
+   * The TREE shortcut — clicking an agent's sub-row in the project column.
+   *
+   * Select the project, then change its layout ONLY if the agent is not
+   * already on screen in it — see `treeClickAct`. It used to enlarge the agent
+   * unconditionally, which stored over a side-by-side layout the reader had
+   * built (reported 2026-10-09). When it does change the layout it goes through
+   * `setEnlarged` / `setFocus`, so one code path owns the exclusivity rules and
+   * a tree click cannot produce a state a tile click could not.
+   */
+  const focusAgentFromTree = useCallback((project: string, pid: number) => {
+    setSelected(project)
+    // Resolved against the TARGET project's own layout, not the one on screen:
+    // the click is usually a switch, and the layout that must survive it is
+    // the one the reader built in the project they are going to.
+    const target = projects.find(p => p.name === project)
+    const root = target?.root ?? null
+    const docked = docksFor(dockMap, project)
+    const gridPids = (target?.agents ?? [])
+      .filter(a => !docked.some(d => d.kind === PANEL_AGENT && d.id === a.terminal_label))
+      .map(a => a.pid)
+    const panelBig = root !== null && (
+      (filesMax === root && filesOpen.has(root) && !docked.some(d => d.kind === PANEL_FILES && d.id === root))
+      || (boardMax === root && boardOpen.has(root) && !docked.some(d => d.kind === PANEL_BOARD && d.id === root)))
+    const act = treeClickAct(readView(project), gridPids, pid, panelBig)
+    if (act === 'enlarge') setEnlarged(project, pid)
+    else if (act === 'focus') setFocus(project, pid)
+  }, [projects, dockMap, filesMax, filesOpen, boardMax, boardOpen, setEnlarged, setFocus])
 
   /*
     Is the FILE view the big one right now — ONE derived answer, asked by every

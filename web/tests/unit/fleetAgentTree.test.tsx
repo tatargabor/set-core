@@ -194,10 +194,16 @@ describe('the tree', () => {
 })
 
 describe('the tree shortcut', () => {
-  it('clicking a sub-row focuses that agent, exactly like its tile', async () => {
+  it('clicking the sub-row of an agent behind a tab enlarges it, exactly like the tab', async () => {
+    // Agent 1 enlarged, so agent 2 is a tab: the click has to bring it forward.
+    localStorage.setItem('set-fleet-view', JSON.stringify({ alpha: { enlarged: 1 } }))
     const { container } = render(<Fleet />)
     await ready(container)
-    const row = container.querySelector('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row="2"]') as HTMLElement
+    const row = await wait(() => {
+      const el = container.querySelector('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row="2"]')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
     fireEvent.click(row)
     // The shell stores the enlarged pid per project — the same memory a tile
     // click writes — and marks the row focused.
@@ -212,6 +218,7 @@ describe('the tree shortcut', () => {
   })
 
   it('the focus survives leaving and returning', async () => {
+    localStorage.setItem('set-fleet-view', JSON.stringify({ alpha: { enlarged: 1 } }))
     const { container } = render(<Fleet />)
     await ready(container)
     // Same effect-timing rule as the first test: the sub-rows exist only once
@@ -235,5 +242,33 @@ describe('the tree shortcut', () => {
       expect(container.querySelector('[data-fleet-agent-row="2"]')
         ?.getAttribute('data-fleet-agent-row-focused')).toBe('true')
     })
+  })
+
+  it('a side-by-side layout survives switching projects through the tree', async () => {
+    // Reported 2026-10-09: two agents of one project placed side by side came
+    // back as one enlarged agent and a tab after switching away and back
+    // through the tree, and the enlarged pid was stored — the layout was lost.
+    localStorage.setItem('set-fleet-view', JSON.stringify({ alpha: { enlarged: null, columns: 2 } }))
+    const { container } = render(<Fleet />)
+    await ready(container)
+    const row = (sel: string) => wait(() => {
+      const el = container.querySelector(sel)
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    // Away to the other project through ITS agent row, then back through alpha's.
+    fireEvent.click(await row('[data-fleet-agent-rows="idle"] [data-fleet-agent-row="3"]'))
+    await wait(() => expect(container.querySelector('[data-fleet-opens="3"], [data-fleet-enlarged="3"]')).toBeTruthy())
+    fireEvent.click(await row('[data-fleet-agent-rows="alpha"] [data-fleet-agent-row="2"]'))
+    // Both alpha tiles are in the grid again, neither enlarged…
+    await wait(() => {
+      expect(container.querySelector('[data-fleet-opens="1"]')).toBeTruthy()
+      expect(container.querySelector('[data-fleet-opens="2"]')).toBeTruthy()
+    })
+    expect(container.querySelector('[data-fleet-enlarged]')).toBeNull()
+    // …and the stored choice is untouched.
+    const stored = JSON.parse(localStorage.getItem('set-fleet-view') ?? '{}')
+    expect(stored.alpha.enlarged).toBeNull()
+    expect(stored.alpha.columns).toBe(2)
   })
 })
