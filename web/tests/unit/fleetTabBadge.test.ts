@@ -7,7 +7,7 @@
  * because a badge setting must never be able to take the screen down.
  */
 import { describe, expect, it } from 'vitest'
-import { needsPerson, tabTitle, loadTabBadge, saveTabBadge, TAB_BADGE_KEY } from '../../src/lib/fleetTabBadge'
+import { needsPerson, readyToRead, tabTitle, loadTabBadge, saveTabBadge, TAB_BADGE_KEY } from '../../src/lib/fleetTabBadge'
 import { EMPTY_TALLY, tally } from '../../src/lib/fleetAttention'
 import type { AttentionProject } from '../../src/lib/fleetAttention'
 
@@ -29,32 +29,48 @@ function fakeStorage(initial: Record<string, string> = {}, fail = false): Storag
   } as unknown as Storage
 }
 
-describe('the count — the screen’s own needs-a-person classes', () => {
-  it('counts input, prompt and background — the three classes the row colours already mean', () => {
+describe('the two counts — blocked on you, and finished — B-160', () => {
+  it('splits a question from a finished turn', () => {
     const t = tally([
+      A({ state: 'asking', attention: 'prompt' }),
       A({ attention: 'input' }),
-      A({ attention: 'prompt' }),
       A({ attention: 'background' }),
       A({ attention: 'working' }),
       A({ attention: 'unmeasured' }),
     ])
-    // 3, not 4: `tally` counts a background waiter inside `input` as well, so
-    // summing all three counters would double every background agent.
-    expect(needsPerson(t)).toBe(3)
+    expect(needsPerson(t)).toBe(1)
+    // A finished agent with a dev server still up is finished all the same.
+    expect(readyToRead(t)).toBe(2)
+  })
+
+  it('a finished turn turns the tab GREEN, not the warning — the case that never fired', () => {
+    const t = tally([A({ attention: 'input', input_wait_seconds: 5 })])
+    expect(tabTitle('SET', needsPerson(t), readyToRead(t))).toBe('🟢 SET (1)')
+  })
+
+  it('a running agent between two log flushes turns NOTHING on — the false green', () => {
+    // `quiet` in the log, `busy` in the runtime record: measured live, and the
+    // only agents the old `totals.quiet` green ever fired for.
+    const t = tally([A({ state: 'quiet', attention: 'working' })])
+    expect(tabTitle('SET', needsPerson(t), readyToRead(t))).toBe('SET')
   })
 
   it('never double-counts a background waiter standing alone', () => {
     const t = tally([A({ attention: 'background' })])
     expect(t.background).toBe(1)
-    expect(t.input).toBe(1)
-    expect(needsPerson(t)).toBe(1)
+    expect(readyToRead(t)).toBe(1)
+    expect(needsPerson(t)).toBe(0)
   })
 
   it('does NOT count a parked wait — a question nobody came for must not own the tab forever', () => {
     // 45 minutes: past the 2700 s parked threshold this screen already uses.
-    const t = tally([A({ attention: 'input', input_wait_seconds: 2700 })])
-    expect(t.parked).toBe(1)
+    const t = tally([
+      A({ attention: 'input', input_wait_seconds: 2700 }),
+      A({ attention: 'prompt', input_wait_seconds: 2700 }),
+    ])
+    expect(t.parked).toBe(2)
     expect(needsPerson(t)).toBe(0)
+    expect(readyToRead(t)).toBe(0)
   })
 
   it('does NOT count work awaiting a human with no agent on it — a different fact', () => {
@@ -75,8 +91,8 @@ describe('the title', () => {
   it('is the plain base at zero — never “SET (0)”', () => {
     expect(tabTitle('SET', 0)).toBe('SET')
   })
-  it('turns green when a process is ready and nobody needs input', () => {
-    expect(tabTitle('SET', 0, 3)).toBe('🟢 SET')
+  it('turns green, with its count, when agents finished and nobody is blocked', () => {
+    expect(tabTitle('SET', 0, 3)).toBe('🟢 SET (3)')
   })
   it('the warning wins over the green — a person needed outranks a result available', () => {
     expect(tabTitle('SET', 1, 5)).toBe('⚠️ SET (1)')

@@ -26,20 +26,34 @@ import type { Tally } from './fleetAttention'
 export const TAB_BADGE_KEY = 'set.fleet.tab-badge'
 
 /**
- * How many agents need a person right now — the number the tab shows.
+ * How many agents are BLOCKED in front of a person — the warning's number.
  *
- * `input + prompt`, and that sum is deliberate rather than missing a class:
- * `tally` counts a `background` waiter BOTH ways — in `background` as its own
- * fact and inside `input` as a waiter — so summing all three would double
- * every background agent in the tab. Parked waits are already excluded by the
- * same counters: a question nobody has come for in 45 minutes must not own
- * the tab badge forever, for the same reason it must not own the row colour.
- * `awaiting` is deliberately NOT summed in: that counts work with nobody
- * standing on it (task 7.14), a different fact, and tab real estate is the
- * scarcest attention there is.
+ * `prompt` only: an open question (AskUserQuestion / ExitPlanMode, whose
+ * runtime status is `waiting`) or a permission prompt. Until 2026-10-10 this
+ * was `input + prompt`, which put every merely-finished turn under the
+ * warning too — and, because the green below yields to the warning, made the
+ * green unreachable for exactly the agents it was meant for (B-160).
+ *
+ * Parked waits are excluded by the counter itself: a question nobody has come
+ * for in 45 minutes must not own the tab forever. `awaiting` is deliberately
+ * NOT summed in: that counts work with nobody standing on it (task 7.14).
  */
 export function needsPerson(t: Tally): number {
-  return t.input + t.prompt
+  return t.prompt
+}
+
+/**
+ * How many agents FINISHED their turn and wait to be read — the green's number.
+ *
+ * `input`, which already includes a finished agent that left a background
+ * command running (a dev server is not the agent working), and already
+ * excludes parked waits. NOT `quiet`, which is a LOG state: measured on the
+ * live screen, the `quiet` agents left once the input waiters are removed are
+ * the ones whose loop is still RUNNING between two log flushes, so the old
+ * green announced "finished" about working agents (B-160).
+ */
+export function readyToRead(t: Tally): number {
+  return t.input
 }
 
 /**
@@ -48,15 +62,13 @@ export function needsPerson(t: Tally): number {
  * ready to be read.
  *
  * The warning wins over the green, and the ordering is the screen's own:
- * a person being NEEDED is more urgent than a result being AVAILABLE, and a
- * title that must be read at a glance cannot show both at once. Ready counts
- * `quiet` agents — a turn that ended with nothing outstanding — so green means
- * "something finished, come read it", and it yields the moment anybody needs
- * you again.
+ * an agent BLOCKED on you is more urgent than a result being AVAILABLE, and a
+ * title that must be read at a glance cannot show both at once. The green
+ * carries its count too, so "three finished" and "one finished" read apart.
  */
 export function tabTitle(base: string, count: number, ready = 0): string {
   if (count > 0) return `⚠️ ${base} (${count})`
-  if (ready > 0) return `🟢 ${base}`
+  if (ready > 0) return `🟢 ${base} (${ready})`
   return base
 }
 

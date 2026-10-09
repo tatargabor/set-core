@@ -43,7 +43,7 @@ import {
   tallyOf,
   waitingReported,
 } from '../lib/fleetAttention'
-import { loadTabBadge, needsPerson, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
+import { loadTabBadge, needsPerson, readyToRead, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
 import { Chip, Dot } from './Chip'
 import SrOnly from './SrOnly'
@@ -1164,7 +1164,7 @@ export default function FleetProjectColumn({
   */
   const [tabBadge, setTabBadge] = useState<boolean>(() => loadTabBadge())
   useEffect(() => {
-    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0, tabBadge ? totals.quiet : 0)
+    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0, tabBadge ? readyToRead(totals) : 0)
     return () => {
       document.title = 'SET'
     }
@@ -1440,8 +1440,8 @@ export default function FleetProjectColumn({
             className="ml-auto shrink-0 text-fg-muted hover:text-fg"
             title={
               tabBadge
-                ? 'The browser tab shows “SET (N)” while an agent needs you — click to turn that off for this browser'
-                : 'The tab badge is off for this browser — click to show “SET (N)” in the tab while an agent needs you'
+                ? 'The browser tab shows “⚠️ SET (N)” while an agent asks you something, “🟢 SET (N)” while finished agents wait to be read — click to turn that off for this browser'
+                : 'The tab badge is off for this browser — click to show “⚠️ SET (N)” for questions and “🟢 SET (N)” for finished agents'
             }
             aria-pressed={tabBadge}
           >
