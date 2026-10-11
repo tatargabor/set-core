@@ -32,3 +32,4 @@
 - Found and fixed on the way, both pre-existing: the overall strip forced a 466 px minimum width on a 67-item board (4 px segments + 3 px gaps), so the page scrolled sideways on a phone; and `.summary { display: flex }` overrode the `hidden` attribute.
 - Visual check in Chrome (desktop, light and dark, a copy of a real 66-item board) and screenshots at 390 px: columns, tags, notes, filter notice, skipped strip read correctly.
 - The new unit test fails against the previous template and passes against this one; the template was restored byte-identical (sha256 prefix 509857d4f8f94e82 before and after).
+- Live runtime confirmed after the owner republished (page version 2): the published artifact shows "Live", Kanban renders the live db data with the same column counts, and after a reload it reopens on Kanban. The viewer preference was set back to Waves afterwards.
