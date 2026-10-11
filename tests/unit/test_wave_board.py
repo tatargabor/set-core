@@ -246,6 +246,29 @@ def test_render_names_the_page_after_the_job(env, repo, tmp_path):
     assert out.read_text().startswith("<title>Plan &lt;A&amp;B&gt; · Wave Board</title>")
 
 
+def test_render_carries_the_kanban_view(env, repo, tmp_path):
+    # The behaviour (columns, filter, persistence, live update) is checked in a browser; this
+    # pins the parts a careless edit would drop: both views, the guarded storage key, the
+    # column order, the skipped strip, the hidden-blocked notice, and that the page never writes.
+    new_job(env, repo, ("a", None))
+    out = tmp_path / "board.html"
+    run(env, repo, "render", "j", "-o", str(out))
+    html = out.read_text()
+    assert 'data-view="waves"' in html and 'data-view="kanban"' in html
+    assert 'var COLUMNS = ["todo", "doing", "blocked", "done"];' in html
+    storage = [l.strip() for l in html.splitlines() if "localStorage" in l]
+    assert len(storage) == 2, storage  # one read, one write — and both inside try
+    for line in storage:
+        assert line.startswith("try {"), line
+    assert 'VIEW_KEY = "waveboard.view"' in html
+    assert '"skipped-strip"' in html
+    assert "blocked outside this filter" in html
+    assert "[hidden] { display: none !important; }" in html
+    script = html.split('<script>', 1)[1]
+    for write in (".set(", ".update(", ".add(", ".delete("):
+        assert write not in script, write
+
+
 # ── the Stop hook ────────────────────────────────────────────────────────────
 
 def hook(env, cwd, event=None, **extra_env):
