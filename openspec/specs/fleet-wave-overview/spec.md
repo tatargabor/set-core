@@ -1,7 +1,10 @@
 # fleet-wave-overview Specification
 
 ## Purpose
-TBD - created by archiving change fleet-wave-overview. Update Purpose after archive.
+Every known project's wave boards, seen from the fleet: a read-only summary per tracked job
+file (counts, current wave, last update, page link), a header chip that carries the blocked and
+unreadable counts while closed, and a floating list leading into the project and onto the board
+page. Nothing is written and nothing is persisted.
 
 ## Requirements
 
