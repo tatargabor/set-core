@@ -14,7 +14,7 @@
 
 - [x] 3.1 Real session, real classifier, stand-in bridge via environment overrides: a manual-step wait is converted and answered; a finished turn is left alone; relay off → nothing [REQ: a-turn-that-ends-waiting-on-the-user-is-turned-into-a-structured-question]
 - [x] 3.2 Roll the hook out to every tree (same procedure as the relay) [REQ: the-detector-reaches-every-project]
-- [ ] 3.3 One real wait answered by the user on Discord [REQ: a-turn-that-ends-waiting-on-the-user-is-turned-into-a-structured-question]
+- [x] 3.3 One real wait answered by the user on Discord [REQ: a-turn-that-ends-waiting-on-the-user-is-turned-into-a-structured-question]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -39,4 +39,4 @@
 - **Live, real classifier, stand-in bridge via environment overrides:** a manual-step wait ending "Then tell me 'done'" → classified WAITING in 3.3 s → the agent re-asked with the steps written into the question and a "Done" option → the relay carried it → answered → the continued turn ended without a second classification. A finished turn ("What is 17 times 3?") → DONE in 5.2 s, left alone. Relay off → the hook printed nothing and wrote nothing.
 - Rollout with the relay's procedure: 53 trees committed (`.claude/settings.json` only, the detector entry the only change, checked per tree), the same 3 left uncommitted, re-plan: present in all 56. Nothing pushed.
 
-**Open:** 3.3 — one real wait answered on Discord by the user.
+**3.3 done, 2026-10-11:** with no overrides, a scratch agent ended "Then tell me 'done'" → classified WAITING → re-asked with the steps in the question → posted to the chat channel → the user answered in FREE TEXT ("nem") → the agent received it. In the same window the detector converted two real sessions: a production agent's 4-question wait, and this set-core session's own turn end (its re-asked question was answered on the channel — "Keep it on" — and arrived here). The relay stays on by the user's decision.
