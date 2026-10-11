@@ -28,7 +28,7 @@
 
 - [x] 5.1 Real interactive session in a scratch project with the hook deployed, the relay on, target `command` pointed at the real bridge in its dry-run mode replaced by a fake answer writer: answered end to end; then switch-off release and fleet release [REQ: a-two-way-outbound-receives-an-envelope-and-the-answer-comes-back]
 - [x] 5.2 LOOK at the fleet header in Chrome: switch, not-ready title, waiting count, list, release [REQ: the-fleet-header-carries-the-switch-and-what-is-waiting]
-- [ ] 5.3 One real round trip through the real channel, with the user answering — only with the user's go-ahead [REQ: a-two-way-outbound-receives-an-envelope-and-the-answer-comes-back]
+- [x] 5.3 One real round trip through the real channel, with the user answering — only with the user's go-ahead [REQ: a-two-way-outbound-receives-an-envelope-and-the-answer-comes-back]
 
 ## Acceptance Criteria (from spec scenarios)
 
@@ -96,3 +96,18 @@
 - Waiting on: the user adding the bot to the channel; the bridge exiting non-zero when
   nothing was posted (requested from its owner on the bus). Then the round trip is retried.
 
+
+### 5.3 done, 2026-10-11 — the round trip through the real channel
+
+- After the user added the bot to the channel: the hook handed the question over, the bridge
+  posted it (`1 kiment`), the user tapped the first option, the bridge's poller wrote the
+  answer, and the agent continued with "Yes, it arrived" — no picker.
+- **The hook held for 24 min 59 s and still delivered** — the measured hold time goes from
+  700 s to ~1500 s; the 3600 s entry timeout is still unmeasured at its top.
+- **Running sessions picked the hook up without a restart.** During the same window two real
+  agents asked questions and got Discord answers: one session started 2026-10-09, the other
+  started ~2 h before the rollout commit. Adding the hook to `.claude/settings.json` reached
+  sessions that were already running.
+- Still open on the bridge side (reported on the bus, not a set-core task): exit non-zero when
+  nothing was posted. Until it does, a Discord outage holds a question until it is released
+  from the fleet or times out.
