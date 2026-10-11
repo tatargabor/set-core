@@ -351,3 +351,26 @@ def test_a_bridge_that_leaves_a_child_running_does_not_block_the_hand_off(tmp_pa
     t0 = _t.monotonic()
     assert qr._run_command(str(bridge), "{}") == 0
     assert _t.monotonic() - t0 < 3
+
+
+def test_a_record_whose_hook_is_gone_is_dropped(tmp_path):
+    """B-159: a killed hook never reaches its `finally:`; its record must not stay counted."""
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    qr._write_json(qr.waiting_path("dead-1", tmp_path), {"session_id": "dead-1", "pid": dead.pid,
+                                                        "questions": 1, "started": 0})
+    qr._write_json(qr.waiting_path("old-2", tmp_path), {"session_id": "old-2", "questions": 1, "started": 0})
+    listed = [r["session_id"] for r in qr.list_waiting(tmp_path)]
+    assert listed == ["old-2"]                       # no pid → trusted, as before the fix
+    assert not qr.waiting_path("dead-1", tmp_path).exists()
+
+
+def test_the_waiting_record_names_the_hook_pid(tmp_path):
+    seen = []
+
+    def on_sleep(s, clock):
+        seen.append(json.loads(qr.waiting_path(SESSION, tmp_path).read_text()))
+        answer(tmp_path, s["envelope"], "Q1", "Yes")
+    run_relay(tmp_path, config(), on_sleep=on_sleep)
+    import os as _os
+    assert seen and seen[0]["pid"] == _os.getpid()

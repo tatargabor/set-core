@@ -144,8 +144,31 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def _hook_alive(pid: Any) -> bool:
+    """Whether the hook process that wrote a record still runs.
+
+    B-159: the hook clears its record in a `finally:`, which a killed process never reaches
+    (the session interrupted or closed), so a record can outlive its wait. A record without
+    a pid predates the fix and is trusted as before.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return True          # no /proc (macOS): the pid alone answers
+    return b"question-relay" in cmdline or b"question_relay" in cmdline
+
+
 def list_waiting(base: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """Every question waiting on a two-way outbound. A broken record is skipped and logged."""
+    """Every question waiting on a two-way outbound. A broken record is skipped and logged;
+    a record whose hook process is gone is removed (B-159)."""
     folder = (base or state_dir()) / "waiting"
     out: List[Dict[str, Any]] = []
     if not folder.is_dir():
@@ -155,6 +178,11 @@ def list_waiting(base: Optional[Path] = None) -> List[Dict[str, Any]]:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             logger.warning("question relay: waiting record %s unreadable: %s", path.name, type(exc).__name__)
+            continue
+        if isinstance(record, dict) and not _hook_alive(record.get("pid")):
+            logger.warning("question relay: waiting record %s has no live hook (pid %s); removed",
+                           path.name, record.get("pid"))
+            _clear_waiting(str(record.get("session_id", path.stem)), base or state_dir())
             continue
         if isinstance(record, dict):
             record["release_requested"] = release_path(record.get("session_id", ""), base).exists()
@@ -382,7 +410,7 @@ def relay(hook_input: Dict[str, Any], *,
     _clear_waiting(session_id, base)
     _write_json(waiting_path(session_id, base), {
         "session_id": session_id, "id": cid, "project": project, "cwd": cwd,
-        "questions": count, "target": "command", "started": wall(),
+        "questions": count, "target": "command", "started": wall(), "pid": os.getpid(),
     })
     logger.info("question relay [%s]: %d question(s) handed over as %s; waiting", sid, count, cid)
 

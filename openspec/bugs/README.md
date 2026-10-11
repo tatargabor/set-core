@@ -68,6 +68,20 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-160 — the question relay holds agents while the user is AT the terminal, and wait detection adds seconds to every turn end
+- **state:** OPEN — needs a presence rule, not a patch; the relay was switched off on this machine until it has one.
+- **reported:** 2026-10-11 by the user, a screenshot of a session showing "running PreToolUse hook · 6m 31s" with their own typed "done" queued under it, and "belassult valami".
+- **measured:** relay log, 15:40–16:37: 17 classifier runs, average 4.5 s, max 8.5 s, each one added to a turn end; 7 conversions; when switched off, four questions were held on the channel for 6, 23, 43 and 50 minutes while the user was at the desk. A message typed locally while the hook waits is queued, not delivered — the hook cannot see it.
+- **fail direction:** work stops silently. The agent's terminal shows a running hook; the only sign anywhere is the fleet header's waiting count.
+- **fixed when:** a session whose user typed into it recently (a measured threshold, from the transcript's last human prompt) is neither converted nor relayed, and a held question is released when the user returns — proven in a live session.
+
+### B-159 — a relay waiting record outlives its hook when the hook is killed, so the fleet shows a question that waits nowhere
+- **state:** CLOSED 2026-10-11 by the commit carrying this entry — the record names the hook pid; `list_waiting` removes a record whose hook is gone (`test_a_record_whose_hook_is_gone_is_dropped`, shown failing without the fix).
+- **reported:** 2026-10-11 by this session, switching the relay off: three of four held questions released, the fourth (a consumer project's session) stayed in `GET /api/fleet/question-relay` with no `set-hook-question-relay` process alive (`pgrep -af` empty).
+- **measured:** the hook clears its record in a `finally:`, which does not run when the process is killed (the session interrupted or closed). The record carried no pid, so nothing could tell a live wait from a dead one.
+- **fail direction:** false value — the header counts a waiting question that no hook holds, and "answer here instead" on it does nothing.
+- **fixed when:** the record names the hook's pid, and a record whose pid is gone is not listed (and is removed) — tested by a record with a dead pid.
+
 ### B-156 — a `file://` URL an agent prints is dead text, and while the agent's TUI holds the mouse every terminal link dies at click time
 - **state:** CLOSED (2026-10-03, see the commit that carries this entry) — the entry stays; evidence below.
 - **reported:** 2026-10-03 by the user with a screenshot of the fleet dock: opening a built page's `file://…` address "nem működik", copy-paste included; the consumer session's own printed answer blamed a missing DISPLAY in its shell.
