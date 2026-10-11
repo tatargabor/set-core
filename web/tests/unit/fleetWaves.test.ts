@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  barSegments, itemTotal, orderBoards, secondsSince, totals,
+  barSegments, itemTotal, orderBoards, parseBoards, secondsSince, totals,
   type ReadableBoard, type UnreadableBoard, type WaveBoard,
 } from '../../src/lib/fleetWaves'
 
@@ -77,5 +77,13 @@ describe('secondsSince', () => {
     expect(secondsSince('2026-10-11T11:59:00Z', now)).toBe(60)
     expect(secondsSince(null, now)).toBeNull()
     expect(secondsSince('yesterday-ish', now)).toBeNull()
+  })
+})
+
+describe('parseBoards', () => {
+  it('drops what it cannot render instead of crashing the header', () => {
+    expect(parseBoards({ agents: [] })).toEqual([])
+    expect(parseBoards({ boards: [{ project: 'a' }, null, board('b', 'x'), { project: 'c', job: 'j', unreadable: true, reason: 'r' }] })
+      .map(b => b.project)).toEqual(['b', 'c'])
   })
 })

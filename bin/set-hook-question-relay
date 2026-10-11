@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""set-hook-question-relay — Claude Code PreToolUse hook on AskUserQuestion.
+
+When this machine's question relay is on (`set-config set question_relay.enabled true`, or
+the switch on the fleet header), an agent's blocking question goes to the configured
+outbound and the answer comes back; otherwise the question is shown at the terminal as
+usual. The decision lives in `set_orch.fleet.question_relay`; this file is the carrier.
+
+Output: the answering JSON on stdout, or NOTHING — and nothing means "release": the normal
+picker appears (measured). It always exits 0. A hook that errors would block the tool, and
+every failure here is meant to end at the terminal, never in a stuck or invented answer.
+
+Logs go to `~/.local/share/set-core/question-relay/relay.log`, never to stderr: the session
+would show them. They carry counts and reasons, never the question text.
+
+Configuration (machine-local, `set-config set <key> <value>`):
+    question_relay.target       command | webhook
+    question_relay.command      two-way outbound: reads {"questions":[...]} on stdin,
+                                later writes <valasz_tar>/<id>__<key>.json with "valasz"
+    question_relay.audience     the audience the outbound may wake someone for (required
+                                for command; the framework never supplies one)
+    question_relay.webhook_url  notify-only outbound: one message, then the terminal
+    question_relay.webhook_detail  minimal (default: project, agent, headers) | full
+    question_relay.timeout_s    how long to wait on a two-way outbound (≤ 3300)
+
+Referenced by name from .claude/settings.json; on PATH through install.sh.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+
+def main() -> int:
+    try:
+        hook_input = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(hook_input, dict) or hook_input.get("tool_name") != "AskUserQuestion":
+        return 0
+    try:
+        from set_orch.fleet import question_relay as qr
+
+        # The common case is "off": answer it before touching the log file.
+        if not qr.readiness()["enabled"]:
+            return 0
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        out = qr.relay(hook_input)
+    except Exception as exc:  # never block the tool over the relay's own failure
+        logging.getLogger("set-hook-question-relay").warning(
+            "relay failed (%s); released", type(exc).__name__)
+        return 0
+    if out is not None:
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

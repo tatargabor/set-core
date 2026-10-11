@@ -2499,6 +2499,67 @@ def fleet_waveboards() -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Question relay — the switch, its readiness, and what waits on the channel
+# --------------------------------------------------------------------------- #
+
+def _relay_payload() -> Dict[str, Any]:
+    from ..fleet import question_relay as qr
+
+    state = qr.readiness()
+    now = time.time()
+    waiting = []
+    for rec in qr.list_waiting():
+        started = rec.get("started")
+        waiting.append({
+            "session_id": rec.get("session_id"),
+            "project": rec.get("project"),
+            "questions": rec.get("questions"),
+            "target": rec.get("target"),
+            "seconds": (now - started) if isinstance(started, (int, float)) else None,
+            "release_requested": bool(rec.get("release_requested")),
+        })
+    return {**state, "waiting": waiting}
+
+
+@router.get("/api/fleet/question-relay")
+def fleet_question_relay() -> Dict[str, Any]:
+    """Whether agents' blocking questions go to the chat channel, and which are waiting there.
+
+    Read from the machine's local config and the relay's own waiting records — the hook
+    that does the relaying is a separate process in every session, so the switch has to be
+    a file it can read, and the waiting state has to be one it writes.
+    """
+    return _relay_payload()
+
+
+class RelayToggleBody(BaseModel):
+    enabled: bool
+
+
+@router.post("/api/fleet/question-relay")
+def fleet_question_relay_toggle(body: RelayToggleBody) -> Dict[str, Any]:
+    """Turn the relay on or off. On is refused, naming the missing keys, while not ready."""
+    from ..fleet import question_relay as qr
+
+    try:
+        qr.set_enabled(body.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    logger.info("fleet api: question relay %s", "on" if body.enabled else "off")
+    return _relay_payload()
+
+
+@router.post("/api/fleet/question-relay/release/{session_id}")
+def fleet_question_relay_release(session_id: str) -> Dict[str, Any]:
+    """Hand one waiting question back to its terminal; the hook lets go within one poll."""
+    from ..fleet import question_relay as qr
+
+    if not qr.request_release(session_id):
+        raise HTTPException(status_code=404, detail="no question is waiting for that session")
+    return _relay_payload()
+
+
+# --------------------------------------------------------------------------- #
 # PM mode — one agent at a time, chosen for the reader
 # --------------------------------------------------------------------------- #
 

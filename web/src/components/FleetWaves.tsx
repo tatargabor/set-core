@@ -25,7 +25,7 @@ import { ExternalLink, Kanban, TriangleAlert, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
-  barSegments, itemTotal, orderBoards, secondsSince, totals,
+  barSegments, itemTotal, orderBoards, parseBoards, secondsSince, totals,
   type BarSegment, type ReadableBoard, type WaveBoard,
 } from '../lib/fleetWaves'
 
@@ -147,7 +147,7 @@ export default function FleetWaves({ selected, onSelectProject }: {
     const read = () => {
       fetch('/api/fleet/waveboards')
         .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        .then(d => { if (!cancelled) { setBoards(d.boards ?? []); setNow(Date.now()) } })
+        .then(d => { if (!cancelled) { setBoards(parseBoards(d)); setNow(Date.now()) } })
         // A failed read keeps the last list; the ages on it keep growing, which
         // is the honest picture of a list that stopped refreshing.
         .catch(() => { if (!cancelled) setNow(Date.now()) })

@@ -3,9 +3,11 @@
 #
 # Usage: set-deploy-hooks [--quiet] [--no-memory] <target-dir>
 #
-# Deploys 3 hook events to <target-dir>/.claude/settings.json:
+# Deploys 3 hook events (4 entries) to <target-dir>/.claude/settings.json:
 #   - UserPromptSubmit: skill detection (timeout: 5s)
 #   - PreToolUse[Skill]: activity tracking (timeout: 5s)
+#   - PreToolUse[AskUserQuestion]: question relay, off unless this machine turns it on
+#     (timeout: 3600s — it may wait for an answer from a chat channel)
 #   - Stop: stop hook (timeout: 5s) + wave-board push reminder (timeout: 15s)
 #
 # It also REMOVES, on every run and without a flag, every `set-hook-memory` command it
@@ -90,6 +92,16 @@ hook_json=$(cat << 'HOOKJSON'
             "type": "command",
             "command": "set-hook-activity",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-question-relay",
+            "timeout": 3600
           }
         ]
       }
@@ -206,13 +218,15 @@ if [[ -f "$settings_file" ]]; then
     has_memory=false
     has_old_activity=false
 
-    # Base hooks present? `set-hook-waveboard` is part of the base: without it here the
-    # early return below would call a project initialised before the wave board canonical,
-    # and the hook would never reach it. Looked for in ANY Stop entry, because the merge
+    # Base hooks present? `set-hook-waveboard` and `set-hook-question-relay` are part of
+    # the base, for the same reason: without them here the early return below would call
+    # a project initialised before either existed canonical, and the hook would never
+    # reach it. The wave-board hook is looked for in ANY Stop entry, because the merge
     # appends it to the matcher-"" entry wherever that entry sits.
     if jq -e '.hooks.Stop[0].hooks[] | select(.command == "set-hook-stop")' "$settings_file" &>/dev/null \
         && jq -e '.hooks.UserPromptSubmit[0].hooks[] | select(.command == "set-hook-skill")' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-waveboard")' "$settings_file" &>/dev/null; then
+        && jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-waveboard")' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.PreToolUse[]? | select(.matcher == "AskUserQuestion") | .hooks[]? | select(.command == "set-hook-question-relay")' "$settings_file" &>/dev/null; then
         has_base=true
     fi
 

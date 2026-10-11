@@ -41,6 +41,7 @@ import FleetWirePanel from '../components/FleetWirePanel'
 import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetWaves from '../components/FleetWaves'
+import FleetRelay from '../components/FleetRelay'
 import FleetSplitter from '../components/FleetSplitter'
 import {
   MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
@@ -3432,6 +3433,10 @@ export default function Fleet() {
           }`}
           title="PM mode presents one agent at a time — whichever is waiting on you. It touches no agent, and leaving it restores this screen."
         ><Presentation size={13} strokeWidth={1.75} /></button>
+        {/* The question relay: while it is on, agents' blocking questions go to the chat
+            channel. Beside the PM switch because both are machine-wide modes; the count
+            of questions waiting on the channel rides on it, closed. */}
+        <FleetRelay />
         {/*
           ONE count, and it says which projects it is counting — raised
           2026-08-19. The header said `12 agent · 6 projektben` while the column

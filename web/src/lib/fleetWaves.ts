@@ -90,3 +90,20 @@ export function secondsSince(iso: string | null, now: number): number | null {
   const t = Date.parse(iso)
   return Number.isNaN(t) ? null : Math.max(0, (now - t) / 1000)
 }
+
+/**
+ * The route's boards, keeping only entries with the shape this list renders.
+ *
+ * Same reason as the relay control's parser: a header widget fed an unexpected payload
+ * must show less, never crash the screen it sits on.
+ */
+export function parseBoards(d: unknown): WaveBoard[] {
+  const raw = d && typeof d === 'object' ? (d as { boards?: unknown }).boards : null
+  if (!Array.isArray(raw)) return []
+  return raw.filter((b): b is WaveBoard => {
+    if (!b || typeof b !== 'object') return false
+    const o = b as Record<string, unknown>
+    if (typeof o.project !== 'string' || typeof o.job !== 'string') return false
+    return o.unreadable === true || (!!o.counts && typeof o.counts === 'object')
+  })
+}
