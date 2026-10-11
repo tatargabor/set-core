@@ -9,6 +9,7 @@
 #   - PreToolUse[AskUserQuestion]: question relay, off unless this machine turns it on
 #     (timeout: 3600s — it may wait for an answer from a chat channel)
 #   - Stop: stop hook (timeout: 5s) + wave-board push reminder (timeout: 15s)
+#     + wait detector (timeout: 60s; acts only while the question relay is on)
 #
 # It also REMOVES, on every run and without a flag, every `set-hook-memory` command it
 # finds in any event array, plus the legacy individual memory scripts. The memory
@@ -119,6 +120,11 @@ hook_json=$(cat << 'HOOKJSON'
             "type": "command",
             "command": "set-hook-waveboard",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "set-hook-wait-detect",
+            "timeout": 60
           }
         ]
       }
@@ -219,14 +225,15 @@ if [[ -f "$settings_file" ]]; then
     has_old_activity=false
 
     # Base hooks present? `set-hook-waveboard` and `set-hook-question-relay` are part of
-    # the base, for the same reason: without them here the early return below would call
+    # the base (and so is `set-hook-wait-detect`), for the same reason: without them here the early return below would call
     # a project initialised before either existed canonical, and the hook would never
     # reach it. The wave-board hook is looked for in ANY Stop entry, because the merge
     # appends it to the matcher-"" entry wherever that entry sits.
     if jq -e '.hooks.Stop[0].hooks[] | select(.command == "set-hook-stop")' "$settings_file" &>/dev/null \
         && jq -e '.hooks.UserPromptSubmit[0].hooks[] | select(.command == "set-hook-skill")' "$settings_file" &>/dev/null \
         && jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-waveboard")' "$settings_file" &>/dev/null \
-        && jq -e '.hooks.PreToolUse[]? | select(.matcher == "AskUserQuestion") | .hooks[]? | select(.command == "set-hook-question-relay")' "$settings_file" &>/dev/null; then
+        && jq -e '.hooks.PreToolUse[]? | select(.matcher == "AskUserQuestion") | .hooks[]? | select(.command == "set-hook-question-relay")' "$settings_file" &>/dev/null \
+        && jq -e '.hooks.Stop[]? | .hooks[]? | select(.command == "set-hook-wait-detect")' "$settings_file" &>/dev/null; then
         has_base=true
     fi
 
