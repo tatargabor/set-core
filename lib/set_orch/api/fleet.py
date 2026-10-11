@@ -2481,6 +2481,24 @@ def fleet_install_module(name: str, body: InstallBody) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Wave boards — every known project's boards, summarised for the header
+# --------------------------------------------------------------------------- #
+
+@router.get("/api/fleet/waveboards")
+def fleet_waveboards() -> Dict[str, Any]:
+    """One summary per `docs/waveboard/*.json` in every project the list knows.
+
+    The registry and the messaging registry only, without agent discovery: the
+    names match the project column, and a board read does not pay for a process
+    walk. Read-only; see `fleet/waveboards.py` for what is and is not returned.
+    """
+    from ..fleet.waveboards import read_waveboards
+
+    projects = discover_projects([], registered=_safe_registry(), messaging=_safe_messaging())
+    return {"boards": read_waveboards(projects)}
+
+
+# --------------------------------------------------------------------------- #
 # PM mode — one agent at a time, chosen for the reader
 # --------------------------------------------------------------------------- #
 

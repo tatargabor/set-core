@@ -40,6 +40,7 @@ import FleetBoard from '../components/FleetBoard'
 import FleetWirePanel from '../components/FleetWirePanel'
 import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
+import FleetWaves from '../components/FleetWaves'
 import FleetSplitter from '../components/FleetSplitter'
 import {
   MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
@@ -3500,6 +3501,11 @@ export default function Fleet() {
               answeredAt ? new Date(answeredAt).toLocaleTimeString() : 'an unknown time'}`}
           />
         )}
+
+        {/* Every known project's wave boards. Absent when there are none; the
+            blocked and unreadable counts ride on the closed chip, and the list
+            it opens floats under the header and pushes nothing. */}
+        <FleetWaves selected={active?.name ?? null} onSelectProject={name => setSelected(name)} />
 
         {/* The account quota, pushed right on the header's own line. Bars only at
             rest — asked for by the user on the built screen, and the same
