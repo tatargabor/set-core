@@ -82,3 +82,10 @@ path.
   is checked in verification.
 - [An answer from the channel enters the agent's context] → the same as an answer typed at
   the terminal; the bridge only accepts answers from its trusted answerers.
+- [An outbound that exits 0 without having posted holds the question until the timeout]
+  → the command contract is "exit 0 = every question handed over"; anything else must be
+  non-zero, and the hook releases at once on non-zero. Measured on the real bridge
+  2026-10-11: a post refused by Discord ("Missing Access") still exited 0, and the hook held
+  the question until it was released from the fleet. Reported to the bridge's owner; the
+  relay stays off until the bridge exits non-zero in that case.
+

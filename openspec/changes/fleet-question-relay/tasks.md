@@ -78,3 +78,21 @@
 - The machine's config was restored to exactly its previous keys after the live test; the relay is off and unconfigured on this machine.
 
 **Open:** 5.3 — one real round trip through the real channel, with the user answering. And existing projects get the hook on their next `set-project init`; no tree other than the scratch one has it yet.
+
+### 5.3 attempt, 2026-10-11 — the real channel, first round trip NOT yet completed
+
+- Configured on this machine: target `command` → the bridge with `--csatorna-id` of a new text
+  channel created for relay questions (the development channel the user picked is a FORUM,
+  type 15, which cannot take plain posts); audience `FEJLESZTŐ`.
+- Rolled the hook out with `set-deploy-hooks` (not a full `set-project init` — only the hooks
+  changed): 53 trees committed (one pathspec commit each, `.claude/settings.json` only, the
+  only change being the relay entry — checked per tree), 3 deployed and left uncommitted (2
+  untracked settings files, 1 carrying another session's edit), subagent worktrees and `/tmp`
+  trees skipped. Nothing pushed. Machine-local log outside set-core.
+- Live: the hook handed the question over (exit 0), but the bridge's post had FAILED —
+  "Missing Access": the new channel inherited a private category's permissions and the bot
+  cannot see it (it cannot grant itself access either, 403). The bridge still exited 0, so
+  the hook waited; released from the fleet after 35 s, picker appeared. Relay turned OFF.
+- Waiting on: the user adding the bot to the channel; the bridge exiting non-zero when
+  nothing was posted (requested from its owner on the bus). Then the round trip is retried.
+
