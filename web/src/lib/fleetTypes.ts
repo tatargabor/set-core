@@ -261,8 +261,9 @@ export interface FleetAgent {
    * which replaces the derived one wholesale for that project).
    *
    * `state: 'gap'` is a NAMED gap, and `reason` is the name: `nothing-started`
-   * (no change in flight anywhere), `join-failed` (work exists but this agent
-   * could not be matched to its own), `no-flow` (no tree and no declaration),
+   * (this agent addresses no change — its own record was read; B-162),
+   * `join-failed` (its record could not be read while work is in flight, or it
+   * names a change the producer does not list), `no-flow` (no tree and no declaration),
    * `no-position` (the joined change backs no artifact). A gap must never be
    * rendered as calm, and `nothing-started` must never be rendered as a
    * failure — the two are different sentences about the agent.

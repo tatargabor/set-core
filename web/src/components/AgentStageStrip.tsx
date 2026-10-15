@@ -45,14 +45,14 @@ export function AgentStageStrip({ stage }: { stage: FleetAgent['stage'] }) {
     if (stage.reason === 'nothing-started') {
       return (
         <span data-fleet-stage="empty" data-testid="fleet-stage-empty"
-              title="nothing started — no change is in flight here"
-              className="inline-flex shrink-0 items-center px-1 text-xs text-fg-muted" aria-label="nothing started">
+              title="not on a change — this agent addresses no OpenSpec change"
+              className="inline-flex shrink-0 items-center px-1 text-xs text-fg-muted" aria-label="not on a change">
           —
         </span>
       )
     }
     const why: Record<string, string> = {
-      'join-failed': 'work is in flight here, but this agent could not be matched to its own change',
+      'join-failed': 'this agent could not be matched to a change — its session record could not be read, or it names a change the project does not list',
       'no-flow': 'this project publishes no flow to read — no openspec tree and no declared stage order',
       'no-position': 'the agent’s change was found, but its artifacts back no stage',
     }

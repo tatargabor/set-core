@@ -450,3 +450,46 @@ def test_a_drive_by_mention_of_an_active_change_loses_to_the_archived_own_change
 
 def test_the_default_flow_is_the_openspec_lifecycle():
     assert stage.DEFAULT_FLOW == ("proposal", "design", "apply", "verify", "archive")
+
+
+# --------------------------------------------------------------------------- #
+# B-162 — an idle agent is not an unmatched one
+# --------------------------------------------------------------------------- #
+
+
+class TestIdleAgent:
+    """`nothing-started` vs `join-failed` is decided by THIS agent's evidence.
+
+    Measured 2026-10-15: every live agent rendered `join-failed`, because the
+    choice asked whether the PROJECT held any un-archived change directory —
+    and real projects hold dozens. An agent whose own record was read and
+    addresses no change is not a failed match; it is not on a change.
+    """
+
+    def _idle_log(self, tmp_path):
+        log = tmp_path / "idle.jsonl"
+        log.write_text('{"content": "what does this badge mean?"}\n', encoding="utf-8")
+        return str(log)
+
+    def test_derived_readable_record_without_a_change_is_nothing_started(self, tmp_path):
+        _change(tmp_path, "stale-open", proposal=True)
+        got = stage.resolve_stage(str(tmp_path), None, 1, "s", self._idle_log(tmp_path))
+        assert got.state == stage.STATE_GAP
+        assert got.reason == stage.REASON_NOTHING_STARTED
+
+    def test_declared_readable_record_without_a_change_is_nothing_started(self, tmp_path):
+        axis = (["triage"], {"triage-1": "triage"})
+        got = stage.resolve_stage(None, None, 1, "s", self._idle_log(tmp_path), declared=axis)
+        assert got.reason == stage.REASON_NOTHING_STARTED
+
+    def test_derived_unreadable_record_with_work_in_flight_is_still_a_join_failure(self, tmp_path):
+        _change(tmp_path, "live", proposal=True)
+        missing = str(tmp_path / "gone.jsonl")
+        got = stage.resolve_stage(str(tmp_path), None, 1, "s", missing)
+        assert got.reason == stage.REASON_JOIN_FAILED
+
+    def test_a_finished_engine_record_does_not_make_an_agent_unmatched(self, tmp_path):
+        _change(tmp_path, "live", proposal=True)
+        purposes = [_purpose("live", pid=1, status="finished")]
+        got = stage.resolve_stage(str(tmp_path), purposes, 1, "s", self._idle_log(tmp_path))
+        assert got.reason == stage.REASON_NOTHING_STARTED

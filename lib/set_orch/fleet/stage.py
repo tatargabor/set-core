@@ -45,6 +45,7 @@ it declined to read.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -425,6 +426,35 @@ def _inferred_change(project_root: Optional[str], index: Optional[Dict[str, str]
     return candidates[0]
 
 
+def _record_readable(session_log: Optional[str]) -> bool:
+    """Whether the agent's own session record could be LOOKED at.
+
+    B-162: this is what separates an idle agent from an unmatched one. A record
+    that was read and addresses no change is evidence the agent is not on a
+    change; a record that could not be read is no evidence at all.
+    """
+    if not session_log:
+        return False
+    try:
+        return Path(session_log).is_file() and os.access(session_log, os.R_OK)
+    except OSError:
+        return False
+
+
+def _unjoined_reason(session_log: Optional[str], work_in_flight: bool) -> str:
+    """The gap for an agent no change could be joined to.
+
+    B-162, measured 2026-10-15: deciding this from the PROJECT ("is any change
+    un-archived?") made every live agent `join-failed`, because real projects
+    keep dozens of un-archived change directories. So the agent's own evidence
+    decides first, and the project-level test is only the fallback for a
+    record nobody could read.
+    """
+    if _record_readable(session_log):
+        return REASON_NOTHING_STARTED
+    return REASON_JOIN_FAILED if work_in_flight else REASON_NOTHING_STARTED
+
+
 def _gap(reason: str, flow: Optional[Tuple[str, ...]], source: Optional[str]) -> Stage:
     return Stage(state=STATE_GAP, flow=flow, position=None, reason=reason,
                  source=source)
@@ -452,11 +482,10 @@ def resolve_stage(
             change = _inferred_change(index=index, project_root=None,
                                       session_log=session_log)
         if change is None:
-            # No join. An empty producer index says the project itself has
-            # nothing in flight; a populated one says this agent specifically
-            # could not be matched — two different sentences.
-            reason = REASON_NOTHING_STARTED if not index else REASON_JOIN_FAILED
-            return _gap(reason, flow, "declared")
+            # No join. A populated producer index says the PROJECT has work in
+            # flight, not that this agent is on any of it — so the agent's own
+            # record decides, and the index only speaks when it cannot be read.
+            return _gap(_unjoined_reason(session_log, bool(index)), flow, "declared")
         value = index.get(change)
         if value is None:
             return _gap(REASON_JOIN_FAILED, flow, "declared")
@@ -476,10 +505,8 @@ def resolve_stage(
         change = _inferred_change(project_root=project_root, index=None,
                                   session_log=session_log)
     if change is None:
-        reason = (REASON_NOTHING_STARTED
-                  if not has_active_changes(project_root)
-                  else REASON_JOIN_FAILED)
-        return _gap(reason, flow, "derived")
+        return _gap(_unjoined_reason(session_log, has_active_changes(project_root)),
+                    flow, "derived")
 
     position = derive_position(project_root or "", change)
     if position is None:
