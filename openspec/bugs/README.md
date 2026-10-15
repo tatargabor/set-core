@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-162 — `⚠ stage? (join-failed)` fires for every agent not working a change, because "the project has nothing in flight" is measured as "no un-archived change directory exists"
+- **state:** OPEN
+- **reported:** 2026-10-15 by this session, while answering the user's question about what the `⚠ stage?` badge means on the fleet panel
+- **measured:** `GET /api/fleet/agents` on :7400 returned `state: gap, reason: join-failed` for **all four** live agents across two projects; none had a resolved stage. The derived path (`lib/set_orch/fleet/stage.py`, `resolve_stage`) picks `join-failed` over `nothing-started` when `has_active_changes()` is true, and that function is true if ANY non-archive directory sits under `openspec/changes/`. Counted the same day: 70 such directories in this repo and 41 in the other project. So `nothing-started` cannot be reached in either project, and an agent doing work outside any OpenSpec change (this session, answering a question, with no `/opsx:` invocation in its transcript) is shown with the amber "could not be matched to its own change" marker.
+- **fail direction:** an alarm about nothing. Every row is amber, so the marker no longer means anything, and a real join failure looks exactly like the rest.
+- **fixed when:** an agent with no running work-cycle record and no change invocation in its transcript renders the quiet `—` even in a project with un-archived changes, while one that IS working a change it cannot be joined to still renders `join-failed`. The check is a `resolve_stage` unit test over a tree with one stale change directory and a transcript without an invocation, red on the current source, plus a look at the fleet panel.
+
 ### B-161 — an open AskUserQuestion is unmarked on the project column for its first 15 seconds, and looks like a finished turn after that
 - **state:** closed (`7011be1b`)
 - **reported:** 2026-10-10 by the user, with a screenshot: the tile header said `asking you · AskUserQuestion 7s`, the left panel showed nothing distinct
