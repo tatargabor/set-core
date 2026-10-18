@@ -1302,7 +1302,7 @@ def main():
         if findings:
             mark = "✖" if blocking else "•"
             head = (f"{mark} set-leakscan: {len(findings)} finding(s) — "
-                    f"{'COMMIT REFUSED' if mode == 'staged' else 'commit message REFUSED' if mode == 'message' else f'{len(files)} scanned file(s), remote is {visibility}'}")
+                    f"{('COMMIT REFUSED' if blocking else 'commit allowed, remote is private') if mode == 'staged' else ('commit message REFUSED' if blocking else 'message allowed, remote is private') if mode == 'message' else f'{len(files)} scanned file(s), remote is {visibility}'}")
             print(head, file=sys.stderr)
             print("", file=sys.stderr)
             by_cat = {}
