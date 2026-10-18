@@ -42,6 +42,43 @@ An agent can pass `-c core.hooksPath=` without meaning any harm, because **an in
 not a constraint — what an agent cannot do is decided by the tools it holds.** A human can
 disable a Claude hook. Hence both.
 
+## The private deny-list and the public-only classes (2026-10-18)
+
+Measured that day across the public repos: **every confirmed leak passed `--tree` clean.** A
+client name that is not a registry slug was never searched for, every `set-*` name was
+skipped (private ones included), and nothing looked at transcript files, `.env` files or
+licence ids. The gate now also reads, at run time:
+
+- **`~/.config/set-core/leakscan-deny.txt`** — optional; one term per line, `re:<regex>`
+  for a pattern, `#` comments; ASCII-folded, case-insensitive, matched on an alphanumeric
+  boundary (so `_name_` identifiers fire, a longer word does not). Missing file = no extra
+  terms. **It must never be committed anywhere** — the list is the leak.
+- **file-name classes**: `docs/inputs/`, `*transcript*.jsonl`, `*-raw-part<N>*.jsonl`,
+  `dictation-*`, `owner-inbox`, and tracked `.env` / `.env.*` except `*.example`. A staged
+  or ranged DELETION of such a path is the repair, not a finding.
+- **content shapes**: a licence id (`L-` + six or more upper-case letters/digits) blocks; a
+  price (`… Ft/HUF/EUR/€`) is **advisory only**.
+- **private `set-*` names**: decided once per name — the checkout's remotes (a checkout with
+  no remote counts as private), or `gh repo view` when the checkout is not on this machine —
+  and cached in `~/.cache/set-core/leakscan-name-visibility.json`. Undecidable (offline, a
+  non-GitHub remote) keeps the old behaviour, skipped, and is announced unless the deny-list
+  covers the name.
+
+These categories **block only when the remote is not private** — in `--staged` and
+`--message` too, where visibility is consulted lazily, only when one of them fired. A private
+repo that coordinates its clients must be able to name them.
+
+**Precedence:** a deny-list term is **not** silenced by a plain allow entry. Plain entries are
+registry slugs (the owner's own company names were allowlisted there on 2026-08-24); listing
+such a name in the deny-list makes it fire in a public repo again. Only a `literal:` allow
+line — deliberate and line-local — silences a deny finding.
+
+**Output is masked:** category, `file:line`, and an excerpt of the matched value (first and
+last two characters plus the length). The line is never printed, `--json` carries no raw
+text, and names inside a reported path are masked too. Tag messages are scanned for
+**annotated** tags only; a lightweight tag's message is its commit's, which the commit-message
+scan owns.
+
 ## The commit gate — environment-specific identity dies at commit (2026-09-07)
 
 A commit is the unit that accumulates; by push time the only repair is a history rewrite.
