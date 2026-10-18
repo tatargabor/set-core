@@ -30,7 +30,7 @@ THE PRIVATE DENY-LIST, AND WHAT BLOCKS ONLY ON A PUBLIC REMOTE (2026-10-18)
       missing file means no extra terms, never an error. It must never be
       committed anywhere: the list IS the leak.
     * file-name classes: `docs/inputs/`, `*transcript*.jsonl`,
-      `*-raw-part<N>*.jsonl`, `dictation-*`, `owner-inbox`; tracked `.env` /
+      `*-raw-part<N>*.jsonl`, dictation dumps, `owner-inbox`; tracked `.env` /
       `.env.*` except `*.example`; and a licence-id content shape.
     * a `set-*` registry name whose repository is private (its remotes decide,
       or `gh repo view` when the checkout is not here; cached per name).
@@ -143,6 +143,10 @@ class _NeedleCheck:
         return self._rx.search(line)
 
 
+DICTATION_EXT = {".jsonl", ".json", ".md", ".txt", ".wav", ".webm", ".ogg",
+                 ".m4a", ".mp3", ".flac", ".opus"}
+
+
 def private_path_kind(path):
     """Which private-file class a tracked path falls in, or None.
 
@@ -160,7 +164,12 @@ def private_path_kind(path):
         return "transcript"
     if base.endswith(".jsonl") and re.search(r"-raw-part[0-9]", base):
         return "raw-part"
-    if any(seg.startswith("dictation-") for seg in segs):
+    # The FILE, not a directory: a feature folder named `dictation-…` and a
+    # `dictation-archive.mjs` script are code (measured 2026-10-18, six false
+    # findings in one public repo). The dumps are data or audio:
+    # `dictation-<timestamp>.jsonl`, `<date>-dictation-part<N>-<hash>.md`.
+    if (base.startswith("dictation-") or "-dictation-part" in base) and \
+            os.path.splitext(base)[1] in DICTATION_EXT:
         return "dictation"
     if any("owner-inbox" in seg for seg in segs):
         return "owner-inbox"

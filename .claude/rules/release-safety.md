@@ -54,7 +54,8 @@ licence ids. The gate now also reads, at run time:
   boundary (so `_name_` identifiers fire, a longer word does not). Missing file = no extra
   terms. **It must never be committed anywhere** — the list is the leak.
 - **file-name classes**: `docs/inputs/`, `*transcript*.jsonl`, `*-raw-part<N>*.jsonl`,
-  `dictation-*`, `owner-inbox`, and tracked `.env` / `.env.*` except `*.example`. A staged
+  dictation dumps (a `dictation-…` or `…-dictation-part<N>…` FILE with a data or audio
+  extension — not a feature folder, not a `.mjs`), `owner-inbox`, and tracked `.env` / `.env.*` except `*.example`. A staged
   or ranged DELETION of such a path is the repair, not a finding.
 - **content shapes**: a licence id (`L-` + six or more upper-case letters/digits) blocks; a
   price (`… Ft/HUF/EUR/€`) is **advisory only**.

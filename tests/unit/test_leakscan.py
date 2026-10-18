@@ -1013,6 +1013,7 @@ class TestPrivateFileClasses:
         ("logs/meeting-transcript-1.jsonl", "transcript"),
         ("notes/2026-01-02-call-raw-part1.jsonl", "raw-part"),
         ("dictation-2026-01-02.txt", "dictation"),
+        ("notes/2026-01-02-dictation-part3-abcd1234.md", "dictation"),
         ("docs/owner-inbox.md", "owner-inbox"),
     ])
     def test_a_private_file_shape_blocks(self, repo, tmp_path, path, kind):
@@ -1022,6 +1023,15 @@ class TestPrivateFileClasses:
         r = _scan(repo, home, "--tree")
         assert r.returncode == 1, r.stderr
         assert f"private-path:{kind}" in r.stderr, r.stderr
+
+    def test_dictation_CODE_and_feature_folders_are_not_dumps(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        for p in ("openspec/changes/dictation-output/spec.md",
+                  "scripts/dictation-archive.mjs"):
+            (repo / p).parent.mkdir(parents=True, exist_ok=True)
+            commit(repo, p, "x\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
 
     def test_its_file_name_is_masked_in_the_report(self, repo, tmp_path):
         home = _gate_home(tmp_path)
