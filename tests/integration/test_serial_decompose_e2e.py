@@ -29,26 +29,26 @@ from set_orch.subprocess_utils import ClaudeResult
 
 # Path to the reconstructed consumer-d digest staged earlier by the user.
 # Falls back to building one if not present.
-_DIMOP_DIGEST = Path("/tmp/consumer-d-digest-test")
+_CONSUMER_D_DIGEST = Path("/tmp/consumer-d-digest-test")
 
 
 @pytest.fixture
-def dimop_project(tmp_path, monkeypatch):
+def consumer_d_project(tmp_path, monkeypatch):
     """Stage a project layout with the consumer-d digest at the canonical path.
 
     `run_planning_pipeline` derives `digest_dir` from `os.getcwd()`, so the
     test must chdir into a directory whose `set/orchestration/digest`
     matches the input_path.
     """
-    if not _DIMOP_DIGEST.is_dir():
+    if not _CONSUMER_D_DIGEST.is_dir():
         pytest.skip(
-            f"Reconstructed consumer-d digest not present at {_DIMOP_DIGEST}; "
+            f"Reconstructed consumer-d digest not present at {_CONSUMER_D_DIGEST}; "
             "skip the e2e mock test"
         )
     project = tmp_path / "project"
     digest_target = project / "set" / "orchestration" / "digest"
     digest_target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(_DIMOP_DIGEST, digest_target)
+    shutil.copytree(_CONSUMER_D_DIGEST, digest_target)
     monkeypatch.chdir(project)
     # Auto-defer the digest's unresolved ambiguities so the triage gate
     # passes. Matches how a non-interactive run is configured.
@@ -57,7 +57,7 @@ def dimop_project(tmp_path, monkeypatch):
 
 
 def _canned_plan_response() -> str:
-    """A minimal-but-valid plan JSON the LLM would emit for the dimop digest."""
+    """A minimal-but-valid plan JSON the LLM would emit for the consumer-d digest."""
     return json.dumps({
         "phase_detected": "Phase 1: i18n + schema foundation",
         "reasoning": "Foundation changes ship first; payment depends on schema.",
@@ -103,7 +103,7 @@ def _canned_plan_response() -> str:
     })
 
 
-def test_serial_path_fires_exactly_one_call(dimop_project, monkeypatch):
+def test_serial_path_fires_exactly_one_call(consumer_d_project, monkeypatch):
     """run_planning_pipeline() with auto strategy + small digest → 1 Claude call."""
     monkeypatch.delenv("SET_ORCH_PLANNER_STRATEGY", raising=False)
 
@@ -139,7 +139,7 @@ def test_serial_path_fires_exactly_one_call(dimop_project, monkeypatch):
 
     plan = planner.run_planning_pipeline(
         input_mode="digest",
-        input_path=str(dimop_project),
+        input_path=str(consumer_d_project),
         state_path="",
         model="opus",
     )
@@ -164,7 +164,7 @@ def test_serial_path_fires_exactly_one_call(dimop_project, monkeypatch):
     assert plan.get("plan_method") == "serial", plan.get("plan_method")
 
 
-def test_parallel_path_fires_three_phases(dimop_project, monkeypatch):
+def test_parallel_path_fires_three_phases(consumer_d_project, monkeypatch):
     """Forcing parallel runs the 3-phase pipeline (1 brief + N domain + 1 merge)."""
     monkeypatch.setenv("SET_ORCH_PLANNER_STRATEGY", "parallel")
 
@@ -213,7 +213,7 @@ def test_parallel_path_fires_three_phases(dimop_project, monkeypatch):
 
     plan = planner.run_planning_pipeline(
         input_mode="digest",
-        input_path=str(dimop_project),
+        input_path=str(consumer_d_project),
         state_path="",
         model="opus",
     )
@@ -230,7 +230,7 @@ def test_parallel_path_fires_three_phases(dimop_project, monkeypatch):
     assert plan.get("plan_method") == "parallel"
 
 
-def test_serial_call_is_tagged_in_event_payload(dimop_project, monkeypatch):
+def test_serial_call_is_tagged_in_event_payload(consumer_d_project, monkeypatch):
     """The LLM_CALL event payload has the strategy field (AC-86)."""
     monkeypatch.delenv("SET_ORCH_PLANNER_STRATEGY", raising=False)
 
@@ -260,7 +260,7 @@ def test_serial_call_is_tagged_in_event_payload(dimop_project, monkeypatch):
 
     planner.run_planning_pipeline(
         input_mode="digest",
-        input_path=str(dimop_project),
+        input_path=str(consumer_d_project),
         state_path="",
         model="opus",
     )

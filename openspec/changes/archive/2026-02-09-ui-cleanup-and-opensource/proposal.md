@@ -8,7 +8,7 @@ The Control Center GUI has a "Change" column that's misleading — it actually s
 - **BREAKING** Remove ALL JIRA integration: `bin/wt-jira` CLI, `bin/jira-move-subtask.py`, `bin/wt-activity`, GUI mixin/dialogs/menus/settings tab/"J" column, `.claude/commands/jira/` commands, JIRA skills, OpenSpec JIRA specs, JIRA config files and templates
 - **BREAKING** Remove ALL Confluence integration: `bin/wt-docs-upload`, `bin/docs-upload`, `bin/docs-gen`, `bin/md2confluence`, `docs/confluence.md`, OpenSpec confluence-docs spec, `.set-core/confluence.json(.example)`
 - Replace personal GitHub username (`tatargabor`) with the correct public repo URL in README.md, CONTRIBUTING.md, pyproject.toml, docs/config.md
-- Clean up archived OpenSpec changes that contain internal company references (`jira.zengo.eu`, `ARVRMTEAM`, personal names)
+- Clean up archived OpenSpec changes that contain internal company references (the internal Jira host, its team key, personal names)
 - Remove OpenSpec CLI from `install.sh` — it's a per-project dev tool, not a set-core runtime dependency
 - Change default color profile from "light" to "gray" in `gui/constants.py`
 - Fix chat icon click bug: `show_chat_dialog` signature mismatch between table button (passes project arg) and method definition (takes no args)

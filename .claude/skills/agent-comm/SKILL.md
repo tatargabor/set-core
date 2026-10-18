@@ -116,13 +116,13 @@ when you mean the project.
 
 ## Address a seat, not a project
 
-`to: ["consumer-a-atlas"]` reaches every session of that project, on every machine — four open sessions
+`to: ["my-project"]` reaches every session of that project, on every machine — four open sessions
 means four interruptions, and at least three of them are not the one you meant. `to:
-["consumer-a-atlas#3f9c1a20"]` reaches the one you are actually talking to. Use the project name only when
+["my-project#3f9c1a20"]` reaches the one you are actually talking to. Use the project name only when
 you genuinely mean all of them.
 
 **A seat name is a complete address — do not go looking for the room.** If you were handed
-`consumer-a-atlas#3f9c1a20`, send to it and leave `room` out: when that seat is reachable in exactly one
+`my-project#3f9c1a20`, send to it and leave `room` out: when that seat is reachable in exactly one
 of your rooms, that room is the only place the entry could have gone, so it goes there and the
 result tells you which one it was. You never have to work it out first.
 
@@ -154,7 +154,7 @@ Four shapes are in use, and they are not interchangeable:
 
 | shape | what it is for |
 | --- | --- |
-| **a piece of shared work** (`consumer-a-promo`) | two or three projects on one artifact, where seeing each other's *intentions* is worth the read |
+| **a piece of shared work** (`shared-artifact`) | two or three projects on one artifact, where seeing each other's *intentions* is worth the read |
 | **a meeting place** (wpc-board usually includes one) | where projects announce themselves and find each other. Requests **start** here; the work moves out |
 | **a person's room** | one person's own traffic across machines, and their sessions' with each other |
 | **a project's own room** | one project, nobody else — an address others can knock on |
@@ -207,7 +207,7 @@ the room doing its job.
 
 ### Two agents that need to talk to each other
 
-Say you are one of five sessions and you are told: settle it with `consumer-a-atlas#3f9c1a20`.
+Say you are one of five sessions and you are told: settle it with `my-project#3f9c1a20`.
 
 Address the seat, in the room you already share. The other three are **not woken** — that is
 measured and pinned by tests, not a hope: an entry addressed elsewhere does not interrupt them and
@@ -295,8 +295,8 @@ interrupt you, so a stale `focus` costs you either way.
 ## A name with `@` is on another machine
 
 ```
-consumer-a-atlas#3f9c1a20            here    → unforgeable: it is a directory plus a session id
-consumer-a-atlas@macmini#7b02e5d1    remote  → only as good as the device token behind it
+my-project#3f9c1a20               here    → unforgeable: it is a directory plus a session id
+my-project@other-host#7b02e5d1    remote  → only as good as the device token behind it
 ```
 
 A remote participant sees **none of your files** — do not point it at a path and expect it to

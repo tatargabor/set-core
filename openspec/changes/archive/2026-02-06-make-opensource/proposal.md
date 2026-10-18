@@ -16,7 +16,7 @@ Convert the internal set-core project to a public open-source project on GitHub.
 ### Phase 1: Proprietary Content Removal
 - Updated `.gitignore` to exclude `.set-core/*.json` config files
 - Created example config templates (`.set-core/jira.json.example`, `confluence.json.example`)
-- Replaced all Zengo URLs with `github.com/anthropic-tools/set-core`
+- Replaced all former-employer URLs with `github.com/anthropic-tools/set-core`
 - Replaced all EXAMPLE references with MYPROJECT
 - Removed personal paths from CLAUDE.md and bin/wt-jira
 
@@ -76,7 +76,7 @@ Documented in README.md:
 
 ```bash
 # Proprietary content check (should return 0)
-grep -r "zengo" --include="*.md" --include="*.sh" --include="*.py" . | grep -v archive | wc -l
+grep -r "<former-employer>" --include="*.md" --include="*.sh" --include="*.py" . | grep -v archive | wc -l
 grep -r "EXAMPLE" --include="*.md" --include="*.sh" --include="*.py" . | grep -v archive | wc -l
 grep -r "tatargabor" . | wc -l
 ```

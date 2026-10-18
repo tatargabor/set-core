@@ -37,7 +37,7 @@ The "J" column was JIRA-only, so it goes away entirely.
 Replace `tatargabor/set-core` with a TBD org/repo pattern. The user will finalize the actual URL.
 
 ### 5. Archived changes: Remove internal references
-Clean archived change files that contain `jira.zengo.eu`, `ARVRMTEAM`, personal names. These are historical but shouldn't be in a public repo.
+Clean archived change files that contain the internal Jira host, its team key, personal names. These are historical but shouldn't be in a public repo.
 
 ### 6. Confluence docs tooling removed entirely
 The `docs-gen` command generated Confluence-compatible markdown from OpenSpec specs. Since there's no Confluence, the entire docs generation pipeline is deleted. If documentation generation is needed later, it will be built differently (e.g., GitHub Pages, plain README sections).
