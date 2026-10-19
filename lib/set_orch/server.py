@@ -116,12 +116,10 @@ def create_app(web_dist_dir: str | None = None) -> FastAPI:
         web_dist_dir: Path to the built SPA directory (web/dist/).
                       If None, tries to find it relative to the package.
     """
-    import logging
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    # INFO on stderr unless SET_LOG_LEVEL says otherwise — B-162. A no-op when the
+    # CLI entry point has already configured logging.
+    from .log_setup import configure as _configure_logging
+    _configure_logging()
     app = FastAPI(
         title="set-core",
         version="0.2.0",

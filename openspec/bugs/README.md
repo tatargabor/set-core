@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-162 — the dashboard server logs at DEBUG into the journal, gigabytes a week on a full root disk
+- **state:** OPEN — fixed by the commit carrying this entry; closed after the service restart is measured.
+- **reported:** 2026-10-14 by a peer session (the owner's copilot) over the bus, REQUEST to set-core: 91 % of `/var/log/syslog` lines, about 1.9 GB a week, root disk at 100 %. Read by set-core on 2026-10-19.
+- **measured, verified by this session before it was entered (2026-10-19):** `lib/set_orch/cli.py:1442` and `lib/set_orch/server.py:120` call `logging.basicConfig(level=logging.DEBUG)` with no override, so the stderr handler that systemd feeds to the journal passes DEBUG. `journalctl --user -u set-web --since "-10 min" | wc -l` → **37 526 lines, 36 706 of them DEBUG**; the top two loggers, `set_orch.module_install` and `set_orch.fleet.capabilities`, 13 920 each. `/var/log/syslog.1` 3.2 GB, current 1.4 GB, `df -h /` 100 % (4.9 GB free). The report was narrower than the code: the size had grown since.
+- **fail direction:** the machine, not the code — a full root disk stops every service on it, and the cause sits in a log nobody reads.
+- **fixed when:** with no environment override, the stderr handler is at INFO and an orchestration run's `python.log` file handler stays at DEBUG; `SET_LOG_LEVEL=DEBUG` restores the old stderr level; an invalid value falls back to INFO with a warning. Tested, failing without the fix. Then measured on the restarted service: journal lines per 10 minutes, before and after.
+
 ### B-161 — a `protected` template file that the project never touched stops receiving updates as soon as the template changes
 - **state:** OPEN. The fix changes a spec scenario, so it goes through OpenSpec rather than a direct commit (see "the fix is a contract change" below).
 - **reported:** 2026-10-14 by a peer session in a consumer project, over the cross-session socket. It worked around the defect in a private module by switching the entry to `replace: true`.
