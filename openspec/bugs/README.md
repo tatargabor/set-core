@@ -69,11 +69,12 @@ consumer's name, path, or content.
 ## Open
 
 ### B-162 — the dashboard server logs at DEBUG into the journal, gigabytes a week on a full root disk
-- **state:** OPEN — fixed by the commit carrying this entry; closed after the service restart is measured.
+- **state:** CLOSED 2026-10-19 — fix `8d23c612`, measured on the restarted service (see CLOSED below).
 - **reported:** 2026-10-14 by a peer session (the owner's copilot) over the bus, REQUEST to set-core: 91 % of `/var/log/syslog` lines, about 1.9 GB a week, root disk at 100 %. Read by set-core on 2026-10-19.
 - **measured, verified by this session before it was entered (2026-10-19):** `lib/set_orch/cli.py:1442` and `lib/set_orch/server.py:120` call `logging.basicConfig(level=logging.DEBUG)` with no override, so the stderr handler that systemd feeds to the journal passes DEBUG. `journalctl --user -u set-web --since "-10 min" | wc -l` → **37 526 lines, 36 706 of them DEBUG**; the top two loggers, `set_orch.module_install` and `set_orch.fleet.capabilities`, 13 920 each. `/var/log/syslog.1` 3.2 GB, current 1.4 GB, `df -h /` 100 % (4.9 GB free). The report was narrower than the code: the size had grown since.
 - **fail direction:** the machine, not the code — a full root disk stops every service on it, and the cause sits in a log nobody reads.
 - **fixed when:** with no environment override, the stderr handler is at INFO and an orchestration run's `python.log` file handler stays at DEBUG; `SET_LOG_LEVEL=DEBUG` restores the old stderr level; an invalid value falls back to INFO with a warning. Tested, failing without the fix. Then measured on the restarted service: journal lines per 10 minutes, before and after.
+- **CLOSED:** `lib/set_orch/log_setup.py` sets stderr to INFO (`SET_LOG_LEVEL` overrides) and keeps a run's `python.log` at DEBUG; `tests/unit/test_log_setup.py` drives the real CLI entry point in a subprocess, and 2 of its 6 tests fail with `cli.py`/`server.py` reverted to HEAD. Measured after `systemctl --user restart set-web` (13:02:38): `journalctl --user -u set-web -f` for about 2 minutes → **154 lines, 0 DEBUG**, against about 3 750 lines a minute before. **Left over, not a defect:** the remaining INFO lines are two poll loops (`set_orch.fleet.discovery` 84, `set_orch.issues.manager` 55 of the 154), about 75 a minute. Demote them to DEBUG if they ever matter.
 
 ### B-161 — a `protected` template file that the project never touched stops receiving updates as soon as the template changes
 - **state:** OPEN. The fix changes a spec scenario, so it goes through OpenSpec rather than a direct commit (see "the fix is a contract change" below).
