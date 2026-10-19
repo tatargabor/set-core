@@ -2740,3 +2740,29 @@ the loss the mechanism exists to prevent. Tests: `tests/lib/test_handoff_rotatio
 wait both directions); the end-to-end rotation still needs one live consumer session to
 cross 500k — first occurrence lands in the chat log (`rotation ... armed`) and the strip
 shows the `rotating` status.
+
+## 2026-10-19 — "waiting on you": a `questions` read command PROPOSED to the consumer, not agreed
+
+**Asked by the user (dictated, 2026-10-19):** one place on the fleet screen that shows everything
+waiting on the owner's answer or decision, because a chat channel is not where such a list is
+worked from. Planned as the OpenSpec change `fleet-waiting-on-you` (artifacts only, nothing built).
+
+**Measured before proposing anything** (`GET /api/fleet/agents`, nothing written): the fleet's own
+`awaiting` total read **3** across 58 projects, **53 of them unmeasured** (no run state). The
+consumer's own operations watch, in its room, reported more than twenty tickets held on the owner's
+answers, and addressed the owner only as prose (`→ <owner>`) inside broadcasts. So the fleet sees
+neither of the two places the owner's open questions actually live.
+
+**Proposed on the bus, 2026-10-19 12:57, QUESTION to the consumer project, in its own room:** a
+declared read command `questions`, standard envelope, `data = { items: [ { id, kind:
+question|decision, title, since, blocks?: [{kind: release|change, id}], ref?: {command, row},
+askedBy? } ], complete }` — the full shape is design D3 of the change. **The question asked was
+whether their watch already holds this list as data; if it does, their shape wins** (the
+"read their mechanism before designing ours" rule). Nothing is built for this source until they
+answer; the rest of the feature needs nothing from them.
+
+**Proposed in parallel to `set-agent-comm`** (direct room, same time): a reserved `owner` addressee
+and a machine view of open owner-addressed entries (design D4). Recorded here because it is the
+other half of the same list, not because it is consumer work.
+
+**Next:** their answer → rewrite D3 to the agreed shape, record it here, then tasks 4.1–4.4.
