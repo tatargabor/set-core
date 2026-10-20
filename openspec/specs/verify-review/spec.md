@@ -30,3 +30,8 @@ LLM code review with model escalation and requirement-aware prompting.
 - AC-aware coverage check: per-AC-item `ISSUE: [CRITICAL] REQ-ID: "<ac item>" not implemented`
 - Coarse-grained check retained as fallback when no AC items present
 - Cross-cutting requirements: title-only, no AC items (unchanged)
+
+#### VR-IKP — IKP testing context in the review prompt
+- When the change has non-empty `ikp_packs` and `has_ikp_pipeline()` is true, the review prompt includes an IKP testing section: sandbox setup, recommended mock strategies, and edge cases to check (L4 context, `_build_ikp_review_context` in `verifier.py`)
+- With no `ikp_packs`, the review prompt is unchanged
+- Added from change `ikp-decomposer-dispatch` by hand on archive (2026-10-20): this spec predates the requirement/scenario format, so its delta could not be merged mechanically

@@ -2,9 +2,11 @@
 
 ## Purpose
 TBD - created by archiving change dynamic-category-injection. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Resolver runs six deterministic detection layers per change
-The change-category-resolver SHALL compute the union of categories from six per-change deterministic layers before considering LLM input. The five primary layers run unconditionally; the project-state fallback runs only when the primary union has at most two categories.
+The change-category-resolver SHALL compute the union of categories from six per-change deterministic layers before considering LLM input. The five primary layers run unconditionally; the project-state fallback runs only when the primary union has at most two categories. When a change has non-empty `ikp_packs` in its metadata, the resolver SHALL add `"integration"` to the category set as an additional deterministic signal.
 
 #### Scenario: All five primary layers contribute
 - **WHEN** a change has change_type=`feature`, requirements=`[REQ-AUTH-001, REQ-API-USERS-001]`, manifest paths include `src/app/api/users/route.ts`, scope text contains `oauth`, depends_on includes a parent change classified as `database`
@@ -21,6 +23,20 @@ The change-category-resolver SHALL compute the union of categories from six per-
 - **WHEN** layer 1 returns `{frontend}` and layer 4 returns `{auth}`
 - **THEN** the resolver SHALL return `{frontend, auth}` (both)
 - **AND** no layer SHALL override or remove categories produced by another
+
+#### Scenario: Change with ikp_packs
+- **WHEN** a change has `ikp_packs: ["billingo"]` in its metadata
+- **THEN** the resolver SHALL add `"integration"` to the deterministic category union
+- **AND** SHALL include this in the audit log record
+
+#### Scenario: Change without ikp_packs
+- **WHEN** a change has no `ikp_packs` or an empty list
+- **THEN** the resolver SHALL NOT add `"integration"` from this signal
+- **AND** the resolver behavior SHALL be unchanged from existing logic
+
+#### Scenario: Integration category in taxonomy
+- **WHEN** the profile's `category_taxonomy()` is queried
+- **THEN** it SHALL include `"integration"` as a valid category
 
 ### Requirement: Resolver invokes profile-supplied LLM classifier as additive layer
 The resolver SHALL invoke the profile's configured LLM (default: `claude-sonnet-4-6`) after the deterministic layers complete, passing the scope text, change_type, requirements, manifest paths, depends_on, project summary (from profile), and a project-insights summary (when available). The LLM result SHALL be unioned with the deterministic union — the LLM can only add categories, never remove.
@@ -108,4 +124,3 @@ A `ProjectType` implementation SHALL provide seven hook methods, each with a doc
 - **WHEN** a profile overrides a subset of the seven hooks (e.g. only `categories_from_paths`)
 - **THEN** the resolver SHALL still operate correctly, using ABC defaults for unimplemented hooks
 - **AND** SHALL NOT raise NotImplementedError or AttributeError
-

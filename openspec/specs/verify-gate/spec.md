@@ -11,6 +11,8 @@ Ordered steps: build → test → e2e → scope check → test file check → re
 
 The E2E gate step SHALL pass the worktree path's Playwright configuration context to `_execute_e2e_gate()` so the gate can make webServer-aware decisions about health checks and port allocation.
 
+The scope check step in the verify pipeline SHALL additionally call `profile.check_test_infra_usage(changed_files, project_path)` after existing scope checks. Any returned warning strings SHALL be logged at WARNING level with prefix `[TEST-INFRA]` and included in the scope check output. These warnings SHALL NOT be blocking — they SHALL NOT increment `verify_retry_count` and SHALL NOT prevent merge.
+
 #### Scenario: Infrastructure change skips build/test/e2e
 - **WHEN** a change with change_type `"infrastructure"` enters handle_change_done
 - **THEN** the build, test, and e2e gate steps SHALL be skipped
@@ -41,6 +43,16 @@ The E2E gate step SHALL pass the worktree path's Playwright configuration contex
 - **WHEN** GateConfig has `review_model` set to a non-None value
 - **THEN** the review gate SHALL use that model instead of the global `review_model` parameter
 
+#### Scenario: Test infra advisory in scope check
+- **WHEN** scope check runs and `check_test_infra_usage()` returns warnings
+- **THEN** the warnings SHALL be logged as `[TEST-INFRA] <warning text>`
+- **AND** the scope check SHALL still pass if no other blocking issues exist
+
+#### Scenario: Profile without check_test_infra_usage
+- **WHEN** scope check runs and the profile does not implement `check_test_infra_usage()`
+- **THEN** no test infra warnings SHALL be emitted
+- **AND** the scope check SHALL behave identically to current behavior
+
 ### Requirement: VG-PIPELINE uncommitted work check
 Ordered steps: **uncommitted-check →** build → test → e2e → scope check → test file check → review → rules → verify → merge queue. The uncommitted-check step runs before VG-BUILD and after the merge-rebase fast path early return.
 
@@ -60,8 +72,6 @@ Ordered steps: **uncommitted-check →** build → test → e2e → scope check 
 - **THEN** the uncommitted-check step SHALL be skipped (rebase may leave expected state)
 
 ---
-
-## MODIFIED Requirements
 
 ### Requirement: Verify gate results SHALL be preserved across monitor restart
 When the monitor restarts (crash recovery or manual restart), it SHALL check for changes in "verifying" status that already have all blocking gates passed. Such changes SHALL proceed to merge instead of being re-dispatched. The check SHALL cover ALL blocking gates, not just a subset.

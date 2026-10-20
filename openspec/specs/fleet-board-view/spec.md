@@ -3,7 +3,9 @@
 ## Purpose
 Renders a project's board answer — a summary strip plus columns of cards — as one generic,
 domain-free surface in the fleet view. Created by archiving change generic-board-view.
+
 ## Requirements
+
 ### Requirement: The board renders the producer's cards in the producer's bands
 The fleet screen SHALL render a project's board answer as columns of cards beneath the
 summary strip: one column per entry of the producer's declared `lanes` array, in that array's
@@ -62,11 +64,83 @@ in words, not as six empty columns.
   an empty board.
 
 ### Requirement: The board is read-only
-The board view SHALL offer no write path. Every interaction it offers MUST be a reading one
-(tooltips, scrolling); planning changes to a card remain the project's own act, done in the
+The board view SHALL offer no write path. Every interaction it offers MUST be a reading
+one (tooltips, scrolling, and opening a producer-declared `openTarget` through the page's
+file view); planning changes to a card remain the project's own act, done in the
 project's tools.
 
 #### Scenario: A card click
 - **WHEN** the reader clicks a card
 - **THEN** nothing is written anywhere, and if the click has an effect it is a reading
-  effect (showing more of the card's own text), never a state change.
+  effect (showing more of the card's own text, or opening the artefact the producer
+  declared as the card's `openTarget`), never a state change.
+
+### Requirement: The open target is declared by the producer, never derived
+The card vocabulary SHALL carry an optional `openTarget`: a string holding the
+project-root-relative path of the artefact the card IS — a file or a directory. set-core
+MUST NOT derive an open target from any other card field, and MUST treat a value that is
+not a non-empty string as absent. A card with no usable `openTarget` SHALL render as a
+plain, non-clicking face.
+
+#### Scenario: A card with no open target
+- **WHEN** a card declares no `openTarget`, or declares one that is not a non-empty string
+- **THEN** the card renders as a non-interactive face, and no control is offered for it
+
+#### Scenario: The producer's other path-like fields are not opened
+- **WHEN** a card carries producer-side fields that look like locations but no `openTarget`
+- **THEN** the surface opens nothing for that card — the click would otherwise follow a
+  source document rather than the artefact and look like it worked
+
+### Requirement: Following a declared open target is a reading act
+When the page provides an opener, a card that declares a usable `openTarget` SHALL render
+as a control that opens that path through the page's file view. The click MUST NOT write
+anything anywhere; the board's no-write-path guarantee is unchanged. When the page
+provides no opener, even a card with a usable `openTarget` SHALL render as a plain face.
+
+#### Scenario: A click on a declaring card
+- **WHEN** the reader activates a card whose `openTarget` is `docs/bugs/ticket-42.md`
+- **THEN** the page's file view opens that path, nothing is written anywhere, and no
+  other field of the card is consulted to choose the target
+
+#### Scenario: Full screen hands the reader back to the page
+- **WHEN** the board is in full screen and the reader activates a declaring card
+- **THEN** full screen is left and the file view opens in the page beneath — the artefact
+  is never opened into a surface the reader cannot see
+
+### Requirement: The release selector defaults to the producer's open draft
+When the board answer carries `releasePlanned` entries with a readable release name, the
+board SHALL render a release selector. Its default selection SHALL be the FIRST such
+entry — the producer's own open draft — and "all cards" SHALL remain selectable. An
+answer without `releasePlanned` SHALL render no selector and every card.
+
+#### Scenario: The board opens on the draft
+- **WHEN** the answer carries one draft naming two planned items
+- **THEN** the selector shows that draft selected, and the columns show only the cards
+  that draft's membership names — the rest of the project's cards stay hidden until
+  "all cards" is chosen
+
+#### Scenario: No drafts published
+- **WHEN** the answer carries no `releasePlanned`
+- **THEN** no selector renders, and every card shows exactly as before
+
+### Requirement: Filtering follows the producer's membership, never an inference
+A selected draft SHALL filter the card columns to the cards its membership names as
+on-board (by card id). Column placement stays by each card's own lane. Under a selected
+draft the lane header counts SHALL come from the draft's OWN membership — how many
+items it places in each lane — because the whole-board figure beside a filtered column
+reads as a bug (user-reported, 2026-08-30); the whole-board figures SHALL render in the
+"all cards" view and in the strip legend. The surface MUST NOT count CARDS to produce a
+header. The draft's planned items with no card SHALL render as their
+own group, each with its stated reason, and each following the same `openTarget` click
+rule as a card.
+
+#### Scenario: An item planned but not on the board
+- **WHEN** the chosen draft names an item with `onBoard: false` and a reason
+- **THEN** the item renders in the draft's off-board group with its reason visible, and
+  if it declares an `openTarget` the artefact is one click away — it is never invented
+  into a lane column
+
+#### Scenario: Emptiness the filter explains
+- **WHEN** a lane shows no cards because the chosen draft's membership names none there
+- **THEN** the column renders no mismatch claim for that emptiness — a filter is neither
+  a zero nor a counts-vs-cards disagreement
