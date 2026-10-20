@@ -1,7 +1,7 @@
 ## 0. Agreements — sources 3 and 4 are not built before these are on the record
 
 - [ ] 0.1 Propose the `questions` command shape (design D3) to the consumer on the bus; ask whether their coordinator already produces this list and in what shape; record the answer in `docs/integration/consumer-integration.md` and rewrite D3 to the agreed shape [REQ: project-questions-are-read-from-a-projects-declared-command]
-- [ ] 0.2 Propose the `owner` addressee and a machine view (design D4) to `set-agent-comm`; record what they decide, including what makes an entry open [REQ: bus-entries-addressed-to-the-owner-are-read-through-the-buss-own-machine-view]
+- [x] 0.2 Propose the `owner` addressee and a machine view (design D4) to `set-agent-comm`; record what they decide, including what makes an entry open — agreed and built 2026-10-19 (set-agent-comm `ff1d661`, `sac.owner/1`), recorded in design D4 [REQ: bus-entries-addressed-to-the-owner-are-read-through-the-buss-own-machine-view]
 
 ## 1. Aggregator and the two measured sources (Layer 1, `lib/set_orch/fleet/waiting.py`)
 

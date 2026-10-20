@@ -67,13 +67,23 @@ the status table the framework already renders, without knowing the project's vo
 This is a **proposal** on the bus. If the consumer's coordinator already produces such a list, its
 shape wins and this section is rewritten to it before the adapter is built.
 
-### D4. Bus entries: a reserved `owner` addressee and a machine view — PROPOSED, to be agreed
+### D4. Bus entries: the reserved `owner` addressee and `sac owner --json` — AGREED and BUILT
 
-Proposed to `set-agent-comm`: `--to owner` as a reserved addressee meaning *the human of this
-machine*, stored in the entry's `to` like any other address; and a machine-readable view (for
-example `sac owner --json`) listing owner-addressed entries that are still open, across rooms,
-with room, entry id, timestamp, type, sender and text. What makes an entry *open* (an `ANSWER`
-with `re:` pointing at it, an explicit close, or both) is the bus's decision, not ours.
+Proposed to `set-agent-comm` on 2026-10-19, answered and shipped the same day (set-agent-comm
+`ff1d661`; checked here: `sac owner --json` returns `schema: "sac.owner/1"`):
+
+- `--to owner` is a reserved addressee meaning *the human of this machine*, stored in the entry's
+  `to`; it wakes no seat and is never rung. In a relayed room it travels as `owner@<device>`, so
+  each machine's view holds only its own person.
+- `sac owner --json` → `{ schema: "sac.owner/1", generatedAt, open: [{ room, id: "<ts>|<from>",
+  ts, type, from, to, text, ageMinutes }] }`, oldest first, archived rooms skipped.
+- **Open** = no entry in that room has `re:` pointing at it. `sac owner close <room> <ts> [note]`
+  closes by the same rule (a FACT written as `owner`), so there is one rule and no second store.
+
+The adapter reads that command's JSON and nothing else. Until a writer addresses `owner` the
+view is legitimately empty — the consumer's watch needs a newer `sac` and a re-installed skill
+before it stops writing "→ owner" into broadcasts — so an empty answer is *measured, zero
+open*, not unmeasured; only a failing or absent command is unmeasured.
 
 Why not parse `→ <owner>` from text: that is the prose-read-as-fact class, and it fails in the
 quiet direction — a phrasing change drops items without an error. Why not read the store files:
@@ -102,4 +112,4 @@ None. New endpoint, new control; nothing existing changes shape.
 ## Open Questions
 
 - The project command's shape (D3) — on the bus to the consumer.
-- The owner addressee and its open/closed semantics (D4) — on the bus to `set-agent-comm`.
+- ~~The owner addressee (D4)~~ — agreed and built 2026-10-19, see D4.
