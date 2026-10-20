@@ -556,3 +556,78 @@ def test_workflow_is_deliberately_not_refused(tmp_path):
 
     assert desktop_module.refusal(str(f)) is None
 
+
+
+# ─── Media whose executable bit says nothing (2026-10-19) ───────────────────
+#
+# Reported on a live screen: every video on an exFAT drive was refused, because
+# a filesystem without Unix permissions shows every file as 755. The lift is by
+# SUFFIX, measured on Linux, and judged on the resolved target.
+
+
+def _media(tmp_path, name="clip.mp4"):
+    f = tmp_path / name
+    f.write_bytes(b"\x00\x00\x00\x18ftypmp42 not really")
+    f.chmod(0o755)
+    return f
+
+
+@pytest.mark.parametrize("name", ["clip.mp4", "COVER.JPG", "take01.png", "voice.opus", "scan.pdf"])
+def test_a_media_file_with_the_executable_bit_opens_on_linux(client, spawned, tmp_path, monkeypatch, name):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    f = _media(tmp_path, name)
+    assert os.access(f, os.X_OK), "fixture must carry the executable bit"
+
+    res = post(client, str(f))
+
+    assert res.status_code == 200, res.json()
+    assert spawned[0]["argv"] == ["/usr/bin/xdg-open", str(f)]
+
+
+def test_a_link_named_like_a_video_that_points_at_a_program_is_refused(client, spawned, tmp_path, monkeypatch):
+    """The lift reads the RESOLVED name — a request string would wave this through."""
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    program = tmp_path / "payload"
+    program.write_text("#!/bin/sh\necho hi\n")
+    program.chmod(0o755)
+    link = tmp_path / "clip.mp4"
+    link.symlink_to(program)
+
+    res = post(client, str(link))
+
+    assert res.status_code == 400
+    assert "executable" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_the_media_lift_is_not_taken_on_macos(client, spawned, tmp_path, monkeypatch):
+    """Nothing was measured there, so the bit still refuses."""
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "open")
+    f = _media(tmp_path)
+
+    res = post(client, str(f))
+
+    assert res.status_code == 400
+    assert "executable" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_typescript_is_not_media(tmp_path, monkeypatch):
+    """`.ts` measured `video/mpeg`, and is TypeScript in every code project."""
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    f = _media(tmp_path, "build.ts")
+
+    assert "executable" in (desktop_module.refusal(str(f)) or "")
+
+
+def test_the_browser_routes_exactly_the_suffixes_the_guard_lifts():
+    """Two lists, one meaning: what the terminal sends to the desktop as media is
+    what the guard opens despite the bit. Read from the TypeScript source, so a
+    suffix added on one side only fails here rather than as a refusal on screen."""
+    import re
+    src = os.path.join(os.path.dirname(__file__), "..", "..", "web", "src", "lib", "fleetFiles.ts")
+    text = open(src, encoding="utf-8").read()
+    m = re.search(r"export const MEDIA_SUFFIXES[^=]*=\s*\[(.*?)\]", text, re.S)
+    assert m, "MEDIA_SUFFIXES not found in fleetFiles.ts"
+    browser = set(re.findall(r"'(\.[a-z0-9]+)'", m.group(1)))
+    assert browser == set(desktop_module._MEDIA_SUFFIXES)

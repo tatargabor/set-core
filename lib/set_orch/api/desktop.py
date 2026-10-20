@@ -140,6 +140,45 @@ _ASSOCIATION_RUNS = (
 _ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml",
                            ".svg", ".svgz")
 
+#: Suffixes for which the executable bit says nothing, so it is not consulted.
+#:
+#: Reported 2026-10-19: every video on an exFAT drive was refused. exFAT stores
+#: no Unix permissions — 844 of 844 files on that drive read as 755 — so the bit
+#: refused every file there and told the reader nothing about any of them.
+#:
+#: Measured that day on Linux, per suffix: a copy of an ELF binary and a
+#: `#!/bin/sh` script, each given the suffix and mode 755. Both `xdg-mime query
+#: filetype` and `gio info` typed every one as the MEDIA type (never an
+#: executable or a script), and every `xdg-mime query default` handler was a
+#: player, viewer or editor. So for these the desktop chooses by suffix, and the
+#: bit is not the path to a program starting.
+#:
+#: `.ts` measured `video/mpeg` and is deliberately ABSENT: in a code project it
+#: is TypeScript. The browser's `MEDIA_SUFFIXES` (`web/src/lib/fleetFiles.ts`)
+#: routes the same list to the desktop; a test holds the two equal.
+_MEDIA_SUFFIXES = (
+    # video
+    ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".wmv", ".mpg", ".mpeg",
+    ".ogv", ".3gp", ".flv",
+    # audio
+    ".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".oga", ".opus", ".wma",
+    # raster image
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".tif", ".tiff",
+    ".heic", ".ico",
+    # document
+    ".pdf",
+)
+
+
+def _bit_is_meaningless(lowered_target: str) -> bool:
+    """Whether the executable bit is not consulted for this resolved target.
+
+    Only where the measurement above was made: the opener is `xdg-open`. On
+    macOS the bit still refuses, because nothing was measured there and an entry
+    here rests on a measurement, never on plausibility.
+    """
+    return _opener_name() == "xdg-open" and lowered_target.endswith(_MEDIA_SUFFIXES)
+
 
 class OpenRequest(BaseModel):
     """One absolute path, and nothing else.
@@ -184,7 +223,8 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
 
         absolute → realpath → exists → file or directory → launcher suffix
                  → association runs it → association interprets it
-                 → executable bit (REGULAR FILES ONLY)
+                 → executable bit (REGULAR FILES ONLY; not for a measured
+                   media suffix on Linux — see `_MEDIA_SUFFIXES`)
 
     Three of those steps are the ones that would be got wrong:
 
@@ -243,8 +283,13 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
             return (f"a {suffix} file opens as a local page that can read this "
                     "machine's files")
 
+    # Judged on the RESOLVED name, like the suffix rules above: a link named
+    # `clip.mp4` that points at a program keeps the program's name here.
     if not is_dir and os.access(target, os.X_OK):
-        return "this file carries an executable bit, and executables are not opened"
+        if _bit_is_meaningless(lowered):
+            logger.debug("desktop refusal: executable bit not consulted for media file %s", target)
+        else:
+            return "this file carries an executable bit, and executables are not opened"
 
     return None
 
