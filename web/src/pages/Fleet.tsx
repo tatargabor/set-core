@@ -890,10 +890,14 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
       role="tablist"
       aria-label="agents in this project"
       data-fleet-agent-tabs={agents.length}
-      /* `overflow-x-auto` with `shrink-0` tabs: many agents scroll, they never
-         wrap onto a second line. A tab strip that grows downwards is a row list
-         with extra steps. */
-      className="flex items-center gap-1 overflow-x-auto shrink-0 border-b border-surface-line pb-1 mb-2"
+      /* The strip WRAPS. It used to scroll sideways and never wrap, on the
+         reasoning that a strip growing downwards is a row list with extra steps.
+         The user reversed that on 2026-10-20 (*"ha nem fer ki menjen két sorba
+         a tab headers"*): a scrolled-away tab is a tab nobody sees, and in
+         latest mode most of the strip was off screen behind a scrollbar.
+         Reordering follows the wrap — `useReorder`'s 'x' axis picks the line
+         first. */
+      className="flex flex-wrap items-center gap-1 shrink-0 border-b border-surface-line pb-1 mb-2"
     >
       {agents.map((a, i) => {
         const on = a.pid === selected
@@ -939,10 +943,14 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
               if (moved.current) { moved.current = false; return }
               onSelect(a.pid)
             }}
-            className={`relative shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
+            /* A thin outline on every side, so each name reads as its own tab
+               (asked for 2026-10-20: *"legyen jobban elvalaszva valamilyen
+               korberajzolassan a panel nev vekony vonalakkal"*). The thicker
+               bottom edge stays the selection mark. */
+            className={`relative shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-b-2 transition-colors ${
               on
-                ? 'border-sky-400 text-fg-loud bg-surface-raised/60'
-                : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'
+                ? 'border-sky-400/70 border-b-sky-400 text-fg-loud bg-surface-raised/60'
+                : 'border-surface-line text-fg-muted hover:text-fg-strong hover:border-fg-ghost/60 hover:bg-surface-raised/40'
             }${lifted ? ' opacity-50' : ''}${target ? ' ring-1 ring-sky-400/60' : ''}`}
           >
             {/* The state's DOT, not its word: the colour is the alarm and it
@@ -1008,10 +1016,10 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
           data-fleet-panel-tab={p.key}
           data-fleet-panel-tab-active={p.active ? 'on' : undefined}
           onClick={p.onSelect}
-          className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-t text-xs border-b-2 transition-colors ${
+          className={`shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-b-2 transition-colors ${
             p.active
-              ? 'border-sky-400 text-fg-loud bg-surface-raised/60'
-              : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface-raised/40'
+              ? 'border-sky-400/70 border-b-sky-400 text-fg-loud bg-surface-raised/60'
+              : 'border-surface-line text-fg-muted hover:text-fg-strong hover:border-fg-ghost/60 hover:bg-surface-raised/40'
           }`}
         >
           {p.label}

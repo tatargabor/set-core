@@ -32,9 +32,12 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 /**
  * Which way the list runs. `y` is a column of rows, `x` a strip of tabs.
  *
- * It changes exactly two things — which coordinate the midpoint test reads, and
- * which arrow keys move an item — and nothing else. Everything above stays the
- * same because it is the same gesture.
+ * It changes which arrow keys move an item, and how the drop target is found.
+ * A column reads the y midpoint. A strip may WRAP onto several lines (asked for
+ * 2026-10-20: *"ha nem fer ki menjen két sorba a tab headers"*), so it first
+ * picks the line nearest the pointer and then reads the x midpoint within that
+ * line only. An x-only test would drop a tab dragged onto the second line
+ * somewhere in the first. On a single line the two answers are the same.
  */
 export type ReorderAxis = 'x' | 'y'
 
@@ -108,7 +111,7 @@ export function useReorder(
    * diff of — so the screen quietly rewrites the thing they built, one accidental
    * click at a time.
    */
-  const live = useRef<{ from: number; to: number; pointerId: number; start: number; engaged: boolean } | null>(null)
+  const live = useRef<{ from: number; to: number; pointerId: number; startX: number; startY: number; engaged: boolean } | null>(null)
   /** Pixels the pointer must travel before this counts as a drag at all. */
   const DRAG_THRESHOLD = 4
   const refocus = useRef<string | null>(null)
@@ -143,20 +146,41 @@ export function useReorder(
    * silent and expensive. Reading the index the row carries makes a partially
    * rendered list behave exactly like a complete one.
    */
-  const indexAt = (position: number): number => {
+  const indexAt = (x: number, y: number): number => {
     const list = items()
     if (list.length === 0) return 0
-    for (const el of list) {
-      const rect = el.getBoundingClientRect()
-      const middle = axis === 'x' ? rect.left + rect.width / 2 : rect.top + rect.height / 2
-      if (position < middle) return indexOf(el)
+    if (axis === 'y') {
+      for (const el of list) {
+        const rect = el.getBoundingClientRect()
+        if (y < rect.top + rect.height / 2) return indexOf(el)
+      }
+      return indexOf(list[list.length - 1])
     }
-    return indexOf(list[list.length - 1])
+    // A strip: the line nearest the pointer, then the x midpoint within it.
+    const placed = list.map(el => ({ el, rect: el.getBoundingClientRect() }))
+    const lines: { top: number; bottom: number; members: typeof placed }[] = []
+    for (const p of placed) {
+      const line = lines.find(l => p.rect.top < l.bottom && p.rect.bottom > l.top)
+      if (line) {
+        line.members.push(p)
+        line.top = Math.min(line.top, p.rect.top)
+        line.bottom = Math.max(line.bottom, p.rect.bottom)
+      } else {
+        lines.push({ top: p.rect.top, bottom: p.rect.bottom, members: [p] })
+      }
+    }
+    const distance = (l: { top: number; bottom: number }) =>
+      (y < l.top ? l.top - y : y > l.bottom ? y - l.bottom : 0)
+    const line = lines.reduce((best, l) => (distance(l) < distance(best) ? l : best))
+    for (const { el, rect } of line.members) {
+      if (x < rect.left + rect.width / 2) return indexOf(el)
+    }
+    return indexOf(line.members[line.members.length - 1].el)
   }
 
-  /** The coordinate this axis measures along. */
-  const along = (e: { clientX: number; clientY: number }): number =>
-    (axis === 'x' ? e.clientX : e.clientY)
+  /** How far the pointer has travelled from the press, along either axis. */
+  const travelled = (e: { clientX: number; clientY: number }, s: { startX: number; startY: number }): number =>
+    Math.max(Math.abs(e.clientX - s.startX), Math.abs(e.clientY - s.startY))
 
   const handlers: ReorderHandlers = {
     onPointerDown: (e) => {
@@ -171,7 +195,7 @@ export function useReorder(
       // unreachable from the gesture that obviously starts a drag.
       e.currentTarget.focus()
       e.currentTarget.setPointerCapture?.(e.pointerId)
-      live.current = { from, to: from, pointerId: e.pointerId, start: along(e), engaged: false }
+      live.current = { from, to: from, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, engaged: false }
       // Deliberately NOT `setDrag` yet: a press is not a drag, and highlighting
       // a drop target before the pointer has moved tells the reader a move is
       // under way when one click would commit nothing.
@@ -180,10 +204,10 @@ export function useReorder(
       const s = live.current
       if (!s || e.pointerId !== s.pointerId) return
       if (!s.engaged) {
-        if (Math.abs(along(e) - s.start) < DRAG_THRESHOLD) return
+        if (travelled(e, s) < DRAG_THRESHOLD) return
         s.engaged = true
       }
-      const to = indexAt(along(e))
+      const to = indexAt(e.clientX, e.clientY)
       if (to !== s.to) {
         s.to = to
         setDrag({ from: s.from, to })
