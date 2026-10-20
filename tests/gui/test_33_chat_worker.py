@@ -121,3 +121,54 @@ def test_set_project_without_remote_url_leaves_it_empty():
 
     assert worker.current_project == "repo"
     assert worker.current_remote_url == ""
+
+
+def test_control_center_hands_the_chat_worker_the_remote_url():
+    """The Control Center must give the worker the key its settings live under.
+
+    The team settings are keyed by the remote URL, so a Control Center that
+    passes only the project name leaves the worker unable to find them.
+    """
+    from gui.control_center.mixins.team import TeamMixin
+    from gui.workers.chat import ChatWorker
+
+    class _Label:
+        def setText(self, text):
+            pass
+
+        def setVisible(self, visible):
+            pass
+
+        def setStyleSheet(self, style):
+            pass
+
+        def setTextFormat(self, fmt):
+            pass
+
+    class _Host(TeamMixin):
+        """The slice of the Control Center the chat worker is wired from."""
+
+        def __init__(self, config, chat_worker):
+            self.config = config
+            self.chat_worker = chat_worker
+            self.worktrees = [
+                {
+                    "project": "repo",
+                    "remote_url": "https://github.com/org/repo.git",
+                    "path": "/tmp/repo",
+                }
+            ]
+            self.team_data = {}
+            self.team_filter_state = {}
+            self.team_label = _Label()
+
+        def get_color(self, key):
+            return "#000000"
+
+    worker = ChatWorker(_FakeConfig({"projects": {}}))
+    host = _Host(_FakeConfig({"projects": {}}), worker)
+
+    host.update_team_display()
+
+    assert host.chat_worker.current_project == "repo"
+    assert host.chat_worker.current_remote_url == "https://github.com/org/repo.git"
