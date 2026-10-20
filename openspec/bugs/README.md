@@ -68,6 +68,37 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-165 — wave boards go stale because nothing prompts the agent's own status report; the Stop hook only prompts the push
+- **state:** CLOSED 2026-10-20 — `3528bf10`, change `openspec/changes/wave-board-staleness` (the user chose options 1 and 2; option 3, more evidence types such as a release tag, is not done).
+- **reported:** 2026-10-20 by the user, a screenshot of the fleet's "Wave boards" popover with the words *"nem updatelte a boardok statuszat"*. Every board showed an age between 32 h and 292 h.
+- **measured (2026-10-20, read-only, by importing `evaluate()` from `bin/set-wave-board` over every registered project's job files):**
+  - **The reader is not the fault.** `/api/fleet/waveboards` matches the job files byte for byte, and the job files' mtimes match the ages shown.
+  - **Sync is at a fixed point on every board:** evaluating every item's evidence now would move 0 items, so the Stop hook's `sync` runs and correctly changes nothing.
+  - **Where the 168 unfinished items across 8 boards sit:** 70 have **no evidence** (moved only by `set-wave-board set`), 43 have evidence with no verdict, 54 have a verdict that the item already reflects or that a sticky status overrides, and 1 is `blocked` while its evidence says `done` (blocked is sticky by design).
+  - **The no-verdict items are mostly honest:** for 42 of the 43, the change, path or commit they name exists nowhere — no branch, no worktree, no archive. One names a change for which only a similarly named one exists, possibly a rename the evidence path never followed.
+  - **Real work was not reflected:** 1 to 438 commits landed in each repository since its board last moved. *Corrected while fixing:* that range was counted with `git rev-list --all`; counted on `HEAD`, which is the branch the board and its evidence describe, it is 0 to 141. Two of those boards were in fact current. One board tracks a release whose tag was cut the day after the board last changed, and it still shows 3 open items and 2 blocked.
+  - **The hook never asks for a status report.** `bin/set-hook-waveboard` blocks the Stop only when `push_needed` (payload hash ≠ last pushed). A board whose manual items are stale has an unchanged hash, so it never prompts.
+- **fail direction:** silent and calm-looking. A stale board reads as "this wave is still in progress", and the blocked counts on the fleet chip are stale with it.
+- **fixed when:** a board with open items only an agent can move, and at least 3 commits on HEAD since its last change, makes the Stop hook ask its agent for a review, and shows as stale on the fleet chip and row.
+- **CLOSED:**
+  - **Tests and mutants:** every scenario of the change is tested, and each of 21 mutants is caught.
+  - **The fix was observed working before the restart.** The hook is linked onto `PATH` from this checkout, so it went live as soon as the file was saved. In one project the reminder was given at 22:00:06 and its agent committed an updated board 21 s later. In another, the agent ran `reviewed` 13 s after its reminder.
+  - **After the restart (22:07:17)**, `/api/fleet/waveboards` reports 6 of 9 boards stale, and the browser shows the amber count on the closed chip and the marker on the six rows.
+
+### B-164 — the regression-baseline leak assertion reports every pytest module as a leak when the venv lives inside the checkout
+- **state:** OPEN.
+- **reported:** 2026-10-20 by this session, while running the `regression-baseline` skill for `fleet-latest-mode` 4.2.
+- **measured:** the skill's `leakcheck.py` flags any loaded module whose file path contains `/set-core/` and does not start with the baseline root. This machine's venv is `<checkout>/.venv`, so `_pytest`, `pluggy` and the rest match: the run printed `BASELINE LEAK (376)` and set exit status 99, with the first 25 names all pytest's own. Only the first 25 are printed, so whether a real first-party leak hid among the 376 could not be read from the output; it was checked separately (`set_orch.__file__` and `set_project_web.__file__` resolved to the worktree, and its `set_orch` lacked the change under test).
+- **fail direction:** loud, not silent — but a check that always fires is one people stop reading, which turns into the silent direction the assertion exists to close.
+- **fixed when:** the assertion ignores modules loaded from the interpreter's own prefix (`sys.prefix` / `site-packages`) and still fires on a first-party module loaded from the working tree; proven by running it once with `PYTHONPATH` pointing at the working tree's `lib` (must fire) and once isolated (must report 0).
+
+### B-163 — a media file activated in a fleet terminal is sent to the file view, and on a drive without Unix permissions refused by the desktop guard too
+- **state:** FIXED in the working tree 2026-10-19 by `openspec/changes/terminal-media-opens-on-desktop` (not yet committed).
+- **reported:** 2026-10-19 by the user, three screenshots: Ctrl+click on a rendered `.mp4` path opened the file view with "cannot be read: no such file", and its desktop button answered "this file carries an executable bit, and executables are not opened". The user's words: *"azt akarom hogy a terminalbol egyből nyiljon meg ne kelljen editor aztan ott szerencsetlenkedni"*.
+- **measured:** a project registered at the account's home makes every path under it "inside a checkout" (`/api/fleet/agents` → `checkouts` holds the home), so `terminalTarget` routed the video to the file view; the media directory is a symlink out of that checkout, so `/api/fleet/files/content` answered 403. The drive is exFAT (`findmnt` → `exfat … fmask=0022`): **844 of 844 files read as executable**, so `desktop.py:refusal()` refused every file on it. Per-suffix measurement of what the desktop does with a 755 media-named ELF or shell script is in the change's `design.md` (D2).
+- **fixed when:** a 755 `.mp4` is handed over on Linux, a link `clip.mp4` → a program is still refused, macOS still refuses; a media path inside a checkout routes to the desktop and `.ts` does not. All in tests, each mutant caught (4 of 4). Live: after the restart (15:19:04) a Ctrl+click on the reported path in a fleet terminal sent one `POST /api/desktop/open`, the journal logged `desktop_open: handed over`, and `mpv` started with the file (pid 197602).
+- **seen while verifying, NOT proven with a real mouse:** a synthetic Ctrl+mousedown at the path's cell hit `.xterm-screen`, not a row, so the capture-phase steal (`FleetTerminal.tsx`, "CTRL+CLICK ON A CONFIRMED REFERENCE WINS") did not match; xterm's own link path did. If a real click on a tile whose agent holds the mouse also fails, this is the cause to check first.
+
 ### B-162 — the dashboard server logs at DEBUG into the journal, gigabytes a week on a full root disk
 - **state:** CLOSED 2026-10-19 — fix `8d23c612`, measured on the restarted service (see CLOSED below).
 - **reported:** 2026-10-14 by a peer session (the owner's copilot) over the bus, REQUEST to set-core: 91 % of `/var/log/syslog` lines, about 1.9 GB a week, root disk at 100 %. Read by set-core on 2026-10-19.
