@@ -33,7 +33,7 @@ the last 256 KB (`TAIL_BYTES`), and a long tool run fills that with tool traffic
 ### D1. The mode is a virtual project, not a second screen
 
 While on, `active` is replaced by a synthetic project whose agents are the selected N, and the
-view memory uses a reserved key (`__latest__`) instead of a project name. Everything downstream —
+view memory uses a reserved key (`latest/`) instead of a project name. Everything downstream —
 the grid, the enlarged view, the tab strip, the column choice and `fitColumns` — runs unchanged.
 
 *Alternative considered:* a separate component that renders its own grid. Rejected for the same
@@ -41,7 +41,8 @@ reason PM mode's first build was rejected (see `fleet-pm-mode`): a parallel surf
 affordance the real one has, and the two drift.
 
 *Why the reserved key cannot collide:* project names come from discovery and are directory names;
-the key is chosen so that no directory name can produce it, and `fleetViewState` refuses to treat
+the key contains a `/`, which no directory name can (the first sketch said `__latest__`, which is a
+legal directory name and was therefore not used), and `fleetViewState` refuses to treat
 it as a project anywhere else.
 
 ### D2. Every tile takes its OWN agent's project

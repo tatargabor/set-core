@@ -501,6 +501,7 @@ function ProjectRow(p: RowProps) {
       data-drag-item
       data-drag-index={p.index}
       data-fleet-project={p.name}
+      data-fleet-project-selected={p.active ? 'true' : undefined}
       className={p.dropTarget ? 'rounded outline outline-1 outline-sky-400' : undefined}
     >
       {/* Task 7.17. A hairline under every row except the last of its list.
@@ -924,12 +925,19 @@ export default function FleetProjectColumn({
   wiresShown,
   onToggleWires,
   agentOrders,
+  autoSelect = true,
 }: {
   /** Each project's arranged agent order — the tab strip's. */
   agentOrders?: AgentOrderMap
   data: FleetResponse
   selected: string | null
   onSelect: (name: string) => void
+  /**
+   * Pick the first arranged project when nothing is selected. Off while the
+   * fleet shows latest mode, where NO project is selected on purpose — picking
+   * one would be the column leaving the mode on the reader's behalf.
+   */
+  autoSelect?: boolean
   /**
    * Focus one of a project's agents from its row in the tree. Optional on
    * purpose: a shell that does not pass it gets the column as it was — the
@@ -1172,10 +1180,10 @@ export default function FleetProjectColumn({
     // project, and the arrangement arriving a beat later could not undo it —
     // the selection was no longer null. The right-hand panel then showed a
     // project that was collapsed out of sight in the column.
-    if (!arrangementKnown || selected !== null) return
+    if (!autoSelect || !arrangementKnown || selected !== null) return
     const first = present.find(n => (byName.get(n)?.agents.length ?? 0) > 0) ?? present[0]
     if (first) onSelect(first)
-  }, [arrangementKnown, selected, present, byName, onSelect])
+  }, [autoSelect, arrangementKnown, selected, present, byName, onSelect])
 
   const groupOf = useCallback((name: string): string | null => {
     for (const g of view.groups) if (g.projects.includes(name)) return g.id

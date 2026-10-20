@@ -48,12 +48,17 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, Kanban, Layers, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, ListOrdered, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
 import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, resolveFocus, resolveLogs, resolveTerminals, writeView } from '../lib/fleetViewState'
 import type { ProjectView } from '../lib/fleetViewState'
+import {
+  LATEST_VIEW_KEY, MAX_LATEST_COUNT, MIN_LATEST_COUNT, agentsInSlots, allAgents, clampCount, initial as latestInitial,
+  latestProject, readLatestPrefs, recencyOf, resort as latestResort, rootOfAgent, update as latestUpdate, writeLatestPrefs,
+} from '../lib/fleetLatest'
+import type { LatestPrefs } from '../lib/fleetLatest'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
 import FleetDockBand from '../components/FleetDockBand'
 import FleetWorkCycle from '../components/FleetWorkCycle'
@@ -164,7 +169,9 @@ function WaitFor({ seconds }: { seconds: number | null | undefined }) {
   )
 }
 
-function StateLine({ agent }: { agent: FleetAgent }) {
+/** `humanShown` — the tile already states when a person last wrote here (latest
+ *  mode), so the parked line must not say it a second time. */
+function StateLine({ agent, humanShown = false }: { agent: FleetAgent; humanShown?: boolean }) {
   const thresholds = useWaitThresholds()
   // Waiting for a person, with a command the agent launched still running.
   //
@@ -228,7 +235,7 @@ function StateLine({ agent }: { agent: FleetAgent }) {
         {/* When a PERSON last wrote here — the signal that separates the agent
             you are working with from the one you let go. Shown on the parked
             branch, where it is the fact that decides whether to go back. */}
-        {parked && typeof agent.last_human_input_seconds === 'number' && (
+        {parked && !humanShown && typeof agent.last_human_input_seconds === 'number' && (
           <span className="text-fg-ghost font-normal"
                 title="when a person last wrote into this session">
             · you: {age(agent.last_human_input_seconds)}
@@ -820,8 +827,13 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
  * one honestly. The cost is one click — select the agent, then type into its
  * card — and it is stated here rather than discovered later.
  */
-function AgentTabs({ agents, selected, onSelect, onMove, panels = [] }: {
+function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProject = false }: {
   agents: readonly FleetAgent[]
+  /**
+   * Name each tab's project too — latest mode, where the strip holds agents of
+   * several projects and two of them can carry the same name.
+   */
+  showProject?: boolean
   selected: number | null
   onSelect: (pid: number) => void
   /**
@@ -941,6 +953,11 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [] }: {
                 *"ha full piros mar a vonal véggi akkor a felirat is legyen piros
                 szinu ne csak fehér"*. Driven by the same `heat.kind` as the full
                 bar and the price, so the three cannot disagree about it. */}
+            {showProject && a.project && (
+              <span className="text-fg-ghost truncate max-w-[7rem]" data-fleet-agent-tab-project={a.project}>
+                {a.project} ·
+              </span>
+            )}
             <span className={`truncate max-w-[10rem]${heat.kind === 'cold' ? ' text-red-400' : ''}`}>
               {a.terminal_label ?? a.name ?? 'unnamed'}
             </span>
@@ -1209,8 +1226,14 @@ function Purpose({ agent }: { agent: FleetAgent }) {
   )
 }
 
-function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed, projectRoot, knownFiles, onOpenFile, checkouts, home, onReveal }: {
+function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReachable, terminalOpen, onTerminal, onFocus, onEnlarge, onOpen, onCollapse, onTyping, canJumpSeat, onJumpSeat, canJumpPid, onJumpPid, onDock, dockedEdge, onRenamed, projectRoot, knownFiles, onOpenFile, checkouts, home, onReveal, latest = false }: {
   agent: FleetAgent
+  /**
+   * Shown in latest mode: the tile names its own project, and when a person
+   * last wrote into it — or that no message from them was found, never a
+   * duration it does not have.
+   */
+  latest?: boolean
   open: boolean
   onToggle: () => void
   enlarged?: boolean
@@ -1473,6 +1496,12 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
               framework does not hold, the control renders its children and
               nothing else — there is no name of ours to change, and an
               offered-then-failing control is worse than an absent one. */}
+          {latest && agent.project && (
+            <span className="text-fg-muted mr-1.5" data-fleet-tile-project={agent.project}
+                  title="the project this agent belongs to">
+              {agent.project} ·
+            </span>
+          )}
           <FleetRename agent={agent} onRenamed={onRenamed}>
             {agent.terminal_label ?? agent.name ?? <span className="text-fg-muted">unnamed</span>}
           </FleetRename>
@@ -1482,7 +1511,18 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
             <span className="ml-1.5 text-amber-400" title="The binding to the session log did not come from a record">?</span>
           )}
         </span>
-        <StateLine agent={agent} />
+        <StateLine agent={agent} humanShown={latest} />
+        {latest && (
+          recencyOf(agent) === null
+            ? <span className="text-xs text-fg-ghost whitespace-nowrap" data-fleet-latest-recency="none"
+                    title="No message from a person was found anywhere in this session's transcript.">
+                no message from you found
+              </span>
+            : <span className="text-xs text-fg-ghost whitespace-nowrap tabular-nums" data-fleet-latest-recency="measured"
+                    title="when a person last wrote into this session">
+                you: {age(recencyOf(agent))} ago
+              </span>
+        )}
         {/* The cache group rides AFTER the state line, not beside the name,
             because the name already carries the binding-not-confirmed marker —
             an amber `?`. Two amber question marks touching would be one glyph
@@ -2074,6 +2114,51 @@ export default function Fleet() {
   const [memory, setMemory] = useState<{ project: string | null; view: ProjectView }>(
     { project: null, view: {} },
   )
+  /*
+    LATEST MODE — fleet-latest-mode. The agents a person most recently wrote
+    into, from every project, shown as if they were one project (design D1).
+
+    `selected` is deliberately LEFT ALONE while the mode is on: the project the
+    reader had is still the one underneath, so turning the mode off returns to
+    it with its arrangement, and nothing has to be remembered to do so.
+
+    The slots are the placement (design D3): sorted when the mode is turned on
+    or re-sorted on request, and otherwise only ever patched by `latestUpdate`,
+    so a tile never moves because its agent became more recent.
+  */
+  const [latestPrefs, setLatestPrefs] = useState<LatestPrefs>(() => readLatestPrefs())
+  const latestOn = latestPrefs.on
+  const latestCount = latestPrefs.count
+  const setLatest = useCallback((patch: Partial<LatestPrefs>) => {
+    setLatestPrefs(prev => {
+      const next = { ...prev, ...patch }
+      if (next.on === prev.on && next.count === prev.count) return prev
+      writeLatestPrefs(next)
+      return next
+    })
+  }, [])
+  const [latestSlots, setLatestSlots] = useState<number[]>([])
+  /*
+    The count AS TYPED, applied after a pause or on Enter / leaving the field.
+    Found by looking at the running screen 2026-10-20: applied per keystroke,
+    typing "12" passed through a count of 1, which dropped every tile but one and
+    refilled them in recency order — two tiles swapped places, the exact move the
+    mode promises never to make.
+  */
+  const [countDraft, setCountDraft] = useState<string>(String(latestCount))
+  useEffect(() => { setCountDraft(String(latestCount)) }, [latestCount])
+  const commitCount = useCallback((raw: string) => {
+    if (raw.trim() === '' || !Number.isFinite(Number(raw))) return
+    setLatest({ count: clampCount(raw) })
+  }, [setLatest])
+  useEffect(() => {
+    if (countDraft === String(latestCount)) return
+    const t = setTimeout(() => commitCount(countDraft), 700)
+    return () => clearTimeout(t)
+  }, [countDraft, latestCount, commitCount])
+  /* The checkout whose file view the mode shows — the root of the tile that
+     last asked for a file, since the mode has no project of its own. */
+  const [latestFilesRoot, setLatestFilesRoot] = useState<string | null>(null)
 
   // ------------------------------------------------------------------ //
   // The project list's width — a divider position, stored on the server //
@@ -2109,7 +2194,8 @@ export default function Fleet() {
    * screen has.
    */
   const [dockMap, setDockMap] = useState<DockMap>({})
-  const docks = useMemo(() => docksFor(dockMap, selected), [dockMap, selected])
+  // No docking in latest mode: a dock belongs to one project's arrangement.
+  const docks = useMemo(() => (latestOn ? [] : docksFor(dockMap, selected)), [dockMap, selected, latestOn])
 
   /**
    * The wire view — the channel graph between live agents — and its toggle.
@@ -2175,10 +2261,10 @@ export default function Fleet() {
    * with no project selected is not made at all rather than made somewhere.
    */
   const writeDocks = useCallback((next: DockedView[]) => {
-    if (!selected) return
+    if (!selected || latestOn) return
     setDockMap(prev => ({ ...prev, [selected]: next }))
     void saveDocks(selected, next)
-  }, [selected])
+  }, [selected, latestOn])
 
   /**
    * Dock a panel to an edge, or undock it — task 5.1 / 5.7.
@@ -2325,10 +2411,33 @@ export default function Fleet() {
   // No fallback to "whatever discovery listed first": the column picks the
   // first project in the ARRANGED order and says so through `onSelect`, so the
   // selected project is always one the reader can find in the list.
+  const everyAgent = useMemo(() => allAgents(projects), [projects])
+  /* Patched on every answer, never re-sorted — see `latestUpdate`. It returns
+     the same array when nothing changed, so a poll costs no render here. */
+  useEffect(() => {
+    if (!latestOn || !data) return
+    setLatestSlots(prev => latestUpdate(prev, everyAgent, latestCount))
+  }, [latestOn, latestCount, everyAgent, data])
+  const latestAgents = useMemo(() => agentsInSlots(latestSlots, everyAgent), [latestSlots, everyAgent])
+  const latestAgentsRef = useRef<FleetAgent[]>([])
+  latestAgentsRef.current = latestAgents
   const active = useMemo(
-    () => projects.find(p => p.name === selected) ?? null,
-    [projects, selected],
+    () => (latestOn ? latestProject(latestAgents) : projects.find(p => p.name === selected) ?? null),
+    [latestOn, latestAgents, projects, selected],
   )
+  /*
+    THE ROOT A TILE ACTS ON — design D2. In a project it is that project's; in
+    latest mode it is the tile's OWN agent's, never the synthetic project's
+    (which has none) and never the project selected underneath. Empty when
+    unknown, and every consumer below treats empty as "offer nothing".
+  */
+  const tileRoot = useCallback((a: FleetAgent): string => (
+    latestOn ? rootOfAgent(a, projects) ?? '' : active?.root ?? ''
+  ), [latestOn, projects, active])
+  const filesRoot = latestOn ? (latestFilesRoot ?? '') : (active?.root ?? '')
+  const filesProjectName = latestOn
+    ? (projects.find(p => p.root === filesRoot)?.name ?? filesRoot)
+    : (active?.name ?? '')
   const activeName = active?.name ?? null
   const remembered = memory.project === activeName ? memory.view : readView(activeName)
   const columns = resolveColumns(remembered)
@@ -2429,6 +2538,17 @@ export default function Fleet() {
   const revealDirectory = useCallback((root: string, path: string, from?: string) => {
     openFile(root, { path, reveal: true, ...(from ? { from } : {}) })
   }, [openFile])
+
+  /* What a TILE's file link does: the same act, plus — in latest mode — saying
+     which checkout's file view the mode now shows, since it has no project. */
+  const openFileFor = useCallback((root: string, file: FileRequest) => {
+    if (latestOn) setLatestFilesRoot(root)
+    openFile(root, file)
+  }, [latestOn, openFile])
+  const revealFor = useCallback((root: string, path: string, from?: string) => {
+    if (latestOn) setLatestFilesRoot(root)
+    revealDirectory(root, path, from)
+  }, [latestOn, revealDirectory])
 
   /** Close it: the panel stops existing, wherever it was. */
   const closeFiles = useCallback((root: string) => {
@@ -2635,7 +2755,18 @@ export default function Fleet() {
     // AND a maximised board back into the grid rather than leaving three
     // panels claiming the space — see the exclusivity note at `toggleBoardMax`.
     if (pid !== null) { setFilesMax(null); setBoardMax(null) }
-    writeView(project, { enlarged: pid })
+    const patch: ProjectView = { enlarged: pid }
+    // Latest mode: an agent with no terminal opens its LOG when enlarged, as PM
+    // mode's `presentAgent` does — otherwise the big tile offers an input box
+    // it cannot send through while the log has a whole conversation to give.
+    if (project === LATEST_VIEW_KEY && pid !== null) {
+      const agent = latestAgentsRef.current.find(a => a.pid === pid)
+      const logs = readView(project).logs
+      if (agent && !agent.terminal_label && logs !== undefined && !logs.includes(pid)) {
+        patch.logs = [...logs, pid]
+      }
+    }
+    writeView(project, patch)
     setMemory({ project, view: readView(project) })
   }, [])
 
@@ -2652,9 +2783,10 @@ export default function Fleet() {
    * same agent without this handler doing anything extra.
    */
   const focusAgentFromTree = useCallback((project: string, pid: number) => {
+    setLatest({ on: false })
     setSelected(project)
     setEnlarged(project, pid)
-  }, [setEnlarged])
+  }, [setEnlarged, setLatest])
 
   /**
    * A DOCKED band's size before it was maximised, so it can be put back.
@@ -2768,9 +2900,13 @@ export default function Fleet() {
       const label = agent.terminal_label
       if (!label || !openTerminals.includes(label)) continue
       if (agent.cwd) roots.add(agent.cwd)
+      // Latest mode has no project root of its own: each open terminal's
+      // agent brings its own project's (design D2).
+      const own = tileRoot(agent)
+      if (own) roots.add(own)
     }
     return [...roots]
-  }, [active, openTerminals])
+  }, [active, openTerminals, tileRoot])
 
   /* The listing arrives once per checkout, and only once a terminal is open. */
   useEffect(() => {
@@ -2818,7 +2954,7 @@ export default function Fleet() {
    * name the first time the owner went quiet.
    */
   const onAgentRenamed = useCallback((from: string, to: string) => {
-    setTerminals(selected, openTerminals.map(l => (l === from ? to : l)))
+    setTerminals(activeName, openTerminals.map(l => (l === from ? to : l)))
     setDockMap(prev => {
       const next: Record<string, DockedView[]> = {}
       for (const [project, entries] of Object.entries(prev)) {
@@ -2843,7 +2979,7 @@ export default function Fleet() {
       }
       return next
     })
-  }, [openTerminals, selected, setTerminals])
+  }, [openTerminals, activeName, setTerminals])
 
   /**
    * The agent shown ALONE — the full screen asked for on 2026-08-19.
@@ -2933,7 +3069,7 @@ export default function Fleet() {
         || docks.some(d => d.kind === PANEL_BOARD && d.id === active.root))
 
   const filesBig = filesMax !== null
-    && filesMax === active?.root
+    && filesMax === filesRoot
     && filesOpen.has(filesMax)
     && !docks.some(d => d.kind === PANEL_FILES && d.id === filesMax)
 
@@ -2955,9 +3091,9 @@ export default function Fleet() {
     conditions the tile itself renders under, read once here so the layout, the
     column control and the tile cannot disagree about the count.
   */
-  const fileTileInGrid = !!active?.root
-    && filesOpen.has(active.root)
-    && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root)
+  const fileTileInGrid = !!filesRoot
+    && filesOpen.has(filesRoot)
+    && !docks.some(d => d.kind === PANEL_FILES && d.id === filesRoot)
   // The work cycle and the board count too — the comment above says the layout,
   // the column control and the tiles cannot disagree about this number, and the
   // work-cycle tile was missing from it (measured when the board tile landed;
@@ -2986,23 +3122,23 @@ export default function Fleet() {
     down without this handler repeating it.
   */
   const panelTabs = useMemo(() => {
-    if (!active?.root) return []
+    if (!active) return []
     const root: string = active.root
     const tabs: { key: string; label: string; active: boolean; onSelect: () => void }[] = []
     if (fileTileInGrid) {
       tabs.push({
         key: 'files', label: 'files', active: filesBig,
-        onSelect: () => { if (!filesBig) toggleFilesMax(active.name, root) },
+        onSelect: () => { if (!filesBig) toggleFilesMax(active.name, filesRoot) },
       })
     }
-    if (boardTileInGrid) {
+    if (root && boardTileInGrid) {
       tabs.push({
         key: 'board', label: 'board', active: boardBig,
         onSelect: () => { if (!boardBig) toggleBoardMax(active.name, root) },
       })
     }
     return tabs
-  }, [active, fileTileInGrid, boardTileInGrid, filesBig, boardBig, toggleFilesMax, toggleBoardMax])
+  }, [active, filesRoot, fileTileInGrid, boardTileInGrid, filesBig, boardBig, toggleFilesMax, toggleBoardMax])
 
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.
@@ -3026,10 +3162,15 @@ export default function Fleet() {
     let cancelled = false
     fetch('/api/fleet/pm')
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (!cancelled && d && typeof d.enabled === 'boolean') setPmOn(d.enabled) })
+      .then(d => {
+        if (cancelled || !d || typeof d.enabled !== 'boolean') return
+        setPmOn(d.enabled)
+        // PM mode turned on elsewhere wins: the two modes never show at once.
+        if (d.enabled) setLatest({ on: false })
+      })
       .catch(() => { /* the toggle simply starts off; nothing about an agent changes */ })
     return () => { cancelled = true }
-  }, [])
+  }, [setLatest])
   /**
    * When the reader last put something into the fleet panel.
    *
@@ -3057,6 +3198,7 @@ export default function Fleet() {
   const noteInput = useCallback(() => setLastInputAt(Date.now()), [])
   const togglePm = useCallback(async (on: boolean) => {
     setPmOn(on)
+    if (on) setLatest({ on: false })
     try {
       await fetch('/api/fleet/pm', {
         method: 'POST',
@@ -3068,7 +3210,31 @@ export default function Fleet() {
       // panel simply reports what it cannot read; nothing about any agent has
       // changed either way, so there is nothing here to roll back.
     }
-  }, [])
+  }, [setLatest])
+
+  /**
+   * Latest mode on or off — design D4 for the PM half.
+   *
+   * Turning it on sorts the slots ONCE, here, and turns PM mode off through the
+   * existing toggle path. It touches no agent: nothing is posted anywhere but
+   * the PM switch, and only when PM mode was on.
+   */
+  const toggleLatest = useCallback((on: boolean) => {
+    if (on) {
+      setLatestSlots(latestInitial(everyAgent, latestCount))
+      setLatestFilesRoot(null)
+      if (pmOn) void togglePm(false)
+    }
+    setLatest({ on })
+  }, [everyAgent, latestCount, pmOn, togglePm, setLatest])
+  const resortLatest = useCallback(() => {
+    setLatestSlots(latestResort(everyAgent, latestCount))
+  }, [everyAgent, latestCount])
+  /** Leave the mode for a project the reader chose — spec: choosing one turns it off. */
+  const selectProject = useCallback((name: string) => {
+    setLatest({ on: false })
+    setSelected(name)
+  }, [setLatest])
 
   /**
    * Go to an agent, wherever it is — tasks 7.8 and 7.18.
@@ -3093,10 +3259,15 @@ export default function Fleet() {
   const goTo = useCallback((match: (a: FleetAgent) => boolean) => {
     const hit = findAgent(match)
     if (!hit) return
+    if (latestOn && latestSlots.includes(hit.agent.pid)) {
+      setEnlarged(LATEST_VIEW_KEY, hit.agent.pid)
+      return
+    }
+    setLatest({ on: false })
     setSelected(hit.project)
     writeView(hit.project, { enlarged: hit.agent.pid })
     setMemory({ project: hit.project, view: readView(hit.project) })
-  }, [findAgent])
+  }, [findAgent, latestOn, latestSlots, setEnlarged, setLatest])
 
   const canJumpSeat = useCallback((seat: string) => findAgent(a => a.seat === seat) !== null, [findAgent])
   const onJumpSeat = useCallback((seat: string) => goTo(a => a.seat === seat), [goTo])
@@ -3433,6 +3604,44 @@ export default function Fleet() {
           }`}
           title="PM mode presents one agent at a time — whichever is waiting on you. It touches no agent, and leaving it restores this screen."
         ><Presentation size={13} strokeWidth={1.75} /></button>
+        {/* LATEST MODE — beside PM mode because the two are exclusive views of
+            the same fleet. Like PM mode it starts and stops nothing. */}
+        <button
+          onClick={() => toggleLatest(!latestOn)}
+          data-fleet-latest-toggle={latestOn ? 'on' : 'off'}
+          aria-pressed={latestOn}
+          aria-label={`latest mode ${latestOn ? 'on' : 'off'}`}
+          className={`p-1 rounded border shrink-0 ${
+            latestOn
+              ? 'border-sky-400/60 bg-sky-400/10 text-sky-300'
+              : 'border-surface-line text-fg-muted hover:text-fg-strong'
+          }`}
+          title="Latest mode shows the agents you most recently wrote into, from every project, on one screen. It touches no agent, and leaving it restores the project you had."
+        ><History size={13} strokeWidth={1.75} /></button>
+        {latestOn && (
+          <span className="flex items-center gap-1 shrink-0">
+            <input
+              type="number"
+              min={MIN_LATEST_COUNT}
+              max={MAX_LATEST_COUNT}
+              value={countDraft}
+              onChange={e => setCountDraft(e.target.value)}
+              onBlur={() => commitCount(countDraft)}
+              onKeyDown={e => { if (e.key === 'Enter') commitCount(countDraft) }}
+              data-fleet-latest-count
+              aria-label="how many agents latest mode shows"
+              title="How many agents latest mode shows"
+              className="w-11 px-1 py-0.5 rounded border border-surface-line bg-surface-panel text-xs text-fg-strong tabular-nums"
+            />
+            <button
+              onClick={resortLatest}
+              data-fleet-latest-resort
+              aria-label="re-sort by recency"
+              title="Re-sort: most recently written first. Tiles otherwise keep their place while you work."
+              className="p-1 rounded border border-surface-line text-fg-muted hover:text-fg-strong shrink-0"
+            ><ListOrdered size={13} strokeWidth={1.75} /></button>
+          </span>
+        )}
         {/* The question relay: while it is on, agents' blocking questions go to the chat
             channel. Beside the PM switch because both are machine-wide modes; the count
             of questions waiting on the channel rides on it, closed. */}
@@ -3510,7 +3719,7 @@ export default function Fleet() {
         {/* Every known project's wave boards. Absent when there are none; the
             blocked and unreadable counts ride on the closed chip, and the list
             it opens floats under the header and pushes nothing. */}
-        <FleetWaves selected={active?.name ?? null} onSelectProject={name => setSelected(name)} />
+        <FleetWaves selected={latestOn ? null : active?.name ?? null} onSelectProject={selectProject} />
 
         {/* The account quota, pushed right on the header's own line. Bars only at
             rest — asked for by the user on the built screen, and the same
@@ -3616,10 +3825,11 @@ export default function Fleet() {
             empty itself when the agents close. */}
         <FleetProjectColumn
           data={data}
-          selected={active?.name ?? null}
-          onSelect={name => setSelected(name)}
+          selected={latestOn ? null : active?.name ?? null}
+          autoSelect={!latestOn}
+          onSelect={selectProject}
           onSelectAgent={focusAgentFromTree}
-          focusedPid={enlarged}
+          focusedPid={latestOn ? null : enlarged}
           width={projectWidth}
           wiresShown={wiresShown}
           onToggleWires={toggleWires}
@@ -3742,15 +3952,18 @@ export default function Fleet() {
                   so `items-baseline` pinned it to the top while every chip
                   floated at its own text baseline. With the words gone this row
                   is glyphs and digits, and glyphs align by their box. */}
-              <div className="flex items-center gap-2 px-0.5 flex-wrap">
-                <span className="text-sm text-fg-loud">{active.name}</span>
+              <div className="flex items-center gap-2 px-0.5 flex-wrap" data-fleet-area={latestOn ? 'latest' : 'project'}>
+                <span className="text-sm text-fg-loud">{latestOn ? 'latest' : active.name}</span>
                 <Chip
                   jump="agent-count"
                   mark={<Bot size={13} strokeWidth={1.75} aria-hidden />}
                   count={active.agents.length}
-                  title={`${active.agents.length} agent(s) in this project`}
+                  title={latestOn
+                    ? `${active.agents.length} agent(s) you most recently wrote into, across every project`
+                    : `${active.agents.length} agent(s) in this project`}
                   label={`${active.agents.length} agents`}
                 />
+                {!latestOn && (<>
                 {/* The path KEEPS its words. It is the only thing on this row
                     that says WHICH checkout — a worktree and its host share a
                     name — so there is no mark that could stand in for it. This
@@ -3859,6 +4072,7 @@ export default function Fleet() {
                       : 'border-transparent text-fg-ghost hover:text-fg-muted'
                   }`}
                 ><Kanban size={13} strokeWidth={1.75} /></button>
+                </>)}
                 {/*
                   OFFERED WHENEVER THE GRID DRAWS ANYTHING — it used to hide
                   itself under `agents.length > 1`, and that hid the one state a
@@ -3879,7 +4093,7 @@ export default function Fleet() {
                 */}
                 {gridTiles > 0 && (
                   <span
-                    className="flex items-center gap-1 shrink-0"
+                    className={`flex items-center gap-1 shrink-0${latestOn ? ' ml-auto' : ''}`}
                     data-fleet-columns-choice={columns}
                     data-fleet-columns-fitted={fittedColumns}
                     title={fittedColumns === columns
@@ -4031,7 +4245,12 @@ export default function Fleet() {
               {/* A selected project with nothing running is not an error and not
                   an empty panel: the arrangement keeps it in the list on
                   purpose, so the right-hand side says what it measured. */}
-              {active.agents.length === 0 && (
+              {latestOn && active.agents.length === 0 && (
+                <div className="text-sm text-fg-muted" data-fleet-latest-empty>
+                  Discovery found no running agent in any project.
+                </div>
+              )}
+              {!latestOn && active.agents.length === 0 && (
                 <div className="text-sm text-fg-muted">
                   Discovery found no running agent in this project.
                   {active.archived && <span className="text-fg-ghost"> (archived project)</span>}
@@ -4079,12 +4298,13 @@ export default function Fleet() {
                 <AgentCard
                   key={focused.pid}
                   agent={focused}
-                  projectRoot={active.root}
-                  knownFiles={knownFiles[focused.cwd || active.root]}
-                  onOpenFile={(f, from) => openFile(active.root, { ...f, from })}
+                  latest={latestOn}
+                  projectRoot={tileRoot(focused) || undefined}
+                  knownFiles={knownFiles[focused.cwd || tileRoot(focused)]}
+                  onOpenFile={tileRoot(focused) ? ((f, from) => openFileFor(tileRoot(focused), { ...f, from })) : undefined}
                   checkouts={allCheckouts}
                   home={data.home}
-                  onReveal={(path, from) => revealDirectory(active.root, path, from)}
+                  onReveal={tileRoot(focused) ? ((path, from) => revealFor(tileRoot(focused), path, from)) : undefined}
                   enlarged
                   focused
                   open={openLogs.includes(focused.pid)}
@@ -4092,7 +4312,7 @@ export default function Fleet() {
                   ownerReachable={data.owner_reachable}
                   terminalOpen={openTerminals.includes(focused.terminal_label ?? '')}
                   onTerminal={label => toggleTerminal(active.name, label ?? focused.terminal_label ?? null, label !== null)}
-                  onDock={focused.terminal_label
+                  onDock={focused.terminal_label && !latestOn
                     ? edge => dockPanel(PANEL_AGENT, focused.terminal_label as string, edge)
                     : undefined}
                   dockedEdge={dockedEdgeOf(focused.terminal_label)}
@@ -4156,8 +4376,9 @@ export default function Fleet() {
                   agents={gridAgents}
                   selected={enlarged}
                   onSelect={pid => setEnlarged(active.name, pid)}
-                  onMove={moveAgent}
+                  onMove={latestOn ? undefined : moveAgent}
                   panels={panelTabs}
+                  showProject={latestOn}
                 />
               )}
               {/* `gridAgents`, not `active.agents`: a docked agent has MOVED to
@@ -4177,12 +4398,11 @@ export default function Fleet() {
                 give the reader two of one thing, with the unwatched copy going
                 stale. That is the same rule `gridAgents` already follows.
               */}
-              {active.root && filesOpen.has(active.root)
-                && !docks.some(d => d.kind === PANEL_FILES && d.id === active.root) && (
+              {fileTileInGrid && (
                 <div
                   className={`${cardClasses('ours', {})} flex flex-col overflow-hidden min-h-44${
                     filesBig ? ' flex-1' : ''}`}
-                  data-fleet-file-tile={active.root}
+                  data-fleet-file-tile={filesRoot}
                   data-fleet-file-max={filesBig ? 'on' : 'off'}
                 >
                   {/* min-h-44 = the grid's own 11rem row floor. With an agent
@@ -4192,20 +4412,20 @@ export default function Fleet() {
                       (2026-08-30). The floor holds it at the smallest the grid
                       would ever draw it. */}
                   <FleetFileView
-                    root={active.root}
-                    projectName={active.name}
-                    request={fileRequest?.root === active.root ? fileRequest.file : null}
-                    initial={lastFile[active.root] ?? null}
-                    onOpened={f => rememberFile(active.root as string, f)}
+                    root={filesRoot}
+                    projectName={filesProjectName}
+                    request={fileRequest?.root === filesRoot ? fileRequest.file : null}
+                    initial={lastFile[filesRoot] ?? null}
+                    onOpened={f => rememberFile(filesRoot, f)}
                     onRequestHandled={() => setFileRequest(null)}
-                    onClose={() => closeFiles(active.root)}
-                    onDock={edge => dockPanel(PANEL_FILES, active.root, edge)}
+                    onClose={() => closeFiles(filesRoot)}
+                    onDock={latestOn ? undefined : (edge => dockPanel(PANEL_FILES, filesRoot, edge))}
                     dockedEdge={null}
                     maximised={filesBig}
-                    onMaximise={() => toggleFilesMax(active.name, active.root)}
-                    fullscreen={filesFullscreen === active.root}
+                    onMaximise={() => toggleFilesMax(active.name, filesRoot)}
+                    fullscreen={filesFullscreen === filesRoot}
                     onFullscreen={() => setFilesFullscreen(
-                      filesFullscreen === active.root ? null : active.root ?? null)}
+                      filesFullscreen === filesRoot ? null : filesRoot || null)}
                   />
                 </div>
               )}
@@ -4270,12 +4490,13 @@ export default function Fleet() {
                   <AgentCard
                     key={a.pid}
                     agent={a}
-                    projectRoot={active.root}
-                    knownFiles={knownFiles[a.cwd || active.root]}
-                    onOpenFile={(f, from) => openFile(active.root, { ...f, from })}
+                    latest={latestOn}
+                    projectRoot={tileRoot(a) || undefined}
+                    knownFiles={knownFiles[a.cwd || tileRoot(a)]}
+                    onOpenFile={tileRoot(a) ? ((f, from) => openFileFor(tileRoot(a), { ...f, from })) : undefined}
                     checkouts={allCheckouts}
                     home={data.home}
-                    onReveal={(path, from) => revealDirectory(active.root, path, from)}
+                    onReveal={tileRoot(a) ? ((path, from) => revealFor(tileRoot(a), path, from)) : undefined}
                     /*
                       No `wide` any more, and the reason it existed is now fixed
                       at its source. A tile that had opened something used to
@@ -4305,7 +4526,7 @@ export default function Fleet() {
                     ownerReachable={data.owner_reachable}
                     terminalOpen={openTerminals.includes(a.terminal_label ?? '')}
                     onTerminal={label => toggleTerminal(active.name, label ?? a.terminal_label ?? null, label !== null)}
-                    onDock={a.terminal_label
+                    onDock={a.terminal_label && !latestOn
                       ? edge => dockPanel(PANEL_AGENT, a.terminal_label as string, edge)
                       : undefined}
                     dockedEdge={dockedEdgeOf(a.terminal_label)}

@@ -105,7 +105,9 @@ export interface FleetAgent {
    *
    * A different question from how long the agent has waited, and the one that
    * separates *the agent I am working with* from *the one I let go*. `null`
-   * means the bounded tail held no human entry — NOT "never".
+   * means the WHOLE transcript holds no human entry — the server searches
+   * beyond its bounded tail when the tail holds none (`fleet-latest-mode`).
+   * Still not "a long silence": render it as *no message from you found*.
    */
   last_human_input_seconds?: number | null
   /** See `Population`. Absent on an older server, which is `unknown`, not `foreign`. */

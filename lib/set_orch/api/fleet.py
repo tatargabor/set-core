@@ -676,6 +676,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
                                  messaging=_safe_messaging())
 
     states = {agent.pid: read_state(agent.session_log, record=agent.record) for agent in agents}
+    attention_state.prune_human_cache(agent.session_log for agent in agents)
     by_pid = {agent.pid: agent for agent in agents}
     # Asked once for the whole listing, not once per agent: it is one socket
     # round trip and the answer is the same for every row.
