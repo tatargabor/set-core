@@ -214,3 +214,37 @@ export function rootOfAgent(agent: FleetAgent, projects: readonly FleetProject[]
     ?? projects.find(p => p.name === agent.project)
   return listed?.root || null
 }
+
+/**
+ * Ctrl+←/→ switches the strip's tab in latest mode — asked for 2026-10-20:
+ * *"pressing ctrl-left and ctrl-right combinations switch the panel tab on
+ * latest mode layout to the next or prev tab"*.
+ *
+ * The user chose for it to work EVERYWHERE, inside a terminal included, which
+ * costs the terminal its Ctrl+←/→ word-jump while latest mode is on (Alt+B /
+ * Alt+F still jump words in shells and in Claude Code). One predicate, read by
+ * both the terminal (to give the key up) and the page (to act on it), so the
+ * two cannot disagree about which keystroke is the switch.
+ *
+ * Returns -1, +1, or 0 for any other key. Plain Ctrl only: Ctrl+Shift+← is
+ * select-by-word in an input, and Alt/Meta combinations belong to the browser.
+ */
+export function tabSwitchDirection(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>): -1 | 0 | 1 {
+  if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return 0
+  if (e.key === 'ArrowLeft') return -1
+  if (e.key === 'ArrowRight') return 1
+  return 0
+}
+
+/**
+ * The index of the tab to switch to, wrapping at both ends; null when there is
+ * nothing to switch to. With no tab active, → takes the first and ← the last.
+ */
+export function stepTab(entries: readonly { active: boolean }[], dir: -1 | 1): number | null {
+  const n = entries.length
+  if (n === 0) return null
+  const at = entries.findIndex(t => t.active)
+  if (at < 0) return dir === 1 ? 0 : n - 1
+  if (n === 1) return null
+  return (at + dir + n) % n
+}

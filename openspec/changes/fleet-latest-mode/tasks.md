@@ -31,6 +31,15 @@
   - FOUND by looking, and fixed: the count applied per keystroke, so typing "12" passed through 1 and swapped two tiles. Now applied after 700 ms, on Enter or on leaving the field; a page test holds it (fails on the per-keystroke build). Also a parked tile said "you: 13h" twice; the state line now yields to the mode's own line.
   - NOT SEEN live: a newcomer taking the oldest slot — that needs a message written into a real agent outside the set. Held by the page test `AC-6 / AC-7 on the page`. Stays open until somebody watches it happen.
 
+## 5. Ctrl+Left / Ctrl+Right tab switch (added 2026-10-20)
+
+- [x] 5.1 `tabSwitchDirection` and `stepTab` in `web/src/lib/fleetLatest.ts`, with pure tests [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode]
+- [x] 5.2 `FleetTerminal` `releaseTabKeys`: the custom key handler declines plain Ctrl+Left/Right when it is set; the agent card sets it in latest mode. Tests in `fleetTerminalTabKeys.test.tsx` [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode]
+- [x] 5.3 The page listener in `Fleet.tsx`, built from the strip's own select actions and acting only while the strip is shown. Page tests in `fleetLatestMode.test.tsx`; 7 mutants, each caught [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode]
+- [x] 5.4 Browser check: in latest mode with a tile enlarged, press Ctrl+Right and Ctrl+Left with the focus in a terminal, and see the active tab move [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode]
+  - SEEN 2026-10-20 on this machine's dashboard, latest mode, 10 tabs on 3 lines, focus in the enlarged terminal's helper textarea, real key presses. Each press was one keydown and one change of the active tab: 9th → 10th, 10th → 9th, 5th → 6th, 5th → 6th again after a fresh reload, and three quick presses moved 6th → 7th → 8th → 9th. Focus stayed in the terminal every time.
+- [ ] 5.5 NOT EXPLAINED: the very first press, on the first load, moved from the 5th tab to the 10th instead of the 6th. Nothing was logged then. It did not recur in the five measured presses after it, one of them after a reload. If it is seen again, log `data-fleet-agent-tab-active` changes with a MutationObserver and count keydowns (the recipe used for 5.4), to tell several keydowns from a stale strip [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN the reader turns latest mode on THEN no agent receives an instruction and no agent's lifecycle changes [REQ: latest-mode-is-a-toggle-beside-pm-mode-and-it-changes-nothing-about-the-agents, scenario: turning-the-mode-on-does-not-act-on-agents]
@@ -51,3 +60,7 @@
 - [x] AC-16: WHEN a person's last message is followed by more than the tail's worth of tool traffic THEN the reported age is that message's age [REQ: the-last-human-input-is-found-beyond-the-bounded-tail, scenario: a-long-tool-run-does-not-hide-the-readers-message]
 - [x] AC-17: WHEN the transcript grew only by non-human entries since the last search THEN the remembered age is reused without reading further back [REQ: the-last-human-input-is-found-beyond-the-bounded-tail, scenario: the-deep-search-is-not-repeated-while-nothing-changed]
 - [x] AC-18: WHEN no entry in the whole transcript is a human entry THEN the age is absent [REQ: the-last-human-input-is-found-beyond-the-bounded-tail, scenario: a-transcript-with-no-human-message-stays-absent]
+- [x] AC-19: WHEN the first of four tabs is active and Ctrl+Right, then Ctrl+Left twice, are pressed THEN the second, the first, then the last tab is active [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode, scenario: next-and-previous-with-wrap-around]
+- [x] AC-20: WHEN a terminal has focus in latest mode and Ctrl+Right is pressed THEN the terminal does not get the key and the next tab is active [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode, scenario: from-inside-a-terminal]
+- [x] AC-21: WHEN the count input has focus and Ctrl+Right is pressed THEN the active tab does not change [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode, scenario: an-input-keeps-its-word-jump]
+- [x] AC-22: WHEN latest mode is off and Ctrl+Right is pressed THEN the terminal gets the key and the tab does not change [REQ: ctrl-left-and-ctrl-right-switch-the-strip-s-tab-in-latest-mode, scenario: outside-latest-mode]

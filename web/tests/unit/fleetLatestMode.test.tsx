@@ -344,3 +344,61 @@ describe('latest mode and PM mode are mutually exclusive', () => {
     await waitFor(() => expect(q(container, '[data-fleet-latest-toggle]')!.getAttribute('data-fleet-latest-toggle')).toBe('off'))
   })
 })
+
+/*
+  Ctrl+←/→ switches the strip's tab — asked for 2026-10-20. Latest mode shows
+  the agents most recent first: 2 (10 s), 4 (60 s), 1 (300 s), then 3 (none).
+*/
+describe('Ctrl+←/→ switches the tab in latest mode', () => {
+  const activeTab = (c: HTMLElement) =>
+    Number(q(c, '[data-fleet-agent-tab-active="on"]')?.getAttribute('data-fleet-agent-tab'))
+  const press = (k: 'ArrowLeft' | 'ArrowRight', target: EventTarget = window) =>
+    act(() => { target.dispatchEvent(new KeyboardEvent('keydown', { key: k, ctrlKey: true, bubbles: true, cancelable: true })) })
+
+  async function enlarged(c: HTMLElement, pid: number) {
+    await waitFor(() => expect(q(c, `[data-tile-controls="${pid}"] [data-tile-control="enlarge"]`)).toBeTruthy())
+    fireEvent.click(q(c, `[data-tile-controls="${pid}"] [data-tile-control="enlarge"]`)!)
+    await waitFor(() => expect(activeTab(c)).toBe(pid))
+  }
+
+  it('moves to the next and the previous tab, wrapping at the ends', async () => {
+    const { container } = await ready()
+    await turnOn(container)
+    await enlarged(container, 2)
+    press('ArrowRight')
+    await waitFor(() => expect(activeTab(container)).toBe(4))
+    press('ArrowLeft')
+    await waitFor(() => expect(activeTab(container)).toBe(2))
+    press('ArrowLeft')
+    await waitFor(() => expect(activeTab(container)).toBe(3))
+  })
+
+  it('works from inside a terminal tile, whose helper textarea receives the key', async () => {
+    const { container } = await ready()
+    await turnOn(container)
+    await enlarged(container, 2)
+    const helper = document.createElement('textarea')
+    helper.className = 'xterm-helper-textarea'
+    container.appendChild(helper)
+    press('ArrowRight', helper)
+    await waitFor(() => expect(activeTab(container)).toBe(4))
+  })
+
+  it('leaves an input its own word-jump', async () => {
+    const { container } = await ready()
+    await turnOn(container)
+    await enlarged(container, 2)
+    press('ArrowRight', q(container, '[data-fleet-latest-count]')!)
+    await new Promise(r => setTimeout(r, 50))
+    expect(activeTab(container)).toBe(2)
+  })
+
+  it('does nothing outside latest mode', async () => {
+    body = fleet([{ name: 'r', agents: [agent(3, 'r', null), agent(4, 'r', 60)] }])
+    const { container } = await ready()
+    await enlarged(container, 3)
+    press('ArrowRight')
+    await new Promise(r => setTimeout(r, 50))
+    expect(activeTab(container)).toBe(3)
+  })
+})

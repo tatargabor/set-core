@@ -56,7 +56,7 @@ import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, 
 import type { ProjectView } from '../lib/fleetViewState'
 import {
   LATEST_VIEW_KEY, MAX_LATEST_COUNT, MIN_LATEST_COUNT, agentsInSlots, allAgents, clampCount, initial as latestInitial,
-  latestProject, readLatestPrefs, recencyOf, resort as latestResort, rootOfAgent, update as latestUpdate, writeLatestPrefs,
+  latestProject, readLatestPrefs, recencyOf, resort as latestResort, rootOfAgent, update as latestUpdate, writeLatestPrefs, stepTab, tabSwitchDirection,
 } from '../lib/fleetLatest'
 import type { LatestPrefs } from '../lib/fleetLatest'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
@@ -1689,6 +1689,7 @@ function AgentCard({ agent, open, onToggle, enlarged, focused, typing, ownerReac
           checkouts={checkouts}
           home={home}
           onReveal={onReveal}
+          releaseTabKeys={latest}
         />
       )}
     </div>
@@ -3147,6 +3148,46 @@ export default function Fleet() {
     }
     return tabs
   }, [active, filesRoot, fileTileInGrid, boardTileInGrid, filesBig, boardBig, toggleFilesMax, toggleBoardMax])
+
+  /*
+    Ctrl+←/→ — the previous / next tab of the strip, in latest mode (asked for
+    2026-10-20; see `tabSwitchDirection` for the key and for why the terminal
+    gives it up). The entries are built from the SAME select actions the
+    rendered tabs call, in the strip's order, so the keyboard and a click
+    cannot land on different things. Acts only while the strip is shown — the
+    same condition that renders it — so the grid is never rearranged by a key.
+  */
+  const tabStrip = ((enlarged !== null && gridAgents.length > 1) || filesBig || boardBig)
+    ? [
+        ...gridAgents.map(a => ({
+          active: a.pid === enlarged && !panelTabs.some(p => p.active),
+          select: () => { if (active) setEnlarged(active.name, a.pid) },
+        })),
+        ...panelTabs.map(p => ({ active: p.active, select: p.onSelect })),
+      ]
+    : null
+  const tabStripRef = useRef(tabStrip)
+  tabStripRef.current = tabStrip
+  useEffect(() => {
+    if (!latestOn) return
+    const onKey = (e: KeyboardEvent) => {
+      const dir = tabSwitchDirection(e)
+      if (dir === 0) return
+      // An input or an editor keeps its own word-jump: only the terminal's
+      // helper textarea (which declined the key) and the page itself switch.
+      const t = e.target as HTMLElement | null
+      const editable = t?.closest?.('input, textarea, [contenteditable="true"], .monaco-editor')
+      if (editable && !editable.classList.contains('xterm-helper-textarea')) return
+      const strip = tabStripRef.current
+      if (!strip) return
+      const next = stepTab(strip, dir)
+      if (next === null) return
+      e.preventDefault()
+      strip[next].select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [latestOn])
 
   /**
    * PM mode — the fleet chooses what the reader looks at, one item at a time.

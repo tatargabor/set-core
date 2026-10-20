@@ -140,3 +140,34 @@ SHALL be written to disk.
 #### Scenario: A transcript with no human message stays absent
 - **WHEN** no entry in the whole transcript is a human entry
 - **THEN** the reported human-input age is absent
+
+### Requirement: Ctrl+Left and Ctrl+Right switch the strip's tab in latest mode
+
+Added 2026-10-20 at the user's request: *"pressing ctrl-left and ctrl-right combinations switch
+the panel tab on latest mode layout to the next or prev tab"*.
+
+While latest mode is on and the tab strip is shown, Ctrl+Right SHALL select the next tab and
+Ctrl+Left the previous one, in the strip's order, wrapping at both ends. Selecting SHALL perform
+the same act as clicking that tab. Only plain Ctrl with the arrow SHALL count; with Shift, Alt or
+Meta held, the key SHALL be left alone.
+
+The switch SHALL work while a terminal tile has focus. The user chose this knowing it costs the
+terminal its Ctrl+Left/Right word-jump while latest mode is on. Outside latest mode the terminal
+SHALL keep the key. A focused input or editor other than a terminal SHALL keep its own word-jump.
+When the strip is not shown, the key SHALL change nothing.
+
+#### Scenario: Next and previous, with wrap-around
+- **WHEN** latest mode is on with the first of four tabs active, and the reader presses Ctrl+Right, then Ctrl+Left twice
+- **THEN** the second tab is active, then the first, then the last
+
+#### Scenario: From inside a terminal
+- **WHEN** a terminal tile has focus in latest mode and the reader presses Ctrl+Right
+- **THEN** the terminal does not receive the key and the next tab is active
+
+#### Scenario: An input keeps its word-jump
+- **WHEN** the count input has focus and the reader presses Ctrl+Right
+- **THEN** the active tab does not change
+
+#### Scenario: Outside latest mode
+- **WHEN** latest mode is off and the reader presses Ctrl+Right, in a terminal or on the page
+- **THEN** the terminal receives the key as before and the active tab does not change

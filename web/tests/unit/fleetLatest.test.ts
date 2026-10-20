@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  allAgents, clampCount, initial, LATEST_VIEW_KEY, latestProject, resort, rootOfAgent, update,
+  allAgents, clampCount, initial, LATEST_VIEW_KEY, latestProject, resort, rootOfAgent, update, stepTab, tabSwitchDirection,
 } from '../../src/lib/fleetLatest'
 import type { FleetAgent, FleetProject } from '../../src/lib/fleetTypes'
 
@@ -115,5 +115,36 @@ describe('the mode as a project', () => {
     expect(clampCount(500)).toBe(50)
     expect(clampCount('x')).toBe(10)
     expect(clampCount('7')).toBe(7)
+  })
+})
+
+describe('the Ctrl+←/→ tab switch', () => {
+  const k = (over: Partial<KeyboardEvent>) =>
+    ({ key: 'x', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...over }) as KeyboardEvent
+
+  it('is plain Ctrl with an arrow, and nothing else', () => {
+    expect(tabSwitchDirection(k({ ctrlKey: true, key: 'ArrowLeft' }))).toBe(-1)
+    expect(tabSwitchDirection(k({ ctrlKey: true, key: 'ArrowRight' }))).toBe(1)
+    expect(tabSwitchDirection(k({ key: 'ArrowRight' }))).toBe(0)
+    expect(tabSwitchDirection(k({ ctrlKey: true, shiftKey: true, key: 'ArrowRight' }))).toBe(0)
+    expect(tabSwitchDirection(k({ ctrlKey: true, altKey: true, key: 'ArrowRight' }))).toBe(0)
+    expect(tabSwitchDirection(k({ ctrlKey: true, metaKey: true, key: 'ArrowRight' }))).toBe(0)
+    expect(tabSwitchDirection(k({ ctrlKey: true, key: 'ArrowUp' }))).toBe(0)
+  })
+
+  it('steps to the neighbour and wraps at both ends', () => {
+    const at = (i: number, n = 3) => Array.from({ length: n }, (_, j) => ({ active: j === i }))
+    expect(stepTab(at(0), 1)).toBe(1)
+    expect(stepTab(at(2), 1)).toBe(0)
+    expect(stepTab(at(0), -1)).toBe(2)
+    expect(stepTab(at(1), -1)).toBe(0)
+  })
+
+  it('with no active tab takes the first or the last; with nothing to switch to, nothing', () => {
+    const none = [{ active: false }, { active: false }, { active: false }]
+    expect(stepTab(none, 1)).toBe(0)
+    expect(stepTab(none, -1)).toBe(2)
+    expect(stepTab([], 1)).toBeNull()
+    expect(stepTab([{ active: true }], 1)).toBeNull()
   })
 })
