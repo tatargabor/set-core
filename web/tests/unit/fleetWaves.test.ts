@@ -40,16 +40,27 @@ describe('orderBoards', () => {
 describe('totals', () => {
   it('adds up blocked items across boards (AC-5)', () => {
     expect(totals([board('a', 'x', { blocked: 3 }), board('b', 'y', { blocked: 11 })]))
-      .toEqual({ boards: 2, blocked: 14, unreadable: 0 })
+      .toEqual({ boards: 2, blocked: 14, unreadable: 0, stale: 0 })
   })
 
   it('counts an unreadable board instead of folding it into zero', () => {
     expect(totals([board('a', 'x', { blocked: 1 }), broken('b', 'y')]))
-      .toEqual({ boards: 2, blocked: 1, unreadable: 1 })
+      .toEqual({ boards: 2, blocked: 1, unreadable: 1, stale: 0 })
   })
 
   it('is all zeros for no boards (AC-6: the chip renders nothing)', () => {
-    expect(totals([])).toEqual({ boards: 0, blocked: 0, unreadable: 0 })
+    expect(totals([])).toEqual({ boards: 0, blocked: 0, unreadable: 0, stale: 0 })
+  })
+
+  it('counts stale boards, and only those the server called stale (AC-16)', () => {
+    const stale = { ...board('a', 'x'), manual_open: 2, commits_since_change: 40, stale: true }
+    const current = { ...board('b', 'y'), manual_open: 2, commits_since_change: 1, stale: false }
+    const unmeasured = { ...board('c', 'z'), manual_open: 2, commits_since_change: null, stale: false }
+    expect(totals([stale, current, unmeasured, { ...stale, job: 'w' }]).stale).toBe(2)
+  })
+
+  it('reads a board from an older server, without the fields, as not stale', () => {
+    expect(totals([board('a', 'x')]).stale).toBe(0)
   })
 })
 
@@ -85,5 +96,10 @@ describe('parseBoards', () => {
     expect(parseBoards({ agents: [] })).toEqual([])
     expect(parseBoards({ boards: [{ project: 'a' }, null, board('b', 'x'), { project: 'c', job: 'j', unreadable: true, reason: 'r' }] })
       .map(b => b.project)).toEqual(['b', 'c'])
+  })
+
+  it('keeps an old-shape board, without the staleness fields', () => {
+    const old = board('a', 'x')
+    expect(parseBoards({ boards: [old] })).toEqual([old])
   })
 })

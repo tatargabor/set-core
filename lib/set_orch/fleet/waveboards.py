@@ -18,9 +18,11 @@ Three properties are the contract, and each one is a rule rather than a taste:
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -31,6 +33,74 @@ STATUSES = ("todo", "doing", "done", "blocked", "skipped")
 #: An item in one of these does not hold its wave open.
 FINISHED = ("done", "skipped")
 JOB_DIR = Path("docs") / "waveboard"
+
+# ── staleness (change `wave-board-staleness`, D1–D4) ─────────────────────────
+# The same rule as `bin/set-wave-board stale`, which does not import set_orch;
+# `tests/unit/test_fleet_waveboards.py` runs both on one repository and holds them together.
+
+DEFAULT_STALE_COMMITS = 3
+GIT_TIMEOUT = 5
+
+
+def stale_threshold() -> int:
+    raw = os.environ.get("SET_WAVEBOARD_STALE_COMMITS", "").strip()
+    try:
+        return max(1, int(raw)) if raw else DEFAULT_STALE_COMMITS
+    except ValueError:
+        return DEFAULT_STALE_COMMITS
+
+
+def _parse_time(value: Any) -> Optional[_dt.datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        t = _dt.datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t.replace(tzinfo=_dt.timezone.utc) if t.tzinfo is None else t.astimezone(_dt.timezone.utc)
+
+
+def _is_manual(item: Dict[str, Any]) -> bool:
+    """Open, and sync cannot move it: no evidence, or blocked (sticky)."""
+    status = item.get("status")
+    if status in FINISHED:
+        return False
+    return not item.get("evidence") or status == "blocked"
+
+
+def _last_change(data: Dict[str, Any]) -> Optional[_dt.datetime]:
+    times = [_parse_time(item.get("updated"))
+             for wave in (data.get("waves") or []) if isinstance(wave, dict)
+             for item in (wave.get("items") or []) if isinstance(item, dict)]
+    reviewed = data.get("reviewed")
+    if isinstance(reviewed, dict):
+        times.append(_parse_time(reviewed.get("at")))
+    found = [t for t in times if t is not None]
+    return max(found) if found else _parse_time(data.get("created"))
+
+
+def _commits_since(root: Path, since: Optional[_dt.datetime]) -> Optional[int]:
+    """Commits on HEAD strictly newer than `since`; None when it cannot be counted.
+
+    Logged at DEBUG, not WARNING: the route is polled every minute, and the null in the
+    response is what makes the failure visible (design D10).
+    """
+    if since is None:
+        return None
+    after = (since + _dt.timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S +0000")
+    try:
+        r = subprocess.run(["git", "rev-list", "--count", f"--since={after}", "HEAD"],
+                           cwd=str(root), capture_output=True, text=True, timeout=GIT_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("waveboards: cannot count commits in %s: %s", root, type(exc).__name__)
+        return None
+    if r.returncode != 0:
+        logger.debug("waveboards: git rev-list failed in %s (exit %s)", root, r.returncode)
+        return None
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return None
 
 
 def _unreadable(project: str, job: str, reason: str) -> Dict[str, Any]:
@@ -81,6 +151,14 @@ def summarise_board(project: str, path: Path) -> Dict[str, Any]:
         if open_here and current is None:
             current = {"id": str(wave.get("id") or ""), "title": str(wave.get("title") or "")}
 
+    manual = sum(1 for wave in waves if isinstance(wave, dict)
+                 for item in (wave.get("items") if isinstance(wave.get("items"), list) else [])
+                 if isinstance(item, dict) and _is_manual(item))
+    root = path.parent.parent.parent
+    commits = _commits_since(root, _last_change(data))
+    reviewed = data.get("reviewed")
+    reviewed_at = reviewed.get("at") if isinstance(reviewed, dict) else None
+
     url = data.get("artifact_url")
     return {
         "project": project,
@@ -92,6 +170,10 @@ def summarise_board(project: str, path: Path) -> Dict[str, Any]:
         "waves": len(waves),
         "current_wave": current,
         "updated": latest,
+        "reviewed": reviewed_at if isinstance(reviewed_at, str) else None,
+        "manual_open": manual,
+        "commits_since_change": commits,
+        "stale": manual > 0 and commits is not None and commits >= stale_threshold(),
         "unreadable": False,
     }
 

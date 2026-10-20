@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { ExternalLink, Kanban, TriangleAlert, X } from 'lucide-react'
+import { ExternalLink, GitCommitHorizontal, Kanban, TriangleAlert, X } from 'lucide-react'
 
 import { age } from '../lib/fleetAge'
 import {
@@ -53,6 +53,25 @@ function Bar({ board }: { board: ReadableBoard }) {
       ))}
     </span>
   )
+}
+
+/** The age cell's tooltip: when an item changed, and whether staleness was measured. */
+function ageTitle(board: ReadableBoard): string {
+  const changed = board.updated
+    ? `An item last changed ${new Date(board.updated).toLocaleString()}`
+    : 'No item carries a time'
+  const reviewed = board.reviewed ? `; reviewed ${new Date(board.reviewed).toLocaleString()}` : ''
+  const measured = board.commits_since_change === undefined || board.commits_since_change === null
+    ? '; commits since: not measured'
+    : `; ${board.commits_since_change} commit(s) on HEAD since`
+  return changed + reviewed + measured
+}
+
+function staleTitle(board: ReadableBoard): string {
+  const n = board.manual_open ?? 0
+  return `${board.commits_since_change} commits on HEAD since this board last changed, `
+    + `and ${n} open item${n === 1 ? '' : 's'} only an agent can move (no evidence, or blocked). `
+    + 'Its statuses — blocked count included — may be out of date. The project\'s Stop hook asks its agent to review them.'
 }
 
 function BoardRow({ board, now, onProject }: {
@@ -125,9 +144,17 @@ function BoardRow({ board, now, onProject }: {
           </span>
         )}
         <span className="tabular-nums text-fg-muted shrink-0 w-8 text-right"
-              title={board.updated ? `An item last changed ${new Date(board.updated).toLocaleString()}` : 'No item carries a time'}>
+              title={ageTitle(board)}>
           {age(since)}
         </span>
+        {board.stale === true && (
+          <span className="inline-flex items-center gap-0.5 tabular-nums text-amber-400 shrink-0"
+                title={staleTitle(board)}
+                data-fleet-waves-stale={board.commits_since_change ?? ''}>
+            <GitCommitHorizontal size={12} strokeWidth={1.75} aria-hidden />
+            {board.commits_since_change} since
+          </span>
+        )}
       </span>
     </li>
   )
@@ -177,6 +204,7 @@ export default function FleetWaves({ selected, onSelectProject }: {
   const label = `${t.boards} wave board${t.boards === 1 ? '' : 's'}`
     + (t.blocked ? `, ${t.blocked} item${t.blocked === 1 ? '' : 's'} blocked` : '')
     + (t.unreadable ? `, ${t.unreadable} unreadable` : '')
+    + (t.stale ? `, ${t.stale} stale` : '')
 
   return (
     <span ref={rootRef} className="inline-flex items-center shrink-0" data-fleet-waves={t.boards}>
@@ -189,6 +217,12 @@ export default function FleetWaves({ selected, onSelectProject }: {
         {t.boards}
         {t.blocked > 0 && (
           <span className="text-red-400" data-fleet-waves-blocked-total={t.blocked}>· {t.blocked}</span>
+        )}
+        {t.stale > 0 && (
+          <span className="text-amber-400 inline-flex items-center gap-0.5" data-fleet-waves-stale-total={t.stale}
+                title={`${t.stale} board${t.stale === 1 ? '' : 's'} the repository has moved past`}>
+            · <GitCommitHorizontal size={12} strokeWidth={1.75} aria-hidden />{t.stale}
+          </span>
         )}
         {t.unreadable > 0 && (
           <span className="text-amber-400 inline-flex items-center gap-0.5" data-fleet-waves-unreadable={t.unreadable}>

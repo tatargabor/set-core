@@ -20,6 +20,17 @@ export interface ReadableBoard {
   waves: number
   current_wave: { id: string; title: string } | null
   updated: string | null
+  // Staleness (change `wave-board-staleness`). Optional, so a board from a
+  // server older than the change still renders — without a marker, and with
+  // "not measured" in its tooltip rather than a claim that it is current.
+  /** When an agent last confirmed the board's manual items, or null. */
+  reviewed?: string | null
+  /** Open items sync cannot move: no evidence, or blocked. */
+  manual_open?: number
+  /** Commits on the project's HEAD since the board last changed; null = not measured. */
+  commits_since_change?: number | null
+  /** Manual items are open and the repository moved on by the threshold. */
+  stale?: boolean
   unreadable: false
 }
 
@@ -36,6 +47,8 @@ export interface WaveTotals {
   boards: number
   blocked: number
   unreadable: number
+  /** Boards whose statuses the repository has moved past — their blocked count included. */
+  stale: number
 }
 
 /** The selected project's boards first, then by project name, then by job. */
@@ -52,11 +65,15 @@ export function orderBoards(boards: WaveBoard[], selected: string | null): WaveB
 export function totals(boards: WaveBoard[]): WaveTotals {
   let blocked = 0
   let unreadable = 0
+  let stale = 0
   for (const b of boards) {
     if (b.unreadable) unreadable += 1
-    else blocked += b.counts.blocked ?? 0
+    else {
+      blocked += b.counts.blocked ?? 0
+      if (b.stale === true) stale += 1
+    }
   }
-  return { boards: boards.length, blocked, unreadable }
+  return { boards: boards.length, blocked, unreadable, stale }
 }
 
 export interface BarSegment {

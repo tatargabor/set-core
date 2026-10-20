@@ -9,6 +9,8 @@ Usage:
     set-wave-board sync [<job>...]
     set-wave-board pushed <job> --version N [--hash H]
     set-wave-board pending
+    set-wave-board stale [<job>...]
+    set-wave-board reviewed <job>
     set-wave-board page
     set-wave-board render <job> [-o FILE] [--bare]
 
@@ -31,6 +33,14 @@ WHY THE SCRIPT DOES NOT PUSH
     the exact document body to `.set/waveboard/<job>.state.json` and prints a PUSH line;
     the agent sends that file as collection `board`, document `state`, and records the
     push with `pushed`. `set-hook-waveboard` makes sure it is not forgotten.
+
+STALENESS — WHEN THE THIRD LAYER WAS FORGOTTEN
+    An item with no evidence, and a blocked item, move only by `set`. A board is STALE when
+    it has such items open and HEAD has at least SET_WAVEBOARD_STALE_COMMITS (default 3)
+    commits newer than the board's last change (the newest item `updated` or `reviewed.at`).
+    `stale` lists this; the Stop hook asks for a review of a stale board. When the items are
+    checked and still right, `reviewed <job>` records it in the job file — it is not part of
+    the pushed content, so it never causes a push.
 
 EVIDENCE (paths relative to the repository root; never absolute)
     {"type":"openspec-tasks","path":"openspec/changes/<x>/tasks.md"}
@@ -354,6 +364,99 @@ def sync_job(root: Path, job: str) -> dict:
     }
 
 
+# ── staleness ────────────────────────────────────────────────────────────────
+#
+# Sync cannot move an item without evidence, nor a blocked one, so only an agent's `set`
+# moves those — and nothing used to ask for it. A board is stale when such items are open
+# and the repository has moved on since the board last changed. The same rule is written
+# in `lib/set_orch/fleet/waveboards.py` (this script does not import set_orch); a test holds
+# the two together. See openspec change `wave-board-staleness`, D1–D4.
+
+DEFAULT_STALE_COMMITS = 3
+
+
+def stale_threshold() -> int:
+    raw = os.environ.get("SET_WAVEBOARD_STALE_COMMITS", "").strip()
+    try:
+        return max(1, int(raw)) if raw else DEFAULT_STALE_COMMITS
+    except ValueError:
+        logger.warning("SET_WAVEBOARD_STALE_COMMITS=%r is not a number; using %d", raw,
+                       DEFAULT_STALE_COMMITS)
+        return DEFAULT_STALE_COMMITS
+
+
+def _parse_time(value):
+    """An ISO timestamp or date as an aware UTC datetime, or None."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        t = _dt.datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t.replace(tzinfo=_dt.timezone.utc) if t.tzinfo is None else t.astimezone(_dt.timezone.utc)
+
+
+def manual_open(data: dict) -> list:
+    """Open items sync cannot move: no evidence, or blocked (sticky)."""
+    res = []
+    for wave in data.get("waves") or []:
+        if not isinstance(wave, dict):
+            continue
+        for item in wave.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            status = item.get("status")
+            if status in ("done", "skipped"):
+                continue
+            if not item.get("evidence") or status == "blocked":
+                res.append({"id": item.get("id"), "status": status, "title": item.get("title", ""),
+                            "wave": wave.get("id")})
+    return res
+
+
+def last_change(data: dict):
+    """Newest item `updated` or `reviewed.at`; failing both, `created`. None if nothing parses."""
+    times = [_parse_time(item.get("updated"))
+             for wave in data.get("waves") or [] if isinstance(wave, dict)
+             for item in wave.get("items") or [] if isinstance(item, dict)]
+    reviewed = data.get("reviewed")
+    if isinstance(reviewed, dict):
+        times.append(_parse_time(reviewed.get("at")))
+    times = [t for t in times if t is not None]
+    if not times:
+        created = _parse_time(data.get("created"))
+        return created
+    return max(times)
+
+
+def commits_since(root: Path, since):
+    """Commits on HEAD strictly newer than `since`, or None when it cannot be counted."""
+    if since is None:
+        return None
+    after = (since + _dt.timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S +0000")
+    r = git(["rev-list", "--count", f"--since={after}", "HEAD"], root)
+    if r is None or r.returncode != 0:
+        logger.debug("cannot count commits in %s: %s", root, r.stderr.strip() if r else "git failed")
+        return None
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return None
+
+
+def staleness(root: Path, job: str, data: dict) -> dict:
+    manual = manual_open(data)
+    since = last_change(data)
+    count = commits_since(root, since)
+    return {
+        "job": job,
+        "last_change": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since else None,
+        "commits_since_change": count,
+        "manual_open": manual,
+        "stale": bool(manual) and count is not None and count >= stale_threshold(),
+    }
+
+
 # ── commands ─────────────────────────────────────────────────────────────────
 
 def out(args, obj, text_lines):
@@ -462,6 +565,35 @@ def cmd_sync(args, root):
             rc = 1
     out(args, results, [push_line(r) for r in results if r["push_needed"]])
     return rc
+
+
+def cmd_stale(args, root):
+    jobs = args.jobs or all_jobs(root)
+    results, rc = [], 0
+    for job in jobs:
+        try:
+            results.append(staleness(root, job, load_job(root, job)))
+        except UsageError as e:
+            logger.error("%s: %s", job, e)
+            rc = 1
+    lines = []
+    for r in results:
+        count = "not measured" if r["commits_since_change"] is None else f"{r['commits_since_change']} commit(s)"
+        lines.append(f"{'STALE' if r['stale'] else 'ok   '} {r['job']}: {count} since "
+                     f"{r['last_change'] or 'an unknown time'}, {len(r['manual_open'])} item(s) only an "
+                     "agent can move")
+    out(args, results, lines)
+    return rc
+
+
+def cmd_reviewed(args, root):
+    data = load_job(root, args.job)
+    old = data.get("reviewed")
+    data["reviewed"] = {"at": now_iso(), "by": host_label()}
+    save_job(root, args.job, data)
+    logger.info("%s: reviewed (was %s)", args.job, old)
+    out(args, dict(data["reviewed"], job=args.job), [f"{args.job}: reviewed at {data['reviewed']['at']}"])
+    return 0
 
 
 def pending_jobs(root: Path):
@@ -611,6 +743,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("pending", parents=[common], help="list jobs whose payload is not pushed")
     s.set_defaults(fn=cmd_pending)
+
+    s = sub.add_parser("stale", parents=[common],
+                       help="commits since each board last changed, and the items only an agent can move")
+    s.add_argument("jobs", nargs="*")
+    s.set_defaults(fn=cmd_stale)
+
+    s = sub.add_parser("reviewed", parents=[common],
+                       help="record that the items only an agent can move were checked and are current")
+    s.add_argument("job")
+    s.set_defaults(fn=cmd_reviewed)
 
     s = sub.add_parser("page", parents=[common], help="print the page template path")
     s.set_defaults(fn=cmd_page)

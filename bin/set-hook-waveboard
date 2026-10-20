@@ -6,6 +6,12 @@ it. This hook runs `set-wave-board sync` on every Stop and, when a job's payload
 from what this machine last pushed, blocks the stop ONCE with the exact push procedure —
 so the push happens whether or not the agent remembered the board.
 
+It also asks for a REVIEW of a stale board: one whose items only an agent can move (no
+evidence, or blocked) are open while HEAD has moved on since the board last changed
+(`set-wave-board stale`). Sync cannot move those items, so before this the board simply
+froze. The review has its own backoff (SET_WAVEBOARD_REVIEW_SECONDS, 14400) and its own
+switch (SET_WAVEBOARD_REVIEW=off). When both are due, one block carries both, push first.
+
 Silent (exit 0, no output) when:
   - the Stop event carries `stop_hook_active: true` (the continuation this hook caused),
   - SET_WAVEBOARD_PUSH is off / 0 / false / no,
@@ -34,6 +40,9 @@ from pathlib import Path
 logger = logging.getLogger("set-hook-waveboard")
 
 SYNC_TIMEOUT = 10
+#: Sync and the staleness check share one budget, inside the 15 s the deployed settings give
+#: the hook: the check gets only what the sync left over.
+BUDGET = 12.0
 OFF = ("off", "0", "false", "no")
 
 
@@ -127,6 +136,7 @@ def main() -> int:
     if not tool:
         logger.debug("set-wave-board not found")
         return 0
+    deadline = time.monotonic() + BUDGET
     try:
         r = subprocess.run([tool, "sync", "--repo", str(root), "--json"], capture_output=True,
                            text=True, timeout=SYNC_TIMEOUT)
@@ -135,29 +145,107 @@ def main() -> int:
         logger.debug("sync failed: %s", e)
         return 0
     pending = [x for x in results if isinstance(x, dict) and x.get("push_needed")]
-    if not pending:
-        return 0
+    stale = _stale(tool, root, deadline - time.monotonic()) if mode_review_on() else []
 
-    backoff, now = _backoff(), time.time()
+    now = time.time()
     state = root / ".set" / "waveboard"
+    backoff, review_backoff = _backoff(), _review_backoff()
+    due = _due(state, pending, "nag", backoff, now)
+    review_due = _due(state, stale, "review-nag", review_backoff, now)
+    if not due and not review_due:
+        return 0
+    _stamp(state, due, "nag", now)
+    _stamp(state, review_due, "review-nag", now)
+    # One block per Stop: the push first, because the review may change the payload and the
+    # next Stop then asks for that push (design D7).
+    parts = []
+    if due:
+        parts.append(procedure(root, due, backoff))
+    if review_due:
+        parts.append(review_procedure(root, review_due, review_backoff))
+    print(json.dumps({"decision": "block", "reason": "\n\n".join(parts)}))
+    return 0
+
+
+def mode_review_on() -> bool:
+    return os.environ.get("SET_WAVEBOARD_REVIEW", "").strip().lower() not in OFF
+
+
+def _review_backoff() -> float:
+    try:
+        return float(os.environ.get("SET_WAVEBOARD_REVIEW_SECONDS", "14400"))
+    except ValueError:
+        return 14400.0
+
+
+def _stale(tool: str, root: Path, budget: float) -> list:
+    """The stale jobs, from `set-wave-board stale --json`; empty on any failure."""
+    if budget < 1.0:
+        logger.debug("no time left for the staleness check (%.1fs)", budget)
+        return []
+    try:
+        r = subprocess.run([tool, "stale", "--repo", str(root), "--json"], capture_output=True,
+                           text=True, timeout=min(SYNC_TIMEOUT, budget))
+        results = json.loads(r.stdout or "[]")
+    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+        logger.debug("stale failed: %s", e)
+        return []
+    return [x for x in results if isinstance(x, dict) and x.get("stale")]
+
+
+def _due(state: Path, jobs: list, suffix: str, backoff: float, now: float) -> list:
     due = []
-    for x in pending:
-        nag = state / f"{x['job']}.nag"
+    for x in jobs:
         try:
-            last = float(nag.read_text().strip())
+            last = float((state / f"{x['job']}.{suffix}").read_text().strip())
         except (OSError, ValueError):
             last = 0.0
         if now - last >= backoff:
             due.append(x)
-    if not due:
-        return 0
-    for x in due:
+    return due
+
+
+def _stamp(state: Path, jobs: list, suffix: str, now: float) -> None:
+    for x in jobs:
         try:
-            (state / f"{x['job']}.nag").write_text(f"{now:.0f}\n")
+            state.mkdir(parents=True, exist_ok=True)
+            (state / f"{x['job']}.{suffix}").write_text(f"{int(now)}\n")  # floor: a stamp rounded up lies in the future
         except OSError as e:
-            logger.debug("cannot write nag stamp for %s: %s", x["job"], e)
-    print(json.dumps({"decision": "block", "reason": procedure(root, due, backoff)}))
-    return 0
+            logger.debug("cannot write %s stamp for %s: %s", suffix, x["job"], e)
+
+
+MAX_LISTED = 20
+
+
+def review_procedure(root: Path, jobs: list, backoff: float) -> str:
+    lines = [
+        f"Wave board review: {len(jobs)} board(s) in this repository look stale. The repository "
+        "has moved on since the board last changed, and the items below are ones only you can "
+        "move (no evidence, or blocked). Check each against what was actually done, then carry "
+        "on where you left off.",
+    ]
+    for r in jobs:
+        items = r.get("manual_open") or []
+        lines += ["", f"Job `{r['job']}`: {r.get('commits_since_change')} commit(s) on HEAD since "
+                      f"its last change ({r.get('last_change')}). Items only you can move:"]
+        for it in items[:MAX_LISTED]:
+            lines.append(f"  - {it.get('id')} [{it.get('status')}] {it.get('title', '')}")
+        if len(items) > MAX_LISTED:
+            lines.append(f"  … +{len(items) - MAX_LISTED} more (`set-wave-board stale {r['job']} "
+                         f"--repo {root}` lists them all)")
+        lines += [
+            f"For each item that moved: set-wave-board set {r['job']} <item> "
+            "<todo|doing|done|blocked|skipped> [--note N] --repo " + str(root),
+            f"When every listed item is still right: set-wave-board reviewed {r['job']} --repo {root}",
+        ]
+    lines += [
+        "",
+        "Both commands edit the tracked job file; commit it with your work. Do not stamp "
+        "`reviewed` without checking — it only quiets the reminder until the next few commits. "
+        f"This reminder backs off for {int(backoff // 60)} minutes per job; "
+        "SET_WAVEBOARD_REVIEW=off silences it.",
+    ]
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
