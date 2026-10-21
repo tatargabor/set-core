@@ -43,7 +43,7 @@ import {
   tallyOf,
   waitingReported,
 } from '../lib/fleetAttention'
-import { loadTabBadge, needsPerson, readyToRead, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
+import { askingYou, loadTabBadge, needsPerson, readyToRead, saveTabBadge, tabTitle } from '../lib/fleetTabBadge'
 import { escapeAttr, useReorder, type ReorderHandlers } from '../lib/useReorder'
 import { Chip, Dot } from './Chip'
 import SrOnly from './SrOnly'
@@ -1164,7 +1164,9 @@ export default function FleetProjectColumn({
   */
   const [tabBadge, setTabBadge] = useState<boolean>(() => loadTabBadge())
   useEffect(() => {
-    document.title = tabTitle('SET', tabBadge ? needsPerson(totals) : 0, tabBadge ? readyToRead(totals) : 0)
+    document.title = tabBadge
+      ? tabTitle('SET', needsPerson(totals), readyToRead(totals), askingYou(totals))
+      : 'SET'
     return () => {
       document.title = 'SET'
     }

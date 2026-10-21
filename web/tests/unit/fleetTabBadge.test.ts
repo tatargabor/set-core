@@ -7,7 +7,7 @@
  * because a badge setting must never be able to take the screen down.
  */
 import { describe, expect, it } from 'vitest'
-import { needsPerson, readyToRead, tabTitle, loadTabBadge, saveTabBadge, TAB_BADGE_KEY } from '../../src/lib/fleetTabBadge'
+import { askingYou, needsPerson, readyToRead, tabTitle, loadTabBadge, saveTabBadge, TAB_BADGE_KEY } from '../../src/lib/fleetTabBadge'
 import { EMPTY_TALLY, tally } from '../../src/lib/fleetAttention'
 import type { AttentionProject } from '../../src/lib/fleetAttention'
 
@@ -84,7 +84,40 @@ describe('the two counts — blocked on you, and finished — B-160', () => {
   })
 })
 
+describe('the question mark — an open question owns the tab', () => {
+  it('a live question turns the tab into a red question mark, not the warning', () => {
+    const t = tally([A({ state: 'asking', attention: 'prompt' })])
+    expect(askingYou(t)).toBe(1)
+    expect(tabTitle('SET', needsPerson(t), readyToRead(t), askingYou(t))).toBe('❓ SET (1)')
+  })
+
+  it('a permission prompt with no question stays the warning', () => {
+    const t = tally([A({ state: 'waiting', attention: 'prompt' })])
+    expect(askingYou(t)).toBe(0)
+    expect(tabTitle('SET', needsPerson(t), readyToRead(t), askingYou(t))).toBe('⚠️ SET (1)')
+  })
+
+  it('the question wins over a permission prompt and a finished turn', () => {
+    const t = tally([
+      A({ state: 'asking', attention: 'prompt' }),
+      A({ state: 'waiting', attention: 'prompt' }),
+      A({ attention: 'input' }),
+    ])
+    expect(tabTitle('SET', needsPerson(t), readyToRead(t), askingYou(t))).toBe('❓ SET (1)')
+  })
+
+  it('a parked question does not hold the mark — the same 45 minutes as the Q marker', () => {
+    const t = tally([A({ state: 'asking', attention: 'prompt', input_wait_seconds: 2700 })])
+    expect(t.asking).toBe(1)
+    expect(askingYou(t)).toBe(0)
+    expect(tabTitle('SET', needsPerson(t), readyToRead(t), askingYou(t))).toBe('SET')
+  })
+})
+
 describe('the title', () => {
+  it('the question mark wins over the warning and the green', () => {
+    expect(tabTitle('SET', 2, 3, 1)).toBe('❓ SET (1)')
+  })
   it('carries the count in parentheses', () => {
     expect(tabTitle('SET', 2)).toBe('⚠️ SET (2)')
   })

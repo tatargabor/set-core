@@ -57,6 +57,20 @@ export function readyToRead(t: Tally): number {
 }
 
 /**
+ * How many agents are ASKING you a question — the red question mark's number.
+ *
+ * `askingNow`, the same count the project row's sky `Q` marker shows: an
+ * AskUserQuestion or ExitPlanMode is open, measured from the session log, and
+ * a question parked for 45 minutes is left out for the same reason a parked
+ * wait is. Asked 2026-10-21: a red question mark in the tab when there is a
+ * question — a question is the one block whose answer is a sentence only the
+ * reader can write, so it gets its own mark rather than the generic warning.
+ */
+export function askingYou(t: Tally): number {
+  return t.askingNow
+}
+
+/**
  * The title, with its tone — asked 2026-09-01, in the same breath as the badge:
  * a warning emoji while input is needed, a green circle when a process is
  * ready to be read.
@@ -65,8 +79,15 @@ export function readyToRead(t: Tally): number {
  * an agent BLOCKED on you is more urgent than a result being AVAILABLE, and a
  * title that must be read at a glance cannot show both at once. The green
  * carries its count too, so "three finished" and "one finished" read apart.
+ *
+ * The red question mark (2026-10-21) wins over both: a question is a block
+ * too — its agent is counted in `prompt` as well — so it is the more specific
+ * reading of the same fact. While no live question is open, `prompt` holds
+ * only the other blocks (a permission prompt, a worker request), because
+ * `askingNow` and `prompt` leave out exactly the same parked agents.
  */
-export function tabTitle(base: string, count: number, ready = 0): string {
+export function tabTitle(base: string, count: number, ready = 0, asking = 0): string {
+  if (asking > 0) return `❓ ${base} (${asking})`
   if (count > 0) return `⚠️ ${base} (${count})`
   if (ready > 0) return `🟢 ${base} (${ready})`
   return base
