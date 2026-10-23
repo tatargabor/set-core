@@ -108,7 +108,7 @@
   The live fleet held no wait between 15 s and 3 min, so the amber band was rendered a second
   time with one duration rewritten in flight (47 s) — the row and its bar came out amber, and it
   is clearly separable from red at a glance.
-- **10.x, after the third report:** looked at the live screen again — the `set-promo` row, a
+- **10.x, after the third report:** looked at the live screen again — one project's row, a
   session waiting **45 minutes with a background command running**, now carries the red tint,
   `1 45m`, and the hollow background marker beside it. It was colourless before this fix, which
   is exactly what was reported for a 20-minute wait. Python 29 + web 1228 passed.
