@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-163 — `set-project init --dry-run` writes the project into the registry
+- **state:** open
+- **reported:** 2026-10-23 by this session, while registering a consumer for the fleet
+- **measured:** `set-project init --dry-run` on an unregistered repo printed `Project '<name>' registered`, and `~/.config/set-core/projects.json` then held the entry with a fresh `addedAt`. The registry write in `cmd_init` (`bin/set-project`, the `jq … '.projects[$name] = …'` branch after "Add project to registry", plus the `.default` write after it) has no `DRY_RUN` check. Everything after it (deploy, manager POST) does check.
+- **fail direction:** the preview mutates. "Dry-run first and read the plan" is the documented safe procedure, and on a new project it already changes state: the project shows up on the dashboard, and the `.default` write can take over the default.
+- **fixed when:** a dry run on an unregistered repo leaves `projects.json` byte-identical and prints `Would register '<name>'`. A unit or shell test over a temp `CONFIG_FILE` should be red on the current source.
+
 ### B-162 — `⚠ stage? (join-failed)` fires for every agent not working a change, because "the project has nothing in flight" is measured as "no un-archived change directory exists"
 - **state:** closed (`afcfab6f`, change `fleet-stage-idle-agent`) — after the fix and a service restart, `GET /api/fleet/agents` gave 3 × `nothing-started` and 1 × `no-position` (an agent naming a change with no artifacts, a different honest gap), 0 × `join-failed`; seen in the browser: the idle session's row shows the quiet `—`. The 3 positive `TestIdleAgent` tests fail on the unfixed source.
 - **reported:** 2026-10-15 by this session, while answering the user's question about what the `⚠ stage?` badge means on the fleet panel
