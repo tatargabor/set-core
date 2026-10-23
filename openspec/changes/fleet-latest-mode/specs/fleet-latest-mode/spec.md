@@ -1,7 +1,7 @@
 ## IN SCOPE
 - A latest-mode toggle and an agent-count control in the fleet header
 - Selecting the N agents a person most recently wrote into, across every project
-- The order following recency on every poll, held while the pointer is over the tabs or tiles
+- Tiles that a poll does not move, and a re-rank when the reader switches agents
 - The project column's selection and the tiles' project naming while the mode is on
 - Mutual exclusion with PM mode
 - The human-input measurement reaching beyond the bounded transcript tail
@@ -50,24 +50,26 @@ agents that exist and SHALL NOT render empty slots.
 - **WHEN** the reader sets the count to 5 and 12 agents exist
 - **THEN** exactly 5 agents are shown
 
-### Requirement: The order follows recency and holds under the pointer
+### Requirement: A poll moves nothing, and a switch re-ranks
 
-While the mode is on, its agents SHALL be ordered most recent first on every poll, not only when
-the mode is turned on. While the pointer is over the tab strip, or over the tiles in the grid
-layout, the order SHALL NOT change; it SHALL catch up when the pointer leaves. The pointer over an
-enlarged agent SHALL NOT hold the order.
+While the mode is on, a poll SHALL NOT change a tile's position because its agent's recency
+changed. An agent that newly enters the most-recent N on a poll SHALL take the slot of the shown
+agent with the oldest recency, and no other tile SHALL move; an agent that disappears SHALL free its
+slot. When the reader switches the enlarged agent, the mode SHALL re-order all its agents most
+recent first.
 
-#### Scenario: Writing into an agent moves it first
-- **WHEN** the reader writes into the third tile and the pointer is not over the tabs or tiles
-- **THEN** after the next poll that agent is first
+#### Scenario: Writing into a tile does not move it
+- **WHEN** the reader writes into the third tile and a poll arrives
+- **THEN** every tile keeps its position
 
-#### Scenario: A newcomer enters at its rank
+#### Scenario: A newcomer replaces the least recent
 - **WHEN** the reader writes into an agent that is not shown
-- **THEN** after the next poll that agent is shown at its rank and the least recent agent leaves
+- **THEN** after the next poll that agent takes the slot of the shown agent with the oldest recency
+- **AND** no other tile changes position
 
-#### Scenario: The order holds under the pointer
-- **WHEN** a poll changes recency while the pointer is over the tab strip or the tile grid
-- **THEN** no tab or tile moves until the pointer leaves
+#### Scenario: A switch re-ranks
+- **WHEN** the reader switches the enlarged agent to another tab
+- **THEN** the strip is ordered most recent first, so the agent just written into comes to the front
 
 ### Requirement: No project is selected while the mode is on, and every tile names its project
 

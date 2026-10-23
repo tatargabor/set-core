@@ -57,29 +57,33 @@ wrong tree.
 
 This is the main implementation risk, and it is why the spec has a scenario for it.
 
-### D3. The order follows recency on every poll, held under the pointer
+### D3. A poll patches in place; a switch re-ranks
 
-**Reversed 2026-10-23 by the user**, after using the mode for three days: *"latest tabok kellene
-frissüljenek nem csak amikor megnyitom, most a sorrend mindig az ahogy megnyílt először"*. The stable
-slots below made the strip read as "the order I opened it in", which is not what the mode is named
-for.
+**Decided by the user on 2026-10-23, in two steps on the same day.** First the stable slots below were
+reversed (*"latest tabok kellene frissüljenek nem csak amikor megnyitom, most a sorrend mindig az ahogy
+megnyílt először"*) into a re-rank on every poll, held while the pointer was over the strip or the
+grid. In use that jumped at moments unrelated to anything the reader did — on the pointer leaving
+the strip, and whenever anyone wrote into any agent — and the user called it odd (*"néha ugrik de
+fura"*). Offered three options (re-rank on switch, animated live, live without the hold), they chose
+**re-rank on switch**.
 
 ```
 initial(agents, n)            → the n most recent (measured first, unmeasured last)
-update(slots, agents, n)      → initial(agents, n); the SAME array when the order did not change
+update(slots, agents, n)      → on a poll: same slots; departed agents free their slot; an agent
+                                now within the top n takes a free slot, or else the slot of the
+                                slotted agent with the oldest recency. Same array when unchanged.
+on a switch of the enlarged agent → initial(agents, n)
 ```
 
-The page re-ranks on every poll unless the pointer is over the tab strip, or over the tiles in the
-grid layout (`latestHold`). That hold is what is left of the original concern: a tab that moves as it
-is clicked sends the click to its neighbour, the reflow `ui-quality.md` forbids. The enlarged agent
-does NOT hold — it is where the reader types, and a hold there would freeze the order exactly while it
-is changing. A layout switch or leaving the mode clears the hold, since an unmounted strip fires no
-pointer-leave. The re-sort control is gone: with a live order it had nothing left to do.
+The order changes where the reader acted, so it reads as a consequence, alt-tab style: the agent
+just left — the one just written into — comes to the front. The click has landed by then, so no
+pointer hold is needed, and none is kept. The re-sort control is gone; the switch is the re-sort.
 
-*Superseded (2026-10-20 to 2026-10-23):* stable slots, a newcomer taking the slot of the least
-recent, and a re-sort control. Rejected re-sorting on every poll because typing into tile #3 would
-shift the grid under the reader — the pointer hold answers that for the strip and the grid without
-freezing the order.
+*Known limit:* the re-rank uses the last poll's recency (about 5 s). Typing into an agent and switching
+away within that window ranks it by its previous message.
+
+*Rejected:* re-ranking on every poll (with or without a pointer hold) — the moves are not tied to the
+reader's own act. Animating the moves — the motion would still arrive at unrelated moments.
 
 ### D4. Mutual exclusion with PM mode lives in the page, not the server
 

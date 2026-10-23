@@ -12,12 +12,14 @@
  *  - **the selection** is by `last_human_input_seconds`, smallest first, and an
  *    agent with no measured value comes after every measured one — absent means
  *    *no message from you found*, never *a long time ago*;
- *  - **the order follows recency, live**: every poll re-ranks the shown
- *    agents most recent first. The user reversed the earlier stable-slot rule
- *    on 2026-10-23 (*"latest tabok kellene frissüljenek nem csak amikor
- *    megnyitom, most a sorrend mindig az ahogy megnyílt először"*). What keeps
- *    a click from landing on a tab that just moved is the page's HOLD — no
- *    re-rank while the pointer is over the strip or the tiles — not this file.
+ *  - **the order changes when the reader switches agents, never because a
+ *    poll arrived**. A poll only patches the slots in place (`update`): a gone
+ *    agent leaves, a newcomer takes the least recent slot, nothing else moves.
+ *    Switching the enlarged agent re-ranks everything (`initial`), so the one
+ *    just left — the one just written into — comes to the front, as alt-tab
+ *    does. Decided by the user on 2026-10-23, after a live re-rank on every
+ *    poll (asked for the same day: *"latest tabok kellene frissüljenek nem csak
+ *    amikor megnyitom"*) jumped at moments unrelated to anything they did.
  */
 
 import type { FleetAgent, FleetProject } from './fleetTypes'
@@ -113,21 +115,61 @@ export function initial(agents: readonly FleetAgent[], n: number): number[] {
   return [...agents].sort(byRecency).slice(0, Math.max(0, n)).map(a => a.pid)
 }
 
-/** Re-sort on request — the same answer as turning the mode on now. */
-export function resort(agents: readonly FleetAgent[], n: number): number[] {
-  return initial(agents, n)
-}
-
 /**
- * The slots after a new answer: the `n` most recent, most recent first —
- * the same answer `initial` gives, so a newcomer, a departure, a changed count
- * and a changed recency all land the same way.
+ * The slots after a new answer, moving as little as possible.
  *
- * Returns the SAME array when the order did not change, so a caller holding it
- * in state does not re-render on every poll.
+ * - an agent that left the fleet frees its slot;
+ * - an agent that is now within the most recent `n` but not shown takes a free
+ *   slot, or else the slot of the shown agent with the OLDEST recency — and
+ *   only that one tile changes;
+ * - a smaller `n` drops the oldest shown agents, a larger one lets the next
+ *   most recent in;
+ * - a slot nobody can fill is removed rather than drawn empty.
+ *
+ * Returns the SAME array when nothing changed, so a caller holding it in state
+ * does not re-render on every poll.
  */
 export function update(slots: readonly number[], agents: readonly FleetAgent[], n: number): number[] {
-  const result = initial(agents, n)
+  const want = Math.max(0, n)
+  const byPid = new Map(agents.map(a => [a.pid, a]))
+  const ranked = [...agents].sort(byRecency)
+  const rankOf = new Map(ranked.map((a, i) => [a.pid, i]))
+
+  let next: (number | null)[] = slots.map(pid => (byPid.has(pid) ? pid : null))
+
+  // A smaller count: drop the oldest shown agents, keeping everyone else put.
+  const shown = () => next.filter((p): p is number => p !== null)
+  while (shown().length > want) {
+    const oldest = shown().reduce((x, y) => ((rankOf.get(x) ?? 0) > (rankOf.get(y) ?? 0) ? x : y))
+    next = next.map(p => (p === oldest ? null : p))
+  }
+
+  const top = ranked.slice(0, want).map(a => a.pid)
+  const topSet = new Set(top)
+  for (const pid of top) {
+    if (next.includes(pid)) continue
+    const free = next.indexOf(null)
+    if (free >= 0) {
+      next[free] = pid
+      continue
+    }
+    if (next.length < want) {
+      next.push(pid)
+      continue
+    }
+    // Full: the newcomer takes the slot of the oldest shown agent that is no
+    // longer among the most recent `n`. One always exists — the newcomer is in
+    // the top `n` and the slots hold `n` agents, so one of them is not.
+    let victim = -1
+    for (let i = 0; i < next.length; i++) {
+      const p = next[i]
+      if (p === null || topSet.has(p)) continue
+      if (victim < 0 || (rankOf.get(p) ?? 0) > (rankOf.get(next[victim] as number) ?? 0)) victim = i
+    }
+    if (victim >= 0) next[victim] = pid
+  }
+
+  const result = next.filter((p): p is number => p !== null)
   const same = result.length === slots.length && result.every((p, i) => p === slots[i])
   return same ? (slots as number[]) : result
 }

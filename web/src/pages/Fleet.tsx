@@ -827,15 +827,8 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
  * one honestly. The cost is one click — select the agent, then type into its
  * card — and it is stated here rather than discovered later.
  */
-function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProject = false, onPointerInside }: {
+function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProject = false }: {
   agents: readonly FleetAgent[]
-  /**
-   * Told when the pointer enters and leaves the strip — latest mode holds its
-   * re-rank while it is inside, so a tab does not move under a click. Told
-   * `false` on unmount too: a strip that disappears under a resting pointer
-   * fires no leave, and the hold would otherwise outlive it.
-   */
-  onPointerInside?: (inside: boolean) => void
   /**
    * Name each tab's project too — latest mode, where the strip holds agents of
    * several projects and two of them can carry the same name.
@@ -885,9 +878,6 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
     click on some other tab.
   */
   const moved = useRef(false)
-  const insideRef = useRef(onPointerInside)
-  insideRef.current = onPointerInside
-  useEffect(() => () => insideRef.current?.(false), [])
   const { handlers, dragFrom, dragTo } = useReorder(
     (from, to) => { moved.current = true; onMove?.(from, to) },
     strip,
@@ -900,8 +890,6 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
       role="tablist"
       aria-label="agents in this project"
       data-fleet-agent-tabs={agents.length}
-      onPointerEnter={onPointerInside ? () => onPointerInside(true) : undefined}
-      onPointerLeave={onPointerInside ? () => onPointerInside(false) : undefined}
       /* The strip WRAPS. It used to scroll sideways and never wrap, on the
          reasoning that a strip growing downwards is a row list with extra steps.
          The user reversed that on 2026-10-20 (*"ha nem fer ki menjen két sorba
@@ -2433,21 +2421,16 @@ export default function Fleet() {
   // first project in the ARRANGED order and says so through `onSelect`, so the
   // selected project is always one the reader can find in the list.
   const everyAgent = useMemo(() => allAgents(projects), [projects])
-  /* Re-ranked on every answer, most recent first — see `latestUpdate`, which
-     returns the same array when the order did not change, so a poll costs no
-     render here.
-
-     THE HOLD: no re-rank while the pointer is over the tab strip, or over the
-     tiles in the grid layout. A tab that moves as the reader clicks it sends the
-     click to its neighbour — the reflow `ui-quality.md` forbids. The order
-     catches up the moment the pointer leaves. Not over the enlarged tile: that
-     is where the reader types, and a hold there would freeze the order exactly
-     while it is changing, which is the complaint this replaced. */
-  const [latestHold, setLatestHold] = useState(false)
+  /* Patched in place on every answer — see `latestUpdate`: a gone agent
+     leaves, a newcomer takes the least recent slot, nothing else moves. It
+     returns the same array when nothing changed, so a poll costs no render.
+     The full re-rank happens on a SWITCH, further down, where the reader acted. */
   useEffect(() => {
-    if (!latestOn || !data || latestHold) return
+    if (!latestOn || !data) return
     setLatestSlots(prev => latestUpdate(prev, everyAgent, latestCount))
-  }, [latestOn, latestCount, everyAgent, data, latestHold])
+  }, [latestOn, latestCount, everyAgent, data])
+  const everyAgentRef = useRef(everyAgent)
+  everyAgentRef.current = everyAgent
   const latestAgents = useMemo(() => agentsInSlots(latestSlots, everyAgent), [latestSlots, everyAgent])
   const latestAgentsRef = useRef<FleetAgent[]>([])
   latestAgentsRef.current = latestAgents
@@ -2780,6 +2763,22 @@ export default function Fleet() {
    * in the grid to be maximised within it.
    */
   const enlarged = resolveEnlarged(remembered, gridAgents.map(a => a.pid))
+  /* LATEST MODE RE-RANKS ON A SWITCH — chosen by the user on 2026-10-23 over a
+     re-rank on every poll, which jumped at moments unrelated to anything they
+     did. When the enlarged agent changes, the whole strip is re-ordered most
+     recent first, so the agent just left (just written into) comes to the
+     front. The click has already landed by then, so nothing moves under it.
+     The first value is skipped: turning the mode on already ranked it. */
+  const lastEnlarged = useRef(enlarged)
+  useEffect(() => {
+    if (lastEnlarged.current === enlarged) return
+    lastEnlarged.current = enlarged
+    if (!latestOn) return
+    setLatestSlots(prev => {
+      const next = latestInitial(everyAgentRef.current, latestCount)
+      return next.length === prev.length && next.every((p, i) => p === prev[i]) ? prev : next
+    })
+  }, [enlarged, latestOn, latestCount])
   const setEnlarged = useCallback((project: string | null, pid: number | null) => {
     // One big thing at a time. Enlarging an agent puts a maximised file view
     // AND a maximised board back into the grid rather than leaving three
@@ -3114,11 +3113,6 @@ export default function Fleet() {
     && boardMax === active?.root
     && boardOpen.has(boardMax)
     && !docks.some(d => d.kind === PANEL_BOARD && d.id === boardMax)
-  /** The tiles are a grid — nothing enlarged, no big file view or board. */
-  const tileGrid = enlarged === null && !filesBig && !boardBig
-  /* A layout switch, or leaving the mode, unmounts or disarms whatever was
-     holding the latest order, and a resting pointer fires no leave for it. */
-  useEffect(() => { setLatestHold(false) }, [tileGrid, latestOn])
 
   /*
     HOW MANY TILES THE GRID ACTUALLY DRAWS — the agents it lays out plus the
@@ -4395,15 +4389,9 @@ export default function Fleet() {
                   onTyping={on => setTypingLabel(on ? focused.terminal_label ?? null : null)}
                 />
               ) : (
-              <div className={tileGrid
+              <div className={enlarged === null && !filesBig && !boardBig
                 ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[fittedColumns] ?? GRID_COLS[2]}`
-                : 'flex-1 min-h-0 flex flex-col'}
-                /* Latest mode's hold, in the GRID layout only: there every tile
-                   is a target, so the pointer anywhere over them holds the
-                   order. In the stacked layout the strip holds it instead. */
-                data-fleet-latest-hold-area={latestOn && tileGrid ? '' : undefined}
-                onPointerEnter={latestOn && tileGrid ? () => setLatestHold(true) : undefined}
-                onPointerLeave={latestOn && tileGrid ? () => setLatestHold(false) : undefined}>
+                : 'flex-1 min-h-0 flex flex-col'}>
               {/* A maximised BOARD joins the strip's world (asked for
                   2026-09-05): the column becomes a stack, the agents move into
                   the tabs above, and the board takes the rest — the exact
@@ -4450,7 +4438,6 @@ export default function Fleet() {
                   onMove={latestOn ? undefined : moveAgent}
                   panels={panelTabs}
                   showProject={latestOn}
-                  onPointerInside={latestOn ? setLatestHold : undefined}
                 />
               )}
               {/* `gridAgents`, not `active.agents`: a docked agent has MOVED to

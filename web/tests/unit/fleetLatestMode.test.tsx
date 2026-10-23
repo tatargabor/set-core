@@ -182,15 +182,10 @@ describe('which agents it shows', () => {
     await waitFor(() => expect(calls.filter(c => c.includes('/api/fleet/agents')).length).toBeGreaterThan(polls))
     // The new answer is on screen: agent 1's tile now says it was written just now.
     await waitFor(() => expect(q(container, '[data-fleet-tile-head="1"] [data-fleet-latest-recency]')!.textContent).toMatch(/you: 0s|you: now|you: 0/))
-    // The new answer re-ranked the tiles: agent 1 is first now.
-    await waitFor(() => expect(tilePids(container)).toEqual([1, 2, 4]))
     fireEvent.change(q(container, '[data-fleet-latest-count]')!, { target: { value: '1' } })
-    // The first digit alone applies nothing — a per-keystroke build drops to one tile here.
-    await act(async () => { vi.advanceTimersByTime(50) })
-    expect(tilePids(container)).toEqual([1, 2, 4])
     fireEvent.change(q(container, '[data-fleet-latest-count]')!, { target: { value: '12' } })
     await act(async () => { vi.advanceTimersByTime(800) })
-    await waitFor(() => expect(tilePids(container)).toEqual([1, 2, 4, 3]))
+    await waitFor(() => expect(tilePids(container)).toEqual([2, 4, 1, 3]))
   })
 
   it('AC-9: two agents with the same name are told apart by their project', async () => {
@@ -206,22 +201,19 @@ describe('which agents it shows', () => {
   })
 })
 
-describe('the order follows recency, held under the pointer', () => {
-  /* The user reversed stable slots on 2026-10-23 (*"latest tabok kellene
-     frissüljenek nem csak amikor megnyitom"*): a poll re-ranks the tiles. The
-     hold is what keeps a click from landing on a tile that just moved. */
-  const agent1Newest = () => fleet([
-    { name: 'p', agents: [agent(1, 'p', 0)] },
-    { name: 'q', agents: [agent(2, 'q', 15)] },
-    { name: 'r', agents: [agent(3, 'r', null), agent(4, 'r', 65)] },
-  ])
+describe('a poll moves nothing; a switch re-ranks', () => {
+  /* Chosen by the user on 2026-10-23, after a re-rank on every poll jumped at
+     moments unrelated to anything they did: the order changes where the reader
+     acted — on a switch of the enlarged agent — and nowhere else. */
   const poll = async () => {
     const before = calls.filter(c => c.includes('/api/fleet/agents')).length
     await act(async () => { vi.advanceTimersByTime(5100) })
     await waitFor(() => expect(calls.filter(c => c.includes('/api/fleet/agents')).length).toBeGreaterThan(before))
   }
+  const tabPids = (c: HTMLElement) =>
+    [...c.querySelectorAll('[data-fleet-agent-tab]')].map(e => Number(e.getAttribute('data-fleet-agent-tab')))
 
-  it('a poll that changes recency re-ranks the tiles; a newcomer enters at its rank', async () => {
+  it('AC-6 / AC-7: a poll that reorders recency moves nothing; a newcomer takes the oldest slot', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { container } = await ready()
     await turnOn(container)
@@ -229,37 +221,76 @@ describe('the order follows recency, held under the pointer', () => {
     await waitFor(() => expect(tilePids(container)).toEqual([2, 4, 1]))
 
     // The reader writes into the third tile: agent 1 is now the most recent.
-    body = agent1Newest()
+    body = fleet([
+      { name: 'p', agents: [agent(1, 'p', 0)] },
+      { name: 'q', agents: [agent(2, 'q', 15)] },
+      { name: 'r', agents: [agent(3, 'r', null), agent(4, 'r', 65)] },
+    ])
     await poll()
-    await waitFor(() => expect(tilePids(container)).toEqual([1, 2, 4]))
+    await waitFor(() => expect(q(container, '[data-fleet-tile-head="1"] [data-fleet-latest-recency]')!.textContent).toMatch(/you: 0s|you: now|you: 0/))
+    expect(tilePids(container)).toEqual([2, 4, 1])
 
-    // Then into agent 3, which is not shown: it enters first, agent 4 (the oldest) leaves.
+    // Then into agent 3, which is not shown: it takes agent 4's slot (the oldest).
     body = fleet([
       { name: 'p', agents: [agent(1, 'p', 5)] },
       { name: 'q', agents: [agent(2, 'q', 20)] },
       { name: 'r', agents: [agent(3, 'r', 0), agent(4, 'r', 70)] },
     ])
     await poll()
-    await waitFor(() => expect(tilePids(container)).toEqual([3, 1, 2]))
+    await waitFor(() => expect(tilePids(container)).toEqual([2, 3, 1]))
   })
 
-  it('the pointer over the tiles holds the order; leaving releases it', async () => {
+  it('AC-8: switching the enlarged agent re-ranks the strip, most recent first', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { container } = await ready()
     await turnOn(container)
-    await waitFor(() => expect(tilePids(container)).toEqual([2, 4, 1, 3]))
-    const area = q(container, '[data-fleet-latest-hold-area]')!
-    fireEvent.pointerEnter(area)
-    body = agent1Newest()
+    await waitFor(() => expect(q(container, '[data-tile-controls="2"] [data-tile-control="enlarge"]')).toBeTruthy())
+    fireEvent.click(q(container, '[data-tile-controls="2"] [data-tile-control="enlarge"]')!)
+    await waitFor(() => expect(tabPids(container)).toEqual([2, 4, 1, 3]))
+
+    // Agent 1 is written into elsewhere; the poll leaves the strip alone.
+    body = fleet([
+      { name: 'p', agents: [agent(1, 'p', 0)] },
+      { name: 'q', agents: [agent(2, 'q', 15)] },
+      { name: 'r', agents: [agent(3, 'r', null), agent(4, 'r', 65)] },
+    ])
     await poll()
-    // The answer is on screen — agent 1's tile says so — and the order held.
-    await waitFor(() => expect(q(container, '[data-fleet-tile-head="1"] [data-fleet-latest-recency]')!.textContent).toMatch(/you: 0s|you: now|you: 0/))
-    expect(tilePids(container)).toEqual([2, 4, 1, 3])
-    fireEvent.pointerLeave(area)
-    await waitFor(() => expect(tilePids(container)).toEqual([1, 2, 4, 3]))
+    await act(async () => { vi.advanceTimersByTime(50) })
+    expect(tabPids(container)).toEqual([2, 4, 1, 3])
+
+    // The reader switches to agent 4: now the strip is re-ranked.
+    fireEvent.click(q(container, '[data-fleet-agent-tab="4"]')!)
+    await waitFor(() => expect(tabPids(container)).toEqual([1, 2, 4, 3]))
+    expect(q(container, '[data-fleet-agent-tab-active="on"]')!.getAttribute('data-fleet-agent-tab')).toBe('4')
   })
 
-  it('there is no re-sort button: the order needs no asking', async () => {
+  it('after a re-rank the active tab is still the agent it was, and Ctrl+→ steps from its NEW place', async () => {
+    // Asked for 2026-10-23: *"az aktiv tabnak is ugrania kell marmint az indexnek
+    // hogy azon maradjon amin volt"* — the selection follows the agent, not the index.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { container } = await ready()
+    await turnOn(container)
+    await waitFor(() => expect(q(container, '[data-tile-controls="2"] [data-tile-control="enlarge"]')).toBeTruthy())
+    fireEvent.click(q(container, '[data-tile-controls="2"] [data-tile-control="enlarge"]')!)
+    await waitFor(() => expect(tabPids(container)).toEqual([2, 4, 1, 3]))
+    body = fleet([
+      { name: 'p', agents: [agent(1, 'p', 0)] },
+      { name: 'q', agents: [agent(2, 'q', 15)] },
+      { name: 'r', agents: [agent(3, 'r', null), agent(4, 'r', 65)] },
+    ])
+    await poll()
+    const active = () => q(container, '[data-fleet-agent-tab-active="on"]')!.getAttribute('data-fleet-agent-tab')
+    const press = (k: 'ArrowLeft' | 'ArrowRight') =>
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: k, ctrlKey: true, bubbles: true, cancelable: true })) })
+    press('ArrowRight')
+    // 4 was second; the switch re-ranks to [1, 2, 4, 3] and 4 stays active, now third.
+    await waitFor(() => expect(tabPids(container)).toEqual([1, 2, 4, 3]))
+    expect(active()).toBe('4')
+    press('ArrowRight')
+    await waitFor(() => expect(active()).toBe('3'))
+  })
+
+  it('there is no re-sort button: the switch does it', async () => {
     const { container } = await ready()
     await turnOn(container)
     expect(q(container, '[data-fleet-latest-resort]')).toBeNull()

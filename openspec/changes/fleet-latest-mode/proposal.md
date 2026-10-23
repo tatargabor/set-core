@@ -23,9 +23,9 @@ signal as it stands; that gap is part of this change.
   projects**, through the existing grid, enlarged view, tab strip and column choices. Its view
   memory (columns, enlarged tile, open terminals) is kept under its own key, apart from every
   project's.
-- **Live order** (reversed 2026-10-23, see design D3): the set is re-ranked most recent first on
-  every poll, held while the pointer is over the tabs or tiles. Was: stable placement — an agent that
-  becomes recent takes the slot of the least-recent one and no other tile moves. A re-sort control
+- **Re-rank on switch** (decided 2026-10-23, see design D3): a poll never moves a tile — a newcomer
+  takes the least recent slot in place — and switching the enlarged agent re-orders the set most recent
+  first. Was: stable placement with a re-sort control. A re-sort control
   re-orders on request.
 - No project is selected in the project column while the mode is on, and every tile names its
   project.
