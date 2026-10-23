@@ -281,7 +281,8 @@ describe('a file that cannot be shown', () => {
     const desktopCalls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
       .filter(c => String(c[0]).includes('/api/desktop/open'))
       .map(c => JSON.parse(String((c[1] as RequestInit).body)))
-      .map(b => (b.viewed === true ? b.path : `NOT VIEWED ${b.path}`))
+      // Only the path: `viewed` was retired with the local-page class (2026-10-23).
+      .map(b => (Object.keys(b).length === 1 ? b.path : `EXTRA FIELDS ${JSON.stringify(b)}`))
 
     await waitFor(() => expect(container.querySelector('[data-fleet-file-desktop="."]')).toBeTruthy())
     fireEvent.click(container.querySelector('[data-fleet-file-desktop]')!)

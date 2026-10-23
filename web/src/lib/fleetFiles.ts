@@ -230,6 +230,12 @@ export const MEDIA_SUFFIXES: readonly string[] = [
   '.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.oga', '.opus', '.wma',
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.avif', '.tif', '.tiff', '.heic', '.ico',
   '.pdf',
+  // Office documents, e-books, archives — 2026-10-23. The editor has no view for
+  // them, so they skip it like a video does. Text formats (`.html` included) are
+  // NOT here: inside a checkout the file view shows them, and its own button
+  // hands them to the desktop.
+  '.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp', '.rtf', '.epub',
+  '.zip', '.tar', '.gz', '.7z',
 ]
 
 /** Whether a path names a media file — by its last suffix, case-insensitively. */

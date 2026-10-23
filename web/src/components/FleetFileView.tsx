@@ -460,7 +460,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
    */
   const [handOver_outcome, setHandOverOutcome] =
     useState<{ ok: boolean; reason?: string } | null>(null)
-  const handOver = useCallback(async (rel: string, viewed = false) => {
+  const handOver = useCallback(async (rel: string) => {
     setHandOverOutcome(null)
     try {
       const res = await fetch('/api/desktop/open', {
@@ -468,10 +468,6 @@ export default function FleetFileView({ root, projectName, request, initial, onC
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: rel ? `${readRoot.replace(/\/+$/, '')}/${rel}` : readRoot,
-          // The toolbar's button: the reader has this file OPEN, which is what
-          // lets the endpoint hand a page (.html) to the browser. The refused
-          // view's offer does not send it — see `desktop.py:refusal`.
-          ...(viewed ? { viewed: true } : {}),
         }),
       })
       if (!res.ok) {
@@ -952,7 +948,7 @@ export default function FleetFileView({ root, projectName, request, initial, onC
             label={openPath
               ? `open ${openPath} with this machine's own application`
               : `open ${readRoot} in this machine's file manager`}
-            onClick={() => { void handOver(openPath ?? '', true) }}
+            onClick={() => { void handOver(openPath ?? '') }}
           />
           <IconButton
             icon={RefreshCw}

@@ -171,35 +171,12 @@ _ASSOCIATION_RUNS = (
     ".pptm", ".potm", ".ppam", ".ppsm", ".sldm",
 )
 
-#: Suffixes whose association INTERPRETS the file at a `file://` origin.
-#:
-#: A milder severity and the same class: `harmless.html` reached
-#: `google-chrome.desktop` in the same measurement. Nothing is executed, but a
-#: local page can read this machine's files, and the text that named it was
-#: written by whatever an agent ran.
-#:
-#: `.svg` and `.svgz` were deliberately NOT here, on the stated grounds that an
-#: image which opened before must still open and that nobody had measured them.
-#: Added 2026-09-28 because both halves of that premise have changed, and the
-#: order matters — the measurement alone would not have been enough:
-#:
-#: - **Measured**, which the exclusion asked for. Sweeping this machine's own
-#:   association table for every suffix the "ordinary file" test hands over:
-#:   `.png`/`.pdf`/`.webp`/`.gif` → Preview, `.mp4` → VLC, `.docx` → Pages,
-#:   `.md`/`.py`/`.xml`/`.json` → Xcode, `.txt` → TextEdit — and `.svg` and
-#:   `.svgz` → **the browser**. So on this desktop an SVG is not an image that
-#:   opens in a viewer; it is a document a browser renders, with `<script>` in
-#:   it executing, which is the property this whole class exists for.
-#: - **`viewed` now exists**, and it did not when the exclusion was written. The
-#:   cost of refusing was then "an SVG cannot be opened at all"; it is now "an
-#:   SVG cannot be opened from a path an agent PRINTED", because the file view's
-#:   own button lifts this class for a file the reader already has open.
-#:
-#: The capability's own spec settles the remainder: a refusal that lets one of
-#: these through is a hole, one that stops an ordinary file is an inconvenience,
-#: and when the two are in tension the refusal wins.
-_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml",
-                           ".svg", ".svgz")
+#: A LOCAL PAGE (`.html`, `.svg`, …) was refused here as its own class until
+#: 2026-10-23: a page is not executed but is interpreted at a `file://` origin.
+#: Retired by the owner's decision that day, after a generated report outside
+#: every project could not be opened from anywhere in the dashboard: a person's
+#: activation opens it in the browser, from the terminal too. The `viewed` request
+#: field existed only to lift that class and went with it.
 
 #: Suffixes for which the executable bit says nothing, so it is not consulted.
 #:
@@ -228,6 +205,26 @@ _MEDIA_SUFFIXES = (
     ".heic", ".ico",
     # document
     ".pdf",
+    # office document, e-book, archive — measured 2026-10-23, same method: typed by
+    # suffix with an ELF or a script inside, handler an office suite or an archive
+    # manager. No view in the editor, so the browser routes these to the desktop
+    # from inside a checkout too. Legacy `.doc/.xls/.ppt` are absent: those formats
+    # can carry macros, and nothing measured what the office suite does with one.
+    ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".rtf", ".epub",
+    ".zip", ".tar", ".gz", ".7z",
+)
+
+#: Text formats the desktop ALSO types by suffix (measured 2026-10-23, same
+#: method), so the bit is not consulted for them either. They are not routed past
+#: the file view: inside a checkout the editor shows them.
+#:
+#: Absent ON PURPOSE, and the measurement is why: `.jsonl`, `.toml`, `.ini` and a
+#: name with no suffix were typed by CONTENT — `application/x-executable` when they
+#: held a binary — so for them the bit is the only thing saying "program". Scripts
+#: (`.sh .py .js` …) are absent too: on an ordinary filesystem their bit is real.
+_TEXT_SUFFIXES = (
+    ".html", ".htm", ".xhtml", ".xml", ".json", ".svg",
+    ".txt", ".md", ".csv", ".tsv", ".log", ".srt", ".vtt", ".yaml", ".yml",
 )
 
 
@@ -238,7 +235,7 @@ def _bit_is_meaningless(lowered_target: str) -> bool:
     macOS the bit still refuses, because nothing was measured there and an entry
     here rests on a measurement, never on plausibility.
     """
-    return _opener_name() == "xdg-open" and lowered_target.endswith(_MEDIA_SUFFIXES)
+    return _opener_name() == "xdg-open" and lowered_target.endswith(_MEDIA_SUFFIXES + _TEXT_SUFFIXES)
 
 
 class OpenRequest(BaseModel):
@@ -250,13 +247,9 @@ class OpenRequest(BaseModel):
     """
 
     path: str
-    #: The reader has THIS file open in the file view and pressed its own
-    #: desktop button. Lifts the local-page refusal and nothing else — see
-    #: `refusal(allow_pages=...)`.
-    viewed: bool = False
 
 
-def refusal(path: str, allow_pages: bool = False) -> str | None:
+def refusal(path: str) -> str | None:
     """Why this path must not be handed to the desktop, or `None` if it may be.
 
     Kept as a function of its own, and returning a REASON rather than a boolean,
@@ -283,9 +276,10 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
     The order is fixed and the resolution comes first:
 
         absolute → realpath → exists → file or directory → launcher suffix
-                 → association runs it → association interprets it
+                 → association runs it
                  → executable bit (REGULAR FILES ONLY; not for a measured
-                   media suffix on Linux — see `_MEDIA_SUFFIXES`)
+                   media, document or text suffix on Linux — see
+                   `_MEDIA_SUFFIXES` and `_TEXT_SUFFIXES`)
 
     Three of those steps are the ones that would be got wrong:
 
@@ -329,21 +323,6 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
             return (f"a {suffix} file is RUN by whatever the desktop associates with it, "
                     "whatever its permissions say")
 
-    # `allow_pages`, asked for by the user on 2026-09-25: from the file view's
-    # own button the reader has the page OPEN and presses a control whose only
-    # job is to hand it to the desktop — a browser is the program they want.
-    # It lifts THIS rule alone. The rules above (launchers, association-runs)
-    # and the executable bit below stay, so nothing that RUNS becomes reachable.
-    #
-    # Stated rather than implied: the server cannot verify the flag — any
-    # caller can set it. What it rests on is the same thing every open here
-    # rests on, a person's click; the terminal route does not send it, because
-    # there the page was merely NAMED by text an agent printed.
-    for suffix in () if allow_pages else _ASSOCIATION_INTERPRETS:
-        if lowered.endswith(suffix):
-            return (f"a {suffix} file opens as a local page that can read this "
-                    "machine's files")
-
     # Judged on the RESOLVED name, like the suffix rules above: a link named
     # `clip.mp4` that points at a program keeps the program's name here.
     if not is_dir and os.access(target, os.X_OK):
@@ -371,9 +350,9 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
     """
     path = (req.path or "").strip()
 
-    why = refusal(path, allow_pages=req.viewed)
+    why = refusal(path)
     if why:
-        logger.info("desktop_open: refused path=%s viewed=%s reason=%s", path, req.viewed, why)
+        logger.info("desktop_open: refused path=%s reason=%s", path, why)
         raise HTTPException(status_code=400, detail=why)
 
     wanted = _opener_name()
@@ -407,7 +386,7 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
         logger.error("desktop_open: could not start %s for %s — %s", wanted, path, exc)
         raise HTTPException(status_code=500, detail=f"could not start {wanted}: {exc}")
 
-    logger.info("desktop_open: handed over path=%s viewed=%s", path, req.viewed)
+    logger.info("desktop_open: handed over path=%s", path)
     # `opened` means ASKED. The message is what reaches the reader, so it is
     # worded as the weaker claim the endpoint can actually stand behind.
     return {"opened": True, "path": path, "message": "handed to the desktop"}

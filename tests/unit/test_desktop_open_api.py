@@ -292,101 +292,35 @@ def test_a_644_archive_a_runtime_executes_is_refused(client, spawned, tmp_path):
     assert spawned == []
 
 
-def test_a_local_page_that_can_read_this_machine_is_refused(client, spawned, tmp_path):
-    """`.html` is the milder severity and the same class.
+def test_a_local_page_is_handed_over_on_a_persons_activation(client, spawned, tmp_path):
+    """The local-page refusal class was retired by the owner on 2026-10-23.
 
-    Nothing is executed — but the page opens at a `file://` origin that can read
-    local files, and the text that named it was written by whatever an agent ran.
+    A generated report outside every project was refused from the terminal, and
+    the file view cannot reach a path outside a project — so it could be opened
+    from nowhere in the dashboard. No flag is needed: the activation is the click.
     """
-    for name in ("report.html", "index.htm", "page.xhtml"):
+    names = ("report.html", "index.htm", "page.xhtml", "diagram.svg", "chart.svgz")
+    for name in names:
         target = tmp_path / name
         target.write_text("<p>hello</p>\n")
 
         res = post(client, str(target))
 
-        assert res.status_code == 400, name
-        assert "local page" in res.json()["detail"], name
+        assert res.status_code == 200, f"{name}: {res.json()}"
+    assert [c["argv"][1] for c in spawned] == [str(tmp_path / n) for n in names]
+
+
+def test_an_old_caller_sending_viewed_lifts_nothing(client, spawned, tmp_path):
+    """`viewed` is gone from the request model; a caller still sending it is
+    ignored rather than rejected, and it must not reach the refusals that stay."""
+    jar = tmp_path / "harmless.jar"
+    jar.write_text("x")
+
+    res = client.post("/api/desktop/open", json={"path": str(jar), "viewed": True})
+
+    assert res.status_code == 400
+    assert "RUN by whatever the desktop associates" in res.json()["detail"]
     assert spawned == []
-
-
-def test_an_svg_is_a_page_the_browser_renders_not_an_image_the_viewer_shows(
-    client, spawned, tmp_path
-):
-    """`.svg` sat in the "still handed over" list until 2026-09-28.
-
-    The exclusion was explicit and its stated ground was that nobody had
-    measured it. Sweeping this machine's association table did: every other
-    suffix that list hands over resolves to a viewer or an editor — Preview,
-    VLC, Pages, Xcode, TextEdit — and `.svg` and `.svgz` resolve to the
-    BROWSER. An SVG rendered as a document executes the `<script>` in it, which
-    is the property the local-page class exists for.
-
-    Asserted at the endpoint rather than against the tuple, so this holds if the
-    list is ever restructured: what is under test is the verdict, not the
-    membership.
-    """
-    for name in ("diagram.svg", "chart.svgz"):
-        target = tmp_path / name
-        target.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n')
-
-        res = post(client, str(target))
-
-        assert res.status_code == 400, name
-        assert "local page" in res.json()["detail"], name
-    assert spawned == []
-
-
-def test_an_svg_the_reader_has_open_is_handed_over_like_any_other_page(
-    client, spawned, tmp_path
-):
-    """The widening costs the file view nothing, and that is why it is affordable.
-
-    Written alongside the refusal above because the two together are the whole
-    decision: the terminal route loses SVG (the path was NAMED by text an agent
-    printed), the file view keeps it (the reader has the file open). A test for
-    only the refusal would describe a harsher change than the one that shipped.
-
-    Stated because it would otherwise read as proof and is not: this test passes
-    on the UNFIXED list too, since an `.svg` that is refused by nothing is also
-    handed over with the flag set. The refusal test above is the one that goes
-    red without the widening. This one holds the boundary, not the change.
-    """
-    page = tmp_path / "diagram.svg"
-    page.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n')
-
-    res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
-
-    assert res.status_code == 200, res.text
-    assert [c["argv"] for c in spawned] == [
-        ["/usr/bin/" + desktop_module._opener_name(), str(page)]
-    ]
-
-
-def test_a_page_the_reader_has_open_is_handed_over_from_the_view(client, spawned, tmp_path):
-    """Asked for 2026-09-25: the file view's own button may hand over a page.
-
-    The flag lifts the local-page rule ONLY — a launcher, a runtime-executed
-    archive and an executable are refused with it exactly as without it.
-    """
-    page = tmp_path / "letter.html"
-    page.write_text("<p>hello</p>\n")
-    res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
-    assert res.status_code == 200, res.text
-    assert [c["argv"] for c in spawned] == [
-        ["/usr/bin/" + desktop_module._opener_name(), str(page)]
-    ]
-
-    entry = tmp_path / "x.desktop"
-    entry.write_text("[Desktop Entry]\nExec=true\n")
-    jar = tmp_path / "a.jar"
-    jar.write_bytes(b"PK")
-    exe = tmp_path / "run.sh"
-    exe.write_text("#!/bin/sh\n")
-    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
-    for target in (entry, jar, exe):
-        res = client.post("/api/desktop/open", json={"path": str(target), "viewed": True})
-        assert res.status_code == 400, target.name
-    assert len(spawned) == 1
 
 
 def test_an_ordinary_file_is_still_handed_over(client, spawned, tmp_path):
@@ -716,3 +650,50 @@ def test_only_session_variables_are_read_from_the_user_manager(monkeypatch):
     assert desktop_module._user_manager_environment() == {
         "DISPLAY": ":1", "WAYLAND_DISPLAY": "wayland-0",
     }
+
+
+# ─── Documents on a drive without Unix permissions ──────────────────────────
+#
+# Measured 2026-10-23 with a copy of /bin/true and a `#!/bin/sh` script per
+# suffix, mode 755: these were typed by NAME, so the bit says nothing about them.
+# `.jsonl`, `.toml`, `.ini` and no suffix were typed by CONTENT
+# (`application/x-executable`), so for them the bit stays the guard.
+
+
+@pytest.mark.parametrize("name", [
+    "index.html", "notes.txt", "data.csv", "rows.json", "spec.md", "sub.srt", "logo.svg",
+    "brief.docx", "sheet.xlsx", "deck.pptx", "book.epub", "bundle.zip", "src.tar.gz",
+])
+def test_a_measured_document_with_the_bit_opens_on_linux(client, spawned, tmp_path, monkeypatch, name):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    target = tmp_path / name
+    target.write_text("x")
+    target.chmod(0o755)
+
+    res = post(client, str(target))
+
+    assert res.status_code == 200, res.json()
+
+
+@pytest.mark.parametrize("name", ["events.jsonl", "conf.toml", "setup.ini", "noext", "run.sh", "tool.py", "app.js"])
+def test_a_content_typed_or_script_suffix_keeps_the_bit(client, spawned, tmp_path, monkeypatch, name):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    target = tmp_path / name
+    target.write_text("x")
+    target.chmod(0o755)
+
+    res = post(client, str(target))
+
+    assert res.status_code == 400
+    assert "executable bit" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_the_document_lift_is_not_taken_on_macos(client, spawned, tmp_path, monkeypatch):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "open")
+    target = tmp_path / "brief.docx"
+    target.write_text("x")
+    target.chmod(0o755)
+
+    assert post(client, str(target)).status_code == 400
+    assert spawned == []

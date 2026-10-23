@@ -759,4 +759,14 @@ describe('a media file goes to the desktop, from inside a checkout too', () => {
     expect(terminalTarget('src/cover.png.ts', where))
       .toEqual({ kind: 'file', ref: { path: 'src/cover.png.ts' }, root, confidence: 'high' })
   })
+
+  it('an office document or archive skips the editor too; a page does not (2026-10-23)', () => {
+    const docs = buildListingIndex(['out/brief.docx', 'out/sheet.XLSX', 'out/bundle.tar.gz', 'out/report.html'])
+    const w = { ...where, listing: docs }
+    for (const rel of ['out/brief.docx', 'out/sheet.XLSX', 'out/bundle.tar.gz']) {
+      expect(terminalTarget(rel, w)).toEqual({ kind: 'desktop', path: `${root}/${rel}`, confidence: 'high' })
+    }
+    expect(terminalTarget('out/report.html', w))
+      .toEqual({ kind: 'file', ref: { path: 'out/report.html' }, root, confidence: 'high' })
+  })
 })
