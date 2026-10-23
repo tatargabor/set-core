@@ -65,6 +65,67 @@ router = APIRouter()
 def _opener_name() -> str:
     return "open" if sys.platform == "darwin" else "xdg-open"
 
+#: What a program needs to put a window on the screen the reader is looking at.
+#:
+#: Measured 2026-10-23: the server had been started without `DISPLAY` (a user
+#: service started before the session exported it), so `xdg-open` still found the
+#: GNOME session over D-Bus and `gio open` started mpv — with no screen to draw
+#: on. The reader saw a busy cursor, mpv burned ~150 % CPU for ten seconds,
+#: exited, and nothing appeared, while this endpoint had answered "handed to the
+#: desktop". The user manager DOES carry the session's variables
+#: (`systemctl --user show-environment`), so they are read from there at the
+#: moment of the open, not at server start, which is exactly when they were absent.
+_SESSION_VARS = (
+    "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY",
+    "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS",
+)
+
+
+def _user_manager_environment() -> Dict[str, str]:
+    """The graphical-session variables the systemd user manager holds, or `{}`."""
+    systemctl = shutil.which("systemctl")
+    if not systemctl:
+        return {}
+    try:
+        out = subprocess.run(
+            [systemctl, "--user", "show-environment"],
+            capture_output=True, text=True, timeout=2, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("desktop_open: could not read the user manager environment — %s", exc)
+        return {}
+    if out.returncode != 0:
+        logger.warning("desktop_open: systemctl --user show-environment exited %s", out.returncode)
+        return {}
+    env: Dict[str, str] = {}
+    for line in out.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key in _SESSION_VARS:
+            env[key] = value
+    return env
+
+
+def _opener_env() -> Dict[str, str] | None:
+    """The environment the opener starts in, or `None` when no screen is reachable.
+
+    `None` is a refusal, not a fallback: started without a display, the handler
+    runs headless and the reader is told it opened. Only the Linux opener needs
+    this — macOS `open` talks to LaunchServices, not to a display variable.
+    """
+    env = dict(os.environ)
+    if _opener_name() != "xdg-open" or env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env
+    session = _user_manager_environment()
+    if not (session.get("DISPLAY") or session.get("WAYLAND_DISPLAY")):
+        return None
+    for key, value in session.items():
+        env.setdefault(key, value)
+    logger.info(
+        "desktop_open: server has no display; borrowed %s from the user manager",
+        ", ".join(f"{k}={session[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY") if k in session),
+    )
+    return env
+
 #: Suffixes that are launchers whatever their permission bits say. A `.desktop`
 #: entry carries its own `Exec=` line, so the executable-bit check below would
 #: wave through a file whose entire purpose is to run a command.
@@ -324,9 +385,19 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
             detail=f"no desktop handler available ({wanted} not found)",
         )
 
+    env = _opener_env()
+    if env is None:
+        logger.warning("desktop_open: no graphical session reachable, nothing started for %s", path)
+        raise HTTPException(
+            status_code=503,
+            detail="no graphical session is visible to the server (no DISPLAY or "
+                   "WAYLAND_DISPLAY), so nothing was started",
+        )
+
     try:
         subprocess.Popen(
             [opener, path],
+            env=env,
             start_new_session=True,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,

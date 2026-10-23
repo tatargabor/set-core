@@ -43,6 +43,9 @@ def spawned(monkeypatch):
 
     monkeypatch.setattr(desktop_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(desktop_module.shutil, "which", lambda name: "/usr/bin/" + name)
+    # The machine running the suite may or may not have a screen; pin one, so
+    # every test here sees the same session whatever the host is.
+    monkeypatch.setenv("DISPLAY", ":0")
     return calls
 
 
@@ -631,3 +634,85 @@ def test_the_browser_routes_exactly_the_suffixes_the_guard_lifts():
     assert m, "MEDIA_SUFFIXES not found in fleetFiles.ts"
     browser = set(re.findall(r"'(\.[a-z0-9]+)'", m.group(1)))
     assert browser == set(desktop_module._MEDIA_SUFFIXES)
+
+
+# ─── A screen to open on ────────────────────────────────────────────────────
+#
+# Measured 2026-10-23: the server ran without DISPLAY, `gio open` still found the
+# session over D-Bus, and mpv started headless — busy cursor, ~150 % CPU, no
+# window — while the endpoint answered "handed to the desktop".
+
+
+def _no_display(monkeypatch):
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+
+
+def test_a_server_without_a_display_borrows_the_sessions(client, spawned, tmp_path, monkeypatch):
+    _no_display(monkeypatch)
+    monkeypatch.setattr(
+        desktop_module, "_user_manager_environment",
+        lambda: {"DISPLAY": ":1", "XAUTHORITY": "/run/user/1000/gdm/Xauthority"},
+    )
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"not really a video")
+
+    res = post(client, str(clip))
+
+    assert res.status_code == 200
+    env = spawned[0]["kwargs"]["env"]
+    assert env["DISPLAY"] == ":1"
+    assert env["XAUTHORITY"] == "/run/user/1000/gdm/Xauthority"
+
+
+def test_no_screen_anywhere_is_a_refusal_and_nothing_starts(client, spawned, tmp_path, monkeypatch):
+    _no_display(monkeypatch)
+    monkeypatch.setattr(desktop_module, "_user_manager_environment", lambda: {})
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"not really a video")
+
+    res = post(client, str(clip))
+
+    assert res.status_code == 503
+    assert "graphical session" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_a_display_the_server_already_has_is_not_replaced(client, spawned, tmp_path, monkeypatch):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    monkeypatch.setenv("DISPLAY", ":7")
+    monkeypatch.setattr(
+        desktop_module, "_user_manager_environment",
+        lambda: (_ for _ in ()).throw(AssertionError("asked although DISPLAY was set")),
+    )
+    doc = tmp_path / "note.txt"
+    doc.write_text("hello")
+
+    res = post(client, str(doc))
+
+    assert res.status_code == 200
+    assert spawned[0]["kwargs"]["env"]["DISPLAY"] == ":7"
+
+
+def test_macos_open_needs_no_display(client, spawned, tmp_path, monkeypatch):
+    _no_display(monkeypatch)
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "open")
+    monkeypatch.setattr(desktop_module, "_user_manager_environment", lambda: {})
+    doc = tmp_path / "note.txt"
+    doc.write_text("hello")
+
+    assert post(client, str(doc)).status_code == 200
+
+
+def test_only_session_variables_are_read_from_the_user_manager(monkeypatch):
+    class Done:
+        returncode = 0
+        stdout = "DISPLAY=:1\nPATH=/evil\nWAYLAND_DISPLAY=wayland-0\nLD_PRELOAD=/x.so\n"
+
+    monkeypatch.setattr(desktop_module.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(desktop_module.subprocess, "run", lambda *a, **k: Done())
+
+    assert desktop_module._user_manager_environment() == {
+        "DISPLAY": ":1", "WAYLAND_DISPLAY": "wayland-0",
+    }
