@@ -23,7 +23,8 @@ signal as it stands; that gap is part of this change.
   projects**, through the existing grid, enlarged view, tab strip and column choices. Its view
   memory (columns, enlarged tile, open terminals) is kept under its own key, apart from every
   project's.
-- **Stable placement:** the set is sorted when the mode is turned on; afterwards an agent that
+- **Live order** (reversed 2026-10-23, see design D3): the set is re-ranked most recent first on
+  every poll, held while the pointer is over the tabs or tiles. Was: stable placement — an agent that
   becomes recent takes the slot of the least-recent one and no other tile moves. A re-sort control
   re-orders on request.
 - No project is selected in the project column while the mode is on, and every tile names its

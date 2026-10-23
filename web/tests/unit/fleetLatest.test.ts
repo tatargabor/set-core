@@ -1,13 +1,13 @@
 /**
- * fleet-latest-mode §2 — which agents the mode shows, and that nothing moves
- * under the reader's hand. Pure functions, so the stability rule is measured
- * without a screen: an `update` that re-sorted would pass every "is the set
- * right" check and still move tile 3 the moment the reader typed into it.
+ * fleet-latest-mode §2 — which agents the mode shows, and in what order. Pure
+ * functions, so the ranking is measured without a screen: an `update` that
+ * kept the first order would pass every "is the set right" check and still
+ * show the tabs in the order they were first opened.
  */
 import { describe, expect, it } from 'vitest'
 
 import {
-  allAgents, clampCount, initial, LATEST_VIEW_KEY, latestProject, resort, rootOfAgent, update, stepTab, tabSwitchDirection,
+  allAgents, clampCount, initial, LATEST_VIEW_KEY, latestProject, rootOfAgent, update, stepTab, tabSwitchDirection,
 } from '../../src/lib/fleetLatest'
 import type { FleetAgent, FleetProject } from '../../src/lib/fleetTypes'
 
@@ -44,40 +44,37 @@ describe('the selection', () => {
   })
 })
 
-describe('the placement is stable', () => {
+describe('the order follows recency', () => {
+  // The user reversed stable slots on 2026-10-23: the order is re-ranked on
+  // every poll. What keeps a click safe is the page's pointer hold, measured in
+  // fleetLatestMode.test.tsx — not this function.
   const four = [agent(1, 10), agent(2, 20), agent(3, 30), agent(4, 40)]
 
-  it('typing into a shown agent moves nothing', () => {
+  it('typing into a shown agent moves it first', () => {
     const slots = initial(four, 4)
     // Agent 3 is now the most recent of all.
-    const after = update(slots, [agent(1, 15), agent(2, 25), agent(3, 0), agent(4, 45)], 4)
-    expect(after).toEqual([1, 2, 3, 4])
-    // And it is the same array, so state holding it does not re-render.
-    expect(after).toBe(slots)
+    expect(update(slots, [agent(1, 15), agent(2, 25), agent(3, 0), agent(4, 45)], 4)).toEqual([3, 1, 2, 4])
   })
 
-  it('a newcomer takes the slot of the oldest shown agent, and only that one', () => {
+  it('an unchanged order is the same array, so state holding it does not re-render', () => {
     const slots = initial(four, 4)
-    const after = update(slots, [...four, agent(9, 0)], 4)
-    expect(after).toEqual([1, 2, 3, 9])
+    expect(update(slots, [agent(1, 11), agent(2, 21), agent(3, 31), agent(4, 41)], 4)).toBe(slots)
   })
 
-  it('the oldest is the one replaced even when it is not last', () => {
-    const slots = [4, 1, 2, 3]
-    expect(update(slots, [...four, agent(9, 0)], 4)).toEqual([9, 1, 2, 3])
+  it('a newcomer enters at its rank and the least recent leaves', () => {
+    expect(update(initial(four, 4), [...four, agent(9, 0)], 4)).toEqual([9, 1, 2, 3])
   })
 
-  it('a departed agent frees its slot for the next entrant', () => {
+  it('a departed agent is replaced by the next most recent', () => {
     const slots = initial(four, 3) // [1, 2, 3]
-    const after = update(slots, [agent(1, 10), agent(3, 30), agent(4, 40)], 3)
-    expect(after).toEqual([1, 4, 3])
+    expect(update(slots, [agent(1, 10), agent(3, 30), agent(4, 40)], 3)).toEqual([1, 3, 4])
   })
 
   it('a departed agent with nobody to replace it leaves no empty slot', () => {
     expect(update([1, 2], [agent(1, 10)], 5)).toEqual([1])
   })
 
-  it('a smaller count drops the oldest shown agents', () => {
+  it('a smaller count keeps the most recent', () => {
     expect(update([4, 1, 2, 3], four, 2)).toEqual([1, 2])
   })
 
@@ -85,9 +82,9 @@ describe('the placement is stable', () => {
     expect(update([1, 2], four, 3)).toEqual([1, 2, 3])
   })
 
-  it('re-sort orders most recent first', () => {
+  it('unmeasured agents come after every measured one', () => {
     const now = [agent(1, 50), agent(2, 5), agent(3, null), agent(4, 1)]
-    expect(resort(now, 4)).toEqual([4, 2, 1, 3])
+    expect(update([], now, 4)).toEqual([4, 2, 1, 3])
   })
 })
 

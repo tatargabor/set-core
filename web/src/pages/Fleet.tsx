@@ -48,7 +48,7 @@ import {
   type Splits,
 } from '../lib/fleetSplits'
 import FleetTerminal from '../components/FleetTerminal'
-import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, ListOrdered, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
+import { Bot, CirclePlus, Columns2, Columns3, Columns4, EyeOff, FolderTree, Folders, History, Kanban, Layers, Minimize2, Presentation, Repeat, Square, TriangleAlert } from 'lucide-react'
 import { Chip, Dot } from '../components/Chip'
 
 import { age } from '../lib/fleetAge'
@@ -56,7 +56,7 @@ import { COLUMN_CHOICES, fitColumns, readView, resolveColumns, resolveEnlarged, 
 import type { ProjectView } from '../lib/fleetViewState'
 import {
   LATEST_VIEW_KEY, MAX_LATEST_COUNT, MIN_LATEST_COUNT, agentsInSlots, allAgents, clampCount, initial as latestInitial,
-  latestProject, readLatestPrefs, recencyOf, resort as latestResort, rootOfAgent, update as latestUpdate, writeLatestPrefs, stepTab, tabSwitchDirection,
+  latestProject, readLatestPrefs, recencyOf, rootOfAgent, update as latestUpdate, writeLatestPrefs, stepTab, tabSwitchDirection,
 } from '../lib/fleetLatest'
 import type { LatestPrefs } from '../lib/fleetLatest'
 import { resolvePanels, unrenderablePanels } from '../lib/fleetPanels'
@@ -827,8 +827,15 @@ function Excerpt({ agent, lines = 2, grow = false }: { agent: FleetAgent; lines?
  * one honestly. The cost is one click — select the agent, then type into its
  * card — and it is stated here rather than discovered later.
  */
-function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProject = false }: {
+function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProject = false, onPointerInside }: {
   agents: readonly FleetAgent[]
+  /**
+   * Told when the pointer enters and leaves the strip — latest mode holds its
+   * re-rank while it is inside, so a tab does not move under a click. Told
+   * `false` on unmount too: a strip that disappears under a resting pointer
+   * fires no leave, and the hold would otherwise outlive it.
+   */
+  onPointerInside?: (inside: boolean) => void
   /**
    * Name each tab's project too — latest mode, where the strip holds agents of
    * several projects and two of them can carry the same name.
@@ -878,6 +885,9 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
     click on some other tab.
   */
   const moved = useRef(false)
+  const insideRef = useRef(onPointerInside)
+  insideRef.current = onPointerInside
+  useEffect(() => () => insideRef.current?.(false), [])
   const { handlers, dragFrom, dragTo } = useReorder(
     (from, to) => { moved.current = true; onMove?.(from, to) },
     strip,
@@ -890,6 +900,8 @@ function AgentTabs({ agents, selected, onSelect, onMove, panels = [], showProjec
       role="tablist"
       aria-label="agents in this project"
       data-fleet-agent-tabs={agents.length}
+      onPointerEnter={onPointerInside ? () => onPointerInside(true) : undefined}
+      onPointerLeave={onPointerInside ? () => onPointerInside(false) : undefined}
       /* The strip WRAPS. It used to scroll sideways and never wrap, on the
          reasoning that a strip growing downwards is a row list with extra steps.
          The user reversed that on 2026-10-20 (*"ha nem fer ki menjen két sorba
@@ -2421,12 +2433,21 @@ export default function Fleet() {
   // first project in the ARRANGED order and says so through `onSelect`, so the
   // selected project is always one the reader can find in the list.
   const everyAgent = useMemo(() => allAgents(projects), [projects])
-  /* Patched on every answer, never re-sorted — see `latestUpdate`. It returns
-     the same array when nothing changed, so a poll costs no render here. */
+  /* Re-ranked on every answer, most recent first — see `latestUpdate`, which
+     returns the same array when the order did not change, so a poll costs no
+     render here.
+
+     THE HOLD: no re-rank while the pointer is over the tab strip, or over the
+     tiles in the grid layout. A tab that moves as the reader clicks it sends the
+     click to its neighbour — the reflow `ui-quality.md` forbids. The order
+     catches up the moment the pointer leaves. Not over the enlarged tile: that
+     is where the reader types, and a hold there would freeze the order exactly
+     while it is changing, which is the complaint this replaced. */
+  const [latestHold, setLatestHold] = useState(false)
   useEffect(() => {
-    if (!latestOn || !data) return
+    if (!latestOn || !data || latestHold) return
     setLatestSlots(prev => latestUpdate(prev, everyAgent, latestCount))
-  }, [latestOn, latestCount, everyAgent, data])
+  }, [latestOn, latestCount, everyAgent, data, latestHold])
   const latestAgents = useMemo(() => agentsInSlots(latestSlots, everyAgent), [latestSlots, everyAgent])
   const latestAgentsRef = useRef<FleetAgent[]>([])
   latestAgentsRef.current = latestAgents
@@ -3093,6 +3114,11 @@ export default function Fleet() {
     && boardMax === active?.root
     && boardOpen.has(boardMax)
     && !docks.some(d => d.kind === PANEL_BOARD && d.id === boardMax)
+  /** The tiles are a grid — nothing enlarged, no big file view or board. */
+  const tileGrid = enlarged === null && !filesBig && !boardBig
+  /* A layout switch, or leaving the mode, unmounts or disarms whatever was
+     holding the latest order, and a resting pointer fires no leave for it. */
+  useEffect(() => { setLatestHold(false) }, [tileGrid, latestOn])
 
   /*
     HOW MANY TILES THE GRID ACTUALLY DRAWS — the agents it lays out plus the
@@ -3276,9 +3302,6 @@ export default function Fleet() {
     }
     setLatest({ on })
   }, [everyAgent, latestCount, pmOn, togglePm, setLatest])
-  const resortLatest = useCallback(() => {
-    setLatestSlots(latestResort(everyAgent, latestCount))
-  }, [everyAgent, latestCount])
   /** Leave the mode for a project the reader chose — spec: choosing one turns it off. */
   const selectProject = useCallback((name: string) => {
     setLatest({ on: false })
@@ -3682,13 +3705,6 @@ export default function Fleet() {
               title="How many agents latest mode shows"
               className="w-11 px-1 py-0.5 rounded border border-surface-line bg-surface-panel text-xs text-fg-strong tabular-nums"
             />
-            <button
-              onClick={resortLatest}
-              data-fleet-latest-resort
-              aria-label="re-sort by recency"
-              title="Re-sort: most recently written first. Tiles otherwise keep their place while you work."
-              className="p-1 rounded border border-surface-line text-fg-muted hover:text-fg-strong shrink-0"
-            ><ListOrdered size={13} strokeWidth={1.75} /></button>
           </span>
         )}
         {/* The question relay: while it is on, agents' blocking questions go to the chat
@@ -4379,9 +4395,15 @@ export default function Fleet() {
                   onTyping={on => setTypingLabel(on ? focused.terminal_label ?? null : null)}
                 />
               ) : (
-              <div className={enlarged === null && !filesBig && !boardBig
+              <div className={tileGrid
                 ? `flex-1 min-h-0 overflow-y-auto grid gap-2 auto-rows-[minmax(11rem,1fr)] ${GRID_COLS[fittedColumns] ?? GRID_COLS[2]}`
-                : 'flex-1 min-h-0 flex flex-col'}>
+                : 'flex-1 min-h-0 flex flex-col'}
+                /* Latest mode's hold, in the GRID layout only: there every tile
+                   is a target, so the pointer anywhere over them holds the
+                   order. In the stacked layout the strip holds it instead. */
+                data-fleet-latest-hold-area={latestOn && tileGrid ? '' : undefined}
+                onPointerEnter={latestOn && tileGrid ? () => setLatestHold(true) : undefined}
+                onPointerLeave={latestOn && tileGrid ? () => setLatestHold(false) : undefined}>
               {/* A maximised BOARD joins the strip's world (asked for
                   2026-09-05): the column becomes a stack, the agents move into
                   the tabs above, and the board takes the rest — the exact
@@ -4428,6 +4450,7 @@ export default function Fleet() {
                   onMove={latestOn ? undefined : moveAgent}
                   panels={panelTabs}
                   showProject={latestOn}
+                  onPointerInside={latestOn ? setLatestHold : undefined}
                 />
               )}
               {/* `gridAgents`, not `active.agents`: a docked agent has MOVED to

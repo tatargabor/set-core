@@ -57,25 +57,29 @@ wrong tree.
 
 This is the main implementation risk, and it is why the spec has a scenario for it.
 
-### D3. Stable slots, with replacement of the least recent
+### D3. The order follows recency on every poll, held under the pointer
 
-The selection is a list of slots, computed by a pure function in `web/src/lib/fleetLatest.ts`:
+**Reversed 2026-10-23 by the user**, after using the mode for three days: *"latest tabok kellene
+frissüljenek nem csak amikor megnyitom, most a sorrend mindig az ahogy megnyílt először"*. The stable
+slots below made the strip read as "the order I opened it in", which is not what the mode is named
+for.
 
 ```
-initial(agents, n)            → slots sorted by recency (measured first, unmeasured last)
-update(slots, agents, n)      → same slots; departed agents free their slot;
-                                each agent now within the top n but not slotted takes the free
-                                slot, or else the slot of the slotted agent with the oldest recency
-resort(slots, agents, n)      → initial(agents, n)
+initial(agents, n)            → the n most recent (measured first, unmeasured last)
+update(slots, agents, n)      → initial(agents, n); the SAME array when the order did not change
 ```
 
-*Alternative considered:* re-sorting on every poll. Rejected: typing into tile #3 makes it the most
-recent, so the whole grid would shift at the moment the reader is using it. `ui-quality.md` forbids
-exactly that — moving what the reader is about to click.
+The page re-ranks on every poll unless the pointer is over the tab strip, or over the tiles in the
+grid layout (`latestHold`). That hold is what is left of the original concern: a tab that moves as it
+is clicked sends the click to its neighbour, the reflow `ui-quality.md` forbids. The enlarged agent
+does NOT hold — it is where the reader types, and a hold there would freeze the order exactly while it
+is changing. A layout switch or leaving the mode clears the hold, since an unmounted strip fires no
+pointer-leave. The re-sort control is gone: with a live order it had nothing left to do.
 
-*Alternative considered:* freezing the set entirely until re-sort. Rejected: the reader's newly
-started or newly answered agent would be invisible until they remembered to press re-sort, which
-recreates the click this mode exists to remove.
+*Superseded (2026-10-20 to 2026-10-23):* stable slots, a newcomer taking the slot of the least
+recent, and a re-sort control. Rejected re-sorting on every poll because typing into tile #3 would
+shift the grid under the reader — the pointer hold answers that for the strip and the grid without
+freezing the order.
 
 ### D4. Mutual exclusion with PM mode lives in the page, not the server
 
