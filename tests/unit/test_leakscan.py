@@ -1081,6 +1081,30 @@ class TestContentShapes:
         assert r.returncode == 0, r.stderr
         assert "price" in r.stderr and "advisory" in r.stderr
 
+    def test_an_advisory_price_on_a_public_remote_is_not_called_private(
+            self, repo, tmp_path):
+        # 2026-10-25: a push range holding only a price read "remote is public"
+        # and then "Every remote of this repository is private".
+        home = _gate_home(tmp_path, vis={PUBLIC_URL: "public"})
+        _set_remote(repo, PUBLIC_URL)
+        commit(repo, "p.md", f"the package costs {FAKE_PRICE} a month\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+        assert "remote is public" in r.stderr, r.stderr
+        assert "is private" not in r.stderr, r.stderr
+        assert "Every finding above is advisory" in r.stderr, r.stderr
+
+    def test_an_advisory_price_at_commit_is_not_called_private(
+            self, repo, tmp_path):
+        home = _gate_home(tmp_path, vis={PUBLIC_URL: "public"})
+        _set_remote(repo, PUBLIC_URL)
+        (repo / "p.md").write_text(f"the package costs {FAKE_PRICE} a month\n")
+        git("add", "p.md", cwd=repo)
+        r = _scan(repo, home, "--staged")
+        assert r.returncode == 0, r.stderr
+        assert "commit allowed, findings are advisory" in r.stderr, r.stderr
+        assert "is private" not in r.stderr, r.stderr
+
     def test_a_price_does_not_shadow_a_blocking_finding_on_its_line(
             self, repo, tmp_path):
         home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
