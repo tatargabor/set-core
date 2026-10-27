@@ -45,6 +45,12 @@ content is copied into the framework.
 - **Account ownership in the client's name** is a required section, because every later
   exit, revocation and handover depends on it.
 
+- **Settled by the user (2026-10-27):**
+  - Reading meeting notes is acceptable: the skill starts from decisions people already
+    wrote down and runs only on request, so it is not the excluded meeting→requirements pipeline.
+  - The name stays `set:blueprint`, as `set:kb` does.
+  - The default input stays the newest `docs/*decisions*.md`, overridable by an argument.
+
 ## Risks / Trade-offs
 
 - [The skill reads like a checklist and an agent fills sections with filler] → each
