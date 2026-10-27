@@ -1,7 +1,7 @@
 ## Phase 1: Proprietary Content Removal
 - [x] 1.1 Update `.gitignore` to exclude `.set-core/*.json`
 - [x] 1.2 Create example config templates
-- [x] 1.3 Replace Zengo URLs with GitHub URL
+- [x] 1.3 Replace former-employer URLs with GitHub URL
 - [x] 1.4 Replace EXAMPLE with MYPROJECT
 - [x] 1.5 Remove personal paths from CLAUDE.md
 - [x] 1.6 Update bin/wt-jira to use dynamic paths

@@ -318,7 +318,7 @@ describe('the escalation on the project row', () => {
   })
 })
 
-describe('an open question on the project column — B-161', () => {
+describe('an open question on the project column — B-168', () => {
   // Reported 2026-10-10 with a screenshot: the tile said "asking you ·
   // AskUserQuestion 7s" while the project row showed only the grey `1 7s`
   // that every finished turn shows for its first 15 seconds.

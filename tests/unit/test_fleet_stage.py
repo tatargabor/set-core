@@ -453,7 +453,7 @@ def test_the_default_flow_is_the_openspec_lifecycle():
 
 
 # --------------------------------------------------------------------------- #
-# B-162 — an idle agent is not an unmatched one
+# B-169 — an idle agent is not an unmatched one
 # --------------------------------------------------------------------------- #
 
 

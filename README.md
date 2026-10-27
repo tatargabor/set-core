@@ -18,7 +18,7 @@
 > | **fleet view** | a live screen of every running agent across projects, with per-agent log and terminal |
 > | **work cycle** (`lib/set_workcycle`) | the sectioned apply loop, lifted out of a consumer project into the framework |
 > | **consumer status contract** | a project declares its bugs, releases, test system and live system; set-core reads them through a domain-free layer |
-> | **`set-leakscan`** | a pre-push and pre-tool gate that refuses to publish consumer names, credentials, local paths or phone numbers |
+> | **`set-leakscan`** | a commit, pre-push and pre-tool gate that refuses to publish consumer names, credentials, local paths, phone numbers, private deny-list terms, transcript and `.env` files — with masked output |
 >
 > Work on several of these is still in flight, and the documentation will be
 > refreshed once they land together rather than in pieces. **Until then, treat
@@ -50,7 +50,6 @@ Built with set-core, using set-core. This project was developed using its own or
 | Repository | Description |
 |------------|-------------|
 | **[set-core](https://github.com/tatargabor/set-core)** | Core orchestration engine, web module, dashboard, CLI tools |
-| [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
 | [set-voice-agent-delivery](https://github.com/tatargabor/set-voice-agent-delivery) | Voice agent project type — Soniox STT, Google TTS, spec-driven customer interaction |
 
 ---
@@ -367,7 +366,6 @@ See [docs/guide/writing-specs.md](docs/guide/writing-specs.md) for the complete 
 
 | Tool | Purpose |
 |------|---------|
-| [set-spec-capture](https://git.setcode.dev/root/set-spec-capture) | Capture specs from any source (web, PDF, conversation) |
 | set-design-import | Pull a v0.app export, generate the design manifest, optionally run hygiene scan |
 | set-design-hygiene | Scan a design export for 9 antipatterns (mock arrays, hardcoded strings, broken routes, …) |
 | set-run-logs | Forensic CLI for completed orchestration runs — events, gate timing, agent decisions |

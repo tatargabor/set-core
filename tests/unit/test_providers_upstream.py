@@ -138,7 +138,7 @@ def test_every_shipped_id_is_current(machine):
     assert r.verdict == up.CURRENT and r.not_shipped == [] and r.not_declared == []
 
 
-# ---------------------------------------------------------------- machine catalogue (B-159)
+# ---------------------------------------------------------------- machine catalogue (B-166)
 
 def test_machine_file_older_than_shipped_names_is_behind(machine):   # AC-8
     path = machine(models=[m for m in ALL_SHIPPED if m not in ("opus-5-5", "opus-5-5-1m")])

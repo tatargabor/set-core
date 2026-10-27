@@ -676,6 +676,7 @@ def fleet_agents(include_oneshot: bool = Query(False)) -> Dict[str, Any]:
                                  messaging=_safe_messaging())
 
     states = {agent.pid: read_state(agent.session_log, record=agent.record) for agent in agents}
+    attention_state.prune_human_cache(agent.session_log for agent in agents)
     by_pid = {agent.pid: agent for agent in agents}
     # Asked once for the whole listing, not once per agent: it is one socket
     # round trip and the answer is the same for every row.
@@ -2492,6 +2493,85 @@ def fleet_install_module(name: str, body: InstallBody) -> Dict[str, Any]:
         "changed_nothing": report.changed_nothing,
         "lines": report.as_lines(),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Wave boards — every known project's boards, summarised for the header
+# --------------------------------------------------------------------------- #
+
+@router.get("/api/fleet/waveboards")
+def fleet_waveboards() -> Dict[str, Any]:
+    """One summary per `docs/waveboard/*.json` in every project the list knows.
+
+    The registry and the messaging registry only, without agent discovery: the
+    names match the project column, and a board read does not pay for a process
+    walk. Read-only; see `fleet/waveboards.py` for what is and is not returned.
+    """
+    from ..fleet.waveboards import read_waveboards
+
+    projects = discover_projects([], registered=_safe_registry(), messaging=_safe_messaging())
+    return {"boards": read_waveboards(projects)}
+
+
+# --------------------------------------------------------------------------- #
+# Question relay — the switch, its readiness, and what waits on the channel
+# --------------------------------------------------------------------------- #
+
+def _relay_payload() -> Dict[str, Any]:
+    from ..fleet import question_relay as qr
+
+    state = qr.readiness()
+    now = time.time()
+    waiting = []
+    for rec in qr.list_waiting():
+        started = rec.get("started")
+        waiting.append({
+            "session_id": rec.get("session_id"),
+            "project": rec.get("project"),
+            "questions": rec.get("questions"),
+            "target": rec.get("target"),
+            "seconds": (now - started) if isinstance(started, (int, float)) else None,
+            "release_requested": bool(rec.get("release_requested")),
+        })
+    return {**state, "waiting": waiting}
+
+
+@router.get("/api/fleet/question-relay")
+def fleet_question_relay() -> Dict[str, Any]:
+    """Whether agents' blocking questions go to the chat channel, and which are waiting there.
+
+    Read from the machine's local config and the relay's own waiting records — the hook
+    that does the relaying is a separate process in every session, so the switch has to be
+    a file it can read, and the waiting state has to be one it writes.
+    """
+    return _relay_payload()
+
+
+class RelayToggleBody(BaseModel):
+    enabled: bool
+
+
+@router.post("/api/fleet/question-relay")
+def fleet_question_relay_toggle(body: RelayToggleBody) -> Dict[str, Any]:
+    """Turn the relay on or off. On is refused, naming the missing keys, while not ready."""
+    from ..fleet import question_relay as qr
+
+    try:
+        qr.set_enabled(body.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    logger.info("fleet api: question relay %s", "on" if body.enabled else "off")
+    return _relay_payload()
+
+
+@router.post("/api/fleet/question-relay/release/{session_id}")
+def fleet_question_relay_release(session_id: str) -> Dict[str, Any]:
+    """Hand one waiting question back to its terminal; the hook lets go within one poll."""
+    from ..fleet import question_relay as qr
+
+    if not qr.request_release(session_id):
+        raise HTTPException(status_code=404, detail="no question is waiting for that session")
+    return _relay_payload()
 
 
 # --------------------------------------------------------------------------- #

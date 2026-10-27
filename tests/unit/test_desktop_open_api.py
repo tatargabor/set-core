@@ -43,6 +43,9 @@ def spawned(monkeypatch):
 
     monkeypatch.setattr(desktop_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(desktop_module.shutil, "which", lambda name: "/usr/bin/" + name)
+    # The machine running the suite may or may not have a screen; pin one, so
+    # every test here sees the same session whatever the host is.
+    monkeypatch.setenv("DISPLAY", ":0")
     return calls
 
 
@@ -289,101 +292,35 @@ def test_a_644_archive_a_runtime_executes_is_refused(client, spawned, tmp_path):
     assert spawned == []
 
 
-def test_a_local_page_that_can_read_this_machine_is_refused(client, spawned, tmp_path):
-    """`.html` is the milder severity and the same class.
+def test_a_local_page_is_handed_over_on_a_persons_activation(client, spawned, tmp_path):
+    """The local-page refusal class was retired by the owner on 2026-10-23.
 
-    Nothing is executed — but the page opens at a `file://` origin that can read
-    local files, and the text that named it was written by whatever an agent ran.
+    A generated report outside every project was refused from the terminal, and
+    the file view cannot reach a path outside a project — so it could be opened
+    from nowhere in the dashboard. No flag is needed: the activation is the click.
     """
-    for name in ("report.html", "index.htm", "page.xhtml"):
+    names = ("report.html", "index.htm", "page.xhtml", "diagram.svg", "chart.svgz")
+    for name in names:
         target = tmp_path / name
         target.write_text("<p>hello</p>\n")
 
         res = post(client, str(target))
 
-        assert res.status_code == 400, name
-        assert "local page" in res.json()["detail"], name
+        assert res.status_code == 200, f"{name}: {res.json()}"
+    assert [c["argv"][1] for c in spawned] == [str(tmp_path / n) for n in names]
+
+
+def test_an_old_caller_sending_viewed_lifts_nothing(client, spawned, tmp_path):
+    """`viewed` is gone from the request model; a caller still sending it is
+    ignored rather than rejected, and it must not reach the refusals that stay."""
+    jar = tmp_path / "harmless.jar"
+    jar.write_text("x")
+
+    res = client.post("/api/desktop/open", json={"path": str(jar), "viewed": True})
+
+    assert res.status_code == 400
+    assert "RUN by whatever the desktop associates" in res.json()["detail"]
     assert spawned == []
-
-
-def test_an_svg_is_a_page_the_browser_renders_not_an_image_the_viewer_shows(
-    client, spawned, tmp_path
-):
-    """`.svg` sat in the "still handed over" list until 2026-09-28.
-
-    The exclusion was explicit and its stated ground was that nobody had
-    measured it. Sweeping this machine's association table did: every other
-    suffix that list hands over resolves to a viewer or an editor — Preview,
-    VLC, Pages, Xcode, TextEdit — and `.svg` and `.svgz` resolve to the
-    BROWSER. An SVG rendered as a document executes the `<script>` in it, which
-    is the property the local-page class exists for.
-
-    Asserted at the endpoint rather than against the tuple, so this holds if the
-    list is ever restructured: what is under test is the verdict, not the
-    membership.
-    """
-    for name in ("diagram.svg", "chart.svgz"):
-        target = tmp_path / name
-        target.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n')
-
-        res = post(client, str(target))
-
-        assert res.status_code == 400, name
-        assert "local page" in res.json()["detail"], name
-    assert spawned == []
-
-
-def test_an_svg_the_reader_has_open_is_handed_over_like_any_other_page(
-    client, spawned, tmp_path
-):
-    """The widening costs the file view nothing, and that is why it is affordable.
-
-    Written alongside the refusal above because the two together are the whole
-    decision: the terminal route loses SVG (the path was NAMED by text an agent
-    printed), the file view keeps it (the reader has the file open). A test for
-    only the refusal would describe a harsher change than the one that shipped.
-
-    Stated because it would otherwise read as proof and is not: this test passes
-    on the UNFIXED list too, since an `.svg` that is refused by nothing is also
-    handed over with the flag set. The refusal test above is the one that goes
-    red without the widening. This one holds the boundary, not the change.
-    """
-    page = tmp_path / "diagram.svg"
-    page.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n')
-
-    res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
-
-    assert res.status_code == 200, res.text
-    assert [c["argv"] for c in spawned] == [
-        ["/usr/bin/" + desktop_module._opener_name(), str(page)]
-    ]
-
-
-def test_a_page_the_reader_has_open_is_handed_over_from_the_view(client, spawned, tmp_path):
-    """Asked for 2026-09-25: the file view's own button may hand over a page.
-
-    The flag lifts the local-page rule ONLY — a launcher, a runtime-executed
-    archive and an executable are refused with it exactly as without it.
-    """
-    page = tmp_path / "letter.html"
-    page.write_text("<p>hello</p>\n")
-    res = client.post("/api/desktop/open", json={"path": str(page), "viewed": True})
-    assert res.status_code == 200, res.text
-    assert [c["argv"] for c in spawned] == [
-        ["/usr/bin/" + desktop_module._opener_name(), str(page)]
-    ]
-
-    entry = tmp_path / "x.desktop"
-    entry.write_text("[Desktop Entry]\nExec=true\n")
-    jar = tmp_path / "a.jar"
-    jar.write_bytes(b"PK")
-    exe = tmp_path / "run.sh"
-    exe.write_text("#!/bin/sh\n")
-    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
-    for target in (entry, jar, exe):
-        res = client.post("/api/desktop/open", json={"path": str(target), "viewed": True})
-        assert res.status_code == 400, target.name
-    assert len(spawned) == 1
 
 
 def test_an_ordinary_file_is_still_handed_over(client, spawned, tmp_path):
@@ -556,3 +493,207 @@ def test_workflow_is_deliberately_not_refused(tmp_path):
 
     assert desktop_module.refusal(str(f)) is None
 
+
+
+# ─── Media whose executable bit says nothing (2026-10-19) ───────────────────
+#
+# Reported on a live screen: every video on an exFAT drive was refused, because
+# a filesystem without Unix permissions shows every file as 755. The lift is by
+# SUFFIX, measured on Linux, and judged on the resolved target.
+
+
+def _media(tmp_path, name="clip.mp4"):
+    f = tmp_path / name
+    f.write_bytes(b"\x00\x00\x00\x18ftypmp42 not really")
+    f.chmod(0o755)
+    return f
+
+
+@pytest.mark.parametrize("name", ["clip.mp4", "COVER.JPG", "take01.png", "voice.opus", "scan.pdf"])
+def test_a_media_file_with_the_executable_bit_opens_on_linux(client, spawned, tmp_path, monkeypatch, name):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    f = _media(tmp_path, name)
+    assert os.access(f, os.X_OK), "fixture must carry the executable bit"
+
+    res = post(client, str(f))
+
+    assert res.status_code == 200, res.json()
+    assert spawned[0]["argv"] == ["/usr/bin/xdg-open", str(f)]
+
+
+def test_a_link_named_like_a_video_that_points_at_a_program_is_refused(client, spawned, tmp_path, monkeypatch):
+    """The lift reads the RESOLVED name — a request string would wave this through."""
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    program = tmp_path / "payload"
+    program.write_text("#!/bin/sh\necho hi\n")
+    program.chmod(0o755)
+    link = tmp_path / "clip.mp4"
+    link.symlink_to(program)
+
+    res = post(client, str(link))
+
+    assert res.status_code == 400
+    assert "executable" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_the_media_lift_is_not_taken_on_macos(client, spawned, tmp_path, monkeypatch):
+    """Nothing was measured there, so the bit still refuses."""
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "open")
+    f = _media(tmp_path)
+
+    res = post(client, str(f))
+
+    assert res.status_code == 400
+    assert "executable" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_typescript_is_not_media(tmp_path, monkeypatch):
+    """`.ts` measured `video/mpeg`, and is TypeScript in every code project."""
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    f = _media(tmp_path, "build.ts")
+
+    assert "executable" in (desktop_module.refusal(str(f)) or "")
+
+
+def test_the_browser_routes_exactly_the_suffixes_the_guard_lifts():
+    """Two lists, one meaning: what the terminal sends to the desktop as media is
+    what the guard opens despite the bit. Read from the TypeScript source, so a
+    suffix added on one side only fails here rather than as a refusal on screen."""
+    import re
+    src = os.path.join(os.path.dirname(__file__), "..", "..", "web", "src", "lib", "fleetFiles.ts")
+    text = open(src, encoding="utf-8").read()
+    m = re.search(r"export const MEDIA_SUFFIXES[^=]*=\s*\[(.*?)\]", text, re.S)
+    assert m, "MEDIA_SUFFIXES not found in fleetFiles.ts"
+    browser = set(re.findall(r"'(\.[a-z0-9]+)'", m.group(1)))
+    assert browser == set(desktop_module._MEDIA_SUFFIXES)
+
+
+# ─── A screen to open on ────────────────────────────────────────────────────
+#
+# Measured 2026-10-23: the server ran without DISPLAY, `gio open` still found the
+# session over D-Bus, and mpv started headless — busy cursor, ~150 % CPU, no
+# window — while the endpoint answered "handed to the desktop".
+
+
+def _no_display(monkeypatch):
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+
+
+def test_a_server_without_a_display_borrows_the_sessions(client, spawned, tmp_path, monkeypatch):
+    _no_display(monkeypatch)
+    monkeypatch.setattr(
+        desktop_module, "_user_manager_environment",
+        lambda: {"DISPLAY": ":1", "XAUTHORITY": "/run/user/1000/gdm/Xauthority"},
+    )
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"not really a video")
+
+    res = post(client, str(clip))
+
+    assert res.status_code == 200
+    env = spawned[0]["kwargs"]["env"]
+    assert env["DISPLAY"] == ":1"
+    assert env["XAUTHORITY"] == "/run/user/1000/gdm/Xauthority"
+
+
+def test_no_screen_anywhere_is_a_refusal_and_nothing_starts(client, spawned, tmp_path, monkeypatch):
+    _no_display(monkeypatch)
+    monkeypatch.setattr(desktop_module, "_user_manager_environment", lambda: {})
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"not really a video")
+
+    res = post(client, str(clip))
+
+    assert res.status_code == 503
+    assert "graphical session" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_a_display_the_server_already_has_is_not_replaced(client, spawned, tmp_path, monkeypatch):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    monkeypatch.setenv("DISPLAY", ":7")
+    monkeypatch.setattr(
+        desktop_module, "_user_manager_environment",
+        lambda: (_ for _ in ()).throw(AssertionError("asked although DISPLAY was set")),
+    )
+    doc = tmp_path / "note.txt"
+    doc.write_text("hello")
+
+    res = post(client, str(doc))
+
+    assert res.status_code == 200
+    assert spawned[0]["kwargs"]["env"]["DISPLAY"] == ":7"
+
+
+def test_macos_open_needs_no_display(client, spawned, tmp_path, monkeypatch):
+    _no_display(monkeypatch)
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "open")
+    monkeypatch.setattr(desktop_module, "_user_manager_environment", lambda: {})
+    doc = tmp_path / "note.txt"
+    doc.write_text("hello")
+
+    assert post(client, str(doc)).status_code == 200
+
+
+def test_only_session_variables_are_read_from_the_user_manager(monkeypatch):
+    class Done:
+        returncode = 0
+        stdout = "DISPLAY=:1\nPATH=/evil\nWAYLAND_DISPLAY=wayland-0\nLD_PRELOAD=/x.so\n"
+
+    monkeypatch.setattr(desktop_module.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(desktop_module.subprocess, "run", lambda *a, **k: Done())
+
+    assert desktop_module._user_manager_environment() == {
+        "DISPLAY": ":1", "WAYLAND_DISPLAY": "wayland-0",
+    }
+
+
+# ─── Documents on a drive without Unix permissions ──────────────────────────
+#
+# Measured 2026-10-23 with a copy of /bin/true and a `#!/bin/sh` script per
+# suffix, mode 755: these were typed by NAME, so the bit says nothing about them.
+# `.jsonl`, `.toml`, `.ini` and no suffix were typed by CONTENT
+# (`application/x-executable`), so for them the bit stays the guard.
+
+
+@pytest.mark.parametrize("name", [
+    "index.html", "notes.txt", "data.csv", "rows.json", "spec.md", "sub.srt", "logo.svg",
+    "brief.docx", "sheet.xlsx", "deck.pptx", "book.epub", "bundle.zip", "src.tar.gz",
+])
+def test_a_measured_document_with_the_bit_opens_on_linux(client, spawned, tmp_path, monkeypatch, name):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    target = tmp_path / name
+    target.write_text("x")
+    target.chmod(0o755)
+
+    res = post(client, str(target))
+
+    assert res.status_code == 200, res.json()
+
+
+@pytest.mark.parametrize("name", ["events.jsonl", "conf.toml", "setup.ini", "noext", "run.sh", "tool.py", "app.js"])
+def test_a_content_typed_or_script_suffix_keeps_the_bit(client, spawned, tmp_path, monkeypatch, name):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "xdg-open")
+    target = tmp_path / name
+    target.write_text("x")
+    target.chmod(0o755)
+
+    res = post(client, str(target))
+
+    assert res.status_code == 400
+    assert "executable bit" in res.json()["detail"]
+    assert spawned == []
+
+
+def test_the_document_lift_is_not_taken_on_macos(client, spawned, tmp_path, monkeypatch):
+    monkeypatch.setattr(desktop_module, "_opener_name", lambda: "open")
+    target = tmp_path / "brief.docx"
+    target.write_text("x")
+    target.chmod(0o755)
+
+    assert post(client, str(target)).status_code == 400
+    assert spawned == []

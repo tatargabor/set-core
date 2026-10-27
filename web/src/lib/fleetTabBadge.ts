@@ -32,7 +32,7 @@ export const TAB_BADGE_KEY = 'set.fleet.tab-badge'
  * runtime status is `waiting`) or a permission prompt. Until 2026-10-10 this
  * was `input + prompt`, which put every merely-finished turn under the
  * warning too — and, because the green below yields to the warning, made the
- * green unreachable for exactly the agents it was meant for (B-160).
+ * green unreachable for exactly the agents it was meant for (B-167).
  *
  * Parked waits are excluded by the counter itself: a question nobody has come
  * for in 45 minutes must not own the tab forever. `awaiting` is deliberately
@@ -50,7 +50,7 @@ export function needsPerson(t: Tally): number {
  * excludes parked waits. NOT `quiet`, which is a LOG state: measured on the
  * live screen, the `quiet` agents left once the input waiters are removed are
  * the ones whose loop is still RUNNING between two log flushes, so the old
- * green announced "finished" about working agents (B-160).
+ * green announced "finished" about working agents (B-167).
  */
 export function readyToRead(t: Tally): number {
   return t.input

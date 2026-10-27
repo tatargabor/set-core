@@ -429,7 +429,7 @@ def _inferred_change(project_root: Optional[str], index: Optional[Dict[str, str]
 def _record_readable(session_log: Optional[str]) -> bool:
     """Whether the agent's own session record could be LOOKED at.
 
-    B-162: this is what separates an idle agent from an unmatched one. A record
+    B-169: this is what separates an idle agent from an unmatched one. A record
     that was read and addresses no change is evidence the agent is not on a
     change; a record that could not be read is no evidence at all.
     """
@@ -444,7 +444,7 @@ def _record_readable(session_log: Optional[str]) -> bool:
 def _unjoined_reason(session_log: Optional[str], work_in_flight: bool) -> str:
     """The gap for an agent no change could be joined to.
 
-    B-162, measured 2026-10-15: deciding this from the PROJECT ("is any change
+    B-169, measured 2026-10-15: deciding this from the PROJECT ("is any change
     un-archived?") made every live agent `join-failed`, because real projects
     keep dozens of un-archived change directories. So the agent's own evidence
     decides first, and the project-level test is only the fallback for a

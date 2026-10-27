@@ -1434,17 +1434,9 @@ def main():
             os.makedirs(os.path.dirname(_log_file), exist_ok=True)
             break
 
-    _handlers: list[logging.Handler] = []
-    if _log_file:
-        _handlers.append(logging.FileHandler(_log_file, encoding="utf-8"))
-    _handlers.append(logging.StreamHandler(sys.stderr))
-
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=_handlers,
-    )
+    # stderr at INFO (SET_LOG_LEVEL overrides), the run's python.log at DEBUG — B-162.
+    from .log_setup import configure as _configure_logging
+    _configure_logging(_log_file)
 
     parser = argparse.ArgumentParser(
         prog="set-orch-core",

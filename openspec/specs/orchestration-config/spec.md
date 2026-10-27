@@ -2,7 +2,9 @@
 
 ## Purpose
 Configuration system for orchestration directives. Supports YAML config files with directive precedence chain (CLI flags > config file > document directives > defaults).
+
 ## Requirements
+
 ### Requirement: Standalone orchestration config file
 The system SHALL support orchestration directives in `set/orchestration/config.yaml` as the primary location, with backward-compatible fallback to `.claude/orchestration.yaml`.
 
@@ -40,10 +42,17 @@ The system SHALL support orchestration directives in `set/orchestration/config.y
   - `test_timeout`: integer in seconds (default: 300) — timeout for test command
   - `auto_replan`: boolean (default: false) — re-plan when all changes complete
   - `token_hard_limit`: integer (default: 20000000) — cumulative token checkpoint; triggers approval prompt at each multiple
+  - `ikp_pipeline`: one of "auto", "none" (default: "auto")
 
 #### Scenario: Config file absent
 - **WHEN** neither config file exists
 - **THEN** the system SHALL proceed without error using other sources or defaults
+
+#### Scenario: IKP pipeline directive
+- **WHEN** `ikp_pipeline` is set to `"none"`
+- **THEN** the system SHALL disable IKP integration entirely
+- **WHEN** `ikp_pipeline` is set to `"auto"` or omitted
+- **THEN** the system SHALL enable IKP integration if `.ikp.yaml` exists and ikp package is installed
 
 ### Requirement: Directive precedence chain
 The system SHALL resolve directive values through a precedence chain where higher sources override lower ones.
@@ -238,4 +247,3 @@ The config module SHALL be callable via `set-orch-core config` subcommand.
 #### Scenario: Resolve directives via CLI
 - **WHEN** `set-orch-core config resolve-directives --input-file brief.md` is called
 - **THEN** it outputs the resolved directives JSON (with all precedence levels merged) to stdout
-

@@ -215,6 +215,35 @@ export interface FileRef {
 export type Confidence = 'high' | 'low'
 
 /** Where a token in terminal output should be opened, or `null` for text. */
+/**
+ * Media the terminal hands to the DESKTOP, also from inside a checkout.
+ *
+ * Asked for by the owner on 2026-10-19 after a rendered video failed twice: the
+ * file view is an editor, and a person activating a video or a picture wants the
+ * player or the viewer. The SAME list the desktop guard lifts the executable bit
+ * for (`_MEDIA_SUFFIXES` in `lib/set_orch/api/desktop.py`) — a drive without
+ * Unix permissions shows every file as executable — and a server test holds the
+ * two equal. `.ts` is deliberately absent: it is TypeScript.
+ */
+export const MEDIA_SUFFIXES: readonly string[] = [
+  '.mp4', '.m4v', '.mov', '.mkv', '.webm', '.avi', '.wmv', '.mpg', '.mpeg', '.ogv', '.3gp', '.flv',
+  '.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.oga', '.opus', '.wma',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.avif', '.tif', '.tiff', '.heic', '.ico',
+  '.pdf',
+  // Office documents, e-books, archives — 2026-10-23. The editor has no view for
+  // them, so they skip it like a video does. Text formats (`.html` included) are
+  // NOT here: inside a checkout the file view shows them, and its own button
+  // hands them to the desktop.
+  '.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp', '.rtf', '.epub',
+  '.zip', '.tar', '.gz', '.7z',
+]
+
+/** Whether a path names a media file — by its last suffix, case-insensitively. */
+export function isMedia(path: string): boolean {
+  const lowered = path.toLowerCase()
+  return MEDIA_SUFFIXES.some(s => lowered.endsWith(s))
+}
+
 export type TerminalTarget =
   /** In the file view — `root` is the CHECKOUT the path is relative to. */
   | { kind: 'file'; ref: FileRef; root: string; confidence: Confidence }
@@ -705,10 +734,19 @@ export function terminalTarget(token: string, where: TerminalWhere): TerminalTar
   for (const candidate of candidates) {
     for (const ref of pathAndLine(candidate)) {
       const target = classify(ref, base, checkouts, files, where, provenOnly)
-      if (target) return target
+      if (target) return mediaToDesktop(target)
     }
   }
   return null
+}
+
+/**
+ * A media FILE goes to the desktop even where the file view could reach it —
+ * see `MEDIA_SUFFIXES`. Everything else is returned as it was decided.
+ */
+function mediaToDesktop(target: NonNullable<TerminalTarget>): NonNullable<TerminalTarget> {
+  if (target.kind !== 'file' || !isMedia(target.ref.path)) return target
+  return { kind: 'desktop', path: target.root.replace(/\/+$/, '') + '/' + target.ref.path, confidence: 'high' }
 }
 
 function classify(

@@ -124,9 +124,15 @@ Visible rather than hidden, because hiding the others would put an agent that is
 that looks calm — the one thing this surface may not do. The strip carries state specifically so that
 choosing which agent to open is a decision rather than a guess.
 
-One line for all of them rather than one line each: rows cost a line per agent, so with eight agents
-the tile that was enlarged in order to show more was back to the size it had in the grid. The strip
-SHALL scroll sideways rather than wrap, because a strip that grows downwards is the row list again.
+Many tabs to a line rather than one line each: rows cost a line per agent, so with eight agents
+the tile that was enlarged in order to show more was back to the size it had in the grid. When the
+tabs do not fit across, the strip SHALL wrap onto further lines, each holding as many tabs as fit, and
+each tab SHALL keep its own width rather than shrink. *Amended 2026-10-20 by the user, who reversed the
+earlier "scroll sideways, never wrap": "ha nem fer ki menjen két sorba a tab headers". A scrolled-away
+tab is a tab nobody sees, which is the hidden-agent failure this requirement exists to prevent; a
+wrapped strip still costs a line per several agents, not per agent.* Each tab SHALL carry a thin
+outline on every side, so that adjacent names read as separate tabs, and the selected tab SHALL keep a
+distinct, heavier mark.
 
 **What the strip may compact, and what it may not.** State, the unconfirmed-binding mark and a
 contradicted declaration are alarms and SHALL ride on the tab itself — state as a colour is
@@ -151,7 +157,8 @@ the guarantee below, and it is written here rather than left to be discovered.
 
 #### Scenario: The strip does not become a row list
 - **WHEN** more agents are in the project than fit across the strip
-- **THEN** the strip scrolls sideways and stays one line high
+- **THEN** the strip wraps onto a further line, every tab stays visible at its own width, and a line
+  holds as many tabs as fit
 
 ### Requirement: The arrangement is the user's, and it never becomes the inventory
 

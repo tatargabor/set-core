@@ -1,3 +1,4 @@
+import { tabSwitchDirection } from '../lib/fleetLatest'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, CircleStop, Copy, Eye, Maximize2, Minimize2, MousePointer2, Scissors, X } from 'lucide-react'
@@ -84,6 +85,12 @@ const REPLAY_GRACE_MS = 1000
 
 interface Props {
   label: string
+  /**
+   * Give Ctrl+←/→ to the page instead of the program — latest mode's tab
+   * switch. Off by default, so outside latest mode the terminal keeps its
+   * word-jump.
+   */
+  releaseTabKeys?: boolean
   /** Called when the reader closes the view. Detach only — never a stop. */
   onClose: () => void
   /**
@@ -240,7 +247,7 @@ type Phase =
   | { kind: 'refused'; reason: string }
   | { kind: 'closed'; reason: string }
 
-export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile, checkouts, home, onReveal }: Props) {
+export default function FleetTerminal({ label, onClose, full, onToggleFull, onFocusChange, onInput, headerSlot, projectRoot, knownFiles, agentCwd, onOpenFile, checkouts, home, onReveal, releaseTabKeys = false }: Props) {
   const host = useRef<HTMLDivElement | null>(null)
   // Held in a ref because the effect below depends on `[label]` alone: the
   // handler is captured once, so a parent passing a fresh closure each render
@@ -249,6 +256,9 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
   // the kind of thing a passing test suite does not notice.
   const onInputRef = useRef(onInput)
   onInputRef.current = onInput
+  // A ref for the same reason: the key handler below is attached once.
+  const releaseTabKeysRef = useRef(releaseTabKeys)
+  releaseTabKeysRef.current = releaseTabKeys
   const [phase, setPhase] = useState<Phase>({ kind: 'connecting' })
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState<string | null>(null)
@@ -473,6 +483,13 @@ export default function FleetTerminal({ label, onClose, full, onToggleFull, onFo
       })
 
       term.attachCustomKeyEventHandler(e => {
+        /*
+          Latest mode's Ctrl+←/→ tab switch: declined here so the keystroke
+          bubbles to the page, which switches the tab. Declining is all it
+          takes — xterm then neither sends the key to the program nor cancels
+          the event. See `tabSwitchDirection`.
+        */
+        if (releaseTabKeysRef.current && tabSwitchDirection(e) !== 0) return false
         /*
           Escape while the stream is held: release the hold — the same act as
           clicking elsewhere, on the keyboard the reader is already using.

@@ -33,41 +33,49 @@ it knows nothing, and what compacting may never hide.
 The fleet screen SHALL draw account usage on its header's own line, and SHALL NOT attach a
 consumption mark to an agent tab or tile.
 
-At rest it SHALL carry one wordless mark per account that answered with figures — the bars and
-nothing else — and SHALL make each mark's account recoverable without navigating away. The
-accounts by name, and every window including any model-scoped one, SHALL be reachable in one step
-from that mark.
+At rest it SHALL carry one mark per account that answered with figures — the bars, preceded by
+a short label naming that account — and SHALL make each mark's account recoverable without
+navigating away. The accounts by name, and every window including any model-scoped one, SHALL
+be reachable in one step from that mark.
 
-The resting form is bars-only because a full row per account cost 97 px of the landing screen for
-six accounts, most of it spent restating what the bars already said. Asked for by the user on the
-built screen (2026-08-27): *"ez nagyon sok helyet elvisz ki kellene tenni csak a mukodo statusz
-barokat jobbra felul optimalizalva. szovegek nem kellenek"* — the same icons-and-numbers rule this
-header's chips already follow. What the words carried is not lost; it moves to the mark's own
-description and to the detail view.
+The resting form stays compact, but not wordless: several accounts draw the same-shaped pair
+of bars, and pairs that cannot be attributed are names the reader must reconstruct from a
+tooltip to use at all. Asked for by the user on 2026-08-29 — a word, an icon or a letter
+before the bars. The label is the shortest text that distinguishes the accounts: for an email,
+the domain's first label (`gmail`, `itline`), because the shared local part distinguishes
+nothing; otherwise the name, capped. Full names, percentages and sentences still live only on
+the mark's description and in the detail view — the 2026-08-27 compaction
+(*"ez nagyon sok helyet elvisz … szovegek nem kellenek"*) survives as everything the label
+does not say.
 
-The reason is a measurement, not a layout preference. A per-tab mark would claim that this agent
-consumed this share, and that claim cannot be supported: of the 40 most recent session transcripts
-on this machine, measured 2026-08-27, **4 carried an owning-account identity and 36 did not**, and
-the stored account entries carry no account identifier to join on at all. A mark drawn on 4 tabs
-out of 40 is not a coverage gap the reader can see — it looks exactly like 36 agents consuming
-nothing.
+The reason the marks are per account and not per tab is a measurement, not a layout
+preference. A per-tab mark would claim that this agent consumed this share, and that claim
+cannot be supported: of the 40 most recent session transcripts on this machine, measured
+2026-08-27, **4 carried an owning-account identity and 36 did not**, and the stored account
+entries carry no account identifier to join on at all. A mark drawn on 4 tabs out of 40 is not
+a coverage gap the reader can see — it looks exactly like 36 agents consuming nothing.
 
 #### Scenario: More than one account answered with figures
 
 - **WHEN** the machine holds several usage-capable accounts and more than one answered
-- **THEN** the header carries one wordless mark per answering account, and each names the account
-  it stands for in its description rather than on the screen
+- **THEN** the header carries one mark per answering account, each preceded by its short
+  label, and each still names the account it stands for in full in its description
+
+#### Scenario: Two accounts that would draw identical bars
+
+- **WHEN** two accounts with different names rest beside each other
+- **THEN** their labels differ, so the pairs are attributable without opening anything
+
+#### Scenario: An agent tab is drawn
+
+- **WHEN** the fleet screen renders its agent tabs and tiles
+- **THEN** no account-consumption mark appears on any of them
 
 #### Scenario: The reader asks for the detail
 
 - **WHEN** the reader opens the detail from that mark
 - **THEN** every account is listed by name with every one of its windows, and the detail does not
   displace the header or the screen below it
-
-#### Scenario: An agent tab is drawn
-
-- **WHEN** the fleet screen renders its agent tabs and tiles
-- **THEN** no account-consumption mark appears on any of them
 
 ### Requirement: Each window draws consumption against elapsed time
 
@@ -91,11 +99,18 @@ strip has used since it shipped.
 - **WHEN** an account carries both a 5-hour and a 7-day window
 - **THEN** both are drawn on the row, each labelled with the window it stands for
 
-### Requirement: Colour states the upstream severity, and one weight means one thing
+### Requirement: Colour states the reported severity, and one weight means one thing
 
-The screen SHALL colour a window's mark from the severity the measurement carries, and SHALL NOT
+The screen SHALL colour a window's mark from the severity the measurement reports, and SHALL NOT
 compute a band of its own. The colour reserved for a critical window SHALL NOT be used decoratively
 anywhere in the strip.
+
+The severity a measurement reports is the severity its source stated, or — for a source that
+states none — the band its measurement applied, in the one place that source's specification
+defines. The screen cannot tell those apart and does not need to: its rule is the same either
+way, take the severity the record carries and never derive one from the percentage. With more
+than one source behind one strip, wording on the screen SHALL NOT attribute a band to the
+service, because for one of the sources that attribution is not true.
 
 #### Scenario: A window arrives labelled critical
 
@@ -106,6 +121,13 @@ anywhere in the strip.
 
 - **WHEN** the measurement reports a window's severity as normal
 - **THEN** the mark is not drawn in the critical colour, whatever its percentage
+
+#### Scenario: A window banded at measurement
+
+- **WHEN** a window's severity was banded by its own source's measurement rather than stated
+  by that source's upstream
+- **THEN** the screen colours it by that severity through the same rule as any other window,
+  and no wording on the screen names the service as the band's author
 
 ### Requirement: An unmeasured window is marked, never drawn as an empty bar
 
@@ -190,3 +212,39 @@ and the usage request SHALL NOT be able to delay or prevent the rest of the scre
 - **WHEN** the usage request fails or has not returned
 - **THEN** the fleet header, its counts and the screen below it render as they do today, and the
   strip states that the measurement is unavailable
+
+### Requirement: The dead are purgeable from where they are counted
+
+Where the strip reports accounts that did not answer, it SHALL offer the purge action for
+exactly those accounts. The action SHALL require an explicit confirmation that names the
+accounts and states that their stored credentials will be deleted, and after a confirmed
+successful purge the strip SHALL refresh rather than wait for its next poll.
+
+The wording SHALL say the accounts did not answer — never that their credentials expired.
+Unreachable is also what a network failure looks like, and the strip does not know which
+of the two it is looking at; the confirmation is the human decision that stands in for
+that missing knowledge.
+
+The action SHALL be present only while at least one account did not answer, and SHALL
+draw no more attention than the count it serves: an offering, not a banner.
+
+#### Scenario: Accounts did not answer
+
+- **WHEN** the strip is showing the accounts that did not answer
+- **THEN** the purge action is reachable from that line
+
+#### Scenario: Nothing is silent
+
+- **WHEN** every account answered
+- **THEN** no purge action is offered anywhere in the strip
+
+#### Scenario: The confirmation
+
+- **WHEN** the purge action is triggered
+- **THEN** a confirmation names the accounts and states that their stored credentials
+  will be deleted, and nothing is removed until it is accepted
+
+#### Scenario: A confirmed purge succeeds
+
+- **WHEN** a confirmed purge completes successfully
+- **THEN** the strip refreshes its measurement rather than waiting for the next poll

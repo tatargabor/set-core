@@ -18,4 +18,4 @@
 - [x] 4.1 Stage suites and the strip's unit tests green
 - [x] 4.2 Dashboard service restarted; `GET /api/fleet/agents` no longer reports `join-failed` for agents addressing no change
 - [x] 4.3 Looked at the fleet panel in the browser: idle agents show the quiet `—`
-- [x] 4.4 B-162 closed with the commit
+- [x] 4.4 B-169 closed with the commit

@@ -200,7 +200,9 @@ class TestTheHookScansTheRepositoryTheCommandTargets:
         # session directory would wave this through.
         r = _hook(clean, f"cd {dirty}\ngit " + "push --force origin main", home)
         assert r.returncode == 2, f"the leaking target was not scanned: {r.stderr}"
-        assert CONSUMER in r.stderr
+        # masked since 2026-10-18: the finding is located, the name not printed
+        assert "ac…ng (14 chars)" in r.stderr, r.stderr
+        assert CONSUMER not in r.stderr.replace(str(home), "")
 
     def test_and_it_does_not_falsely_block_a_clean_target(self, two_repos):
         dirty, clean, home = two_repos
@@ -321,7 +323,7 @@ class TestARepositoryMayNameItself:
                            cwd=repo, capture_output=True, text=True,
                            env=dict(os.environ, HOME=str(home)))
         assert r.returncode == 1
-        assert "other-client" in r.stderr
+        assert "ot…nt (12 chars)" in r.stderr, r.stderr
 
 
 # ─── the env-marker category and the commit gate ─────────────────────
@@ -831,4 +833,390 @@ class TestThePushGateScansWhatThePushPublishes:
         # resolves to nothing — a no-op push publishes nothing.
         commit(identity_repo, "ok.md", "clean\n", msg="seed")
         r = run_scan(identity_repo, "--range", "HEAD..HEAD")
+        assert r.returncode == 0, r.stderr
+
+
+# ─── the private deny-list, the public-only classes, masked output ───────
+# 2026-10-18: every confirmed leak in the public repos passed the tree scan
+# clean. Every name below is FICTIONAL, and the shapes the gate itself blocks
+# (a licence id, a price) are assembled from parts, so this file does not
+# trip the gate it tests.
+
+DENY_A = "globex-corp"              # stands in for a client name
+DENY_B = "initech"                  # stands in for a second one
+FAKE_LICENCE = "L-" + "QX7" + "Z9K2"
+FAKE_PRICE = "12" + " 500 " + "Ft"
+
+
+def _gate_home(tmp_path, *, deny=None, allow=None, projects=None, vis=None):
+    home = tmp_path / "home"
+    cfg = home / ".config" / "set-core"
+    cfg.mkdir(parents=True, exist_ok=True)
+    (cfg / "projects.json").write_text(json.dumps({"projects": projects or {}}))
+    if deny is not None:
+        (cfg / "leakscan-deny.txt").write_text(deny, encoding="utf-8")
+    if allow is not None:
+        (cfg / "leakscan-allow.txt").write_text(allow, encoding="utf-8")
+    if vis is not None:
+        cache = home / ".cache" / "set-core"
+        cache.mkdir(parents=True, exist_ok=True)
+        (cache / "leakscan-visibility.json").write_text(json.dumps(vis))
+    return home
+
+
+def _scan(repo, home, *args):
+    return subprocess.run([sys.executable, str(SCANNER), *args],
+                          cwd=repo, capture_output=True, text=True,
+                          env=dict(os.environ, HOME=str(home)))
+
+
+PRIVATE_URL = "https://github.com/example/fictional-private.git"
+PUBLIC_URL = "https://github.com/example/fictional-public.git"
+
+
+def _set_remote(repo, url):
+    git("remote", "add", "origin", url, cwd=repo)
+
+
+class TestTheDenyList:
+    def test_a_deny_term_in_content_blocks(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"# private\n{DENY_A}\n")
+        commit(repo, "notes.md", f"lessons from {DENY_A} go here\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term" in r.stderr
+
+    def test_a_missing_deny_list_is_no_terms_and_no_error(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        commit(repo, "notes.md", f"lessons from {DENY_A} go here\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+        assert "deny" not in r.stderr.lower(), r.stderr
+
+    def test_matching_is_folded_and_case_insensitive(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "notes.md", "the Ínitech team said so\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term" in r.stderr
+
+    def test_an_underscore_identifier_is_caught(self, repo, tmp_path):
+        # `\b` counts `_` as a word character; `_INITECH_DIGEST` walked past it.
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "t.py", "_INITECH_DIGEST = 1\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+
+    def test_but_a_longer_word_is_not(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "t.md", "initechnology is a different word\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+
+    def test_a_regex_entry_and_its_exception(self, repo, tmp_path):
+        # The LAN-address shape with a documented example allowed.
+        home = _gate_home(tmp_path,
+                          deny=r"re:\b10\.77\.(?!1\.50\b)\d{1,3}\.\d{1,3}\b" + "\n")
+        commit(repo, "ok.md", "connect to 10.77.1.50 in the example\n")
+        assert _scan(repo, home, "--tree").returncode == 0
+        commit(repo, "bad.md", "the box sits at 10.77.3.14\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "bad.md:1" in r.stderr
+
+    def test_a_broken_regex_is_announced_not_dropped(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny="re:([unclosed\n")
+        commit(repo, "ok.md", "clean\n")
+        r = _scan(repo, home, "--tree")
+        assert "does not compile" in r.stderr, r.stderr
+
+    def test_the_deny_list_wins_over_a_plain_allow_entry(self, repo, tmp_path):
+        # The owner's own company names are allowlisted as slugs; listing one
+        # in the deny-list must make it fire in a public repo again.
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n", allow=f"{DENY_A}\n")
+        commit(repo, "notes.md", f"see {DENY_A}\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term" in r.stderr
+
+    def test_a_literal_allow_entry_still_silences_its_line(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n",
+                          allow=f"literal:{DENY_A} is fictional\n")
+        commit(repo, "notes.md", f"{DENY_A} is fictional\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+
+    def test_a_deny_term_in_a_commit_message_is_found(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "x.md", "clean\n", msg=f"fix: what {DENY_B} reported")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term:commit-message" in r.stderr
+
+    def test_a_deny_term_in_a_file_name_is_found_and_masked(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        commit(repo, f"{DENY_A}-notes.md", "clean\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term:filename" in r.stderr
+        assert DENY_A not in r.stderr.replace(str(home), ""), r.stderr
+
+
+class TestPublicOnlyCategoriesRespectVisibility:
+    def test_a_private_remote_reports_but_does_not_block(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n", vis={PRIVATE_URL: "private"})
+        _set_remote(repo, PRIVATE_URL)
+        commit(repo, "notes.md", f"see {DENY_A}\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+        assert "advisory" in r.stderr
+
+    def test_a_public_remote_blocks(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n", vis={PUBLIC_URL: "public"})
+        _set_remote(repo, PUBLIC_URL)
+        commit(repo, "notes.md", f"see {DENY_A}\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+
+    def test_the_commit_gate_lets_a_private_repo_name_its_clients(
+            self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n", vis={PRIVATE_URL: "private"})
+        _set_remote(repo, PRIVATE_URL)
+        stage(repo, "notes.md", f"meeting with {DENY_A}\n")
+        assert _scan(repo, home, "--staged").returncode == 0
+        msg = repo / "msg.txt"
+        msg.write_text(f"notes from {DENY_A}\n")
+        assert _scan(repo, home, "--message", str(msg)).returncode == 0
+
+    def test_but_refuses_the_same_commit_in_a_public_repo(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n", vis={PUBLIC_URL: "public"})
+        _set_remote(repo, PUBLIC_URL)
+        stage(repo, "notes.md", f"meeting with {DENY_A}\n")
+        r = _scan(repo, home, "--staged")
+        assert r.returncode == 1, r.stderr
+        msg = repo / "msg.txt"
+        msg.write_text(f"notes from {DENY_A}\n")
+        assert _scan(repo, home, "--message", str(msg)).returncode == 1
+
+    def test_a_secret_still_blocks_a_private_commit(self, repo, tmp_path):
+        # The positive control: making the new classes visibility-aware must
+        # not have made the old commit gate visibility-aware too.
+        home = _gate_home(tmp_path, vis={PRIVATE_URL: "private"})
+        _set_remote(repo, PRIVATE_URL)
+        stage(repo, "c.md", "key: sk-ant-api03-" + "A" * 24 + "\n")
+        assert _scan(repo, home, "--staged").returncode == 1
+
+
+class TestPrivateFileClasses:
+    @pytest.mark.parametrize("path,kind", [
+        ("docs/inputs/call.md", "inputs-dir"),
+        ("logs/meeting-transcript-1.jsonl", "transcript"),
+        ("notes/2026-01-02-call-raw-part1.jsonl", "raw-part"),
+        ("dictation-2026-01-02.txt", "dictation"),
+        ("notes/2026-01-02-dictation-part3-abcd1234.md", "dictation"),
+        ("docs/owner-inbox.md", "owner-inbox"),
+    ])
+    def test_a_private_file_shape_blocks(self, repo, tmp_path, path, kind):
+        home = _gate_home(tmp_path)
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        commit(repo, path, "x\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert f"private-path:{kind}" in r.stderr, r.stderr
+
+    def test_dictation_CODE_and_feature_folders_are_not_dumps(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        for p in ("openspec/changes/dictation-output/spec.md",
+                  "scripts/dictation-archive.mjs"):
+            (repo / p).parent.mkdir(parents=True, exist_ok=True)
+            commit(repo, p, "x\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+
+    def test_its_file_name_is_masked_in_the_report(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        name = "2026-01-02-somebody-raw-part1.jsonl"
+        commit(repo, name, "x\n")
+        r = _scan(repo, home, "--tree")
+        assert "somebody" not in r.stderr, r.stderr
+
+    def test_a_tracked_env_file_blocks_but_the_example_does_not(
+            self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        commit(repo, ".env.example", "KEY=\n")
+        assert _scan(repo, home, "--tree").returncode == 0
+        commit(repo, ".env.local", "KEY=x\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "env-file" in r.stderr
+
+    def test_staging_a_private_file_is_refused(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        (repo / "docs" / "inputs").mkdir(parents=True)
+        stage(repo, "docs/inputs/x.md", "x\n")
+        r = _scan(repo, home, "--staged")
+        assert r.returncode == 1, r.stderr
+
+    def test_but_staging_its_DELETION_is_the_repair(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        (repo / "docs" / "inputs").mkdir(parents=True)
+        commit(repo, "docs/inputs/x.md", "x\n")
+        git("rm", "-q", "docs/inputs/x.md", cwd=repo)
+        r = _scan(repo, home, "--staged")
+        assert r.returncode == 0, r.stderr
+
+
+class TestContentShapes:
+    def test_a_licence_id_blocks(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        commit(repo, "l.md", f"activated with {FAKE_LICENCE} today\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "licence-id" in r.stderr
+
+    def test_a_price_is_advisory_only(self, repo, tmp_path):
+        home = _gate_home(tmp_path)
+        commit(repo, "p.md", f"the package costs {FAKE_PRICE} a month\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+        assert "price" in r.stderr and "advisory" in r.stderr
+
+    def test_an_advisory_price_on_a_public_remote_is_not_called_private(
+            self, repo, tmp_path):
+        # 2026-10-25: a push range holding only a price read "remote is public"
+        # and then "Every remote of this repository is private".
+        home = _gate_home(tmp_path, vis={PUBLIC_URL: "public"})
+        _set_remote(repo, PUBLIC_URL)
+        commit(repo, "p.md", f"the package costs {FAKE_PRICE} a month\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+        assert "remote is public" in r.stderr, r.stderr
+        assert "is private" not in r.stderr, r.stderr
+        assert "Every finding above is advisory" in r.stderr, r.stderr
+
+    def test_an_advisory_price_at_commit_is_not_called_private(
+            self, repo, tmp_path):
+        home = _gate_home(tmp_path, vis={PUBLIC_URL: "public"})
+        _set_remote(repo, PUBLIC_URL)
+        (repo / "p.md").write_text(f"the package costs {FAKE_PRICE} a month\n")
+        git("add", "p.md", cwd=repo)
+        r = _scan(repo, home, "--staged")
+        assert r.returncode == 0, r.stderr
+        assert "commit allowed, findings are advisory" in r.stderr, r.stderr
+        assert "is private" not in r.stderr, r.stderr
+
+    def test_a_price_does_not_shadow_a_blocking_finding_on_its_line(
+            self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "p.md", f"{DENY_B} pays {FAKE_PRICE}\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+
+
+class TestOutputIsMasked:
+    def test_neither_the_value_nor_the_line_is_printed(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        secret = "sk-ant-api03-" + "B" * 24
+        commit(repo, "a.md", f"the {DENY_A} account uses {secret}\n"
+                             f"the {DENY_A} contract, line two\n")
+        r = _scan(repo, home, "--tree")
+        out = r.stderr.replace(str(home), "")
+        assert r.returncode == 1
+        assert DENY_A not in out and secret not in out, out
+        assert "contract, line two" not in out, out
+        assert "gl…rp (11 chars)" in out, out
+        assert "a.md:1" in out and "a.md:2" in out
+
+    def test_the_json_carries_no_raw_text(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_A}\n")
+        commit(repo, "a.md", f"the {DENY_A} account\n")
+        r = _scan(repo, home, "--tree", "--json")
+        payload = json.loads(r.stdout)
+        assert payload["findings"], payload
+        assert DENY_A not in r.stdout.replace(str(home), "")
+        f = payload["findings"][0]
+        assert "text" not in f and f["excerpt"] == "gl…rp (11 chars)"
+        assert f["length"] == len(DENY_A)
+
+    def test_mask_shapes(self):
+        from importlib.machinery import SourceFileLoader
+        mod = SourceFileLoader("leakscan_mask", str(SCANNER)).load_module()
+        assert mod.mask("abcdefghij") == "ab…ij (10 chars)"
+        assert mod.mask("abcde") == "a…e (5 chars)"
+        assert mod.mask("ab") == "… (2 chars)"
+
+
+class TestPrivateSetNames:
+    """Every `set-*` registry name used to be skipped, so the private ones
+    were never flagged. Visibility decides now, cached per name."""
+
+    def _checkout(self, tmp_path, name, url=None):
+        d = tmp_path / "co" / name
+        d.mkdir(parents=True)
+        git("init", "-q", cwd=d)
+        if url:
+            git("remote", "add", "origin", url, cwd=d)
+        return d
+
+    def test_a_private_set_name_fires_a_public_one_does_not(self, repo, tmp_path):
+        priv = self._checkout(tmp_path, "set-fictional-private")       # no remote
+        pub = self._checkout(tmp_path, "set-fictional-public", PUBLIC_URL)
+        home = _gate_home(
+            tmp_path, vis={PUBLIC_URL: "public"},
+            projects={"set-fictional-private": {"path": str(priv)},
+                      "set-fictional-public": {"path": str(pub)}})
+        commit(repo, "a.md", "see set-fictional-public for the code\n")
+        assert _scan(repo, home, "--tree").returncode == 0
+        commit(repo, "b.md", "and set-fictional-private for the plan\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "private-repo-name" in r.stderr
+        assert "b.md:1" in r.stderr and "a.md:1" not in r.stderr
+        cache = json.loads((home / ".cache" / "set-core" /
+                            "leakscan-name-visibility.json").read_text())
+        assert cache["set-fictional-private"]["v"] == "private"
+        assert cache["set-fictional-public"]["v"] == "public"
+
+    def test_an_undecidable_name_keeps_the_old_behaviour(self, repo, tmp_path):
+        # A non-GitHub remote cannot be asked; the name stays skipped, and the
+        # gap is announced rather than folded into a clean.
+        co = self._checkout(tmp_path, "set-fictional-elsewhere",
+                            "ssh://git@git.example.invalid/x/y.git")
+        home = _gate_home(tmp_path,
+                          projects={"set-fictional-elsewhere": {"path": str(co)}})
+        commit(repo, "a.md", "see set-fictional-elsewhere\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 0, r.stderr
+        assert "unknown visibility" in r.stderr
+
+    def test_a_name_the_deny_list_covers_is_no_gap(self, repo, tmp_path):
+        co = self._checkout(tmp_path, "set-fictional-elsewhere",
+                            "ssh://git@git.example.invalid/x/y.git")
+        home = _gate_home(tmp_path, deny="set-fictional-elsewhere\n",
+                          projects={"set-fictional-elsewhere": {"path": str(co)}})
+        commit(repo, "a.md", "see set-fictional-elsewhere\n")
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "unknown visibility" not in r.stderr
+
+
+class TestTagMessages:
+    def test_an_annotated_tag_message_is_scanned(self, repo, tmp_path):
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "a.md", "clean\n")
+        git("tag", "-a", "v1", "-m", f"release for {DENY_B}", cwd=repo)
+        r = _scan(repo, home, "--tree")
+        assert r.returncode == 1, r.stderr
+        assert "deny-term:tag-message" in r.stderr
+
+    def test_a_lightweight_tag_is_its_commit_and_not_scanned_twice(
+            self, repo, tmp_path):
+        # A long-published lightweight tag whose COMMIT message carried a
+        # term blocked every later push in range mode — a finding no push can
+        # fix. The commit-message scan owns that message.
+        home = _gate_home(tmp_path, deny=f"{DENY_B}\n")
+        commit(repo, "a.md", "clean\n", msg=f"for {DENY_B}")
+        git("tag", "v1", cwd=repo)
+        commit(repo, "b.md", "clean too\n", msg="next")
+        r = _scan(repo, home, "--range", "HEAD~1..HEAD")
         assert r.returncode == 0, r.stderr

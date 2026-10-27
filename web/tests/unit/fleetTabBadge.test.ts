@@ -29,7 +29,7 @@ function fakeStorage(initial: Record<string, string> = {}, fail = false): Storag
   } as unknown as Storage
 }
 
-describe('the two counts — blocked on you, and finished — B-160', () => {
+describe('the two counts — blocked on you, and finished — B-167', () => {
   it('splits a question from a finished turn', () => {
     const t = tally([
       A({ state: 'asking', attention: 'prompt' }),

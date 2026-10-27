@@ -105,7 +105,9 @@ export interface FleetAgent {
    *
    * A different question from how long the agent has waited, and the one that
    * separates *the agent I am working with* from *the one I let go*. `null`
-   * means the bounded tail held no human entry — NOT "never".
+   * means the WHOLE transcript holds no human entry — the server searches
+   * beyond its bounded tail when the tail holds none (`fleet-latest-mode`).
+   * Still not "a long silence": render it as *no message from you found*.
    */
   last_human_input_seconds?: number | null
   /** See `Population`. Absent on an older server, which is `unknown`, not `foreign`. */
@@ -261,7 +263,7 @@ export interface FleetAgent {
    * which replaces the derived one wholesale for that project).
    *
    * `state: 'gap'` is a NAMED gap, and `reason` is the name: `nothing-started`
-   * (this agent addresses no change — its own record was read; B-162),
+   * (this agent addresses no change — its own record was read; B-169),
    * `join-failed` (its record could not be read while work is in flight, or it
    * names a change the producer does not list), `no-flow` (no tree and no declaration),
    * `no-position` (the joined change backs no artifact). A gap must never be

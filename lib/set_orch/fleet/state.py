@@ -44,6 +44,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Set
@@ -349,12 +350,12 @@ class AgentState:
     #: and is not waiting for anybody.
     background_running: bool = False
     #: Seconds since a PERSON last wrote into this session, or None when the
-    #: tail holds no human entry.
+    #: whole transcript holds no human entry.
     #:
-    #: `None` is not "never": the tail is bounded, so a session that has been
-    #: producing tool traffic for hours can push its last human message out of
-    #: view. It means *not seen in what we read*, and the surface must not
-    #: render it as neglect.
+    #: Measured beyond the bounded tail when the tail holds none
+    #: (`_deep_human_epoch`), so `None` means *this transcript holds no message
+    #: from a person* — still not neglect, and the surface must not render it
+    #: as a long silence.
     last_human_input_age: Optional[float] = None
 
 
@@ -435,53 +436,188 @@ def _last_text(lines: List[str], limit: int = EXCERPT_CHARS) -> tuple[Optional[s
     return None, None
 
 
-def _last_human_input(lines: List[str], now: float) -> Optional[float]:
-    """Seconds since a person last wrote into this session.
-
-    The signal that separates *the agent I am working with* from *the one I let
-    go*, and it is a different question from how long the agent has been
-    waiting. Measured on the live fleet 2026-08-28: 0.2, 9.5 and 129.9 minutes
-    across three sessions whose waits said far less about which one mattered.
+def _human_entry_epoch(line: str) -> Optional[float]:
+    """The epoch of one transcript line if it is a HUMAN entry, else None.
 
     A "human entry" is a `user` entry carrying TEXT. A tool result is also a
     `user` entry and is not a person — reading those as human input would make
     every busy agent look freshly attended, which is the reassuring direction.
     A `<command-name>` wrapper is a slash command the person typed, so it counts.
 
-    Read from the same bounded tail as everything else, so it costs no extra
-    I/O. Returns None when the tail holds no human entry at all.
+    One definition, shared by the tail measurement and the deep search, so the
+    two cannot disagree about what a person is.
     """
+    line = line.strip()
+    if not line or not line.startswith("{"):
+        return None
+    try:
+        entry = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("type") != "user" or entry.get("isSidechain"):
+        return None
+    # A tool result wears the user's clothes. It is the agent's own traffic.
+    if entry.get("toolUseResult") is not None:
+        return None
+    message = entry.get("message")
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+    if not isinstance(blocks, list):
+        return None
+    has_text = any(
+        isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)
+        and b.get("text").strip()
+        for b in blocks
+    )
+    if not has_text:
+        return None
+    return _epoch(entry.get("timestamp"))
+
+
+def _newest_human_epoch(lines: List[str]) -> Optional[float]:
+    """The epoch of the newest human entry in `lines`, or None."""
     for line in reversed(lines):
-        line = line.strip()
-        if not line or not line.startswith("{"):
-            continue
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        if entry.get("type") != "user" or entry.get("isSidechain"):
-            continue
-        # A tool result wears the user's clothes. It is the agent's own traffic.
-        if entry.get("toolUseResult") is not None:
-            continue
-        message = entry.get("message")
-        if not isinstance(message, dict):
-            continue
-        content = message.get("content")
-        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
-        if not isinstance(blocks, list):
-            continue
-        has_text = any(
-            isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)
-            and b.get("text").strip()
-            for b in blocks
-        )
-        if not has_text:
-            continue
-        age = _age_seconds(entry.get("timestamp"), now)
-        if age is not None:
-            return age
+        epoch = _human_entry_epoch(line)
+        if epoch is not None:
+            return epoch
     return None
+
+
+def _last_human_input(lines: List[str], now: float) -> Optional[float]:
+    """Seconds since a person last wrote into this session, from `lines` alone.
+
+    The signal that separates *the agent I am working with* from *the one I let
+    go*, and it is a different question from how long the agent has been
+    waiting. Measured on the live fleet 2026-08-28: 0.2, 9.5 and 129.9 minutes
+    across three sessions whose waits said far less about which one mattered.
+
+    Returns None when `lines` hold no human entry. The state pass does not stop
+    there — see `_deep_human_epoch`.
+    """
+    epoch = _newest_human_epoch(lines)
+    if epoch is None:
+        return None
+    return max(0.0, now - epoch)
+
+
+#: A deep search that reads more than this is logged at WARNING: it is a
+#: transcript big enough that its cold start is worth noticing.
+DEEP_SEARCH_WARN_BYTES = 64 * 1024 * 1024
+
+#: `{path: (inode, size_searched, epoch | None)}` — the deep search's memory.
+#: Process memory only, and a timestamp per path, never message text: nothing
+#: derived from a transcript is persisted (the boundary in CLAUDE.md).
+_human_cache: Dict[str, tuple] = {}
+_human_cache_lock = threading.Lock()
+
+#: Bytes read by deep searches since start. Read by tests to prove a cached
+#: answer was reused without reading, and by nothing else.
+deep_search_bytes_read = 0
+
+
+def _search_backwards(path: str, lower: int, upper: int) -> Optional[float]:
+    """The newest human entry between byte offsets `lower` and `upper`.
+
+    Read backwards in `TAIL_BYTES` chunks and stopped at the first hit. A line
+    crossing a chunk boundary is carried into the next (earlier) chunk, so no
+    entry is split; a line crossing `lower` is parsed from `lower` and fails as
+    JSON, which only drops a line the earlier search already read whole.
+    """
+    global deep_search_bytes_read
+    if upper <= lower:
+        return None
+    read = 0
+    carry = b""
+    pos = upper
+    try:
+        with open(path, "rb") as fh:
+            while pos > lower:
+                start = max(lower, pos - TAIL_BYTES)
+                fh.seek(start)
+                chunk = fh.read(pos - start)
+                read += len(chunk)
+                data = chunk + carry
+                if start > lower:
+                    cut = data.find(b"\n")
+                    if cut < 0:
+                        carry, body = data, b""
+                    else:
+                        carry, body = data[:cut], data[cut + 1:]
+                else:
+                    carry, body = b"", data
+                for raw in reversed(body.split(b"\n")):
+                    epoch = _human_entry_epoch(raw.decode("utf-8", errors="replace"))
+                    if epoch is not None:
+                        return epoch
+                pos = start
+            return None
+    except OSError as exc:
+        logger.debug("fleet state: deep human search cannot read %s: %s", path, exc)
+        return None
+    finally:
+        deep_search_bytes_read += read
+        if read >= DEEP_SEARCH_WARN_BYTES:
+            logger.warning("fleet state: deep human search read %d bytes of %s", read, path)
+        elif read:
+            logger.debug("fleet state: deep human search read %d bytes of %s", read, path)
+
+
+def _deep_human_epoch(path: str, tail_epoch: Optional[float]) -> Optional[float]:
+    """The newest human entry in the WHOLE transcript, remembered by growth.
+
+    The tail is bounded, and a long tool run fills it: measured 2026-10-19, the
+    tail-only value was absent for 6 of 19 live agents, one of them working.
+    This answers from the cache while the file only grows (design D5 of
+    `fleet-latest-mode`):
+
+    - the tail found a human entry → it is the newest; refresh the cache with it;
+    - same inode, grown, and every new byte lies inside the tail just read → the
+      cached answer is still the newest, reuse it without reading;
+    - same inode, grown past the tail → read only the gap the tail did not cover;
+    - inode changed, file shrank, or no entry → search the whole file once.
+    """
+    try:
+        st = os.stat(path)
+    except OSError as exc:
+        logger.debug("fleet state: deep human search cannot stat %s: %s", path, exc)
+        return tail_epoch
+    size, inode = st.st_size, st.st_ino
+    if tail_epoch is not None:
+        with _human_cache_lock:
+            _human_cache[path] = (inode, size, tail_epoch)
+        return tail_epoch
+
+    with _human_cache_lock:
+        cached = _human_cache.get(path)
+    tail_start = max(0, size - TAIL_BYTES)
+    if cached is not None and cached[0] == inode and size >= cached[1]:
+        _, searched, epoch = cached
+        if tail_start > searched:
+            # Up to the END, not to the tail's start: the line the tail's seek
+            # landed inside was discarded by `_tail`, so the tail did not read
+            # it whole. Re-reading the tail once costs at most `TAIL_BYTES`.
+            found = _search_backwards(path, searched, size)
+            if found is not None:
+                epoch = found
+    else:
+        if cached is not None:
+            logger.debug("fleet state: deep human cache invalidated for %s", path)
+        epoch = _search_backwards(path, 0, size)
+    with _human_cache_lock:
+        _human_cache[path] = (inode, size, epoch)
+    return epoch
+
+
+def prune_human_cache(live_paths) -> None:
+    """Forget transcripts no longer listed, so the cache is bounded by the fleet."""
+    keep = set(p for p in live_paths if p)
+    with _human_cache_lock:
+        for path in [p for p in _human_cache if p not in keep]:
+            del _human_cache[path]
 
 
 def _outstanding_calls(lines: List[str]) -> tuple[Dict[str, dict], bool]:
@@ -878,7 +1014,10 @@ def read_state(
         )
 
     excerpt, excerpt_from = _last_text(lines)
-    human_age = _last_human_input(lines, reference)
+    # The tail first; beyond it only when the tail held no person, and from the
+    # cache whenever the file has only grown.
+    human_epoch = _deep_human_epoch(session_log, _newest_human_epoch(lines))
+    human_age = None if human_epoch is None else max(0.0, reference - human_epoch)
 
     outstanding, saw_entry = _outstanding_calls(lines)
     if not saw_entry:

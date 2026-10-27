@@ -36,6 +36,16 @@
             "command": "set-hook-checkout-guard PreToolUse"
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "set-hook-question-relay",
+            "timeout": 3600
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -62,6 +72,11 @@
             "type": "command",
             "command": "set-hook-waveboard",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "set-hook-wait-detect",
+            "timeout": 60
           }
         ]
       }

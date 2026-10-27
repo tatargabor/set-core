@@ -65,6 +65,67 @@ router = APIRouter()
 def _opener_name() -> str:
     return "open" if sys.platform == "darwin" else "xdg-open"
 
+#: What a program needs to put a window on the screen the reader is looking at.
+#:
+#: Measured 2026-10-23: the server had been started without `DISPLAY` (a user
+#: service started before the session exported it), so `xdg-open` still found the
+#: GNOME session over D-Bus and `gio open` started mpv — with no screen to draw
+#: on. The reader saw a busy cursor, mpv burned ~150 % CPU for ten seconds,
+#: exited, and nothing appeared, while this endpoint had answered "handed to the
+#: desktop". The user manager DOES carry the session's variables
+#: (`systemctl --user show-environment`), so they are read from there at the
+#: moment of the open, not at server start, which is exactly when they were absent.
+_SESSION_VARS = (
+    "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY",
+    "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS",
+)
+
+
+def _user_manager_environment() -> Dict[str, str]:
+    """The graphical-session variables the systemd user manager holds, or `{}`."""
+    systemctl = shutil.which("systemctl")
+    if not systemctl:
+        return {}
+    try:
+        out = subprocess.run(
+            [systemctl, "--user", "show-environment"],
+            capture_output=True, text=True, timeout=2, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("desktop_open: could not read the user manager environment — %s", exc)
+        return {}
+    if out.returncode != 0:
+        logger.warning("desktop_open: systemctl --user show-environment exited %s", out.returncode)
+        return {}
+    env: Dict[str, str] = {}
+    for line in out.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key in _SESSION_VARS:
+            env[key] = value
+    return env
+
+
+def _opener_env() -> Dict[str, str] | None:
+    """The environment the opener starts in, or `None` when no screen is reachable.
+
+    `None` is a refusal, not a fallback: started without a display, the handler
+    runs headless and the reader is told it opened. Only the Linux opener needs
+    this — macOS `open` talks to LaunchServices, not to a display variable.
+    """
+    env = dict(os.environ)
+    if _opener_name() != "xdg-open" or env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env
+    session = _user_manager_environment()
+    if not (session.get("DISPLAY") or session.get("WAYLAND_DISPLAY")):
+        return None
+    for key, value in session.items():
+        env.setdefault(key, value)
+    logger.info(
+        "desktop_open: server has no display; borrowed %s from the user manager",
+        ", ".join(f"{k}={session[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY") if k in session),
+    )
+    return env
+
 #: Suffixes that are launchers whatever their permission bits say. A `.desktop`
 #: entry carries its own `Exec=` line, so the executable-bit check below would
 #: wave through a file whose entire purpose is to run a command.
@@ -110,35 +171,71 @@ _ASSOCIATION_RUNS = (
     ".pptm", ".potm", ".ppam", ".ppsm", ".sldm",
 )
 
-#: Suffixes whose association INTERPRETS the file at a `file://` origin.
+#: A LOCAL PAGE (`.html`, `.svg`, …) was refused here as its own class until
+#: 2026-10-23: a page is not executed but is interpreted at a `file://` origin.
+#: Retired by the owner's decision that day, after a generated report outside
+#: every project could not be opened from anywhere in the dashboard: a person's
+#: activation opens it in the browser, from the terminal too. The `viewed` request
+#: field existed only to lift that class and went with it.
+
+#: Suffixes for which the executable bit says nothing, so it is not consulted.
 #:
-#: A milder severity and the same class: `harmless.html` reached
-#: `google-chrome.desktop` in the same measurement. Nothing is executed, but a
-#: local page can read this machine's files, and the text that named it was
-#: written by whatever an agent ran.
+#: Reported 2026-10-19: every video on an exFAT drive was refused. exFAT stores
+#: no Unix permissions — 844 of 844 files on that drive read as 755 — so the bit
+#: refused every file there and told the reader nothing about any of them.
 #:
-#: `.svg` and `.svgz` were deliberately NOT here, on the stated grounds that an
-#: image which opened before must still open and that nobody had measured them.
-#: Added 2026-09-28 because both halves of that premise have changed, and the
-#: order matters — the measurement alone would not have been enough:
+#: Measured that day on Linux, per suffix: a copy of an ELF binary and a
+#: `#!/bin/sh` script, each given the suffix and mode 755. Both `xdg-mime query
+#: filetype` and `gio info` typed every one as the MEDIA type (never an
+#: executable or a script), and every `xdg-mime query default` handler was a
+#: player, viewer or editor. So for these the desktop chooses by suffix, and the
+#: bit is not the path to a program starting.
 #:
-#: - **Measured**, which the exclusion asked for. Sweeping this machine's own
-#:   association table for every suffix the "ordinary file" test hands over:
-#:   `.png`/`.pdf`/`.webp`/`.gif` → Preview, `.mp4` → VLC, `.docx` → Pages,
-#:   `.md`/`.py`/`.xml`/`.json` → Xcode, `.txt` → TextEdit — and `.svg` and
-#:   `.svgz` → **the browser**. So on this desktop an SVG is not an image that
-#:   opens in a viewer; it is a document a browser renders, with `<script>` in
-#:   it executing, which is the property this whole class exists for.
-#: - **`viewed` now exists**, and it did not when the exclusion was written. The
-#:   cost of refusing was then "an SVG cannot be opened at all"; it is now "an
-#:   SVG cannot be opened from a path an agent PRINTED", because the file view's
-#:   own button lifts this class for a file the reader already has open.
+#: `.ts` measured `video/mpeg` and is deliberately ABSENT: in a code project it
+#: is TypeScript. The browser's `MEDIA_SUFFIXES` (`web/src/lib/fleetFiles.ts`)
+#: routes the same list to the desktop; a test holds the two equal.
+_MEDIA_SUFFIXES = (
+    # video
+    ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".wmv", ".mpg", ".mpeg",
+    ".ogv", ".3gp", ".flv",
+    # audio
+    ".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".oga", ".opus", ".wma",
+    # raster image
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".tif", ".tiff",
+    ".heic", ".ico",
+    # document
+    ".pdf",
+    # office document, e-book, archive — measured 2026-10-23, same method: typed by
+    # suffix with an ELF or a script inside, handler an office suite or an archive
+    # manager. No view in the editor, so the browser routes these to the desktop
+    # from inside a checkout too. Legacy `.doc/.xls/.ppt` are absent: those formats
+    # can carry macros, and nothing measured what the office suite does with one.
+    ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".rtf", ".epub",
+    ".zip", ".tar", ".gz", ".7z",
+)
+
+#: Text formats the desktop ALSO types by suffix (measured 2026-10-23, same
+#: method), so the bit is not consulted for them either. They are not routed past
+#: the file view: inside a checkout the editor shows them.
 #:
-#: The capability's own spec settles the remainder: a refusal that lets one of
-#: these through is a hole, one that stops an ordinary file is an inconvenience,
-#: and when the two are in tension the refusal wins.
-_ASSOCIATION_INTERPRETS = (".html", ".htm", ".xhtml", ".xht", ".shtml", ".mhtml",
-                           ".svg", ".svgz")
+#: Absent ON PURPOSE, and the measurement is why: `.jsonl`, `.toml`, `.ini` and a
+#: name with no suffix were typed by CONTENT — `application/x-executable` when they
+#: held a binary — so for them the bit is the only thing saying "program". Scripts
+#: (`.sh .py .js` …) are absent too: on an ordinary filesystem their bit is real.
+_TEXT_SUFFIXES = (
+    ".html", ".htm", ".xhtml", ".xml", ".json", ".svg",
+    ".txt", ".md", ".csv", ".tsv", ".log", ".srt", ".vtt", ".yaml", ".yml",
+)
+
+
+def _bit_is_meaningless(lowered_target: str) -> bool:
+    """Whether the executable bit is not consulted for this resolved target.
+
+    Only where the measurement above was made: the opener is `xdg-open`. On
+    macOS the bit still refuses, because nothing was measured there and an entry
+    here rests on a measurement, never on plausibility.
+    """
+    return _opener_name() == "xdg-open" and lowered_target.endswith(_MEDIA_SUFFIXES + _TEXT_SUFFIXES)
 
 
 class OpenRequest(BaseModel):
@@ -150,13 +247,9 @@ class OpenRequest(BaseModel):
     """
 
     path: str
-    #: The reader has THIS file open in the file view and pressed its own
-    #: desktop button. Lifts the local-page refusal and nothing else — see
-    #: `refusal(allow_pages=...)`.
-    viewed: bool = False
 
 
-def refusal(path: str, allow_pages: bool = False) -> str | None:
+def refusal(path: str) -> str | None:
     """Why this path must not be handed to the desktop, or `None` if it may be.
 
     Kept as a function of its own, and returning a REASON rather than a boolean,
@@ -183,8 +276,10 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
     The order is fixed and the resolution comes first:
 
         absolute → realpath → exists → file or directory → launcher suffix
-                 → association runs it → association interprets it
-                 → executable bit (REGULAR FILES ONLY)
+                 → association runs it
+                 → executable bit (REGULAR FILES ONLY; not for a measured
+                   media, document or text suffix on Linux — see
+                   `_MEDIA_SUFFIXES` and `_TEXT_SUFFIXES`)
 
     Three of those steps are the ones that would be got wrong:
 
@@ -228,23 +323,13 @@ def refusal(path: str, allow_pages: bool = False) -> str | None:
             return (f"a {suffix} file is RUN by whatever the desktop associates with it, "
                     "whatever its permissions say")
 
-    # `allow_pages`, asked for by the user on 2026-09-25: from the file view's
-    # own button the reader has the page OPEN and presses a control whose only
-    # job is to hand it to the desktop — a browser is the program they want.
-    # It lifts THIS rule alone. The rules above (launchers, association-runs)
-    # and the executable bit below stay, so nothing that RUNS becomes reachable.
-    #
-    # Stated rather than implied: the server cannot verify the flag — any
-    # caller can set it. What it rests on is the same thing every open here
-    # rests on, a person's click; the terminal route does not send it, because
-    # there the page was merely NAMED by text an agent printed.
-    for suffix in () if allow_pages else _ASSOCIATION_INTERPRETS:
-        if lowered.endswith(suffix):
-            return (f"a {suffix} file opens as a local page that can read this "
-                    "machine's files")
-
+    # Judged on the RESOLVED name, like the suffix rules above: a link named
+    # `clip.mp4` that points at a program keeps the program's name here.
     if not is_dir and os.access(target, os.X_OK):
-        return "this file carries an executable bit, and executables are not opened"
+        if _bit_is_meaningless(lowered):
+            logger.debug("desktop refusal: executable bit not consulted for media file %s", target)
+        else:
+            return "this file carries an executable bit, and executables are not opened"
 
     return None
 
@@ -265,9 +350,9 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
     """
     path = (req.path or "").strip()
 
-    why = refusal(path, allow_pages=req.viewed)
+    why = refusal(path)
     if why:
-        logger.info("desktop_open: refused path=%s viewed=%s reason=%s", path, req.viewed, why)
+        logger.info("desktop_open: refused path=%s reason=%s", path, why)
         raise HTTPException(status_code=400, detail=why)
 
     wanted = _opener_name()
@@ -279,9 +364,19 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
             detail=f"no desktop handler available ({wanted} not found)",
         )
 
+    env = _opener_env()
+    if env is None:
+        logger.warning("desktop_open: no graphical session reachable, nothing started for %s", path)
+        raise HTTPException(
+            status_code=503,
+            detail="no graphical session is visible to the server (no DISPLAY or "
+                   "WAYLAND_DISPLAY), so nothing was started",
+        )
+
     try:
         subprocess.Popen(
             [opener, path],
+            env=env,
             start_new_session=True,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -291,7 +386,7 @@ def desktop_open(req: OpenRequest) -> Dict[str, Any]:
         logger.error("desktop_open: could not start %s for %s — %s", wanted, path, exc)
         raise HTTPException(status_code=500, detail=f"could not start {wanted}: {exc}")
 
-    logger.info("desktop_open: handed over path=%s viewed=%s", path, req.viewed)
+    logger.info("desktop_open: handed over path=%s", path)
     # `opened` means ASKED. The message is what reaches the reader, so it is
     # worded as the weaker claim the endpoint can actually stand behind.
     return {"opened": True, "path": path, "message": "handed to the desktop"}

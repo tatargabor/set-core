@@ -19,6 +19,41 @@ WHY THIS EXISTS
     the same PreToolUse hook — a commit is the unit that accumulates, and by
     push time the only repair is a history rewrite.
 
+THE PRIVATE DENY-LIST, AND WHAT BLOCKS ONLY ON A PUBLIC REMOTE (2026-10-18)
+    Measured on the public repos that day: every confirmed leak passed the tree
+    scan clean, because a client name that is not a registry slug was never
+    searched for, every `set-*` name was skipped, and nothing looked at
+    transcript files, `.env` files or licence ids. So, all resolved at run time:
+
+    * `~/.config/set-core/leakscan-deny.txt` — optional, one term per line,
+      `re:` for a regex, `#` comments, ASCII-folded and case-insensitive. A
+      missing file means no extra terms, never an error. It must never be
+      committed anywhere: the list IS the leak.
+    * file-name classes: `docs/inputs/`, `*transcript*.jsonl`,
+      `*-raw-part<N>*.jsonl`, dictation dumps, `owner-inbox`; tracked `.env` /
+      `.env.*` except `*.example`; and a licence-id content shape.
+    * a `set-*` registry name whose repository is private (its remotes decide,
+      or `gh repo view` when the checkout is not here; cached per name).
+    * a price shape — advisory only, never blocks: examples are common.
+
+    These categories block only when the remote is not private — in the commit
+    modes too, where visibility is consulted lazily and only when one of them
+    fired. A private repository that coordinates its clients must be able to
+    name them; a public one must not.
+
+    PRECEDENCE: a deny-list term is NOT silenced by a plain entry of the allow
+    file. Plain allow entries are registry slugs (the owner's own company names
+    were allowlisted there on 2026-08-24); listing such a name in the deny-list
+    makes it fire inside a public repo again. Only a `literal:` allow entry —
+    a deliberate, line-local exception — suppresses a deny finding.
+
+OUTPUT IS MASKED
+    A finding prints its category, `file:line` and a masked excerpt of the
+    matched value (first and last two characters plus the length), never the
+    line. A gate that prints the secret it caught puts it into a terminal, a
+    transcript, or one day a CI log. Names inside a reported file path are
+    masked the same way.
+
 THE NAME LISTS ARE NEVER STORED IN THE REPOSITORY
     Consumer names and this machine's identity (the local user's name tokens,
     git email, username, hostname) are exactly what must not be committed, so a
@@ -53,6 +88,7 @@ import sys
 HOME = os.path.expanduser("~")
 REGISTRY = os.path.join(HOME, ".config", "set-core", "projects.json")
 ALLOWLIST = os.path.join(HOME, ".config", "set-core", "leakscan-allow.txt")
+DENYLIST = os.path.join(HOME, ".config", "set-core", "leakscan-deny.txt")
 
 # Slugs that are legitimately public: this project's own E2E fixtures and the
 # public `set-*` family. They live in the registry beside the private ones, so
@@ -76,6 +112,92 @@ SECRET_PATTERNS = [
 # `\+36…` style numbers are the local case; the shape generalises to any long
 # run of digits that a human would recognise as a phone number.
 PHONE_PATTERN = r"\+\d{1,3}[- ]?\d{2}[- ]?\d{3}[- ]?\d{4}\b|\"\+?\d{11,13}\""
+
+# A licence id as the products issue them. Case-sensitive on purpose: the
+# shape is upper-case by construction, and a lower-case `l-` is prose.
+LICENCE_PATTERN = r"\bL-[A-Z0-9]{6,}"
+
+# A price. ADVISORY ONLY: examples and fixtures are full of fictional prices,
+# and a gate that blocks on every webshop fixture is a gate that gets muted.
+PRICE_PATTERN = r"\d[\d .]{2,}\s?(?:(?:Ft|HUF|EUR)\b|€)"
+
+# Categories that block only when the remote is not private (see the module
+# docstring). The commit modes consult visibility for these alone.
+PUBLIC_ONLY = ("deny-term", "private-repo-name", "private-path", "env-file",
+               "licence-id")
+# Reported, never blocking.
+ADVISORY_ONLY = ("price",)
+
+
+class _NeedleCheck:
+    """A regex behind a substring prefilter: the shape can only match a line
+    that carries one of the needles, and `in` is far cheaper than a search."""
+
+    def __init__(self, pattern, needles):
+        self._rx = re.compile(pattern)
+        self._needles = needles
+
+    def search(self, line):
+        if not any(n in line for n in self._needles):
+            return None
+        return self._rx.search(line)
+
+
+DICTATION_EXT = {".jsonl", ".json", ".md", ".txt", ".wav", ".webm", ".ogg",
+                 ".m4a", ".mp3", ".flac", ".opus"}
+
+
+def private_path_kind(path):
+    """Which private-file class a tracked path falls in, or None.
+
+    These are the shapes the meeting and dictation tooling writes: raw
+    recordings' transcripts, dictation dumps, the owner's inbox, and the
+    `docs/inputs/` drop folder. A public repository has no business tracking
+    any of them, whatever their content.
+    """
+    p = path.replace("\\", "/").lower()
+    segs = p.split("/")
+    base = segs[-1]
+    if p.startswith("docs/inputs/") or "/docs/inputs/" in p:
+        return "inputs-dir"
+    if base.endswith(".jsonl") and "transcript" in base:
+        return "transcript"
+    if base.endswith(".jsonl") and re.search(r"-raw-part[0-9]", base):
+        return "raw-part"
+    # The FILE, not a directory: a feature folder named `dictation-…` and a
+    # `dictation-archive.mjs` script are code (measured 2026-10-18, six false
+    # findings in one public repo). The dumps are data or audio:
+    # `dictation-<timestamp>.jsonl`, `<date>-dictation-part<N>-<hash>.md`.
+    if (base.startswith("dictation-") or "-dictation-part" in base) and \
+            os.path.splitext(base)[1] in DICTATION_EXT:
+        return "dictation"
+    if any("owner-inbox" in seg for seg in segs):
+        return "owner-inbox"
+    return None
+
+
+def is_env_file(path):
+    """A tracked `.env` / `.env.*`, except the `*.example` template."""
+    base = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if base == ".env":
+        return True
+    return base.startswith(".env.") and not base.endswith(".example")
+
+
+def mask(value):
+    """A masked excerpt of a matched value: enough to find it, not to read it.
+
+    First and last two characters plus the length. A short value would be
+    shown almost whole that way, so below eight characters only the first and
+    last one are kept, and below four nothing is.
+    """
+    v = (value or "").strip()
+    n = len(v)
+    if n >= 8:
+        return f"{v[:2]}…{v[-2:]} ({n} chars)"
+    if n >= 4:
+        return f"{v[0]}…{v[-1]} ({n} chars)"
+    return f"… ({n} chars)"
 
 # Identity tokens so generic that flagging them would cry daily on nothing:
 # documentation and code legitimately teem with these words. The list guards
@@ -205,7 +327,85 @@ class _EnvMarkerCheck:
     def search(self, line):
         if self._rx is None:
             return None
-        return self._rx.search(fold(line))
+        return self._rx.search(_fold_line(line))
+
+
+class _TermCheck:
+    r"""Plain terms and `re:` regexes matched on FOLDED text.
+
+    Plain terms match on an alphanumeric boundary, not `\b`: `\b` counts
+    `_` as a word character, so `_name_digest`-style identifiers walked past
+    it. A regex is applied to the folded line with IGNORECASE, so it is
+    written in plain ASCII.
+    """
+
+    def __init__(self, terms, regexes=()):
+        alts = "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
+        self._plain = (re.compile(r"(?<![a-z0-9])(?:" + alts + r")(?![a-z0-9])")
+                       if alts else None)
+        # ONE lookbehind around the whole alternation, not one per term, and
+        # no substring prefilter: measured on a 5,700-file tree, a prefilter
+        # cost more than the single C-level search it was meant to save. The
+        # per-line fold was the real cost (see _fold_line).
+        self._rxs = list(regexes)
+
+    def __bool__(self):
+        return bool(self._plain or self._rxs)
+
+    def search(self, line):
+        folded = _fold_line(line)
+        if self._plain is not None:
+            m = self._plain.search(folded)
+            if m:
+                return m
+        for rx in self._rxs:
+            m = rx.search(folded)
+            if m:
+                return m
+        return None
+
+
+_FOLD_MEMO = ["", ""]
+
+
+def _fold_line(line):
+    """fold() for the hot loop: ASCII lines take the cheap path, and the last
+    result is memoised — several checks fold the same line in a row."""
+    if line is _FOLD_MEMO[0] or line == _FOLD_MEMO[0]:
+        return _FOLD_MEMO[1]
+    folded = line.lower() if line.isascii() else fold(line)
+    _FOLD_MEMO[0], _FOLD_MEMO[1] = line, folded
+    return folded
+
+
+def load_deny():
+    """The private deny-list, read at run time. Returns (terms, regexes, notes).
+
+    Missing file: no extra terms and no note — the list is optional. A regex
+    that does not compile is announced and skipped, never silently dropped.
+    """
+    terms, regexes, notes = set(), [], []
+    try:
+        fh = open(DENYLIST, encoding="utf-8")
+    except FileNotFoundError:
+        return terms, regexes, notes
+    except OSError as exc:
+        return terms, regexes, [f"deny-list unreadable ({exc}) — deny-term check SKIPPED"]
+    with fh:
+        for n, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("re:"):
+                try:
+                    regexes.append(re.compile(line[3:].strip(), re.IGNORECASE))
+                except re.error as exc:
+                    notes.append(f"deny-list line {n}: regex does not compile ({exc}) — skipped")
+            else:
+                t = fold(line)
+                if t:
+                    terms.add(t)
+    return terms, regexes, notes
 
 
 def _looks_synthetic(digits):
@@ -309,6 +509,109 @@ def private_slugs():
     return slugs, None
 
 
+NAME_VIS_CACHE = os.path.join(HOME, ".cache", "set-core", "leakscan-name-visibility.json")
+NAME_VIS_RETRY = 86400        # an "unknown" verdict is asked again after a day
+
+
+def _sh_timeout(args, timeout=8):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired):
+        return ""
+    return p.stdout
+
+
+def private_set_names():
+    """`set-*` registry names whose repository is PRIVATE.
+
+    Returns (private names, names of unknown visibility). The caller announces
+    the unknown ones that the deny-list does not already cover — those are
+    the real gap.
+
+    The slug check skips every `set-*` name, because the family is mostly
+    public and naming a public sibling is no leak. But the family also holds
+    private repositories, and those were never flagged. Visibility is decided
+    once per name and cached:
+
+    * checkout present: its remotes decide (`remote_visibility`, itself
+      cached per URL); a git checkout with no remote at all publishes nowhere
+      and counts as private;
+    * checkout absent: `gh repo view <name>`.
+
+    Anything that cannot be decided (offline, a non-GitHub remote) stays
+    "unknown" and keeps the old behaviour — skipped — and is asked again after
+    a day.
+    """
+    import time
+    if not os.path.exists(REGISTRY):
+        return set(), set()
+    try:
+        data = json.load(open(REGISTRY, encoding="utf-8"))
+    except (ValueError, OSError):
+        return set(), set()
+    projects = data.get("projects", data)
+    if not isinstance(projects, dict):
+        return set(), set()
+    try:
+        cache = json.load(open(NAME_VIS_CACHE, encoding="utf-8"))
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+
+    now, dirty, names, unknown = time.time(), False, set(), set()
+    for name, meta in projects.items():
+        path = (meta or {}).get("path", "") if isinstance(meta, dict) else ""
+        cands = {name}
+        if path:
+            cands.add(os.path.basename(path.rstrip("/")))
+        for c in cands:
+            c = re.sub(r"-run\b.*$", "", c)
+            c = re.sub(r"-\d{8}-\d{4}$", "", c).lower()
+            if not c.startswith("set-") or len(c) < 5:
+                continue
+            ent = cache.get(c)
+            if isinstance(ent, dict) and (
+                    ent.get("v") in ("public", "private")
+                    or now - float(ent.get("t", 0)) < NAME_VIS_RETRY):
+                v = ent.get("v", "unknown")
+            else:
+                v = "unknown"
+                if path and os.path.isdir(path) and \
+                        sh(["git", "rev-parse", "--git-dir"], cwd=path).strip():
+                    urls = [u for u in sh(["git", "remote", "-v"], cwd=path).split()
+                            if "://" in u or "@" in u]
+                    v = remote_visibility(path) if urls else "private"
+                    # a local name may differ from the checkout's own; the
+                    # verdict is the checkout's either way
+                else:
+                    out = _sh_timeout(["gh", "repo", "view", c, "--json",
+                                       "visibility", "-q", ".visibility"]).strip().lower()
+                    if out in ("public", "private", "internal"):
+                        v = "public" if out == "public" else "private"
+                cache[c] = {"v": v, "t": now}
+                dirty = True
+            if v == "private":
+                names.add(c)
+            elif v == "unknown":
+                unknown.add(c)
+    if dirty:
+        try:
+            os.makedirs(os.path.dirname(NAME_VIS_CACHE), exist_ok=True)
+            payload = json.dumps(cache, indent=1, sort_keys=True)
+            with open(NAME_VIS_CACHE, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+        except OSError:
+            pass
+    return names, unknown
+
+
+def unknown_note(unknown, deny_terms):
+    gap = sorted(u for u in unknown if u not in deny_terms)
+    return ([f"{len(gap)} set-* name(s) of unknown visibility and not on the "
+             f"deny-list — skipped, as before"] if gap else [])
+
+
 # Categories that matter whatever the remote's visibility. A credential is a
 # credential in a private repository too, and a file that is gitignored yet
 # tracked is a mistake wherever it lives — that exact shape shipped a real phone
@@ -392,10 +695,11 @@ def _scan_pairs(pairs, path, checks, findings):
         if len(line) > 4000:
             line = line[:4000]
         for label, rx in checks:
-            if rx.search(line):
+            m = rx.search(line)
+            if m:
                 findings.append({
-                    "category": label, "file": path,
-                    "line": lineno, "text": line.strip()[:160],
+                    "category": label, "file": path, "line": lineno,
+                    "value": m.group(0), "text": line.strip()[:160],
                 })
                 break
 
@@ -635,14 +939,25 @@ def main():
         cwd = sh(["git", "rev-parse", "--show-toplevel"]).strip()
         env_tokens, env_missing = identity_markers(cwd) if cwd else ([],
             ["not inside a git repository"])
-        print("categories: consumer-name, secret, home-path, phone, env-marker")
+        d_terms, d_rxs, d_notes = load_deny()
+        set_names, set_unknown = private_set_names()
+        set_notes = unknown_note(set_unknown, d_terms)
+        print("categories: consumer-name, deny-term, private-repo-name, secret, home-path,")
+        print("            phone, licence-id, env-marker, private-path, env-file,")
+        print("            price (advisory)")
         print(f"consumer-name patterns resolved at run time: {len(slugs)}")
         print(f"  source   : {REGISTRY}")
         print(f"  allowlist: {ALLOWLIST}")
         print(f"env-marker tokens resolved at run time: {len(env_tokens)}")
         print("  sources  : git user.email local part, git user.name, username, hostname")
         print("  measured : added lines only — never whole files, never --tree")
+        print(f"deny-list terms: {len(d_terms)} plain, {len(d_rxs)} regex")
+        print(f"  source   : {DENYLIST} ({'present' if os.path.exists(DENYLIST) else 'absent — no extra terms'})")
+        print(f"private set-* repository names: {len(set_names)}")
+        print(f"  cache    : {NAME_VIS_CACHE}")
         print("  (values deliberately not printed — that is the thing being protected)")
+        for note in d_notes + set_notes:
+            print(f"  WARNING  : {note}")
         if skip_note:
             print(f"  WARNING  : {skip_note}")
         for note in env_missing:
@@ -678,20 +993,42 @@ def main():
     env_tokens, env_missing = identity_markers(cwd)
     env_tokens = [t for t in env_tokens if t not in own]
 
-    checks = []                    # whole-file checks — env-marker is never one
-    if slugs:
-        checks.append(("consumer-name",
-                       re.compile(r"\b(" + "|".join(re.escape(s) for s in sorted(slugs)) + r")\b",
-                                  re.IGNORECASE)))
+    # The deny-list wins over the allow file's plain entries (see the module
+    # docstring): it is NOT filtered by load_allow(), only by the repository's
+    # own names.
+    deny_terms, deny_rxs, deny_notes = load_deny()
+    deny_terms = {t for t in deny_terms if t not in own}
+    deny_check = _TermCheck(deny_terms, deny_rxs) or None
+    allow = load_allow()
+    set_names, set_unknown = private_set_names()
+    set_notes = unknown_note(set_unknown, deny_terms)
+    set_names = {n for n in set_names if n not in own and n not in allow
+                 and n not in deny_terms}          # the deny-list reports those
+    set_check = _TermCheck(set_names) or None
+    gate_notes = deny_notes + set_notes
+
+    consumer_rx = (re.compile(r"\b(" + "|".join(re.escape(s) for s in sorted(slugs)) + r")\b",
+                              re.IGNORECASE) if slugs else None)
+    name_rxs = [(c, rx) for c, rx in (("consumer-name", consumer_rx),
+                                       ("deny-term", deny_check),
+                                       ("private-repo-name", set_check)) if rx]
+
+    checks = list(name_rxs)        # whole-file checks — env-marker is never one
     for label, rx in SECRET_PATTERNS:
         checks.append((f"secret:{label}", re.compile(rx)))
     checks.append(("home-path", re.compile(HOME_PATH_PATTERN)))
     checks.append(("phone", _PhoneCheck()))
+    checks.append(("licence-id", _NeedleCheck(LICENCE_PATTERN, ("L-",))))
 
     env_check = _EnvMarkerCheck(env_tokens) if env_tokens else None
     # New files and added lines get the env-marker check too — for a new file
     # every line is an added line, so the whole-file scan may as well carry it.
     commit_checks = checks + ([("env-marker", env_check)] if env_check else [])
+    # The advisory price check goes LAST: one finding per line, first category
+    # wins, and an advisory category must never shadow a blocking one.
+    price = ("price", _NeedleCheck(PRICE_PATTERN, ("Ft", "HUF", "EUR", "€")))
+    checks.append(price)
+    commit_checks.append(price)
 
     findings = []
     added = {}                     # path -> added lines (staged / range modes)
@@ -770,19 +1107,39 @@ def main():
                 _scan_pairs(pairs, path, [("env-marker", env_check)], findings)
 
     # --- file NAMES ----------------------------------------------------------
-    name_checks = ([("consumer-name", checks[0][1])] if slugs else []) + \
+    name_checks = [(c if c == "consumer-name" else f"{c}:filename", rx)
+                   for c, rx in name_rxs] + \
                   ([("env-marker:filename", env_check)] if env_check else [])
     if mode in ("staged", "range", "tree"):
         for f in files:
             for label, rx in name_checks:
-                if rx.search(f):
-                    findings.append({"category": label, "file": f, "line": 0, "text": f})
+                m = rx.search(f)
+                if m:
+                    findings.append({"category": label, "file": f, "line": 0,
+                                     "value": m.group(0), "text": f})
+        # Private-file classes measure what the tree WILL hold: a path the
+        # range or the index deletes is the repair, not a finding.
+        if mode == "tree":
+            present = files
+        elif mode == "staged":
+            present = [p for p, st in entries if st != "D"]
+        else:
+            tracked = set(tracked_files(cwd))
+            present = [f for f in files if f in tracked]
+        for f in present:
+            kind = private_path_kind(f)
+            if kind:
+                findings.append({"category": f"private-path:{kind}", "file": f,
+                                 "line": 0, "value": f.rsplit("/", 1)[-1], "text": f})
+            elif is_env_file(f):
+                findings.append({"category": "env-file", "file": f, "line": 0,
+                                 "value": None, "text": f})
 
     # --- commit and tag MESSAGES --------------------------------------------
     # A message is in no diff and in no tree, so the content checks above are
     # structurally blind to it. (Staged and message modes are excluded: staged
     # is the pre-commit fast path, and message mode IS the message scan.)
-    if slugs and mode in ("range", "tree"):
+    if name_rxs and mode in ("range", "tree"):
         rng = args.rev_range
         log_args = ["git", "log", "--format=%H%x1f%s%n%b%x1e"]
         log_args.append(rng if rng else "--all")
@@ -790,15 +1147,34 @@ def main():
             if "\x1f" not in entry:
                 continue
             sha, msg = entry.split("\x1f", 1)
-            if checks[0][1].search(msg):
-                findings.append({"category": "consumer-name:commit-message",
-                                 "file": sha.strip()[:12], "line": 0,
-                                 "text": msg.strip().splitlines()[0][:160] if msg.strip() else ""})
-        for tagline in sh(["git", "tag", "-l", "-n99"], cwd=cwd).splitlines():
-            if checks[0][1].search(tagline):
-                findings.append({"category": "consumer-name:tag-message",
-                                 "file": tagline.split()[0] if tagline.split() else "?",
-                                 "line": 0, "text": tagline[:160]})
+            for cat, rx in name_rxs:
+                m = rx.search(msg)
+                if m:
+                    findings.append({"category": f"{cat}:commit-message",
+                                     "file": sha.strip()[:12], "line": 0,
+                                     "value": m.group(0),
+                                     "text": msg.strip().splitlines()[0][:160] if msg.strip() else ""})
+                    break
+        # ANNOTATED tags only. `git tag -n` shows a lightweight tag's COMMIT
+        # message, which the commit-message scan above already owns — and,
+        # measured 2026-10-18, a long-published lightweight tag whose commit
+        # named a private repository then blocked every later push, a finding
+        # no push can fix. A tag object's own message is the tag's content.
+        tag_out = sh(["git", "for-each-ref", "refs/tags",
+                      "--format=%(objecttype)%1f%(refname:short)%1f%(contents)%1e"],
+                     cwd=cwd)
+        for entry in tag_out.split("\x1e"):
+            parts = entry.strip("\n").split("\x1f")
+            if len(parts) != 3 or parts[0] != "tag":
+                continue
+            _t, tagname, body = parts
+            for cat, rx in name_rxs:
+                m = rx.search(body) or rx.search(tagname)
+                if m:
+                    findings.append({"category": f"{cat}:tag-message",
+                                     "file": tagname, "line": 0,
+                                     "value": m.group(0), "text": body[:160]})
+                    break
 
     # --- ignored BUT tracked -------------------------------------------------
     # A path listed in .gitignore that is nevertheless tracked was added before
@@ -814,7 +1190,7 @@ def main():
             if subprocess.run(["git", "check-ignore", "--no-index", "-q", f],
                               cwd=cwd).returncode == 0:
                 findings.append({"category": "ignored-but-tracked",
-                                 "file": f, "line": 0, "text": f})
+                                 "file": f, "line": 0, "value": None, "text": f})
 
     # --- deliberate exceptions -------------------------------------------
     # The allow file holds slugs for the name check, but the same entries also
@@ -828,47 +1204,115 @@ def main():
     # slug suppress by substring, and the allowlisted repo name `ikp` promptly
     # swallowed a REAL `/home/<user>/code2/ikp/...` path finding in that very
     # repository — a fix that opened a hole one line wider than the one it shut.
-    allow_literals = {a[len("literal:"):] for a in load_allow()
+    allow_literals = {a[len("literal:"):] for a in allow
                       if a.startswith("literal:")}
     if allow_literals:
         findings = [f for f in findings
                     if not any(a in f["text"].lower() for a in allow_literals)]
 
     # --- what actually blocks --------------------------------------------
+    enforceable = [f for f in findings
+                   if not f["category"].startswith(ADVISORY_ONLY)]
     if mode in ("staged", "message"):
         # A commit is history whoever can see the remote — publication is only
         # one of the ways content escapes, and by the time it publishes the
-        # repair is a rewrite. Everything blocks; visibility is not consulted.
-        visibility = "not consulted (commit gate)"
-        blocking = findings
+        # repair is a rewrite. Everything blocks; visibility is not consulted —
+        # EXCEPT for the public-only categories, which a private repository
+        # legitimately carries. Visibility is asked only when one fired, so a
+        # clean commit costs no lookup.
+        if any(f["category"].startswith(PUBLIC_ONLY) for f in enforceable):
+            visibility = remote_visibility(cwd)
+        else:
+            visibility = "not consulted (commit gate)"
+        if visibility == "private":
+            blocking = [f for f in enforceable
+                        if not f["category"].startswith(PUBLIC_ONLY)]
+        else:
+            blocking = enforceable
     else:
         visibility = remote_visibility(cwd)
         if visibility == "private":
-            blocking = [f for f in findings
+            blocking = [f for f in enforceable
                         if f["category"].startswith(ALWAYS_ENFORCED)]
         else:
-            blocking = findings
+            blocking = enforceable
+
+    # --- masking -------------------------------------------------------------
+    # Never print the line or the value. A reported path is shown with every
+    # name the gate knows masked, and a private-path finding's file name — the
+    # part that carries dates and people — masked whole.
+    def redact_path(path):
+        # Folded matching keeps offsets only for ASCII; a non-ASCII path with
+        # a match is masked whole rather than at a guessed span.
+        ascii_ok = len(fold(path)) == len(path) and fold(path) == path.lower()
+        spans = []
+        for _c, rx in name_rxs + ([("env", env_check)] if env_check else []):
+            offset, rest = 0, path
+            while rest:
+                m = rx.search(rest)
+                if not m or m.end() == 0:
+                    break
+                if not ascii_ok:
+                    return mask(path)
+                spans.append((offset + m.start(), offset + m.end()))
+                offset += m.end()
+                rest = rest[m.end():]
+        if not spans:
+            return path
+        out, pos = [], 0
+        for a, b in sorted(spans):
+            if a < pos:
+                continue
+            out.append(path[pos:a])
+            out.append("<" + mask(path[a:b]) + ">")
+            pos = b
+        out.append(path[pos:])
+        return "".join(out)
+
+    def public_view(f):
+        shown = f["file"]
+        if f["category"].startswith("private-path"):
+            head, _, base = shown.rpartition("/")
+            shown = (redact_path(head) + "/" if head else "") + mask(base)
+        elif not f["category"].endswith(("commit-message",)):
+            shown = redact_path(shown)
+        val = f.get("value")
+        return {"category": f["category"], "file": shown, "line": f["line"],
+                "excerpt": mask(val) if val else "",
+                "length": len(val.strip()) if val else 0}
+
+    findings_out = [public_view(f) for f in findings]
+    blocking_out = [public_view(f) for f in blocking]
 
     # --- report --------------------------------------------------------------
     if args.json:
-        print(json.dumps({"findings": findings, "blocking": blocking,
+        print(json.dumps({"findings": findings_out, "blocking": blocking_out,
                           "visibility": visibility, "skipped": skip_note,
+                          "gate_notes": gate_notes,
                           "env_marker_sources_missing": env_missing,
                           "mode": mode, "scanned_files": len(files)}, indent=2))
-    elif not args.quiet or findings or skip_note:
+    elif not args.quiet or findings or skip_note or gate_notes:
         if skip_note:
             print(f"⚠ set-leakscan: {skip_note}", file=sys.stderr)
         for note in env_missing:
             print(f"⚠ set-leakscan: env-marker check partially blind — {note}",
                   file=sys.stderr)
+        for note in gate_notes:
+            print(f"⚠ set-leakscan: {note}", file=sys.stderr)
         if findings:
             mark = "✖" if blocking else "•"
+            # Nothing blocks for one of two reasons, and the report names the
+            # right one: every finding is advisory (a price shape blocks on no
+            # remote), or the remote is private. Saying "private" for the first
+            # contradicted the "remote is public" printed beside it (2026-10-25).
+            all_advisory = not enforceable
+            why = "findings are advisory" if all_advisory else "remote is private"
             head = (f"{mark} set-leakscan: {len(findings)} finding(s) — "
-                    f"{'COMMIT REFUSED' if mode == 'staged' else 'commit message REFUSED' if mode == 'message' else f'{len(files)} scanned file(s), remote is {visibility}'}")
+                    f"{('COMMIT REFUSED' if blocking else f'commit allowed, {why}') if mode == 'staged' else ('commit message REFUSED' if blocking else f'message allowed, {why}') if mode == 'message' else f'{len(files)} scanned file(s), remote is {visibility}'}")
             print(head, file=sys.stderr)
             print("", file=sys.stderr)
             by_cat = {}
-            for f in findings:
+            for f in findings_out:
                 by_cat.setdefault(f["category"], []).append(f)
             blocking_cats = {f["category"] for f in blocking}
             for cat, items in sorted(by_cat.items()):
@@ -876,7 +1320,7 @@ def main():
                 print(f"  {cat} ({len(items)}) [{tag}]", file=sys.stderr)
                 for it in items[:8]:
                     loc = f"{it['file']}:{it['line']}" if it["line"] else it["file"]
-                    print(f"    {loc}  {it['text']}", file=sys.stderr)
+                    print(f"    {loc}  {it['excerpt']}".rstrip(), file=sys.stderr)
                 if len(items) > 8:
                     print(f"    … and {len(items) - 8} more", file=sys.stderr)
             if blocking:
@@ -897,13 +1341,20 @@ def main():
                 # Reported, not enforced — and SAID so. A gate that silently
                 # downgrades itself is indistinguishable from one that found
                 # nothing, which is the shape this whole tool exists to refuse.
-                print("\n  Every remote of this repository is private, so the findings above",
-                      file=sys.stderr)
-                print("  are reported and NOT enforced. They still matter the day a remote",
-                      file=sys.stderr)
-                print("  becomes public — nothing about them is retroactive.", file=sys.stderr)
+                if all_advisory:
+                    print("\n  Every finding above is advisory: reported, never enforced, on any",
+                          file=sys.stderr)
+                    print("  remote. Check that each one is an example, not a real figure.",
+                          file=sys.stderr)
+                else:
+                    print("\n  Every remote of this repository is private, so the findings above",
+                          file=sys.stderr)
+                    print("  are reported and NOT enforced. They still matter the day a remote",
+                          file=sys.stderr)
+                    print("  becomes public — nothing about them is retroactive.", file=sys.stderr)
         elif not args.quiet:
-            n_marks = len(slugs) + len(env_tokens)
+            n_marks = (len(slugs) + len(env_tokens) + len(deny_terms)
+                       + len(deny_rxs) + len(set_names))
             print(f"✔ set-leakscan: clean ({len(files)} file(s), "
                   f"{n_marks} pattern(s), remote {visibility})")
 

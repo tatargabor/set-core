@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""set-hook-wait-detect — Claude Code Stop hook: a prose wait becomes a structured question.
+
+While this machine's question relay is on (see `set-hook-question-relay`), a turn that ends
+waiting on the user in prose ("Then tell me 'done'") is blocked once, with an instruction to
+ask again with AskUserQuestion — which the relay then carries to the chat channel. The
+decision lives in `set_orch.fleet.wait_detect`; this file is the carrier.
+
+Output: the block JSON, or nothing (the turn ends). Always exits 0. Logs go to the relay's
+log file, never to stderr, and carry no message text.
+
+Referenced by name from .claude/settings.json; on PATH through install.sh.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+
+_SET_TOOLS_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_LIB = os.path.join(_SET_TOOLS_ROOT, "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+
+def main() -> int:
+    if os.environ.get("SET_WAIT_DETECT_CLASSIFIER"):
+        return 0
+    try:
+        hook_input = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(hook_input, dict) or hook_input.get("stop_hook_active"):
+        return 0
+    try:
+        from set_orch.fleet import question_relay as qr
+        from set_orch.fleet import wait_detect
+
+        if not qr.readiness()["enabled"]:
+            return 0
+        folder = qr.state_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=str(folder / "relay.log"), level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        out = wait_detect.decide(hook_input)
+    except Exception as exc:  # never keep a turn from ending over the detector's own failure
+        logging.getLogger("set-hook-wait-detect").warning("detector failed (%s)", type(exc).__name__)
+        return 0
+    if out is not None:
+        sys.stdout.write(json.dumps(out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

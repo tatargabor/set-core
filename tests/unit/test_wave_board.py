@@ -39,8 +39,9 @@ def env(tmp_path, monkeypatch):
     reg = tmp_path / "registry.json"
     reg.write_text(json.dumps({"projects": {}}))
     e = {**os.environ, "SET_CORE_REGISTRY": str(reg), "SET_WAVEBOARD_BY": "test-host"}
-    e.pop("SET_WAVEBOARD_PUSH", None)
-    e.pop("SET_WAVEBOARD_NAG_SECONDS", None)
+    for var in ("SET_WAVEBOARD_PUSH", "SET_WAVEBOARD_NAG_SECONDS", "SET_WAVEBOARD_REVIEW",
+                "SET_WAVEBOARD_REVIEW_SECONDS", "SET_WAVEBOARD_STALE_COMMITS"):
+        e.pop(var, None)
     return e
 
 
@@ -246,6 +247,29 @@ def test_render_names_the_page_after_the_job(env, repo, tmp_path):
     assert out.read_text().startswith("<title>Plan &lt;A&amp;B&gt; · Wave Board</title>")
 
 
+def test_render_carries_the_kanban_view(env, repo, tmp_path):
+    # The behaviour (columns, filter, persistence, live update) is checked in a browser; this
+    # pins the parts a careless edit would drop: both views, the guarded storage key, the
+    # column order, the skipped strip, the hidden-blocked notice, and that the page never writes.
+    new_job(env, repo, ("a", None))
+    out = tmp_path / "board.html"
+    run(env, repo, "render", "j", "-o", str(out))
+    html = out.read_text()
+    assert 'data-view="waves"' in html and 'data-view="kanban"' in html
+    assert 'var COLUMNS = ["todo", "doing", "blocked", "done"];' in html
+    storage = [l.strip() for l in html.splitlines() if "localStorage" in l]
+    assert len(storage) == 2, storage  # one read, one write — and both inside try
+    for line in storage:
+        assert line.startswith("try {"), line
+    assert 'VIEW_KEY = "waveboard.view"' in html
+    assert '"skipped-strip"' in html
+    assert "blocked outside this filter" in html
+    assert "[hidden] { display: none !important; }" in html
+    script = html.split('<script>', 1)[1]
+    for write in (".set(", ".update(", ".add(", ".delete("):
+        assert write not in script, write
+
+
 # ── the Stop hook ────────────────────────────────────────────────────────────
 
 def hook(env, cwd, event=None, **extra_env):
@@ -306,6 +330,215 @@ def test_hook_is_silent_in_a_linked_worktree(env, repo, tmp_path):
     git(repo, "worktree", "add", "-q", str(wt))
     assert hook(env, wt).stdout == ""
     assert json.loads(hook(env, wt, SET_WAVEBOARD_PUSH="worktree").stdout)["decision"] == "block"
+
+
+# ── staleness: the items only an agent can move (change wave-board-staleness) ──
+#
+# Dates are pinned: the board's `updated` stamps are moved into the past and every commit
+# carries an explicit committer date, so "commits since the change" never depends on how
+# many commits land inside one wall-clock second.
+
+PAST = "2026-01-01T00:00:00Z"
+
+
+@pytest.fixture
+def srepo(tmp_path):
+    """A repository whose only commit predates PAST, so it never counts as work."""
+    path = tmp_path / "consumer"
+    path.mkdir()
+    git(path, "init", "-q")
+    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "init"], cwd=path, check=True,
+                   capture_output=True,
+                   env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+                        "GIT_AUTHOR_DATE": "2025-12-01T00:00:00Z",
+                        "GIT_COMMITTER_DATE": "2025-12-01T00:00:00Z"})
+    return path
+
+
+def backdate(srepo, when=PAST, job="j"):
+    data = job_file(srepo, job)
+    for w in data["waves"]:
+        for it in w["items"]:
+            it["updated"] = when
+    (srepo / "docs" / "waveboard" / f"{job}.json").write_text(json.dumps(data, indent=2) + "\n")
+
+
+def commit_at(srepo, day: int, n: int = 1):
+    """`n` empty commits dated 2026-01-<day>, after PAST and before now."""
+    for i in range(n):
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", f"work {day}.{i}"], cwd=srepo,
+                       check=True, capture_output=True,
+                       env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+                            "GIT_AUTHOR_DATE": f"2026-01-{day:02d}T12:00:{i:02d}Z",
+                            "GIT_COMMITTER_DATE": f"2026-01-{day:02d}T12:00:{i:02d}Z"})
+
+
+def stale(env, srepo, job="j"):
+    return {r["job"]: r for r in json.loads(run(env, srepo, "stale", "--json").stdout)}[job]
+
+
+def stale_repo(env, srepo, commits=3):
+    new_job(env, srepo, ("a", None))
+    backdate(srepo)
+    commit_at(srepo, 2, commits)
+
+
+def test_commits_after_the_change_make_a_board_with_manual_items_stale(env, srepo):
+    """AC-1."""
+    stale_repo(env, srepo)
+    r = stale(env, srepo)
+    assert r["commits_since_change"] == 3
+    assert [m["id"] for m in r["manual_open"]] == ["a"]
+    assert r["manual_open"][0]["status"] == "todo" and r["manual_open"][0]["wave"] == "w0"
+    assert r["stale"] is True
+    assert r["last_change"] == PAST
+
+
+def test_the_boards_own_commit_is_not_enough(env, srepo):
+    """AC-2: the commit recording a manual `set` is itself newer than the stamp."""
+    new_job(env, srepo, ("a", None))
+    backdate(srepo)
+    git(srepo, "add", "docs")
+    commit_at(srepo, 2)
+    r = stale(env, srepo)
+    assert r["commits_since_change"] == 1 and r["stale"] is False
+
+
+def test_only_items_sync_cannot_move_are_manual(env, srepo):
+    """AC-3."""
+    missing = {"type": "path-exists", "path": "not-yet"}
+    new_job(env, srepo, ("t", None), ("b", missing), ("d", missing), ("x", None))
+    run(env, srepo, "set", "j", "b", "blocked")
+    run(env, srepo, "set", "j", "d", "doing")
+    run(env, srepo, "set", "j", "x", "done")
+    assert [m["id"] for m in stale(env, srepo)["manual_open"]] == ["t", "b"]
+
+
+def test_a_board_whose_items_all_have_evidence_is_never_stale(env, srepo):
+    """AC-4."""
+    new_job(env, srepo, ("d", {"type": "path-exists", "path": "not-yet"}))
+    run(env, srepo, "set", "j", "d", "doing")
+    backdate(srepo)
+    commit_at(srepo, 2, 5)
+    r = stale(env, srepo)
+    assert r["commits_since_change"] == 5 and r["manual_open"] == [] and r["stale"] is False
+
+
+def test_not_measurable_is_null_not_zero(env, srepo):
+    """AC-5."""
+    d = srepo / "docs" / "waveboard"
+    d.mkdir(parents=True)
+    (d / "j.json").write_text(json.dumps({"schema": "set-wave-board/1", "job": "j", "title": "J",
+                                          "artifact_url": None, "waves": [{"id": "w0", "items": [
+                                              {"id": "a", "title": "A", "status": "todo",
+                                               "evidence": None}]}]}))
+    commit_at(srepo, 2, 5)
+    r = stale(env, srepo)
+    assert r["commits_since_change"] is None and r["stale"] is False
+
+
+def test_without_any_stamp_the_created_date_is_the_last_change(env, srepo):
+    """D2: no item `updated` and no `reviewed` — `created`, read as midnight UTC."""
+    d = srepo / "docs" / "waveboard"
+    d.mkdir(parents=True)
+    (d / "j.json").write_text(json.dumps({"schema": "set-wave-board/1", "job": "j", "title": "J",
+                                          "artifact_url": None, "created": "2026-01-01",
+                                          "waves": [{"id": "w0", "items": [
+                                              {"id": "a", "title": "A", "status": "todo",
+                                               "evidence": None}]}]}))
+    commit_at(srepo, 2, 3)
+    r = stale(env, srepo)
+    assert r["last_change"] == PAST and r["commits_since_change"] == 3 and r["stale"] is True
+
+
+def test_a_review_resets_staleness(env, srepo):
+    """AC-6."""
+    stale_repo(env, srepo)
+    assert stale(env, srepo)["stale"] is True
+    run(env, srepo, "reviewed", "j")
+    r = stale(env, srepo)
+    assert r["commits_since_change"] == 0 and r["stale"] is False
+    assert job_file(srepo)["reviewed"]["by"] == "test-host"
+
+
+def test_a_review_does_not_cause_a_push(env, srepo):
+    """AC-7."""
+    new_job(env, srepo, ("a", None))
+    run(env, srepo, "link", "j", URL)
+    run(env, srepo, "sync")
+    run(env, srepo, "pushed", "j", "--version", "1")
+    run(env, srepo, "reviewed", "j")
+    run(env, srepo, "sync")
+    assert json.loads(run(env, srepo, "pending", "--json").stdout) == []
+    assert "reviewed" in job_file(srepo)
+
+
+def test_the_threshold_comes_from_the_environment(env, srepo):
+    stale_repo(env, srepo, commits=2)
+    assert stale(env, srepo)["stale"] is False
+    env2 = {**env, "SET_WAVEBOARD_STALE_COMMITS": "2"}
+    assert stale(env2, srepo)["stale"] is True
+
+
+def test_hook_asks_for_a_review_of_a_stale_board(env, srepo):
+    """AC-8: no page URL, so this is the review alone."""
+    stale_repo(env, srepo)
+    out = json.loads(hook(env, srepo).stdout)
+    assert out["decision"] == "block"
+    reason = out["reason"]
+    for needle in ("Wave board review", "3 commit(s)", "- a [todo] A",
+                   "set-wave-board set j <item>", "set-wave-board reviewed j"):
+        assert needle in reason, needle
+    assert "ArtifactData" not in reason
+
+
+def test_the_review_backs_off_on_its_own_clock(env, srepo):
+    """AC-9."""
+    stale_repo(env, srepo)
+    assert hook(env, srepo).stdout != ""
+    assert hook(env, srepo).stdout == ""
+    assert (srepo / ".set" / "waveboard" / "j.review-nag").is_file()
+    assert json.loads(hook(env, srepo, SET_WAVEBOARD_REVIEW_SECONDS="0").stdout)["decision"] == "block"
+
+
+def test_push_and_review_due_together_make_one_block(env, srepo):
+    """AC-10."""
+    stale_repo(env, srepo)
+    run(env, srepo, "link", "j", URL)
+    r = hook(env, srepo)
+    blocks = [line for line in r.stdout.splitlines() if line.strip()]
+    assert len(blocks) == 1
+    reason = json.loads(blocks[0])["reason"]
+    assert reason.index("ArtifactData") < reason.index("Wave board review")
+
+
+def test_the_review_alone_can_be_switched_off(env, srepo):
+    """AC-11."""
+    stale_repo(env, srepo)
+    assert hook(env, srepo, SET_WAVEBOARD_REVIEW="off").stdout == ""
+
+
+def test_the_review_is_skipped_in_a_linked_worktree(env, srepo, tmp_path):
+    """AC-12."""
+    stale_repo(env, srepo)
+    git(srepo, "add", "docs")
+    commit_at(srepo, 1)
+    commit_at(srepo, 3, 3)
+    wt = tmp_path / "wt"
+    git(srepo, "worktree", "add", "-q", str(wt))
+    assert stale(env, wt)["stale"] is True
+    assert hook(env, wt).stdout == ""
+
+
+def test_the_review_lists_at_most_twenty_items(env, srepo):
+    new_job(env, srepo, *[(f"i{n:02d}", None) for n in range(22)])
+    backdate(srepo)
+    commit_at(srepo, 2, 3)
+    reason = json.loads(hook(env, srepo).stdout)["reason"]
+    assert "- i19 [todo]" in reason and "- i20 [todo]" not in reason
+    assert "+2 more" in reason
 
 
 # ── deployment ───────────────────────────────────────────────────────────────

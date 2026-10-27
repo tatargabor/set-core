@@ -53,5 +53,5 @@ The system SHALL NOT contain proprietary URLs, project names, or personal paths.
 
 #### Scenario: Clean codebase verification
 - **GIVEN** the codebase is searched for proprietary content
-- **WHEN** grep is run for "zengo", "EXAMPLE", or personal paths
+- **WHEN** grep is run for the former employer's name, "EXAMPLE", or personal paths
 - **THEN** no matches are found in non-archived files

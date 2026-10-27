@@ -7,7 +7,7 @@ working a change the screen could not find. The resolver chose `join-failed` ove
 projects keep dozens of them (70 and 41 on the day). So `nothing-started` was
 unreachable, an agent doing work outside any change was reported as a failed match, and
 a genuine join failure became indistinguishable from every other row. Registered as
-B-162.
+B-169.
 
 ## What Changes
 

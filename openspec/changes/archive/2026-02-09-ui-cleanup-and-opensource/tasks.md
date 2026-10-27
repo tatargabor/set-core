@@ -54,7 +54,7 @@
 
 - [x] 7.1 Replace `tatargabor/set-core` with `anthropic-tools/set-core` in `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, `docs/config.md`
 - [x] 7.2 Remove JIRA and Confluence sections from `README.md` and `docs/config.md`
-- [x] 7.3 Clean internal references from archived changes (`jira.zengo.eu`, `ARVRMTEAM`, `zengo-mirror`, personal names)
+- [x] 7.3 Clean internal references from archived changes (the internal Jira host, its team key, the internal mirror name, personal names)
 
 ## 8. Remove OpenSpec from install.sh
 

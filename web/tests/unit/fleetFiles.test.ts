@@ -726,3 +726,47 @@ describe('ancestorsOf, for revealing the open file', () => {
     expect(ancestorsOf('/a//b/c.ts')).toEqual(['a', 'a/b'])
   })
 })
+
+describe('a media file goes to the desktop, from inside a checkout too', () => {
+  // Reported 2026-10-19: a rendered video under a registered checkout went to
+  // the file view — an editor — and failed there. The owner asked for the player.
+  const home = '/home/x'
+  const root = '/home/x/proj'
+  const paths = ['renders/take01.mp4', 'docs/shot.PNG', 'src/app.ts', 'src/cover.png.ts']
+  const listing = buildListingIndex(paths)
+  const where = { root, cwd: root, listing, checkouts: [home, root], home }
+
+  it('an absolute media path inside a served checkout', () => {
+    expect(terminalTarget('/home/x/aiplus-media/renders/test-grain-glass-720p.mp4', where))
+      .toEqual({ kind: 'desktop', path: '/home/x/aiplus-media/renders/test-grain-glass-720p.mp4', confidence: 'high' })
+  })
+
+  it('a relative media path the listing has, with a line suffix dropped', () => {
+    expect(terminalTarget('renders/take01.mp4:3', where))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj/renders/take01.mp4', confidence: 'high' })
+    expect(terminalTarget('docs/shot.PNG', where))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj/docs/shot.PNG', confidence: 'high' })
+  })
+
+  it('a media path under ~/', () => {
+    expect(terminalTarget('~/proj/renders/take01.mp4', where))
+      .toEqual({ kind: 'desktop', path: '/home/x/proj/renders/take01.mp4', confidence: 'high' })
+  })
+
+  it('TypeScript is not media, whatever comes before .ts', () => {
+    expect(terminalTarget('src/app.ts', where))
+      .toEqual({ kind: 'file', ref: { path: 'src/app.ts' }, root, confidence: 'high' })
+    expect(terminalTarget('src/cover.png.ts', where))
+      .toEqual({ kind: 'file', ref: { path: 'src/cover.png.ts' }, root, confidence: 'high' })
+  })
+
+  it('an office document or archive skips the editor too; a page does not (2026-10-23)', () => {
+    const docs = buildListingIndex(['out/brief.docx', 'out/sheet.XLSX', 'out/bundle.tar.gz', 'out/report.html'])
+    const w = { ...where, listing: docs }
+    for (const rel of ['out/brief.docx', 'out/sheet.XLSX', 'out/bundle.tar.gz']) {
+      expect(terminalTarget(rel, w)).toEqual({ kind: 'desktop', path: `${root}/${rel}`, confidence: 'high' })
+    }
+    expect(terminalTarget('out/report.html', w))
+      .toEqual({ kind: 'file', ref: { path: 'out/report.html' }, root, confidence: 'high' })
+  })
+})

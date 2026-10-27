@@ -270,7 +270,7 @@ export interface Tally {
    * The left column's question marker counts this, not `asking`: a question
    * nobody has come for in 45 minutes must not hold a sky tint forever, the
    * same reason a parked wait does not own the row's colour. Reported
-   * 2026-10-10 (B-161): the tile said "asking you" while the project row
+   * 2026-10-10 (B-168): the tile said "asking you" while the project row
    * showed only the grey, 15-second-grace wait every finished turn shows.
    */
   askingNow: number

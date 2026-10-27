@@ -11,7 +11,7 @@ rather than a one-line grep:
 
 - ``current``  — at least one upstream id was parsed, and every one is covered.
 - ``behind``   — an upstream id set-core does not ship, or a shipped name the
-                 machine's catalogue does not offer (B-159).
+                 machine's catalogue does not offer (B-166).
 - ``unknown``  — the fetch failed, or the page yielded ZERO ids. Never
                  ``current``: a check that could not measure and one that found
                  nothing to report look identical from outside, and only one of
