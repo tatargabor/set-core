@@ -111,7 +111,7 @@ h1 {
 }
 .items { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .item {
-  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline;
+  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline;
   padding: 10px 12px; border-top: 1px solid var(--line);
 }
 .item:first-child { border-top: 0; }
@@ -119,6 +119,11 @@ h1 {
 .item-title .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-right: 8px; }
 .item.skipped .item-title .t { text-decoration: line-through; color: var(--muted); }
 .item-note { grid-column: 2 / -1; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.assignee { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; min-height: 30px; max-width: 160px; }
+.assignee:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.assignee.unset { color: var(--muted); }
+.assignee-ro { font-size: 13px; color: var(--ink); white-space: nowrap; }
 .item-meta { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .empty {
   border: 1px dashed var(--line); border-radius: 8px; padding: 22px; color: var(--muted); background: var(--surface);
@@ -182,6 +187,7 @@ h1 {
   .item { grid-template-columns: minmax(0, 1fr) auto; }
   .item .chip { grid-row: 1; grid-column: 1; justify-self: start; }
   .item .item-meta { grid-row: 1; grid-column: 2; }
+  .item .assignee, .item .assignee-ro { grid-column: 1 / -1; justify-self: start; }
   .item-title { grid-column: 1 / -1; }
   .item-note { grid-column: 1 / -1; }
 }
@@ -222,9 +228,9 @@ h1 {
       without a reload.
     </div>
   </main>
-  <p class="foot">Read-only. Status comes from evidence in the repository (task boxes, files,
-    commits); an agent's own report fills the gaps until evidence speaks. Updated by
-    <code>set-wave-board</code>.</p>
+  <p class="foot">Status comes from evidence in the repository (task boxes, files, commits); an
+    agent's own report fills the gaps until evidence speaks. Updated by <code>set-wave-board</code>.
+    The assignee is the one thing you can change here: pick a name on a row.</p>
 </div>
 
 <script type="application/json" id="seed">null</script>
@@ -248,6 +254,8 @@ h1 {
   }
   var view = loadView();
   var filterIdx = "";      // "" = all waves; deliberately not persisted
+  var picks = {};      // board/assignees: item id -> name, chosen on the page
+  var picksDoc = null; // set once the db capability answers; null = the page cannot write
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -294,8 +302,38 @@ h1 {
   function renderSynced() {
     var out = document.getElementById("synced");
     if (!current || !current.synced_at) { out.textContent = ""; return; }
-    out.textContent = "synced " + stamp(current.synced_at) + " · " + ago(current.synced_at) +
-      (current.synced_by ? " · " + current.synced_by : "");
+    out.textContent = "synced " + stamp(current.synced_at) + " · " + ago(current.synced_at);
+  }
+
+  function whoOf(it) {
+    var id = it.id || "";
+    return Object.prototype.hasOwnProperty.call(picks, id) ? (picks[id] || "") : (it.assignee || "");
+  }
+  function assigneeControl(it, names) {
+    var who = whoOf(it);
+    if (!picksDoc) {
+      return el("span", "assignee-ro", who ? "Assignee: " + who : "");
+    }
+    var sel = el("select", "assignee" + (who ? "" : " unset"));
+    sel.setAttribute("aria-label", "Assignee for " + (it.id || "") + " " + (it.title || ""));
+    var opts = [""].concat(names);
+    if (who && opts.indexOf(who) < 0) opts.push(who);
+    opts.forEach(function (n) {
+      var o = el("option", null, n || "Unassigned");
+      o.value = n;
+      if (n === who) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function () {
+      var patch = {};
+      patch[it.id] = sel.value;
+      picks[it.id] = sel.value;
+      sel.className = "assignee" + (sel.value ? "" : " unset");
+      // update needs the document to exist; the first choice on a board creates it.
+      picksDoc.update(patch).catch(function () { return picksDoc.set(Object.assign({}, picks)); })
+        .catch(function () { setSource("snapshot", "The choice could not be saved"); });
+    });
+    return sel;
   }
 
   function render(state) {
@@ -346,11 +384,12 @@ h1 {
     });
     document.getElementById("filter").hidden = view !== "kanban";
     host.className = view === "kanban" ? "kanban-wrap" : "waves";
-    if (view === "kanban") renderKanban(waves, host, opened);
-    else renderWaves(waves, host);
+    var names = (state && Array.isArray(state.assignees)) ? state.assignees.slice() : [];
+    if (view === "kanban") renderKanban(waves, host, opened, names);
+    else renderWaves(waves, host, names);
   }
 
-  function renderWaves(waves, host) {
+  function renderWaves(waves, host, names) {
     var currentIdx = -1;
     waves.forEach(function (w, i) {
       if (currentIdx < 0 && tally(w.items || []).remaining > 0) currentIdx = i;
@@ -384,8 +423,8 @@ h1 {
         t.appendChild(el("span", "id", it.id || ""));
         t.appendChild(el("span", "t", it.title || ""));
         li.appendChild(t);
-        var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
-        li.appendChild(el("span", "item-meta", meta + (it.by ? " · " + it.by : "")));
+        li.appendChild(el("span", "item-meta", it.updated ? stamp(it.updated).replace(" UTC", "") : ""));
+        li.appendChild(assigneeControl(it, names));
         if (it.note) li.appendChild(el("div", "item-note", it.note));
         ul.appendChild(li);
       });
@@ -398,7 +437,7 @@ h1 {
 
   function waveLabel(w, i) { return w.id || "w" + i; }
 
-  function renderKanban(waves, host, opened) {
+  function renderKanban(waves, host, opened, names) {
     if (filterIdx !== "" && !waves[+filterIdx]) filterIdx = "";
     var rows = [];
     waves.forEach(function (w, i) {
@@ -440,7 +479,7 @@ h1 {
         col.appendChild(el("p", "col-empty", "Nothing here."));
       } else {
         var ul = el("ul", "cards");
-        mine.forEach(function (r) { ul.appendChild(card(r, opened)); });
+        mine.forEach(function (r) { ul.appendChild(card(r, opened, names)); });
         col.appendChild(ul);
       }
       board.appendChild(col);
@@ -466,7 +505,7 @@ h1 {
     }
   }
 
-  function card(r, opened) {
+  function card(r, opened, names) {
     var it = r.it;
     var li = el("li", "card");
     var top = el("div", "card-top");
@@ -475,7 +514,8 @@ h1 {
     li.appendChild(top);
     li.appendChild(el("div", "card-title", it.title || ""));
     var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
-    if (meta || it.by) li.appendChild(el("span", "item-meta", meta + (it.by ? (meta ? " · " : "") + it.by : "")));
+    if (meta) li.appendChild(el("span", "item-meta", meta));
+    li.appendChild(assigneeControl(it, names));
     if (it.note) {
       var d = el("details", "note");
       d.dataset.key = "note:" + r.i + "/" + (it.id || it.title || "");
@@ -506,11 +546,18 @@ h1 {
   render(seed);
   setInterval(renderSynced, 60000);
 
-  // Live data: the db capability's board/state document. The page only reads it.
+  // Live data: the db capability's board/state document, which only the agent writes, and
+  // board/assignees, the page's own and only write.
   var c = window.claude;
   if (c && typeof c.use === "function") {
     c.use("db").then(function (db) {
       if (!db) return;
+      picksDoc = db.doc("board/assignees");
+      picksDoc.onSnapshot(function (snap) {
+        picks = snap.exists ? (snap.data() || {}) : {};
+        if (current) render(current);
+      }, function () { /* the defaults from the job file stay */ });
+      if (current) render(current);
       db.doc("board/state").onSnapshot(function (snap) {
         if (snap.exists) {
           setSource("live", "Live");

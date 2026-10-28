@@ -92,7 +92,7 @@ def test_init_and_add_create_the_job_file(env, repo):
     assert data["artifact_url"] is None
     assert data["waves"][0]["id"] == "w0"
     assert data["waves"][0]["items"][0]["status"] == "todo"
-    assert data["waves"][0]["items"][0]["by"] == "test-host"
+    assert "by" not in data["waves"][0]["items"][0]
 
 
 @pytest.mark.parametrize("ev", [
@@ -201,7 +201,7 @@ def test_sync_is_idempotent_and_the_push_cycle_closes(env, repo):
     assert first.stdout.startswith(f"PUSH j {URL} ")
     payload = repo / ".set/waveboard/j.state.json"
     state = json.loads(payload.read_text())
-    assert set(state) == {"schema", "job", "title", "waves", "synced_at", "synced_by", "content_hash"}
+    assert set(state) == {"schema", "job", "title", "assignees", "waves", "synced_at", "synced_by", "content_hash"}
 
     job_mtime, payload_mtime = (repo / "docs/waveboard/j.json").stat().st_mtime_ns, payload.stat().st_mtime_ns
     time.sleep(0.02)
@@ -250,7 +250,8 @@ def test_render_names_the_page_after_the_job(env, repo, tmp_path):
 def test_render_carries_the_kanban_view(env, repo, tmp_path):
     # The behaviour (columns, filter, persistence, live update) is checked in a browser; this
     # pins the parts a careless edit would drop: both views, the guarded storage key, the
-    # column order, the skipped strip, the hidden-blocked notice, and that the page never writes.
+    # column order, the skipped strip, the hidden-blocked notice, and that the page's only write
+    # is the assignee pick (board/assignees), never the agent's board/state.
     new_job(env, repo, ("a", None))
     out = tmp_path / "board.html"
     run(env, repo, "render", "j", "-o", str(out))
@@ -266,8 +267,10 @@ def test_render_carries_the_kanban_view(env, repo, tmp_path):
     assert "blocked outside this filter" in html
     assert "[hidden] { display: none !important; }" in html
     script = html.split('<script>', 1)[1]
+    assert 'picksDoc = db.doc("board/assignees");' in script
+    others = "\n".join(l for l in script.splitlines() if "picksDoc." not in l)
     for write in (".set(", ".update(", ".add(", ".delete("):
-        assert write not in script, write
+        assert write not in others, write
 
 
 # ── the Stop hook ────────────────────────────────────────────────────────────
@@ -581,3 +584,37 @@ def test_install_links_both_commands():
     assert " set-wave-board" in scripts_line and " set-hook-waveboard" in scripts_line
     for p in (TOOL, HOOK):
         assert os.access(p, os.X_OK)
+
+
+# ── assignees ────────────────────────────────────────────────────────────────
+
+def test_assignees_and_assign_reach_the_payload(env, repo):
+    new_job(env, repo, ("a", None))
+    run(env, repo, "assignees", "j", "András, Gábor,András")
+    run(env, repo, "assign", "j", "a", "Gábor")
+    data = job_file(repo)
+    assert data["assignees"] == ["András", "Gábor"]
+    assert data["waves"][0]["items"][0]["assignee"] == "Gábor"
+    run(env, repo, "sync")
+    state = json.loads((repo / ".set/waveboard/j.state.json").read_text())
+    assert state["assignees"] == ["András", "Gábor"]
+    assert state["waves"][0]["items"][0]["assignee"] == "Gábor"
+    run(env, repo, "assign", "j", "a", "-")
+    assert job_file(repo)["waves"][0]["items"][0]["assignee"] is None
+
+
+def test_assign_unknown_item_is_a_usage_error(env, repo):
+    new_job(env, repo, ("a", None))
+    r = run(env, repo, "assign", "j", "nope", "Gábor", check=False)
+    assert r.returncode != 0
+
+
+def test_a_legacy_machine_name_never_reaches_the_payload(env, repo):
+    new_job(env, repo, ("a", None))
+    p = repo / "docs/waveboard/j.json"
+    data = json.loads(p.read_text())
+    data["waves"][0]["items"][0]["by"] = "some-laptop"
+    p.write_text(json.dumps(data))
+    run(env, repo, "sync")
+    assert "some-laptop" not in p.read_text()
+    assert "some-laptop" not in (repo / ".set/waveboard/j.state.json").read_text()

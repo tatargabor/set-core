@@ -2,10 +2,12 @@
 """set-wave-board — the live execution status of a job that runs in waves.
 
 Usage:
-    set-wave-board init <job> --title T [--artifact-url URL]
-    set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
+    set-wave-board init <job> --title T [--artifact-url URL] [--assignees A,B]
+    set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON] [--assignee A]
     set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
     set-wave-board link <job> <artifact-url>
+    set-wave-board assignees <job> <name,name,...>
+    set-wave-board assign <job> <item> <name|->
     set-wave-board sync [<job>...]
     set-wave-board pushed <job> --version N [--hash H]
     set-wave-board pending
@@ -284,8 +286,27 @@ def load_job(root: Path, job: str) -> dict:
     return data
 
 
+def _drop_by(data: dict) -> None:
+    # A machine name is not information for the board's readers, and in a tracked file it
+    # leaks a hostname; items used to carry one as `by`.
+    for wave in data.get("waves", []):
+        for item in wave.get("items", []):
+            item.pop("by", None)
+
+
 def save_job(root: Path, job: str, data: dict) -> bool:
+    _drop_by(data)
     return write_if_changed(job_path(root, job), dump(data))
+
+
+def parse_names(value: str) -> list:
+    names, seen = [], set()
+    for n in (value or "").split(","):
+        n = " ".join(n.split())
+        if n and n not in seen:
+            names.append(n)
+            seen.add(n)
+    return names
 
 
 def find_item(data: dict, item_id: str):
@@ -304,8 +325,9 @@ def all_jobs(root: Path):
 
 
 def content_of(data: dict) -> dict:
+    _drop_by(data)
     return {"schema": SCHEMA, "job": data["job"], "title": data.get("title", ""),
-            "waves": data["waves"]}
+            "assignees": data.get("assignees") or [], "waves": data["waves"]}
 
 
 def content_hash(content: dict) -> str:
@@ -336,7 +358,7 @@ def sync_job(root: Path, job: str) -> dict:
                 continue
             logger.info("%s/%s: %s -> %s (evidence)", job, item.get("id"), item.get("status"), status)
             changed_items.append({"item": item.get("id"), "old": item.get("status"), "new": status})
-            item["status"], item["updated"], item["by"] = status, stamp, who
+            item["status"], item["updated"] = status, stamp
     file_changed = save_job(root, job, data)
 
     content = content_of(data)
@@ -480,6 +502,7 @@ def cmd_init(args, root):
         check_url(args.artifact_url)
     data = {"schema": SCHEMA, "job": job, "title": args.title,
             "artifact_url": args.artifact_url or None,
+            "assignees": parse_names(args.assignees),
             "created": _dt.date.today().isoformat(), "waves": []}
     save_job(root, job, data)
     logger.info("created %s", p)
@@ -507,7 +530,8 @@ def cmd_add(args, root):
         wave["title"] = args.wave_title
     wave.setdefault("items", []).append({
         "id": item_id, "title": args.title, "status": "todo", "evidence": ev,
-        "note": "", "updated": now_iso(), "by": host_label()})
+        "note": "", "assignee": (" ".join(args.assignee.split()) if args.assignee else None),
+        "updated": now_iso()})
     save_job(root, args.job, data)
     logger.info("added %s/%s to wave %s", args.job, item_id, wave_id)
     out(args, {"job": args.job, "wave": wave_id, "item": item_id}, [f"added {args.job}/{item_id}"])
@@ -526,7 +550,7 @@ def cmd_set(args, root):
         item["status"] = args.status
         if args.note is not None:
             item["note"] = args.note
-        item["updated"], item["by"] = now_iso(), host_label()
+        item["updated"] = now_iso()
         save_job(root, args.job, data)
         logger.info("%s/%s: %s -> %s (manual)", args.job, args.item, old, args.status)
     # Evidence is evaluated straight away, so a report the evidence contradicts is
@@ -551,6 +575,37 @@ def cmd_link(args, root):
     data["artifact_url"] = check_url(args.url)
     save_job(root, args.job, data)
     out(args, {"job": args.job, "artifact_url": args.url}, [f"{args.job} -> {args.url}"])
+    return 0
+
+
+def cmd_assignees(args, root):
+    data = load_job(root, args.job)
+    names = parse_names(args.names)
+    old = data.get("assignees") or []
+    data["assignees"] = names
+    save_job(root, args.job, data)
+    logger.info("%s assignees: %s -> %s", args.job, old, names)
+    r = sync_job(root, args.job)
+    out(args, dict(r, assignees=names),
+        [f"{args.job} assignees: {', '.join(names) or '(none)'}"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def cmd_assign(args, root):
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    who = None if args.name.strip() in ("", "-") else " ".join(args.name.split())
+    old = item.get("assignee")
+    item["assignee"] = who
+    if who and who not in (data.get("assignees") or []):
+        logger.warning("%s/%s: %r is not in the board's assignees list", args.job, args.item, who)
+    save_job(root, args.job, data)
+    logger.info("%s/%s assignee: %s -> %s", args.job, args.item, old, who)
+    r = sync_job(root, args.job)
+    out(args, dict(r, item=args.item, assignee=who),
+        [f"{args.job}/{args.item}: {who or '(unassigned)'}"] + ([push_line(r)] if r["push_needed"] else []))
     return 0
 
 
@@ -708,6 +763,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("job")
     s.add_argument("--title", required=True)
     s.add_argument("--artifact-url")
+    s.add_argument("--assignees", help="comma-separated names the page offers")
     s.set_defaults(fn=cmd_init)
 
     s = sub.add_parser("add", parents=[common], help="add an item (and its wave if new)")
@@ -717,6 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--item", required=True)
     s.add_argument("--title", required=True)
     s.add_argument("--evidence", help="evidence object as JSON")
+    s.add_argument("--assignee", help="the item's default owner")
     s.set_defaults(fn=cmd_add)
 
     s = sub.add_parser("set", parents=[common], help="report an item's status (fast lane)")
@@ -730,6 +787,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("job")
     s.add_argument("url")
     s.set_defaults(fn=cmd_link)
+
+    s = sub.add_parser("assignees", parents=[common], help="set the names the page offers")
+    s.add_argument("job")
+    s.add_argument("names", help="comma-separated, e.g. 'András,Gábor'")
+    s.set_defaults(fn=cmd_assignees)
+
+    s = sub.add_parser("assign", parents=[common], help="set an item's default owner ('-' clears)")
+    s.add_argument("job")
+    s.add_argument("item")
+    s.add_argument("name")
+    s.set_defaults(fn=cmd_assign)
 
     s = sub.add_parser("sync", parents=[common], help="derive status from evidence, write payloads")
     s.add_argument("jobs", nargs="*")

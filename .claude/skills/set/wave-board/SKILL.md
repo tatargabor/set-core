@@ -45,7 +45,7 @@ project not registered on this machine is reported as `UNRESOLVED` and left alon
 ## Creating a board
 
 ```bash
-set-wave-board init <job> --title "<what the job is>"
+set-wave-board init <job> --title "<what the job is>" --assignees "<name>,<name>"
 set-wave-board add <job> --wave w0 --wave-title "<wave title>" --item <id> --title "<item>" \
     --evidence '{"type":"openspec-tasks","path":"openspec/changes/<x>/tasks.md"}'
 # … one add per item; waves appear in the order first used
@@ -70,6 +70,23 @@ set-wave-board sync            # prints: PUSH <job> <url> <payload-path>
 
 Do the push (below), then `git add docs/waveboard/<job>.json` and commit it with an explicit
 pathspec. The `.set/waveboard/` files are machine-local and ignored on their own.
+
+## Assignees — the same structure on every board
+
+Every board carries **who owns an item**, never which machine touched it (a hostname told its
+readers nothing, so items no longer record one):
+
+- `assignees` on the board: the names the page offers, set with `init --assignees` or
+  `set-wave-board assignees <job> "András,Gábor"`. Use the names the people use for each other.
+- `assignee` on an item: the default owner, set with `add --assignee` or
+  `set-wave-board assign <job> <item> <name>` (`-` clears).
+- **On the page, a viewer picks the assignee** from a select on each row. The choice goes to the
+  `board/assignees` document (one field per item id), which your `board/state` push never
+  touches, and it shows over the job file's default.
+
+Before you report on a board or plan who does what, read the page's choices:
+`ArtifactData action: "get"`, `collection: "board"`, `doc_id: "assignees"`. To make a choice part of
+the tracked file, `assign` it and push as usual.
 
 ## The push procedure
 
@@ -98,14 +115,15 @@ stop once, with the exact call filled in. It stays quiet for 30 minutes per job 
 - What was pushed is recorded **per machine** (`.set/waveboard/<job>.pushed.json`), so a second
   machine sees the job as pending until it pushes once. With `if_version` pinned, two machines
   cannot silently overwrite each other: a stale write is refused and redone after a `get`.
-- `by` on an item is the short hostname of the machine that changed it; set
-  `SET_WAVEBOARD_BY` for a different label.
+- Items carry no machine name. A legacy `by` field is dropped on the next write.
 
 ## Commands
 
 ```
-set-wave-board init <job> --title T [--artifact-url URL]
-set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON]
+set-wave-board init <job> --title T [--artifact-url URL] [--assignees A,B]
+set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON] [--assignee A]
+set-wave-board assignees <job> A,B      # the names the page offers
+set-wave-board assign <job> <item> <name|->
 set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
 set-wave-board link <job> <artifact-url>
 set-wave-board sync [<job>...]          # PUSH lines on stdout
