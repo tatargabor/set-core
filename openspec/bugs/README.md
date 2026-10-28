@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-166 — a project registered through a symlink splits into two fleet entries, and the selected one says "no running agent" while its agents run in the other
+- **state:** CLOSED 2026-10-28 — this commit (`discover_projects` keys the union by `os.path.realpath`, keeps the first source's spelling as the displayed root).
+- **reported:** 2026-10-28 by the user, a fleet screenshot: the sidebar group showed 3 sessions, the right-hand pane said *"Discovery found no running agent in this project."* The project's checkout had been moved to another disk and replaced by a symlink.
+- **measured:** `curl -s localhost:7400/api/fleet/agents | jq` returned TWO projects with one name: root = the registered symlink path, `sources: ["registry"]`, 0 agents; and root = the resolved path, `sources: ["process"]`, 3 agents. The sessions' `/proc/<pid>/cwd` and `~/.claude/sessions/<pid>.json` `cwd` both hold the resolved path, so their git root does too. `discover_projects` (`lib/set_orch/fleet/discovery.py`) keyed `by_root` by the literal string. The other path checks on this screen (`_known_roots`, `_start_location_verdict`, `_servable_checkouts`, `fleet/restore.py`) already resolve, so the union was the only one that did not. Of the registered projects, exactly one is a symlink today; 18 moved worktrees are symlinks too, but they resolve through git's common dir to an unmoved root.
+- **fail direction:** false absence — running agents shown as none, for exactly the projects that were moved.
+- **fixed when:** `tests/unit/test_fleet_discovery.py::test_a_project_registered_through_a_symlink_is_one_entry_with_its_agents` passes (measured: fails with the fix stashed, passes with it), and the live API returns one entry with `sources: ["registry", "process"]` and its 3 agents (measured after `systemctl --user restart set-web`).
+
 ### B-165 — wave boards go stale because nothing prompts the agent's own status report; the Stop hook only prompts the push
 - **state:** CLOSED 2026-10-20 — `3528bf10`, change `openspec/changes/wave-board-staleness` (the user chose options 1 and 2; option 3, more evidence types such as a release tag, is not done).
 - **reported:** 2026-10-20 by the user, a screenshot of the fleet's "Wave boards" popover with the words *"nem updatelte a boardok statuszat"*. Every board showed an age between 32 h and 292 h.

@@ -660,15 +660,30 @@ def discover_projects(
     Finding CB-3: an `archived` project is excluded by every other surface in
     this framework, so it is excluded here too — but the flag is carried rather
     than dropped, so a caller that wants them can ask.
+
+    Entries are keyed by the RESOLVED path, not by the string a source wrote.
+    Measured 2026-10-28: a project registered through a symlink
+    (`~/code2/<p>` -> `/data/code2/<p>`) came out as TWO entries with one name,
+    because the registry holds the symlink spelling while a running session's
+    cwd — and so its git root — is the resolved one. The screen selected the
+    registry entry and said "no running agent" while three were running. The
+    displayed `root` stays the first source's spelling (the registry's, when it
+    has one), so nothing a person registered changes under them.
     """
     by_root: Dict[str, ProjectEntry] = {}
+
+    def _key(root: str) -> str:
+        try:
+            return os.path.realpath(root)
+        except (OSError, ValueError):
+            return root
 
     for entry in registered or ():
         root = entry.get("path") or entry.get("root")
         if not root:
             continue
         root = str(root).rstrip("/")
-        by_root[root] = ProjectEntry(
+        by_root[_key(root)] = ProjectEntry(
             root=root,
             name=entry.get("name") or os.path.basename(root),
             sources=["registry"],
@@ -683,27 +698,27 @@ def discover_projects(
         root = str(entry.get("root") or "").rstrip("/")
         if not root:
             continue
-        found = by_root.get(root)
+        found = by_root.get(_key(root))
         if found is None:
             found = ProjectEntry(
                 root=root,
                 name=str(entry.get("name") or os.path.basename(root) or root),
                 sources=[],
             )
-            by_root[root] = found
+            by_root[_key(root)] = found
         if "messaging" not in found.sources:
             found.sources.append("messaging")
 
     for agent in agents:
         root = (agent.project_root or agent.cwd).rstrip("/")
-        found = by_root.get(root)
+        found = by_root.get(_key(root))
         if found is None:
             found = ProjectEntry(
                 root=root,
                 name=agent.project_name or os.path.basename(root) or root,
                 sources=[],
             )
-            by_root[root] = found
+            by_root[_key(root)] = found
         if "process" not in found.sources:
             found.sources.append("process")
         found.agent_pids.append(agent.pid)

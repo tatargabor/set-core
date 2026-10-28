@@ -634,3 +634,31 @@ def test_the_index_agrees_with_the_single_lookup(tmp_path):
 
 def _log(project_dir, session_id):
     project_dir.joinpath(f"{session_id}.jsonl").write_text("", encoding="utf-8")
+
+
+def test_a_project_registered_through_a_symlink_is_one_entry_with_its_agents(tmp_path):
+    """Measured 2026-10-28: the registry held the symlink spelling, the running
+    sessions' git root was the resolved one, and the union produced two entries
+    with one name — the selected one empty while three agents ran in the other.
+    """
+    real = tmp_path / "data" / "proj"
+    real.mkdir(parents=True)
+    link = tmp_path / "home" / "proj"
+    link.parent.mkdir()
+    link.symlink_to(real)
+
+    class _Running:
+        pid, project_name, branch = 77, "proj", "main"
+        project_root = str(real)
+        cwd = str(real)
+
+    entries = discovery.discover_projects(
+        [_Running()],
+        registered=[{"path": str(link), "name": "proj"}],
+        messaging=[{"root": str(real), "name": "seat"}],
+    )
+    assert len(entries) == 1, [e.root for e in entries]
+    entry = entries[0]
+    assert entry.agent_pids == [77]
+    assert entry.root == str(link), "the registered spelling must stay the displayed root"
+    assert entry.sources == ["registry", "messaging", "process"]
