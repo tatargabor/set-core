@@ -17,6 +17,8 @@
 
 ## 3. The header control and panel (`web/src/components/FleetWaitingOnYou.tsx`, `web/src/pages/Fleet.tsx`)
 
+> **Superseded 2026-10-29 by `fleet-now-card`** (its design D5): the owner asked for an always-on-top, one-item card instead of a header chip and panel, and answering in place — which reverses this change's "no answering in the panel" non-goal. Tasks 3.1–3.4 and AC-12–AC-14 stay unticked on purpose; they are not to be built. The aggregator and API above are what `fleet-now-card` reads.
+
 - [ ] 3.1 Chip beside the relay chip with the total and an unmeasured marker, both visible closed [REQ: the-header-shows-the-total-and-the-panel-floats]
 - [ ] 3.2 Floating panel: absolute positioning, closes on its control and Escape, no auto-close; oldest first, grouped by project, blocked-release marker, unmeasured sources named with their reason [REQ: the-header-shows-the-total-and-the-panel-floats]
 - [ ] 3.3 Links: agent item → `goTo` the agent; project item → its status row; bus item → the room entry [REQ: the-header-shows-the-total-and-the-panel-floats]
