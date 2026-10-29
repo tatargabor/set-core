@@ -220,7 +220,10 @@ class TeamMixin:
 
         # Update chat worker project
         if hasattr(self, 'chat_worker') and self.worktrees:
-            self.chat_worker.set_project(self.worktrees[0].get("project"))
+            project = self.worktrees[0].get("project")
+            # The worker needs the remote URL too: that is the key the team
+            # settings are stored under, and the project name is not.
+            self.chat_worker.set_project(project, self._get_project_remote_url(project))
 
         if not any_team_enabled:
             self.team_label.setText("")
