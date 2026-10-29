@@ -211,6 +211,27 @@ def test_a_waiting_agent_is_listed_with_its_wait(tmp_path, monkeypatch):
     assert NOW - item["since"] == pytest.approx(12 * 60.0)
 
 
+def test_an_agent_question_without_a_waiting_for_takes_the_agents_last_words(tmp_path, monkeypatch):
+    """The runtime's waitingFor is usually empty; the agent's own last words are the question.
+    A user's last words are not — they are what the agent was asked, not what it asks."""
+    monkeypatch.setenv("SET_QUESTION_RELAY_DIR", str(tmp_path / "empty-relay"))
+    agents, states = [], {}
+    for pid, frm in ((501, "assistant"), (502, "user")):
+        a = _agent(pid, f"s-{pid}", "p", name=f"a{pid}")
+        a.session_log = f"/log/{pid}"
+        agents.append(a)
+        states[pid] = fleet_state.AgentState(attention=fleet_state.ATTENTION_INPUT, input_wait_seconds=1.0,
+                                             excerpt=f"words {pid}", excerpt_from=frm)
+    states[503] = fleet_state.AgentState(attention=fleet_state.ATTENTION_INPUT, input_wait_seconds=1.0,
+                                         waiting_for="declared", excerpt="ignored", excerpt_from="assistant")
+    a = _agent(503, "s-503", "p", name="a503")
+    a.session_log = "/log/503"
+    agents.append(a)
+    _wire_agents(monkeypatch, agents, states)
+    titles = {i["session_id"]: i["title"] for i in waiting.collect_agent_questions(NOW).items}
+    assert titles == {"s-501": "words 501", "s-502": None, "s-503": "declared"}
+
+
 def test_every_waiting_class_counts_and_no_other_does(tmp_path, monkeypatch):
     monkeypatch.setenv("SET_QUESTION_RELAY_DIR", str(tmp_path / "empty-relay"))
     agents, states = [], {}

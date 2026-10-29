@@ -164,8 +164,12 @@ def collect_agent_questions(now: float) -> SourceResult:
             f"agent:{agent.session_id}" if agent.session_id else f"agent:pid:{agent.pid}",
             project=agent.project_name,
             kind=st.attention,
-            # Display only — what the runtime's record says the agent waits for.
-            title=st.waiting_for,
+            # Display only. The runtime's own "waiting for" field is usually empty
+            # (measured 2026-10-30: 16 of 16 live waiting agents had none), which left
+            # a reader — the owner queue's ranker among them — unable to tell what the
+            # agent is asking. The agent's last words, when it was the last to speak,
+            # are the question; the fleet tile already shows the same excerpt.
+            title=st.waiting_for or (st.excerpt if st.excerpt_from == "assistant" else None),
             since=(now - wait) if isinstance(wait, (int, float)) else None,
             session_id=agent.session_id,
             agent=agent_name,
