@@ -1,0 +1,29 @@
+/*
+ * The Now window's light theme (fleet-now-card 4.1).
+ *
+ * The dashboard's tokens are one dark palette (index.css, @theme). The Now card is a
+ * window that sits on top of whatever the owner works in all day, so it follows the
+ * system's colour scheme. Tailwind v4 utilities read the tokens as CSS variables, so
+ * redefining them on the card's root re-themes every utility under it — and nothing
+ * outside it.
+ */
+@media (prefers-color-scheme: light) {
+  .now-root {
+    --color-surface-page: #f7f8fa;
+    --color-surface-panel: #ffffff;
+    --color-surface-raised: #eceef2;
+    --color-surface-line: #dde0e6;
+    --color-surface-strong: #c5cad3;
+    --color-surface-edge: #c5cad3;
+    --color-fg-brightest: #0b0d10;
+    --color-fg-loud: #12151a;
+    --color-fg-strong: #1d2128;
+    --color-fg-normal: #2c313a;
+    --color-fg-muted: #555b66;
+    --color-fg-faint: #6f7682;
+    --color-status-warn: #a35a00;
+    --color-status-fail: #b42318;
+    --color-status-active: #12783a;
+    --color-status-done: #1f55c7;
+  }
+}

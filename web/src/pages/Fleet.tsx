@@ -71,6 +71,7 @@ import {
 import { PANEL_AGENT, PANEL_BOARD, PANEL_FILES, PANEL_WORK_CYCLE } from '../lib/fleetPanels'
 import FleetFileView, { type FileRequest } from '../components/FleetFileView'
 import { fileToOpen } from '../lib/fleetFiles'
+import { agentParam, stripAgentParam } from '../lib/fleetFocusParam'
 import {
   agentKey, loadAgentOrders, moveKey, orderAgents, saveAgentOrder, type AgentOrderMap,
 } from '../lib/fleetAgentOrder'
@@ -3339,6 +3340,22 @@ export default function Fleet() {
   const onJumpSeat = useCallback((seat: string) => goTo(a => a.seat === seat), [goTo])
   const canJumpPid = useCallback((pid: number) => findAgent(a => a.pid === pid) !== null, [findAgent])
   const onJumpPid = useCallback((pid: number) => goTo(a => a.pid === pid), [goTo])
+
+  /**
+   * `/?agent=<session id>` — the Now card's "Go there" (fleet-now-card 4.4).
+   * Waits until the listing holds that agent, jumps once, then drops the
+   * parameter so a reload does not jump again.
+   */
+  const focusParamDone = useRef(false)
+  useEffect(() => {
+    if (focusParamDone.current) return
+    const sid = agentParam(window.location.search)
+    if (!sid) { focusParamDone.current = true; return }
+    if (!findAgent(a => a.session_id === sid)) return
+    focusParamDone.current = true
+    goTo(a => a.session_id === sid)
+    window.history.replaceState(window.history.state, '', stripAgentParam(window.location.href))
+  }, [findAgent, goTo])
 
   /**
    * Put the agent PM mode is presenting into the agent view.

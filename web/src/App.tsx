@@ -8,6 +8,7 @@ import Manager from './pages/Manager'
 import ProjectStatus from './pages/ProjectStatus'
 import ManagerIssues from './pages/ManagerIssues'
 import Fleet from './pages/Fleet'
+import Now from './pages/Now'
 import ManagerMutes from './pages/ManagerMutes'
 // SentinelPage removed — controls now in StatusHeader, /sentinel redirects to /orch
 import UnifiedSidebar from './components/UnifiedSidebar'
@@ -206,6 +207,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* Global routes */}
+        {/* The Now card — a bare compact window, no nav chrome (fleet-now-card). */}
+        <Route path="/now" element={<Now />} />
         <Route element={<GlobalLayout />}>
           {/* Task 7.10 — the fleet IS the landing screen. The reason is the
               measurement that produced the whole change: the projects overview
