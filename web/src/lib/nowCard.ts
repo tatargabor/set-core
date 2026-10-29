@@ -102,19 +102,29 @@ export function hoursAgo(seconds: number): string {
 
 export interface Marker { tone: 'warn' | 'info'; text: string }
 
+/** Mirrors `REASON_NOT_AGREED` in lib/set_orch/fleet/waiting.py. */
+export const NOT_AGREED = 'not agreed yet'
+
 /**
  * Every gap the reader should see on the card itself (spec: a gap is shown where
  * the reader is standing). Order: what makes the card wrong first.
  */
 export function gapMarkers(p: NowPayload): Marker[] {
   const out: Marker[] = []
-  const unreadable = p.sources.filter(s => s.measured === false)
+  // A source that is unmeasured BY DESIGN (its shape is not agreed with any project yet,
+  // `REASON_NOT_AGREED` in lib/set_orch/fleet/waiting.py) is a known gap, not a failure:
+  // shown quietly, so the warning colour keeps meaning "something broke".
+  const notSetUp = p.sources.filter(s => s.measured === false && s.reason === NOT_AGREED)
+  const unreadable = p.sources.filter(s => s.measured === false && s.reason !== NOT_AGREED)
   if (unreadable.length) {
     out.push({
       tone: 'warn',
       text: `${unreadable.length} source${unreadable.length > 1 ? 's' : ''} could not be read: ` +
         unreadable.map(s => `${s.name}${s.reason ? ` — ${s.reason}` : ''}`).join('; '),
     })
+  }
+  if (notSetUp.length) {
+    out.push({ tone: 'info', text: `not set up: ${notSetUp.map(s => s.name).join(', ')}` })
   }
   if (p.publisher.state === 'none') out.push({ tone: 'info', text: 'No ranked queue is published' })
   // An ambiguous or misconfigured publisher is counted as unreadable above, with its reason.

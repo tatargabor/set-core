@@ -12,7 +12,7 @@
 #
 # Usage: set-now [--url <base>] [--size WxH] [--no-above]
 #   --url    dashboard base URL (default: $SET_MANAGER_URL or http://localhost:7400)
-#   --size   window size (default: 440,320)
+#   --size   window size (default: 460,440)
 #   --no-above  do not ask the window manager to keep it on top
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
@@ -21,7 +21,7 @@ source "$SCRIPT_DIR/set-common.sh" 2>/dev/null || {
 }
 
 BASE="${SET_MANAGER_URL:-http://localhost:7400}"
-SIZE="440,320"
+SIZE="460,440"
 ABOVE=1
 TITLE="Now"
 

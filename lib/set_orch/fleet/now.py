@@ -61,7 +61,7 @@ CONFIG_DEFAULTS: Dict[str, Any] = {
     "now.cue_backoff_after": 3,
     "now.deadline_window_hours": 24,
     "now.stale_ranking_hours": 2,
-    "now.wind_down_hour": 21,
+    "now.wind_down_hour": 23,
 }
 
 Getter = Callable[..., Any]

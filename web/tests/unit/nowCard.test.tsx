@@ -161,6 +161,20 @@ describe('gaps are marked on the card', () => {
     expect(emptyMessage(p)).not.toContain('Nothing is waiting')
     expect(gapMarkers(p).map(m => m.text)).toContain('Publisher could not read: mailbox')
   })
+
+  it('a source unmeasured by design is a quiet note; a failed one is a warning, and both still block "nothing waiting"', () => {
+    const p = payload({
+      item: null, unmeasured: 2,
+      sources: [
+        { name: 'project-questions', measured: false, reason: 'not agreed yet', count: 0 },
+        { name: 'bus-owner', measured: false, reason: 'sac timed out', count: 0 },
+      ],
+    })
+    const m = gapMarkers(p)
+    expect(m).toContainEqual({ tone: 'info', text: 'not set up: project-questions' })
+    expect(m.find(x => x.tone === 'warn')!.text).toBe('1 source could not be read: bus-owner — sac timed out')
+    expect(emptyMessage(p)).not.toContain('Nothing is waiting')
+  })
 })
 
 // --------------------------------------------------------------------------- 4.3 / 4.6

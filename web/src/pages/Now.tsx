@@ -224,7 +224,7 @@ export default function Now() {
               <article className="flex flex-col gap-2" data-now-item={item.id}>
                 {item.project && <p className="text-sm uppercase tracking-wide text-fg-muted">{item.project}</p>}
                 <h1 className="text-xl font-semibold leading-snug text-fg-loud">{item.sentence}</h1>
-                {item.why && <p className="text-base text-fg-normal">{item.why}</p>}
+                {item.why && <p className="line-clamp-3 text-base text-fg-normal" title={item.why}>{item.why}</p>}
                 <ItemMeta item={item} />
                 {item.resumeNote && (
                   <p className="border-l-2 border-status-done pl-2 text-sm text-fg-normal" data-resume-note>
@@ -232,6 +232,9 @@ export default function Now() {
                   </p>
                 )}
 
+                {/* The answer is the card's point: pinned to the bottom so it is visible at the
+                    launcher's window size however long the text above it is. */}
+                <div className="sticky bottom-0 -mx-3 mt-1 flex flex-col gap-2 border-t border-surface-strong bg-surface-page px-3 pb-1 pt-2" data-answer-bar>
                 {has('answer') && item.options.length > 0 && (
                   <div className="flex flex-wrap gap-2" data-options>
                     {item.options.map(o => (
@@ -286,6 +289,8 @@ export default function Now() {
                       <UserPlus size={16} /> Delegate
                     </button>
                   )}
+                </div>
+
                 </div>
 
                 <p className="text-sm text-fg-muted" data-following>
@@ -404,7 +409,7 @@ function ItemMeta({ item }: { item: NowItem }) {
   const waited = sinceSeconds(item.since)
   if (waited != null) parts.push(`waiting ${age(waited)}`)
   if (!parts.length) return null
-  return <p className="text-sm text-fg-muted" data-meta>{parts.join(' · ')}</p>
+  return <p className="truncate text-sm text-fg-muted" data-meta title={parts.join(' · ')}>{parts.join(' · ')}</p>
 }
 
 /**

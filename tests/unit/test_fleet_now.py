@@ -262,4 +262,4 @@ def test_wind_down_window():
 
 def test_config_falls_back_on_a_bad_value():
     cfg = now_mod.config(lambda key, default=None: "nonsense" if key == "now.wind_down_hour" else default)
-    assert cfg["now.wind_down_hour"] == 21.0
+    assert cfg["now.wind_down_hour"] == 23.0

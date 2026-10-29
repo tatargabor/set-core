@@ -229,7 +229,7 @@ def test_the_publishers_unread_sources_reach_the_card(env):
 
 def test_ac18_wind_down_offers_its_actions_and_keeps_the_queue(env):
     env.queue([item("1", delegable=True)])
-    evening = dt.datetime.now().replace(hour=22, minute=0).timestamp()
+    evening = dt.datetime.now().replace(hour=23, minute=30).timestamp()
     data = api_now.build_now(now=evening, inputs=[])
     assert data["windDown"]["active"] is True
     assert data["windDown"]["delegableIds"] == ["1"]
