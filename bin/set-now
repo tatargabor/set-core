@@ -1,0 +1,108 @@
+#!/bin/bash
+# set-now — open the Now card as a compact, always-on-top app window.
+#
+# The card is the dashboard route `/now` (openspec/changes/fleet-now-card). This
+# launcher only opens it: a Chromium-family browser in app mode (no tabs, no
+# address bar) at a fixed small size, and — where `wmctrl` exists — the window
+# manager's "above" flag, so the card stays in sight without being reopened.
+#
+# It says what it did and what it could not do. A window that opened but could
+# not be pinned on top is a different situation from one that is pinned, and the
+# owner should not have to find out by losing it behind an editor.
+#
+# Usage: set-now [--url <base>] [--size WxH] [--no-above]
+#   --url    dashboard base URL (default: $SET_MANAGER_URL or http://localhost:7400)
+#   --size   window size (default: 440,320)
+#   --no-above  do not ask the window manager to keep it on top
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null || {
+    info() { echo "$*"; }; warn() { echo "$*" >&2; }; error() { echo "Error: $*" >&2; }; success() { echo "$*"; }
+}
+
+BASE="${SET_MANAGER_URL:-http://localhost:7400}"
+SIZE="440,320"
+ABOVE=1
+TITLE="Now"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --url) BASE="$2"; shift 2 ;;
+        --size) SIZE="${2/x/,}"; shift 2 ;;
+        --no-above) ABOVE=0; shift ;;
+        -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) error "unknown argument: $1"; exit 2 ;;
+    esac
+done
+
+URL="${BASE%/}/now"
+info "set-now: opening $URL (size $SIZE)"
+
+# The dashboard must answer, or the window opens on an error page and looks broken.
+if command -v curl >/dev/null 2>&1; then
+    # A 200 is not enough: a dashboard older than the Now card answers this path with
+    # its HTML page (the SPA fallback), status 200. Only a JSON answer is the card's.
+    CTYPE="$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' --max-time 3 "${BASE%/}/api/fleet/now" 2>/dev/null || true)"
+    case "$CTYPE" in
+        200\ *json*) info "set-now: the dashboard serves the card's data" ;;
+        200\ *) warn "set-now: ${BASE%/}/api/fleet/now answered with a page, not data — the dashboard predates the Now card; restart its service" ;;
+        *) warn "set-now: ${BASE%/}/api/fleet/now did not answer (${CTYPE:-no response}) — the card will show a load error until the dashboard is up" ;;
+    esac
+else
+    warn "set-now: curl not found; not checking whether the dashboard answers"
+fi
+
+BROWSER=""
+for candidate in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+    if command -v "$candidate" >/dev/null 2>&1; then BROWSER="$candidate"; break; fi
+done
+
+if [[ -z "$BROWSER" ]]; then
+    warn "set-now: no Chromium-family browser found (tried google-chrome, chromium, brave, edge); opening a normal browser window instead, which cannot be sized or kept on top"
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$URL" >/dev/null 2>&1 &
+        exit 0
+    fi
+    error "set-now: xdg-open not found either; open $URL by hand"
+    exit 1
+fi
+
+# --class lets the window manager (and wmctrl below) find exactly this window.
+"$BROWSER" --app="$URL" --window-size="$SIZE" --class=set-now >/dev/null 2>&1 &
+PID=$!
+info "set-now: started $BROWSER in app mode (pid $PID)"
+
+if [[ "$ABOVE" -eq 0 ]]; then
+    info "set-now: --no-above given; not asking the window manager to keep it on top"
+    exit 0
+fi
+
+if ! command -v wmctrl >/dev/null 2>&1; then
+    warn "set-now: wmctrl not found — the window is open but NOT kept on top; install wmctrl, or use your window manager's 'always on top'"
+    exit 0
+fi
+
+if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    warn "set-now: this is a Wayland session — wmctrl reaches only X11 windows, so 'above' may not apply; use your compositor's 'always on top' if it does not"
+fi
+
+# Find the window. A browser that was already running ignores --class and names an
+# app window after its URL instead (WM_CLASS instance `<host>__now`), so match
+# either; the page title "Now · SET" is the last resort.
+for _ in $(seq 1 40); do
+    WID="$(wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /set-now|__now/ {print $1; exit}')"
+    [[ -z "$WID" ]] && WID="$(wmctrl -l 2>/dev/null | awk '/Now · SET$/ {print $1; exit}')"
+    [[ -n "$WID" ]] && break
+    sleep 0.25
+done
+
+if [[ -z "$WID" ]]; then
+    warn "set-now: the window did not appear within 10 s (no window of class set-now) — it is NOT kept on top"
+    exit 0
+fi
+
+if wmctrl -i -r "$WID" -b add,above; then
+    success "set-now: window $WID kept above other windows"
+else
+    warn "set-now: wmctrl could not set 'above' on window $WID (exit $?) — it is NOT kept on top"
+fi
