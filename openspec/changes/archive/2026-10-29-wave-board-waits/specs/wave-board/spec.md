@@ -2,7 +2,7 @@
 
 ### Requirement: Items record what they wait on
 
-An item MAY carry `waits`, a list of objects `{kind, who, text, ref}` where `kind` is `decision` or
+An item SHALL be able to carry `waits`, a list of objects `{kind, who, text, ref}` where `kind` is `decision` or
 `blocker`. `wait` SHALL append one, or replace in place the wait with the same `ref`; `unwait` SHALL
 remove the one named by `--ref`, all with `--all`, or the only one when the item has one. A wait SHALL
 NOT change the item's status. Empty text, an unknown item and an unknown ref SHALL be usage errors.
