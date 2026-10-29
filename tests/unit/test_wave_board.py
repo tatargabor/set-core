@@ -678,7 +678,7 @@ def test_render_carries_the_waiting_panel_and_a_pill_column_that_fits(env, repo,
     out = tmp_path / "board.html"
     run(env, repo, "render", "j", "-o", str(out))
     html = out.read_text()
-    assert 'id="waiting"' in html and "function renderWaiting" in html
+    assert 'id="waiting"' in html and "function renderWaiting" in html and "function ticket(" in html
     assert 'decision: "decision", blocker: "blocker"' in html
     assert "grid-template-columns: subgrid" in html
     assert "96px minmax" not in html

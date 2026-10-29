@@ -158,42 +158,91 @@ select.chip.status-pick:hover { border-color: currentColor; }
 select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .on-page { font-family: var(--font-mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
 /* Answers on a wait: option buttons, a free-text "other", and the answer once given. */
-.answer-box { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px; min-width: 0; }
+.answer-box { flex: 1 1 100%; display: grid; gap: 8px; padding: 4px 0 2px; min-width: 0; }
+.answer-box .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.answer-box .opts:empty { display: none; }
 .answer-box button, .answered button {
   font: 500 13px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 12px; min-height: 32px; cursor: pointer;
+  border-radius: 6px; padding: 6px 14px; min-height: 36px; cursor: pointer;
 }
+.answer-box .opts button { font-weight: 600; border-color: var(--muted); }
 .answer-box button:hover { border-color: var(--accent); color: var(--accent); }
 .answer-box button.opt.picked { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 .answer-box button:focus-visible, .answer-box input:focus-visible, .answered button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.answer-box .other { display: flex; flex: 1 1 15em; gap: 6px; align-items: center; min-width: 0; }
+.answer-box .other { display: flex; gap: 8px; align-items: center; min-width: 0; max-width: 640px; }
 .answer-box .other span { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .answer-box input {
   font: 13px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--muted);
-  border-radius: 6px; padding: 5px 8px; min-height: 32px; flex: 1 1 8em; min-width: 0;
+  border-radius: 6px; padding: 6px 10px; min-height: 36px; flex: 1 1 8em; min-width: 0;
 }
 .answered { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; }
-.answered b { color: var(--done); font-weight: 600; overflow-wrap: anywhere; }
+.answered b { color: var(--done); font-weight: 650; font-size: 14px; overflow-wrap: anywhere; }
 .answered button { min-height: 26px; padding: 1px 8px; font-size: 12px; color: var(--muted); }
 .wait.is-answered .txt { color: var(--muted); }
 .answer-err { flex: 1 1 100%; font-size: 12px; color: var(--blocked); }
 /* In the panel the item id and the question link to the item's row (or card) below. */
 a.jump { color: inherit; text-decoration: none; border-radius: 3px; }
-a.jump:hover .on, a.jump:hover .txt { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.wait a.jump { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; flex: 1 1 14em; min-width: 0; }
 .item, .card { scroll-margin-top: 16px; }
 .item.flash, .card.flash { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--chip-decision); }
 @media (prefers-reduced-motion: no-preference) {
   .item, .card { transition: background-color .6s ease, outline-color .6s ease; }
 }
-.waiting { display: grid; gap: 12px; }
-.waiting h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 19px; margin: 0; }
-.waiting-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
-.wgroup { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; min-width: 0; align-content: start; }
-.wgroup-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; }
-.wgroup-head h3 { font-size: 16px; font-weight: 600; margin: 0; }
-.wgroup .waits { grid-column: auto; margin: 0; gap: 8px; }
+/* "Waiting on people" as a ticket list: one full-width ticket per wait, grouped by person,
+   with a filter bar. Tickets stack, so the panel grows in height, never in columns. */
+.waiting { display: grid; gap: 14px; }
+.waiting-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.waiting h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 21px; margin: 0; }
+.waiting-sum { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.seg-ctl { display: inline-flex; flex-wrap: wrap; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); max-width: 100%; }
+.seg-ctl button {
+  font: 500 13px var(--font-body); color: var(--muted); background: transparent; border: 0; border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; white-space: nowrap;
+}
+.seg-ctl button .n { font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.seg-ctl button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg-ctl button:focus-visible, .wbar input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wbar label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
+.wlist { display: grid; gap: 22px; }
+.wperson { display: grid; gap: 10px; }
+.wperson-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.wperson-head h3 { font-size: 17px; font-weight: 650; margin: 0; }
+.wperson-head .waiting-sum { margin-left: auto; }
+.avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center;
+  font: 600 12px var(--font-body); color: #fff; background: var(--w0); letter-spacing: .02em;
+}
+.avatar.h1 { background: var(--w1); } .avatar.h2 { background: var(--w2); } .avatar.h3 { background: var(--w3); }
+.avatar.h4 { background: var(--w4); } .avatar.h5 { background: var(--w5); }
+:root[data-theme="dark"] .avatar { color: #12141a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .avatar { color: #12141a; } }
+.tickets { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ticket {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 6px 16px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--decision);
+  border-radius: 8px; padding: 14px 16px;
+}
+.ticket.blocker { border-left-color: var(--blocked); }
+.ticket.answered { border-left-color: var(--done); background: transparent; }
+.t-side { display: grid; gap: 6px; align-content: start; justify-items: start; }
+.t-ref { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--ink); }
+.t-main { display: grid; gap: 8px; min-width: 0; }
+.t-q { font-size: 16px; line-height: 1.4; font-weight: 600; margin: 0; overflow-wrap: anywhere; text-wrap: pretty; }
+.ticket.answered .t-q { font-weight: 500; color: var(--muted); }
+.t-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; color: var(--muted); min-width: 0; }
+.t-src a.jump { display: inline-flex; gap: 8px; align-items: baseline; min-width: 0; color: var(--ink); }
+.t-src a.jump .on { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.t-src a.jump .t-title { overflow-wrap: anywhere; }
+.t-src a.jump:hover .t-title { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.t-src .chip { font-size: 11px; padding: 0 7px; }
+.t-src .t-wave { font-family: var(--font-mono); font-size: 11px; }
+.t-answer { display: grid; gap: 8px; padding-top: 4px; border-top: 1px dashed var(--line); margin-top: 2px; }
+.wempty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+@media (max-width: 560px) {
+  .ticket { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .t-side { grid-auto-flow: column; justify-content: start; align-items: center; }
+}
 .card .waits { grid-column: auto; }
 .assignee { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; min-height: 30px; max-width: 160px; }
@@ -299,8 +348,12 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
   </header>
   <section class="waiting" id="waiting" aria-labelledby="waiting-h" hidden>
-    <h2 id="waiting-h" data-t="waitingOn">Waiting on people</h2>
-    <div class="waiting-groups" id="waiting-groups"></div>
+    <div class="waiting-head">
+      <h2 id="waiting-h" data-t="waitingOn">Waiting on people</h2>
+      <span class="waiting-sum" id="waiting-sum"></span>
+    </div>
+    <div class="wbar" id="wbar"></div>
+    <div class="wlist" id="waiting-groups"></div>
   </section>
   <main class="waves" id="waves">
     <div class="empty" id="empty">
@@ -328,6 +381,8 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       kind: { decision: "decision", blocker: "blocker" },
       decisions: ["decision", "decisions"], blockers: ["blocker", "blockers"],
       waves: "Waves", kanban: "Kanban", wave: "Wave", allWaves: "All waves", waitingOn: "Waiting on people",
+      all: "All", kinds: { decision: "Decisions", blocker: "Blockers" }, hideAnswered: "Hide answered",
+      open: "open", answeredN: "answered", noneMatch: "Nothing matches the filter.",
       nobody: "Nobody named", other: "Other:", send: "Send", answer: "Answer:", change: "change",
       answerFor: "Answer to", notSaved: "Not saved; try again.", onPage: "set on the page",
       statusFor: "Status of", of: " of ", done: " done ", remaining: " remaining", left: " left",
@@ -342,6 +397,8 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       kind: { decision: "döntés", blocker: "blokkoló" },
       decisions: ["döntés", "döntés"], blockers: ["blokkoló", "blokkoló"],
       waves: "Hullámok", kanban: "Kanban", wave: "Hullám", allWaves: "Minden hullám", waitingOn: "Kire várunk",
+      all: "Mind", kinds: { decision: "Döntések", blocker: "Blokkolók" }, hideAnswered: "Megválaszoltak elrejtése",
+      open: "nyitott", answeredN: "megválaszolva", noneMatch: "A szűrőnek semmi nem felel meg.",
       nobody: "Nincs megnevezve", other: "Egyéb:", send: "Küldés", answer: "Válasz:", change: "módosítás",
       answerFor: "Válasz erre:", notSaved: "Nem mentődött el, próbáld újra.", onPage: "az oldalon állítva",
       statusFor: "Állapot:", of: " / ", done: " kész ", remaining: " hátra", left: " hátra",
@@ -486,12 +543,14 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     var box = el("div", "answer-box");
     box.setAttribute("role", "group");
     box.setAttribute("aria-label", T.answerFor + " " + (it.id || "") + (w.ref ? " " + w.ref : ""));
+    var opts = el("div", "opts");
     (Array.isArray(w.options) ? w.options : []).forEach(function (opt) {
       var b = el("button", "opt" + (opt === given ? " picked" : ""), opt);
       b.type = "button";
       b.addEventListener("click", function () { saveAnswer(key, opt); });
-      box.appendChild(b);
+      opts.appendChild(b);
     });
+    box.appendChild(opts);
     var other = el("form", "other");
     other.appendChild(el("span", null, T.other));
     var inp = el("input");
@@ -517,27 +576,17 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     frag.appendChild(box);
     return frag;
   }
-  function waitLine(r, it, inPanel) {
-    var w = r.w;
+  // A wait on an item's row or card: kind, who, ref, text, and the answer once given. The
+  // panel's answerable form is the ticket (renderWaiting).
+  function waitLine(r) {
+    var w = r.w, it = r.it;
     var given = answerOf(it, w, r.i);
     var li = el("li", "wait" + (given ? " is-answered" : ""));
     li.appendChild(el("span", "wkind " + w.kind, T.kind[w.kind]));
-    if (inPanel) {
-      var link = el("a", "jump");
-      link.href = "#item-" + (it.id || "");
-      link.title = (it.id || "") + " " + (it.title || "");
-      link.appendChild(el("span", "on", it.id || ""));
-      if (w.ref) link.appendChild(el("span", "ref", w.ref));
-      link.appendChild(el("span", "txt", w.text));
-      link.addEventListener("click", function (e) { e.preventDefault(); jumpTo(it.id || ""); });
-      li.appendChild(link);
-    } else {
-      if (w.who) li.appendChild(el("span", "who", w.who));
-      if (w.ref) li.appendChild(el("span", "ref", w.ref));
-      li.appendChild(el("span", "txt", w.text));
-    }
-    if (inPanel) li.appendChild(answerBox(it, w, r.i));
-    else if (given) {
+    if (w.who) li.appendChild(el("span", "who", w.who));
+    if (w.ref) li.appendChild(el("span", "ref", w.ref));
+    li.appendChild(el("span", "txt", w.text));
+    if (given) {
       var a = el("div", "answered");
       a.appendChild(el("span", null, T.answer));
       a.appendChild(el("b", null, given));
@@ -549,7 +598,7 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     var ws = waitsOf(it);
     if (!ws.length) return null;
     var ul = el("ul", "waits");
-    ws.forEach(function (r) { ul.appendChild(waitLine(r, it, false)); });
+    ws.forEach(function (r) { ul.appendChild(waitLine({ w: r.w, i: r.i, it: it })); });
     return ul;
   }
   // Scroll to the item's row (Waves) or card (Kanban) and flash it. A Kanban filter that hides
@@ -571,50 +620,145 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     setTimeout(function () { target.classList.remove("flash"); }, 1800);
   }
   function plural(n, forms) { return n + " " + (n === 1 ? forms[0] : forms[1]); }
-  // Every open wait, grouped by whom it waits on. A done item can still wait on a decision
-  // (the work is delivered, the choice between its variants is not); a skipped one cannot.
+  // Every wait as a ticket, grouped by whom it waits on, with a filter bar (person, kind,
+  // hide answered). A done item can still wait on a decision (the work is delivered, the choice
+  // between its variants is not); a skipped one cannot. The filters live only in this visit.
+  var wWho = "", wKind = "", wHideAnswered = false;
+  function initials(name) {
+    var parts = String(name).trim().split(/\s+/);
+    return ((parts[0] || "")[0] || "?").toUpperCase() + (parts[1] ? parts[1][0].toUpperCase() : "");
+  }
+  function hue(name) {
+    var h = 0;
+    for (var k = 0; k < name.length; k++) h = (h * 31 + name.charCodeAt(k)) >>> 0;
+    return h % WAVE_HUES;
+  }
+  function segButton(label, n, pressed, onClick) {
+    var b = el("button");
+    b.type = "button";
+    b.setAttribute("aria-pressed", pressed ? "true" : "false");
+    b.appendChild(document.createTextNode(label));
+    if (n != null) b.appendChild(el("span", "n", String(n)));
+    b.addEventListener("click", onClick);
+    return b;
+  }
+  function ticket(r) {
+    var it = r.it, w = r.w;
+    var given = answerOf(it, w, r.i);
+    var li = el("li", "ticket " + w.kind + (given ? " answered" : ""));
+    li.title = (it.id || "") + " " + (it.title || "");
+    var side = el("div", "t-side");
+    side.appendChild(el("span", "wkind " + w.kind, T.kind[w.kind]));
+    if (w.ref) side.appendChild(el("span", "t-ref", w.ref));
+    li.appendChild(side);
+    var main = el("div", "t-main");
+    main.appendChild(el("p", "t-q", w.text));
+    var src = el("div", "t-src");
+    var link = el("a", "jump");
+    link.href = "#item-" + (it.id || "");
+    link.appendChild(el("span", "on", it.id || ""));
+    link.appendChild(el("span", "t-title", it.title || ""));
+    link.addEventListener("click", function (e) { e.preventDefault(); jumpTo(it.id || ""); });
+    src.appendChild(link);
+    var st = norm(it.status);
+    src.appendChild(el("span", "chip " + st, LABEL[st]));
+    if (r.wave) src.appendChild(el("span", "t-wave", r.wave));
+    main.appendChild(src);
+    var ans = el("div", "t-answer");
+    ans.appendChild(answerBox(it, w, r.i));
+    if (ans.childNodes.length) main.appendChild(ans);
+    li.appendChild(main);
+    return li;
+  }
   function renderWaiting(waves) {
     var box = document.getElementById("waiting");
     var host = document.getElementById("waiting-groups");
+    var bar = document.getElementById("wbar");
     host.textContent = "";
-    var groups = {}, order = [];
-    waves.forEach(function (w) {
-      (w.items || []).forEach(function (it) {
-        var s = norm(it.status);
-        if (s === "skipped") return;
+    bar.textContent = "";
+    var all = [];
+    waves.forEach(function (wv) {
+      (wv.items || []).forEach(function (it) {
+        if (norm(it.status) === "skipped") return;
         waitsOf(it).forEach(function (r) {
-          var who = r.w.who || T.nobody;
-          if (!groups[who]) { groups[who] = []; order.push(who); }
-          groups[who].push({ w: r.w, i: r.i, it: it });
+          all.push({ w: r.w, i: r.i, it: it, wave: wv.title || wv.id || "",
+                     who: r.w.who || T.nobody, answered: !!answerOf(it, r.w, r.i) });
         });
       });
     });
-    if (!order.length) { box.hidden = true; return { decision: 0, blocker: 0 }; }
     var total = { decision: 0, blocker: 0 };
-    order.sort(function (a, b) { return groups[b].length - groups[a].length; });
-    order.forEach(function (who) {
-      var rows = groups[who].slice().sort(function (a, b) {
-        return (a.w.kind === b.w.kind) ? 0 : (a.w.kind === "decision" ? -1 : 1);
+    if (!all.length) { box.hidden = true; return total; }
+    var open = all.filter(function (r) { return !r.answered; });
+    open.forEach(function (r) { total[r.w.kind] += 1; });
+    var answeredCount = all.length - open.length;
+    document.getElementById("waiting-sum").textContent = open.length + " " + T.open +
+      (answeredCount ? " · " + answeredCount + " " + T.answeredN : "");
+
+    // People, most open tickets first.
+    var people = {}, order = [];
+    all.forEach(function (r) {
+      if (!people[r.who]) { people[r.who] = { all: [], open: 0 }; order.push(r.who); }
+      people[r.who].all.push(r);
+      if (!r.answered) people[r.who].open += 1;
+    });
+    order.sort(function (a, b) { return people[b].open - people[a].open || people[b].all.length - people[a].all.length; });
+    if (wWho && !people[wWho]) wWho = "";
+
+    var who = el("div", "seg-ctl");
+    who.setAttribute("role", "group");
+    who.appendChild(segButton(T.all, open.length, !wWho, function () { wWho = ""; render(raw); }));
+    order.forEach(function (name) {
+      who.appendChild(segButton(name, people[name].open, wWho === name, function () { wWho = name; render(raw); }));
+    });
+    bar.appendChild(who);
+    var kind = el("div", "seg-ctl");
+    kind.setAttribute("role", "group");
+    kind.appendChild(segButton(T.all, null, !wKind, function () { wKind = ""; render(raw); }));
+    ["decision", "blocker"].forEach(function (k) {
+      kind.appendChild(segButton(T.kinds[k], total[k], wKind === k, function () { wKind = k; render(raw); }));
+    });
+    bar.appendChild(kind);
+    if (answeredCount) {
+      var lab = el("label");
+      var cb = el("input");
+      cb.type = "checkbox";
+      cb.checked = wHideAnswered;
+      cb.addEventListener("change", function () { wHideAnswered = cb.checked; render(raw); });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(T.hideAnswered));
+      bar.appendChild(lab);
+    }
+
+    var shown = 0;
+    order.forEach(function (name) {
+      if (wWho && name !== wWho) return;
+      var rows = people[name].all.filter(function (r) {
+        return (!wKind || r.w.kind === wKind) && !(wHideAnswered && r.answered);
       });
-      var n = { decision: 0, blocker: 0 };
-      rows.forEach(function (r) { n[r.w.kind] += 1; total[r.w.kind] += 1; });
-      var g = el("div", "wgroup");
-      var head = el("div", "wgroup-head");
-      head.appendChild(el("h3", null, who));
+      if (!rows.length) return;
+      // Open before answered; decisions before blockers; otherwise board order.
+      rows = rows.map(function (r, k) { return { r: r, k: k }; }).sort(function (a, b) {
+        return (a.r.answered - b.r.answered) ||
+          ((a.r.w.kind === "decision" ? 0 : 1) - (b.r.w.kind === "decision" ? 0 : 1)) || (a.k - b.k);
+      }).map(function (x) { return x.r; });
+      var sec = el("section", "wperson");
+      var head = el("div", "wperson-head");
+      head.appendChild(el("span", "avatar h" + hue(name), initials(name)));
+      head.appendChild(el("h3", null, name));
+      var n = { decision: 0, blocker: 0 }, done = 0;
+      people[name].all.forEach(function (r) { if (r.answered) done += 1; else n[r.w.kind] += 1; });
       var counts = [];
       if (n.decision) counts.push(plural(n.decision, T.decisions));
       if (n.blocker) counts.push(plural(n.blocker, T.blockers));
-      head.appendChild(el("span", "wave-count", counts.join(" · ")));
-      g.appendChild(head);
-      var ul = el("ul", "waits");
-      rows.forEach(function (r) {
-        var li = waitLine(r, r.it, true);
-        li.title = (r.it.id || "") + " " + (r.it.title || "");
-        ul.appendChild(li);
-      });
-      g.appendChild(ul);
-      host.appendChild(g);
+      if (done) counts.push(done + " " + T.answeredN);
+      head.appendChild(el("span", "waiting-sum", counts.join(" · ")));
+      sec.appendChild(head);
+      var ul = el("ul", "tickets");
+      rows.forEach(function (r) { ul.appendChild(ticket(r)); shown += 1; });
+      sec.appendChild(ul);
+      host.appendChild(sec);
     });
+    if (!shown) host.appendChild(el("p", "wempty", T.noneMatch));
     box.hidden = false;
     return total;
   }
