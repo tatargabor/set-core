@@ -88,6 +88,29 @@ Before you report on a board or plan who does what, read the page's choices:
 `ArtifactData action: "get"`, `collection: "board"`, `doc_id: "assignees"`. To make a choice part of
 the tracked file, `assign` it and push as usual.
 
+## Decisions and blockers — what an item waits on
+
+A status says how far an item got; it does not say **who it waits on**. Record that as a wait,
+so the page can list every open question at the top, grouped by person:
+
+```bash
+set-wave-board wait <job> <item> --decision "Free hour or package price?" --who Gábor --ref G3
+set-wave-board wait <job> <item> --blocker "Run DB migration 0019" --who Gábor --ref G9
+set-wave-board unwait <job> <item> --ref G3        # answered / done; --all clears every wait
+```
+
+- **Decision** = a person has to choose. **Blocker** = work or access someone else has to provide.
+  Keep them apart: the successor handles them differently (a decision is asked, a blocker is chased).
+- `--who` names whom it waits on, usually one of the board's assignees; an outside person
+  (a client) is allowed and simply gets a group of their own.
+- `--ref` is a stable id. Use the same id as the question list it comes from (a README table, a
+  mail), so both point at one thing; the same ref replaces the earlier wait in place.
+- A wait does **not** change the status. Set `blocked` yourself when the item cannot move at all;
+  a decision often hangs on an item that is otherwise in progress, or already done (the variants
+  are delivered, the choice between them is not). The page shows waits on every item except
+  skipped ones.
+- When you report on a board, read its waits first: they are the "what is needed from whom" list.
+
 ## The push procedure
 
 The page reads collection `board`, document `state`. Only you can write it — no script can.
@@ -124,6 +147,8 @@ set-wave-board init <job> --title T [--artifact-url URL] [--assignees A,B]
 set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON] [--assignee A]
 set-wave-board assignees <job> A,B      # the names the page offers
 set-wave-board assign <job> <item> <name|->
+set-wave-board wait <job> <item> (--decision|--blocker) TEXT [--who NAME] [--ref ID]
+set-wave-board unwait <job> <item> [--ref ID | --all]
 set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
 set-wave-board link <job> <artifact-url>
 set-wave-board sync [<job>...]          # PUSH lines on stdout

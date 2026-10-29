@@ -22,6 +22,8 @@
   --chip-blocked: #fbe4e2;
   --chip-todo: #eef0f4;
   --chip-skipped: #f0f1f3;
+  --decision: #6a3fb0;
+  --chip-decision: #efe7fa;
   /* Wave tags (Kanban): one hue per wave index, none of them a status colour. */
   --w0: #3446a8; --w1: #7a3fb0; --w2: #0f7c86; --w3: #a8327a; --w4: #4a5568; --w5: #6b5a14;
   --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
@@ -34,6 +36,7 @@
     --accent: #8d9cff; --done: #4cc184; --doing: #f0a63a; --blocked: #f07068; --todo: #3a3f4c;
     --skipped: #6c7280; --chip-done: #173527; --chip-doing: #3a2a10; --chip-blocked: #3d1d1b;
     --chip-todo: #232733; --chip-skipped: #20232b; color-scheme: dark;
+    --decision: #c39af0; --chip-decision: #2e2140;
     --w0: #8d9cff; --w1: #c39af0; --w2: #5cc8d2; --w3: #ee8cc6; --w4: #aab4c4; --w5: #d8c26a;
   }
 }
@@ -42,6 +45,7 @@
   --accent: #8d9cff; --done: #4cc184; --doing: #f0a63a; --blocked: #f07068; --todo: #3a3f4c;
   --skipped: #6c7280; --chip-done: #173527; --chip-doing: #3a2a10; --chip-blocked: #3d1d1b;
   --chip-todo: #232733; --chip-skipped: #20232b; color-scheme: dark;
+  --decision: #c39af0; --chip-decision: #2e2140;
   --w0: #8d9cff; --w1: #c39af0; --w2: #5cc8d2; --w3: #ee8cc6; --w4: #aab4c4; --w5: #d8c26a;
 }
 * { box-sizing: border-box; }
@@ -109,16 +113,48 @@ h1 {
   font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--accent); border: 1px solid var(--accent); border-radius: 3px; padding: 0 6px; margin-left: 8px;
 }
-.items { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+/* The status column is as wide as the widest pill in the wave (subgrid), so a longer label
+   ("in progress") never hangs out of a fixed column; the rows still line up. */
+.items {
+  list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) auto auto;
+}
 .item {
-  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline;
+  grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 4px 12px; align-items: baseline;
   padding: 10px 12px; border-top: 1px solid var(--line);
+}
+@supports not (grid-template-columns: subgrid) {
+  .item { grid-template-columns: max-content minmax(0, 1fr) auto auto; }
+  .item .chip { min-width: 7.5rem; }
 }
 .item:first-child { border-top: 0; }
 .item-title { min-width: 0; overflow-wrap: anywhere; }
 .item-title .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-right: 8px; }
 .item.skipped .item-title .t { text-decoration: line-through; color: var(--muted); }
 .item-note { grid-column: 2 / -1; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+/* Waits: what an item is waiting for, apart from its status. */
+.waits { grid-column: 2 / -1; list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 4px; min-width: 0; }
+.wait { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13px; min-width: 0; }
+.wait .txt { min-width: 0; overflow-wrap: anywhere; flex: 1 1 14em; }
+.wait .who { font-weight: 600; white-space: nowrap; }
+.wait .ref, .wait .on { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.wkind {
+  flex: none; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; padding: 0 7px;
+  border-radius: 999px; white-space: nowrap; background: var(--chip-decision); color: var(--decision);
+}
+.wkind.blocker { background: var(--chip-blocked); color: var(--blocked); }
+.chip.decision { background: var(--chip-decision); color: var(--decision); }
+.chip.decision::before { background: var(--decision); border-color: var(--decision); }
+.chip.blocker { background: var(--chip-blocked); color: var(--blocked); }
+.chip.blocker::before { background: transparent; border-color: var(--blocked); border-width: 2px; }
+.waiting { display: grid; gap: 12px; }
+.waiting h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 19px; margin: 0; }
+.waiting-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.wgroup { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; min-width: 0; align-content: start; }
+.wgroup-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; }
+.wgroup-head h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.wgroup .waits { grid-column: auto; margin: 0; gap: 8px; }
+.card .waits { grid-column: auto; }
 .assignee { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; min-height: 30px; max-width: 160px; }
 .assignee:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -184,12 +220,13 @@ h1 {
 }
 @media (max-width: 560px) {
   .wave { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .items { display: block; }
   .item { grid-template-columns: minmax(0, 1fr) auto; }
   .item .chip { grid-row: 1; grid-column: 1; justify-self: start; }
   .item .item-meta { grid-row: 1; grid-column: 2; }
   .item .assignee, .item .assignee-ro { grid-column: 1 / -1; justify-self: start; }
   .item-title { grid-column: 1 / -1; }
-  .item-note { grid-column: 1 / -1; }
+  .item-note, .item .waits { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .seg { transition: background-color .4s ease; }
@@ -221,6 +258,10 @@ h1 {
       </label>
     </div>
   </header>
+  <section class="waiting" id="waiting" aria-labelledby="waiting-h" hidden>
+    <h2 id="waiting-h">Waiting on people</h2>
+    <div class="waiting-groups" id="waiting-groups"></div>
+  </section>
   <main class="waves" id="waves">
     <div class="empty" id="empty">
       This board shows the live status of a job that runs in waves. Nothing has been pushed to it
@@ -229,7 +270,8 @@ h1 {
     </div>
   </main>
   <p class="foot">Status comes from evidence in the repository (task boxes, files, commits); an
-    agent's own report fills the gaps until evidence speaks. Updated by <code>set-wave-board</code>.
+    agent's own report fills the gaps until evidence speaks. A decision is a choice a person has to
+    make; a blocker is work or access someone else has to provide. Updated by <code>set-wave-board</code>.
     The assignee is the one thing you can change here: pick a name on a row.</p>
 </div>
 
@@ -305,6 +347,77 @@ h1 {
     out.textContent = "synced " + stamp(current.synced_at) + " · " + ago(current.synced_at);
   }
 
+  var WAIT_LABEL = { decision: "decision", blocker: "blocker" };
+  function waitsOf(it) {
+    return (Array.isArray(it.waits) ? it.waits : []).filter(function (w) {
+      return w && WAIT_LABEL[w.kind] && w.text;
+    });
+  }
+  function waitLine(w, it) {
+    var li = el("li", "wait");
+    li.appendChild(el("span", "wkind " + w.kind, WAIT_LABEL[w.kind]));
+    if (it) li.appendChild(el("span", "on", it.id || ""));
+    else if (w.who) li.appendChild(el("span", "who", w.who));
+    if (w.ref) li.appendChild(el("span", "ref", w.ref));
+    li.appendChild(el("span", "txt", w.text));
+    return li;
+  }
+  function waitList(it, withItem) {
+    var ws = waitsOf(it);
+    if (!ws.length) return null;
+    var ul = el("ul", "waits");
+    ws.forEach(function (w) { ul.appendChild(waitLine(w, withItem ? it : null)); });
+    return ul;
+  }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  // Every open wait, grouped by whom it waits on. A done item can still wait on a decision
+  // (the work is delivered, the choice between its variants is not); a skipped one cannot.
+  function renderWaiting(waves) {
+    var box = document.getElementById("waiting");
+    var host = document.getElementById("waiting-groups");
+    host.textContent = "";
+    var groups = {}, order = [];
+    waves.forEach(function (w) {
+      (w.items || []).forEach(function (it) {
+        var s = norm(it.status);
+        if (s === "skipped") return;
+        waitsOf(it).forEach(function (wt) {
+          var who = wt.who || "Nobody named";
+          if (!groups[who]) { groups[who] = []; order.push(who); }
+          groups[who].push({ w: wt, it: it });
+        });
+      });
+    });
+    if (!order.length) { box.hidden = true; return { decision: 0, blocker: 0 }; }
+    var total = { decision: 0, blocker: 0 };
+    order.sort(function (a, b) { return groups[b].length - groups[a].length; });
+    order.forEach(function (who) {
+      var rows = groups[who].slice().sort(function (a, b) {
+        return (a.w.kind === b.w.kind) ? 0 : (a.w.kind === "decision" ? -1 : 1);
+      });
+      var n = { decision: 0, blocker: 0 };
+      rows.forEach(function (r) { n[r.w.kind] += 1; total[r.w.kind] += 1; });
+      var g = el("div", "wgroup");
+      var head = el("div", "wgroup-head");
+      head.appendChild(el("h3", null, who));
+      var counts = [];
+      if (n.decision) counts.push(plural(n.decision, "decision", "decisions"));
+      if (n.blocker) counts.push(plural(n.blocker, "blocker", "blockers"));
+      head.appendChild(el("span", "wave-count", counts.join(" · ")));
+      g.appendChild(head);
+      var ul = el("ul", "waits");
+      rows.forEach(function (r) {
+        var li = waitLine(r.w, r.it);
+        li.title = (r.it.id || "") + " " + (r.it.title || "");
+        ul.appendChild(li);
+      });
+      g.appendChild(ul);
+      host.appendChild(g);
+    });
+    box.hidden = false;
+    return total;
+  }
+
   function whoOf(it) {
     var id = it.id || "";
     return Object.prototype.hasOwnProperty.call(picks, id) ? (picks[id] || "") : (it.assignee || "");
@@ -359,6 +472,7 @@ h1 {
     host.textContent = "";
     if (!all.length) {
       host.appendChild(empty);
+      document.getElementById("waiting").hidden = true;
       summary.hidden = true;
       document.getElementById("viewbar").hidden = true;
       document.getElementById("overall-strip").textContent = "";
@@ -375,6 +489,9 @@ h1 {
     STATUSES.forEach(function (s) {
       if (c[s]) legend.appendChild(el("span", "chip " + s, c[s] + " " + LABEL[s]));
     });
+    var waiting = renderWaiting(waves);
+    if (waiting.decision) legend.appendChild(el("span", "chip decision", plural(waiting.decision, "decision", "decisions")));
+    if (waiting.blocker) legend.appendChild(el("span", "chip blocker", plural(waiting.blocker, "blocker", "blockers")));
     summary.hidden = false;
     strip(document.getElementById("overall-strip"), all);
 
@@ -426,6 +543,8 @@ h1 {
         li.appendChild(el("span", "item-meta", it.updated ? stamp(it.updated).replace(" UTC", "") : ""));
         li.appendChild(assigneeControl(it, names));
         if (it.note) li.appendChild(el("div", "item-note", it.note));
+        var wl = waitList(it, false);
+        if (wl) li.appendChild(wl);
         ul.appendChild(li);
       });
       if (!items.length) ul.appendChild(el("li", "item", "No items in this wave yet."));
@@ -516,6 +635,8 @@ h1 {
     var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
     if (meta) li.appendChild(el("span", "item-meta", meta));
     li.appendChild(assigneeControl(it, names));
+    var wl = waitList(it, false);
+    if (wl) li.appendChild(wl);
     if (it.note) {
       var d = el("details", "note");
       d.dataset.key = "note:" + r.i + "/" + (it.id || it.title || "");

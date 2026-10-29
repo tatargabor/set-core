@@ -618,3 +618,63 @@ def test_a_legacy_machine_name_never_reaches_the_payload(env, repo):
     run(env, repo, "sync")
     assert "some-laptop" not in p.read_text()
     assert "some-laptop" not in (repo / ".set/waveboard/j.state.json").read_text()
+
+
+# ── waits: decisions and blockers ────────────────────────────────────────────
+
+def waits(repo, item="a"):
+    for w in job_file(repo)["waves"]:
+        for it in w["items"]:
+            if it["id"] == item:
+                return it.get("waits")
+    raise KeyError(item)
+
+
+def test_wait_records_a_decision_and_a_blocker_and_reaches_the_payload(env, repo):
+    new_job(env, repo, ("a", None))
+    run(env, repo, "assignees", "j", "András,Gábor")
+    run(env, repo, "wait", "j", "a", "--decision", "Free hour or  package price?", "--who", "Gábor", "--ref", "G3")
+    run(env, repo, "wait", "j", "a", "--blocker", "Run migration 0019", "--who", "Gábor")
+    assert waits(repo) == [
+        {"kind": "decision", "who": "Gábor", "text": "Free hour or package price?", "ref": "G3"},
+        {"kind": "blocker", "who": "Gábor", "text": "Run migration 0019", "ref": None},
+    ]
+    assert status(repo, "a") == "todo"  # a wait does not change the status
+    run(env, repo, "sync")
+    state = json.loads((repo / ".set/waveboard/j.state.json").read_text())
+    assert len(state["waves"][0]["items"][0]["waits"]) == 2
+
+
+def test_the_same_ref_replaces_and_unwait_clears(env, repo):
+    new_job(env, repo, ("a", None))
+    run(env, repo, "wait", "j", "a", "--decision", "first", "--who", "Gábor", "--ref", "G1")
+    run(env, repo, "wait", "j", "a", "--decision", "second", "--who", "Gábor", "--ref", "G1")
+    run(env, repo, "wait", "j", "a", "--blocker", "other", "--ref", "B1")
+    assert [w["text"] for w in waits(repo)] == ["second", "other"]
+    assert run(env, repo, "unwait", "j", "a", check=False).returncode == 2  # two waits: say which
+    run(env, repo, "unwait", "j", "a", "--ref", "G1")
+    assert [w["ref"] for w in waits(repo)] == ["B1"]
+    run(env, repo, "unwait", "j", "a")
+    assert waits(repo) is None
+
+
+def test_wait_refuses_empty_text_and_unknown_items(env, repo):
+    new_job(env, repo, ("a", None))
+    assert run(env, repo, "wait", "j", "a", "--decision", "  ", check=False).returncode == 2
+    assert run(env, repo, "wait", "j", "nope", "--blocker", "x", check=False).returncode == 2
+    assert run(env, repo, "wait", "j", "a", "x", check=False).returncode == 2  # kind is required
+    assert run(env, repo, "unwait", "j", "a", "--ref", "G9", check=False).returncode == 2
+
+
+def test_render_carries_the_waiting_panel_and_a_pill_column_that_fits(env, repo, tmp_path):
+    # Behaviour is checked in a browser; this pins what a careless edit would drop: the panel,
+    # both wait kinds, and a status column sized by its content instead of a fixed width
+    # (a 96px column let "in progress" hang out of its pill).
+    new_job(env, repo, ("a", None))
+    out = tmp_path / "board.html"
+    run(env, repo, "render", "j", "-o", str(out))
+    html = out.read_text()
+    assert 'id="waiting"' in html and "function renderWaiting" in html
+    assert 'decision: "decision", blocker: "blocker"' in html
+    assert "grid-template-columns: subgrid" in html
+    assert "96px minmax" not in html

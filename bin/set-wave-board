@@ -8,6 +8,8 @@ Usage:
     set-wave-board link <job> <artifact-url>
     set-wave-board assignees <job> <name,name,...>
     set-wave-board assign <job> <item> <name|->
+    set-wave-board wait <job> <item> (--decision|--blocker) TEXT [--who NAME] [--ref ID]
+    set-wave-board unwait <job> <item> [--ref ID | --all]
     set-wave-board sync [<job>...]
     set-wave-board pushed <job> --version N [--hash H]
     set-wave-board pending
@@ -35,6 +37,15 @@ WHY THE SCRIPT DOES NOT PUSH
     the exact document body to `.set/waveboard/<job>.state.json` and prints a PUSH line;
     the agent sends that file as collection `board`, document `state`, and records the
     push with `pushed`. `set-hook-waveboard` makes sure it is not forgotten.
+
+DECISIONS AND BLOCKERS — WHAT AN ITEM WAITS ON
+    An item can carry `waits`: what it is waiting for, kept apart from its status. A wait
+    is a DECISION (a person has to choose: "free hour or package price?") or a BLOCKER
+    (work or access someone else has to provide: "run migration 0019"). Each names WHO it
+    waits on and may carry a REF (e.g. G3) so a question list elsewhere can point at it.
+    The page lists every open wait at the top, grouped by person. Waits do not change the
+    status: set `blocked` yourself when the item cannot move at all; a decision often
+    waits on an item that is otherwise in progress.
 
 STALENESS — WHEN THE THIRD LAYER WAS FORGOTTEN
     An item with no evidence, and a blocked item, move only by `set`. A board is STALE when
@@ -80,6 +91,7 @@ logger = logging.getLogger("set-wave-board")
 SCHEMA = "set-wave-board/1"
 STATUSES = ("todo", "doing", "done", "blocked", "skipped")
 STICKY = ("blocked", "skipped")
+WAIT_KINDS = ("decision", "blocker")
 EVIDENCE_FIELDS = {
     "openspec-tasks": ("path",),
     "path-exists": ("path",),
@@ -564,6 +576,73 @@ def cmd_set(args, root):
     return 0
 
 
+def _clean(text) -> str:
+    return " ".join((text or "").split())
+
+
+def cmd_wait(args, root):
+    kind = "decision" if args.decision else "blocker"
+    text = _clean(args.text)
+    if not text:
+        raise UsageError("a wait needs its text: the question to decide, or what blocks")
+    ref = check_id("ref", args.ref) if args.ref else None
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    who = _clean(args.who) or None
+    if who and who not in (data.get("assignees") or []):
+        logger.warning("%s/%s: %r is not in the board's assignees list", args.job, args.item, who)
+    new = {"kind": kind, "who": who, "text": text, "ref": ref}
+    old = item.get("waits") or []
+    # The same ref replaces the earlier wait in its place, so a question keeps its position.
+    if ref and any(w.get("ref") == ref for w in old):
+        waits = [new if w.get("ref") == ref else w for w in old]
+    else:
+        waits = old + [new]
+    if waits != old:
+        item["waits"] = waits
+        item["updated"] = now_iso()
+        save_job(root, args.job, data)
+        logger.info("%s/%s waits: %d -> %d (%s on %s)", args.job, args.item, len(old), len(waits),
+                    kind, who or "nobody named")
+    r = sync_job(root, args.job)
+    label = f"{kind}{' ' + ref if ref else ''} on {who or '(nobody named)'}"
+    out(args, dict(r, item=args.item, waits=waits),
+        [f"{args.job}/{args.item}: waits for {label}"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
+def cmd_unwait(args, root):
+    data = load_job(root, args.job)
+    _, item = find_item(data, args.item)
+    if item is None:
+        raise UsageError(f"no item {args.item!r} in job {args.job!r}")
+    old = item.get("waits") or []
+    if args.all:
+        keep = []
+    elif args.ref:
+        keep = [w for w in old if w.get("ref") != args.ref]
+        if len(keep) == len(old):
+            raise UsageError(f"{args.job}/{args.item} has no wait with ref {args.ref!r}")
+    elif len(old) <= 1:
+        keep = []
+    else:
+        raise UsageError(f"{args.job}/{args.item} has {len(old)} waits: name one with --ref, or --all")
+    if keep != old:
+        if keep:
+            item["waits"] = keep
+        else:
+            item.pop("waits", None)
+        item["updated"] = now_iso()
+        save_job(root, args.job, data)
+        logger.info("%s/%s waits: %d -> %d", args.job, args.item, len(old), len(keep))
+    r = sync_job(root, args.job)
+    out(args, dict(r, item=args.item, waits=keep),
+        [f"{args.job}/{args.item}: {len(keep)} wait(s) left"] + ([push_line(r)] if r["push_needed"] else []))
+    return 0
+
+
 def check_url(url: str) -> str:
     if not re.match(r"^https://\S+$", url or ""):
         raise UsageError(f"artifact url must be an https URL: {url!r}")
@@ -798,6 +877,25 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("item")
     s.add_argument("name")
     s.set_defaults(fn=cmd_assign)
+
+    s = sub.add_parser("wait", parents=[common], help="record a decision or a blocker an item waits on")
+    s.add_argument("job")
+    s.add_argument("item")
+    k = s.add_mutually_exclusive_group(required=True)
+    k.add_argument("--decision", action="store_true", help="a person has to choose")
+    k.add_argument("--blocker", action="store_true", help="work or access someone else has to provide")
+    s.add_argument("text", help="the question, or what blocks")
+    s.add_argument("--who", help="whom it waits on (a name from the board's assignees)")
+    s.add_argument("--ref", help="a stable id (e.g. G3); the same ref replaces the earlier wait")
+    s.set_defaults(fn=cmd_wait)
+
+    s = sub.add_parser("unwait", parents=[common], help="clear what an item waits on")
+    s.add_argument("job")
+    s.add_argument("item")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--ref", help="the wait to clear")
+    g.add_argument("--all", action="store_true", help="clear every wait on the item")
+    s.set_defaults(fn=cmd_unwait)
 
     s = sub.add_parser("sync", parents=[common], help="derive status from evidence, write payloads")
     s.add_argument("jobs", nargs="*")
