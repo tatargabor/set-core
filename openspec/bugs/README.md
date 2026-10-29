@@ -68,6 +68,13 @@ consumer's name, path, or content.
 
 ## Open
 
+### B-167 — `test_fleet_owner.py` hangs at 0 % CPU when run together with the other `tests/unit/test_fleet_*.py` files, and passes alone
+- **state:** open
+- **reported:** 2026-10-29 by a subagent of this session, while running the fleet suite as a regression check for `fleet-waiting-on-you` (commit `ee0f0a7f`).
+- **measured:** `pytest tests/unit/test_fleet_*.py` stalls inside `test_fleet_owner.py` at 0 % CPU until an outer 500 s timeout kills it; `pytest tests/unit/test_fleet_owner.py` alone passes. It hangs the same way with the new `test_fleet_waiting.py` excluded, so it predates that change. Same run without `test_fleet_owner.py`: 1027 passed, 2 failed (`test_fleet_api.py::test_a_rename_carries_the_record_and_the_layout`, `test_fleet_discovery.py::test_a_recorded_origin_outranks_ancestry_and_says_which_it_is`), both failing with the new files stashed too.
+- **fail direction:** a combined run never reaches the files after it, so a regression check over the fleet suite silently covers less than it claims — the files behind the hang are not run, not failed.
+- **fixed when:** the combined `pytest tests/unit/test_fleet_*.py` finishes under a per-test timeout, with `test_fleet_owner.py` reporting the same result it reports alone.
+
 ### B-166 — a project registered through a symlink splits into two fleet entries, and the selected one says "no running agent" while its agents run in the other
 - **state:** CLOSED 2026-10-28 — this commit (`discover_projects` keys the union by `os.path.realpath`, keeps the first source's spelling as the displayed root).
 - **reported:** 2026-10-28 by the user, a fleet screenshot: the sidebar group showed 3 sessions, the right-hand pane said *"Discovery found no running agent in this project."* The project's checkout had been moved to another disk and replaced by a symlink.
