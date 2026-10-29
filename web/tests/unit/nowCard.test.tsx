@@ -179,6 +179,25 @@ describe('gaps are marked on the card', () => {
 
 // --------------------------------------------------------------------------- 4.3 / 4.6
 
+describe('help', () => {
+  it('the ? button opens a legend over the card that names every control, and the card stays', async () => {
+    await mount(payload())
+    expect(document.querySelector('[data-help]')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Help'))
+    const legend = document.querySelector('[data-help]')!.textContent!
+    for (const term of ['Blue buttons', 'Text field', 'Go there', 'Done', 'Later', 'focus', 'Grey note', 'Yellow note']) {
+      expect(legend).toContain(term)
+    }
+    expect(document.querySelector('[data-now-item]')).not.toBeNull()
+  })
+
+  it('the header numbers say what they count', async () => {
+    await mount(payload({ closedToday: 2, parkedIdeas: 1 }))
+    expect(document.querySelector('[data-closed]')!.textContent).toContain('2 closed')
+    expect(document.querySelector('[data-parked]')!.textContent).toContain('1 parked')
+  })
+})
+
 describe('one-tap answers and their feedback', () => {
   it('AC-24 / AC-6 / AC-12: an option is sent with the id, the outcome shows, then closes after 10 s', async () => {
     const opts = [{ id: 'a', label: 'Approve' }, { id: 'b', label: 'Hold' }, { id: 'c', label: 'Ask again' }]
@@ -353,7 +372,7 @@ describe('sound', () => {
 describe('focus', () => {
   it('AC-16: a fourth focus project asks which one to swap out', async () => {
     await mount(payload({ focus: ['a', 'b', 'c'], focusCandidates: ['a', 'b', 'c', 'd'] }))
-    fireEvent.click(screen.getByTitle("Today's focus projects"))
+    fireEvent.click(screen.getByLabelText("Today's focus projects"))
     fireEvent.click(screen.getByText('d'))
     expect(document.querySelector('[data-swap]')!.textContent).toContain('swap out which one for d')
     fireEvent.click(screen.getByText('b'))
@@ -390,7 +409,7 @@ describe('wind-down and ideas', () => {
 
   it('AC-19: parking an idea sends it; only the count is shown', async () => {
     await mount(payload(), payload({ parkedIdeas: 1 }))
-    fireEvent.click(screen.getByTitle('Park an idea'))
+    fireEvent.click(screen.getByLabelText('Park an idea'))
     fireEvent.change(screen.getByLabelText('Idea'), { target: { value: 'a voice-only mode' } })
     fireEvent.click(screen.getByText('Park it'))
     await flush()

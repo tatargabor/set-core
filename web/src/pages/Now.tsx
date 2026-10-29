@@ -15,7 +15,7 @@
  * - **Feedback names the outcome.** No streaks, points, or loss framing anywhere.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, Clock, Lightbulb, Moon, Send, Target, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Moon, Send, Target, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
@@ -29,7 +29,7 @@ import './now.css'
 export const POLL_MS = 15_000
 export const FEEDBACK_MS = 10_000
 
-type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow'
+type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help'
 interface Feedback { ok: boolean; text: string }
 interface PendingKeep { action: 'done' | 'answer'; option?: string; text?: string }
 
@@ -157,29 +157,33 @@ export default function Now() {
       data-now-root
     >
       <header className="flex items-center gap-3 px-3 pt-2 text-sm text-fg-muted">
-        <span className={chip} title="Closed today" data-closed>
-          <Check size={14} /> {data?.closedToday ?? 0}
+        <span className={chip} title="Cards you closed today (Done, an answer, or Delegate)" data-closed>
+          <Check size={14} /> {data?.closedToday ?? 0} closed
         </span>
-        <span className={chip} title="Parked ideas" data-parked>
-          <Lightbulb size={14} /> {data?.parkedIdeas ?? 0}
+        <span className={chip} title="Ideas you parked instead of starting them" data-parked>
+          <Lightbulb size={14} /> {data?.parkedIdeas ?? 0} parked
         </span>
         <span className="ml-auto" />
-        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('focus')} title="Today's focus projects">
-          <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax}` : ''}
+        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('focus')} aria-label="Today's focus projects" title="Today's focus projects — pick up to three; cards from other projects wait unless a deadline is near">
+          <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax} focus` : ''}
         </button>
-        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('idea')} title="Park an idea">
+        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('idea')} aria-label="Park an idea" title="Park a new idea: it is written down and waits, instead of starting work now">
           <Lightbulb size={14} /> Park
         </button>
         <span className={chip} data-sound={soundOn ? 'on' : 'off'} title={soundOn ? 'Cues will play' : 'Click anywhere to enable cue sounds'}>
           {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />} {soundOn ? 'Sound on' : 'Sound off'}
         </span>
+        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('help')} title="What is what on this card" aria-label="Help" data-help-open>
+          <CircleHelp size={14} /> ?
+        </button>
       </header>
 
       {(markers.length > 0 || loadError) && (
         <div className="flex flex-wrap gap-1.5 px-3 pt-1.5 text-sm" data-markers>
           {loadError && <span className={chip + ' bg-status-fail/15 text-status-fail'}>Card could not load: {loadError}</span>}
           {markers.map(m => (
-            <span key={m.text} className={chip + (m.tone === 'warn' ? ' bg-status-warn/15 text-status-warn' : ' bg-surface-raised text-fg-muted')}>
+            <span key={m.text} className={chip + (m.tone === 'warn' ? ' bg-status-warn/15 text-status-warn' : ' bg-surface-raised text-fg-muted')}
+              title={m.tone === 'warn' ? 'Something the card could not read or trust — what you see may be incomplete' : 'A known gap, not an error: this source is not set up yet'}>
               {m.text}
             </span>
           ))}
@@ -238,7 +242,7 @@ export default function Now() {
                 {has('answer') && item.options.length > 0 && (
                   <div className="flex flex-wrap gap-2" data-options>
                     {item.options.map(o => (
-                      <button key={o.id} className={btnPrimary} disabled={busy}
+                      <button key={o.id} className={btnPrimary} disabled={busy} title="Answer with this — it goes back to where the question came from"
                         onClick={() => keep({ action: 'answer', option: o.id })}>
                         {o.label}
                       </button>
@@ -250,7 +254,7 @@ export default function Now() {
                   <div className="flex items-center gap-2" data-text-answer>
                     <input
                       className="min-w-0 flex-1 rounded-md border border-surface-strong bg-surface-panel px-2 py-1.5 text-base text-fg-strong"
-                      placeholder="Type an answer"
+                      placeholder="…or type your own answer (Enter sends)"
                       aria-label="Answer"
                       value={text}
                       onChange={e => setText(e.target.value)}
@@ -261,7 +265,7 @@ export default function Now() {
                         <VoiceInput onTranscript={t => setText(prev => (prev ? `${prev} ${t}` : t))} onPartial={() => {}} disabled={busy} />
                       </span>
                     )}
-                    <button className={btn} disabled={busy || !text.trim()} aria-label="Send answer"
+                    <button className={btn} disabled={busy || !text.trim()} aria-label="Send answer" title="Send your own answer to this card"
                       onClick={() => keep({ action: 'answer', text: text.trim() })}>
                       <Send size={16} />
                     </button>
@@ -270,22 +274,22 @@ export default function Now() {
 
                 <div className="flex flex-wrap gap-2" data-actions>
                   {has('goThere') && item.goThere && (
-                    <button className={btn} onClick={() => openHref(item.goThere!.href)}>
+                    <button className={btn} onClick={() => openHref(item.goThere!.href)} title="Open where this came from — the agent, the project or the message">
                       <ArrowUpRight size={16} /> Go there
                     </button>
                   )}
                   {has('done') && (
-                    <button className={btn} disabled={busy} onClick={() => keep({ action: 'done' })}>
+                    <button className={btn} disabled={busy} onClick={() => keep({ action: 'done' })} title="It is done — close the card; it will not come back">
                       <Check size={16} /> Done
                     </button>
                   )}
                   {has('later') && (
-                    <button className={btn} disabled={busy} onClick={() => setOverlay('later')}>
+                    <button className={btn} disabled={busy} onClick={() => setOverlay('later')} title="Not now — bring it back later; nothing is sent">
                       <Clock size={16} /> Later
                     </button>
                   )}
                   {has('delegate') && (
-                    <button className={btn} disabled={busy} onClick={() => void send({ action: 'delegate' })}>
+                    <button className={btn} disabled={busy} onClick={() => void send({ action: 'delegate' })} title="Hand it to a colleague">
                       <UserPlus size={16} /> Delegate
                     </button>
                   )}
@@ -367,6 +371,7 @@ export default function Now() {
               </div>
             )}
 
+            {overlay === 'help' && <HelpLegend />}
             {(overlay === 'idea' || overlay === 'tomorrow') && (
               <div className="flex flex-col gap-2">
                 <p className="text-base font-medium">{overlay === 'idea' ? 'Park an idea — it will wait, not start.' : "Tomorrow's first card"}</p>
@@ -491,6 +496,35 @@ export function FocusPicker({ data, onDone }: { data: NowPayload; onDone: () => 
       </div>
       {error && <p className="text-sm text-status-fail">{error}</p>}
       <button className={btnPrimary + ' self-start'} onClick={() => void save()}>Save focus</button>
+    </div>
+  )
+}
+
+/** What every part of the card means — opened with "?", floats above the card. */
+function HelpLegend() {
+  const row = (term: string, text: string) => (
+    <li key={term}><span className="font-medium text-fg-strong">{term}</span> — {text}</li>
+  )
+  return (
+    <div className="flex max-h-[70vh] flex-col gap-2 overflow-y-auto pr-4" data-help>
+      <p className="text-base font-medium">What is what</p>
+      <ul className="flex flex-col gap-1.5 text-sm text-fg-normal">
+        {row('The card', 'one thing to do next: the project, what to do, and why it is first.')}
+        {row('Blue buttons', 'ready answers. One tap sends it back to where the question came from.')}
+        {row('Text field', 'your own answer when no button fits. Enter or the arrow sends it the same way.')}
+        {row('Go there', 'opens where it came from: the agent in Fleet, the project, or the message.')}
+        {row('Done', 'it is finished; the card closes and will not come back.')}
+        {row('Later', 'not now; pick when it should return. Nothing is sent anywhere.')}
+        {row('Delegate', 'hand it to a colleague (shown only when someone else could do it).')}
+        {row('N more', 'how many cards follow; you only ever see one.')}
+        {row('✓ closed', 'cards you closed today.')}
+        {row('💡 parked / Park', 'write down a new idea so it waits instead of starting work now.')}
+        {row('◎ focus', 'up to three projects for today; other cards wait unless a deadline is near.')}
+        {row('Sound', 'a short tone when you switch projects and a new card is first. Click once to enable.')}
+        {row('Grey note', 'a known gap, not an error (e.g. a source that is not set up yet).')}
+        {row('Yellow note', 'something could not be read — the card may be incomplete.')}
+        {row('Moon view', 'after the evening hour: write tomorrow\'s first card, hand things to night agents, park projects.')}
+      </ul>
     </div>
   )
 }
