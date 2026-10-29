@@ -286,6 +286,39 @@ def collect_answers(answer_dir: Path, cid: str, count: int) -> List[Optional[str
     return out
 
 
+def waiting_record(session_id: str, base: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """The live waiting record for one session, or None."""
+    for record in list_waiting(base):
+        if record.get("session_id") == session_id:
+            return record
+    return None
+
+
+def deliver_answer(session_id: str, text: str, base: Optional[Path] = None) -> Optional[str]:
+    """Answer a waiting single-question call through the relay's own answer store.
+
+    The same file the chat bridge writes (`answers/<id>__Q1.json`, `{"valasz": …}`): the
+    waiting hook reads it within one poll, answers the tool call and deletes the file.
+    Returns None on success, else the reason it could not be delivered. A call with more
+    than one question is refused — one text cannot answer several questions honestly.
+    """
+    record = waiting_record(session_id, base)
+    if record is None:
+        return "no relayed question is waiting for that agent"
+    if record.get("release_requested"):
+        return "the question was already handed back to the terminal"
+    if int(record.get("questions") or 0) != 1:
+        return "the agent asked several questions at once; answer them in its terminal"
+    cid = str(record.get("id") or "")
+    if not cid or not text.strip():
+        return "nothing to deliver"
+    answer_dir = (base or state_dir()) / "answers"
+    _write_json(answer_file(answer_dir, cid, "Q1"), {"valasz": text.strip()})
+    logger.info("question relay [%s]: answer handed over from the fleet (%s)",
+                _safe_id(session_id)[:8], cid)
+    return None
+
+
 def answer_output(tool_input: Dict[str, Any], texts: List[str]) -> Dict[str, Any]:
     """The hook result that answers the tool call: allow, with `answers` added to the input."""
     answers = {str(q.get("question", "")): t for q, t in zip(questions_of(tool_input), texts)}
