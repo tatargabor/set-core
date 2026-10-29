@@ -169,7 +169,7 @@ def collect_agent_questions(now: float) -> SourceResult:
             # a reader — the owner queue's ranker among them — unable to tell what the
             # agent is asking. The agent's last words, when it was the last to speak,
             # are the question; the fleet tile already shows the same excerpt.
-            title=st.waiting_for or (st.excerpt if st.excerpt_from == "assistant" else None),
+            title=st.waiting_for or (st.excerpt if st.excerpt_from == "agent" else None),
             since=(now - wait) if isinstance(wait, (int, float)) else None,
             session_id=agent.session_id,
             agent=agent_name,

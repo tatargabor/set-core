@@ -216,14 +216,18 @@ def test_an_agent_question_without_a_waiting_for_takes_the_agents_last_words(tmp
     A user's last words are not — they are what the agent was asked, not what it asks."""
     monkeypatch.setenv("SET_QUESTION_RELAY_DIR", str(tmp_path / "empty-relay"))
     agents, states = [], {}
-    for pid, frm in ((501, "assistant"), (502, "user")):
+    # The labels come from the producer itself, not from memory: a hand-typed
+    # "assistant" here once passed while every live agent was labelled "agent".
+    said_by_agent = fleet_state._last_text(['{"message":{"role":"assistant","content":"q?"}}'])[1]
+    said_by_user = fleet_state._last_text(['{"message":{"role":"user","content":"do it"}}'])[1]
+    for pid, frm in ((501, said_by_agent), (502, said_by_user)):
         a = _agent(pid, f"s-{pid}", "p", name=f"a{pid}")
         a.session_log = f"/log/{pid}"
         agents.append(a)
         states[pid] = fleet_state.AgentState(attention=fleet_state.ATTENTION_INPUT, input_wait_seconds=1.0,
                                              excerpt=f"words {pid}", excerpt_from=frm)
     states[503] = fleet_state.AgentState(attention=fleet_state.ATTENTION_INPUT, input_wait_seconds=1.0,
-                                         waiting_for="declared", excerpt="ignored", excerpt_from="assistant")
+                                         waiting_for="declared", excerpt="ignored", excerpt_from=said_by_agent)
     a = _agent(503, "s-503", "p", name="a503")
     a.session_log = "/log/503"
     agents.append(a)
