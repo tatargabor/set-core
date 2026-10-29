@@ -250,6 +250,8 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         "publisher": publisher.as_dict(),
         "partial": bool(qread.measured and qread.complete is not True),
         "malformed": qread.malformed,
+        # The publisher's own unreadable inputs: the queue it ranked is missing them.
+        "unreadSources": list(qread.unread_sources),
         "rankedAt": qread.ranked_at,
         "rankingAgeSeconds": qread.ranking_age_s,
         "stale": bool(qread.ranking_age_s is not None and qread.ranking_age_s > stale_after),

@@ -115,6 +115,23 @@ def test_required_fields_are_enforced_and_optional_ones_pass_through(tmp_path):
     assert read.ranking_age_s is not None
 
 
+def test_unread_sources_and_a_resume_note_pass_through():
+    data = {"complete": True, "items": [
+        {"id": "1", "project": "p", "sentence": "s", "why": "w", "resumeNote": "pick up at step 3"}],
+        "unreadSources": ["mailbox", {"name": "calendar", "reason": "token expired"}, 7]}
+    read = oq.parse_queue(StatusResult(command="owner-queue", ok=True, data=data), NOW)
+    assert read.unread_sources == ["mailbox", "calendar — token expired"]
+    assert read.items[0]["resumeNote"] == "pick up at step 3"
+
+
+def test_no_ranking_yet_is_unmeasured_not_an_empty_queue():
+    # The publisher answers ok:false until its first ranking has run.
+    never = StatusResult(command="owner-queue", ok=False, error="no ranking has run yet",
+                         error_class="project-reported-failure")
+    read = oq.parse_queue(never, NOW)
+    assert read.measured is False and read.reason == "no ranking has run yet"
+
+
 def test_a_failed_read_is_unmeasured_with_its_reason():
     failed = StatusResult.failure("owner-queue", "timeout", "the project did not answer within 30s")
     read = oq.parse_queue(failed, NOW)

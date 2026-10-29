@@ -219,6 +219,14 @@ def test_ac25_a_stale_ranking_is_marked_and_a_partial_queue_too(env):
     assert data["item"]["id"] == "1", "a stale ranking hides nothing"
 
 
+def test_the_publishers_unread_sources_reach_the_card(env):
+    (env.publisher / "queue.json").write_text(json.dumps(
+        {"items": [], "complete": True, "unreadSources": ["mailbox"]}))
+    data = env.get()
+    assert data["unreadSources"] == ["mailbox"]
+    assert data["item"] is None
+
+
 def test_ac18_wind_down_offers_its_actions_and_keeps_the_queue(env):
     env.queue([item("1", delegable=True)])
     evening = dt.datetime.now().replace(hour=22, minute=0).timestamp()

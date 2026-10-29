@@ -131,6 +131,8 @@ class QueueRead:
     complete: Optional[bool] = None
     ranked_at: Optional[str] = None
     ranking_age_s: Optional[float] = None
+    #: The publisher's own sources it could not read this round — display-only names.
+    unread_sources: List[str] = field(default_factory=list)
 
 
 def _clean_options(raw: Any) -> List[Dict[str, str]]:
@@ -166,6 +168,8 @@ def parse_item(raw: Any) -> Optional[Dict[str, Any]]:
     for key in ("deadline", "unblocks", "link"):
         if isinstance(raw.get(key), str) and raw[key].strip():
             item[key] = raw[key]
+    if isinstance(raw.get("resumeNote"), str) and raw["resumeNote"].strip():
+        item["resumeNote"] = raw["resumeNote"]
     refs = raw.get("references")
     if isinstance(refs, list):
         item["references"] = [{"source": r.get("source"), "id": str(r["id"])}
@@ -199,7 +203,17 @@ def parse_queue(result: StatusResult, now: float) -> QueueRead:
     complete = data.get("complete") if isinstance(data.get("complete"), bool) else None
     ranked_at = data.get("rankedAt") if isinstance(data.get("rankedAt"), str) else None
     ranked_epoch = to_epoch(ranked_at)
+    unread: List[str] = []
+    raw_unread = data.get("unreadSources")
+    for src in raw_unread if isinstance(raw_unread, list) else []:
+        if isinstance(src, str) and src.strip():
+            unread.append(src)
+        elif isinstance(src, dict) and (src.get("name") or src.get("source")):
+            name = str(src.get("name") or src.get("source"))
+            reason = src.get("reason")
+            unread.append(f"{name} — {reason}" if isinstance(reason, str) and reason else name)
     return QueueRead(
+        unread_sources=unread,
         measured=True, items=items, malformed=malformed, complete=complete,
         ranked_at=ranked_at,
         ranking_age_s=(max(0.0, now - ranked_epoch) if ranked_epoch is not None else None),
