@@ -56,13 +56,22 @@ items.
 ### Requirement: `owner-queue-act` receives the card's actions
 
 A project that publishes `owner-queue` SHALL declare a write command named `owner-queue-act`. The
-framework SHALL call it with a JSON argument `{ id, action, option?, text?, reasons?, until? }`, where
-`action` is one of `answer`, `done`, `delegate`, `park-idea`, `resume-note`, `wind-down-handoff`. A
-successful call MAY print `{ outcome }`, a one-line text the card shows as feedback. A failure SHALL be
-reported with the project's own reason, under the contract's existing write-failure rules.
+framework SHALL call it through the contract's existing write path with the action object
+`{ id, action, option?, text?, reasons?, until? }` serialised as one JSON value under a single `json`
+argument, so that lists and free text survive the write path's argument mapping; `action` is one of
+`answer`, `done`, `delegate`, `park-idea`, `resume-note`, `wind-down-handoff`. A successful call
+answers with the contract envelope and MAY carry `data.outcome`, a one-line text the card shows as
+feedback. A failure SHALL be reported with the project's own reason, under the contract's existing
+write-failure rules — including a refusal by the framework's own write path, which SHALL be shown
+as such and never silently worked around.
+
+*Amended 2026-10-29 after the publisher was built and measured against the framework's reader:* the
+write path maps arguments to `--flag value` and refuses values that begin with `-`, and
+`parse_envelope` requires `ok` plus `data`, so the outcome lives in `data.outcome`, not at the top
+level.
 
 #### Scenario: An answer with an outcome
-- **WHEN** the card sends `{ id, action: "answer", option: "b" }` and the command prints `{ "outcome": "agent resumed" }`
+- **WHEN** the card sends `{ id, action: "answer", option: "b" }` and the command answers with `data.outcome` "agent resumed"
 - **THEN** the card shows "agent resumed"
 
 #### Scenario: No write command is declared
