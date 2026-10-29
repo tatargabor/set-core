@@ -1,0 +1,198 @@
+## IN SCOPE
+- A Now window served by the fleet, meant to be kept always on top, showing one item at a time
+- The item's actions: answer by option, go there, dictate, done, later, delegate (with reasons to keep)
+- Merging the owner queue with the `fleet-waiting-on-you` sources into one ordered sequence
+- Outcome feedback after an action and a day's closed count
+- Sound cues at project-switch breakpoints, with a backoff when cues are ignored
+- The day shape: up to three focus projects, parked projects with resume notes, wind-down mode
+- Idea parking
+- Card state that is not item content (snoozes, focus projects, counts), and the persistence boundary
+
+## OUT OF SCOPE
+- Ranking items (the publishing project ranks; the card shows the order it is given)
+- Reading meetings, inboxes or follow-up lists (the publishing project does that)
+- Starting or scheduling agents (the card can hand an item to the project; the project decides)
+- A chat or phone notifier
+- Making the window always-on-top at the operating-system level (the owner's window manager does it;
+  the page only declares a compact window size)
+- Streaks, points or any loss-framed reward
+
+## ADDED Requirements
+
+### Requirement: The Now window shows one item, never a list
+
+The fleet SHALL serve a page at `/now` that shows exactly one item at a time. The item SHALL be
+shown with its project, one imperative sentence, the reason it is first, and an estimate when the
+source supplies one. The page SHALL NOT render the titles of the other items; it SHALL show only how
+many items follow.
+
+#### Scenario: Five items are open
+- **WHEN** the merged queue holds five items
+- **THEN** the page shows the first item's project, sentence and reason
+- **AND** it shows that four more follow, without their titles
+
+#### Scenario: Nothing is open
+- **WHEN** every measured source is empty and no source is unmeasured
+- **THEN** the page says nothing is waiting and shows the day's closed count
+
+### Requirement: A gap is shown where the reader is standing
+
+When any source could not be read, the page SHALL show, on the card itself, how many sources are
+unmeasured. An empty queue with an unmeasured source SHALL NOT be presented as "nothing is waiting".
+
+#### Scenario: The owner queue cannot be read
+- **WHEN** the owner-queue command fails and the other sources are empty
+- **THEN** the card states that one source could not be read and why
+- **AND** it does not say that nothing is waiting
+
+### Requirement: The merged order is the publisher's rank, then the framework sources by age
+
+The card SHALL order items as follows: items from the owner queue in the order the publishing
+project ranked them; then items from the `fleet-waiting-on-you` sources that the owner queue does
+not already reference, oldest first. An owner-queue item that references a framework item (by its
+source and id) SHALL replace it, so the same thing is not shown twice. Snoozed items SHALL be
+excluded until their snooze ends.
+
+#### Scenario: The owner queue references an agent question
+- **WHEN** an owner-queue item references an agent question that the agent-question source also lists
+- **THEN** the card shows that item once, in the owner queue's position
+
+#### Scenario: No owner queue is published
+- **WHEN** no project declares an `owner-queue` command
+- **THEN** the card shows the framework sources oldest first
+- **AND** it states that no ranked queue is published
+
+### Requirement: A question is answered with one tap
+
+When an item carries answer options, the card SHALL show each option as a button. Choosing one SHALL
+send the choice back to where the item came from — the publishing project's `owner-queue-act` write
+command for an owner-queue item, the question relay for a relayed agent question — and SHALL report
+what that path said became of it. A choice that cannot be delivered SHALL be reported as not
+delivered, and the item SHALL stay on the card.
+
+#### Scenario: An option is chosen
+- **WHEN** the owner taps an option on an owner-queue item
+- **THEN** the card calls the publishing project's write command with the item id and the option
+- **AND** on success it shows the outcome feedback and moves to the next item
+
+#### Scenario: The write is refused
+- **WHEN** the write command exits non-zero with a reason
+- **THEN** the card shows the project's reason
+- **AND** the item stays as the current card
+
+### Requirement: Go there and dictate
+
+Every item SHALL offer **Go there**, which opens the place the item can be worked on: the fleet with
+the agent's tile focused for an agent item, the project's status row for a project item, the bus
+message for a bus item, or the link the publishing project supplied. An item that accepts free text
+SHALL offer **dictate**, which uses the dashboard's existing voice input and sends the text through
+the same path as an option.
+
+#### Scenario: An agent item
+- **WHEN** the owner chooses Go there on an agent-question item
+- **THEN** the fleet opens with that agent's tile focused
+
+#### Scenario: Voice input is not available
+- **WHEN** no speech service is configured
+- **THEN** the dictate control is absent and a typed text field is offered instead
+
+### Requirement: Done, Later and Delegate
+
+Every item SHALL offer Done, Later and — when the item is marked delegable — Delegate. Done and
+Delegate SHALL be sent to the item's source through the same path as an answer. Later SHALL snooze
+the item for a chosen interval and SHALL be held by the card, not sent. Keeping a delegable item
+(choosing Done or an answer instead of Delegate) SHALL ask for one or two short reasons, and SHALL
+NOT ask for more than two.
+
+#### Scenario: Keeping a delegable item
+- **WHEN** the owner chooses Done on a delegable item
+- **THEN** the card asks for one or two reasons for keeping it before sending
+- **AND** the reasons are sent with the action
+
+#### Scenario: Later
+- **WHEN** the owner chooses Later for two hours
+- **THEN** the item leaves the card and returns after two hours
+- **AND** nothing is sent to the item's source
+
+### Requirement: Feedback names the outcome, not the person
+
+After an action is delivered, the card SHALL show what the action caused, using the outcome text the
+source returned when it returned one, and SHALL increment the day's closed count. The card SHALL NOT
+show streaks, points, or any message that frames a missed day as a loss. The feedback SHALL close
+itself after ten seconds, except a feedback reporting a failure, which SHALL stay until dismissed.
+
+#### Scenario: A delivered answer
+- **WHEN** an answer is delivered and the source returns "the agent resumed"
+- **THEN** the card shows that outcome and the updated closed count
+- **AND** the feedback closes after ten seconds
+
+### Requirement: Cues fire at breakpoints, rarely, and back off
+
+The card SHALL play a sound cue only when the owner's input moves from one project to another
+(measured from the fleet's record of the owner's last input per agent) and a new item is first since
+the previous cue, or when the first item has a deadline within a configured window. It SHALL NOT cue
+while the owner's input has stayed in one project for longer than a configured focus threshold,
+except once, after a configured time, when that project is not one of the day's focus projects. The
+cue sound SHALL vary between cues. When a configured number of consecutive cues are followed by no
+action, the card SHALL lengthen the interval between cues and SHALL show that it has done so.
+
+#### Scenario: Leaving a project
+- **WHEN** the owner's input moves from project A to project B and the first item has changed since the last cue
+- **THEN** the card plays one cue
+
+#### Scenario: A long block in a focus project
+- **WHEN** the owner has worked in a focus project for longer than the focus threshold
+- **THEN** no cue plays
+
+#### Scenario: Ignored cues
+- **WHEN** three consecutive cues are followed by no action
+- **THEN** the interval between cues doubles and the card shows "cues slowed"
+
+### Requirement: The day has up to three focus projects
+
+The card SHALL let the owner pick up to three focus projects for the day, and SHALL NOT accept a
+fourth. Items from other projects SHALL still be counted, but SHALL be shown only when no focus
+project has an item, or when the item's deadline falls within the configured window. A project
+removed from focus SHALL ask for a one-line resume note, which the card SHALL show when that project
+is next in focus.
+
+#### Scenario: A fourth project
+- **WHEN** three focus projects are picked and the owner tries to add a fourth
+- **THEN** the card asks which one to swap out
+
+#### Scenario: Resume note
+- **WHEN** the owner removes a project from focus and writes a resume note
+- **THEN** the note is shown on that project's first card the next time it is in focus
+
+### Requirement: Wind-down after a configured hour
+
+After a configured evening hour, the card SHALL switch to wind-down: it SHALL offer to write
+tomorrow's first card, to hand delegable items to unattended agents through the publishing project,
+and to park open work with resume notes, and it SHALL show one neutral line about the hour. It SHALL
+NOT block, lock or hide the queue.
+
+#### Scenario: The hour passes
+- **WHEN** the configured hour passes while the card is open
+- **THEN** the card offers the wind-down actions and still allows the queue to be opened
+
+### Requirement: Ideas are parked, not started
+
+The card SHALL offer an idea-parking control that sends a short text to the publishing project as a
+parked idea. The card SHALL show only the number of parked ideas, never their text.
+
+#### Scenario: Parking an idea
+- **WHEN** the owner parks an idea
+- **THEN** the idea is sent to the publishing project and the parked count increases by one
+
+### Requirement: The card persists no item content
+
+The framework SHALL hold card state — snoozes, focus projects, resume notes, cue history, counts —
+keyed by opaque item and project identifiers, under the user's local data directory and outside every
+repository. It SHALL NOT write item titles, options, reasons or answers to a file, a cache, or a log.
+Resume notes and parked ideas are owner-written text and SHALL be sent to the publishing project
+rather than stored by the framework when such a project is declared.
+
+#### Scenario: Logging an action
+- **WHEN** an action is delivered
+- **THEN** the log line names the item id, the action kind and the outcome status
+- **AND** it contains no item title, option text or answer text
