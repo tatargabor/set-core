@@ -9,6 +9,7 @@
     POST /api/fleet/agents/{label}/stop — stop one this framework started
     POST /api/fleet/agents/{pid}/instruct — address one instruction, and say what became of it
     GET  /api/fleet/waiters            — waiter processes, and which of them are orphaned
+    GET  /api/fleet/waiting-on-you     — what waits on the owner, four sources measured apart
     POST /api/fleet/waiters/{pid}/remove — stop ONE named orphan; no bulk form exists
     GET  /api/fleet/layout             — the hand-made arrangement, joined to what exists
     PUT  /api/fleet/layout             — replace it, refusing a stale write
@@ -2497,6 +2498,23 @@ def fleet_waveboards() -> Dict[str, Any]:
 
     projects = discover_projects([], registered=_safe_registry(), messaging=_safe_messaging())
     return {"boards": read_waveboards(projects)}
+
+
+# --------------------------------------------------------------------------- #
+# Waiting on you — the owner's queue (change fleet-waiting-on-you)
+# --------------------------------------------------------------------------- #
+
+@router.get("/api/fleet/waiting-on-you")
+def fleet_waiting_on_you() -> Dict[str, Any]:
+    """Everything waiting on the owner, as one answer another surface can read.
+
+    Four sources, each with its own count and measured flag; the total sums the
+    measured ones only. Item titles are read now and returned — never logged or
+    stored (the aggregator logs counts and source names only).
+    """
+    from ..fleet.waiting import build_queue
+
+    return build_queue()
 
 
 # --------------------------------------------------------------------------- #
