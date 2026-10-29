@@ -259,7 +259,7 @@ def test_render_carries_the_kanban_view(env, repo, tmp_path):
     assert 'data-view="waves"' in html and 'data-view="kanban"' in html
     assert 'var COLUMNS = ["todo", "doing", "blocked", "done"];' in html
     storage = [l.strip() for l in html.splitlines() if "localStorage" in l]
-    assert len(storage) == 2, storage  # one read, one write — and both inside try
+    assert len(storage) == 4, storage  # view and theme: one read, one write each — all inside try
     for line in storage:
         assert line.startswith("try {"), line
     assert 'VIEW_KEY = "waveboard.view"' in html
@@ -759,4 +759,5 @@ def test_render_links_the_waiting_panel_to_the_items(env, repo, tmp_path):
     run(env, repo, "render", "j", "-o", str(out))
     html = out.read_text()
     assert "function jumpTo" in html and 'el("a", "jump")' in html
+    assert 'id="theme-toggle"' in html and 'otherPh: "Egyéb…"' in html and "inp.placeholder = T.otherPh" in html
     assert html.count("dataset.item = it.id") == 2  # rows and cards

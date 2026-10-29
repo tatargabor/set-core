@@ -58,6 +58,15 @@ body {
 .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 48px; display: grid; gap: 28px; }
 .wrap > * { min-width: 0; }
 header { display: grid; gap: 14px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 8px; font: 500 13px var(--font-body); color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px 5px 8px;
+  cursor: pointer; min-height: 32px;
+}
+.theme-toggle:hover { border-color: var(--accent); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-toggle svg { width: 16px; height: 16px; flex: none; }
 .eyebrow {
   font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
@@ -169,7 +178,8 @@ select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outlin
 .answer-box button:hover { border-color: var(--accent); color: var(--accent); }
 .answer-box button.opt.picked { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 .answer-box button:focus-visible, .answer-box input:focus-visible, .answered button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.answer-box .other { display: flex; gap: 8px; align-items: center; min-width: 0; max-width: 640px; }
+.answer-box .other { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.answer-box input::placeholder { color: var(--muted); opacity: 1; }
 .answer-box .other span { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .answer-box input {
   font: 13px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--muted);
@@ -217,17 +227,19 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .avatar.h4 { background: var(--w4); } .avatar.h5 { background: var(--w5); }
 :root[data-theme="dark"] .avatar { color: #12141a; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .avatar { color: #12141a; } }
-.tickets { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+/* Two tickets per row (one on a phone); a row's tickets share a height and keep the answer at
+   the bottom, so the buttons of a pair line up. */
+.tickets { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .ticket {
-  display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 6px 16px; min-width: 0;
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
   background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--decision);
   border-radius: 8px; padding: 14px 16px;
 }
 .ticket.blocker { border-left-color: var(--blocked); }
 .ticket.answered { border-left-color: var(--done); background: transparent; }
-.t-side { display: grid; gap: 6px; align-content: start; justify-items: start; }
+.t-side { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .t-ref { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--ink); }
-.t-main { display: grid; gap: 8px; min-width: 0; }
+.t-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1 1 auto; }
 .t-q { font-size: 16px; line-height: 1.4; font-weight: 600; margin: 0; overflow-wrap: anywhere; text-wrap: pretty; }
 .ticket.answered .t-q { font-weight: 500; color: var(--muted); }
 .t-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; color: var(--muted); min-width: 0; }
@@ -237,11 +249,13 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .t-src a.jump:hover .t-title { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .t-src .chip { font-size: 11px; padding: 0 7px; }
 .t-src .t-wave { font-family: var(--font-mono); font-size: 11px; }
-.t-answer { display: grid; gap: 8px; padding-top: 4px; border-top: 1px dashed var(--line); margin-top: 2px; }
+.t-answer { display: grid; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line); margin-top: auto; }
 .wempty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+@media (max-width: 760px) {
+  .tickets { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 560px) {
-  .ticket { grid-template-columns: minmax(0, 1fr); padding: 12px; }
-  .t-side { grid-auto-flow: column; justify-content: start; align-items: center; }
+  .ticket { padding: 12px; }
 }
 .card .waits { grid-column: auto; }
 .assignee { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
@@ -324,10 +338,16 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">
-      <span id="job-id">wave board</span>
-      <span class="source" id="source" data-kind="none">No data yet</span>
-      <span id="synced"></span>
+    <div class="top">
+      <div class="eyebrow">
+        <span id="job-id">wave board</span>
+        <span class="source" id="source" data-kind="none">No data yet</span>
+        <span id="synced"></span>
+      </div>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path id="theme-icon" d=""/></svg>
+        <span id="theme-label">Night mode</span>
+      </button>
     </div>
     <h1 id="title">Wave Board</h1>
     <div class="summary" id="summary" hidden>
@@ -383,7 +403,8 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       waves: "Waves", kanban: "Kanban", wave: "Wave", allWaves: "All waves", waitingOn: "Waiting on people",
       all: "All", kinds: { decision: "Decisions", blocker: "Blockers" }, hideAnswered: "Hide answered",
       open: "open", answeredN: "answered", noneMatch: "Nothing matches the filter.",
-      nobody: "Nobody named", other: "Other:", send: "Send", answer: "Answer:", change: "change",
+      nobody: "Nobody named", other: "Other:", otherPh: "Other…",
+      themeToDark: "Night mode", themeToLight: "Day mode", send: "Send", answer: "Answer:", change: "change",
       answerFor: "Answer to", notSaved: "Not saved; try again.", onPage: "set on the page",
       statusFor: "Status of", of: " of ", done: " done ", remaining: " remaining", left: " left",
       blockedN: " blocked", current: "current", noItems: "No items in this wave yet.", nothing: "Nothing here.",
@@ -399,7 +420,8 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       waves: "Hullámok", kanban: "Kanban", wave: "Hullám", allWaves: "Minden hullám", waitingOn: "Kire várunk",
       all: "Mind", kinds: { decision: "Döntések", blocker: "Blokkolók" }, hideAnswered: "Megválaszoltak elrejtése",
       open: "nyitott", answeredN: "megválaszolva", noneMatch: "A szűrőnek semmi nem felel meg.",
-      nobody: "Nincs megnevezve", other: "Egyéb:", send: "Küldés", answer: "Válasz:", change: "módosítás",
+      nobody: "Nincs megnevezve", other: "Egyéb:", otherPh: "Egyéb…",
+      themeToDark: "Éjszakai mód", themeToLight: "Nappali mód", send: "Küldés", answer: "Válasz:", change: "módosítás",
       answerFor: "Válasz erre:", notSaved: "Nem mentődött el, próbáld újra.", onPage: "az oldalon állítva",
       statusFor: "Állapot:", of: " / ", done: " kész ", remaining: " hátra", left: " hátra",
       blockedN: " blokkolt", current: "aktuális", noItems: "Ebben a hullámban még nincs tétel.", nothing: "Nincs itt semmi.",
@@ -419,7 +441,41 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       if (T[n.dataset.t]) n.textContent = T[n.dataset.t];
     });
     document.getElementById("foot").textContent = T.foot;
+    paintTheme();
   }
+  // Day / night: follows the system until the viewer picks one; the pick is kept in this
+  // browser only (storage can be missing, then it lasts for the visit).
+  var THEME_KEY = "waveboard.theme";
+  var SUN = "M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z";
+  var MOON = "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z";
+  function systemDark() { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); }
+  function themeNow() {
+    var t = document.documentElement.getAttribute("data-theme");
+    return t === "dark" || t === "light" ? t : (systemDark() ? "dark" : "light");
+  }
+  function paintTheme() {
+    var dark = themeNow() === "dark";
+    var b = document.getElementById("theme-toggle");
+    b.setAttribute("aria-pressed", dark ? "true" : "false");
+    document.getElementById("theme-label").textContent = dark ? T.themeToLight : T.themeToDark;
+    document.getElementById("theme-icon").setAttribute("d", dark ? SUN : MOON);
+  }
+  (function () {
+    var saved = null;
+    try { saved = window.localStorage.getItem(THEME_KEY); } catch (e) { saved = null; }
+    if (saved === "dark" || saved === "light") document.documentElement.setAttribute("data-theme", saved);
+    document.getElementById("theme-toggle").addEventListener("click", function () {
+      var next = themeNow() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { window.localStorage.setItem(THEME_KEY, next); } catch (e) { /* the visit still switches */ }
+      paintTheme();
+    });
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      if (mq.addEventListener) mq.addEventListener("change", paintTheme);
+    }
+    paintTheme();
+  })();
   var current = null;   // what is drawn: the pushed state with the page's own status picks over it
   var raw = null;       // the pushed state as it came
   var lang = undefined;
@@ -552,9 +608,9 @@ a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     });
     box.appendChild(opts);
     var other = el("form", "other");
-    other.appendChild(el("span", null, T.other));
     var inp = el("input");
     inp.type = "text";
+    inp.placeholder = T.otherPh;
     inp.value = drafts[key] || "";
     inp.dataset.answerKey = key;
     inp.setAttribute("aria-label", T.other + " " + (it.id || "") + (w.ref ? " " + w.ref : ""));
