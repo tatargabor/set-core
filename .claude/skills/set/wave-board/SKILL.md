@@ -109,7 +109,37 @@ set-wave-board unwait <job> <item> --ref G3        # answered / done; --all clea
   a decision often hangs on an item that is otherwise in progress, or already done (the variants
   are delivered, the choice between them is not). The page shows waits on every item except
   skipped ones.
+- `--options "Igen,Nem"` (or `"E,C,D"`) puts answer buttons on the page; every wait also takes a
+  free-text answer ("Other" / „Egyéb"). A blocker usually gets one button, e.g. `--options "Kész"`.
+- `answer <job> <item> --ref G3 "…"` records an answer you heard elsewhere (chat, mail).
 - When you report on a board, read its waits first: they are the "what is needed from whom" list.
+
+## What viewers set on the page — read it back, then act
+
+A viewer can change an item's **status** (the pill is a select), its **assignee**, and **answer a
+wait**. Each goes to the page's own document, never to `board/state`:
+
+| document | holds |
+|---|---|
+| `board/statuses` | `{item: {status, at}}` |
+| `board/answers` | `{"<item>\|<ref or #index>": {answer, at}}` |
+| `board/assignees` | `{item: name}` |
+
+Before you report on a board or plan from it, fetch the first two and import them:
+
+```bash
+# ArtifactData get, url = the board, collection "board", doc_id "statuses" and "answers",
+# out_dir = .set/waveboard/<job>.page   (writes .set/waveboard/<job>.page/board/<doc>.json)
+set-wave-board import <job> --dir .set/waveboard/<job>.page
+```
+
+`import` applies a status picked after the item last changed (a manual `set`; evidence still
+wins) and stores newer answers on their waits, printing `STATUS` and `ANSWER` lines. Then **act on
+each answer**: do what it decides, write it where the decision belongs (the README table, the
+brief), and `unwait` the wait. Push as usual. An answer you cannot act on (unclear, contradicts
+another) goes back to the person as a question, not into a guess.
+
+`set-wave-board lang <job> hu` switches the page's own labels to Hungarian.
 
 ## The push procedure
 
@@ -147,8 +177,11 @@ set-wave-board init <job> --title T [--artifact-url URL] [--assignees A,B]
 set-wave-board add <job> --wave <id> [--wave-title T] --item <id> --title T [--evidence JSON] [--assignee A]
 set-wave-board assignees <job> A,B      # the names the page offers
 set-wave-board assign <job> <item> <name|->
-set-wave-board wait <job> <item> (--decision|--blocker) TEXT [--who NAME] [--ref ID]
+set-wave-board wait <job> <item> (--decision|--blocker) TEXT [--who NAME] [--ref ID] [--options A,B]
 set-wave-board unwait <job> <item> [--ref ID | --all]
+set-wave-board answer <job> <item> [--ref ID] TEXT
+set-wave-board import <job> --dir DIR   # what viewers set on the page
+set-wave-board lang <job> <en|hu>
 set-wave-board set <job> <item> <todo|doing|done|blocked|skipped> [--note N]
 set-wave-board link <job> <artifact-url>
 set-wave-board sync [<job>...]          # PUSH lines on stdout

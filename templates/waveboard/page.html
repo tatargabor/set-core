@@ -147,6 +147,36 @@ h1 {
 .chip.decision::before { background: var(--decision); border-color: var(--decision); }
 .chip.blocker { background: var(--chip-blocked); color: var(--blocked); }
 .chip.blocker::before { background: transparent; border-color: var(--blocked); border-width: 2px; }
+/* The status pill as a control: same pill, plus a caret. */
+select.chip.status-pick {
+  appearance: none; -webkit-appearance: none; font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+  border: 1px solid transparent; padding: 2px 22px 2px 10px; cursor: pointer; max-width: 100%;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size: 4px 4px; background-repeat: no-repeat;
+}
+select.chip.status-pick:hover { border-color: currentColor; }
+select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.on-page { font-family: var(--font-mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
+/* Answers on a wait: option buttons, a free-text "other", and the answer once given. */
+.answer-box { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 2px; min-width: 0; }
+.answer-box button, .answered button {
+  font: 500 13px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 12px; min-height: 32px; cursor: pointer;
+}
+.answer-box button:hover { border-color: var(--accent); color: var(--accent); }
+.answer-box button.opt.picked { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.answer-box button:focus-visible, .answer-box input:focus-visible, .answered button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.answer-box .other { display: flex; flex: 1 1 15em; gap: 6px; align-items: center; min-width: 0; }
+.answer-box .other span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.answer-box input {
+  font: 13px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--muted);
+  border-radius: 6px; padding: 5px 8px; min-height: 32px; flex: 1 1 8em; min-width: 0;
+}
+.answered { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; }
+.answered b { color: var(--done); font-weight: 600; overflow-wrap: anywhere; }
+.answered button { min-height: 26px; padding: 1px 8px; font-size: 12px; color: var(--muted); }
+.wait.is-answered .txt { color: var(--muted); }
+.answer-err { flex: 1 1 100%; font-size: 12px; color: var(--blocked); }
 .waiting { display: grid; gap: 12px; }
 .waiting h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 19px; margin: 0; }
 .waiting-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
@@ -248,18 +278,18 @@ h1 {
     <div class="strip big-strip" id="overall-strip" aria-hidden="true"></div>
     <div class="viewbar" id="viewbar" hidden>
       <div class="view-toggle" role="group" aria-label="View">
-        <button type="button" data-view="waves" aria-pressed="true">Waves</button>
-        <button type="button" data-view="kanban" aria-pressed="false">Kanban</button>
+        <button type="button" data-view="waves" aria-pressed="true" data-t="waves">Waves</button>
+        <button type="button" data-view="kanban" aria-pressed="false" data-t="kanban">Kanban</button>
       </div>
       <label class="filter" id="filter" hidden>
-        <span>Wave</span>
+        <span data-t="wave">Wave</span>
         <select id="wave-filter"></select>
         <span class="hidden-blocked" id="hidden-blocked"></span>
       </label>
     </div>
   </header>
   <section class="waiting" id="waiting" aria-labelledby="waiting-h" hidden>
-    <h2 id="waiting-h">Waiting on people</h2>
+    <h2 id="waiting-h" data-t="waitingOn">Waiting on people</h2>
     <div class="waiting-groups" id="waiting-groups"></div>
   </section>
   <main class="waves" id="waves">
@@ -269,10 +299,11 @@ h1 {
       without a reload.
     </div>
   </main>
-  <p class="foot">Status comes from evidence in the repository (task boxes, files, commits); an
+  <p class="foot" id="foot">Status comes from evidence in the repository (task boxes, files, commits); an
     agent's own report fills the gaps until evidence speaks. A decision is a choice a person has to
     make; a blocker is work or access someone else has to provide. Updated by <code>set-wave-board</code>.
-    The assignee is the one thing you can change here: pick a name on a row.</p>
+    On this page you can set an item's status and assignee, and answer what it waits on; the agent
+    takes them over into the repository.</p>
 </div>
 
 <script type="application/json" id="seed">null</script>
@@ -280,8 +311,54 @@ h1 {
 (function () {
   "use strict";
   var STATUSES = ["done", "doing", "blocked", "todo", "skipped"];
-  var LABEL = { done: "done", doing: "in progress", blocked: "blocked", todo: "to do", skipped: "skipped" };
-  var current = null;
+  // Page language: the board's `lang` (set-wave-board lang <job> hu); English otherwise.
+  var I18N = {
+    en: {
+      status: { done: "done", doing: "in progress", blocked: "blocked", todo: "to do", skipped: "skipped" },
+      kind: { decision: "decision", blocker: "blocker" },
+      decisions: ["decision", "decisions"], blockers: ["blocker", "blockers"],
+      waves: "Waves", kanban: "Kanban", wave: "Wave", allWaves: "All waves", waitingOn: "Waiting on people",
+      nobody: "Nobody named", other: "Other:", send: "Send", answer: "Answer:", change: "change",
+      answerFor: "Answer to", notSaved: "Not saved; try again.", onPage: "set on the page",
+      statusFor: "Status of", of: " of ", done: " done ", remaining: " remaining", left: " left",
+      blockedN: " blocked", current: "current", noItems: "No items in this wave yet.", nothing: "Nothing here.",
+      skippedN: " skipped", note: "Note", hiddenBlocked: " blocked outside this filter",
+      assignee: "Assignee: ", assigneeFor: "Assignee for ", unassigned: "Unassigned", synced: "synced ",
+      justNow: "just now", minAgo: " min ago", hAgo: " h ago", daysAgo: " days ago",
+      foot: "Status comes from evidence in the repository (task boxes, files, commits); an agent's own report fills the gaps until evidence speaks. A decision is a choice a person has to make; a blocker is work or access someone else has to provide. On this page you can set an item's status and assignee, and answer what it waits on; the agent takes them over into the repository."
+    },
+    hu: {
+      status: { done: "kész", doing: "folyamatban", blocked: "blokkolt", todo: "teendő", skipped: "kihagyva" },
+      kind: { decision: "döntés", blocker: "blokkoló" },
+      decisions: ["döntés", "döntés"], blockers: ["blokkoló", "blokkoló"],
+      waves: "Hullámok", kanban: "Kanban", wave: "Hullám", allWaves: "Minden hullám", waitingOn: "Kire várunk",
+      nobody: "Nincs megnevezve", other: "Egyéb:", send: "Küldés", answer: "Válasz:", change: "módosítás",
+      answerFor: "Válasz erre:", notSaved: "Nem mentődött el, próbáld újra.", onPage: "az oldalon állítva",
+      statusFor: "Állapot:", of: " / ", done: " kész ", remaining: " hátra", left: " hátra",
+      blockedN: " blokkolt", current: "aktuális", noItems: "Ebben a hullámban még nincs tétel.", nothing: "Nincs itt semmi.",
+      skippedN: " kihagyva", note: "Megjegyzés", hiddenBlocked: " blokkolt a szűrőn kívül",
+      assignee: "Felelős: ", assigneeFor: "Felelős: ", unassigned: "Nincs kiosztva", synced: "szinkron ",
+      justNow: "épp most", minAgo: " perce", hAgo: " órája", daysAgo: " napja",
+      foot: "Az állapot a repó bizonyítékaiból jön (feladat-pipák, fájlok, commitok); ahol ezek hallgatnak, az agent jelentése tölti ki. A döntés egy választás, amit valakinek meg kell hoznia; a blokkoló munka vagy hozzáférés, amit valaki másnak kell megadnia. Ezen az oldalon állíthatod a tétel állapotát és felelősét, és válaszolhatsz arra, amire vár; az agent ezeket átvezeti a repóba."
+    }
+  };
+  var T = I18N.en;
+  var LABEL = T.status;
+  function setLang(lang) {
+    T = I18N[lang] || I18N.en;
+    LABEL = T.status;
+    document.documentElement.lang = I18N[lang] ? lang : "en";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-t]"), function (n) {
+      if (T[n.dataset.t]) n.textContent = T[n.dataset.t];
+    });
+    document.getElementById("foot").textContent = T.foot;
+  }
+  var current = null;   // what is drawn: the pushed state with the page's own status picks over it
+  var raw = null;       // the pushed state as it came
+  var lang = undefined;
+  var statuses = {}, statusesDoc = null;   // board/statuses
+  var answers = {}, answersDoc = null;     // board/answers
+  var editing = {}, drafts = {};           // per wait: answer re-opened, unsent "other" text
   // Kanban columns, left to right; skipped is a folded strip, not a column.
   var COLUMNS = ["todo", "doing", "blocked", "done"];
   var WAVE_HUES = 6;
@@ -316,12 +393,12 @@ h1 {
     var t = Date.parse(iso);
     if (isNaN(t)) return "";
     var s = Math.max(0, Math.round((Date.now() - t) / 1000));
-    if (s < 60) return "just now";
+    if (s < 60) return T.justNow;
     var m = Math.round(s / 60);
-    if (m < 60) return m + " min ago";
+    if (m < 60) return m + T.minAgo;
     var h = Math.round(m / 60);
-    if (h < 48) return h + " h ago";
-    return Math.round(h / 24) + " days ago";
+    if (h < 48) return h + T.hAgo;
+    return Math.round(h / 24) + T.daysAgo;
   }
   function stamp(iso) {
     var d = new Date(iso);
@@ -344,32 +421,118 @@ h1 {
   function renderSynced() {
     var out = document.getElementById("synced");
     if (!current || !current.synced_at) { out.textContent = ""; return; }
-    out.textContent = "synced " + stamp(current.synced_at) + " · " + ago(current.synced_at);
+    out.textContent = T.synced + stamp(current.synced_at) + " · " + ago(current.synced_at);
   }
 
-  var WAIT_LABEL = { decision: "decision", blocker: "blocker" };
+  var KINDS = { decision: 1, blocker: 1 };
+  // waitsOf keeps each wait's index in the job file: an answer is keyed by item + ref, or
+  // item + #index when the wait has no ref (the same key `set-wave-board import` reads).
   function waitsOf(it) {
-    return (Array.isArray(it.waits) ? it.waits : []).filter(function (w) {
-      return w && WAIT_LABEL[w.kind] && w.text;
+    var out = [];
+    (Array.isArray(it.waits) ? it.waits : []).forEach(function (w, i) {
+      if (w && KINDS[w.kind] && w.text) out.push({ w: w, i: i });
+    });
+    return out;
+  }
+  function waitKey(it, w, i) { return (it.id || "") + "|" + (w.ref || "#" + i); }
+  function later(a, b) { var x = Date.parse(a), y = Date.parse(b); return !isNaN(x) && (isNaN(y) || x > y); }
+  function answerOf(it, w, i) {
+    var a = answers[waitKey(it, w, i)];
+    if (a && a.answer && later(a.at, w.answered)) return a.answer;
+    return w.answer || "";
+  }
+  function saveAnswer(key, text, box) {
+    if (!answersDoc || !text) return;
+    var next = Object.assign({}, answers);
+    next[key] = { answer: text, at: new Date().toISOString() };
+    answers = next;
+    delete editing[key];
+    delete drafts[key];
+    if (raw) render(raw);
+    // set, not update: an item id holds a dot, which a field path would split.
+    answersDoc.set(next).catch(function () {
+      var err = document.querySelector('[data-answer-err="' + key.replace(/"/g, "") + '"]');
+      if (err) err.textContent = T.notSaved;
     });
   }
-  function waitLine(w, it) {
-    var li = el("li", "wait");
-    li.appendChild(el("span", "wkind " + w.kind, WAIT_LABEL[w.kind]));
-    if (it) li.appendChild(el("span", "on", it.id || ""));
+  function answerBox(it, w, i) {
+    var key = waitKey(it, w, i);
+    var given = answerOf(it, w, i);
+    var frag = document.createDocumentFragment();
+    if (given && !editing[key]) {
+      var a = el("div", "answered");
+      a.appendChild(el("span", null, T.answer));
+      a.appendChild(el("b", null, given));
+      if (answersDoc) {
+        var ch = el("button", null, T.change);
+        ch.type = "button";
+        ch.addEventListener("click", function () { editing[key] = true; render(raw); });
+        a.appendChild(ch);
+      }
+      frag.appendChild(a);
+      return frag;
+    }
+    if (!answersDoc) return frag;
+    var box = el("div", "answer-box");
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", T.answerFor + " " + (it.id || "") + (w.ref ? " " + w.ref : ""));
+    (Array.isArray(w.options) ? w.options : []).forEach(function (opt) {
+      var b = el("button", "opt" + (opt === given ? " picked" : ""), opt);
+      b.type = "button";
+      b.addEventListener("click", function () { saveAnswer(key, opt); });
+      box.appendChild(b);
+    });
+    var other = el("form", "other");
+    other.appendChild(el("span", null, T.other));
+    var inp = el("input");
+    inp.type = "text";
+    inp.value = drafts[key] || "";
+    inp.dataset.answerKey = key;
+    inp.setAttribute("aria-label", T.other + " " + (it.id || "") + (w.ref ? " " + w.ref : ""));
+    inp.addEventListener("input", function () { drafts[key] = inp.value; });
+    other.appendChild(inp);
+    var send = el("button", null, T.send);
+    send.type = "submit";
+    other.appendChild(send);
+    other.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = inp.value.replace(/\s+/g, " ").trim();
+      if (v) saveAnswer(key, v);
+    });
+    box.appendChild(other);
+    var err = el("div", "answer-err");
+    err.setAttribute("data-answer-err", key.replace(/"/g, ""));
+    err.setAttribute("aria-live", "polite");
+    box.appendChild(err);
+    frag.appendChild(box);
+    return frag;
+  }
+  function waitLine(r, it, inPanel) {
+    var w = r.w;
+    var given = answerOf(it, w, r.i);
+    var li = el("li", "wait" + (given ? " is-answered" : ""));
+    li.appendChild(el("span", "wkind " + w.kind, T.kind[w.kind]));
+    if (inPanel) li.appendChild(el("span", "on", it.id || ""));
     else if (w.who) li.appendChild(el("span", "who", w.who));
     if (w.ref) li.appendChild(el("span", "ref", w.ref));
     li.appendChild(el("span", "txt", w.text));
+    if (inPanel) li.appendChild(answerBox(it, w, r.i));
+    else if (given) {
+      var a = el("div", "answered");
+      a.appendChild(el("span", null, T.answer));
+      a.appendChild(el("b", null, given));
+      li.appendChild(a);
+    }
     return li;
   }
-  function waitList(it, withItem) {
+  function waitList(it) {
     var ws = waitsOf(it);
     if (!ws.length) return null;
     var ul = el("ul", "waits");
-    ws.forEach(function (w) { ul.appendChild(waitLine(w, withItem ? it : null)); });
+    ws.forEach(function (r) { ul.appendChild(waitLine(r, it, false)); });
     return ul;
   }
-  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  function plural(n, forms) { return n + " " + (n === 1 ? forms[0] : forms[1]); }
   // Every open wait, grouped by whom it waits on. A done item can still wait on a decision
   // (the work is delivered, the choice between its variants is not); a skipped one cannot.
   function renderWaiting(waves) {
@@ -381,10 +544,10 @@ h1 {
       (w.items || []).forEach(function (it) {
         var s = norm(it.status);
         if (s === "skipped") return;
-        waitsOf(it).forEach(function (wt) {
-          var who = wt.who || "Nobody named";
+        waitsOf(it).forEach(function (r) {
+          var who = r.w.who || T.nobody;
           if (!groups[who]) { groups[who] = []; order.push(who); }
-          groups[who].push({ w: wt, it: it });
+          groups[who].push({ w: r.w, i: r.i, it: it });
         });
       });
     });
@@ -401,13 +564,13 @@ h1 {
       var head = el("div", "wgroup-head");
       head.appendChild(el("h3", null, who));
       var counts = [];
-      if (n.decision) counts.push(plural(n.decision, "decision", "decisions"));
-      if (n.blocker) counts.push(plural(n.blocker, "blocker", "blockers"));
+      if (n.decision) counts.push(plural(n.decision, T.decisions));
+      if (n.blocker) counts.push(plural(n.blocker, T.blockers));
       head.appendChild(el("span", "wave-count", counts.join(" · ")));
       g.appendChild(head);
       var ul = el("ul", "waits");
       rows.forEach(function (r) {
-        var li = waitLine(r.w, r.it);
+        var li = waitLine(r, r.it, true);
         li.title = (r.it.id || "") + " " + (r.it.title || "");
         ul.appendChild(li);
       });
@@ -418,6 +581,43 @@ h1 {
     return total;
   }
 
+  // board/statuses: item id -> {status, at}, chosen on the page. A pick counts only while it is
+  // newer than the item's last change, so once the agent imports it the job file speaks again.
+  function effective(state) {
+    if (!state || !Array.isArray(state.waves)) return state;
+    var copy = Object.assign({}, state);
+    copy.waves = state.waves.map(function (w) {
+      return Object.assign({}, w, { items: (w.items || []).map(function (it) {
+        var p = statuses[it.id || ""];
+        if (p && STATUSES.indexOf(p.status) >= 0 && p.status !== it.status && later(p.at, it.updated)) {
+          return Object.assign({}, it, { status: p.status, onPage: true });
+        }
+        return it;
+      }) });
+    });
+    return copy;
+  }
+  function statusControl(it) {
+    var s = norm(it.status);
+    if (!statusesDoc) return el("span", "chip " + s, LABEL[s]);
+    var sel = el("select", "chip status-pick " + s);
+    sel.setAttribute("aria-label", T.statusFor + " " + (it.id || "") + " " + (it.title || ""));
+    STATUSES.forEach(function (k) {
+      var o = el("option", null, LABEL[k]);
+      o.value = k;
+      if (k === s) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function () {
+      var next = Object.assign({}, statuses);
+      next[it.id] = { status: sel.value, at: new Date().toISOString() };
+      statuses = next;
+      if (raw) render(raw);
+      statusesDoc.set(next).catch(function () { setSource("snapshot", T.notSaved); });
+    });
+    return sel;
+  }
+
   function whoOf(it) {
     var id = it.id || "";
     return Object.prototype.hasOwnProperty.call(picks, id) ? (picks[id] || "") : (it.assignee || "");
@@ -425,14 +625,14 @@ h1 {
   function assigneeControl(it, names) {
     var who = whoOf(it);
     if (!picksDoc) {
-      return el("span", "assignee-ro", who ? "Assignee: " + who : "");
+      return el("span", "assignee-ro", who ? T.assignee + who : "");
     }
     var sel = el("select", "assignee" + (who ? "" : " unset"));
-    sel.setAttribute("aria-label", "Assignee for " + (it.id || "") + " " + (it.title || ""));
+    sel.setAttribute("aria-label", T.assigneeFor + (it.id || "") + " " + (it.title || ""));
     var opts = [""].concat(names);
     if (who && opts.indexOf(who) < 0) opts.push(who);
     opts.forEach(function (n) {
-      var o = el("option", null, n || "Unassigned");
+      var o = el("option", null, n || T.unassigned);
       o.value = n;
       if (n === who) o.selected = true;
       sel.appendChild(o);
@@ -449,7 +649,22 @@ h1 {
     return sel;
   }
 
+  // A live update re-draws the page; keep the reader's cursor in the "other" field they type in.
   function render(state) {
+    var act = document.activeElement;
+    var keep = act && act.dataset && act.dataset.answerKey ? act.dataset.answerKey : null;
+    draw(state);
+    if (keep) {
+      var again = Array.prototype.find.call(document.querySelectorAll("input[data-answer-key]"), function (n) {
+        return n.dataset.answerKey === keep;
+      });
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    }
+  }
+  function draw(state) {
+    raw = state;
+    if (state && state.lang !== lang) { lang = state.lang; setLang(lang); }
+    state = effective(state);
     current = state;
     var waves = (state && Array.isArray(state.waves)) ? state.waves : [];
     var all = [];
@@ -482,16 +697,16 @@ h1 {
     var c = tally(all);
     var counted = c.total - c.skipped;
     var overall = document.getElementById("overall");
-    overall.textContent = c.done + " of " + counted + " done ";
-    overall.appendChild(el("small", null, "· " + c.remaining + " remaining"));
+    overall.textContent = c.done + T.of + counted + T.done;
+    overall.appendChild(el("small", null, "· " + c.remaining + T.remaining));
     var legend = document.getElementById("legend");
     legend.textContent = "";
     STATUSES.forEach(function (s) {
       if (c[s]) legend.appendChild(el("span", "chip " + s, c[s] + " " + LABEL[s]));
     });
     var waiting = renderWaiting(waves);
-    if (waiting.decision) legend.appendChild(el("span", "chip decision", plural(waiting.decision, "decision", "decisions")));
-    if (waiting.blocker) legend.appendChild(el("span", "chip blocker", plural(waiting.blocker, "blocker", "blockers")));
+    if (waiting.decision) legend.appendChild(el("span", "chip decision", plural(waiting.decision, T.decisions)));
+    if (waiting.blocker) legend.appendChild(el("span", "chip blocker", plural(waiting.blocker, T.blockers)));
     summary.hidden = false;
     strip(document.getElementById("overall-strip"), all);
 
@@ -520,11 +735,11 @@ h1 {
       var body = el("div", "wave-body");
       var head = el("div", "wave-head");
       var h2 = el("h2", null, w.title || w.id || "");
-      if (i === currentIdx) h2.appendChild(el("span", "current-flag", "current"));
+      if (i === currentIdx) h2.appendChild(el("span", "current-flag", T.current));
       head.appendChild(h2);
-      var cnt = wc.done + "/" + (wc.total - wc.skipped) + " done";
-      if (wc.remaining) cnt += " · " + wc.remaining + " left";
-      if (wc.blocked) cnt += " · " + wc.blocked + " blocked";
+      var cnt = wc.done + "/" + (wc.total - wc.skipped) + T.done.replace(/ $/, "");
+      if (wc.remaining) cnt += " · " + wc.remaining + T.left;
+      if (wc.blocked) cnt += " · " + wc.blocked + T.blockedN;
       head.appendChild(el("span", "wave-count", cnt));
       body.appendChild(head);
       var st = el("div", "strip");
@@ -535,19 +750,20 @@ h1 {
       items.forEach(function (it) {
         var s = norm(it.status);
         var li = el("li", "item " + s);
-        li.appendChild(el("span", "chip " + s, LABEL[s]));
+        li.appendChild(statusControl(it));
         var t = el("div", "item-title");
         t.appendChild(el("span", "id", it.id || ""));
         t.appendChild(el("span", "t", it.title || ""));
         li.appendChild(t);
-        li.appendChild(el("span", "item-meta", it.updated ? stamp(it.updated).replace(" UTC", "") : ""));
+        li.appendChild(it.onPage ? el("span", "on-page", T.onPage)
+          : el("span", "item-meta", it.updated ? stamp(it.updated).replace(" UTC", "") : ""));
         li.appendChild(assigneeControl(it, names));
         if (it.note) li.appendChild(el("div", "item-note", it.note));
-        var wl = waitList(it, false);
+        var wl = waitList(it);
         if (wl) li.appendChild(wl);
         ul.appendChild(li);
       });
-      if (!items.length) ul.appendChild(el("li", "item", "No items in this wave yet."));
+      if (!items.length) ul.appendChild(el("li", "item", T.noItems));
       body.appendChild(ul);
       sec.appendChild(body);
       host.appendChild(sec);
@@ -566,7 +782,7 @@ h1 {
     // The filter: a narrowed board must not read calmer than the job is.
     var sel = document.getElementById("wave-filter");
     sel.textContent = "";
-    var all = el("option", null, "All waves");
+    var all = el("option", null, T.allWaves);
     all.value = "";
     sel.appendChild(all);
     waves.forEach(function (w, i) {
@@ -583,7 +799,7 @@ h1 {
       rows = rows.filter(function (r) { return String(r.i) === filterIdx; });
     }
     document.getElementById("hidden-blocked").textContent =
-      hiddenBlocked ? hiddenBlocked + " blocked outside this filter" : "";
+      hiddenBlocked ? hiddenBlocked + T.hiddenBlocked : "";
 
     var board = el("div", "kanban");
     COLUMNS.forEach(function (s) {
@@ -595,7 +811,7 @@ h1 {
       head.appendChild(el("span", "col-count", String(mine.length)));
       col.appendChild(head);
       if (!mine.length) {
-        col.appendChild(el("p", "col-empty", "Nothing here."));
+        col.appendChild(el("p", "col-empty", T.nothing));
       } else {
         var ul = el("ul", "cards");
         mine.forEach(function (r) { ul.appendChild(card(r, opened, names)); });
@@ -610,7 +826,7 @@ h1 {
       var d = el("details", "skipped-strip");
       d.dataset.key = "skipped";
       d.open = !!opened.skipped;
-      d.appendChild(el("summary", null, skipped.length + " skipped"));
+      d.appendChild(el("summary", null, skipped.length + T.skippedN));
       var ul = el("ul");
       skipped.forEach(function (r) {
         var li = el("li");
@@ -631,17 +847,18 @@ h1 {
     top.appendChild(el("span", "id", it.id || ""));
     top.appendChild(el("span", "wtag w" + (r.i % WAVE_HUES), waveLabel(r.w, r.i)));
     li.appendChild(top);
+    if (statusesDoc) { var sc = statusControl(it); sc.style.justifySelf = "start"; li.appendChild(sc); }
     li.appendChild(el("div", "card-title", it.title || ""));
-    var meta = it.updated ? stamp(it.updated).replace(" UTC", "") : "";
-    if (meta) li.appendChild(el("span", "item-meta", meta));
+    if (it.onPage) li.appendChild(el("span", "on-page", T.onPage));
+    else if (it.updated) li.appendChild(el("span", "item-meta", stamp(it.updated).replace(" UTC", "")));
     li.appendChild(assigneeControl(it, names));
-    var wl = waitList(it, false);
+    var wl = waitList(it);
     if (wl) li.appendChild(wl);
     if (it.note) {
       var d = el("details", "note");
       d.dataset.key = "note:" + r.i + "/" + (it.id || it.title || "");
       d.open = !!opened[d.dataset.key];
-      d.appendChild(el("summary", null, "Note"));
+      d.appendChild(el("summary", null, T.note));
       d.appendChild(el("div", null, it.note));
       li.appendChild(d);
     }
@@ -653,12 +870,12 @@ h1 {
       if (view === b.dataset.view) return;
       view = b.dataset.view;
       saveView(view);
-      render(current);
+      render(raw);
     });
   });
   document.getElementById("wave-filter").addEventListener("change", function (e) {
     filterIdx = e.target.value;
-    render(current);
+    render(raw);
   });
 
   var seed = null;
@@ -673,12 +890,22 @@ h1 {
   if (c && typeof c.use === "function") {
     c.use("db").then(function (db) {
       if (!db) return;
+      statusesDoc = db.doc("board/statuses");
+      statusesDoc.onSnapshot(function (snap) {
+        statuses = snap.exists ? (snap.data() || {}) : {};
+        if (raw) render(raw);
+      }, function () { statusesDoc = null; if (raw) render(raw); });
+      answersDoc = db.doc("board/answers");
+      answersDoc.onSnapshot(function (snap) {
+        answers = snap.exists ? (snap.data() || {}) : {};
+        if (raw) render(raw);
+      }, function () { answersDoc = null; if (raw) render(raw); });
       picksDoc = db.doc("board/assignees");
       picksDoc.onSnapshot(function (snap) {
         picks = snap.exists ? (snap.data() || {}) : {};
-        if (current) render(current);
+        if (raw) render(raw);
       }, function () { /* the defaults from the job file stay */ });
-      if (current) render(current);
+      if (raw) render(raw);
       db.doc("board/state").onSnapshot(function (snap) {
         if (snap.exists) {
           setSource("live", "Live");

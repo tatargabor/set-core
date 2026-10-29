@@ -250,8 +250,8 @@ def test_render_names_the_page_after_the_job(env, repo, tmp_path):
 def test_render_carries_the_kanban_view(env, repo, tmp_path):
     # The behaviour (columns, filter, persistence, live update) is checked in a browser; this
     # pins the parts a careless edit would drop: both views, the guarded storage key, the
-    # column order, the skipped strip, the hidden-blocked notice, and that the page's only write
-    # is the assignee pick (board/assignees), never the agent's board/state.
+    # column order, the skipped strip, the hidden-blocked notice, and that the page writes only
+    # its own documents, never the agent's board/state.
     new_job(env, repo, ("a", None))
     out = tmp_path / "board.html"
     run(env, repo, "render", "j", "-o", str(out))
@@ -268,7 +268,10 @@ def test_render_carries_the_kanban_view(env, repo, tmp_path):
     assert "[hidden] { display: none !important; }" in html
     script = html.split('<script>', 1)[1]
     assert 'picksDoc = db.doc("board/assignees");' in script
-    others = "\n".join(l for l in script.splitlines() if "picksDoc." not in l)
+    # The page writes only its own documents (assignee, status and answer picks), each through
+    # its own handle; nothing else in the script may write, and board/state never.
+    own = ("picksDoc.", "statusesDoc.", "answersDoc.")
+    others = "\n".join(l for l in script.splitlines() if not any(h in l for h in own))
     for write in (".set(", ".update(", ".add(", ".delete("):
         assert write not in others, write
 
@@ -678,3 +681,72 @@ def test_render_carries_the_waiting_panel_and_a_pill_column_that_fits(env, repo,
     assert 'decision: "decision", blocker: "blocker"' in html
     assert "grid-template-columns: subgrid" in html
     assert "96px minmax" not in html
+
+
+# ── page writes: statuses and answers come back through import ───────────────
+
+def item_of(repo, item="a"):
+    for w in job_file(repo)["waves"]:
+        for it in w["items"]:
+            if it["id"] == item:
+                return it
+    raise KeyError(item)
+
+
+def test_wait_options_and_answer(env, repo):
+    new_job(env, repo, ("a", None))
+    run(env, repo, "wait", "j", "a", "--decision", "Which one?", "--ref", "P1", "--options", "E, C,D")
+    assert item_of(repo)["waits"][0]["options"] == ["E", "C", "D"]
+    run(env, repo, "answer", "j", "a", "--ref", "P1", "C")
+    w = item_of(repo)["waits"][0]
+    assert w["answer"] == "C" and w["answered"]
+    assert run(env, repo, "answer", "j", "a", "--ref", "X", "C", check=False).returncode == 2
+
+
+def write_page_docs(d: Path, statuses=None, answers=None):
+    (d / "board").mkdir(parents=True, exist_ok=True)
+    if statuses is not None:
+        (d / "board" / "statuses.json").write_text(json.dumps({"id": "statuses", "data": statuses, "version": 3}))
+    if answers is not None:
+        (d / "board" / "answers.json").write_text(json.dumps(answers))
+
+
+def test_import_applies_newer_page_choices_only(env, repo, tmp_path):
+    new_job(env, repo, ("a", None), ("b", None))
+    run(env, repo, "wait", "j", "a", "--decision", "Go?", "--ref", "G1", "--options", "Igen,Nem")
+    run(env, repo, "wait", "j", "b", "--blocker", "Key needed")
+    d = tmp_path / "page"
+    write_page_docs(d,
+                    statuses={"a": {"status": "done", "at": "2999-01-01T00:00:00Z"},
+                              "b": {"status": "doing", "at": "2000-01-01T00:00:00Z"}},  # older than b
+                    answers={"a|G1": {"answer": "Igen", "at": "2999-01-01T00:00:00Z"},
+                             "b|#0": {"answer": "Megvan", "at": "2999-01-01T00:00:00Z"}})
+    r = run(env, repo, "import", "j", "--dir", str(d))
+    assert "STATUS a todo -> done" in r.stdout and "ANSWER a G1: Igen" in r.stdout
+    assert status(repo, "a") == "done" and status(repo, "b") == "todo"
+    assert item_of(repo, "a")["waits"][0]["answer"] == "Igen"
+    assert item_of(repo, "b")["waits"][0]["answer"] == "Megvan"
+    # a second import of the same documents changes nothing
+    assert "nothing new from the page" in run(env, repo, "import", "j", "--dir", str(d)).stdout
+
+
+def test_lang_reaches_the_payload_only_when_set(env, repo):
+    new_job(env, repo, ("a", None))
+    run(env, repo, "sync")
+    state = json.loads((repo / ".set/waveboard/j.state.json").read_text())
+    assert "lang" not in state
+    run(env, repo, "lang", "j", "hu")
+    state = json.loads((repo / ".set/waveboard/j.state.json").read_text())
+    assert state["lang"] == "hu"
+
+
+def test_render_carries_status_picks_answers_and_hungarian(env, repo, tmp_path):
+    new_job(env, repo, ("a", None))
+    out = tmp_path / "board.html"
+    run(env, repo, "render", "j", "-o", str(out))
+    html = out.read_text()
+    assert 'db.doc("board/statuses")' in html and 'db.doc("board/answers")' in html
+    assert "function statusControl" in html and "function answerBox" in html
+    assert 'other: "Egyéb:"' in html and 'doing: "folyamatban"' in html
+    # the page's writes never touch the agent's document
+    assert 'doc("board/state").set' not in html and "board/state\").update" not in html
