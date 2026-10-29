@@ -271,7 +271,8 @@ def test_render_carries_the_kanban_view(env, repo, tmp_path):
     # The page writes only its own documents (assignee, status and answer picks), each through
     # its own handle; nothing else in the script may write, and board/state never.
     own = ("picksDoc.", "statusesDoc.", "answersDoc.")
-    others = "\n".join(l for l in script.splitlines() if not any(h in l for h in own))
+    others = "\n".join(l for l in script.splitlines()
+                       if not any(h in l for h in own) and "classList." not in l)  # CSS classes, not data
     for write in (".set(", ".update(", ".add(", ".delete("):
         assert write not in others, write
 
@@ -750,3 +751,12 @@ def test_render_carries_status_picks_answers_and_hungarian(env, repo, tmp_path):
     assert 'other: "Egyéb:"' in html and 'doing: "folyamatban"' in html
     # the page's writes never touch the agent's document
     assert 'doc("board/state").set' not in html and "board/state\").update" not in html
+
+
+def test_render_links_the_waiting_panel_to_the_items(env, repo, tmp_path):
+    new_job(env, repo, ("a", None))
+    out = tmp_path / "board.html"
+    run(env, repo, "render", "j", "-o", str(out))
+    html = out.read_text()
+    assert "function jumpTo" in html and 'el("a", "jump")' in html
+    assert html.count("dataset.item = it.id") == 2  # rows and cards

@@ -177,6 +177,16 @@ select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outlin
 .answered button { min-height: 26px; padding: 1px 8px; font-size: 12px; color: var(--muted); }
 .wait.is-answered .txt { color: var(--muted); }
 .answer-err { flex: 1 1 100%; font-size: 12px; color: var(--blocked); }
+/* In the panel the item id and the question link to the item's row (or card) below. */
+a.jump { color: inherit; text-decoration: none; border-radius: 3px; }
+a.jump:hover .on, a.jump:hover .txt { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+a.jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wait a.jump { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; flex: 1 1 14em; min-width: 0; }
+.item, .card { scroll-margin-top: 16px; }
+.item.flash, .card.flash { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--chip-decision); }
+@media (prefers-reduced-motion: no-preference) {
+  .item, .card { transition: background-color .6s ease, outline-color .6s ease; }
+}
 .waiting { display: grid; gap: 12px; }
 .waiting h2 { font-family: var(--font-display); font-stretch: 104%; font-weight: 650; font-size: 19px; margin: 0; }
 .waiting-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
@@ -512,10 +522,20 @@ select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outlin
     var given = answerOf(it, w, r.i);
     var li = el("li", "wait" + (given ? " is-answered" : ""));
     li.appendChild(el("span", "wkind " + w.kind, T.kind[w.kind]));
-    if (inPanel) li.appendChild(el("span", "on", it.id || ""));
-    else if (w.who) li.appendChild(el("span", "who", w.who));
-    if (w.ref) li.appendChild(el("span", "ref", w.ref));
-    li.appendChild(el("span", "txt", w.text));
+    if (inPanel) {
+      var link = el("a", "jump");
+      link.href = "#item-" + (it.id || "");
+      link.title = (it.id || "") + " " + (it.title || "");
+      link.appendChild(el("span", "on", it.id || ""));
+      if (w.ref) link.appendChild(el("span", "ref", w.ref));
+      link.appendChild(el("span", "txt", w.text));
+      link.addEventListener("click", function (e) { e.preventDefault(); jumpTo(it.id || ""); });
+      li.appendChild(link);
+    } else {
+      if (w.who) li.appendChild(el("span", "who", w.who));
+      if (w.ref) li.appendChild(el("span", "ref", w.ref));
+      li.appendChild(el("span", "txt", w.text));
+    }
     if (inPanel) li.appendChild(answerBox(it, w, r.i));
     else if (given) {
       var a = el("div", "answered");
@@ -531,6 +551,24 @@ select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outlin
     var ul = el("ul", "waits");
     ws.forEach(function (r) { ul.appendChild(waitLine(r, it, false)); });
     return ul;
+  }
+  // Scroll to the item's row (Waves) or card (Kanban) and flash it. A Kanban filter that hides
+  // the item is cleared first, so a click never lands on nothing.
+  function jumpTo(id) {
+    function find() {
+      return Array.prototype.find.call(document.querySelectorAll("[data-item]"), function (n) {
+        return n.dataset.item === id;
+      });
+    }
+    var target = find();
+    if (!target && filterIdx !== "") { filterIdx = ""; render(raw); target = find(); }
+    if (!target) return;
+    var smooth = !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    target.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center" });
+    target.setAttribute("tabindex", "-1");
+    target.focus({ preventScroll: true });
+    target.classList.add("flash");
+    setTimeout(function () { target.classList.remove("flash"); }, 1800);
   }
   function plural(n, forms) { return n + " " + (n === 1 ? forms[0] : forms[1]); }
   // Every open wait, grouped by whom it waits on. A done item can still wait on a decision
@@ -750,6 +788,7 @@ select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outlin
       items.forEach(function (it) {
         var s = norm(it.status);
         var li = el("li", "item " + s);
+        li.dataset.item = it.id || "";
         li.appendChild(statusControl(it));
         var t = el("div", "item-title");
         t.appendChild(el("span", "id", it.id || ""));
@@ -843,6 +882,7 @@ select.chip.status-pick:focus-visible { outline: 2px solid var(--accent); outlin
   function card(r, opened, names) {
     var it = r.it;
     var li = el("li", "card");
+    li.dataset.item = it.id || "";
     var top = el("div", "card-top");
     top.appendChild(el("span", "id", it.id || ""));
     top.appendChild(el("span", "wtag w" + (r.i % WAVE_HUES), waveLabel(r.w, r.i)));
