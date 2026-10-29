@@ -1,8 +1,8 @@
 ## 0. Agreements and the dependency — nothing in section 2 is built before 0.1 is on the record
 
-- [ ] 0.1 Propose the `owner-queue` / `owner-queue-act` shape (spec `owner-queue-contract`) on the bus to the project that will publish it; ask whether it already keeps an equivalent ranked list and under which field names; amend the spec to the agreed names and record the answer in design.md Open Questions [REQ: the-publishers-shape-is-agreed-before-the-adapter-is-built]
-- [ ] 0.2 In `fleet-waiting-on-you`, mark its section 3 (header chip and panel) and its "no answering in the panel" non-goal as superseded by this change, with a pointer here; leave its aggregator, API and sources as they are [REQ: the-merged-order-is-the-publishers-rank-then-the-framework-sources-by-age]
-- [ ] 0.3 Build `fleet-waiting-on-you` sections 1–2 (aggregator and API) first, or confirm they exist, since this change reads them [REQ: the-merged-order-is-the-publishers-rank-then-the-framework-sources-by-age]
+- [x] 0.1 Propose the `owner-queue` / `owner-queue-act` shape (spec `owner-queue-contract`) on the bus to the project that will publish it; ask whether it already keeps an equivalent ranked list and under which field names; amend the spec to the agreed names and record the answer in design.md Open Questions [REQ: the-publishers-shape-is-agreed-before-the-adapter-is-built]
+- [x] 0.2 In `fleet-waiting-on-you`, mark its section 3 (header chip and panel) and its "no answering in the panel" non-goal as superseded by this change, with a pointer here; leave its aggregator, API and sources as they are [REQ: the-merged-order-is-the-publishers-rank-then-the-framework-sources-by-age]
+- [x] 0.3 Build `fleet-waiting-on-you` sections 1–2 (aggregator and API) first, or confirm they exist, since this change reads them [REQ: the-merged-order-is-the-publishers-rank-then-the-framework-sources-by-age]
 
 ## 1. Card state and merge (Layer 1, `lib/set_orch/fleet/now.py`, new, domain-free)
 
@@ -48,6 +48,8 @@
 - [x] 6.1 `pnpm build` and `tsc -b` in `web/` [REQ: the-now-window-shows-one-item-never-a-list]
 - [ ] 6.2 Regression check against a baseline actually run (the `regression-baseline` skill) [REQ: the-merged-order-is-the-publishers-rank-then-the-framework-sources-by-age]
 - [ ] 6.3 Visual check in the browser of the `/now` window at its launcher size: one card, the gap markers, an answer round-trip with feedback, Go there landing on the agent tile, wind-down mode; if the browser cannot be reached this task stays open [REQ: the-now-window-shows-one-item-never-a-list]
+- [ ] 6.3a Looked at so far (2026-10-29, headless Chrome at 440x320 and 460x440, both themes, every write blocked): one card, the gap marker, options and actions visible, wind-down view. Found and fixed: the answer bar was below the fold at the launcher size (`dfdeb81d`). NOT yet looked at: an answer round-trip with its feedback, Go there landing on an agent tile, the dictate control (absent in the headless run — voice availability unverified), the sound cue. The Chrome extension was not connected, so 6.3 stays open. [REQ: the-now-window-shows-one-item-never-a-list]
+- [ ] 0.4 The publisher emits `references` only to its own internal sources, so the de-duplication against agent questions (AC-4) never fires on real data and those questions follow the ranked items a second time; the publisher should reference `{source: "agent-questions", id: "agent:<session id>"}` when an item covers a live agent's question [REQ: the-merged-order-is-the-publishers-rank-then-the-framework-sources-by-age]
 - [ ] 6.4 One week of use, then read the cue log: cues acted on vs ignored, and the measured answer latency for card items vs before; record both with the command that produced them [REQ: cues-fire-at-breakpoints-rarely-and-back-off]
 
 ## Acceptance Criteria (from spec scenarios)
