@@ -286,6 +286,8 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         "focusCandidates": focus_candidates,
         "groups": tag_groups,
         "mutedHidden": muted_hidden,
+        # The card's own text language (`now.locale`); the publisher's text is untouched.
+        "locale": cfg["now.locale"],
         "generatedAt": now_mod.utc_iso(now),
     }
 
@@ -569,6 +571,7 @@ def build_goals(*, now: Optional[float] = None, refresh: bool = False) -> Dict[s
         "stale": bool(gread.age_s is not None and gread.age_s > stale_after),
         "acceptsVerdicts": publisher.state == "ok" and publisher.accepts_actions,
         "proposedCount": sum(1 for g in gread.goals if g["status"] == "proposed"),
+        "locale": cfg["now.locale"],
     }
 
 

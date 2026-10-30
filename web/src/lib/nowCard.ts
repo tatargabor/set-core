@@ -3,7 +3,14 @@
  * (fleet-now-card, section 4). Kept out of the component so each decision is
  * testable on its own: what counts as a gap, what the empty state may say, and
  * what the feedback says after an action.
+ *
+ * Every helper that produces text the card shows takes an optional `locale` (default
+ * English, the product's language); the words live in `nowI18n.ts`. The publisher's own
+ * text — reasons, outcomes, source names — passes through untranslated.
  */
+
+import { t } from './nowI18n'
+import type { Locale, MsgKey } from './nowI18n'
 
 export interface NowOption { id: string; label: string }
 
@@ -83,6 +90,8 @@ export interface NowPayload {
   groups?: { name: string; count: number; muted: boolean }[]
   /** Items a switched-off project hid — always shown, so the filter never looks like calm. */
   mutedHidden?: number
+  /** The card's own text language (`now.locale`); absent from a server older than the setting. */
+  locale?: Locale
   generatedAt: string
 }
 
@@ -109,10 +118,10 @@ export interface ActResponse {
 }
 
 /** Hours, rounded to one decimal below ten — "ranked 6 h ago", "ranked 1.5 h ago". */
-export function hoursAgo(seconds: number): string {
+export function hoursAgo(seconds: number, locale: Locale = 'en'): string {
   const h = seconds / 3600
-  if (h < 1) return `${Math.max(1, Math.round(seconds / 60))} min`
-  return `${h < 10 ? Math.round(h * 10) / 10 : Math.round(h)} h`
+  if (h < 1) return t(locale, 'ago.min', { n: Math.max(1, Math.round(seconds / 60)) })
+  return t(locale, 'ago.h', { n: h < 10 ? Math.round(h * 10) / 10 : Math.round(h) })
 }
 
 export interface Marker { tone: 'warn' | 'info'; text: string }
@@ -124,7 +133,7 @@ export const NOT_AGREED = 'not agreed yet'
  * Every gap the reader should see on the card itself (spec: a gap is shown where
  * the reader is standing). Order: what makes the card wrong first.
  */
-export function gapMarkers(p: NowPayload): Marker[] {
+export function gapMarkers(p: NowPayload, locale: Locale = 'en'): Marker[] {
   const out: Marker[] = []
   // A source that is unmeasured BY DESIGN (its shape is not agreed with any project yet,
   // `REASON_NOT_AGREED` in lib/set_orch/fleet/waiting.py) is a known gap, not a failure:
@@ -134,27 +143,29 @@ export function gapMarkers(p: NowPayload): Marker[] {
   if (unreadable.length) {
     out.push({
       tone: 'warn',
-      text: `${unreadable.length} source${unreadable.length > 1 ? 's' : ''} could not be read: ` +
-        unreadable.map(s => `${s.name}${s.reason ? ` — ${s.reason}` : ''}`).join('; '),
+      text: t(locale, 'marker.unreadable', {
+        n: unreadable.length,
+        list: unreadable.map(s => `${s.name}${s.reason ? ` — ${s.reason}` : ''}`).join('; '),
+      }),
     })
   }
   if (notSetUp.length) {
-    out.push({ tone: 'info', text: `not set up: ${notSetUp.map(s => s.name).join(', ')}` })
+    out.push({ tone: 'info', text: t(locale, 'marker.notSetUp', { list: notSetUp.map(s => s.name).join(', ') }) })
   }
-  if (p.publisher.state === 'none') out.push({ tone: 'info', text: 'No ranked queue is published' })
+  if (p.publisher.state === 'none') out.push({ tone: 'info', text: t(locale, 'marker.noPublisher') })
   // An ambiguous or misconfigured publisher is counted as unreadable above, with its reason.
   if (p.publisher.state === 'ok' && !p.publisher.acceptsActions) {
-    out.push({ tone: 'info', text: 'The publisher accepts no actions' })
+    out.push({ tone: 'info', text: t(locale, 'marker.noActions') })
   }
   if (p.unreadSources && p.unreadSources.length) {
-    out.push({ tone: 'warn', text: `Publisher could not read: ${p.unreadSources.join('; ')}` })
+    out.push({ tone: 'warn', text: t(locale, 'marker.publisherUnread', { list: p.unreadSources.join('; ') }) })
   }
-  if (p.partial) out.push({ tone: 'warn', text: 'Queue is partial' })
+  if (p.partial) out.push({ tone: 'warn', text: t(locale, 'marker.partial') })
   if (p.stale && p.rankingAgeSeconds != null) {
-    out.push({ tone: 'warn', text: `ranked ${hoursAgo(p.rankingAgeSeconds)} ago` })
+    out.push({ tone: 'warn', text: t(locale, 'marker.stale', { age: hoursAgo(p.rankingAgeSeconds, locale) }) })
   }
-  if (p.malformed > 0) out.push({ tone: 'warn', text: `${p.malformed} item(s) unreadable, skipped` })
-  if (p.cue.slowed) out.push({ tone: 'info', text: 'cues slowed' })
+  if (p.malformed > 0) out.push({ tone: 'warn', text: t(locale, 'marker.malformed', { n: p.malformed }) })
+  if (p.cue.slowed) out.push({ tone: 'info', text: t(locale, 'marker.slowed') })
   return out
 }
 
@@ -162,87 +173,90 @@ export function gapMarkers(p: NowPayload): Marker[] {
  * The empty state's sentence. "Nothing is waiting" ONLY when every source was
  * read — an empty queue with an unreadable source is not calm, it is unknown.
  */
-export function emptyMessage(p: NowPayload): string {
+export function emptyMessage(p: NowPayload, locale: Locale = 'en'): string {
   const gaps = p.unmeasured + (p.unreadSources?.length ?? 0)
   const hidden = p.mutedHidden ?? 0
-  if (hidden > 0 && gaps === 0) return `Nothing in the switched-on tags — ${hidden} hidden by switched-off ones.`
-  if (gaps === 0) return 'Nothing is waiting.'
-  return `Nothing to show — but ${gaps} source${gaps > 1 ? 's' : ''} could not be read.`
+  if (hidden > 0 && gaps === 0) return t(locale, 'empty.mutedOnly', { n: hidden })
+  if (gaps === 0) return t(locale, 'empty.calm')
+  return t(locale, 'empty.unknown', { n: gaps })
 }
 
-const DEFAULT_OUTCOME: Record<string, string> = {
-  answer: 'Answer delivered',
-  done: 'Marked done',
-  delegate: 'Handed off',
-  later: 'Snoozed',
-  'park-idea': 'Idea parked',
-  'resume-note': 'Note kept',
-  'wind-down-handoff': 'Handed off for tonight',
-  recheck: 'Check started',
+/** The default sentence per action, when the source names no outcome of its own. */
+const DEFAULT_OUTCOME: Record<string, MsgKey> = {
+  answer: 'outcome.answer',
+  done: 'outcome.done',
+  delegate: 'outcome.delegate',
+  later: 'outcome.later',
+  'park-idea': 'outcome.park-idea',
+  'resume-note': 'outcome.resume-note',
+  'wind-down-handoff': 'outcome.wind-down-handoff',
+  recheck: 'outcome.recheck',
 }
 
-/** What the feedback says: the source's own outcome, or a plain statement of the act. */
-export function feedbackText(action: string, res: ActResponse): string {
-  if (!res.delivered) return res.reason || 'Not delivered — the item stays.'
-  return res.outcome || DEFAULT_OUTCOME[action] || 'Done'
+/** What the feedback says: the source's own outcome (untranslated), or a plain statement of the act. */
+export function feedbackText(action: string, res: ActResponse, locale: Locale = 'en'): string {
+  if (!res.delivered) return res.reason || t(locale, 'outcome.notDelivered')
+  return res.outcome || t(locale, DEFAULT_OUTCOME[action] ?? 'outcome.fallback')
 }
 
 /**
  * An exact clock time, for the owner's "pontos idő": "14:02" today, "yesterday 14:02",
  * otherwise "10-29 14:02". Local time — the card sits on the owner's own desktop.
  */
-export function clockTime(iso: string | null | undefined, now: Date = new Date()): string | null {
+export function clockTime(iso: string | null | undefined, now: Date = new Date(), locale: Locale = 'en'): string | null {
   if (!iso) return null
-  const t = new Date(iso)
-  if (Number.isNaN(t.getTime())) return null
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return null
   const pad = (n: number) => String(n).padStart(2, '0')
-  const hm = `${pad(t.getHours())}:${pad(t.getMinutes())}`
+  const hm = `${pad(at.getHours())}:${pad(at.getMinutes())}`
   const day = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-  if (day(t) === day(now)) return hm
+  if (day(at) === day(now)) return hm
   const y = new Date(now)
   y.setDate(now.getDate() - 1)
-  if (day(t) === day(y)) return `yesterday ${hm}`
-  return `${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${hm}`
+  if (day(at) === day(y)) return t(locale, 'clock.yesterday', { time: hm })
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${hm}`
 }
 
 /** "recommended 10-29 14:02 · ranked 08:27" — whichever of the two is known. */
-export function timeLine(item: NowItem, rankedAt: string | null | undefined, now: Date = new Date()): string | null {
+export function timeLine(item: NowItem, rankedAt: string | null | undefined, now: Date = new Date(),
+  locale: Locale = 'en'): string | null {
   const parts: string[] = []
-  const first = clockTime(item.firstSeen, now)
-  if (first) parts.push(`recommended ${first}`)
+  const first = clockTime(item.firstSeen, now, locale)
+  if (first) parts.push(t(locale, 'time.recommended', { time: first }))
   // Only the owner-queue's items are ranked; a framework item has its own "waiting" age.
-  const ranked = item.source === 'owner-queue' ? clockTime(rankedAt, now) : null
-  if (ranked) parts.push(`ranked ${ranked}`)
+  const ranked = item.source === 'owner-queue' ? clockTime(rankedAt, now, locale) : null
+  if (ranked) parts.push(t(locale, 'time.ranked', { time: ranked }))
   return parts.length ? parts.join(' · ') : null
 }
 
 /** How a check reads on the card. `stale` and `failed` are warnings and never close themselves. */
-export function checkView(c: ItemCheck | undefined, now: Date = new Date()):
+export function checkView(c: ItemCheck | undefined, now: Date = new Date(), locale: Locale = 'en'):
   { tone: 'ok' | 'info' | 'warn'; label: string; evidence?: string } | null {
   if (!c) return null
-  const at = clockTime(c.at ?? c.startedAt, now)
+  const at = clockTime(c.at ?? c.startedAt, now, locale)
   const when = at ? ` · ${at}` : ''
+  // The evidence is the publisher's sentence: shown as it arrives, never translated.
   switch (c.state) {
-    case 'running': return { tone: 'info', label: `Checking whether it is still current…${at ? ` (since ${at})` : ''}` }
-    case 'stands': return { tone: 'ok', label: `Still current — checked${when}`, evidence: c.evidence }
-    case 'rewritten': return { tone: 'info', label: `Reworded after a check${when}`, evidence: c.evidence }
-    case 'stale': return { tone: 'warn', label: `No longer current — checked${when}`, evidence: c.evidence }
-    case 'failed': return { tone: 'warn', label: `The check did not finish${when}`, evidence: c.evidence }
+    case 'running': return { tone: 'info', label: t(locale, 'check.running') + (at ? t(locale, 'check.since', { time: at }) : '') }
+    case 'stands': return { tone: 'ok', label: t(locale, 'check.stands') + when, evidence: c.evidence }
+    case 'rewritten': return { tone: 'info', label: t(locale, 'check.rewritten') + when, evidence: c.evidence }
+    case 'stale': return { tone: 'warn', label: t(locale, 'check.stale') + when, evidence: c.evidence }
+    case 'failed': return { tone: 'warn', label: t(locale, 'check.failed') + when, evidence: c.evidence }
     default: return null
   }
 }
 
 /** "Later" choices, in seconds. The last one returns the item tomorrow at 08:00. */
-export function laterChoices(now: Date): { label: string; seconds: number }[] {
+export function laterChoices(now: Date, locale: Locale = 'en'): { label: string; seconds: number }[] {
   const tomorrow = new Date(now)
   tomorrow.setDate(now.getDate() + 1)
   tomorrow.setHours(8, 0, 0, 0)
   return [
-    { label: '15 min', seconds: 15 * 60 },
-    { label: '1 h', seconds: 3600 },
-    { label: '2 h', seconds: 7200 },
-    { label: '4 h', seconds: 4 * 3600 },
-    { label: 'Tomorrow', seconds: Math.round((tomorrow.getTime() - now.getTime()) / 1000) },
+    { label: t(locale, 'later.15m'), seconds: 15 * 60 },
+    { label: t(locale, 'later.1h'), seconds: 3600 },
+    { label: t(locale, 'later.2h'), seconds: 7200 },
+    { label: t(locale, 'later.4h'), seconds: 4 * 3600 },
+    { label: t(locale, 'later.tomorrow'), seconds: Math.round((tomorrow.getTime() - now.getTime()) / 1000) },
   ]
 }
 
@@ -345,6 +359,8 @@ export interface GoalsPayload {
   stale: boolean
   acceptsVerdicts: boolean
   proposedCount: number
+  /** The card's own text language (`now.locale`); absent from a server older than the setting. */
+  locale?: Locale
 }
 
 export type GoalAction = 'keep' | 'drop' | 'rename' | 'accept' | 'decline'
@@ -363,41 +379,41 @@ export interface GoalActResponse {
  * not declared at all is NOT a failure (it is the "No goals are published" state); an
  * ambiguous or misconfigured one is, because the owner has something to fix.
  */
-export function goalsFailure(p: GoalsPayload | null, loadError: string | null): string | null {
-  if (loadError) return `Goals could not load: ${loadError}`
+export function goalsFailure(p: GoalsPayload | null, loadError: string | null, locale: Locale = 'en'): string | null {
+  if (loadError) return t(locale, 'goals.loadError', { error: loadError })
   if (!p || p.measured !== false) return null
-  return `Goals could not be read${p.reason ? `: ${p.reason}` : ''}`
+  return p.reason ? t(locale, 'goals.readErrorReason', { reason: p.reason }) : t(locale, 'goals.readError')
 }
 
 /** The muted notes above the goals list: everything incomplete about the answer. */
-export function goalsNotes(p: GoalsPayload): string[] {
+export function goalsNotes(p: GoalsPayload, locale: Locale = 'en'): string[] {
   const out: string[] = []
   if (p.partial) {
     out.push(p.unreadSources.length
-      ? `partial — the publisher could not read: ${p.unreadSources.join('; ')}`
-      : 'partial — the publisher says this list is incomplete')
+      ? t(locale, 'goals.partialUnread', { list: p.unreadSources.join('; ') })
+      : t(locale, 'goals.partial'))
   } else if (p.unreadSources.length) {
-    out.push(`the publisher could not read: ${p.unreadSources.join('; ')}`)
+    out.push(t(locale, 'goals.unread', { list: p.unreadSources.join('; ') }))
   }
-  if (p.stale && p.ageSeconds != null) out.push(`synthesised ${hoursAgo(p.ageSeconds)} ago`)
+  if (p.stale && p.ageSeconds != null) out.push(t(locale, 'goals.stale', { age: hoursAgo(p.ageSeconds, locale) }))
   const bad: string[] = []
-  if (p.malformedGoals > 0) bad.push(`${p.malformedGoals} goal${p.malformedGoals > 1 ? 's' : ''}`)
-  if (p.malformedAdvice > 0) bad.push(`${p.malformedAdvice} suggestion${p.malformedAdvice > 1 ? 's' : ''}`)
-  if (bad.length) out.push(`${bad.join(' and ')} unreadable, skipped`)
+  if (p.malformedGoals > 0) bad.push(t(locale, 'goals.badGoals', { n: p.malformedGoals }))
+  if (p.malformedAdvice > 0) bad.push(t(locale, 'goals.badAdvice', { n: p.malformedAdvice }))
+  if (bad.length) out.push(t(locale, 'goals.unreadable', { what: bad.join(t(locale, 'goals.and')) }))
   return out
 }
 
-const DEFAULT_GOAL_OUTCOME: Record<GoalAction, string> = {
-  keep: 'Goal kept',
-  drop: 'Not a goal — sent',
-  rename: 'Goal renamed',
-  accept: 'Suggestion accepted',
-  decline: 'Suggestion declined',
+const DEFAULT_GOAL_OUTCOME: Record<GoalAction, MsgKey> = {
+  keep: 'goalOutcome.keep',
+  drop: 'goalOutcome.drop',
+  rename: 'goalOutcome.rename',
+  accept: 'goalOutcome.accept',
+  decline: 'goalOutcome.decline',
 }
 
-export function goalFeedbackText(action: GoalAction, res: GoalActResponse): string {
-  if (!res.delivered) return res.reason || 'Not delivered — nothing changed.'
-  return res.outcome || DEFAULT_GOAL_OUTCOME[action]
+export function goalFeedbackText(action: GoalAction, res: GoalActResponse, locale: Locale = 'en'): string {
+  if (!res.delivered) return res.reason || t(locale, 'goalOutcome.notDelivered')
+  return res.outcome || t(locale, DEFAULT_GOAL_OUTCOME[action])
 }
 
 /** A progress bar's fill in percent, or null when the publisher gave no usable counts. */

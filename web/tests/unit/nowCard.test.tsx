@@ -558,3 +558,58 @@ describe('exact times and the "Still current?" check', () => {
     expect(api.sent).toEqual([expect.objectContaining({ id: 'i1', action: 'done', text: 'Not needed: no longer current (checked 10:46)' })])
   })
 })
+
+// --------------------------------------------------------------------------- 7.9
+
+describe('Hungarian locale (now.locale = hu)', () => {
+  it('the card\'s own words are Hungarian; the publisher\'s text is shown untouched', async () => {
+    await mount(payload({
+      locale: 'hu', following: 2,
+      item: item({ actions: ['answer', 'goThere', 'done', 'later', 'delegate', 'recheck'], delegable: true,
+        options: [{ id: 'o1', label: 'Send the quote' }] }),
+    }))
+    // Chrome
+    expect(document.querySelector('[data-tab="now"]')!.textContent).toBe('Most')
+    expect(document.querySelector('[data-tab="goals"]')!.textContent).toContain('Célok')
+    const actions = document.querySelector('[data-actions]')!.textContent!
+    for (const w of ['Kész', 'Ugrás oda', 'Nem kell…', 'Később', 'Átadom']) expect(actions).toContain(w)
+    expect(actions).not.toContain('Done')
+    expect(document.querySelector('[data-recheck]')!.textContent).toContain('Aktuális még?')
+    expect(document.querySelector('[data-following]')!.textContent).toContain('még 2')
+    expect(document.querySelector('[data-help-open]')!.getAttribute('aria-label')).toBe('Súgó')
+    // Publisher text, as written
+    expect(screen.getByText('Call the supplier back')).toBeTruthy()
+    expect(screen.getByText('They hold the order until Friday')).toBeTruthy()
+    expect(screen.getByText('Send the quote')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Később'))
+    const choices = document.querySelector('[data-overlay="later"]')!.textContent!
+    expect(choices).toContain('15 perc')
+    expect(choices).toContain('Holnap')
+  })
+
+  it('the help legend and the empty state follow the locale too', async () => {
+    await mount(payload({ locale: 'hu', item: null }))
+    expect(document.querySelector('[data-empty]')!.textContent).toContain('Semmi nem vár.')
+    fireEvent.click(document.querySelector('[data-help-open]')!)
+    const help = document.querySelector('[data-help]')!.textContent!
+    expect(help).toContain('Mi micsoda')
+    expect(help).toContain('Aktuális még?')
+    expect(help).not.toContain('What is what')
+  })
+
+  it('a payload without a locale (an older server) stays English', async () => {
+    await mount(payload())
+    expect(document.querySelector('[data-tab="now"]')!.textContent).toBe('Now')
+  })
+
+  it('what is SENT stays English: "Not needed:" is the publisher\'s prefix, not a word on the card', async () => {
+    await mount(payload({ locale: 'hu' }))
+    fireEvent.click(document.querySelector('[data-not-needed]')!)
+    fireEvent.change(screen.getByLabelText('Miért nem kell'), { target: { value: 'már kész' } })
+    fireEvent.click(screen.getByText('Lezárom'))
+    await flush()
+    expect(api.sent[0]).toMatchObject({ action: 'done', text: 'Not needed: már kész' })
+    expect(document.querySelector('[data-feedback]')!.textContent).toContain('Késznek jelölve')
+  })
+})

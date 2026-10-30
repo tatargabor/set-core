@@ -66,7 +66,14 @@ CONFIG_DEFAULTS: Dict[str, Any] = {
     # Goals are synthesised about daily, so "stale" is a missed day and a half, not hours.
     "now.stale_goals_hours": 36,
     "now.wind_down_hour": 23,
+    # The language of the card's OWN text (labels, markers, empty states). English is the
+    # product's language and the default; `hu` is an extra dictionary in web/src/lib/nowI18n.ts.
+    # The publisher's text is never translated — it arrives in its own language.
+    "now.locale": "en",
 }
+
+#: The locales the card has a dictionary for. Anything else falls back to the default.
+LOCALES = ("en", "hu")
 
 Getter = Callable[..., Any]
 
@@ -80,6 +87,14 @@ def config(get: Getter = local_config.get) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key, default in CONFIG_DEFAULTS.items():
         raw = get(key, default=default)
+        if key == "now.locale":
+            value = str(raw).strip().lower() if raw not in (None, "") else default
+            if value not in LOCALES:
+                logger.warning("now: config %s=%r is not one of %s; using %s",
+                               key, raw, ", ".join(LOCALES), default)
+                value = default
+            out[key] = value
+            continue
         if default is None:
             out[key] = str(raw).strip() if raw not in (None, "") else None
             continue

@@ -153,6 +153,17 @@ def test_partial_stale_and_malformed_are_marked_not_hidden(env):
     assert data["synthesizedAt"] == old
 
 
+def test_the_goals_payload_carries_the_card_locale(env):
+    from set_orch import local_config
+    env.answer([goal("g1")])
+    assert env.get()["locale"] == "en"
+    local_config.set_value("now.locale", "hu")
+    data = env.get()
+    assert data["locale"] == "hu"
+    # The publisher's text is never translated — the title arrives as written.
+    assert data["goals"][0]["title"] == f"{SECRET_TITLE}-g1"
+
+
 def test_the_stale_threshold_is_configurable(env, tmp_path):
     from set_orch import local_config
     recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=5)).isoformat()

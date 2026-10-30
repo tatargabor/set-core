@@ -265,6 +265,24 @@ def test_config_falls_back_on_a_bad_value():
     assert cfg["now.wind_down_hour"] == 23.0
 
 
+def test_locale_defaults_to_english():
+    assert now_mod.config(lambda key, default=None: default)["now.locale"] == "en"
+
+
+def test_locale_hu_is_read_from_local_config():
+    cfg = now_mod.config(lambda key, default=None: " HU " if key == "now.locale" else default)
+    assert cfg["now.locale"] == "hu"
+
+
+@pytest.mark.parametrize("bad", ["de", "magyar", "", 3])
+def test_an_unknown_locale_falls_back_to_english_with_a_warning(bad, caplog):
+    with caplog.at_level("WARNING", logger=now_mod.logger.name):
+        cfg = now_mod.config(lambda key, default=None: bad if key == "now.locale" else default)
+    assert cfg["now.locale"] == "en"
+    if bad != "":  # an empty value is "unset", not a bad one
+        assert any("now.locale" in r.getMessage() for r in caplog.records)
+
+
 # --------------------------------------------------------------------------- #
 # tag strip — projects switched off by the owner
 # --------------------------------------------------------------------------- #

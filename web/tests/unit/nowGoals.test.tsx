@@ -355,3 +355,42 @@ describe('pure helpers', () => {
     expect(evidenceTarget('https://example.test/a')).toEqual({ kind: 'link', href: 'https://example.test/a' })
   })
 })
+
+describe('Hungarian locale (now.locale = hu)', () => {
+  it('the Goals tab\'s own words are Hungarian; titles, why and advice are shown as written', async () => {
+    await mount(goalsPayload({
+      locale: 'hu',
+      goals: [goal('g1', { deadline: '11-15', serves: 'Ship the beta', openItems: 2 }), goal('g2', { status: 'confirmed' })],
+      advice: [advice('a1', { kind: 'neglected', goalId: 'g2' })],
+    }))
+    expect(goalsTab().textContent).toContain('Célok')
+    openGoals()
+    const view = document.querySelector('[data-goals-view]')!
+    expect(document.querySelector('[data-goals-summary]')!.textContent).toBe('2 cél · 1 megerősítendő · 1 megerősítve')
+    const g1 = view.querySelector('[data-goal="g1"]')!.textContent!
+    for (const w of ['megerősítetlen', 'határidő 11-15', 'szolgálja: Ship the beta', '2 nyitott kártya', 'Megtartom', 'Átnevezem', 'Nem cél']) {
+      expect(g1).toContain(w)
+    }
+    const s = document.querySelector('[data-suggestions]')!.textContent!
+    expect(s).toContain('Javaslatok — minek kellene lennie a céloknak')
+    expect(s).toContain('elhanyagolt')
+    expect(s).toContain('Elfogadom')
+    expect(s).toContain('Elutasítom')
+    // Publisher text, untouched
+    expect(screen.getByText('Goal g1')).toBeTruthy()
+    expect(s).toContain('Suggestion a1')
+    expect(s).toContain('„Goal g2” kapcsán — Because a1')
+  })
+
+  it('a verdict\'s default feedback is Hungarian; a publisher outcome is shown as it came', async () => {
+    await mount(goalsPayload({ locale: 'hu' }))
+    openGoals()
+    fireEvent.click(screen.getByText('Megtartom'))
+    await flush()
+    expect(document.querySelector('[data-feedback]')!.textContent).toContain('Cél megtartva')
+    api.act = () => ({ status: 200, body: { delivered: true, outcome: 'Kept by the publisher', reason: null, errorClass: null } })
+    fireEvent.click(screen.getAllByText('Nem cél')[0])
+    await flush()
+    expect(document.querySelector('[data-feedback]')!.textContent).toContain('Kept by the publisher')
+  })
+})

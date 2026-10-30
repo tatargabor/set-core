@@ -250,3 +250,22 @@ window's size or move the tab strip, and the Now tab SHALL stay the default on l
 #### Scenario: Unconfirmed goals are counted on the tab
 - **WHEN** three goals are proposed and the Now tab is open
 - **THEN** the Goals tab label shows that three goals await a verdict
+
+### Requirement: The card's own text follows a local locale setting
+
+*Added 2026-10-30 at the owner's request ("magyarul kellene az egész cucc"); the owner chose a
+small translation layer for this card only, with English as the default.*
+
+The card's own text — tab names, counters, buttons, overlays, the help legend, markers, empty
+states, default feedback, tooltips and accessible labels — SHALL follow the local setting
+`now.locale`. English SHALL be the default and the source of truth; `hu` SHALL switch the card to
+a Hungarian dictionary that has exactly the English keys; any other value SHALL read as English
+with a warning. Both `GET /api/fleet/now` and `GET /api/fleet/now/goals` SHALL return the setting
+as `locale`. Text that comes from the publisher — item sentences, why, option labels, outcomes,
+goal titles, advice, check evidence, refusal reasons — SHALL be shown untranslated, and text the
+card SENDS to the publisher SHALL NOT change with the locale. The window title SHALL stay
+`Now · SET` in every locale.
+
+#### Scenario: The owner switches the card to Hungarian
+- **WHEN** `now.locale` is set to `hu` in local config and the card loads
+- **THEN** the card's own labels are Hungarian (Most, Célok, Kész, Később, Aktuális még?), the publisher's sentence and option labels are shown exactly as published, and a "not needed" reason is still sent with its English `Not needed:` prefix

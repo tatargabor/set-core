@@ -132,6 +132,15 @@ def test_ac1_five_items_show_the_first_and_count_four_without_titles(env):
         assert f"{SECRET_SENTENCE}-{n}" not in text, "another item's title reached the page"
 
 
+def test_the_card_locale_is_english_unless_local_config_says_hu(env):
+    from set_orch import local_config
+    assert env.get()["locale"] == "en"
+    local_config.set_value("now.locale", "hu")
+    assert env.get()["locale"] == "hu"
+    local_config.set_value("now.locale", "klingon")
+    assert env.get()["locale"] == "en"
+
+
 def test_ac2_nothing_waiting_with_every_source_measured(env):
     data = env.get()
     assert data["item"] is None and data["unmeasured"] == 0

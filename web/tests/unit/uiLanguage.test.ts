@@ -66,6 +66,21 @@ const HU_WORDS = [
 ]
 const HU_WORD = new RegExp(`\\b(${HU_WORDS.join('|')})\\b`, 'i')
 
+/**
+ * DECLARED TRANSLATIONS — the one deliberate exception, and it is the rule's own.
+ *
+ * The repository rule exempts a translation living beside its English source
+ * (`docs/howitworks/hu/` beside `en/`): "a translated doc set is not a breach of an
+ * English-first rule; it is the rule succeeding". The Now card's Hungarian dictionary is
+ * that shape in code — English stays the default and the source of truth in
+ * `nowI18n.ts`, and the owner switches the extra dictionary on locally (`now.locale = hu`).
+ *
+ * Exact paths, never a pattern or a directory: a glob would exempt the next file somebody
+ * drops beside it. The test below holds each entry to being a dictionary and nothing else,
+ * and fails on a stale entry, so this list cannot quietly grow into a hole.
+ */
+const TRANSLATIONS = ['lib/nowI18n.hu.ts']
+
 /** Either signal. Both are narrow; neither claims to decide "is this English". */
 const HU = { test: (s: string) => ACCENTS.test(s) || HU_WORD.test(s) }
 const SELF = 'uiLanguage.test.ts'
@@ -117,6 +132,7 @@ describe('no accented Hungarian reaches the screen', () => {
     const offenders: string[] = []
     for (const file of sourceFiles(SRC)) {
       const rel = path.relative(SRC, file)
+      if (TRANSLATIONS.includes(rel)) continue
       code(readFileSync(file, 'utf8')).forEach((line, i) => {
         for (const text of renderedText(line)) {
           if (HU.test(text)) offenders.push(`${rel}:${i + 1}  ${text.trim().slice(0, 70)}`)
@@ -124,6 +140,20 @@ describe('no accented Hungarian reaches the screen', () => {
       })
     }
     expect(offenders, 'Hungarian in a rendered string — the product is English:\n' + offenders.join('\n')).toEqual([])
+  })
+
+  /**
+   * The exemption is a dictionary and nothing else — no component, no JSX, one export —
+   * and every entry still exists, so a renamed file cannot leave a dead exemption behind.
+   */
+  it('exempts only declared translation dictionaries, each one a dictionary only', () => {
+    for (const rel of TRANSLATIONS) {
+      const src = readFileSync(path.join(SRC, rel), 'utf8')
+      const lines = code(src).join('\n')
+      expect(lines.match(/^export /gm), `${rel}: one export, the dictionary`).toHaveLength(1)
+      expect(rel.endsWith('.ts'), `${rel}: a .ts file, which cannot hold JSX`).toBe(true)
+      expect(/\bfunction\b|=>/.test(lines), `${rel}: no logic in a dictionary`).toBe(false)
+    }
   })
 
   /**
