@@ -389,3 +389,21 @@ def test_switching_a_tag_off_hides_its_cards_and_says_how_many(env):
     assert {g["name"]: g["muted"] for g in data["groups"]} == {"a": True, "b": False}
     env.client.post("/api/fleet/now/groups", json={"muted": []})
     assert env.get()["item"]["id"] == "1"
+
+
+def test_a_ranked_item_without_a_link_has_nowhere_to_go(env):
+    """The project's status page says nothing about a ranked task (owner, 2026-10-30)."""
+    env.queue([item("1", project="p1"), item("2", project="p1", link="https://admin.example/billing")])
+    assert env.get()["item"]["goThere"] is None
+    env.act(id="1", source="owner-queue", action="done")
+    assert env.get()["item"]["goThere"] == {"kind": "link", "href": "https://admin.example/billing"}
+
+
+def test_not_needed_with_a_reason_closes_even_a_delegable_item(env):
+    env.queue([item("1", delegable=True), item("2")])
+    refused = env.act(id="1", source="owner-queue", action="done")
+    assert refused.status_code == 400
+    ok = env.act(id="1", source="owner-queue", action="done", text="Not needed: we moved the domain").json()
+    assert ok["delivered"] is True
+    sent = json.loads(env.calls("owner-queue-act")[-1][2])
+    assert sent == {"id": "1", "action": "done", "text": "Not needed: we moved the domain"}

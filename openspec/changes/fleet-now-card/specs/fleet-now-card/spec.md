@@ -82,9 +82,11 @@ delivered, and the item SHALL stay on the card.
 
 ### Requirement: Go there and dictate
 
-Every item SHALL offer **Go there**, which opens the place the item can be worked on: the fleet with
-the agent's tile focused for an agent item, the project's status row for a project item, the bus
-message for a bus item, or the link the publishing project supplied. An item that accepts free text
+An item SHALL offer **Go there** only when there is a place the item can be worked on: the fleet with
+the agent's tile focused for an agent item, the project's status page for a framework run-state item,
+the bus message for a bus item, or the link the publishing project supplied. A ranked item without a
+link SHALL NOT offer Go there — the project's status page says nothing about a ranked task (amended
+2026-10-30 after first use: *"itt a go there is értelmetlen"*). An item that accepts free text
 SHALL offer **dictate**, which uses the dashboard's existing voice input and sends the text through
 the same path as an option.
 
@@ -98,7 +100,9 @@ the same path as an option.
 
 ### Requirement: Done, Later and Delegate
 
-Every item SHALL offer Done, Later and — when the item is marked delegable — Delegate. Done and
+Every item SHALL offer Done, Not needed, Later and — when the item is marked delegable — Delegate.
+Not needed SHALL ask for one line saying why and send it as Done with that text, so the publisher can
+learn which matters are moot; that line also counts as the reason for keeping a delegable item. Done and
 Delegate SHALL be sent to the item's source through the same path as an answer. Later SHALL snooze
 the item for a chosen interval and SHALL be held by the card, not sent. Keeping a delegable item
 (choosing Done or an answer instead of Delegate) SHALL ask for one or two short reasons, and SHALL
@@ -108,6 +112,10 @@ NOT ask for more than two.
 - **WHEN** the owner chooses Done on a delegable item
 - **THEN** the card asks for one or two reasons for keeping it before sending
 - **AND** the reasons are sent with the action
+
+#### Scenario: Not needed
+- **WHEN** the owner chooses Not needed and writes "we moved the domain elsewhere"
+- **THEN** the card sends Done with that text and closes the item
 
 #### Scenario: Later
 - **WHEN** the owner chooses Later for two hours

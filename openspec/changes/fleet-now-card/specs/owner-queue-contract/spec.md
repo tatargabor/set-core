@@ -37,7 +37,7 @@ SHALL treat every text field as display-only.
 
 #### Scenario: A minimal item
 - **WHEN** an item carries only `id`, `project`, `sentence` and `why`
-- **THEN** the card shows it with Go there, Done and Later and no other actions
+- **THEN** the card shows it with Done, Not needed and Later and no other actions, and Go there only when the item carries a `link`
 
 #### Scenario: Options are present
 - **WHEN** an item carries three options

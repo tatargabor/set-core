@@ -185,6 +185,17 @@ describe('gaps are marked on the card', () => {
 
 // --------------------------------------------------------------------------- 4.3 / 4.6
 
+describe('not needed', () => {
+  it('asks why in one line and closes the card with that reason', async () => {
+    await mount(payload())
+    fireEvent.click(document.querySelector('[data-not-needed]')!)
+    fireEvent.change(screen.getByLabelText('Why not needed'), { target: { value: 'we moved the domain elsewhere' } })
+    fireEvent.click(screen.getByText('Close it'))
+    await flush()
+    expect(api.sent.at(-1)).toMatchObject({ action: 'done', text: 'Not needed: we moved the domain elsewhere' })
+  })
+})
+
 describe('tag strip', () => {
   const groups = [{ name: 'a', count: 2, muted: false }, { name: 'b', count: 1, muted: true }]
 
@@ -314,10 +325,10 @@ describe('go there and dictate', () => {
 // --------------------------------------------------------------------------- 4.5
 
 describe('done, later, delegate', () => {
-  it('AC-23: a minimal item offers Go there, Done and Later, nothing else', async () => {
+  it('AC-23: a minimal item offers Go there, Done, Not needed and Later, nothing else', async () => {
     await mount(payload())
     const labels = Array.from(document.querySelectorAll('[data-actions] button')).map(b => b.textContent!.trim())
-    expect(labels).toEqual(['Go there', 'Done', 'Later'])
+    expect(labels).toEqual(['Go there', 'Done', 'Not needed…', 'Later'])
   })
 
   it('AC-27: without a write command only Go there and Later', async () => {

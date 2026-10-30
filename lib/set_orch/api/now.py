@@ -101,7 +101,11 @@ def _go_there(item: Dict[str, Any], registered: set) -> Optional[Dict[str, str]]
         return {"kind": "agent", "href": f"/?agent={item['sessionId']}"}
     if item.get("link"):
         return {"kind": "link", "href": str(item["link"])}
-    if item.get("project") in registered:
+    # The project's status page is a real place only for the framework's own items (a run
+    # state lives there). For a ranked item it is a page that says nothing about the task —
+    # the owner, 2026-10-30: "itt a go there is értelmetlen" — so a ranked item without a
+    # link of its own offers no Go there at all.
+    if item.get("project") in registered and item.get("source") != oq.READ_COMMAND:
         return {"kind": "project", "href": f"/p/{item['project']}/status"}
     return None
 
@@ -421,7 +425,9 @@ def post_act(body: ActBody) -> Dict[str, Any]:
                 raise HTTPException(400, "an answer needs an option or text")
             if body.option is not None and body.option not in {o["id"] for o in item["options"]}:
                 raise HTTPException(400, "that option is not offered on this item")
-        if item.get("delegable") and body.action in ("done", "answer") and not reasons:
+        # "Not needed: <why>" already is the reason for not handing it over.
+        not_needed = body.action == "done" and bool((body.text or "").strip())
+        if item.get("delegable") and body.action in ("done", "answer") and not reasons and not not_needed:
             raise HTTPException(400, "keeping a delegable item needs one or two reasons")
         payload = oq.act_payload(body.id, body.action, option=body.option,
                                  text=(body.text or None), reasons=reasons or None)

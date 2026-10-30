@@ -42,6 +42,7 @@
 ## 4b. Added after first use (2026-10-30)
 
 - [x] 4.12 Tag strip: one tag per project with its count, click to switch off/on, persisted across days, hidden count under the card and in the empty state (`lib/set_orch/fleet/now.py` apply_mute/groups/set_muted, `POST /api/fleet/now/groups`, `TagStrip` in Now.tsx); tests proved to fail without the code [REQ: the-owner-can-switch-projects-off-on-a-tag-strip]
+- [x] 4.14 Not needed with a one-line reason on every item; Go there only where there is a place to go (no status-page fallback for ranked items) [REQ: done-later-and-delegate]
 - [x] 4.13 Labelled header counts, tooltips on every control, a ? legend overlay (`fd98a50a`) [REQ: the-card-explains-itself]
 
 ## 5. Launcher (`bin/set-now`)
@@ -85,7 +86,7 @@
 ### owner-queue-contract
 - [x] AC-21: WHEN a project declares `owner-queue` THEN the card reads it as the owner queue [REQ: owner-queue-is-an-ordinary-declared-read-command, scenario: a-project-declares-the-command]
 - [x] AC-22: WHEN two projects declare it and none is named in config THEN neither is shown and the ambiguity is stated [REQ: owner-queue-is-an-ordinary-declared-read-command, scenario: two-projects-declare-it]
-- [x] AC-23: WHEN an item carries only the required fields THEN Go there, Done and Later are offered and nothing else [REQ: the-owner-queue-item-shape, scenario: a-minimal-item]
+- [x] AC-23: WHEN an item carries only the required fields THEN Done, Not needed and Later are offered, Go there only with a link, and nothing else [REQ: the-owner-queue-item-shape, scenario: a-minimal-item]
 - [x] AC-24: WHEN an item carries three options THEN three option buttons are shown [REQ: the-owner-queue-item-shape, scenario: options-are-present]
 - [x] AC-25: WHEN `rankedAt` is older than the configured age THEN the ranking's age is shown next to the item [REQ: incomplete-and-stale-answers-are-marked-not-hidden, scenario: a-stale-ranking]
 - [x] AC-26: WHEN the write command prints an outcome THEN the card shows it [REQ: owner-queue-act-receives-the-cards-actions, scenario: an-answer-with-an-outcome]
@@ -94,3 +95,4 @@
 - [x] AC-29: WHEN a project with two items is switched off THEN the other project's item shows, two are counted as hidden, and the tag keeps its count [REQ: the-owner-can-switch-projects-off-on-a-tag-strip, scenario: switching-a-project-off]
 - [x] AC-30: WHEN every remaining item is switched off THEN the empty state names the hidden count [REQ: the-owner-can-switch-projects-off-on-a-tag-strip, scenario: everything-left-is-switched-off]
 - [x] AC-31: WHEN the help control is opened THEN the legend names every part and the card stays [REQ: the-card-explains-itself, scenario: opening-the-legend]
+- [x] AC-32: WHEN the owner chooses Not needed with a reason THEN Done is sent with that text and the item closes [REQ: done-later-and-delegate, scenario: not-needed]

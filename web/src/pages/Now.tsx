@@ -29,7 +29,7 @@ import './now.css'
 export const POLL_MS = 15_000
 export const FEEDBACK_MS = 10_000
 
-type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help'
+type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded'
 interface Feedback { ok: boolean; text: string }
 interface PendingKeep { action: 'done' | 'answer'; option?: string; text?: string }
 
@@ -295,6 +295,12 @@ export default function Now() {
                       <Check size={16} /> Done
                     </button>
                   )}
+                  {has('done') && (
+                    <button className={btn} disabled={busy} onClick={() => setOverlay('notneeded')}
+                      title="Not needed (any more) — say why in one line; the card closes and the ranker learns from the reason" data-not-needed>
+                      <X size={16} /> Not needed…
+                    </button>
+                  )}
                   {has('later') && (
                     <button className={btn} disabled={busy} onClick={() => setOverlay('later')} title="Not now — bring it back later; nothing is sent">
                       <Clock size={16} /> Later
@@ -385,6 +391,20 @@ export default function Now() {
             )}
 
             {overlay === 'help' && <HelpLegend />}
+            {overlay === 'notneeded' && (
+              <div className="flex flex-col gap-2" data-not-needed-form>
+                <p className="text-base font-medium">Why is it not needed? One line — the ranker reads it.</p>
+                <input autoFocus
+                  className="rounded-md border border-surface-strong bg-surface-page px-2 py-1.5 text-base"
+                  aria-label="Why not needed" placeholder="e.g. we moved the domain elsewhere"
+                  value={overlayText} onChange={e => setOverlayText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && overlayText.trim()) { const t = overlayText.trim(); closeOverlay(); void send({ action: 'done', text: `Not needed: ${t}` }) } }} />
+                <button className={btnPrimary + ' self-start'} disabled={!overlayText.trim() || busy}
+                  onClick={() => { const t = overlayText.trim(); closeOverlay(); void send({ action: 'done', text: `Not needed: ${t}` }) }}>
+                  Close it
+                </button>
+              </div>
+            )}
             {(overlay === 'idea' || overlay === 'tomorrow') && (
               <div className="flex flex-col gap-2">
                 <p className="text-base font-medium">{overlay === 'idea' ? 'Park an idea — it will wait, not start.' : "Tomorrow's first card"}</p>
@@ -525,8 +545,9 @@ function HelpLegend() {
         {row('The card', 'one thing to do next: the project, what to do, and why it is first.')}
         {row('Blue buttons', 'ready answers. One tap sends it back to where the question came from.')}
         {row('Text field', 'your own answer when no button fits. Enter or the arrow sends it the same way.')}
-        {row('Go there', 'opens where it came from: the agent in Fleet, the project, or the message.')}
+        {row('Go there', 'opens where the work is done: the agent in Fleet, or a link the card carries. Absent when there is no such place.')}
         {row('Done', 'it is finished; the card closes and will not come back.')}
+        {row('Not needed…', 'it is moot (e.g. already handled, cancelled, moved) — write why in one line; it closes and the ranker learns from it.')}
         {row('Later', 'not now; pick when it should return. Nothing is sent anywhere.')}
         {row('Delegate', 'hand it to a colleague (shown only when someone else could do it).')}
         {row('N more', 'how many cards follow; you only ever see one.')}
