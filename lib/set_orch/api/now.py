@@ -1,5 +1,6 @@
 """The Now card's API — `GET /api/fleet/now`, `POST /api/fleet/now/act`, `POST /api/fleet/now/focus`,
-and the Goals tab's `GET /api/fleet/now/goals` and `POST /api/fleet/now/goals/act`.
+the Goals tab's `GET /api/fleet/now/goals` and `POST /api/fleet/now/goals/act`, and the
+Calls tab's `GET /api/fleet/now/calls` and `POST /api/fleet/now/calls/act`.
 
 A separate router from `api/fleet.py`, registered BEFORE the `/api/{project}/...`
 families for the same reason the fleet router is (CB-16).
@@ -31,6 +32,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..fleet import now as now_mod
+from ..fleet import owner_calls as oc
 from ..fleet import owner_goals as og
 from ..fleet import owner_queue as oq
 from ..fleet import question_relay as qr
@@ -657,4 +659,119 @@ def post_goal_act(body: GoalActBody) -> Dict[str, Any]:
     if act.delivered:
         _drop_read_cache(publisher)
     _log_goal_act(body, "delivered" if act.delivered else "refused", act.error_class)
+    return act.as_dict()
+
+
+# --------------------------------------------------------------------------- #
+# GET /api/fleet/now/calls — the Calls tab (spec owner-calls-contract)
+# --------------------------------------------------------------------------- #
+
+def _calls_publisher(projects: Optional[List[Dict[str, Any]]] = None) -> oq.Publisher:
+    cfg = now_mod.config()
+    return oq.find_publisher(_registered() if projects is None else projects, cfg["now.publisher"],
+                             read_command=oc.READ_COMMAND, write_command=oc.WRITE_COMMAND,
+                             published="call list")
+
+
+def _read_calls(publisher: oq.Publisher, now: float, refresh: bool) -> oc.CallsRead:
+    if publisher.state != "ok":
+        return oc.CallsRead(measured=False, reason=publisher.reason)
+    result = api_status._cached_query(publisher.path, oc.READ_COMMAND, publisher.config, refresh)
+    return oc.parse_calls(result, now)
+
+
+def _is_overdue(call: Dict[str, Any], now: float) -> bool:
+    due = call.get("due")
+    if not isinstance(due, str):
+        return False
+    when = now_mod.to_epoch(due)
+    if when is None:
+        return False
+    if len(due.strip()) == 10:
+        # A bare date is due for the whole day: overdue only once that day has ended.
+        when += 86400
+    return when < now
+
+
+def build_calls(*, now: Optional[float] = None, refresh: bool = False) -> Dict[str, Any]:
+    now = time.time() if now is None else now
+    cfg = now_mod.config()
+    publisher = _calls_publisher()
+    cread = _read_calls(publisher, now, refresh)
+    stale_after = cfg["now.stale_ranking_hours"] * 3600
+    calls = [{**c, "overdue": _is_overdue(c, now)} for c in cread.calls]
+    return {
+        "publisher": publisher.as_dict(),
+        # Not declared is not a failure (`null`), the same split as the other two tabs.
+        "measured": None if publisher.state == "none" else cread.measured,
+        "reason": cread.reason,
+        "calls": calls,
+        "malformed": cread.malformed,
+        "partial": bool(cread.measured and cread.complete is not True),
+        "unreadSources": list(cread.unread_sources),
+        "rankedAt": cread.ranked_at,
+        "ageSeconds": cread.age_s,
+        "stale": bool(cread.age_s is not None and cread.age_s > stale_after),
+        "acceptsActions": publisher.state == "ok" and publisher.accepts_actions,
+        "overdueCount": sum(1 for c in calls if c["overdue"]),
+        "locale": cfg["now.locale"],
+    }
+
+
+@router.get("/api/fleet/now/calls")
+def get_calls(refresh: bool = Query(False)) -> Dict[str, Any]:
+    """The calls the owner should make, with every marker the tab needs."""
+    payload = build_calls(refresh=refresh)
+    logger.info("now api: calls publisher=%s measured=%s calls=%d overdue=%d malformed=%d",
+                payload["publisher"]["state"], payload["measured"], len(payload["calls"]),
+                payload["overdueCount"], payload["malformed"])
+    return payload
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/fleet/now/calls/act
+# --------------------------------------------------------------------------- #
+
+class CallActBody(BaseModel):
+    id: str
+    action: str
+    text: Optional[str] = None
+    until: Optional[str] = None
+
+
+def _log_call_act(body: CallActBody, status: str, error_class: Optional[str] = None) -> None:
+    # Ids, the action and the status class only — never a name, a number, a note or an outcome.
+    logger.info("now api: calls act id=%s action=%s status=%s class=%s",
+                body.id, body.action, status, error_class)
+
+
+@router.post("/api/fleet/now/calls/act")
+def post_call_act(body: CallActBody) -> Dict[str, Any]:
+    """The owner's answer on one call: called, no-answer, later, not-needed."""
+    if body.action not in oc.CALL_ACTIONS:
+        raise HTTPException(400, f"not an owner-calls action: {body.action!r}")
+    if body.action == "later" and not body.until:
+        raise HTTPException(400, "later needs until")
+    publisher = _calls_publisher()
+    if publisher.state != "ok":
+        _log_call_act(body, "refused", f"publisher-{publisher.state}")
+        raise HTTPException(409, publisher.reason or "no calls publisher")
+    if not publisher.accepts_actions:
+        _log_call_act(body, "refused", "no-write-command")
+        raise HTTPException(409, f"the publisher declares no '{oc.WRITE_COMMAND}' write "
+                                 "command — it accepts no answers")
+    cread = _read_calls(publisher, time.time(), refresh=False)
+    if not cread.measured:
+        _log_call_act(body, "refused", "calls-unreadable")
+        raise HTTPException(409, f"the calls could not be read: {cread.reason}")
+    if not any(c["id"] == body.id for c in cread.calls):
+        _log_call_act(body, "refused", "unknown-id")
+        raise HTTPException(409, "that call is no longer in the publisher's answer")
+    payload = oc.act_payload(body.id, body.action, text=body.text, until=body.until)
+    result = contract_write(publisher.path, oc.WRITE_COMMAND, oc.write_args(payload),
+                            config=publisher.config)
+    act = oc.interpret_write(result)
+    if act.delivered:
+        _drop_read_cache(publisher)
+    _log_call_act(body, "delivered" if act.delivered else "refused", act.error_class)
     return act.as_dict()

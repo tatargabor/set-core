@@ -13,7 +13,7 @@
  * - **Overlays float.** Pickers, prompts and the feedback toast are absolutely positioned
  *   and never move the card. Delivered feedback closes after 10 s; a failure stays.
  * - **Feedback names the outcome.** No streaks, points, or loss framing anywhere.
- * - **Two tabs, one window.** Now | Goals sit in the header row, which never changes size
+ * - **Three tabs, one window.** Now | Goals | Calls sit in the header row, which never changes size
  *   when the tab switches. A failure on the tab you are NOT looking at is marked on its
  *   label, so a hidden view can never look calm.
  * - **The card's own words follow `now.locale`** (nowI18n.ts, English by default). The
@@ -21,14 +21,14 @@
  *   arrives, never translated. The window title is never translated: bin/set-now finds it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Loader2, Moon, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
-  checkView, clockTime, emptyMessage, evidenceTarget, feedbackText, timeLine, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
+  callFeedbackText, callsCount, callsFailure, callsNotes, checkView, clockTime, dueLabel, fetchCalls, postCallAct, emptyMessage, evidenceTarget, feedbackText, timeLine, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
   laterChoices, matchProjects, needsReasons, postAct, postFocus, postGoalAct, postGroups, progressPercent,
 } from '../lib/nowCard'
-import type { ActBody, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
+import type { ActBody, Call, CallActBody, CallsPayload, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
 import { asLocale, makeT } from '../lib/nowI18n'
 import type { Locale, MsgKey } from '../lib/nowI18n'
 import { createAudio, playCue } from '../lib/nowSound'
@@ -40,7 +40,7 @@ export const FEEDBACK_MS = 10_000
 /** Goals change about daily: read them with the card's poll, but never more often than once a minute. */
 export const GOALS_POLL_MS = Math.max(POLL_MS, 60_000)
 
-type Tab = 'now' | 'goals'
+type Tab = 'now' | 'goals' | 'calls'
 
 type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded'
 interface Feedback { ok: boolean; text: string }
@@ -97,6 +97,8 @@ export default function Now() {
   const [tab, setTab] = useState<Tab>('now')
   const [goals, setGoals] = useState<GoalsPayload | null>(null)
   const [goalsError, setGoalsError] = useState<string | null>(null)
+  const [calls, setCalls] = useState<CallsPayload | null>(null)
+  const [callsError, setCallsError] = useState<string | null>(null)
   const audioRef = useRef<AudioContext | null>(null)
   const { checked: voiceChecked, hasKey, micSupported } = useSonioxAvailable()
   const voice = voiceChecked && hasKey && micSupported
@@ -117,6 +119,16 @@ export default function Now() {
     } catch (e) {
       // The last good answer stays on screen; the failure is marked over it and on the tab.
       setGoalsError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
+  const loadCalls = useCallback(async (refresh = false) => {
+    try {
+      setCalls(await fetchCalls(refresh))
+      setCallsError(null)
+    } catch (e) {
+      // As with goals: the last good list stays, the failure is marked over it and on the tab.
+      setCallsError(e instanceof Error ? e.message : String(e))
     }
   }, [])
 
@@ -142,6 +154,13 @@ export default function Now() {
     return () => clearInterval(t)
   }, [loadGoals])
 
+  // Calls too are read on load: the tab label carries the count, the overdue tone and the failure marker.
+  useEffect(() => {
+    void loadCalls()
+    const t = setInterval(() => { void loadCalls() }, GOALS_POLL_MS)
+    return () => clearInterval(t)
+  }, [loadCalls])
+
   // A cue plays only when the server decided one AND the owner enabled sound.
   useEffect(() => {
     if (data?.cue.play && audioRef.current) playCue(audioRef.current, data.cue.variant)
@@ -162,7 +181,7 @@ export default function Now() {
 
   const item = data?.item ?? null
   // English until a payload says otherwise; either payload carries the same setting.
-  const locale: Locale = asLocale(data?.locale ?? goals?.locale)
+  const locale: Locale = asLocale(data?.locale ?? goals?.locale ?? calls?.locale)
   const t = useMemo(() => makeT(locale), [locale])
   const markers = useMemo(() => (data ? gapMarkers(data, locale) : []), [data, locale])
 
@@ -216,6 +235,18 @@ export default function Now() {
     }
   }, [loadGoals, locale])
 
+  const sendCall = useCallback(async (body: CallActBody) => {
+    setBusy(true)
+    try {
+      const res = await postCallAct(body)
+      setFeedback({ ok: res.delivered, text: callFeedbackText(body.action, res, locale) })
+      if (res.delivered) await loadCalls(true)
+      return res
+    } finally {
+      setBusy(false)
+    }
+  }, [loadCalls, locale])
+
   const keep = (k: PendingKeep) => {
     if (item && needsReasons(item, k.action)) {
       setPendingKeep(k)
@@ -235,6 +266,8 @@ export default function Now() {
   const goalsFail = goalsFailure(goals, goalsError, locale)
   const nowFail = !!loadError || markers.some(m => m.tone === 'warn')
   const proposed = goals?.proposedCount ?? 0
+  const callsFail = callsFailure(calls, callsError, locale)
+  const callN = callsCount(calls)
 
   return (
     <div
@@ -264,6 +297,16 @@ export default function Now() {
               <span className="rounded-full bg-status-done px-1.5 text-xs font-semibold leading-4 text-white" data-goals-count>{proposed}</span>
             )}
             {goalsFail && <span className="text-status-fail" data-goals-fail aria-label={t('tab.goalsFail')}><TriangleAlert size={12} /></span>}
+          </button>
+          <button role="tab" aria-selected={tab === 'calls'} className={tabBtn(tab === 'calls')} onClick={() => setTab('calls')} data-tab="calls"
+            title={callsFail ?? (callN.overdue > 0 ? t('tab.callsOverdueTitle', { n: callN.open, overdue: callN.overdue })
+              : callN.open > 0 ? t('tab.callsCountTitle', { n: callN.open }) : t('tab.callsTitle'))}>
+            {t('tab.calls')}
+            {callN.open > 0 && (
+              <span className={'rounded-full px-1.5 text-xs font-semibold leading-4 text-white ' + (callN.overdue > 0 ? 'bg-status-fail' : 'bg-status-done')}
+                data-calls-count data-overdue={callN.overdue > 0 ? 'yes' : 'no'}>{callN.open}</span>
+            )}
+            {callsFail && <span className="text-status-fail" data-calls-fail aria-label={t('tab.callsFail')}><TriangleAlert size={12} /></span>}
           </button>
         </div>
         <span className={hchip} title={t('header.closedTitle')} data-closed>
@@ -309,6 +352,11 @@ export default function Now() {
       <main className="flex-1 overflow-y-auto px-3 pb-3 pt-2">
         {tab === 'goals' && (
           <GoalsView locale={locale} goals={goals} failure={goalsFail} busy={busy} onAct={b => void sendGoal(b)}
+            onOpen={link => void goThere(evidenceTarget(link))} />
+        )}
+
+        {tab === 'calls' && (
+          <CallsView locale={locale} calls={calls} failure={callsFail} busy={busy} onAct={b => void sendCall(b)}
             onOpen={link => void goThere(evidenceTarget(link))} />
         )}
 
@@ -985,6 +1033,163 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
           </ul>
         </section>
       )}
+    </section>
+  )
+}
+
+/**
+ * The Calls tab: who to phone, in the publisher's order. Each call says who, why and what
+ * kind (promised, again, missed, follow-up); an overdue due date is red. Called opens a
+ * one-line note (optional, Enter sends); No answer brings it back later; Later hides it
+ * until a chosen time; Not needed drops it.
+ */
+function CallsView({ calls, failure, busy, onAct, onOpen, locale }: {
+  locale: Locale
+  calls: CallsPayload | null
+  failure: string | null
+  busy: boolean
+  onAct: (body: CallActBody) => void
+  onOpen: (link: string) => void
+}) {
+  const [noting, setNoting] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+  const [laterFor, setLaterFor] = useState<string | null>(null)
+  const t = makeT(locale)
+
+  const failLine = failure && (
+    <p className="flex items-start gap-1.5 rounded-lg bg-status-fail/10 px-2.5 py-1.5 text-sm text-status-fail" data-calls-error>
+      <TriangleAlert size={14} className="mt-0.5 shrink-0" /> <span>{failure}</span>
+    </p>
+  )
+  if (!calls) {
+    return failLine
+      ? <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center" data-calls-empty-fail>
+          <TriangleAlert size={22} className="text-status-fail" />
+          <p className="text-base font-semibold text-fg-loud">{t('calls.couldNotLoad')}</p>
+          <p className="max-w-sm text-sm text-fg-muted" data-calls-error>{failure}</p>
+        </div>
+      : <p className="text-base text-fg-muted">{t('loading')}</p>
+  }
+  if (calls.publisher.state === 'none') {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1.5 px-4 text-center" data-calls-none>
+        {failLine}
+        <Phone size={22} className="text-fg-faint" />
+        <p className="text-base font-semibold text-fg-loud">{t('calls.none')}</p>
+        {calls.reason && <p className="max-w-sm text-sm text-fg-muted">{calls.reason}</p>}
+      </div>
+    )
+  }
+
+  const notes = calls.measured ? callsNotes(calls, locale) : []
+  const readOnly = calls.measured === true && !calls.acceptsActions
+  const listed = clockTime(calls.rankedAt, undefined, locale)
+  const sendNote = (c: Call) => {
+    const text = note.trim()
+    setNoting(null)
+    setNote('')
+    onAct(text ? { id: c.id, action: 'called', text } : { id: c.id, action: 'called' })
+  }
+  const KIND: Record<string, string> = {
+    promised: 'bg-status-done/15 text-status-done',
+    retry: 'bg-status-warn/15 text-status-warn',
+    missed: 'bg-status-fail/10 text-status-fail',
+    'follow-up': 'bg-surface-raised text-fg-normal',
+  }
+
+  return (
+    <section className="flex flex-col gap-2.5" data-calls-view>
+      {failLine}
+      <p className="text-xs text-fg-muted" data-calls-summary>
+        {listed && <span title={t('calls.listedTitle')}>{t('calls.listed', { time: listed })}</span>}
+        {t('calls.count', { n: calls.calls.length })}
+        {calls.overdueCount > 0 ? t('calls.overdueCount', { n: calls.overdueCount }) : ''}
+      </p>
+      {notes.length > 0 && <p className="text-xs text-status-warn" data-calls-notes>{notes.join(' · ')}</p>}
+      {readOnly && <p className="text-xs text-fg-muted" data-calls-readonly>{t('calls.readOnly')}</p>}
+      {calls.measured && calls.calls.length === 0 && (
+        <div className="flex flex-col items-center gap-1.5 py-8 text-center" data-calls-empty>
+          <Phone size={22} className="text-fg-faint" />
+          <p className="text-base text-fg-muted">{t('calls.empty')}</p>
+        </div>
+      )}
+
+      <ul className="flex flex-col gap-2">
+        {calls.calls.map(c => {
+          const kindKnown = (['promised', 'retry', 'missed', 'follow-up'] as string[]).includes(c.kind)
+          const last = clockTime(c.lastAttempt, undefined, locale)
+          return (
+            <li key={c.id} data-call={c.id} data-kind={c.kind}
+              className={'flex flex-col gap-1 rounded-lg border bg-surface-panel px-2.5 py-2 ' +
+                (c.overdue ? 'border-status-fail/50' : 'border-surface-line')}>
+              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                <span className="text-base font-semibold leading-snug text-fg-loud" data-who>{c.who}</span>
+                <span className={'shrink-0 rounded-full px-1.5 text-xs font-semibold uppercase tracking-wide ' + (KIND[c.kind] ?? 'bg-surface-raised text-fg-muted')}
+                  title={kindKnown ? t(`calls.kindTitle.${c.kind}` as MsgKey) : undefined} data-call-kind>
+                  {kindKnown ? t(`calls.kind.${c.kind}` as MsgKey) : c.kind}
+                </span>
+                {c.due && (
+                  <span className={'shrink-0 rounded-full px-1.5 text-xs ' + (c.overdue ? 'bg-status-fail/15 font-semibold text-status-fail' : 'bg-surface-raised text-fg-normal')}
+                    title={t('calls.dueTitle')} data-due data-overdue={c.overdue ? 'yes' : 'no'}>
+                    {t(c.overdue ? 'calls.overdue' : 'calls.due', { date: dueLabel(c.due, undefined, locale) })}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm leading-relaxed text-fg-normal" data-about>{c.about}</p>
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
+                {c.phone && (
+                  <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="inline-flex items-center gap-1 font-semibold text-status-done hover:underline"
+                    title={t('calls.phoneTitle')} data-phone><Phone size={12} />{c.phone}</a>
+                )}
+                {c.project && <span className="text-fg-muted">{c.project}</span>}
+                {c.attempts != null && c.attempts > 0 && (
+                  <span className="text-status-warn" data-attempts>{t('calls.attempts', { n: c.attempts })}{last ? t('calls.lastAttempt', { time: last }) : ''}</span>
+                )}
+                {c.evidence.map((ev, k) => ev.link ? (
+                  <button key={k} className="inline-flex items-center gap-0.5 text-status-done hover:underline" title={ev.link}
+                    onClick={() => onOpen(ev.link!)}><ArrowUpRight size={11} />{ev.label}</button>
+                ) : (
+                  <span key={k} className="text-fg-muted">{ev.label}</span>
+                ))}
+              </div>
+              {calls.acceptsActions && (noting === c.id ? (
+                <div className="mt-0.5 flex items-center gap-1.5" data-call-note>
+                  <input autoFocus aria-label={t('calls.noteLabel')} placeholder={t('calls.notePlaceholder')}
+                    className="min-w-0 flex-1 rounded-md border border-surface-strong bg-surface-page px-2 py-0.5 text-sm text-fg-strong"
+                    value={note} onChange={e => setNote(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') sendNote(c)
+                      if (e.key === 'Escape') { setNoting(null); setNote('') }
+                    }} />
+                  <button className={btnSmallPrimary} disabled={busy} onClick={() => sendNote(c)}>{t('calls.noteSend')}</button>
+                  <button className="text-fg-muted" aria-label={t('calls.noteCancel')} onClick={() => { setNoting(null); setNote('') }}><X size={14} /></button>
+                </div>
+              ) : laterFor === c.id ? (
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5" data-call-later>
+                  {laterChoices(new Date(), locale).map(ch => (
+                    <button key={ch.label} className={btnSmall} disabled={busy}
+                      onClick={() => { setLaterFor(null); onAct({ id: c.id, action: 'later', until: new Date(Date.now() + ch.seconds * 1000).toISOString() }) }}>
+                      {ch.label}
+                    </button>
+                  ))}
+                  <button className="text-fg-muted" aria-label={t('calls.noteCancel')} onClick={() => setLaterFor(null)}><X size={14} /></button>
+                </div>
+              ) : (
+                <div className="mt-0.5 flex flex-wrap gap-1.5" data-call-actions>
+                  <button className={btnSmallPrimary} disabled={busy} onClick={() => { setNoting(c.id); setNote('') }}
+                    title={t('calls.calledTitle')}><Check size={12} />{t('calls.called')}</button>
+                  <button className={btnSmall} disabled={busy} onClick={() => onAct({ id: c.id, action: 'no-answer' })}
+                    title={t('calls.noAnswerTitle')}>{t('calls.noAnswer')}</button>
+                  <button className={btnSmall} disabled={busy} onClick={() => setLaterFor(c.id)}
+                    title={t('calls.laterTitle')}><Clock size={12} />{t('calls.later')}</button>
+                  <button className={btnSmall} disabled={busy} onClick={() => onAct({ id: c.id, action: 'not-needed' })}
+                    title={t('calls.notNeededTitle')}><X size={12} />{t('calls.notNeeded')}</button>
+                </div>
+              ))}
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }

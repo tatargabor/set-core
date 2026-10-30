@@ -478,3 +478,118 @@ export async function postGoalAct(body: GoalActBody): Promise<GoalActResponse> {
   }
   return res.json()
 }
+
+// --------------------------------------------------------------------------- Calls tab
+// The `owner-calls` answer (spec owner-calls-contract) as GET /api/fleet/now/calls serves it.
+
+export type CallKind = 'promised' | 'retry' | 'missed' | 'follow-up'
+export const CALL_KINDS: readonly CallKind[] = ['promised', 'retry', 'missed', 'follow-up']
+
+export interface Call {
+  id: string
+  who: string
+  about: string
+  kind: CallKind
+  phone?: string
+  due?: string
+  project?: string
+  attempts?: number
+  lastAttempt?: string
+  firstSeen?: string
+  evidence: GoalEvidence[]
+  /** Computed by the server: the due time (a bare date: the end of that day) has passed. */
+  overdue: boolean
+}
+
+export interface CallsPayload {
+  publisher: { state: string; project: string | null; candidates: string[]; reason: string | null; acceptsActions: boolean }
+  /** `null` = no project declares `owner-calls` — not a failure, not a zero. */
+  measured: boolean | null
+  reason: string | null
+  calls: Call[]
+  malformed: number
+  partial: boolean
+  unreadSources: string[]
+  rankedAt: string | null
+  ageSeconds: number | null
+  stale: boolean
+  acceptsActions: boolean
+  overdueCount: number
+  locale?: Locale
+}
+
+export type CallAction = 'called' | 'no-answer' | 'later' | 'not-needed'
+
+export interface CallActBody { id: string; action: CallAction; text?: string; until?: string }
+
+export type CallActResponse = GoalActResponse
+
+/** Why the Calls tab is not showing a trustworthy answer, or null (an undeclared publisher is not a failure). */
+export function callsFailure(p: CallsPayload | null, loadError: string | null, locale: Locale = 'en'): string | null {
+  if (loadError) return t(locale, 'calls.loadError', { error: loadError })
+  if (!p || p.measured !== false) return null
+  return p.reason ? t(locale, 'calls.readErrorReason', { reason: p.reason }) : t(locale, 'calls.readError')
+}
+
+/** The muted notes above the calls list: everything incomplete about the answer. */
+export function callsNotes(p: CallsPayload, locale: Locale = 'en'): string[] {
+  const out: string[] = []
+  if (p.partial) {
+    out.push(p.unreadSources.length
+      ? t(locale, 'calls.partialUnread', { list: p.unreadSources.join('; ') })
+      : t(locale, 'calls.partial'))
+  } else if (p.unreadSources.length) {
+    out.push(t(locale, 'calls.unread', { list: p.unreadSources.join('; ') }))
+  }
+  if (p.stale && p.ageSeconds != null) out.push(t(locale, 'calls.stale', { age: hoursAgo(p.ageSeconds, locale) }))
+  if (p.malformed > 0) out.push(t(locale, 'calls.bad', { n: p.malformed }))
+  return out
+}
+
+/** What the tab label counts: calls still to make, and how many of them are overdue. */
+export function callsCount(p: CallsPayload | null): { open: number; overdue: number } {
+  if (!p || !p.measured) return { open: 0, overdue: 0 }
+  return { open: p.calls.length, overdue: p.calls.filter(c => c.overdue).length }
+}
+
+/** A due value for the chip, in the card's clock format: "11-02" for a bare date, else "14:00" / "11-02 14:00". */
+export function dueLabel(due: string, now: Date = new Date(), locale: Locale = 'en'): string {
+  const d = due.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d.slice(5)
+  return clockTime(d, now, locale) ?? d
+}
+
+const DEFAULT_CALL_OUTCOME: Record<CallAction, MsgKey> = {
+  called: 'callOutcome.called',
+  'no-answer': 'callOutcome.no-answer',
+  later: 'callOutcome.later',
+  'not-needed': 'callOutcome.not-needed',
+}
+
+export function callFeedbackText(action: CallAction, res: CallActResponse, locale: Locale = 'en'): string {
+  if (!res.delivered) return res.reason || t(locale, 'callOutcome.notDelivered')
+  return res.outcome || t(locale, DEFAULT_CALL_OUTCOME[action])
+}
+
+export async function fetchCalls(refresh = false): Promise<CallsPayload> {
+  const res = await fetch(`/api/fleet/now/calls${refresh ? '?refresh=true' : ''}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const type = res.headers?.get?.('content-type') ?? ''
+  if (type && !type.includes('json')) {
+    throw new Error('the server answered with a page, not calls — its dashboard service predates the Calls tab and needs a restart')
+  }
+  return res.json()
+}
+
+/** POST an answer on a call. An HTTP refusal is turned into a not-delivered answer carrying its detail. */
+export async function postCallAct(body: CallActBody): Promise<CallActResponse> {
+  const res = await fetch('/api/fleet/now/calls/act', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try { detail = (await res.json()).detail ?? detail } catch { /* keep the status */ }
+    return { delivered: false, outcome: null, reason: String(detail), errorClass: 'http' }
+  }
+  return res.json()
+}
