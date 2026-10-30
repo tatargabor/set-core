@@ -407,3 +407,10 @@ def test_not_needed_with_a_reason_closes_even_a_delegable_item(env):
     assert ok["delivered"] is True
     sent = json.loads(env.calls("owner-queue-act")[-1][2])
     assert sent == {"id": "1", "action": "done", "text": "Not needed: we moved the domain"}
+
+
+def test_a_file_path_link_is_handed_to_the_desktop_not_opened_as_a_page(env):
+    env.queue([item("1", link="/home/someone/project/docs/plan.md"), item("2", link="/p/x/status")])
+    assert env.get()["item"]["goThere"] == {"kind": "file", "href": "/home/someone/project/docs/plan.md"}
+    env.act(id="1", source="owner-queue", action="done")
+    assert env.get()["item"]["goThere"] == {"kind": "link", "href": "/p/x/status"}

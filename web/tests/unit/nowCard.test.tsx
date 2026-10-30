@@ -196,6 +196,18 @@ describe('not needed', () => {
   })
 })
 
+describe('go there to a file', () => {
+  it('hands a file to the desktop opener, and says so when it cannot', async () => {
+    await mount(payload({ item: item({ goThere: { kind: 'file', href: '/x/docs/plan.md' } }) }))
+    fireEvent.click(screen.getByText('Go there'))
+    await flush()
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls
+    const open = calls.find(c => c[0] === '/api/desktop/open')!
+    expect(JSON.parse(String(open[1]!.body))).toEqual({ path: '/x/docs/plan.md' })
+    expect(document.body.textContent).toContain('Could not open /x/docs/plan.md')
+  })
+})
+
 describe('tag strip', () => {
   const groups = [{ name: 'a', count: 2, muted: false }, { name: 'b', count: 1, muted: true }]
 

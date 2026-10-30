@@ -133,6 +133,22 @@ export default function Now() {
     }
   }, [item, load])
 
+  /** A file is handed to the desktop (that route refuses what it must); anything else opens as a page. */
+  const goThere = async (to: { kind: string; href: string }) => {
+    if (to.kind !== 'file') { openHref(to.href); return }
+    try {
+      const res = await fetch('/api/desktop/open', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: to.href }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setFeedback({ ok: false, text: `Could not open ${to.href}: ${String(body?.detail ?? `HTTP ${res.status}`)}` })
+      }
+    } catch (e) {
+      setFeedback({ ok: false, text: `Could not open ${to.href}: ${String((e as Error)?.message ?? e)}` })
+    }
+  }
+
   const keep = (k: PendingKeep) => {
     if (item && needsReasons(item, k.action)) {
       setPendingKeep(k)
@@ -286,7 +302,7 @@ export default function Now() {
 
                 <div className="flex flex-wrap gap-2" data-actions>
                   {has('goThere') && item.goThere && (
-                    <button className={btn} onClick={() => openHref(item.goThere!.href)} title="Open where this came from — the agent, the project or the message">
+                    <button className={btn} onClick={() => void goThere(item.goThere!)} title="Open where this came from — the agent, the project or the message">
                       <ArrowUpRight size={16} /> Go there
                     </button>
                   )}

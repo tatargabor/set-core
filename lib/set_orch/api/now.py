@@ -100,7 +100,13 @@ def _go_there(item: Dict[str, Any], registered: set) -> Optional[Dict[str, str]]
     if item.get("sessionId"):
         return {"kind": "agent", "href": f"/?agent={item['sessionId']}"}
     if item.get("link"):
-        return {"kind": "link", "href": str(item["link"])}
+        link = str(item["link"])
+        # An absolute file path is a local document: the card hands it to the desktop
+        # (POST /api/desktop/open, with that route's own refusals). Opened as a URL it
+        # would land on a dashboard 404.
+        if link.startswith("/") and not link.startswith(("/?", "/p/")):
+            return {"kind": "file", "href": link}
+        return {"kind": "link", "href": link}
     # The project's status page is a real place only for the framework's own items (a run
     # state lives there). For a ranked item it is a page that says nothing about the task —
     # the owner, 2026-10-30: "itt a go there is értelmetlen" — so a ranked item without a
