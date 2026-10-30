@@ -196,3 +196,31 @@ rather than stored by the framework when such a project is declared.
 - **WHEN** an action is delivered
 - **THEN** the log line names the item id, the action kind and the outcome status
 - **AND** it contains no item title, option text or answer text
+
+### Requirement: The owner can switch projects off on a tag strip
+
+Above the card the page SHALL show one tag per project that has an item, with its item count. Clicking
+a tag SHALL switch that project off or back on; a switched-off project's items SHALL NOT come up,
+whatever their deadline. The switch SHALL persist across days until the owner changes it. A
+switched-off tag SHALL stay visible with its count, the line under the card SHALL say how many items
+switched-off tags hide, and the empty state SHALL NOT say that nothing is waiting while any item is
+hidden this way. Added 2026-10-30 at the owner's request after first use (*"ki/be kapcsolni felül a
+kérdések felett és akkor nem jön fel ami nincs bekapcsolva"*).
+
+#### Scenario: Switching a project off
+- **WHEN** the owner switches off a project that has two items while another project has one
+- **THEN** the card shows the other project's item, says two are hidden by switched-off tags, and the switched-off tag still shows its count
+
+#### Scenario: Everything left is switched off
+- **WHEN** every remaining item belongs to a switched-off project
+- **THEN** the empty state names how many items are hidden instead of saying nothing is waiting
+
+### Requirement: The card explains itself
+
+Every control on the page SHALL carry a tooltip saying what it does, the header counts SHALL name what
+they count, and a help control SHALL open a floating legend naming every part of the card without
+moving the card. Added 2026-10-30 at the owner's request (*"kellene a felületre súgó mi micsoda"*).
+
+#### Scenario: Opening the legend
+- **WHEN** the owner opens the help control
+- **THEN** a legend over the card names the answer buttons, the text field, Go there, Done, Later, focus and the grey and yellow notes, and the card stays in place

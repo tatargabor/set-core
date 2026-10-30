@@ -122,6 +122,9 @@ def empty_state(now: float) -> Dict[str, Any]:
         "dismissed": {},
         "focus": [],
         "focusDay": None,
+        # Projects the owner switched OFF on the card's tag strip. Unlike focus this does not
+        # reset with the day: a switch stays where the owner put it.
+        "mutedProjects": [],
         # project → note; ONLY used when no publisher is declared (spec)
         "resumeNotes": {},
         "closedToday": 0,
@@ -286,6 +289,56 @@ def apply_focus(items: List[Dict[str, Any]], focus: Iterable[str], now: float,
     shown = [i for i in items
              if i.get("project") in focus_set or deadline_within(i, now, deadline_window_s)]
     return shown, len(items) - len(shown)
+
+
+#: The tag-strip name of an item that names no project.
+NO_PROJECT = "(no project)"
+
+
+def group_of(item: Dict[str, Any]) -> str:
+    return item.get("project") or NO_PROJECT
+
+
+def apply_mute(items: List[Dict[str, Any]], muted: Iterable[str]) -> Tuple[List[Dict[str, Any]], int]:
+    """Items whose project is switched on, and how many a switched-off project hid.
+
+    Strict by the owner's own words ("nem jön fel ami nincs bekapcsolva"): a switched-off
+    project shows nothing, deadline or not. What it hid is still COUNTED and shown, so the
+    filter can never make the queue look emptier than it is.
+    """
+    off = {m for m in muted if m}
+    if not off:
+        return list(items), 0
+    shown = [i for i in items if group_of(i) not in off]
+    return shown, len(items) - len(shown)
+
+
+def groups(items: List[Dict[str, Any]], muted: Iterable[str]) -> List[Dict[str, Any]]:
+    """One tag per project that has an item, with its count and whether it is switched off.
+
+    Ordered by first appearance in the merged order, so the publisher's top project leads.
+    A switched-off project with no item left is still listed, so it can be switched back on.
+    """
+    off = [m for m in muted if m]
+    counts: Dict[str, int] = {}
+    for i in items:
+        g = group_of(i)
+        counts[g] = counts.get(g, 0) + 1
+    for m in off:
+        counts.setdefault(m, 0)
+    return [{"name": g, "count": n, "muted": g in off} for g, n in counts.items()]
+
+
+def set_muted(state: Dict[str, Any], projects: List[str]) -> List[str]:
+    clean: List[str] = []
+    for p in projects:
+        p = str(p).strip()
+        if p and p not in clean:
+            clean.append(p)
+    old = list(state.get("mutedProjects") or [])
+    state["mutedProjects"] = clean
+    logger.info("now: muted projects %s -> %s", old, clean)
+    return clean
 
 
 def set_focus(state: Dict[str, Any], projects: List[str], now: float) -> Dict[str, Any]:

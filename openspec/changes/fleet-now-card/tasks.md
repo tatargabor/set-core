@@ -39,6 +39,11 @@
 - [x] 4.10 Idea-parking control; only the parked count is shown [REQ: ideas-are-parked-not-started]
 - [x] 4.11 Component tests for 4.1–4.10 [REQ: the-now-window-shows-one-item-never-a-list]
 
+## 4b. Added after first use (2026-10-30)
+
+- [x] 4.12 Tag strip: one tag per project with its count, click to switch off/on, persisted across days, hidden count under the card and in the empty state (`lib/set_orch/fleet/now.py` apply_mute/groups/set_muted, `POST /api/fleet/now/groups`, `TagStrip` in Now.tsx); tests proved to fail without the code [REQ: the-owner-can-switch-projects-off-on-a-tag-strip]
+- [x] 4.13 Labelled header counts, tooltips on every control, a ? legend overlay (`fd98a50a`) [REQ: the-card-explains-itself]
+
 ## 5. Launcher (`bin/set-now`)
 
 - [x] 5.1 Open `/now` as a compact app window; where `wmctrl` exists set it above other windows; log what it did and what it could not do [REQ: the-now-window-shows-one-item-never-a-list]
@@ -86,3 +91,6 @@
 - [x] AC-26: WHEN the write command prints an outcome THEN the card shows it [REQ: owner-queue-act-receives-the-cards-actions, scenario: an-answer-with-an-outcome]
 - [x] AC-27: WHEN `owner-queue` is declared without `owner-queue-act` THEN only Go there and Later are offered and the card says no actions are accepted [REQ: owner-queue-act-receives-the-cards-actions, scenario: no-write-command-is-declared]
 - [ ] AC-28: WHEN the publisher already uses different field names THEN the spec is amended to them before the adapter is written [REQ: the-publishers-shape-is-agreed-before-the-adapter-is-built, scenario: the-publisher-proposes-different-names]
+- [x] AC-29: WHEN a project with two items is switched off THEN the other project's item shows, two are counted as hidden, and the tag keeps its count [REQ: the-owner-can-switch-projects-off-on-a-tag-strip, scenario: switching-a-project-off]
+- [x] AC-30: WHEN every remaining item is switched off THEN the empty state names the hidden count [REQ: the-owner-can-switch-projects-off-on-a-tag-strip, scenario: everything-left-is-switched-off]
+- [x] AC-31: WHEN the help control is opened THEN the legend names every part and the card stays [REQ: the-card-explains-itself, scenario: opening-the-legend]

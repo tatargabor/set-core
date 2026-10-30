@@ -263,3 +263,35 @@ def test_wind_down_window():
 def test_config_falls_back_on_a_bad_value():
     cfg = now_mod.config(lambda key, default=None: "nonsense" if key == "now.wind_down_hour" else default)
     assert cfg["now.wind_down_hour"] == 23.0
+
+
+# --------------------------------------------------------------------------- #
+# tag strip — projects switched off by the owner
+# --------------------------------------------------------------------------- #
+
+def test_a_switched_off_project_shows_nothing_but_is_counted():
+    items = [oq("1", "a"), oq("2", "b"), oq("3", "a"), {"id": "x", "source": "run-state", "project": None}]
+    shown, hidden = now_mod.apply_mute(items, ["a"])
+    assert [i["id"] for i in shown] == ["2", "x"]
+    assert hidden == 2
+    shown, hidden = now_mod.apply_mute(items, [now_mod.NO_PROJECT])
+    assert [i["id"] for i in shown] == ["1", "2", "3"] and hidden == 1
+
+
+def test_groups_keep_order_counts_and_a_switched_off_project_with_nothing_left():
+    items = [oq("1", "b"), oq("2", "a"), oq("3", "b")]
+    assert now_mod.groups(items, ["gone"]) == [
+        {"name": "b", "count": 2, "muted": False},
+        {"name": "a", "count": 1, "muted": False},
+        {"name": "gone", "count": 0, "muted": True},
+    ]
+
+
+def test_muted_projects_survive_the_day_roll():
+    import datetime as dt
+    state = now_mod.empty_state(NOW)
+    now_mod.set_muted(state, ["a", "a", " ", "b"])
+    assert state["mutedProjects"] == ["a", "b"]
+    tomorrow = NOW + 86400 * 1.5
+    now_mod.roll_day(state, tomorrow)
+    assert state["mutedProjects"] == ["a", "b"]

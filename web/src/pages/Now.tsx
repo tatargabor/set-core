@@ -19,7 +19,7 @@ import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Moon, Send, Target, 
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
-  emptyMessage, feedbackText, fetchNow, gapMarkers, laterChoices, needsReasons, postAct, postFocus,
+  emptyMessage, feedbackText, fetchNow, gapMarkers, laterChoices, needsReasons, postAct, postFocus, postGroups,
 } from '../lib/nowCard'
 import type { ActBody, NowItem, NowPayload } from '../lib/nowCard'
 import { createAudio, playCue } from '../lib/nowSound'
@@ -153,25 +153,30 @@ export default function Now() {
   return (
     <div
       className="now-root relative flex h-screen flex-col overflow-hidden bg-surface-page text-fg-strong"
-      onPointerDown={enableSound}
+      // After the click, never at the press: anything enabling sound changes might move the
+      // element under the cursor between press and release, and then the click is lost
+      // (measured: a header that changed height swallowed every first click).
+      onClickCapture={enableSound}
       data-now-root
     >
-      <header className="flex items-center gap-3 px-3 pt-2 text-sm text-fg-muted">
+      {/* One line, always: a header that wraps changes height when a label changes, which
+          moves everything below it under the reader's cursor. */}
+      <header className="flex h-8 shrink-0 flex-nowrap items-center gap-2 overflow-hidden whitespace-nowrap px-3 pt-2 text-sm text-fg-muted">
         <span className={chip} title="Cards you closed today (Done, an answer, or Delegate)" data-closed>
-          <Check size={14} /> {data?.closedToday ?? 0} closed
+          <Check size={14} /> {data?.closedToday ?? 0}<span className="hidden sm:inline"> closed</span>
         </span>
         <span className={chip} title="Ideas you parked instead of starting them" data-parked>
-          <Lightbulb size={14} /> {data?.parkedIdeas ?? 0} parked
+          <Lightbulb size={14} /> {data?.parkedIdeas ?? 0}<span className="hidden sm:inline"> parked</span>
         </span>
         <span className="ml-auto" />
         <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('focus')} aria-label="Today's focus projects" title="Today's focus projects — pick up to three; cards from other projects wait unless a deadline is near">
-          <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax} focus` : ''}
+          <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax}` : ''}<span className="hidden sm:inline"> focus</span>
         </button>
         <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('idea')} aria-label="Park an idea" title="Park a new idea: it is written down and waits, instead of starting work now">
           <Lightbulb size={14} /> Park
         </button>
         <span className={chip} data-sound={soundOn ? 'on' : 'off'} title={soundOn ? 'Cues will play' : 'Click anywhere to enable cue sounds'}>
-          {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />} {soundOn ? 'Sound on' : 'Sound off'}
+          {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}<span className="hidden sm:inline">{soundOn ? ' Sound on' : ' Sound off'}</span>
         </span>
         <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('help')} title="What is what on this card" aria-label="Help" data-help-open>
           <CircleHelp size={14} /> ?
@@ -188,6 +193,13 @@ export default function Now() {
             </span>
           ))}
         </div>
+      )}
+
+      {data && !windDownView && (data.groups?.length ?? 0) > 1 && (
+        <TagStrip groups={data.groups!} onChange={async muted => {
+          setData(d => (d ? { ...d, groups: d.groups!.map(g => ({ ...g, muted: muted.includes(g.name) })) } : d))
+          try { await postGroups(muted) } finally { void load() }
+        }} />
       )}
 
       <main className="flex-1 overflow-y-auto px-3 pb-3 pt-2">
@@ -300,6 +312,7 @@ export default function Now() {
                 <p className="text-sm text-fg-muted" data-following>
                   {data.following > 0 ? `${data.following} more` : 'Nothing else after this'}
                   {data.heldBack > 0 && ` · ${data.heldBack} held back outside today's focus`}
+                  {(data.mutedHidden ?? 0) > 0 && ` · ${data.mutedHidden} hidden by switched-off tags`}
                 </p>
               </article>
             ) : (
@@ -525,6 +538,38 @@ function HelpLegend() {
         {row('Yellow note', 'something could not be read — the card may be incomplete.')}
         {row('Moon view', 'after the evening hour: write tomorrow\'s first card, hand things to night agents, park projects.')}
       </ul>
+    </div>
+  )
+}
+
+/**
+ * Project tags above the card: click one to switch it off (its cards stop coming up) or back on.
+ * The counts stay visible on switched-off tags, so the filter never hides how much is there.
+ */
+function TagStrip({ groups, onChange }: {
+  groups: { name: string; count: number; muted: boolean }[]
+  onChange: (muted: string[]) => void
+}) {
+  const muted = groups.filter(g => g.muted).map(g => g.name)
+  const toggle = (name: string) =>
+    onChange(muted.includes(name) ? muted.filter(m => m !== name) : [...muted, name])
+  return (
+    <div className="flex max-h-[3.6rem] flex-wrap gap-1 overflow-y-auto px-3 pt-1.5 text-xs" data-tags>
+      {groups.map(g => (
+        <button key={g.name} onClick={() => toggle(g.name)} aria-pressed={!g.muted} data-tag={g.name}
+          title={g.muted ? `${g.name}: switched off — its cards do not come up. Click to switch on.`
+                         : `${g.name}: ${g.count} card(s). Click to switch off.`}
+          className={'rounded-full border px-2 py-0.5 ' + (g.muted
+            ? 'border-surface-strong text-fg-muted line-through opacity-60'
+            : 'border-status-active/40 bg-status-active/10 text-fg-strong')}>
+          {g.name} <span className="text-fg-muted">{g.count}</span>
+        </button>
+      ))}
+      {muted.length > 0 && (
+        <button onClick={() => onChange([])} className="px-1 text-fg-muted underline" title="Switch every tag back on" data-tags-all>
+          all on
+        </button>
+      )}
     </div>
   )
 }

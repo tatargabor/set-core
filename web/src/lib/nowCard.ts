@@ -68,6 +68,10 @@ export interface NowPayload {
   focusMax: number
   focusSetToday: boolean
   focusCandidates: string[]
+  /** One tag per project with an item; `muted` = switched off on the strip. */
+  groups?: { name: string; count: number; muted: boolean }[]
+  /** Items a switched-off project hid — always shown, so the filter never looks like calm. */
+  mutedHidden?: number
   generatedAt: string
 }
 
@@ -149,6 +153,8 @@ export function gapMarkers(p: NowPayload): Marker[] {
  */
 export function emptyMessage(p: NowPayload): string {
   const gaps = p.unmeasured + (p.unreadSources?.length ?? 0)
+  const hidden = p.mutedHidden ?? 0
+  if (hidden > 0 && gaps === 0) return `Nothing in the switched-on tags — ${hidden} hidden by switched-off ones.`
   if (gaps === 0) return 'Nothing is waiting.'
   return `Nothing to show — but ${gaps} source${gaps > 1 ? 's' : ''} could not be read.`
 }
@@ -219,6 +225,16 @@ export interface FocusResponse {
   focus: string[]
   reason?: string
   removed?: string[]
+}
+
+export async function postGroups(muted: string[]): Promise<{ ok: boolean; muted: string[] }> {
+  const res = await fetch('/api/fleet/now/groups', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ muted }),
+  })
+  if (!res.ok) throw new Error(`groups: HTTP ${res.status}`)
+  return res.json()
 }
 
 export async function postFocus(projects: string[], notes: Record<string, string>): Promise<FocusResponse> {

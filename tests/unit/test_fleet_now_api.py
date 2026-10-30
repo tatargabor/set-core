@@ -375,3 +375,17 @@ def test_ac20_no_item_text_reaches_a_log_record_or_the_state_file(env, caplog):
     for secret in SECRETS:
         assert secret not in logged, f"{secret} reached a log record"
         assert secret not in state_text, f"{secret} reached the state file"
+
+
+def test_switching_a_tag_off_hides_its_cards_and_says_how_many(env):
+    env.queue([item("1", project="a"), item("2", project="b"), item("3", project="a")])
+    data = env.get()
+    assert [(g["name"], g["count"], g["muted"]) for g in data["groups"]] == [("a", 2, False), ("b", 1, False)]
+    assert env.client.post("/api/fleet/now/groups", json={"muted": ["a"]}).json() == {"ok": True, "muted": ["a"]}
+    data = env.get()
+    assert data["item"]["id"] == "2"
+    assert data["mutedHidden"] == 2
+    assert data["following"] == 0
+    assert {g["name"]: g["muted"] for g in data["groups"]} == {"a": True, "b": False}
+    env.client.post("/api/fleet/now/groups", json={"muted": []})
+    assert env.get()["item"]["id"] == "1"

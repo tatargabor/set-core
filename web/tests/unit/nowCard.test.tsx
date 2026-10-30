@@ -49,6 +49,7 @@ interface Api {
   act: (body: Record<string, unknown>) => Record<string, unknown>
   sent: Record<string, unknown>[]
   focus: Record<string, unknown>[]
+  groups: Record<string, unknown>[]
 }
 
 let api: Api
@@ -57,7 +58,7 @@ function stubApi(first: NowPayload, ...rest: NowPayload[]) {
   api = {
     now: [first, ...rest],
     act: () => ({ delivered: true, sent: true, outcome: null, reason: null, errorClass: null, closedToday: 3, parkedIdeas: 0 }),
-    sent: [], focus: [],
+    sent: [], focus: [], groups: [],
   }
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body })
@@ -66,6 +67,11 @@ function stubApi(first: NowPayload, ...rest: NowPayload[]) {
       const body = JSON.parse(String(init?.body))
       api.sent.push(body)
       return json(api.act(body))
+    }
+    if (url === '/api/fleet/now/groups') {
+      const body = JSON.parse(String(init?.body))
+      api.groups.push(body)
+      return json({ ok: true, muted: body.muted })
     }
     if (url === '/api/fleet/now/focus') {
       const body = JSON.parse(String(init?.body))
@@ -178,6 +184,37 @@ describe('gaps are marked on the card', () => {
 })
 
 // --------------------------------------------------------------------------- 4.3 / 4.6
+
+describe('tag strip', () => {
+  const groups = [{ name: 'a', count: 2, muted: false }, { name: 'b', count: 1, muted: true }]
+
+  it('clicking a tag switches it off (or back on) with the whole list, and a switched-off tag keeps its count', async () => {
+    const after = [{ name: 'a', count: 2, muted: true }, { name: 'b', count: 1, muted: true }]
+    await mount(payload({ groups }), payload({ groups: after }))
+    const strip = document.querySelector('[data-tags]')!
+    expect(strip.textContent).toContain('b 1')
+    fireEvent.click(document.querySelector('[data-tag="a"]')!)
+    await flush()
+    expect(api.groups.at(-1)).toEqual({ muted: ['b', 'a'] })
+    fireEvent.click(document.querySelector('[data-tag="b"]')!)
+    await flush()
+    expect(api.groups.at(-1)).toEqual({ muted: ['a'] })
+  })
+
+  it('"all on" clears every switch', async () => {
+    await mount(payload({ groups }))
+    fireEvent.click(document.querySelector('[data-tags-all]')!)
+    await flush()
+    expect(api.groups.at(-1)).toEqual({ muted: [] })
+  })
+
+  it('hidden cards are counted under the card and in the empty state — never "nothing is waiting"', async () => {
+    await mount(payload({ groups, mutedHidden: 4 }))
+    expect(document.querySelector('[data-following]')!.textContent).toContain('4 hidden by switched-off tags')
+    const empty = payload({ item: null, groups, mutedHidden: 4 })
+    expect(emptyMessage(empty)).toBe('Nothing in the switched-on tags — 4 hidden by switched-off ones.')
+  })
+})
 
 describe('help', () => {
   it('the ? button opens a legend over the card that names every control, and the card stays', async () => {
@@ -355,7 +392,7 @@ describe('sound', () => {
     await mount(payload({ cue }), payload({ cue, generatedAt: 'later' }))
     expect(document.querySelector('[data-sound="off"]')).toBeTruthy()
     expect(tones).toHaveLength(0)
-    fireEvent.pointerDown(document.querySelector('[data-now-root]')!)
+    fireEvent.click(document.querySelector('[data-now-root]')!)
     expect(document.querySelector('[data-sound="on"]')).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS) })
     expect(tones).toEqual([523, 659, 784])

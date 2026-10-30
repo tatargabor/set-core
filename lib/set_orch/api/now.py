@@ -213,8 +213,11 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         state = now_mod.load_state(now)
         now_mod.roll_day(state, now)
         merged = now_mod.merge(qread.items, fw_items, state, now)
+        muted = list(state.get("mutedProjects") or [])
+        tag_groups = now_mod.groups(merged, muted)
+        unmuted, muted_hidden = now_mod.apply_mute(merged, muted)
         window = cfg["now.deadline_window_hours"] * 3600
-        shown, held = now_mod.apply_focus(merged, state.get("focus") or [], now, window)
+        shown, held = now_mod.apply_focus(unmuted, state.get("focus") or [], now, window)
         first = shown[0] if shown else None
         cue = now_mod.decide_cue(state, inputs=inputs, first=first,
                                  focus=state.get("focus") or [], now=now, cfg=cfg)
@@ -269,6 +272,8 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         "focusMax": now_mod.FOCUS_MAX,
         "focusSetToday": state.get("focusDay") == state.get("day"),
         "focusCandidates": focus_candidates,
+        "groups": tag_groups,
+        "mutedHidden": muted_hidden,
         "generatedAt": now_mod.utc_iso(now),
     }
 
@@ -447,6 +452,25 @@ def post_act(body: ActBody) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# POST /api/fleet/now/groups
+# --------------------------------------------------------------------------- #
+
+class GroupsBody(BaseModel):
+    #: the projects switched OFF on the tag strip — the whole list, not a delta
+    muted: List[str]
+
+
+@router.post("/api/fleet/now/groups")
+def post_groups(body: GroupsBody) -> Dict[str, Any]:
+    """Switch projects off (or back on) on the card's tag strip."""
+    now = time.time()
+    with _STATE_LOCK:
+        state = now_mod.load_state(now)
+        muted = now_mod.set_muted(state, body.muted)
+        now_mod.save_state(state)
+    return {"ok": True, "muted": muted}
+
+
 # POST /api/fleet/now/focus
 # --------------------------------------------------------------------------- #
 
