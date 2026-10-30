@@ -135,3 +135,24 @@ as not delivered, never as delivered.
 #### Scenario: No publisher
 - **WHEN** no registered project accepts `owner-queue-act`
 - **THEN** the focus is saved and the card says the publisher did not get it
+
+### Requirement: "Working on it" hides an item without closing it
+
+*Added 2026-10-30. The owner typed «most dolgozok rajta» on an item and pressed Enter; it went in as
+an `answer`, which closes the item for good, and the reply the item was about left the queue. Two
+earlier answers had done the same («majd hív, még nem hívott», «… majd a 04-i élesítés után»).*
+
+The action list of `owner-queue-act` SHALL include `in-progress`, sent as
+`{ id, action: "in-progress", text?, until? }`. It SHALL NOT close the item: the publisher hides it
+until `until` (its own default when absent) and then shows it again. An item MAY carry
+`progressNote`, a line of publisher text about the owner's progress, which the card SHALL show on
+the item. The card SHALL offer this action on every item of a publisher that accepts actions, and
+SHALL say on the text field that an answer closes the item.
+
+#### Scenario: Working on it with a note
+- **WHEN** the owner taps Working on it with a note and picks a return time
+- **THEN** `{ id, action: "in-progress", text, until }` is sent and nothing is counted as closed
+
+#### Scenario: The item is back
+- **WHEN** an item carries `progressNote`
+- **THEN** the card shows the note on the item

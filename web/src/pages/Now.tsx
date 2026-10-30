@@ -21,12 +21,12 @@
  *   arrives, never translated. The window title is never translated: bin/set-now finds it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleHelp, Clock, Flag, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X, Zap } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Flag, Hammer, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X, Zap } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
   callFeedbackText, callsCount, callsFailure, callsNotes, checkView, clockTime, dueLabel, fetchCalls, postCallAct, emptyMessage, evidenceTarget, feedbackText, timeLine, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
-  laterChoices, matchProjects, needsReasons, postAct, postFocus, postGoalAct, postGroups, progressPercent,
+  laterChoices, matchProjects, needsReasons, progressChoices, postAct, postFocus, postGoalAct, postGroups, progressPercent,
 } from '../lib/nowCard'
 import type { ActBody, Call, CallActBody, CallsPayload, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
 import { asLocale, makeT } from '../lib/nowI18n'
@@ -42,7 +42,7 @@ export const GOALS_POLL_MS = Math.max(POLL_MS, 60_000)
 
 type Tab = 'now' | 'goals' | 'calls'
 
-type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded'
+type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded' | 'inprogress'
 interface Feedback { ok: boolean; text: string }
 interface PendingKeep { action: 'done' | 'answer'; option?: string; text?: string }
 
@@ -90,6 +90,7 @@ export default function Now() {
   const [pendingKeep, setPendingKeep] = useState<PendingKeep | null>(null)
   const [reasons, setReasons] = useState<[string, string]>(['', ''])
   const [text, setText] = useState('')
+  const [progressNote, setProgressNote] = useState('')
   const [overlayText, setOverlayText] = useState('')
   const [soundOn, setSoundOn] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
@@ -409,6 +410,9 @@ export default function Now() {
                   // What is SENT stays English in every locale: it is a message to the publisher
                   // (its ranker reads the "Not needed:" prefix), not a word on the card.
                   onClose={has('done') ? (why: string) => void send({ action: 'done', text: `Not needed: ${why}` }) : undefined} />
+                {item.progressNote && (
+                  <p className="border-l-2 border-status-warn pl-2 text-sm text-fg-normal" data-progress-note>{item.progressNote}</p>
+                )}
                 {item.resumeNote && (
                   <p className="border-l-2 border-status-done pl-2 text-sm text-fg-normal" data-resume-note>
                     {t('card.resume', { note: item.resumeNote })}
@@ -473,6 +477,12 @@ export default function Now() {
                       <Clock size={16} /> {t('card.later')}
                     </button>
                   )}
+                  {has('inProgress') && (
+                    <button className={btnGhost} disabled={busy} onClick={() => { setProgressNote(text.trim()); setOverlay('inprogress') }}
+                      title={t('card.inProgressTitle')} data-in-progress>
+                      <Hammer size={16} /> {t('card.inProgress')}
+                    </button>
+                  )}
                   {has('delegate') && (
                     <button className={btnGhost} disabled={busy} onClick={() => void send({ action: 'delegate' })} title={t('card.delegateTitle')}>
                       <UserPlus size={16} /> {t('card.delegate')}
@@ -515,6 +525,28 @@ export default function Now() {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-3" data-overlay={overlay}>
           <div className="relative w-full max-w-sm rounded-lg border border-surface-strong bg-surface-panel p-3 shadow-xl">
             <button className="absolute right-2 top-2 text-fg-muted" aria-label={t('overlay.close')} onClick={closeOverlay}><X size={16} /></button>
+
+            {overlay === 'inprogress' && item && (
+              // "I'm on it" is not an answer: nothing closes, the card comes back with the note.
+              <div className="flex flex-col gap-2" data-in-progress-panel>
+                <p className="text-base font-medium">{t('inProgress.prompt')}</p>
+                <input autoFocus
+                  className="rounded-md border border-surface-strong bg-surface-page px-2 py-1.5 text-base"
+                  placeholder={t('inProgress.notePlaceholder')} aria-label={t('inProgress.noteLabel')}
+                  value={progressNote} onChange={e => setProgressNote(e.target.value)} />
+                <div className="flex flex-wrap gap-2">
+                  {progressChoices(new Date(), locale).map(c => (
+                    <button key={c.label} className={c.primary ? btnPrimary : btn} onClick={() => {
+                      closeOverlay()
+                      void send({ action: 'in-progress', text: progressNote.trim() || undefined, laterSeconds: c.seconds })
+                      setText('')
+                    }}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {overlay === 'later' && item && (
               <div className="flex flex-col gap-2">
@@ -783,7 +815,7 @@ export function FocusPicker({ data, onDone, locale = 'en' }: { data: NowPayload;
 
 /** The legend's rows, in order: each id names `help.<id>` (the term) and `help.<id>.text`. */
 const HELP_ROWS = [
-  'card', 'options', 'text', 'goThere', 'done', 'notNeeded', 'later', 'delegate', 'times', 'check',
+  'card', 'options', 'text', 'goThere', 'done', 'notNeeded', 'later', 'inProgress', 'delegate', 'times', 'check',
   'more', 'closed', 'parked', 'focus', 'sound', 'grey', 'yellow', 'tabs', 'unconfirmed', 'moon',
 ] as const
 

@@ -8,6 +8,7 @@ they measure is a live machine.
 
 import datetime as dt
 import json
+import time
 import logging
 import os
 import sys
@@ -201,11 +202,11 @@ def test_ac23_ac24_actions_follow_the_item_shape(env):
     env.queue([item("min"), item("opt", options=[{"id": "a", "label": SECRET_LABEL},
                                                   {"id": "b", "label": "B"}, {"id": "c", "label": "C"}],
                                  delegable=True, acceptsText=True)])
-    assert env.get()["item"]["actions"] == ["goThere", "done", "later", "recheck"]
+    assert env.get()["item"]["actions"] == ["goThere", "done", "later", "recheck", "inProgress"]
     env.act(id="min", source="owner-queue", action="later", laterSeconds=60)
     second = env.get()["item"]
     assert second["id"] == "opt" and len(second["options"]) == 3
-    assert set(second["actions"]) == {"goThere", "done", "later", "recheck", "answer", "text", "delegate"}
+    assert set(second["actions"]) == {"goThere", "done", "later", "recheck", "inProgress", "answer", "text", "delegate"}
 
 
 def test_ac27_no_write_command_offers_go_there_and_later_only(env):
@@ -462,6 +463,33 @@ def test_ac42_recheck_is_sent_and_the_item_stays(env):
     sent = json.loads(env.calls("owner-queue-act")[-1][2])
     assert sent == {"id": "1", "action": "recheck"}
     assert env.get()["item"]["id"] == "1"
+
+
+def test_working_on_it_is_sent_with_note_and_return_time_and_closes_nothing(env):
+    env.queue([item("1"), item("2")])
+    assert "inProgress" in env.get()["item"]["actions"]
+    resp = env.act(id="1", source="owner-queue", action="in-progress",
+                   text="  on it now  ", laterSeconds=7200).json()
+    assert resp["delivered"] is True and resp["outcome"] == SECRET_OUTCOME
+    assert resp["closedToday"] == 0, "working on it closes nothing"
+    sent = json.loads(env.calls("owner-queue-act")[-1][2])
+    assert sent["id"] == "1" and sent["action"] == "in-progress" and sent["text"] == "on it now"
+    # The return time is the card's choice, as an absolute time ~2 h ahead.
+    import datetime as dt
+    until = dt.datetime.fromisoformat(sent["until"].replace("Z", "+00:00")).timestamp()
+    assert 7100 < until - time.time() < 7300
+
+
+def test_working_on_it_without_a_time_leaves_the_default_to_the_publisher(env):
+    env.queue([item("1")])
+    env.act(id="1", source="owner-queue", action="in-progress")
+    sent = json.loads(env.calls("owner-queue-act")[-1][2])
+    assert sent == {"id": "1", "action": "in-progress"}
+
+
+def test_a_progress_note_reaches_the_card(env):
+    env.queue([item("1", progressNote="Jegyzeted (10. 30.): on it")])
+    assert env.get()["item"]["progressNote"] == "Jegyzeted (10. 30.): on it"
 
 
 def test_a_refused_recheck_shows_the_publishers_reason(env):

@@ -481,6 +481,30 @@ describe('focus', () => {
     expect(document.querySelector('[data-feedback="fail"]')!.textContent).toContain('the publisher did not get it: no registered project declares owner-queue')
   })
 
+  it('Working on it: the typed text becomes the note, the default return is tomorrow, nothing closes', async () => {
+    await mount(payload({ item: item({ acceptsText: true, actions: ['goThere', 'done', 'later', 'text', 'inProgress'] }) }))
+    fireEvent.change(screen.getByPlaceholderText('…or type your answer (Enter sends and closes)'), { target: { value: 'on it right now' } })
+    fireEvent.click(screen.getByText('Working on it'))
+    const note = screen.getByLabelText('Progress note') as HTMLInputElement
+    expect(note.value).toBe('on it right now')
+    // The first choice is tomorrow morning, and it is the primary one.
+    fireEvent.click(within(document.querySelector('[data-in-progress-panel]') as HTMLElement).getByText('Tomorrow'))
+    await flush()
+    expect(api.sent).toHaveLength(1)
+    expect(api.sent[0]).toMatchObject({ id: 'i1', action: 'in-progress', text: 'on it right now' })
+    expect(api.sent[0].laterSeconds as number).toBeGreaterThan(0)
+  })
+
+  it('Working on it is offered only when the item says so', async () => {
+    await mount(payload())
+    expect(screen.queryByText('Working on it')).toBeNull()
+  })
+
+  it('a card back after Working on it shows the note', async () => {
+    await mount(payload({ item: item({ progressNote: 'Jegyzeted (10. 30.): on it right now' }) }))
+    expect(document.querySelector('[data-progress-note]')!.textContent).toBe('Jegyzeted (10. 30.): on it right now')
+  })
+
   it('AC-17: a resume note shows on the card', async () => {
     await mount(payload({ item: item({ resumeNote: 'rerun the import' }) }))
     expect(document.querySelector('[data-resume-note]')!.textContent).toContain('rerun the import')

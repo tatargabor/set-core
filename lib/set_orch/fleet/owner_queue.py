@@ -38,7 +38,10 @@ ACTIONS = ("answer", "done", "delegate", "park-idea", "resume-note", "wind-down-
            "recheck",
            # The day's focus projects, as a list in `projects`. Not bound to an item: the
            # publisher uses it to make sure every focus project has a card.
-           "focus")
+           "focus",
+           # The owner is working on it right now. NOT closing: the publisher hides the item
+           # until `until` (its own default when absent) and brings it back with the note.
+           "in-progress")
 
 #: `check.state` values the card understands (spec owner-queue-contract).
 CHECK_STATES = ("running", "stands", "rewritten", "stale", "failed")
@@ -193,6 +196,9 @@ def parse_item(raw: Any) -> Optional[Dict[str, Any]]:
             item[key] = raw[key]
     if isinstance(raw.get("resumeNote"), str) and raw["resumeNote"].strip():
         item["resumeNote"] = raw["resumeNote"]
+    # What the owner noted when he tapped "working on it" — shown when the item is back.
+    if isinstance(raw.get("progressNote"), str) and raw["progressNote"].strip():
+        item["progressNote"] = raw["progressNote"]
     if isinstance(raw.get("firstSeen"), str) and to_epoch(raw["firstSeen"]) is not None:
         item["firstSeen"] = raw["firstSeen"]
     check = raw.get("check")

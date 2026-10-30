@@ -158,7 +158,7 @@ def _actions(item: Dict[str, Any], publisher: oq.Publisher) -> List[str]:
     if item["source"] == oq.READ_COMMAND:
         if not publisher.accepts_actions:
             return ["goThere", "later"]
-        acts = ["goThere", "done", "later", "recheck"]
+        acts = ["goThere", "done", "later", "recheck", "inProgress"]
         if item.get("options"):
             acts.append("answer")
         if item.get("acceptsText"):
@@ -445,8 +445,16 @@ def post_act(body: ActBody) -> Dict[str, Any]:
         not_needed = body.action == "done" and bool((body.text or "").strip())
         if item.get("delegable") and body.action in ("done", "answer") and not reasons and not not_needed:
             raise HTTPException(400, "keeping a delegable item needs one or two reasons")
-        payload = oq.act_payload(body.id, body.action, option=body.option,
-                                 text=(body.text or None), reasons=reasons or None)
+        if body.action == "in-progress":
+            # Not closing, so no reasons asked; the return time is the card's choice, or the
+            # publisher's default when none was picked.
+            until = (now_mod.utc_iso(now + body.laterSeconds)
+                     if body.laterSeconds and body.laterSeconds > 0 else None)
+            payload = oq.act_payload(body.id, "in-progress",
+                                     text=((body.text or "").strip() or None), until=until)
+        else:
+            payload = oq.act_payload(body.id, body.action, option=body.option,
+                                     text=(body.text or None), reasons=reasons or None)
         act = _send(publisher, payload)
         return _finish(body, act, now, closes=body.action in CLOSING_ACTIONS,
                        project=item.get("project"))

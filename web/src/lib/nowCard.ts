@@ -34,6 +34,8 @@ export interface NowItem {
   actions: string[]
   goThere: { kind: string; href: string } | null
   resumeNote?: string
+  /** The owner's "working on it" note, when the item is back after one (publisher text). */
+  progressNote?: string
   /** When the publisher first recommended this matter (ISO). Display-only. */
   firstSeen?: string
   /** The last on-demand "Still current?" check, as the publisher reports it. */
@@ -259,6 +261,21 @@ export function laterChoices(now: Date, locale: Locale = 'en'): { label: string;
     { label: t(locale, 'later.2h'), seconds: 7200 },
     { label: t(locale, 'later.4h'), seconds: 4 * 3600 },
     { label: t(locale, 'later.tomorrow'), seconds: Math.round((tomorrow.getTime() - now.getTime()) / 1000) },
+  ]
+}
+
+/**
+ * When an "I'm working on it" card comes back. Tomorrow morning first — the common case is
+ * "I'm on it today, ask me again tomorrow" — and it is the publisher's default too.
+ */
+export function progressChoices(now: Date, locale: Locale = 'en'): { label: string; seconds: number; primary?: boolean }[] {
+  const tomorrow = new Date(now)
+  tomorrow.setDate(now.getDate() + 1)
+  tomorrow.setHours(8, 0, 0, 0)
+  return [
+    { label: t(locale, 'later.tomorrow'), seconds: Math.round((tomorrow.getTime() - now.getTime()) / 1000), primary: true },
+    { label: t(locale, 'later.2h'), seconds: 7200 },
+    { label: t(locale, 'later.4h'), seconds: 4 * 3600 },
   ]
 }
 
