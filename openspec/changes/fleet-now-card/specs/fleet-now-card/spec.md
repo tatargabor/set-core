@@ -232,3 +232,21 @@ moving the card. Added 2026-10-30 at the owner's request (*"kellene a felületre
 #### Scenario: Opening the legend
 - **WHEN** the owner opens the help control
 - **THEN** a legend over the card names the answer buttons, the text field, Go there, Done, Later, focus and the grey and yellow notes, and the card stays in place
+
+### Requirement: The card has a Goals tab beside the item
+
+*Added 2026-10-30 at the owner's request: "kellene egy olyan fül is, hogy mik a célok … hogyha
+megnézem, akkor mindig lássam".*
+
+The `/now` page SHALL offer two tabs, Now and Goals. Goals SHALL list the `owner-goals` answer —
+each goal's title, what it serves, deadline, progress, projects and evidence links — with proposed
+goals marked unconfirmed, followed by the publisher's suggestions. Switching tabs SHALL NOT change the
+window's size or move the tab strip, and the Now tab SHALL stay the default on load.
+
+#### Scenario: Opening the Goals tab
+- **WHEN** the owner taps Goals
+- **THEN** the goals list replaces the item in the same window, and Now brings the item back
+
+#### Scenario: Unconfirmed goals are counted on the tab
+- **WHEN** three goals are proposed and the Now tab is open
+- **THEN** the Goals tab label shows that three goals await a verdict

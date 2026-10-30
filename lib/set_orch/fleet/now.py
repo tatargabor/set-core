@@ -61,6 +61,8 @@ CONFIG_DEFAULTS: Dict[str, Any] = {
     "now.cue_backoff_after": 3,
     "now.deadline_window_hours": 24,
     "now.stale_ranking_hours": 2,
+    # Goals are synthesised about daily, so "stale" is a missed day and a half, not hours.
+    "now.stale_goals_hours": 36,
     "now.wind_down_hour": 23,
 }
 

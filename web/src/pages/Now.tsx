@@ -13,21 +13,29 @@
  * - **Overlays float.** Pickers, prompts and the feedback toast are absolutely positioned
  *   and never move the card. Delivered feedback closes after 10 s; a failure stays.
  * - **Feedback names the outcome.** No streaks, points, or loss framing anywhere.
+ * - **Two tabs, one window.** Now | Goals sit in the header row, which never changes size
+ *   when the tab switches. A failure on the tab you are NOT looking at is marked on its
+ *   label, so a hidden view can never look calm.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Moon, Send, Target, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Moon, Plus, Send, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
-  emptyMessage, feedbackText, fetchNow, gapMarkers, laterChoices, needsReasons, postAct, postFocus, postGroups,
+  emptyMessage, evidenceTarget, feedbackText, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
+  laterChoices, needsReasons, postAct, postFocus, postGoalAct, postGroups, progressPercent,
 } from '../lib/nowCard'
-import type { ActBody, NowItem, NowPayload } from '../lib/nowCard'
+import type { ActBody, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
 import { createAudio, playCue } from '../lib/nowSound'
 import { age } from '../lib/fleetAge'
 import './now.css'
 
 export const POLL_MS = 15_000
 export const FEEDBACK_MS = 10_000
+/** Goals change about daily: read them with the card's poll, but never more often than once a minute. */
+export const GOALS_POLL_MS = Math.max(POLL_MS, 60_000)
+
+type Tab = 'now' | 'goals'
 
 type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded'
 interface Feedback { ok: boolean; text: string }
@@ -50,6 +58,13 @@ function openHref(href: string) {
 const btn = 'inline-flex items-center gap-1.5 rounded-md border border-surface-strong bg-surface-panel px-3 py-1.5 text-base text-fg-strong hover:bg-surface-raised disabled:opacity-50'
 const btnPrimary = 'inline-flex items-center gap-1.5 rounded-md bg-status-done px-3 py-1.5 text-base font-medium text-white hover:opacity-90 disabled:opacity-50'
 const chip = 'inline-flex items-center gap-1 rounded px-1.5 py-0.5'
+/** Header chips: tighter, because the header row also carries the Now | Goals tabs. */
+const hchip = 'inline-flex items-center gap-1 rounded px-1 py-0.5'
+const btnSmall = 'inline-flex items-center gap-1 rounded border border-surface-strong bg-surface-panel px-2 py-0.5 text-sm text-fg-strong hover:bg-surface-raised disabled:opacity-50'
+const btnSmallPrimary = 'inline-flex items-center gap-1 rounded bg-status-done px-2 py-0.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50'
+// Same padding, border width and weight in both states: switching tabs must not resize the strip.
+const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-t border-b-2 px-1 py-0.5 ' +
+  (active ? 'border-status-done bg-surface-raised text-fg-loud' : 'border-transparent text-fg-muted hover:text-fg-strong')
 
 export default function Now() {
   const [data, setData] = useState<NowPayload | null>(null)
@@ -63,6 +78,10 @@ export default function Now() {
   const [overlayText, setOverlayText] = useState('')
   const [soundOn, setSoundOn] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
+  // Now is the default on every load (spec): the tab is not remembered.
+  const [tab, setTab] = useState<Tab>('now')
+  const [goals, setGoals] = useState<GoalsPayload | null>(null)
+  const [goalsError, setGoalsError] = useState<string | null>(null)
   const audioRef = useRef<AudioContext | null>(null)
   const { checked: voiceChecked, hasKey, micSupported } = useSonioxAvailable()
   const voice = voiceChecked && hasKey && micSupported
@@ -73,6 +92,16 @@ export default function Now() {
       setLoadError(null)
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
+  const loadGoals = useCallback(async (refresh = false) => {
+    try {
+      setGoals(await fetchGoals(refresh))
+      setGoalsError(null)
+    } catch (e) {
+      // The last good answer stays on screen; the failure is marked over it and on the tab.
+      setGoalsError(e instanceof Error ? e.message : String(e))
     }
   }, [])
 
@@ -89,6 +118,14 @@ export default function Now() {
     const t = setInterval(() => { void load() }, POLL_MS)
     return () => clearInterval(t)
   }, [load])
+
+  // Read on load, not on first opening the tab: the tab label carries the proposed count
+  // and the failure marker, and both must be true while the Now tab is the one open.
+  useEffect(() => {
+    void loadGoals()
+    const t = setInterval(() => { void loadGoals() }, GOALS_POLL_MS)
+    return () => clearInterval(t)
+  }, [loadGoals])
 
   // A cue plays only when the server decided one AND the owner enabled sound.
   useEffect(() => {
@@ -149,6 +186,18 @@ export default function Now() {
     }
   }
 
+  const sendGoal = useCallback(async (body: GoalActBody) => {
+    setBusy(true)
+    try {
+      const res = await postGoalAct(body)
+      setFeedback({ ok: res.delivered, text: goalFeedbackText(body.action, res) })
+      if (res.delivered) await loadGoals(true)
+      return res
+    } finally {
+      setBusy(false)
+    }
+  }, [loadGoals])
+
   const keep = (k: PendingKeep) => {
     if (item && needsReasons(item, k.action)) {
       setPendingKeep(k)
@@ -165,6 +214,9 @@ export default function Now() {
 
   const has = (a: string) => !!item?.actions.includes(a)
   const windDownView = !!data?.windDown.active && !showQueue
+  const goalsFail = goalsFailure(goals, goalsError)
+  const nowFail = !!loadError || markers.some(m => m.tone === 'warn')
+  const proposed = goals?.proposedCount ?? 0
 
   return (
     <div
@@ -177,29 +229,45 @@ export default function Now() {
     >
       {/* One line, always: a header that wraps changes height when a label changes, which
           moves everything below it under the reader's cursor. */}
-      <header className="flex h-8 shrink-0 flex-nowrap items-center gap-2 overflow-hidden whitespace-nowrap px-3 pt-2 text-sm text-fg-muted">
-        <span className={chip} title="Cards you closed today (Done, an answer, or Delegate)" data-closed>
+      {/* The Now | Goals tabs share this row with the counters: at the launcher's 440 px the
+          row is full, so the controls on the right are icon-only below `sm` (measured: with
+          text labels the help button was clipped off the right edge). */}
+      <header className="flex h-8 shrink-0 flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap px-3 pt-2 text-sm text-fg-muted">
+        <div role="tablist" aria-label="View" className="flex shrink-0 items-center gap-0.5" data-tabs>
+          <button role="tab" aria-selected={tab === 'now'} className={tabBtn(tab === 'now')} onClick={() => setTab('now')} data-tab="now"
+            title={nowFail ? 'The next card — something on it could not be read' : 'The next card: one thing to do now'}>
+            Now
+            {nowFail && <span className="text-status-warn" data-now-fail aria-label="Something on the card could not be read"><TriangleAlert size={12} /></span>}
+          </button>
+          <button role="tab" aria-selected={tab === 'goals'} className={tabBtn(tab === 'goals')} onClick={() => setTab('goals')} data-tab="goals"
+            title={goalsFail ?? (proposed > 0 ? `${proposed} proposed goal${proposed > 1 ? 's' : ''} await your verdict` : 'The goals the work serves')}>
+            Goals
+            {proposed > 0 && <span data-goals-count>· {proposed}</span>}
+            {goalsFail && <span className="text-status-fail" data-goals-fail aria-label="The goals could not be read"><TriangleAlert size={12} /></span>}
+          </button>
+        </div>
+        <span className={hchip} title="Cards you closed today (Done, an answer, or Delegate)" data-closed>
           <Check size={14} /> {data?.closedToday ?? 0}<span className="hidden sm:inline"> closed</span>
         </span>
-        <span className={chip} title="Ideas you parked instead of starting them" data-parked>
+        <span className={hchip} title="Ideas you parked instead of starting them" data-parked>
           <Lightbulb size={14} /> {data?.parkedIdeas ?? 0}<span className="hidden sm:inline"> parked</span>
         </span>
         <span className="ml-auto" />
-        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('focus')} aria-label="Today's focus projects" title="Today's focus projects — pick up to three; cards from other projects wait unless a deadline is near">
+        <button className={hchip + ' hover:text-fg-strong'} onClick={() => setOverlay('focus')} aria-label="Today's focus projects" title="Today's focus projects — pick up to three; cards from other projects wait unless a deadline is near">
           <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax}` : ''}<span className="hidden sm:inline"> focus</span>
         </button>
-        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('idea')} aria-label="Park an idea" title="Park a new idea: it is written down and waits, instead of starting work now">
-          <Lightbulb size={14} /> Park
+        <button className={hchip + ' hover:text-fg-strong'} onClick={() => setOverlay('idea')} aria-label="Park an idea" title="Park a new idea: it is written down and waits, instead of starting work now">
+          <Plus size={10} className="-mr-1" /><Lightbulb size={14} /><span className="hidden sm:inline"> Park</span>
         </button>
-        <span className={chip} data-sound={soundOn ? 'on' : 'off'} title={soundOn ? 'Cues will play' : 'Click anywhere to enable cue sounds'}>
+        <span className={hchip} data-sound={soundOn ? 'on' : 'off'} title={soundOn ? 'Cues will play' : 'Click anywhere to enable cue sounds'}>
           {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}<span className="hidden sm:inline">{soundOn ? ' Sound on' : ' Sound off'}</span>
         </span>
-        <button className={chip + ' hover:text-fg-strong'} onClick={() => setOverlay('help')} title="What is what on this card" aria-label="Help" data-help-open>
-          <CircleHelp size={14} /> ?
+        <button className={hchip + ' hover:text-fg-strong'} onClick={() => setOverlay('help')} title="What is what on this card" aria-label="Help" data-help-open>
+          <CircleHelp size={14} />
         </button>
       </header>
 
-      {(markers.length > 0 || loadError) && (
+      {tab === 'now' && (markers.length > 0 || loadError) && (
         <div className="flex flex-wrap gap-1.5 px-3 pt-1.5 text-sm" data-markers>
           {loadError && <span className={chip + ' bg-status-fail/15 text-status-fail'}>Card could not load: {loadError}</span>}
           {markers.map(m => (
@@ -211,7 +279,7 @@ export default function Now() {
         </div>
       )}
 
-      {data && !windDownView && (data.groups?.length ?? 0) > 1 && (
+      {tab === 'now' && data && !windDownView && (data.groups?.length ?? 0) > 1 && (
         <TagStrip groups={data.groups!} onChange={async muted => {
           setData(d => (d ? { ...d, groups: d.groups!.map(g => ({ ...g, muted: muted.includes(g.name) })) } : d))
           try { await postGroups(muted) } finally { void load() }
@@ -219,9 +287,14 @@ export default function Now() {
       )}
 
       <main className="flex-1 overflow-y-auto px-3 pb-3 pt-2">
-        {!data && !loadError && <p className="text-base text-fg-muted">Loading…</p>}
+        {tab === 'goals' && (
+          <GoalsView goals={goals} failure={goalsFail} busy={busy} onAct={b => void sendGoal(b)}
+            onOpen={link => void goThere(evidenceTarget(link))} />
+        )}
 
-        {data && windDownView && (
+        {tab === 'now' && !data && !loadError && <p className="text-base text-fg-muted">Loading…</p>}
+
+        {tab === 'now' && data && windDownView && (
           <section className="flex flex-col gap-2" data-wind-down>
             <p className="flex items-center gap-2 text-lg text-fg-loud"><Moon size={18} /> It is past {data.windDown.hour}:00.</p>
             <div className="flex flex-wrap gap-2">
@@ -245,7 +318,7 @@ export default function Now() {
           </section>
         )}
 
-        {data && !windDownView && (
+        {tab === 'now' && data && !windDownView && (
           <>
             {data.tomorrowNote && (
               <p className="mb-2 border-l-2 border-status-done pl-2 text-sm text-fg-normal" data-tomorrow>
@@ -568,11 +641,13 @@ function HelpLegend() {
         {row('Delegate', 'hand it to a colleague (shown only when someone else could do it).')}
         {row('N more', 'how many cards follow; you only ever see one.')}
         {row('✓ closed', 'cards you closed today.')}
-        {row('💡 parked / Park', 'write down a new idea so it waits instead of starting work now.')}
+        {row('💡 parked / +💡 Park', 'write down a new idea so it waits instead of starting work now.')}
         {row('◎ focus', 'up to three projects for today; other cards wait unless a deadline is near.')}
         {row('Sound', 'a short tone when you switch projects and a new card is first. Click once to enable.')}
         {row('Grey note', 'a known gap, not an error (e.g. a source that is not set up yet).')}
         {row('Yellow note', 'something could not be read — the card may be incomplete.')}
+        {row('Now | Goals', 'the two tabs: the next card, and the goals the work serves. A number on Goals counts proposed goals awaiting your verdict; a triangle on a tab means that view could not be read.')}
+        {row('Unconfirmed', 'a goal the publisher proposed. Keep it, say it is not a goal, or rename it; Suggestions below are its advice on what the goals should be.')}
         {row('Moon view', 'after the evening hour: write tomorrow\'s first card, hand things to night agents, park projects.')}
       </ul>
     </div>
@@ -608,5 +683,166 @@ function TagStrip({ groups, onChange }: {
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * The Goals tab: the publisher's goals in its order, then its suggestions. Proposed goals
+ * carry Keep / Not a goal / Rename; a confirmed goal only a small Not a goal. Every
+ * incomplete-answer marker is a muted line at the top — never a reason to hide a goal.
+ */
+function GoalsView({ goals, failure, busy, onAct, onOpen }: {
+  goals: GoalsPayload | null
+  failure: string | null
+  busy: boolean
+  onAct: (body: GoalActBody) => void
+  onOpen: (link: string) => void
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+
+  const failLine = failure && (
+    <p className={chip + ' self-start bg-status-fail/15 text-sm text-status-fail'} data-goals-error>{failure}</p>
+  )
+  if (!goals) {
+    return failLine || <p className="text-base text-fg-muted">Loading…</p>
+  }
+  if (goals.publisher.state === 'none') {
+    return (
+      <div className="flex flex-col gap-1" data-goals-none>
+        {failLine}
+        <p className="text-lg font-semibold text-fg-loud">No goals are published</p>
+        {goals.reason && <p className="text-sm text-fg-muted">{goals.reason}</p>}
+      </div>
+    )
+  }
+
+  const notes = goals.measured ? goalsNotes(goals) : []
+  const readOnly = goals.measured === true && !goals.acceptsVerdicts
+  const startRename = (g: Goal) => { setRenaming(g.id); setDraft(g.title) }
+  const submitRename = (g: Goal) => {
+    const t = draft.trim()
+    if (!t || t === g.title) return
+    setRenaming(null)
+    onAct({ id: g.id, action: 'rename', text: t })
+  }
+  const titleOf = (id?: string) => (id ? goals.goals.find(g => g.id === id)?.title : undefined)
+
+  return (
+    <section className="flex flex-col gap-2" data-goals-view>
+      {failLine}
+      {notes.length > 0 && <p className="text-xs text-fg-muted" data-goals-notes>{notes.join(' · ')}</p>}
+      {readOnly && (
+        <p className="text-xs text-fg-muted" data-goals-readonly>
+          Read-only — the publisher declares no owner-goals-act command, so it accepts no verdicts.
+        </p>
+      )}
+      {goals.measured && goals.goals.length === 0 && <p className="text-base text-fg-muted">The answer lists no goals.</p>}
+
+      <ol className="flex flex-col gap-2.5">
+        {goals.goals.map(g => {
+          const isProposed = g.status === 'proposed'
+          const meta = [g.serves && `serves ${g.serves}`, g.deadline && `due ${g.deadline}`, g.projects.length ? g.projects.join(', ') : null]
+            .filter(Boolean).join(' · ')
+          const pct = progressPercent(g.progress)
+          return (
+            <li key={g.id} data-goal={g.id} data-status={g.status}
+              className={'flex flex-col gap-0.5 border-l-2 pl-2 ' + (isProposed ? 'border-dashed border-status-done/60' : 'border-status-active/60')}>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-base font-semibold leading-snug text-fg-loud">{g.title}</span>
+                {isProposed && (
+                  <span className="shrink-0 rounded border border-status-done/50 px-1 text-[11px] text-status-done" data-unconfirmed
+                    title="Proposed by the publisher — not confirmed by you yet">unconfirmed</span>
+                )}
+              </div>
+              {meta && <p className="truncate text-xs text-fg-muted" title={meta} data-goal-meta>{meta}</p>}
+              {g.why && <p className="line-clamp-2 text-sm text-fg-normal" title={g.why}>{g.why}</p>}
+              {g.progress && (
+                <div className="flex flex-col gap-0.5" data-progress>
+                  <p className="text-sm text-fg-normal">{g.progress.text}</p>
+                  {pct != null && (
+                    <div className="h-1 w-full rounded bg-surface-raised" aria-hidden>
+                      <div className="h-1 rounded bg-status-active" style={{ width: `${pct}%` }} />
+                    </div>
+                  )}
+                </div>
+              )}
+              {(g.evidence.length > 0 || g.openItems != null) && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-evidence>
+                  {g.openItems != null && (
+                    <span className="text-fg-muted" title="Open items in the queue that serve this goal" data-open-items>
+                      {g.openItems} open
+                    </span>
+                  )}
+                  {g.evidence.map((ev, i) => ev.link ? (
+                    <button key={i} className="text-status-done underline hover:opacity-80" title={ev.link}
+                      onClick={() => onOpen(ev.link!)}>{ev.label}</button>
+                  ) : (
+                    <span key={i} className="text-fg-muted">{ev.label}</span>
+                  ))}
+                </div>
+              )}
+              {goals.acceptsVerdicts && (renaming === g.id ? (
+                <div className="mt-0.5 flex items-center gap-1.5" data-rename>
+                  <input autoFocus aria-label="New goal title"
+                    className="min-w-0 flex-1 rounded border border-surface-strong bg-surface-panel px-2 py-0.5 text-sm text-fg-strong"
+                    value={draft} onChange={e => setDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') submitRename(g)
+                      if (e.key === 'Escape') setRenaming(null)
+                    }} />
+                  <button className={btnSmallPrimary} disabled={busy || !draft.trim() || draft.trim() === g.title}
+                    onClick={() => submitRename(g)} title="Send the new title (Enter)">Save</button>
+                  <button className="text-fg-muted" aria-label="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
+                </div>
+              ) : isProposed ? (
+                <div className="mt-0.5 flex flex-wrap gap-1.5" data-goal-actions>
+                  <button className={btnSmallPrimary} disabled={busy} onClick={() => onAct({ id: g.id, action: 'keep' })}
+                    title="Yes, this is a goal — confirm it">Keep</button>
+                  <button className={btnSmall} disabled={busy} onClick={() => onAct({ id: g.id, action: 'drop' })}
+                    title="This is not a goal — the publisher drops it">Not a goal</button>
+                  <button className={btnSmall} disabled={busy} onClick={() => startRename(g)}
+                    title="Keep it under a better title (Enter sends)">Rename</button>
+                </div>
+              ) : (
+                <button className="self-start text-xs text-fg-muted underline hover:text-fg-strong" disabled={busy}
+                  onClick={() => onAct({ id: g.id, action: 'drop' })} title="This is no longer a goal — the publisher drops it"
+                  data-goal-drop>
+                  Not a goal
+                </button>
+              ))}
+            </li>
+          )
+        })}
+      </ol>
+
+      {goals.advice.length > 0 && (
+        <section className="mt-1 flex flex-col gap-1.5 border-t border-surface-strong pt-2" data-suggestions>
+          <h2 className="text-xs uppercase tracking-wide text-fg-muted">Suggestions</h2>
+          <ul className="flex flex-col gap-2">
+            {goals.advice.map((a: GoalAdvice) => {
+              const about = titleOf(a.goalId)
+              return (
+                <li key={a.id} className="flex flex-col gap-0.5" data-advice={a.id}>
+                  <p className="text-sm text-fg-strong">
+                    <span className="mr-1.5 rounded bg-surface-raised px-1 text-[11px] uppercase text-fg-muted" data-kind>{a.kind}</span>
+                    {a.sentence}
+                  </p>
+                  <p className="text-xs text-fg-muted">{about ? `on "${about}" — ` : ''}{a.why}</p>
+                  {goals.acceptsVerdicts && (
+                    <div className="mt-0.5 flex gap-1.5">
+                      <button className={btnSmallPrimary} disabled={busy} onClick={() => onAct({ id: a.id, action: 'accept' })}
+                        title="Agree — the publisher applies this suggestion">Accept</button>
+                      <button className={btnSmall} disabled={busy} onClick={() => onAct({ id: a.id, action: 'decline' })}
+                        title="Disagree — the publisher keeps the goals as they are">Decline</button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+    </section>
   )
 }

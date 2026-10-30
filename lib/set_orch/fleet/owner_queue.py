@@ -59,10 +59,13 @@ class Publisher:
     config: Optional[StatusConfig] = None
     candidates: List[str] = field(default_factory=list)
     reason: Optional[str] = None
+    #: The write command this publisher must declare to accept actions — the one
+    #: paired with the read command it was found by (`owner-queue-act`, `owner-goals-act`).
+    write_command: str = WRITE_COMMAND
 
     @property
     def accepts_actions(self) -> bool:
-        return bool(self.config and WRITE_COMMAND in self.config.write_commands)
+        return bool(self.config and self.write_command in self.config.write_commands)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -75,13 +78,23 @@ class Publisher:
 
 
 def find_publisher(projects: List[Dict[str, Any]], configured: Optional[str],
-                   config_for: ConfigFor = resolve_status_config) -> Publisher:
+                   config_for: ConfigFor = resolve_status_config, *,
+                   read_command: str = READ_COMMAND,
+                   write_command: str = WRITE_COMMAND,
+                   published: str = "ranked queue") -> Publisher:
     """The publisher: the configured project, else the one project that declares it.
 
     `not declared` (state `none`) is kept apart from `ambiguous` and from a configured
     name that does not declare the command — three different things for the owner to
     fix, and none of them is an empty queue.
+
+    `read_command` / `write_command` name the pair being looked for, so every owner-facing
+    command (`owner-queue`, `owner-goals`) is found the same way, under the same
+    `now.publisher` override. `published` only words the not-declared reason.
     """
+    def pub(state: str, *args: Any, **kwargs: Any) -> Publisher:
+        return Publisher(state, *args, write_command=write_command, **kwargs)
+
     declaring: List[tuple] = []
     by_name: Dict[str, Path] = {}
     for entry in projects:
@@ -95,31 +108,32 @@ def find_publisher(projects: List[Dict[str, Any]], configured: Optional[str],
         try:
             cfg = config_for(path)
         except Exception as exc:  # one broken project must not hide the others
-            logger.warning("owner queue: contract of %s unreadable (%s)", name, type(exc).__name__)
+            logger.warning("%s: contract of %s unreadable (%s)", read_command, name,
+                           type(exc).__name__)
             continue
-        if cfg is not None and READ_COMMAND in cfg.commands:
+        if cfg is not None and read_command in cfg.commands:
             declaring.append((name, path, cfg))
 
     if configured:
         for name, path, cfg in declaring:
             if name == configured:
-                return Publisher("ok", name, path, cfg, [n for n, _, _ in declaring])
+                return pub("ok", name, path, cfg, [n for n, _, _ in declaring])
         why = ("is not a registered project" if configured not in by_name
-               else f"does not declare '{READ_COMMAND}'")
-        return Publisher("configured-missing", configured, by_name.get(configured), None,
-                         [n for n, _, _ in declaring],
-                         f"the configured publisher '{configured}' {why}")
+               else f"does not declare '{read_command}'")
+        return pub("configured-missing", configured, by_name.get(configured), None,
+                   [n for n, _, _ in declaring],
+                   f"the configured publisher '{configured}' {why}")
     if not declaring:
-        return Publisher("none", reason="no registered project declares "
-                                        f"'{READ_COMMAND}' — no ranked queue is published")
+        return pub("none", reason="no registered project declares "
+                                  f"'{read_command}' — no {published} is published")
     if len(declaring) > 1:
         names = [n for n, _, _ in declaring]
-        return Publisher("ambiguous", candidates=names,
-                         reason=f"{len(names)} projects declare '{READ_COMMAND}' "
-                                f"({', '.join(names)}); name one with "
-                                "`set-config set now.publisher <project>`")
+        return pub("ambiguous", candidates=names,
+                   reason=f"{len(names)} projects declare '{read_command}' "
+                          f"({', '.join(names)}); name one with "
+                          "`set-config set now.publisher <project>`")
     name, path, cfg = declaring[0]
-    return Publisher("ok", name, path, cfg, [name])
+    return pub("ok", name, path, cfg, [name])
 
 
 @dataclass
@@ -177,6 +191,23 @@ def parse_item(raw: Any) -> Optional[Dict[str, Any]]:
     return item
 
 
+def unread_sources(raw: Any) -> List[str]:
+    """The publisher's unread inputs as display lines: `name` or `name — reason`.
+
+    Shared by every owner-facing read (`owner-queue`, `owner-goals`). Entries of any
+    other shape are dropped: they name nothing the owner could act on.
+    """
+    out: List[str] = []
+    for src in raw if isinstance(raw, list) else []:
+        if isinstance(src, str) and src.strip():
+            out.append(src)
+        elif isinstance(src, dict) and (src.get("name") or src.get("source")):
+            name = str(src.get("name") or src.get("source"))
+            reason = src.get("reason")
+            out.append(f"{name} — {reason}" if isinstance(reason, str) and reason else name)
+    return out
+
+
 def parse_queue(result: StatusResult, now: float) -> QueueRead:
     """The publisher's answer as items in rank order, with its completeness markers."""
     if not result.ok:
@@ -203,17 +234,8 @@ def parse_queue(result: StatusResult, now: float) -> QueueRead:
     complete = data.get("complete") if isinstance(data.get("complete"), bool) else None
     ranked_at = data.get("rankedAt") if isinstance(data.get("rankedAt"), str) else None
     ranked_epoch = to_epoch(ranked_at)
-    unread: List[str] = []
-    raw_unread = data.get("unreadSources")
-    for src in raw_unread if isinstance(raw_unread, list) else []:
-        if isinstance(src, str) and src.strip():
-            unread.append(src)
-        elif isinstance(src, dict) and (src.get("name") or src.get("source")):
-            name = str(src.get("name") or src.get("source"))
-            reason = src.get("reason")
-            unread.append(f"{name} — {reason}" if isinstance(reason, str) and reason else name)
     return QueueRead(
-        unread_sources=unread,
+        unread_sources=unread_sources(data.get("unreadSources")),
         measured=True, items=items, malformed=malformed, complete=complete,
         ranked_at=ranked_at,
         ranking_age_s=(max(0.0, now - ranked_epoch) if ranked_epoch is not None else None),

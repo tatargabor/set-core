@@ -1,4 +1,5 @@
-"""The Now card's API — `GET /api/fleet/now`, `POST /api/fleet/now/act`, `POST /api/fleet/now/focus`.
+"""The Now card's API — `GET /api/fleet/now`, `POST /api/fleet/now/act`, `POST /api/fleet/now/focus`,
+and the Goals tab's `GET /api/fleet/now/goals` and `POST /api/fleet/now/goals/act`.
 
 A separate router from `api/fleet.py`, registered BEFORE the `/api/{project}/...`
 families for the same reason the fleet router is (CB-16).
@@ -30,6 +31,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..fleet import now as now_mod
+from ..fleet import owner_goals as og
 from ..fleet import owner_queue as oq
 from ..fleet import question_relay as qr
 from ..project_status import write as contract_write
@@ -525,3 +527,107 @@ def post_focus(body: FocusBody) -> Dict[str, Any]:
                 logger.info("now api: resume note for %s kept locally (no publisher)", project)
     outcome["notes"] = delivered
     return outcome
+
+
+# --------------------------------------------------------------------------- #
+# GET /api/fleet/now/goals — the Goals tab (spec owner-goals-contract)
+# --------------------------------------------------------------------------- #
+
+def _goals_publisher(projects: Optional[List[Dict[str, Any]]] = None) -> oq.Publisher:
+    cfg = now_mod.config()
+    return oq.find_publisher(_registered() if projects is None else projects, cfg["now.publisher"],
+                             read_command=og.READ_COMMAND, write_command=og.WRITE_COMMAND,
+                             published="goal list")
+
+
+def _read_goals(publisher: oq.Publisher, now: float, refresh: bool) -> og.GoalsRead:
+    if publisher.state != "ok":
+        return og.GoalsRead(measured=False, reason=publisher.reason)
+    result = api_status._cached_query(publisher.path, og.READ_COMMAND, publisher.config, refresh)
+    return og.parse_goals(result, now)
+
+
+def build_goals(*, now: Optional[float] = None, refresh: bool = False) -> Dict[str, Any]:
+    now = time.time() if now is None else now
+    cfg = now_mod.config()
+    publisher = _goals_publisher()
+    gread = _read_goals(publisher, now, refresh)
+    stale_after = cfg["now.stale_goals_hours"] * 3600
+    return {
+        "publisher": publisher.as_dict(),
+        # Not declared is not a failure (`null`), the same split as the owner-queue source.
+        "measured": None if publisher.state == "none" else gread.measured,
+        "reason": gread.reason,
+        "goals": gread.goals,
+        "advice": gread.advice,
+        "malformedGoals": gread.malformed_goals,
+        "malformedAdvice": gread.malformed_advice,
+        "partial": bool(gread.measured and gread.complete is not True),
+        "unreadSources": list(gread.unread_sources),
+        "synthesizedAt": gread.synthesized_at,
+        "ageSeconds": gread.age_s,
+        "stale": bool(gread.age_s is not None and gread.age_s > stale_after),
+        "acceptsVerdicts": publisher.state == "ok" and publisher.accepts_actions,
+        "proposedCount": sum(1 for g in gread.goals if g["status"] == "proposed"),
+    }
+
+
+@router.get("/api/fleet/now/goals")
+def get_goals(refresh: bool = Query(False)) -> Dict[str, Any]:
+    """The owner's goals and the publisher's advice, with every marker the tab needs."""
+    payload = build_goals(refresh=refresh)
+    logger.info("now api: goals publisher=%s measured=%s goals=%d proposed=%d advice=%d "
+                "malformed=%d/%d", payload["publisher"]["state"], payload["measured"],
+                len(payload["goals"]), payload["proposedCount"], len(payload["advice"]),
+                payload["malformedGoals"], payload["malformedAdvice"])
+    return payload
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/fleet/now/goals/act
+# --------------------------------------------------------------------------- #
+
+class GoalActBody(BaseModel):
+    id: str
+    action: str
+    text: Optional[str] = None
+
+
+def _log_goal_act(body: GoalActBody, status: str, error_class: Optional[str] = None) -> None:
+    # Ids, the verdict and the status class only — never a title, a new name or an outcome.
+    logger.info("now api: goals act id=%s action=%s status=%s class=%s",
+                body.id, body.action, status, error_class)
+
+
+@router.post("/api/fleet/now/goals/act")
+def post_goal_act(body: GoalActBody) -> Dict[str, Any]:
+    """One verdict on a goal (keep, drop, rename) or on an advice entry (accept, decline)."""
+    if body.action not in og.ACTIONS:
+        raise HTTPException(400, f"not an owner-goals action: {body.action!r}")
+    if body.action == "rename" and not (body.text or "").strip():
+        raise HTTPException(400, "rename needs the new title as text")
+    publisher = _goals_publisher()
+    if publisher.state != "ok":
+        _log_goal_act(body, "refused", f"publisher-{publisher.state}")
+        raise HTTPException(409, publisher.reason or "no goals publisher")
+    if not publisher.accepts_actions:
+        _log_goal_act(body, "refused", "no-write-command")
+        raise HTTPException(409, f"the publisher declares no '{og.WRITE_COMMAND}' write "
+                                 "command — it accepts no verdicts")
+    gread = _read_goals(publisher, time.time(), refresh=False)
+    if not gread.measured:
+        _log_goal_act(body, "refused", "goals-unreadable")
+        raise HTTPException(409, f"the goals could not be read: {gread.reason}")
+    pool = gread.goals if body.action in og.GOAL_ACTIONS else gread.advice
+    if not any(entry["id"] == body.id for entry in pool):
+        _log_goal_act(body, "refused", "unknown-id")
+        what = "goal" if body.action in og.GOAL_ACTIONS else "suggestion"
+        raise HTTPException(409, f"that {what} is no longer in the publisher's answer")
+    payload = og.act_payload(body.id, body.action, text=body.text)
+    result = contract_write(publisher.path, og.WRITE_COMMAND, og.write_args(payload),
+                            config=publisher.config)
+    act = og.interpret_write(result)
+    if act.delivered:
+        _drop_read_cache(publisher)
+    _log_goal_act(body, "delivered" if act.delivered else "refused", act.error_class)
+    return act.as_dict()

@@ -244,3 +244,140 @@ export async function postFocus(projects: string[], notes: Record<string, string
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
+
+// --------------------------------------------------------------------------- Goals tab
+// The `owner-goals` answer (spec owner-goals-contract) as GET /api/fleet/now/goals serves it.
+
+export interface GoalProgress { text: string; done?: number; total?: number }
+export interface GoalEvidence { label: string; link?: string }
+
+export interface Goal {
+  id: string
+  title: string
+  status: 'proposed' | 'confirmed'
+  why?: string
+  serves?: string
+  deadline?: string
+  progress?: GoalProgress
+  projects: string[]
+  evidence: GoalEvidence[]
+  openItems?: number
+}
+
+export interface GoalAdvice {
+  id: string
+  kind: 'add' | 'drop' | 'merge' | 'reorder' | 'neglected' | 'other'
+  sentence: string
+  why: string
+  goalId?: string
+}
+
+export interface GoalsPayload {
+  publisher: { state: string; project: string | null; candidates: string[]; reason: string | null; acceptsActions: boolean }
+  /** `null` = no project declares `owner-goals` — not a failure, not a zero. */
+  measured: boolean | null
+  reason: string | null
+  goals: Goal[]
+  advice: GoalAdvice[]
+  malformedGoals: number
+  malformedAdvice: number
+  partial: boolean
+  unreadSources: string[]
+  synthesizedAt: string | null
+  ageSeconds: number | null
+  stale: boolean
+  acceptsVerdicts: boolean
+  proposedCount: number
+}
+
+export type GoalAction = 'keep' | 'drop' | 'rename' | 'accept' | 'decline'
+
+export interface GoalActBody { id: string; action: GoalAction; text?: string }
+
+export interface GoalActResponse {
+  delivered: boolean
+  outcome: string | null
+  reason: string | null
+  errorClass: string | null
+}
+
+/**
+ * Why the Goals tab is not showing a trustworthy answer, or null. A publisher that is
+ * not declared at all is NOT a failure (it is the "No goals are published" state); an
+ * ambiguous or misconfigured one is, because the owner has something to fix.
+ */
+export function goalsFailure(p: GoalsPayload | null, loadError: string | null): string | null {
+  if (loadError) return `Goals could not load: ${loadError}`
+  if (!p || p.measured !== false) return null
+  return `Goals could not be read${p.reason ? `: ${p.reason}` : ''}`
+}
+
+/** The muted notes above the goals list: everything incomplete about the answer. */
+export function goalsNotes(p: GoalsPayload): string[] {
+  const out: string[] = []
+  if (p.partial) {
+    out.push(p.unreadSources.length
+      ? `partial — the publisher could not read: ${p.unreadSources.join('; ')}`
+      : 'partial — the publisher says this list is incomplete')
+  } else if (p.unreadSources.length) {
+    out.push(`the publisher could not read: ${p.unreadSources.join('; ')}`)
+  }
+  if (p.stale && p.ageSeconds != null) out.push(`synthesised ${hoursAgo(p.ageSeconds)} ago`)
+  const bad: string[] = []
+  if (p.malformedGoals > 0) bad.push(`${p.malformedGoals} goal${p.malformedGoals > 1 ? 's' : ''}`)
+  if (p.malformedAdvice > 0) bad.push(`${p.malformedAdvice} suggestion${p.malformedAdvice > 1 ? 's' : ''}`)
+  if (bad.length) out.push(`${bad.join(' and ')} unreadable, skipped`)
+  return out
+}
+
+const DEFAULT_GOAL_OUTCOME: Record<GoalAction, string> = {
+  keep: 'Goal kept',
+  drop: 'Not a goal — sent',
+  rename: 'Goal renamed',
+  accept: 'Suggestion accepted',
+  decline: 'Suggestion declined',
+}
+
+export function goalFeedbackText(action: GoalAction, res: GoalActResponse): string {
+  if (!res.delivered) return res.reason || 'Not delivered — nothing changed.'
+  return res.outcome || DEFAULT_GOAL_OUTCOME[action]
+}
+
+/** A progress bar's fill in percent, or null when the publisher gave no usable counts. */
+export function progressPercent(p: GoalProgress | undefined): number | null {
+  if (!p || p.total == null || p.done == null || p.total <= 0) return null
+  return Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)))
+}
+
+/**
+ * Where an evidence link goes: an absolute file path is a local document handed to the
+ * desktop opener (as on the Now card), a dashboard path opens in the fleet window, any
+ * other link opens as a page.
+ */
+export function evidenceTarget(link: string): { kind: 'file' | 'link'; href: string } {
+  if (link.startsWith('/') && !link.startsWith('/?') && !link.startsWith('/p/')) return { kind: 'file', href: link }
+  return { kind: 'link', href: link }
+}
+
+export async function fetchGoals(refresh = false): Promise<GoalsPayload> {
+  const res = await fetch(`/api/fleet/now/goals${refresh ? '?refresh=true' : ''}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const type = res.headers?.get?.('content-type') ?? ''
+  if (type && !type.includes('json')) {
+    throw new Error('the server answered with a page, not goals — its dashboard service predates the Goals tab and needs a restart')
+  }
+  return res.json()
+}
+
+/** POST a verdict. An HTTP refusal is turned into a not-delivered answer carrying its detail. */
+export async function postGoalAct(body: GoalActBody): Promise<GoalActResponse> {
+  const res = await fetch('/api/fleet/now/goals/act', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try { detail = (await res.json()).detail ?? detail } catch { /* keep the status */ }
+    return { delivered: false, outcome: null, reason: String(detail), errorClass: 'http' }
+  }
+  return res.json()
+}
