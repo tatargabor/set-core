@@ -850,10 +850,10 @@ function TagStrip({ groups, onChange, locale }: {
   const toggle = (name: string) =>
     onChange(muted.includes(name) ? muted.filter(m => m !== name) : [...muted, name])
   return (
-    // One row that scrolls sideways: two wrapped rows of tags took a third of the window's height.
-    // The count of cards hidden by switched-off tags is stated under the card, so a tag
-    // scrolled out of view never hides how much is there.
-    <div className="now-tags flex shrink-0 flex-nowrap gap-1 overflow-x-auto whitespace-nowrap px-3 pb-0.5 pt-2 text-xs" data-tags>
+    // Wrapped, every tag in view. It was one sideways-scrolling row for a while (two wrapped rows
+    // had taken a third of the window), but the owner asked on 2026-10-30 to break it into rows:
+    // a tag behind a scrollbar is a tag he does not see. Each tag stays on one line.
+    <div className="now-tags flex shrink-0 flex-wrap gap-1 px-3 pb-0.5 pt-2 text-xs" data-tags>
       {muted.length > 0 && (
         <button onClick={() => onChange([])} className="shrink-0 rounded-full px-1.5 text-status-done hover:underline" title={t('tags.allOnTitle')} data-tags-all>
           {t('tags.allOn')}

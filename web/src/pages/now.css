@@ -41,7 +41,7 @@
 }
 
 /* The project tag strip scrolls sideways in one row; a thin bar keeps it findable. */
-.now-root .now-tags { scrollbar-width: thin; }
+.now-root .now-tags > button { white-space: nowrap; }
 
 @keyframes now-spin { to { transform: rotate(360deg); } }
 .now-root .now-spin { animation: now-spin 1s linear infinite; }
