@@ -86,6 +86,8 @@ export interface NowPayload {
   focusMax: number
   focusSetToday: boolean
   focusCandidates: string[]
+  /** Every other registered project — pickable for focus though it has no card yet. */
+  focusOthers?: string[]
   /** One tag per project with an item; `muted` = switched off on the strip. */
   groups?: { name: string; count: number; muted: boolean }[]
   /** Items a switched-off project hid — always shown, so the filter never looks like calm. */
@@ -296,6 +298,28 @@ export interface FocusResponse {
   focus: string[]
   reason?: string
   removed?: string[]
+  /** Whether the publisher heard the focus, and its answer; absent from an older server. */
+  publisher?: { delivered: boolean; outcome?: string | null; reason?: string | null }
+}
+
+/** Squash a name for matching: "a-cme", "A Cme" and "acme" all read as "acme". */
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Projects matching what the owner typed, best first: a name that starts with the query, then
+ * one that contains it. Separators are ignored both ways, so "a-cme" finds "acme-web".
+ */
+export function matchProjects(query: string, names: string[], limit = 6): string[] {
+  const q = squash(query)
+  if (!q) return []
+  const starts: string[] = []
+  const contains: string[] = []
+  for (const n of names) {
+    const s = squash(n)
+    if (s.startsWith(q)) starts.push(n)
+    else if (s.includes(q)) contains.push(n)
+  }
+  return [...starts, ...contains].slice(0, limit)
 }
 
 export async function postGroups(muted: string[]): Promise<{ ok: boolean; muted: string[] }> {

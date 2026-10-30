@@ -26,7 +26,7 @@ import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
   checkView, clockTime, emptyMessage, evidenceTarget, feedbackText, timeLine, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
-  laterChoices, needsReasons, postAct, postFocus, postGoalAct, postGroups, progressPercent,
+  laterChoices, matchProjects, needsReasons, postAct, postFocus, postGoalAct, postGroups, progressPercent,
 } from '../lib/nowCard'
 import type { ActBody, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
 import { asLocale, makeT } from '../lib/nowI18n'
@@ -60,18 +60,18 @@ function openHref(href: string) {
   }
 }
 
-const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-surface-strong bg-surface-panel px-3 py-1.5 text-[15px] text-fg-strong shadow-sm hover:bg-surface-raised disabled:opacity-50'
-const btnPrimary = 'inline-flex items-center gap-1.5 rounded-lg bg-status-done px-3.5 py-1.5 text-[15px] font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50'
+const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-surface-strong bg-surface-panel px-3 py-1.5 text-base text-fg-strong shadow-sm hover:bg-surface-raised disabled:opacity-50'
+const btnPrimary = 'inline-flex items-center gap-1.5 rounded-lg bg-status-done px-3.5 py-1.5 text-base font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50'
 /** Secondary actions: quiet until hovered, so the answer buttons carry the weight. */
 const btnGhost = 'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-fg-normal hover:bg-surface-raised hover:text-fg-strong disabled:opacity-50'
 const chip = 'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5'
 /** Header chips: tighter, because the header row also carries the Now | Goals tabs. */
 const hchip = 'inline-flex items-center gap-1 rounded-md px-1 py-0.5'
-const btnSmall = 'inline-flex items-center gap-1 rounded-md border border-surface-strong bg-surface-panel px-2 py-0.5 text-[13px] text-fg-strong hover:bg-surface-raised disabled:opacity-50'
-const btnSmallPrimary = 'inline-flex items-center gap-1 rounded-md bg-status-done px-2 py-0.5 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50'
+const btnSmall = 'inline-flex items-center gap-1 rounded-md border border-surface-strong bg-surface-panel px-2 py-0.5 text-sm text-fg-strong hover:bg-surface-raised disabled:opacity-50'
+const btnSmallPrimary = 'inline-flex items-center gap-1 rounded-md bg-status-done px-2 py-0.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50'
 // A segmented control. Same padding, border and weight in both states: switching tabs must
 // not resize the strip; only colour and the raised background change.
-const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[13px] font-semibold ' +
+const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-sm font-semibold ' +
   (active ? 'bg-surface-panel text-fg-loud shadow-sm' : 'text-fg-muted hover:text-fg-strong')
 /** The advice kinds the contract names; an unknown kind is shown as the publisher wrote it. */
 const KIND_LABEL: readonly string[] = ['add', 'drop', 'merge', 'reorder', 'neglected', 'other']
@@ -250,7 +250,7 @@ export default function Now() {
       {/* The Now | Goals tabs share this row with the counters: at the launcher's 440 px the
           row is full, so the controls on the right are icon-only below `sm` (measured: with
           text labels the help button was clipped off the right edge). */}
-      <header className="flex h-10 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap border-b border-surface-line px-3 text-[13px] text-fg-muted">
+      <header className="flex h-10 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap border-b border-surface-line px-3 text-sm text-fg-muted">
         <div role="tablist" aria-label={t('header.view')} className="mr-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-raised p-0.5" data-tabs>
           <button role="tab" aria-selected={tab === 'now'} className={tabBtn(tab === 'now')} onClick={() => setTab('now')} data-tab="now"
             title={nowFail ? t('tab.nowFailTitle') : t('tab.nowTitle')}>
@@ -261,7 +261,7 @@ export default function Now() {
             title={goalsFail ?? (proposed > 0 ? t('tab.goalsProposedTitle', { n: proposed }) : t('tab.goalsTitle'))}>
             {t('tab.goals')}
             {proposed > 0 && (
-              <span className="rounded-full bg-status-done px-1.5 text-[11px] font-semibold leading-4 text-white" data-goals-count>{proposed}</span>
+              <span className="rounded-full bg-status-done px-1.5 text-xs font-semibold leading-4 text-white" data-goals-count>{proposed}</span>
             )}
             {goalsFail && <span className="text-status-fail" data-goals-fail aria-label={t('tab.goalsFail')}><TriangleAlert size={12} /></span>}
           </button>
@@ -348,12 +348,12 @@ export default function Now() {
             {item ? (
               <article className="flex flex-col gap-2" data-now-item={item.id}>
                 {item.project && (
-                  <p className="self-start rounded-md bg-status-done/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-status-done">
+                  <p className="self-start rounded-md bg-status-done/10 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-status-done">
                     {item.project}
                   </p>
                 )}
                 <h1 className="text-[1.3rem] font-semibold leading-snug tracking-tight text-fg-loud">{item.sentence}</h1>
-                {item.why && <p className="line-clamp-3 text-[15px] leading-relaxed text-fg-normal" title={item.why}>{item.why}</p>}
+                {item.why && <p className="line-clamp-3 text-base leading-relaxed text-fg-normal" title={item.why}>{item.why}</p>}
                 <ItemMeta item={item} locale={locale} />
                 <ItemTimes item={item} rankedAt={data.rankedAt} busy={busy} locale={locale}
                   onRecheck={has('recheck') ? () => void send({ action: 'recheck' }) : undefined}
@@ -548,7 +548,7 @@ export default function Now() {
             )}
 
             {overlay === 'focus' && data && (
-              <FocusPicker data={data} locale={locale} onDone={async () => { closeOverlay(); await load() }} />
+              <FocusPicker data={data} locale={locale} onDone={async (fb) => { closeOverlay(); if (fb) setFeedback(fb); await load() }} />
             )}
           </div>
         </div>
@@ -566,7 +566,7 @@ function ItemMeta({ item, locale }: { item: NowItem; locale: Locale }) {
   const waited = sinceSeconds(item.since)
   if (waited != null) parts.push(t('meta.waiting', { age: age(waited) }))
   if (!parts.length) return null
-  return <p className="truncate text-[13px] text-fg-muted" data-meta title={parts.join(' · ')}>{parts.join(' · ')}</p>
+  return <p className="truncate text-sm text-fg-muted" data-meta title={parts.join(' · ')}>{parts.join(' · ')}</p>
 }
 
 /**
@@ -590,7 +590,7 @@ function ItemTimes({ item, rankedAt, busy, locale, onRecheck, onClose }: {
   if (!times && !view && !onRecheck) return null
   return (
     <div className="flex flex-col gap-1" data-times>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-fg-muted">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-fg-muted">
         {times && <span title={t('times.title')} data-time-line>{times}</span>}
         {onRecheck && !running && (
           <button className="inline-flex items-center gap-1 rounded-md px-1 text-status-done hover:bg-surface-raised disabled:opacity-50"
@@ -601,7 +601,7 @@ function ItemTimes({ item, rankedAt, busy, locale, onRecheck, onClose }: {
         )}
       </div>
       {view && (
-        <div className={'flex flex-col gap-1 rounded-md text-[13px] ' + (view.tone === 'warn' ? 'bg-status-warn/10 px-2 py-1.5' : '')} data-check={item.check?.state}>
+        <div className={'flex flex-col gap-1 rounded-md text-sm ' + (view.tone === 'warn' ? 'bg-status-warn/10 px-2 py-1.5' : '')} data-check={item.check?.state}>
           <p className={'inline-flex items-center gap-1 font-medium ' + TONE[view.tone]}>
             {running ? <Loader2 size={13} className="now-spin" /> : view.tone === 'ok' ? <ShieldCheck size={13} /> : view.tone === 'warn' ? <TriangleAlert size={13} /> : <RefreshCw size={13} />}
             {view.label}
@@ -623,14 +623,19 @@ function ItemTimes({ item, rankedAt, busy, locale, onRecheck, onClose }: {
  * Today's focus: at most three. A fourth asks which one to swap out; a project
  * leaving the focus asks for a one-line resume note (optional).
  */
-export function FocusPicker({ data, onDone, locale = 'en' }: { data: NowPayload; onDone: () => void | Promise<void>; locale?: Locale }) {
+export function FocusPicker({ data, onDone, locale = 'en' }: { data: NowPayload; onDone: (feedback?: Feedback) => void | Promise<void>; locale?: Locale }) {
   const t = makeT(locale)
   const [draft, setDraft] = useState<string[]>(data.focus)
+  const [query, setQuery] = useState('')
   const [swapFor, setSwapFor] = useState<string | null>(null)
   const [notesStep, setNotesStep] = useState(false)
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
-  const names = useMemo(() => Array.from(new Set([...data.focus, ...data.focusCandidates])), [data])
+  // The current focus, then a project just picked from the search (so it is in view, not at the
+  // bottom of a scrolled list), then every project with a card.
+  const names = useMemo(() => Array.from(new Set([...data.focus, ...draft, ...data.focusCandidates])), [data, draft])
+  const others = useMemo(() => (data.focusOthers ?? []).filter(p => !names.includes(p)), [data, names])
+  const found = matchProjects(query, others)
   const removed = data.focus.filter(p => !draft.includes(p))
 
   const toggle = (p: string) => {
@@ -644,7 +649,11 @@ export function FocusPicker({ data, onDone, locale = 'en' }: { data: NowPayload;
     try {
       const res = await postFocus(draft, notes)
       if (!res.ok) { setError(res.reason ?? t('focus.notSaved')); return }
-      await onDone()
+      const pub = res.publisher
+      // The focus is saved either way; the toast says whether the publisher heard it too.
+      await onDone(!pub ? undefined
+        : pub.delivered ? { ok: true, text: pub.outcome || t('focus.saved') }
+          : { ok: false, text: t('focus.notSent', { reason: pub.reason ?? '?' }) })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -697,6 +706,26 @@ export function FocusPicker({ data, onDone, locale = 'en' }: { data: NowPayload;
           </button>
         ))}
       </div>
+      {others.length > 0 && (
+        <div className="flex flex-col gap-2" data-focus-search>
+          <input
+            className="rounded-md border border-surface-strong bg-surface-page px-2 py-1.5 text-base"
+            placeholder={t('focus.searchPlaceholder')}
+            aria-label={t('focus.searchLabel')}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && found.length) { toggle(found[0]); setQuery('') } }}
+          />
+          {query.trim() !== '' && (
+            <div className="flex flex-wrap gap-2">
+              {found.length === 0 && <p className="text-sm text-fg-muted">{t('focus.noMatch', { query: query.trim() })}</p>}
+              {found.map(p => (
+                <button key={p} className={btn} onClick={() => { toggle(p); setQuery('') }}>+ {p}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {error && <p className="text-sm text-status-fail">{error}</p>}
       <button className={btnPrimary + ' self-start'} onClick={() => void save()}>{t('focus.save')}</button>
     </div>
@@ -743,7 +772,7 @@ function TagStrip({ groups, onChange, locale }: {
     // One row that scrolls sideways: two wrapped rows of tags took a third of the window's height.
     // The count of cards hidden by switched-off tags is stated under the card, so a tag
     // scrolled out of view never hides how much is there.
-    <div className="now-tags flex shrink-0 flex-nowrap gap-1 overflow-x-auto whitespace-nowrap px-3 pb-0.5 pt-2 text-[11px]" data-tags>
+    <div className="now-tags flex shrink-0 flex-nowrap gap-1 overflow-x-auto whitespace-nowrap px-3 pb-0.5 pt-2 text-xs" data-tags>
       {muted.length > 0 && (
         <button onClick={() => onChange([])} className="shrink-0 rounded-full px-1.5 text-status-done hover:underline" title={t('tags.allOnTitle')} data-tags-all>
           {t('tags.allOn')}
@@ -781,7 +810,7 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
   const t = makeT(locale)
 
   const failLine = failure && (
-    <p className="flex items-start gap-1.5 rounded-lg bg-status-fail/10 px-2.5 py-1.5 text-[13px] text-status-fail" data-goals-error>
+    <p className="flex items-start gap-1.5 rounded-lg bg-status-fail/10 px-2.5 py-1.5 text-sm text-status-fail" data-goals-error>
       <TriangleAlert size={14} className="mt-0.5 shrink-0" /> <span>{failure}</span>
     </p>
   )
@@ -791,7 +820,7 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
       ? <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center" data-goals-empty>
           <TriangleAlert size={22} className="text-status-fail" />
           <p className="text-base font-semibold text-fg-loud">{t('goals.couldNotLoad')}</p>
-          <p className="max-w-sm text-[13px] text-fg-muted" data-goals-error>{failure}</p>
+          <p className="max-w-sm text-sm text-fg-muted" data-goals-error>{failure}</p>
         </div>
       : <p className="text-base text-fg-muted">{t('loading')}</p>
   }
@@ -801,7 +830,7 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
         {failLine}
         <Target size={22} className="text-fg-faint" />
         <p className="text-base font-semibold text-fg-loud">{t('goals.none')}</p>
-        {goals.reason && <p className="max-w-sm text-[13px] text-fg-muted">{goals.reason}</p>}
+        {goals.reason && <p className="max-w-sm text-sm text-fg-muted">{goals.reason}</p>}
       </div>
     )
   }
@@ -857,17 +886,17 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
                 <span className="mt-0.5 w-4 shrink-0 text-right text-xs font-semibold text-fg-faint">{i + 1}</span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                    <span className="text-[15px] font-semibold leading-snug text-fg-loud">{g.title}</span>
+                    <span className="text-base font-semibold leading-snug text-fg-loud">{g.title}</span>
                     {isProposed && (
-                      <span className="shrink-0 rounded-full border border-status-done/50 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-status-done" data-unconfirmed
+                      <span className="shrink-0 rounded-full border border-status-done/50 px-1.5 text-xs font-semibold uppercase tracking-wide text-status-done" data-unconfirmed
                         title={t('goals.unconfirmedTitle')}>{t('goals.unconfirmed')}</span>
                     )}
                     {g.deadline && (
-                      <span className="shrink-0 rounded-full bg-surface-raised px-1.5 text-[11px] text-fg-normal" title={t('goals.deadline')}>{t('goals.due', { date: g.deadline })}</span>
+                      <span className="shrink-0 rounded-full bg-surface-raised px-1.5 text-xs text-fg-normal" title={t('goals.deadline')}>{t('goals.due', { date: g.deadline })}</span>
                     )}
                   </div>
                   {meta && <p className="truncate text-xs text-fg-muted" title={meta} data-goal-meta>{meta}</p>}
-                  {g.why && <p className="line-clamp-2 text-[13px] leading-relaxed text-fg-normal" title={g.why}>{g.why}</p>}
+                  {g.why && <p className="line-clamp-2 text-sm leading-relaxed text-fg-normal" title={g.why}>{g.why}</p>}
                   {g.progress && (
                     <div className="flex flex-col gap-1" data-progress>
                       {pct != null && (
@@ -896,7 +925,7 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
                   {goals.acceptsVerdicts && (renaming === g.id ? (
                     <div className="mt-0.5 flex items-center gap-1.5" data-rename>
                       <input autoFocus aria-label={t('goals.renameLabel')}
-                        className="min-w-0 flex-1 rounded-md border border-surface-strong bg-surface-page px-2 py-0.5 text-[13px] text-fg-strong"
+                        className="min-w-0 flex-1 rounded-md border border-surface-strong bg-surface-page px-2 py-0.5 text-sm text-fg-strong"
                         value={draft} onChange={e => setDraft(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter') submitRename(g)
@@ -916,7 +945,7 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
                         title={t('goals.dropTitle')}>{t('goals.drop')}</button>
                     </div>
                   ) : (
-                    <button className="self-start text-[11px] text-fg-faint hover:text-fg-strong hover:underline" disabled={busy}
+                    <button className="self-start text-xs text-fg-faint hover:text-fg-strong hover:underline" disabled={busy}
                       onClick={() => onAct({ id: g.id, action: 'drop' })} title={t('goals.dropConfirmedTitle')}
                       data-goal-drop>
                       {t('goals.drop')}
@@ -937,8 +966,8 @@ function GoalsView({ goals, failure, busy, onAct, onOpen, locale }: {
               const about = titleOf(a.goalId)
               return (
                 <li key={a.id} className="flex flex-col gap-1 rounded-lg border border-surface-line bg-surface-raised/50 px-2.5 py-2" data-advice={a.id}>
-                  <p className="text-[14px] leading-snug text-fg-loud">
-                    <span className={'mr-1.5 rounded-full px-1.5 py-px align-[1px] text-[10px] font-semibold uppercase tracking-wide ' + (KIND[a.kind] ?? 'bg-surface-raised text-fg-muted')} data-kind>{KIND_LABEL.includes(a.kind) ? t(`kind.${a.kind}` as MsgKey) : a.kind}</span>
+                  <p className="text-sm leading-snug text-fg-loud">
+                    <span className={'mr-1.5 rounded-full px-1.5 py-px align-[1px] text-xs font-semibold uppercase tracking-wide ' + (KIND[a.kind] ?? 'bg-surface-raised text-fg-muted')} data-kind>{KIND_LABEL.includes(a.kind) ? t(`kind.${a.kind}` as MsgKey) : a.kind}</span>
                     {a.sentence}
                   </p>
                   <p className="text-xs leading-relaxed text-fg-muted">{about ? t('goals.about', { title: about }) : ''}{a.why}</p>

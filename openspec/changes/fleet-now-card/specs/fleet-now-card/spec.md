@@ -162,7 +162,18 @@ The card SHALL let the owner pick up to three focus projects for the day, and SH
 fourth. Items from other projects SHALL still be counted, but SHALL be shown only when no focus
 project has an item, or when the item's deadline falls within the configured window. A project
 removed from focus SHALL ask for a one-line resume note, which the card SHALL show when that project
-is next in focus.
+is next in focus. Any registered project SHALL be pickable, not only one that has an item right now:
+the picker SHALL offer the projects with items as chips and every other registered project by typing
+its name, ignoring case and separators. A saved focus SHALL be sent to the publisher (see
+`owner-queue-contract`), and the card SHALL show the publisher's answer, or say that it was not sent.
+
+*Amended 2026-10-30. The owner, in the picker: «nem látom, hogyan vehetek fel, vagy te hogyan veszel
+fel újat, pl. [egy projekt kártya nélkül]». The picker offered only projects that already had a card, so a project with
+nothing on the card — the one most likely to need starting — could not be picked at all.*
+
+#### Scenario: A project with no card
+- **WHEN** the owner types part of a registered project's name that has no item, and picks it
+- **THEN** it joins the day's focus, the focus is sent to the publisher, and the publisher's answer is shown
 
 #### Scenario: A fourth project
 - **WHEN** three focus projects are picked and the owner tries to add a fourth

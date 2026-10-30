@@ -114,3 +114,24 @@ outcome (including a refusal such as a daily limit) verbatim.
 #### Scenario: The exact time
 - **WHEN** an item carries `firstSeen` and the answer carries `rankedAt`
 - **THEN** the card shows both as clock times, not only as an age
+
+### Requirement: The day's focus reaches the publisher
+
+*Added 2026-10-30, with the focus picker amendment in `fleet-now-card`.*
+
+The action list of `owner-queue-act` SHALL include `focus`, sent as
+`{ id: "focus", action: "focus", projects: [...] }` with at most three project names, whenever the
+owner saves the day's focus (an empty list clears it). It is not bound to an item and SHALL NOT close
+one. The publisher SHOULD make sure every focus project has at least one item — the most important
+open step there, or an item asking the owner for the next step when nothing is open — and MAY rank
+again at once when a focus project has none, bounding the cost itself. The focus is saved on the
+card's side whether or not the publisher receives it; a focus that was not delivered SHALL be shown
+as not delivered, never as delivered.
+
+#### Scenario: Saving a focus
+- **WHEN** the owner saves a focus of two projects
+- **THEN** `{ id: "focus", action: "focus", projects: [the two] }` is sent and the publisher's outcome is shown
+
+#### Scenario: No publisher
+- **WHEN** no registered project accepts `owner-queue-act`
+- **THEN** the focus is saved and the card says the publisher did not get it

@@ -180,6 +180,11 @@ const en = {
   'focus.title': 'Today\'s focus — up to {max}',
   'focus.none': 'No project has an item right now.',
   'focus.notSaved': 'not saved',
+  'focus.searchPlaceholder': 'Another project — type its name…',
+  'focus.searchLabel': 'Find another project for today\'s focus',
+  'focus.noMatch': 'No registered project matches "{query}".',
+  'focus.saved': 'Focus saved.',
+  'focus.notSent': 'Focus saved here, but the publisher did not get it: {reason}',
 
   // ------------------------------------------------------------------ tag strip
   'tags.allOn': 'all on',

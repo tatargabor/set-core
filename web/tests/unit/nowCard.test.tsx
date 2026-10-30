@@ -6,7 +6,7 @@
  * wrong id is the defect class of reporting a 200 as an arrival.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 
 const voice = vi.hoisted(() => ({ available: { checked: true, hasKey: false, apiKey: null as string | null, micSupported: true } }))
 vi.mock('../../src/hooks/useSonioxAvailable', () => ({ useSonioxAvailable: () => voice.available }))
@@ -17,7 +17,7 @@ vi.mock('../../src/components/VoiceInput', () => ({
 }))
 
 import Now, { FEEDBACK_MS, POLL_MS } from '../../src/pages/Now'
-import { checkView, clockTime, emptyMessage, gapMarkers, hoursAgo, laterChoices, needsReasons, timeLine } from '../../src/lib/nowCard'
+import { checkView, clockTime, emptyMessage, gapMarkers, hoursAgo, laterChoices, matchProjects, needsReasons, timeLine } from '../../src/lib/nowCard'
 import type { NowItem, NowPayload } from '../../src/lib/nowCard'
 
 function item(extra: Partial<NowItem> = {}): NowItem {
@@ -50,6 +50,8 @@ interface Api {
   sent: Record<string, unknown>[]
   focus: Record<string, unknown>[]
   groups: Record<string, unknown>[]
+  /** What the server says about the publisher after a focus save; absent = an older server. */
+  focusPublisher?: Record<string, unknown>
 }
 
 let api: Api
@@ -76,7 +78,8 @@ function stubApi(first: NowPayload, ...rest: NowPayload[]) {
     if (url === '/api/fleet/now/focus') {
       const body = JSON.parse(String(init?.body))
       api.focus.push(body)
-      return json({ ok: true, swap: false, focus: body.projects, removed: [] })
+      return json({ ok: true, swap: false, focus: body.projects, removed: [],
+        ...(api.focusPublisher ? { publisher: api.focusPublisher } : {}) })
     }
     return json({}, 404)
   }))
@@ -442,6 +445,40 @@ describe('focus', () => {
     fireEvent.click(screen.getByText('Save focus'))
     await flush()
     expect(api.focus[0]).toEqual({ projects: ['a', 'd', 'c'], notes: { b: 'rerun the import' } })
+  })
+
+  it('matchProjects ignores separators and puts a prefix match first', () => {
+    const names = ['beta-shop', 'acme-web', 'alpha-acme']
+    expect(matchProjects('a-cme', names)).toEqual(['acme-web', 'alpha-acme'])
+    expect(matchProjects('ACME', names)[0]).toBe('acme-web')
+    expect(matchProjects('  ', names)).toEqual([])
+    expect(matchProjects('nope', names)).toEqual([])
+  })
+
+  it('a project with no card can be found by typing and put in focus; the publisher\'s answer is shown', async () => {
+    await mount(payload({ focusCandidates: ['alpha'], focusOthers: ['acme-web', 'zeta'] }))
+    api.focusPublisher = { delivered: true, outcome: 'Focus: acme-web. No card yet — ranking now.' }
+    fireEvent.click(screen.getByLabelText("Today's focus projects"))
+    expect(screen.queryByText('acme-web')).toBeNull()
+    fireEvent.change(screen.getByLabelText("Find another project for today's focus"), { target: { value: 'a-cme' } })
+    expect(screen.queryByText('+ zeta')).toBeNull()
+    fireEvent.click(screen.getByText('+ acme-web'))
+    // Picked: it is now a pressed chip, and the search is cleared.
+    expect(screen.getByText('acme-web').getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByText('Save focus'))
+    await flush()
+    expect(api.focus[0]).toEqual({ projects: ['acme-web'], notes: {} })
+    expect(document.querySelector('[data-feedback="ok"]')!.textContent).toContain('No card yet — ranking now.')
+  })
+
+  it('a focus the publisher did not get says so and stays on screen', async () => {
+    await mount(payload({ focusOthers: ['zeta'] }))
+    api.focusPublisher = { delivered: false, reason: 'no registered project declares owner-queue' }
+    fireEvent.click(screen.getByLabelText("Today's focus projects"))
+    fireEvent.click(within(document.querySelector('[data-focus-picker]') as HTMLElement).getByText('alpha'))
+    fireEvent.click(screen.getByText('Save focus'))
+    await flush()
+    expect(document.querySelector('[data-feedback="fail"]')!.textContent).toContain('the publisher did not get it: no registered project declares owner-queue')
   })
 
   it('AC-17: a resume note shows on the card', async () => {

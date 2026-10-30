@@ -158,6 +158,11 @@ export const hu: Record<MsgKey, Msg> = {
   'focus.title': 'Mai fókusz — legfeljebb {max}',
   'focus.none': 'Most egyik projektnek sincs kártyája.',
   'focus.notSaved': 'nincs mentve',
+  'focus.searchPlaceholder': 'Másik projekt — írd be a nevét…',
+  'focus.searchLabel': 'Másik projekt keresése a mai fókuszba',
+  'focus.noMatch': 'Nincs ilyen regisztrált projekt: „{query}”.',
+  'focus.saved': 'Fókusz mentve.',
+  'focus.notSent': 'A fókusz itt mentve, de a közzétevő nem kapta meg: {reason}',
 
   'tags.allOn': 'mind be',
   'tags.allOnTitle': 'Minden címke visszakapcsolása',

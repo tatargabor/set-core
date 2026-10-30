@@ -35,7 +35,10 @@ WRITE_COMMAND = "owner-queue-act"
 ACTIONS = ("answer", "done", "delegate", "park-idea", "resume-note", "wind-down-handoff",
            # The owner's "Still current?" tap: the publisher verifies ONE item in the
            # background. It never closes the item; the result comes back as `check`.
-           "recheck")
+           "recheck",
+           # The day's focus projects, as a list in `projects`. Not bound to an item: the
+           # publisher uses it to make sure every focus project has a card.
+           "focus")
 
 #: `check.state` values the card understands (spec owner-queue-contract).
 CHECK_STATES = ("running", "stands", "rewritten", "stale", "failed")
@@ -256,8 +259,9 @@ def parse_queue(result: StatusResult, now: float) -> QueueRead:
 
 def act_payload(item_id: str, action: str, *, option: Optional[str] = None,
                 text: Optional[str] = None, reasons: Optional[List[str]] = None,
-                until: Optional[str] = None) -> Dict[str, Any]:
-    """`{ id, action, option?, text?, reasons?, until? }` — absent keys are left out."""
+                until: Optional[str] = None,
+                projects: Optional[List[str]] = None) -> Dict[str, Any]:
+    """`{ id, action, option?, text?, reasons?, until?, projects? }` — absent keys are left out."""
     if action not in ACTIONS:
         raise ValueError(f"not an owner-queue action: {action!r}")
     payload: Dict[str, Any] = {"id": item_id, "action": action}
@@ -269,6 +273,8 @@ def act_payload(item_id: str, action: str, *, option: Optional[str] = None,
         payload["reasons"] = list(reasons)
     if until is not None:
         payload["until"] = until
+    if projects is not None:
+        payload["projects"] = list(projects)
     return payload
 
 

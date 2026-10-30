@@ -358,10 +358,35 @@ def test_a_resume_note_goes_to_the_publisher_when_one_is_declared(env):
     out = env.client.post("/api/fleet/now/focus",
                           json={"projects": [], "notes": {"p1": "note"}}).json()
     assert out["notes"]["p1"]["delivered"] is True
-    sent = json.loads(env.calls("owner-queue-act")[-1][2])
-    assert sent == {"id": "project:p1", "action": "resume-note", "text": "note"}
+    sent = [json.loads(c[2]) for c in env.calls("owner-queue-act")]
+    assert {"id": "project:p1", "action": "resume-note", "text": "note"} in sent
     state = json.loads((env.root / "now" / "state.json").read_text())
     assert "p1" not in state["resumeNotes"]
+
+
+def test_any_registered_project_is_offered_for_focus_not_only_one_with_a_card(env):
+    env.queue([item("a", project="p1")])
+    data = env.get()
+    assert data["focusCandidates"] == ["p1"]
+    # `pub` has no card, and is still pickable — the owner may want to start exactly that one.
+    assert data["focusOthers"] == ["pub"]
+
+
+def test_saving_the_focus_tells_the_publisher(env):
+    out = env.client.post("/api/fleet/now/focus", json={"projects": ["pub", "p1"]}).json()
+    assert out["ok"] is True
+    assert out["publisher"]["delivered"] is True
+    assert out["publisher"]["outcome"] == SECRET_OUTCOME
+    sent = json.loads(env.calls("owner-queue-act")[-1][2])
+    assert sent == {"id": "focus", "action": "focus", "projects": ["pub", "p1"]}
+
+
+def test_a_focus_without_a_publisher_is_saved_and_says_it_was_not_sent(env):
+    (env.publisher / ".set-endpoint.json").write_text(json.dumps({**env.manifest_, "commands": ["x"]}))
+    out = env.client.post("/api/fleet/now/focus", json={"projects": ["p1"]}).json()
+    assert out["ok"] is True and out["focus"] == ["p1"]
+    assert out["publisher"]["delivered"] is False and out["publisher"]["reason"]
+    assert env.get()["focus"] == ["p1"]
 
 
 # --------------------------------------------------------------------------- #

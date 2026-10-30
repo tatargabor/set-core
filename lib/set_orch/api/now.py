@@ -255,6 +255,9 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         p = i.get("project")
         if p and p not in focus_candidates:
             focus_candidates.append(p)
+    # Any registered project can be put in focus, not only one that has a card right now —
+    # a project with nothing on the card is exactly the one the owner may want to start.
+    focus_others = sorted(n for n in registered if n not in focus_candidates)
 
     return {
         "item": item,
@@ -284,6 +287,7 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         "focusMax": now_mod.FOCUS_MAX,
         "focusSetToday": state.get("focusDay") == state.get("day"),
         "focusCandidates": focus_candidates,
+        "focusOthers": focus_others,
         "groups": tag_groups,
         "mutedHidden": muted_hidden,
         # The card's own text language (`now.locale`); the publisher's text is untouched.
@@ -528,7 +532,27 @@ def post_focus(body: FocusBody) -> Dict[str, Any]:
                 delivered[project] = {"delivered": True, "keptLocally": True}
                 logger.info("now api: resume note for %s kept locally (no publisher)", project)
     outcome["notes"] = delivered
+    outcome["publisher"] = _send_focus(outcome["focus"], cfg)
     return outcome
+
+
+def _send_focus(projects: List[str], cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Tell the publisher the day's focus, so it can make sure each focus project has a card.
+
+    The focus is saved on the card's side either way; a publisher that is absent or refuses
+    only loses the nudge, and the answer says so rather than reading as delivered.
+    """
+    publisher = oq.find_publisher(_registered(), cfg["now.publisher"])
+    if publisher.state != "ok" or not publisher.accepts_actions:
+        logger.info("now api: focus %s not sent — publisher state %s", projects, publisher.state)
+        return {"delivered": False, "reason": publisher.reason or "no publisher accepts actions"}
+    try:
+        act = _send(publisher, oq.act_payload("focus", "focus", projects=projects))
+    except Exception as exc:
+        logger.warning("now api: focus %s not sent (%s)", projects, type(exc).__name__)
+        return {"delivered": False, "reason": f"the focus could not be sent ({type(exc).__name__})"}
+    logger.info("now api: focus %s sent; delivered=%s", projects, act.delivered)
+    return act.as_dict()
 
 
 # --------------------------------------------------------------------------- #
