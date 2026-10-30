@@ -21,7 +21,7 @@
  *   arrives, never translated. The window title is never translated: bin/set-now finds it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Flag, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X, Zap } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
@@ -71,7 +71,7 @@ const btnSmall = 'inline-flex items-center gap-1 rounded-md border border-surfac
 const btnSmallPrimary = 'inline-flex items-center gap-1 rounded-md bg-status-done px-2 py-0.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50'
 // A segmented control. Same padding, border and weight in both states: switching tabs must
 // not resize the strip; only colour and the raised background change.
-const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-sm font-semibold ' +
+const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-md px-2 py-0.5 sm:px-2.5 text-sm font-semibold ' +
   (active ? 'bg-surface-panel text-fg-loud shadow-sm' : 'text-fg-muted hover:text-fg-strong')
 /** The advice kinds the contract names; an unknown kind is shown as the publisher wrote it. */
 const KIND_LABEL: readonly string[] = ['add', 'drop', 'merge', 'reorder', 'neglected', 'other']
@@ -283,16 +283,17 @@ export default function Now() {
       {/* The Now | Goals tabs share this row with the counters: at the launcher's 440 px the
           row is full, so the controls on the right are icon-only below `sm` (measured: with
           text labels the help button was clipped off the right edge). */}
-      <header className="flex h-10 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap border-b border-surface-line px-3 text-sm text-fg-muted">
+      <header className="flex h-10 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap border-b border-surface-line px-2 sm:px-3 text-sm text-fg-muted">
         <div role="tablist" aria-label={t('header.view')} className="mr-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-raised p-0.5" data-tabs>
           <button role="tab" aria-selected={tab === 'now'} className={tabBtn(tab === 'now')} onClick={() => setTab('now')} data-tab="now"
-            title={nowFail ? t('tab.nowFailTitle') : t('tab.nowTitle')}>
-            {t('tab.now')}
+            title={nowFail ? t('tab.nowFailTitle') : t('tab.nowTitle')} aria-label={t('tab.now')}>
+            {/* Below sm the three tabs are icons, so the one-line header still fits 440 px. */}
+            <Zap size={14} className="sm:hidden" /><span className="hidden sm:inline">{t('tab.now')}</span>
             {nowFail && <span className="text-status-warn" data-now-fail aria-label={t('tab.nowFail')}><TriangleAlert size={12} /></span>}
           </button>
           <button role="tab" aria-selected={tab === 'goals'} className={tabBtn(tab === 'goals')} onClick={() => setTab('goals')} data-tab="goals"
-            title={goalsFail ?? (proposed > 0 ? t('tab.goalsProposedTitle', { n: proposed }) : t('tab.goalsTitle'))}>
-            {t('tab.goals')}
+            title={goalsFail ?? (proposed > 0 ? t('tab.goalsProposedTitle', { n: proposed }) : t('tab.goalsTitle'))} aria-label={t('tab.goals')}>
+            <Flag size={14} className="sm:hidden" /><span className="hidden sm:inline">{t('tab.goals')}</span>
             {proposed > 0 && (
               <span className="rounded-full bg-status-done px-1.5 text-xs font-semibold leading-4 text-white" data-goals-count>{proposed}</span>
             )}
@@ -300,8 +301,8 @@ export default function Now() {
           </button>
           <button role="tab" aria-selected={tab === 'calls'} className={tabBtn(tab === 'calls')} onClick={() => setTab('calls')} data-tab="calls"
             title={callsFail ?? (callN.overdue > 0 ? t('tab.callsOverdueTitle', { n: callN.open, overdue: callN.overdue })
-              : callN.open > 0 ? t('tab.callsCountTitle', { n: callN.open }) : t('tab.callsTitle'))}>
-            {t('tab.calls')}
+              : callN.open > 0 ? t('tab.callsCountTitle', { n: callN.open }) : t('tab.callsTitle'))} aria-label={t('tab.calls')}>
+            <Phone size={14} className="sm:hidden" /><span className="hidden sm:inline">{t('tab.calls')}</span>
             {callN.open > 0 && (
               <span className={'rounded-full px-1.5 text-xs font-semibold leading-4 text-white ' + (callN.overdue > 0 ? 'bg-status-fail' : 'bg-status-done')}
                 data-calls-count data-overdue={callN.overdue > 0 ? 'yes' : 'no'}>{callN.open}</span>
