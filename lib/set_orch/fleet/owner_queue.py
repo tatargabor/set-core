@@ -32,7 +32,13 @@ READ_COMMAND = "owner-queue"
 WRITE_COMMAND = "owner-queue-act"
 
 #: The actions `owner-queue-act` receives (spec owner-queue-contract).
-ACTIONS = ("answer", "done", "delegate", "park-idea", "resume-note", "wind-down-handoff")
+ACTIONS = ("answer", "done", "delegate", "park-idea", "resume-note", "wind-down-handoff",
+           # The owner's "Still current?" tap: the publisher verifies ONE item in the
+           # background. It never closes the item; the result comes back as `check`.
+           "recheck")
+
+#: `check.state` values the card understands (spec owner-queue-contract).
+CHECK_STATES = ("running", "stands", "rewritten", "stale", "failed")
 
 REQUIRED_FIELDS = ("id", "project", "sentence", "why")
 OPTIONAL_FIELDS = ("estimateMinutes", "deadline", "unblocks", "options", "acceptsText",
@@ -184,6 +190,12 @@ def parse_item(raw: Any) -> Optional[Dict[str, Any]]:
             item[key] = raw[key]
     if isinstance(raw.get("resumeNote"), str) and raw["resumeNote"].strip():
         item["resumeNote"] = raw["resumeNote"]
+    if isinstance(raw.get("firstSeen"), str) and to_epoch(raw["firstSeen"]) is not None:
+        item["firstSeen"] = raw["firstSeen"]
+    check = raw.get("check")
+    if isinstance(check, dict) and check.get("state") in CHECK_STATES:
+        item["check"] = {k: str(check[k]) for k in ("state", "startedAt", "at", "evidence")
+                         if isinstance(check.get(k), str) and check[k].strip()}
     refs = raw.get("references")
     if isinstance(refs, list):
         item["references"] = [{"source": r.get("source"), "id": str(r["id"])}

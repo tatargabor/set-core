@@ -18,11 +18,11 @@
  *   label, so a hidden view can never look calm.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Moon, Plus, Send, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Lightbulb, Loader2, Moon, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
-  emptyMessage, evidenceTarget, feedbackText, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
+  checkView, clockTime, emptyMessage, evidenceTarget, feedbackText, timeLine, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
   laterChoices, needsReasons, postAct, postFocus, postGoalAct, postGroups, progressPercent,
 } from '../lib/nowCard'
 import type { ActBody, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
@@ -55,16 +55,24 @@ function openHref(href: string) {
   }
 }
 
-const btn = 'inline-flex items-center gap-1.5 rounded-md border border-surface-strong bg-surface-panel px-3 py-1.5 text-base text-fg-strong hover:bg-surface-raised disabled:opacity-50'
-const btnPrimary = 'inline-flex items-center gap-1.5 rounded-md bg-status-done px-3 py-1.5 text-base font-medium text-white hover:opacity-90 disabled:opacity-50'
-const chip = 'inline-flex items-center gap-1 rounded px-1.5 py-0.5'
+const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-surface-strong bg-surface-panel px-3 py-1.5 text-[15px] text-fg-strong shadow-sm hover:bg-surface-raised disabled:opacity-50'
+const btnPrimary = 'inline-flex items-center gap-1.5 rounded-lg bg-status-done px-3.5 py-1.5 text-[15px] font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50'
+/** Secondary actions: quiet until hovered, so the answer buttons carry the weight. */
+const btnGhost = 'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-fg-normal hover:bg-surface-raised hover:text-fg-strong disabled:opacity-50'
+const chip = 'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5'
 /** Header chips: tighter, because the header row also carries the Now | Goals tabs. */
-const hchip = 'inline-flex items-center gap-1 rounded px-1 py-0.5'
-const btnSmall = 'inline-flex items-center gap-1 rounded border border-surface-strong bg-surface-panel px-2 py-0.5 text-sm text-fg-strong hover:bg-surface-raised disabled:opacity-50'
-const btnSmallPrimary = 'inline-flex items-center gap-1 rounded bg-status-done px-2 py-0.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50'
-// Same padding, border width and weight in both states: switching tabs must not resize the strip.
-const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-t border-b-2 px-1 py-0.5 ' +
-  (active ? 'border-status-done bg-surface-raised text-fg-loud' : 'border-transparent text-fg-muted hover:text-fg-strong')
+const hchip = 'inline-flex items-center gap-1 rounded-md px-1 py-0.5'
+const btnSmall = 'inline-flex items-center gap-1 rounded-md border border-surface-strong bg-surface-panel px-2 py-0.5 text-[13px] text-fg-strong hover:bg-surface-raised disabled:opacity-50'
+const btnSmallPrimary = 'inline-flex items-center gap-1 rounded-md bg-status-done px-2 py-0.5 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50'
+// A segmented control. Same padding, border and weight in both states: switching tabs must
+// not resize the strip; only colour and the raised background change.
+const tabBtn = (active: boolean) => 'inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[13px] font-semibold ' +
+  (active ? 'bg-surface-panel text-fg-loud shadow-sm' : 'text-fg-muted hover:text-fg-strong')
+const TONE: Record<'ok' | 'info' | 'warn', string> = {
+  ok: 'text-status-active',
+  info: 'text-fg-muted',
+  warn: 'text-status-warn',
+}
 
 export default function Now() {
   const [data, setData] = useState<NowPayload | null>(null)
@@ -232,8 +240,8 @@ export default function Now() {
       {/* The Now | Goals tabs share this row with the counters: at the launcher's 440 px the
           row is full, so the controls on the right are icon-only below `sm` (measured: with
           text labels the help button was clipped off the right edge). */}
-      <header className="flex h-8 shrink-0 flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap px-3 pt-2 text-sm text-fg-muted">
-        <div role="tablist" aria-label="View" className="flex shrink-0 items-center gap-0.5" data-tabs>
+      <header className="flex h-10 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap border-b border-surface-line px-3 text-[13px] text-fg-muted">
+        <div role="tablist" aria-label="View" className="mr-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-raised p-0.5" data-tabs>
           <button role="tab" aria-selected={tab === 'now'} className={tabBtn(tab === 'now')} onClick={() => setTab('now')} data-tab="now"
             title={nowFail ? 'The next card — something on it could not be read' : 'The next card: one thing to do now'}>
             Now
@@ -242,7 +250,9 @@ export default function Now() {
           <button role="tab" aria-selected={tab === 'goals'} className={tabBtn(tab === 'goals')} onClick={() => setTab('goals')} data-tab="goals"
             title={goalsFail ?? (proposed > 0 ? `${proposed} proposed goal${proposed > 1 ? 's' : ''} await your verdict` : 'The goals the work serves')}>
             Goals
-            {proposed > 0 && <span data-goals-count>· {proposed}</span>}
+            {proposed > 0 && (
+              <span className="rounded-full bg-status-done px-1.5 text-[11px] font-semibold leading-4 text-white" data-goals-count>{proposed}</span>
+            )}
             {goalsFail && <span className="text-status-fail" data-goals-fail aria-label="The goals could not be read"><TriangleAlert size={12} /></span>}
           </button>
         </div>
@@ -268,7 +278,7 @@ export default function Now() {
       </header>
 
       {tab === 'now' && (markers.length > 0 || loadError) && (
-        <div className="flex flex-wrap gap-1.5 px-3 pt-1.5 text-sm" data-markers>
+        <div className="flex flex-wrap gap-1.5 px-3 pt-2 text-xs" data-markers>
           {loadError && <span className={chip + ' bg-status-fail/15 text-status-fail'}>Card could not load: {loadError}</span>}
           {markers.map(m => (
             <span key={m.text} className={chip + (m.tone === 'warn' ? ' bg-status-warn/15 text-status-warn' : ' bg-surface-raised text-fg-muted')}
@@ -327,10 +337,17 @@ export default function Now() {
             )}
             {item ? (
               <article className="flex flex-col gap-2" data-now-item={item.id}>
-                {item.project && <p className="text-sm uppercase tracking-wide text-fg-muted">{item.project}</p>}
-                <h1 className="text-xl font-semibold leading-snug text-fg-loud">{item.sentence}</h1>
-                {item.why && <p className="line-clamp-3 text-base text-fg-normal" title={item.why}>{item.why}</p>}
+                {item.project && (
+                  <p className="self-start rounded-md bg-status-done/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-status-done">
+                    {item.project}
+                  </p>
+                )}
+                <h1 className="text-[1.3rem] font-semibold leading-snug tracking-tight text-fg-loud">{item.sentence}</h1>
+                {item.why && <p className="line-clamp-3 text-[15px] leading-relaxed text-fg-normal" title={item.why}>{item.why}</p>}
                 <ItemMeta item={item} />
+                <ItemTimes item={item} rankedAt={data.rankedAt} busy={busy}
+                  onRecheck={has('recheck') ? () => void send({ action: 'recheck' }) : undefined}
+                  onClose={has('done') ? (why: string) => void send({ action: 'done', text: `Not needed: ${why}` }) : undefined} />
                 {item.resumeNote && (
                   <p className="border-l-2 border-status-done pl-2 text-sm text-fg-normal" data-resume-note>
                     Resume: {item.resumeNote}
@@ -373,30 +390,30 @@ export default function Now() {
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-2" data-actions>
-                  {has('goThere') && item.goThere && (
-                    <button className={btn} onClick={() => void goThere(item.goThere!)} title="Open where this came from — the agent, the project or the message">
-                      <ArrowUpRight size={16} /> Go there
-                    </button>
-                  )}
+                <div className="flex flex-wrap items-center gap-1" data-actions>
                   {has('done') && (
                     <button className={btn} disabled={busy} onClick={() => keep({ action: 'done' })} title="It is done — close the card; it will not come back">
                       <Check size={16} /> Done
                     </button>
                   )}
+                  {has('goThere') && item.goThere && (
+                    <button className={btnGhost} onClick={() => void goThere(item.goThere!)} title="Open where this came from — the agent, the project or the message">
+                      <ArrowUpRight size={16} /> Go there
+                    </button>
+                  )}
                   {has('done') && (
-                    <button className={btn} disabled={busy} onClick={() => setOverlay('notneeded')}
+                    <button className={btnGhost} disabled={busy} onClick={() => setOverlay('notneeded')}
                       title="Not needed (any more) — say why in one line; the card closes and the ranker learns from the reason" data-not-needed>
                       <X size={16} /> Not needed…
                     </button>
                   )}
                   {has('later') && (
-                    <button className={btn} disabled={busy} onClick={() => setOverlay('later')} title="Not now — bring it back later; nothing is sent">
+                    <button className={btnGhost} disabled={busy} onClick={() => setOverlay('later')} title="Not now — bring it back later; nothing is sent">
                       <Clock size={16} /> Later
                     </button>
                   )}
                   {has('delegate') && (
-                    <button className={btn} disabled={busy} onClick={() => void send({ action: 'delegate' })} title="Hand it to a colleague">
+                    <button className={btnGhost} disabled={busy} onClick={() => void send({ action: 'delegate' })} title="Hand it to a colleague">
                       <UserPlus size={16} /> Delegate
                     </button>
                   )}
@@ -404,7 +421,7 @@ export default function Now() {
 
                 </div>
 
-                <p className="text-sm text-fg-muted" data-following>
+                <p className="text-xs text-fg-muted" data-following>
                   {data.following > 0 ? `${data.following} more` : 'Nothing else after this'}
                   {data.heldBack > 0 && ` · ${data.heldBack} held back outside today's focus`}
                   {(data.mutedHidden ?? 0) > 0 && ` · ${data.mutedHidden} hidden by switched-off tags`}
@@ -536,7 +553,55 @@ function ItemMeta({ item }: { item: NowItem }) {
   const waited = sinceSeconds(item.since)
   if (waited != null) parts.push(`waiting ${age(waited)}`)
   if (!parts.length) return null
-  return <p className="truncate text-sm text-fg-muted" data-meta title={parts.join(' · ')}>{parts.join(' · ')}</p>
+  return <p className="truncate text-[13px] text-fg-muted" data-meta title={parts.join(' · ')}>{parts.join(' · ')}</p>
+}
+
+/**
+ * When the card was recommended and ranked — exact clock times, the owner's "pontos idő" —
+ * and the "Still current?" check: a tap asks the publisher to verify this one item in the
+ * background; the publisher bounds the cost and may refuse. A check that finds the premise
+ * gone does not close the card: it says why and offers a one-tap close.
+ */
+function ItemTimes({ item, rankedAt, busy, onRecheck, onClose }: {
+  item: NowItem
+  rankedAt: string | null
+  busy: boolean
+  onRecheck?: () => void
+  onClose?: (why: string) => void
+}) {
+  const times = timeLine(item, rankedAt)
+  const view = checkView(item.check)
+  const running = item.check?.state === 'running'
+  if (!times && !view && !onRecheck) return null
+  return (
+    <div className="flex flex-col gap-1" data-times>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-fg-muted">
+        {times && <span title="When this was first recommended, and when the list was last ranked (and every item re-checked)" data-time-line>{times}</span>}
+        {onRecheck && !running && (
+          <button className="inline-flex items-center gap-1 rounded-md px-1 text-status-done hover:bg-surface-raised disabled:opacity-50"
+            disabled={busy} onClick={onRecheck} data-recheck
+            title="Check in the background whether this is still current — sent mail, inbox, commits, the project's notes. Reused for 2 hours; a daily limit applies.">
+            <RefreshCw size={13} /> Still current?
+          </button>
+        )}
+      </div>
+      {view && (
+        <div className={'flex flex-col gap-1 rounded-md text-[13px] ' + (view.tone === 'warn' ? 'bg-status-warn/10 px-2 py-1.5' : '')} data-check={item.check?.state}>
+          <p className={'inline-flex items-center gap-1 font-medium ' + TONE[view.tone]}>
+            {running ? <Loader2 size={13} className="now-spin" /> : view.tone === 'ok' ? <ShieldCheck size={13} /> : view.tone === 'warn' ? <TriangleAlert size={13} /> : <RefreshCw size={13} />}
+            {view.label}
+          </p>
+          {view.evidence && <p className="line-clamp-3 text-fg-normal" title={view.evidence} data-check-evidence>{view.evidence}</p>}
+          {item.check?.state === 'stale' && onClose && (
+            <button className={btnSmall + ' self-start'} disabled={busy} data-check-close
+              onClick={() => onClose(`no longer current (checked ${clockTime(item.check?.at) ?? 'just now'})`)}>
+              <X size={13} /> Close it — not needed
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -639,6 +704,8 @@ function HelpLegend() {
         {row('Not needed…', 'it is moot (e.g. already handled, cancelled, moved) — write why in one line; it closes and the ranker learns from it.')}
         {row('Later', 'not now; pick when it should return. Nothing is sent anywhere.')}
         {row('Delegate', 'hand it to a colleague (shown only when someone else could do it).')}
+        {row('recommended · ranked', 'exact times: when this card was first recommended, and when the list was last ranked (every ranking also re-checks each card).')}
+        {row('Still current?', 'checks this one card in the background — sent mail, inbox, commits, the project\'s notes — and rewords it or says it is no longer current. A result is reused for 2 hours; a daily limit applies.')}
         {row('N more', 'how many cards follow; you only ever see one.')}
         {row('✓ closed', 'cards you closed today.')}
         {row('💡 parked / +💡 Park', 'write down a new idea so it waits instead of starting work now.')}
@@ -666,22 +733,25 @@ function TagStrip({ groups, onChange }: {
   const toggle = (name: string) =>
     onChange(muted.includes(name) ? muted.filter(m => m !== name) : [...muted, name])
   return (
-    <div className="flex max-h-[3.6rem] flex-wrap gap-1 overflow-y-auto px-3 pt-1.5 text-xs" data-tags>
+    // One row that scrolls sideways: two wrapped rows of tags took a third of the window's height.
+    // The count of cards hidden by switched-off tags is stated under the card, so a tag
+    // scrolled out of view never hides how much is there.
+    <div className="now-tags flex shrink-0 flex-nowrap gap-1 overflow-x-auto whitespace-nowrap px-3 pb-0.5 pt-2 text-[11px]" data-tags>
+      {muted.length > 0 && (
+        <button onClick={() => onChange([])} className="shrink-0 rounded-full px-1.5 text-status-done hover:underline" title="Switch every tag back on" data-tags-all>
+          all on
+        </button>
+      )}
       {groups.map(g => (
         <button key={g.name} onClick={() => toggle(g.name)} aria-pressed={!g.muted} data-tag={g.name}
           title={g.muted ? `${g.name}: switched off — its cards do not come up. Click to switch on.`
                          : `${g.name}: ${g.count} card(s). Click to switch off.`}
-          className={'rounded-full border px-2 py-0.5 ' + (g.muted
-            ? 'border-surface-strong text-fg-muted line-through opacity-60'
-            : 'border-status-active/40 bg-status-active/10 text-fg-strong')}>
-          {g.name} <span className="text-fg-muted">{g.count}</span>
+          className={'shrink-0 rounded-full border px-2 py-px ' + (g.muted
+            ? 'border-surface-line text-fg-faint line-through'
+            : 'border-surface-strong bg-surface-panel text-fg-strong hover:border-status-done/60')}>
+          {g.name} <span className="font-semibold text-fg-muted">{g.count}</span>
         </button>
       ))}
-      {muted.length > 0 && (
-        <button onClick={() => onChange([])} className="px-1 text-fg-muted underline" title="Switch every tag back on" data-tags-all>
-          all on
-        </button>
-      )}
     </div>
   )
 }
@@ -702,17 +772,27 @@ function GoalsView({ goals, failure, busy, onAct, onOpen }: {
   const [draft, setDraft] = useState('')
 
   const failLine = failure && (
-    <p className={chip + ' self-start bg-status-fail/15 text-sm text-status-fail'} data-goals-error>{failure}</p>
+    <p className="flex items-start gap-1.5 rounded-lg bg-status-fail/10 px-2.5 py-1.5 text-[13px] text-status-fail" data-goals-error>
+      <TriangleAlert size={14} className="mt-0.5 shrink-0" /> <span>{failure}</span>
+    </p>
   )
   if (!goals) {
-    return failLine || <p className="text-base text-fg-muted">Loading…</p>
+    // A failure with nothing to show yet fills the view, explained — not a red strip over white.
+    return failLine
+      ? <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center" data-goals-empty>
+          <TriangleAlert size={22} className="text-status-fail" />
+          <p className="text-base font-semibold text-fg-loud">The goals could not be loaded</p>
+          <p className="max-w-sm text-[13px] text-fg-muted" data-goals-error>{failure}</p>
+        </div>
+      : <p className="text-base text-fg-muted">Loading…</p>
   }
   if (goals.publisher.state === 'none') {
     return (
-      <div className="flex flex-col gap-1" data-goals-none>
+      <div className="flex h-full flex-col items-center justify-center gap-1.5 px-4 text-center" data-goals-none>
         {failLine}
-        <p className="text-lg font-semibold text-fg-loud">No goals are published</p>
-        {goals.reason && <p className="text-sm text-fg-muted">{goals.reason}</p>}
+        <Target size={22} className="text-fg-faint" />
+        <p className="text-base font-semibold text-fg-loud">No goals are published</p>
+        {goals.reason && <p className="max-w-sm text-[13px] text-fg-muted">{goals.reason}</p>}
       </div>
     )
   }
@@ -728,10 +808,25 @@ function GoalsView({ goals, failure, busy, onAct, onOpen }: {
   }
   const titleOf = (id?: string) => (id ? goals.goals.find(g => g.id === id)?.title : undefined)
 
+  const synth = clockTime(goals.synthesizedAt)
+  const confirmed = goals.goals.length - goals.proposedCount
+  const KIND: Record<string, string> = {
+    neglected: 'bg-status-warn/15 text-status-warn',
+    reorder: 'bg-status-done/15 text-status-done',
+    add: 'bg-status-active/15 text-status-active',
+    drop: 'bg-status-fail/10 text-status-fail',
+  }
+
   return (
-    <section className="flex flex-col gap-2" data-goals-view>
+    <section className="flex flex-col gap-2.5" data-goals-view>
       {failLine}
-      {notes.length > 0 && <p className="text-xs text-fg-muted" data-goals-notes>{notes.join(' · ')}</p>}
+      <p className="text-xs text-fg-muted" data-goals-summary>
+        {synth && <span title="When the publisher last synthesised the goals">synthesised {synth} · </span>}
+        {goals.goals.length} goal{goals.goals.length === 1 ? '' : 's'}
+        {goals.proposedCount > 0 ? ` · ${goals.proposedCount} to confirm` : ''}
+        {confirmed > 0 && goals.proposedCount > 0 ? ` · ${confirmed} confirmed` : ''}
+      </p>
+      {notes.length > 0 && <p className="text-xs text-status-warn" data-goals-notes>{notes.join(' · ')}</p>}
       {readOnly && (
         <p className="text-xs text-fg-muted" data-goals-readonly>
           Read-only — the publisher declares no owner-goals-act command, so it accepts no verdicts.
@@ -739,96 +834,105 @@ function GoalsView({ goals, failure, busy, onAct, onOpen }: {
       )}
       {goals.measured && goals.goals.length === 0 && <p className="text-base text-fg-muted">The answer lists no goals.</p>}
 
-      <ol className="flex flex-col gap-2.5">
-        {goals.goals.map(g => {
+      <ol className="flex flex-col gap-2">
+        {goals.goals.map((g, i) => {
           const isProposed = g.status === 'proposed'
-          const meta = [g.serves && `serves ${g.serves}`, g.deadline && `due ${g.deadline}`, g.projects.length ? g.projects.join(', ') : null]
+          const meta = [g.serves && `serves: ${g.serves}`, g.projects.length ? g.projects.join(', ') : null]
             .filter(Boolean).join(' · ')
           const pct = progressPercent(g.progress)
           return (
             <li key={g.id} data-goal={g.id} data-status={g.status}
-              className={'flex flex-col gap-0.5 border-l-2 pl-2 ' + (isProposed ? 'border-dashed border-status-done/60' : 'border-status-active/60')}>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-base font-semibold leading-snug text-fg-loud">{g.title}</span>
-                {isProposed && (
-                  <span className="shrink-0 rounded border border-status-done/50 px-1 text-[11px] text-status-done" data-unconfirmed
-                    title="Proposed by the publisher — not confirmed by you yet">unconfirmed</span>
-                )}
-              </div>
-              {meta && <p className="truncate text-xs text-fg-muted" title={meta} data-goal-meta>{meta}</p>}
-              {g.why && <p className="line-clamp-2 text-sm text-fg-normal" title={g.why}>{g.why}</p>}
-              {g.progress && (
-                <div className="flex flex-col gap-0.5" data-progress>
-                  <p className="text-sm text-fg-normal">{g.progress.text}</p>
-                  {pct != null && (
-                    <div className="h-1 w-full rounded bg-surface-raised" aria-hidden>
-                      <div className="h-1 rounded bg-status-active" style={{ width: `${pct}%` }} />
+              className={'flex flex-col gap-1 rounded-lg border bg-surface-panel px-2.5 py-2 ' +
+                (isProposed ? 'border-dashed border-surface-strong' : 'border-surface-line')}>
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 w-4 shrink-0 text-right text-xs font-semibold text-fg-faint">{i + 1}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                    <span className="text-[15px] font-semibold leading-snug text-fg-loud">{g.title}</span>
+                    {isProposed && (
+                      <span className="shrink-0 rounded-full border border-status-done/50 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-status-done" data-unconfirmed
+                        title="Proposed by the publisher — not confirmed by you yet">unconfirmed</span>
+                    )}
+                    {g.deadline && (
+                      <span className="shrink-0 rounded-full bg-surface-raised px-1.5 text-[11px] text-fg-normal" title="Deadline">due {g.deadline}</span>
+                    )}
+                  </div>
+                  {meta && <p className="truncate text-xs text-fg-muted" title={meta} data-goal-meta>{meta}</p>}
+                  {g.why && <p className="line-clamp-2 text-[13px] leading-relaxed text-fg-normal" title={g.why}>{g.why}</p>}
+                  {g.progress && (
+                    <div className="flex flex-col gap-1" data-progress>
+                      {pct != null && (
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised" aria-hidden>
+                          <div className="h-1.5 rounded-full bg-status-active" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                      <p className="text-xs text-fg-normal">{g.progress.text}</p>
                     </div>
                   )}
-                </div>
-              )}
-              {(g.evidence.length > 0 || g.openItems != null) && (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-evidence>
-                  {g.openItems != null && (
-                    <span className="text-fg-muted" title="Open items in the queue that serve this goal" data-open-items>
-                      {g.openItems} open
-                    </span>
+                  {(g.evidence.length > 0 || g.openItems != null) && (
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs" data-evidence>
+                      {g.openItems != null && g.openItems > 0 && (
+                        <span className="rounded-full bg-surface-raised px-1.5 text-fg-normal" title="Open cards on the Now tab that serve this goal" data-open-items>
+                          {g.openItems} open card{g.openItems === 1 ? '' : 's'}
+                        </span>
+                      )}
+                      {g.evidence.map((ev, k) => ev.link ? (
+                        <button key={k} className="inline-flex items-center gap-0.5 text-status-done hover:underline" title={ev.link}
+                          onClick={() => onOpen(ev.link!)}><ArrowUpRight size={11} />{ev.label}</button>
+                      ) : (
+                        <span key={k} className="text-fg-muted">{ev.label}</span>
+                      ))}
+                    </div>
                   )}
-                  {g.evidence.map((ev, i) => ev.link ? (
-                    <button key={i} className="text-status-done underline hover:opacity-80" title={ev.link}
-                      onClick={() => onOpen(ev.link!)}>{ev.label}</button>
+                  {goals.acceptsVerdicts && (renaming === g.id ? (
+                    <div className="mt-0.5 flex items-center gap-1.5" data-rename>
+                      <input autoFocus aria-label="New goal title"
+                        className="min-w-0 flex-1 rounded-md border border-surface-strong bg-surface-page px-2 py-0.5 text-[13px] text-fg-strong"
+                        value={draft} onChange={e => setDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') submitRename(g)
+                          if (e.key === 'Escape') setRenaming(null)
+                        }} />
+                      <button className={btnSmallPrimary} disabled={busy || !draft.trim() || draft.trim() === g.title}
+                        onClick={() => submitRename(g)} title="Send the new title (Enter)">Save</button>
+                      <button className="text-fg-muted" aria-label="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
+                    </div>
+                  ) : isProposed ? (
+                    <div className="mt-0.5 flex flex-wrap gap-1.5" data-goal-actions>
+                      <button className={btnSmallPrimary} disabled={busy} onClick={() => onAct({ id: g.id, action: 'keep' })}
+                        title="Yes, this is a goal — confirm it">Keep</button>
+                      <button className={btnSmall} disabled={busy} onClick={() => startRename(g)}
+                        title="Keep it under a better title (Enter sends)">Rename</button>
+                      <button className={btnSmall} disabled={busy} onClick={() => onAct({ id: g.id, action: 'drop' })}
+                        title="This is not a goal — the publisher drops it">Not a goal</button>
+                    </div>
                   ) : (
-                    <span key={i} className="text-fg-muted">{ev.label}</span>
+                    <button className="self-start text-[11px] text-fg-faint hover:text-fg-strong hover:underline" disabled={busy}
+                      onClick={() => onAct({ id: g.id, action: 'drop' })} title="This is no longer a goal — the publisher drops it"
+                      data-goal-drop>
+                      Not a goal
+                    </button>
                   ))}
                 </div>
-              )}
-              {goals.acceptsVerdicts && (renaming === g.id ? (
-                <div className="mt-0.5 flex items-center gap-1.5" data-rename>
-                  <input autoFocus aria-label="New goal title"
-                    className="min-w-0 flex-1 rounded border border-surface-strong bg-surface-panel px-2 py-0.5 text-sm text-fg-strong"
-                    value={draft} onChange={e => setDraft(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') submitRename(g)
-                      if (e.key === 'Escape') setRenaming(null)
-                    }} />
-                  <button className={btnSmallPrimary} disabled={busy || !draft.trim() || draft.trim() === g.title}
-                    onClick={() => submitRename(g)} title="Send the new title (Enter)">Save</button>
-                  <button className="text-fg-muted" aria-label="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
-                </div>
-              ) : isProposed ? (
-                <div className="mt-0.5 flex flex-wrap gap-1.5" data-goal-actions>
-                  <button className={btnSmallPrimary} disabled={busy} onClick={() => onAct({ id: g.id, action: 'keep' })}
-                    title="Yes, this is a goal — confirm it">Keep</button>
-                  <button className={btnSmall} disabled={busy} onClick={() => onAct({ id: g.id, action: 'drop' })}
-                    title="This is not a goal — the publisher drops it">Not a goal</button>
-                  <button className={btnSmall} disabled={busy} onClick={() => startRename(g)}
-                    title="Keep it under a better title (Enter sends)">Rename</button>
-                </div>
-              ) : (
-                <button className="self-start text-xs text-fg-muted underline hover:text-fg-strong" disabled={busy}
-                  onClick={() => onAct({ id: g.id, action: 'drop' })} title="This is no longer a goal — the publisher drops it"
-                  data-goal-drop>
-                  Not a goal
-                </button>
-              ))}
+              </div>
             </li>
           )
         })}
       </ol>
 
       {goals.advice.length > 0 && (
-        <section className="mt-1 flex flex-col gap-1.5 border-t border-surface-strong pt-2" data-suggestions>
-          <h2 className="text-xs uppercase tracking-wide text-fg-muted">Suggestions</h2>
+        <section className="mt-1 flex flex-col gap-2" data-suggestions>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Suggestions — what the goals should be</h2>
           <ul className="flex flex-col gap-2">
             {goals.advice.map((a: GoalAdvice) => {
               const about = titleOf(a.goalId)
               return (
-                <li key={a.id} className="flex flex-col gap-0.5" data-advice={a.id}>
-                  <p className="text-sm text-fg-strong">
-                    <span className="mr-1.5 rounded bg-surface-raised px-1 text-[11px] uppercase text-fg-muted" data-kind>{a.kind}</span>
+                <li key={a.id} className="flex flex-col gap-1 rounded-lg border border-surface-line bg-surface-raised/50 px-2.5 py-2" data-advice={a.id}>
+                  <p className="text-[14px] leading-snug text-fg-loud">
+                    <span className={'mr-1.5 rounded-full px-1.5 py-px align-[1px] text-[10px] font-semibold uppercase tracking-wide ' + (KIND[a.kind] ?? 'bg-surface-raised text-fg-muted')} data-kind>{a.kind}</span>
                     {a.sentence}
                   </p>
-                  <p className="text-xs text-fg-muted">{about ? `on "${about}" — ` : ''}{a.why}</p>
+                  <p className="text-xs leading-relaxed text-fg-muted">{about ? `on "${about}" — ` : ''}{a.why}</p>
                   {goals.acceptsVerdicts && (
                     <div className="mt-0.5 flex gap-1.5">
                       <button className={btnSmallPrimary} disabled={busy} onClick={() => onAct({ id: a.id, action: 'accept' })}

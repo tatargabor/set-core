@@ -60,7 +60,9 @@ CONFIG_DEFAULTS: Dict[str, Any] = {
     "now.cue_min_interval_minutes": 10,
     "now.cue_backoff_after": 3,
     "now.deadline_window_hours": 24,
-    "now.stale_ranking_hours": 2,
+    # The publisher ranks every 3 hours (2026-10-30); with 2 h here every cycle showed an hour
+    # of false "stale" warnings. Stale now means a ranking was MISSED, not merely due.
+    "now.stale_ranking_hours": 4,
     # Goals are synthesised about daily, so "stale" is a missed day and a half, not hours.
     "now.stale_goals_hours": 36,
     "now.wind_down_hour": 23,

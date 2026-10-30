@@ -88,3 +88,29 @@ its field names SHALL be adopted and this capability amended to them.
 #### Scenario: The publisher proposes different names
 - **WHEN** the publisher answers that its list already uses `title` instead of `sentence`
 - **THEN** the capability is amended to `title` before the adapter is written
+
+### Requirement: An item can be re-checked on demand, and says when it was recommended
+
+*Added 2026-10-30. The owner, looking at a card: «kellene egy pontos idő is, mikori az ajánlás, és
+egy gomb, hogy ellenőrizze a háttérben, tényleg aktuális-e … de találjuk ki, hogyan nem lesz
+tokenkazán».*
+
+An item MAY carry `firstSeen` (when the publisher first recommended it) and `check`
+(`{ state, startedAt, at?, evidence? }`, `state` one of `running`, `stands`, `rewritten`, `stale`,
+`failed`). The card SHALL show the exact clock time of `firstSeen` and of the ranking. The action
+list of `owner-queue-act` SHALL include `recheck`, which asks the publisher to verify ONE item in the
+background; it SHALL NOT close the item. The cost of a check is the publisher's to bound; the card
+SHALL send a recheck only on the owner's tap, never on its own, and SHALL show the publisher's
+outcome (including a refusal such as a daily limit) verbatim.
+
+#### Scenario: Asking whether an item is still current
+- **WHEN** the owner taps "Still current?" on an item
+- **THEN** `{ id, action: "recheck" }` is sent, the outcome is shown, and the item stays
+
+#### Scenario: A check reports the premise is gone
+- **WHEN** an item carries `check.state: "stale"` with evidence
+- **THEN** the card shows that it is no longer current with the evidence and the time of the check, and leaves closing it to the owner
+
+#### Scenario: The exact time
+- **WHEN** an item carries `firstSeen` and the answer carries `rankedAt`
+- **THEN** the card shows both as clock times, not only as an age

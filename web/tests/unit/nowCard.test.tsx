@@ -17,7 +17,7 @@ vi.mock('../../src/components/VoiceInput', () => ({
 }))
 
 import Now, { FEEDBACK_MS, POLL_MS } from '../../src/pages/Now'
-import { emptyMessage, gapMarkers, hoursAgo, laterChoices, needsReasons } from '../../src/lib/nowCard'
+import { checkView, clockTime, emptyMessage, gapMarkers, hoursAgo, laterChoices, needsReasons, timeLine } from '../../src/lib/nowCard'
 import type { NowItem, NowPayload } from '../../src/lib/nowCard'
 
 function item(extra: Partial<NowItem> = {}): NowItem {
@@ -340,7 +340,7 @@ describe('done, later, delegate', () => {
   it('AC-23: a minimal item offers Go there, Done, Not needed and Later, nothing else', async () => {
     await mount(payload())
     const labels = Array.from(document.querySelectorAll('[data-actions] button')).map(b => b.textContent!.trim())
-    expect(labels).toEqual(['Go there', 'Done', 'Not needed…', 'Later'])
+    expect(labels).toEqual(['Done', 'Go there', 'Not needed…', 'Later'])
   })
 
   it('AC-27: without a write command only Go there and Later', async () => {
@@ -476,5 +476,85 @@ describe('wind-down and ideas', () => {
     expect(api.sent[0]).toMatchObject({ action: 'park-idea', text: 'a voice-only mode', source: 'owner-queue' })
     expect(document.querySelector('[data-parked]')!.textContent).toContain('1')
     expect(document.body.textContent).not.toContain('a voice-only mode')
+  })
+})
+
+// --------------------------------------------------------------------------- 7.7
+describe('exact times and the "Still current?" check', () => {
+  const at = (h: number, m: number, dayOffset = 0) => {
+    const d = new Date()
+    d.setDate(d.getDate() + dayOffset)
+    d.setHours(h, m, 0, 0)
+    return d.toISOString()
+  }
+
+  it('clockTime: today is a clock time, yesterday says so, older days carry the date', () => {
+    expect(clockTime(at(14, 2))).toBe('14:02')
+    expect(clockTime(at(9, 5, -1))).toBe('yesterday 09:05')
+    const old = new Date(at(8, 0, -3))
+    const pad = (n: number) => String(n).padStart(2, '0')
+    expect(clockTime(old.toISOString())).toBe(`${pad(old.getMonth() + 1)}-${pad(old.getDate())} 08:00`)
+    expect(clockTime('not a date')).toBeNull()
+    expect(clockTime(null)).toBeNull()
+  })
+
+  it('AC-44: the time line names when it was recommended and when it was ranked', () => {
+    expect(timeLine(item({ firstSeen: at(9, 5, -1) }), at(8, 27))).toBe('recommended yesterday 09:05 · ranked 08:27')
+    expect(timeLine(item({ source: 'agent-questions' }), at(8, 27))).toBeNull()
+  })
+
+  it('checkView: a stale and a failed check are warnings, a standing one is ok', () => {
+    expect(checkView({ state: 'stale', at: at(10, 46), evidence: 'sent on 10-29' })).toEqual(
+      { tone: 'warn', label: 'No longer current — checked · 10:46', evidence: 'sent on 10-29' })
+    expect(checkView({ state: 'stands', at: at(10, 46) })!.tone).toBe('ok')
+    expect(checkView({ state: 'failed' })!.tone).toBe('warn')
+    expect(checkView(undefined)).toBeNull()
+  })
+
+  it('AC-44: the card shows both clock times', async () => {
+    await mount(payload({ item: item({ firstSeen: at(9, 5, -1) }), rankedAt: at(8, 27) }))
+    expect(document.querySelector('[data-time-line]')!.textContent).toBe('recommended yesterday 09:05 · ranked 08:27')
+  })
+
+  it('AC-42: "Still current?" sends a recheck for this item, shows the outcome, and the card stays', async () => {
+    await mount(payload({ item: item({ actions: ['goThere', 'done', 'later', 'recheck'] }) }))
+    api.act = () => ({ delivered: true, sent: true, outcome: 'Checking in the background', reason: null, errorClass: null, closedToday: 2, parkedIdeas: 0 })
+    fireEvent.click(document.querySelector('[data-recheck]')!)
+    await flush()
+    expect(api.sent).toEqual([expect.objectContaining({ id: 'i1', source: 'owner-queue', action: 'recheck' })])
+    expect(document.querySelector('[data-feedback="ok"]')!.textContent).toContain('Checking in the background')
+    expect(document.querySelector('[data-feedback="ok"]')!.textContent).not.toContain('closed today')
+    expect(document.querySelector('[data-now-item="i1"]')).toBeTruthy()
+  })
+
+  it('a refused recheck (a daily limit) shows the publisher\'s reason and stays', async () => {
+    await mount(payload({ item: item({ actions: ['done', 'later', 'recheck'] }) }))
+    api.act = () => ({ delivered: false, sent: true, outcome: null, reason: "today's 20 on-demand checks are used up", errorClass: 'exit', closedToday: 2, parkedIdeas: 0 })
+    fireEvent.click(document.querySelector('[data-recheck]')!)
+    await flush()
+    expect(document.querySelector('[data-feedback="fail"]')!.textContent).toContain('checks are used up')
+  })
+
+  it('no button without the recheck action, and none while a check is running', async () => {
+    await mount(payload({ item: item({ actions: ['done', 'later'] }) }))
+    expect(document.querySelector('[data-recheck]')).toBeNull()
+    cleanup()
+    await mount(payload({ item: item({ actions: ['done', 'later', 'recheck'], check: { state: 'running', startedAt: at(10, 45) } }) }))
+    expect(document.querySelector('[data-recheck]')).toBeNull()
+    expect(document.querySelector('[data-check="running"]')!.textContent).toContain('Checking whether it is still current')
+  })
+
+  it('AC-43: a stale check says why and when, keeps the card, and offers a one-tap close', async () => {
+    await mount(payload({ item: item({ actions: ['done', 'later', 'recheck'],
+      check: { state: 'stale', startedAt: at(10, 45), at: at(10, 46), evidence: 'The mail went out on 10-29' } }) }))
+    const box = document.querySelector('[data-check="stale"]')!
+    expect(box.textContent).toContain('No longer current')
+    expect(box.textContent).toContain('10:46')
+    expect(box.querySelector('[data-check-evidence]')!.textContent).toBe('The mail went out on 10-29')
+    expect(document.querySelector('[data-now-item="i1"]')).toBeTruthy()
+    expect(api.sent).toEqual([])
+    fireEvent.click(box.querySelector('[data-check-close]')!)
+    await flush()
+    expect(api.sent).toEqual([expect.objectContaining({ id: 'i1', action: 'done', text: 'Not needed: no longer current (checked 10:46)' })])
   })
 })

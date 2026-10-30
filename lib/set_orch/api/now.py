@@ -156,7 +156,7 @@ def _actions(item: Dict[str, Any], publisher: oq.Publisher) -> List[str]:
     if item["source"] == oq.READ_COMMAND:
         if not publisher.accepts_actions:
             return ["goThere", "later"]
-        acts = ["goThere", "done", "later"]
+        acts = ["goThere", "done", "later", "recheck"]
         if item.get("options"):
             acts.append("answer")
         if item.get("acceptsText"):

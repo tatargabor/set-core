@@ -27,3 +27,21 @@
     --color-status-done: #1f55c7;
   }
 }
+
+/*
+ * Type (2026-10-30, the owner's screenshots). The dashboard is set in a monospace face
+ * (index.css), which suits logs and tables and reads poorly as prose. The card is mostly
+ * prose — a sentence, a reason, goal titles — so it uses the system's UI sans, with
+ * tabular figures so counts and clock times do not jitter.
+ */
+.now-root {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The project tag strip scrolls sideways in one row; a thin bar keeps it findable. */
+.now-root .now-tags { scrollbar-width: thin; }
+
+@keyframes now-spin { to { transform: rotate(360deg); } }
+.now-root .now-spin { animation: now-spin 1s linear infinite; }

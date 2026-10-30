@@ -125,7 +125,7 @@ describe('the tab strip', () => {
 
   it('both tabs have the same classes apart from the active colour — no weight or padding change', async () => {
     await mount(goalsPayload())
-    const cls = (el: Element) => el.className.split(' ').filter(c => !/^(border-status|border-transparent|bg-|text-|hover:)/.test(c)).sort()
+    const cls = (el: Element) => el.className.split(' ').filter(c => !/^(border-status|border-transparent|bg-|text-|hover:|shadow)/.test(c)).sort()
     const nowTab = document.querySelector('[data-tab="now"]')!
     expect(cls(nowTab)).toEqual(cls(goalsTab()))
   })
@@ -134,7 +134,7 @@ describe('the tab strip', () => {
     await mount(goalsPayload({ goals: [goal('a'), goal('b'), goal('c'), goal('d', { status: 'confirmed' })] }))
     expect(document.querySelector('[data-tab="now"]')!.getAttribute('aria-selected')).toBe('true')
     expect(goalsTab().textContent).toContain('Goals')
-    expect(document.querySelector('[data-goals-count]')!.textContent).toBe('· 3')
+    expect(document.querySelector('[data-goals-count]')!.textContent).toBe('3')
     expect(goalsTab().getAttribute('title')).toContain('3 proposed goals await your verdict')
   })
 
@@ -196,7 +196,7 @@ describe('the goals list', () => {
     const proposed = document.querySelector('[data-goal="g1"]')!
     expect(proposed.querySelector('[data-unconfirmed]')!.textContent).toBe('unconfirmed')
     const labels = Array.from(proposed.querySelectorAll('[data-goal-actions] button')).map(b => b.textContent)
-    expect(labels).toEqual(['Keep', 'Not a goal', 'Rename'])
+    expect(labels).toEqual(['Keep', 'Rename', 'Not a goal'])
     const confirmed = document.querySelector('[data-goal="g2"]')!
     expect(confirmed.querySelector('[data-unconfirmed]')).toBeNull()
     expect(confirmed.querySelector('[data-goal-actions]')).toBeNull()
@@ -211,10 +211,11 @@ describe('the goals list', () => {
     })] }))
     openGoals()
     const row = document.querySelector('[data-goal="g1"]')!
-    expect(row.querySelector('[data-goal-meta]')!.textContent).toBe('serves Grow the service line · due 2027-03-01 · publisher-app, site')
+    expect(row.querySelector('[data-goal-meta]')!.textContent).toBe('serves: Grow the service line · publisher-app, site')
+    expect(row.textContent).toContain('due 2027-03-01')
     expect(row.querySelector('[data-progress]')!.textContent).toContain('3 of 4 milestones')
     expect((row.querySelector('[data-progress] [style]') as HTMLElement).style.width).toBe('75%')
-    expect(row.querySelector('[data-open-items]')!.textContent).toBe('5 open')
+    expect(row.querySelector('[data-open-items]')!.textContent).toBe('5 open cards')
     expect(row.querySelector('[data-evidence]')!.textContent).toContain('call notes')
   })
 
@@ -245,7 +246,7 @@ describe('the goals list', () => {
   it('Not a goal sends drop, on a proposed and on a confirmed goal', async () => {
     await mount(goalsPayload())
     openGoals()
-    fireEvent.click(document.querySelector('[data-goal="g1"] [data-goal-actions] button:nth-child(2)')!)
+    fireEvent.click(document.querySelector('[data-goal="g1"] [data-goal-actions] button:nth-child(3)')!)
     await flush()
     fireEvent.click(document.querySelector('[data-goal="g2"] [data-goal-drop]')!)
     await flush()

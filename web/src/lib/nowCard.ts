@@ -27,6 +27,17 @@ export interface NowItem {
   actions: string[]
   goThere: { kind: string; href: string } | null
   resumeNote?: string
+  /** When the publisher first recommended this matter (ISO). Display-only. */
+  firstSeen?: string
+  /** The last on-demand "Still current?" check, as the publisher reports it. */
+  check?: ItemCheck
+}
+
+export interface ItemCheck {
+  state: 'running' | 'stands' | 'rewritten' | 'stale' | 'failed'
+  startedAt?: string
+  at?: string
+  evidence?: string
 }
 
 export interface NowSource {
@@ -167,12 +178,58 @@ const DEFAULT_OUTCOME: Record<string, string> = {
   'park-idea': 'Idea parked',
   'resume-note': 'Note kept',
   'wind-down-handoff': 'Handed off for tonight',
+  recheck: 'Check started',
 }
 
 /** What the feedback says: the source's own outcome, or a plain statement of the act. */
 export function feedbackText(action: string, res: ActResponse): string {
   if (!res.delivered) return res.reason || 'Not delivered — the item stays.'
   return res.outcome || DEFAULT_OUTCOME[action] || 'Done'
+}
+
+/**
+ * An exact clock time, for the owner's "pontos idő": "14:02" today, "yesterday 14:02",
+ * otherwise "10-29 14:02". Local time — the card sits on the owner's own desktop.
+ */
+export function clockTime(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null
+  const t = new Date(iso)
+  if (Number.isNaN(t.getTime())) return null
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hm = `${pad(t.getHours())}:${pad(t.getMinutes())}`
+  const day = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  if (day(t) === day(now)) return hm
+  const y = new Date(now)
+  y.setDate(now.getDate() - 1)
+  if (day(t) === day(y)) return `yesterday ${hm}`
+  return `${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${hm}`
+}
+
+/** "recommended 10-29 14:02 · ranked 08:27" — whichever of the two is known. */
+export function timeLine(item: NowItem, rankedAt: string | null | undefined, now: Date = new Date()): string | null {
+  const parts: string[] = []
+  const first = clockTime(item.firstSeen, now)
+  if (first) parts.push(`recommended ${first}`)
+  // Only the owner-queue's items are ranked; a framework item has its own "waiting" age.
+  const ranked = item.source === 'owner-queue' ? clockTime(rankedAt, now) : null
+  if (ranked) parts.push(`ranked ${ranked}`)
+  return parts.length ? parts.join(' · ') : null
+}
+
+/** How a check reads on the card. `stale` and `failed` are warnings and never close themselves. */
+export function checkView(c: ItemCheck | undefined, now: Date = new Date()):
+  { tone: 'ok' | 'info' | 'warn'; label: string; evidence?: string } | null {
+  if (!c) return null
+  const at = clockTime(c.at ?? c.startedAt, now)
+  const when = at ? ` · ${at}` : ''
+  switch (c.state) {
+    case 'running': return { tone: 'info', label: `Checking whether it is still current…${at ? ` (since ${at})` : ''}` }
+    case 'stands': return { tone: 'ok', label: `Still current — checked${when}`, evidence: c.evidence }
+    case 'rewritten': return { tone: 'info', label: `Reworded after a check${when}`, evidence: c.evidence }
+    case 'stale': return { tone: 'warn', label: `No longer current — checked${when}`, evidence: c.evidence }
+    case 'failed': return { tone: 'warn', label: `The check did not finish${when}`, evidence: c.evidence }
+    default: return null
+  }
 }
 
 /** "Later" choices, in seconds. The last one returns the item tomorrow at 08:00. */

@@ -192,11 +192,11 @@ def test_ac23_ac24_actions_follow_the_item_shape(env):
     env.queue([item("min"), item("opt", options=[{"id": "a", "label": SECRET_LABEL},
                                                   {"id": "b", "label": "B"}, {"id": "c", "label": "C"}],
                                  delegable=True, acceptsText=True)])
-    assert env.get()["item"]["actions"] == ["goThere", "done", "later"]
+    assert env.get()["item"]["actions"] == ["goThere", "done", "later", "recheck"]
     env.act(id="min", source="owner-queue", action="later", laterSeconds=60)
     second = env.get()["item"]
     assert second["id"] == "opt" and len(second["options"]) == 3
-    assert set(second["actions"]) == {"goThere", "done", "later", "answer", "text", "delegate"}
+    assert set(second["actions"]) == {"goThere", "done", "later", "recheck", "answer", "text", "delegate"}
 
 
 def test_ac27_no_write_command_offers_go_there_and_later_only(env):
@@ -414,3 +414,39 @@ def test_a_file_path_link_is_handed_to_the_desktop_not_opened_as_a_page(env):
     assert env.get()["item"]["goThere"] == {"kind": "file", "href": "/home/someone/project/docs/plan.md"}
     env.act(id="1", source="owner-queue", action="done")
     assert env.get()["item"]["goThere"] == {"kind": "link", "href": "/p/x/status"}
+
+
+# --------------------------------------------------------------------------- #
+# 7.7 recheck, firstSeen, check
+# --------------------------------------------------------------------------- #
+
+def test_ac42_recheck_is_sent_and_the_item_stays(env):
+    env.queue([item("1"), item("2")])
+    resp = env.act(id="1", source="owner-queue", action="recheck").json()
+    assert resp["delivered"] is True and resp["outcome"] == SECRET_OUTCOME
+    assert resp["closedToday"] == 0, "a recheck closes nothing"
+    sent = json.loads(env.calls("owner-queue-act")[-1][2])
+    assert sent == {"id": "1", "action": "recheck"}
+    assert env.get()["item"]["id"] == "1"
+
+
+def test_a_refused_recheck_shows_the_publishers_reason(env):
+    env.queue([item("refuse-me")])
+    resp = env.act(id="refuse-me", source="owner-queue", action="recheck").json()
+    assert resp["delivered"] is False and "already closed" in resp["reason"]
+
+
+def test_ac43_ac44_first_seen_and_check_reach_the_card(env):
+    env.queue([item("1", firstSeen="2026-10-29T13:02:00Z",
+                    check={"state": "stale", "startedAt": "2026-10-30T09:00:00Z",
+                           "at": "2026-10-30T09:01:00Z", "evidence": "sent on 10-29"})])
+    got = env.get()["item"]
+    assert got["firstSeen"] == "2026-10-29T13:02:00Z"
+    assert got["check"] == {"state": "stale", "startedAt": "2026-10-30T09:00:00Z",
+                            "at": "2026-10-30T09:01:00Z", "evidence": "sent on 10-29"}
+
+
+def test_an_unknown_check_state_and_a_bad_first_seen_are_dropped(env):
+    env.queue([item("1", firstSeen="yesterday", check={"state": "maybe"})])
+    got = env.get()["item"]
+    assert "firstSeen" not in got and "check" not in got
