@@ -21,14 +21,14 @@
  *   arrives, never translated. The window title is never translated: bin/set-now finds it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleHelp, Clock, Flag, Hammer, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X, Zap } from 'lucide-react'
+import { ArrowUpRight, Check, CircleHelp, Clock, Flag, Hammer, LayoutGrid, Lightbulb, Loader2, Moon, Phone, Plus, RefreshCw, Send, ShieldCheck, Target, TriangleAlert, UserPlus, Volume2, VolumeX, X, Zap } from 'lucide-react'
 import VoiceInput from '../components/VoiceInput'
 import { useSonioxAvailable } from '../hooks/useSonioxAvailable'
 import {
   callFeedbackText, callsCount, callsFailure, callsNotes, checkView, clockTime, dueLabel, fetchCalls, postCallAct, emptyMessage, evidenceTarget, feedbackText, timeLine, fetchGoals, fetchNow, gapMarkers, goalFeedbackText, goalsFailure, goalsNotes,
-  laterChoices, matchProjects, needsReasons, progressChoices, postAct, postFocus, postGoalAct, postGroups, progressPercent,
+  fetchPages, laterChoices, matchProjects, needsReasons, progressChoices, postAct, postFocus, postGoalAct, postGroups, progressPercent,
 } from '../lib/nowCard'
-import type { ActBody, Call, CallActBody, CallsPayload, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload } from '../lib/nowCard'
+import type { ActBody, Call, CallActBody, CallsPayload, Goal, GoalActBody, GoalAdvice, GoalsPayload, NowItem, NowPayload, PagesAnswer } from '../lib/nowCard'
 import { asLocale, makeT } from '../lib/nowI18n'
 import type { Locale, MsgKey } from '../lib/nowI18n'
 import { createAudio, playCue } from '../lib/nowSound'
@@ -42,7 +42,7 @@ export const GOALS_POLL_MS = Math.max(POLL_MS, 60_000)
 
 type Tab = 'now' | 'goals' | 'calls'
 
-type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded' | 'inprogress'
+type Overlay = null | 'later' | 'reasons' | 'focus' | 'idea' | 'tomorrow' | 'help' | 'notneeded' | 'inprogress' | 'pages'
 interface Feedback { ok: boolean; text: string }
 interface PendingKeep { action: 'done' | 'answer'; option?: string; text?: string }
 
@@ -91,6 +91,16 @@ export default function Now() {
   const [reasons, setReasons] = useState<[string, string]>(['', ''])
   const [text, setText] = useState('')
   const [progressNote, setProgressNote] = useState('')
+  const [pages, setPages] = useState<PagesAnswer | null>(null)
+  const [pagesError, setPagesError] = useState<string | null>(null)
+  const loadPages = useCallback(async () => {
+    try { setPages(await fetchPages()); setPagesError(null) } catch (e) { setPagesError(e instanceof Error ? e.message : String(e)) }
+  }, [])
+  useEffect(() => {
+    void loadPages()
+    const h = window.setInterval(() => void loadPages(), 60_000)
+    return () => window.clearInterval(h)
+  }, [loadPages])
   const [overlayText, setOverlayText] = useState('')
   const [soundOn, setSoundOn] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
@@ -312,21 +322,29 @@ export default function Now() {
           </button>
         </div>
         <span className={hchip} title={t('header.closedTitle')} data-closed>
-          <Check size={14} /> {data?.closedToday ?? 0}<span className="hidden sm:inline">{t('header.closed')}</span>
+          <Check size={14} /> {data?.closedToday ?? 0}<span className="hidden lg:inline">{t('header.closed')}</span>
         </span>
-        <span className={hchip} title={t('header.parkedTitle')} data-parked>
-          <Lightbulb size={14} /> {data?.parkedIdeas ?? 0}<span className="hidden sm:inline">{t('header.parked')}</span>
+        {/* max-sm: in a media query, so it outranks the chip's own inline-flex; the 440 px
+            header needs the room for the pages button, and the count is in the help legend. */}
+        <span className={hchip + ' max-sm:hidden'} title={t('header.parkedTitle')} data-parked>
+          <Lightbulb size={14} /> {data?.parkedIdeas ?? 0}<span className="hidden lg:inline">{t('header.parked')}</span>
         </span>
         <span className="ml-auto" />
         <button className={hchip + ' hover:text-fg-strong'} onClick={() => setOverlay('focus')} aria-label={t('header.focusLabel')} title={t('header.focusTitle')}>
-          <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax}` : ''}<span className="hidden sm:inline">{t('header.focus')}</span>
+          <Target size={14} /> {data ? `${data.focus.length}/${data.focusMax}` : ''}<span className="hidden lg:inline">{t('header.focus')}</span>
         </button>
         <button className={hchip + ' hover:text-fg-strong'} onClick={() => setOverlay('idea')} aria-label={t('header.parkLabel')} title={t('header.parkTitle')}>
-          <Plus size={10} className="-mr-1" /><Lightbulb size={14} /><span className="hidden sm:inline">{t('header.park')}</span>
+          <Plus size={10} className="-mr-1" /><Lightbulb size={14} /><span className="hidden lg:inline">{t('header.park')}</span>
         </button>
         <span className={hchip} data-sound={soundOn ? 'on' : 'off'} title={soundOn ? t('header.soundOnTitle') : t('header.soundOffTitle')}>
-          {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}<span className="hidden sm:inline">{soundOn ? t('header.soundOn') : t('header.soundOff')}</span>
+          {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}<span className="hidden lg:inline">{soundOn ? t('header.soundOn') : t('header.soundOff')}</span>
         </span>
+        <button className={hchip + ' relative hover:text-fg-strong'} onClick={() => setOverlay('pages')} data-pages-open
+          aria-label={t('header.pages')} title={pages && pages.down > 0 ? t('header.pagesDownTitle', { n: pages.down }) : t('header.pagesTitle')}>
+          <LayoutGrid size={14} />
+          {/* A page that is down is marked where the reader stands, not only inside the list. */}
+          {pages && pages.down > 0 && <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-status-fail" data-pages-down />}
+        </button>
         <button className={hchip + ' hover:text-fg-strong'} onClick={() => setOverlay('help')} title={t('header.helpTitle')} aria-label={t('header.help')} data-help-open>
           <CircleHelp size={14} />
         </button>
@@ -525,6 +543,10 @@ export default function Now() {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-3" data-overlay={overlay}>
           <div className="relative w-full max-w-sm rounded-lg border border-surface-strong bg-surface-panel p-3 shadow-xl">
             <button className="absolute right-2 top-2 text-fg-muted" aria-label={t('overlay.close')} onClick={closeOverlay}><X size={16} /></button>
+
+            {overlay === 'pages' && (
+              <PagesList pages={pages} error={pagesError} locale={locale} onRefresh={() => void loadPages()} />
+            )}
 
             {overlay === 'inprogress' && item && (
               // "I'm on it" is not an answer: nothing closes, the card comes back with the note.
@@ -813,10 +835,43 @@ export function FocusPicker({ data, onDone, locale = 'en' }: { data: NowPayload;
   )
 }
 
+/** The projects' own declared pages, each with an up/down dot; a name opens the page. */
+export function PagesList({ pages, error, locale, onRefresh }: { pages: PagesAnswer | null; error: string | null; locale: Locale; onRefresh: () => void }) {
+  const t = makeT(locale)
+  return (
+    <div className="flex max-h-[70vh] flex-col gap-2 overflow-y-auto pr-4" data-pages>
+      <p className="text-base font-medium">{t('pages.title')}</p>
+      {error && <p className="text-sm text-status-fail" data-pages-error>{t('pages.failed', { detail: error })}</p>}
+      {!error && !pages && <p className="text-sm text-fg-muted">{t('pages.loading')}</p>}
+      {pages && pages.pages.length === 0 && <p className="text-sm text-fg-muted">{t('pages.none')}</p>}
+      {pages && pages.pages.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {pages.pages.map(p => (
+            <li key={p.project + '/' + p.name} className="flex items-start gap-2" data-page={p.name} data-up={p.up ? 'yes' : 'no'}>
+              <span className={'mt-1.5 h-2 w-2 shrink-0 rounded-full ' + (p.up ? 'bg-status-active' : 'bg-status-fail')}
+                title={p.up ? t('pages.up') : t('pages.down', { detail: p.error ?? String(p.status ?? '?') })} />
+              <span className="flex min-w-0 flex-col">
+                <a className="text-base text-fg-loud hover:underline" href={p.url} target="_blank" rel="noreferrer">{p.name}</a>
+                <span className="truncate text-xs text-fg-muted">
+                  {p.project} · {p.url}{p.up ? '' : ' · ' + t('pages.downShort')}
+                </span>
+                {p.description && <span className="text-sm text-fg-normal">{p.description}</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {pages && pages.malformed > 0 && <p className="text-xs text-status-warn">{t('pages.malformed', { n: pages.malformed })}</p>}
+      <p className="text-xs text-fg-muted">{t('pages.howto')}</p>
+      <button className="self-start text-xs text-fg-muted underline" onClick={onRefresh}>{t('pages.refresh')}</button>
+    </div>
+  )
+}
+
 /** The legend's rows, in order: each id names `help.<id>` (the term) and `help.<id>.text`. */
 const HELP_ROWS = [
   'card', 'options', 'text', 'goThere', 'done', 'notNeeded', 'later', 'inProgress', 'delegate', 'times', 'check',
-  'more', 'closed', 'parked', 'focus', 'sound', 'grey', 'yellow', 'tabs', 'unconfirmed', 'moon',
+  'more', 'closed', 'parked', 'focus', 'pages', 'sound', 'grey', 'yellow', 'tabs', 'unconfirmed', 'moon',
 ] as const
 
 /** What every part of the card means — opened with "?", floats above the card. */

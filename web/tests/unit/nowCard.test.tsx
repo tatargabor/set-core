@@ -52,6 +52,8 @@ interface Api {
   groups: Record<string, unknown>[]
   /** What the server says about the publisher after a focus save; absent = an older server. */
   focusPublisher?: Record<string, unknown>
+  /** The GET /api/fleet/pages answer; absent = 404, like a server older than the list. */
+  pages?: Record<string, unknown>
 }
 
 let api: Api
@@ -75,6 +77,7 @@ function stubApi(first: NowPayload, ...rest: NowPayload[]) {
       api.groups.push(body)
       return json({ ok: true, muted: body.muted })
     }
+    if (url === '/api/fleet/pages' && api.pages) return json(api.pages)
     if (url === '/api/fleet/now/focus') {
       const body = JSON.parse(String(init?.body))
       api.focus.push(body)
@@ -508,6 +511,58 @@ describe('focus', () => {
   it('AC-17: a resume note shows on the card', async () => {
     await mount(payload({ item: item({ resumeNote: 'rerun the import' }) }))
     expect(document.querySelector('[data-resume-note]')!.textContent).toContain('rerun the import')
+  })
+})
+
+// --------------------------------------------------------------------------- project pages
+
+describe("the projects' own pages", () => {
+  const PAGES = {
+    pages: [
+      { project: 'alpha', name: 'Reply queue', url: 'http://127.0.0.1:8765/', source: 'local', description: 'Answer comments', up: true, status: 200, error: null },
+      { project: 'beta', name: 'Preview', url: 'http://127.0.0.1:9999/', source: 'manifest', up: false, status: null, error: 'URLError' },
+    ],
+    down: 1, malformed: 0,
+  }
+
+  it('lists each page with its state; a name is a link that opens in a new window', async () => {
+    stubApi(payload())
+    api.pages = PAGES
+    render(<Now />)
+    await flush()
+    fireEvent.click(screen.getByLabelText('Project pages'))
+    const live = document.querySelector('[data-page="Reply queue"]')!
+    expect(live.getAttribute('data-up')).toBe('yes')
+    const a = live.querySelector('a')!
+    expect(a.getAttribute('href')).toBe('http://127.0.0.1:8765/')
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(live.textContent).toContain('Answer comments')
+    expect(document.querySelector('[data-page="Preview"]')!.textContent).toContain('not answering')
+  })
+
+  it('a page that is down is marked on the header icon, not only inside the list', async () => {
+    stubApi(payload())
+    api.pages = PAGES
+    render(<Now />)
+    await flush()
+    expect(document.querySelector('[data-pages-down]')).not.toBeNull()
+    expect(screen.getByLabelText('Project pages').getAttribute('title')).toContain('1 not answering')
+  })
+
+  it('no declared page says so, and an unreadable list says why', async () => {
+    stubApi(payload())
+    api.pages = { pages: [], down: 0, malformed: 0 }
+    render(<Now />)
+    await flush()
+    fireEvent.click(screen.getByLabelText('Project pages'))
+    expect(document.querySelector('[data-pages]')!.textContent).toContain('No project declares a page yet.')
+    expect(document.querySelector('[data-pages-down]')).toBeNull()
+    cleanup()
+    stubApi(payload())          // no pages answer → 404
+    render(<Now />)
+    await flush()
+    fireEvent.click(screen.getByLabelText('Project pages'))
+    expect(document.querySelector('[data-pages-error]')!.textContent).toContain('HTTP 404')
   })
 })
 

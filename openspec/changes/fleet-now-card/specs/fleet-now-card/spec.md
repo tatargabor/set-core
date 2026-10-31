@@ -299,3 +299,25 @@ card SENDS to the publisher SHALL NOT change with the locale. The window title S
 #### Scenario: The owner switches the card to Hungarian
 - **WHEN** `now.locale` is set to `hu` in local config and the card loads
 - **THEN** the card's own labels are Hungarian (Most, Célok, Kész, Később, Aktuális még?), the publisher's sentence and option labels are shown exactly as published, and a "not needed" reason is still sent with its English `Not needed:` prefix
+
+### Requirement: The card lists the projects' own pages
+
+*Added 2026-10-31. The owner, about a project's local reply page: «ezt bekössük a panelba?» — and
+chose a fixed link with an up/down marker over a card that appears only when there is work.*
+
+A project MAY declare its own pages as a `pages` list of `{ name, url, description? }` in its
+`.set-endpoint.json` — readable without a status contract — and the machine's local config MAY
+declare pages for a project (`pages`, per project), a local entry replacing a manifest entry of the
+same name. Only `http` and `https` URLs SHALL be accepted; anything else SHALL be skipped and
+counted. The framework SHALL check each page with a short, cached request and report it up (an HTTP
+answer below 500) or down, keeping only the status and an error class, never the page's body. The
+card SHALL list the pages, each name a link, each with an up/down marker, and SHALL mark the card's
+pages control itself when any page is down.
+
+#### Scenario: A declared page that answers
+- **WHEN** a project declares a page whose URL answers
+- **THEN** the card's page list shows it as up, and its name opens the page
+
+#### Scenario: A declared page that does not answer
+- **WHEN** a declared page's port has nothing listening
+- **THEN** the list shows it as down and the pages control carries a marker

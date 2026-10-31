@@ -35,6 +35,7 @@ from ..fleet import now as now_mod
 from ..fleet import owner_calls as oc
 from ..fleet import owner_goals as og
 from ..fleet import owner_queue as oq
+from ..fleet import project_pages as pp
 from ..fleet import question_relay as qr
 from ..project_status import write as contract_write
 from . import project_status as api_status
@@ -296,6 +297,20 @@ def build_now(*, now: Optional[float] = None, refresh: bool = False,
         "locale": cfg["now.locale"],
         "generatedAt": now_mod.utc_iso(now),
     }
+
+
+@router.get("/api/fleet/pages")
+def get_pages() -> Dict[str, Any]:
+    """The registered projects' own declared pages, each with an up/down state.
+
+    Separate from GET /api/fleet/now so a slow or dead page never delays the card; the probes
+    are short, parallel and cached (fleet/project_pages.py). Only names, URLs and states are
+    returned — never a page's body.
+    """
+    answer = pp.pages_with_state(_registered())
+    logger.info("now api: pages %d declared, %d down, %d malformed",
+                len(answer["pages"]), answer["down"], answer["malformed"])
+    return answer
 
 
 @router.get("/api/fleet/now")

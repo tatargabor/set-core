@@ -610,3 +610,25 @@ export async function postCallAct(body: CallActBody): Promise<CallActResponse> {
   }
   return res.json()
 }
+
+// --------------------------------------------------------------------------- project pages
+// A project's own declared pages (GET /api/fleet/pages), each with an up/down state.
+
+export interface ProjectPage {
+  project: string
+  name: string
+  url: string
+  source: 'manifest' | 'local'
+  description?: string
+  up: boolean
+  status: number | null
+  error: string | null
+}
+
+export interface PagesAnswer { pages: ProjectPage[]; down: number; malformed: number }
+
+export async function fetchPages(): Promise<PagesAnswer> {
+  const res = await fetch('/api/fleet/pages')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
