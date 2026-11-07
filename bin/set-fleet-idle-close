@@ -1,0 +1,16 @@
+#!/bin/bash
+# set-fleet-idle-close — close fleet agents with no owner input for longer than a threshold.
+#
+# `set-fleet-idle-close --dry-run` lists what would go; `install-timer` makes it daily.
+# Same Python-resolution shape as `set-fleet-roster`.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+export SET_TOOLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+export SET_FLEET_IDLE_CLOSE_BIN="${SET_FLEET_IDLE_CLOSE_BIN:-$(realpath "${BASH_SOURCE[0]}")}"
+
+source "$SCRIPT_DIR/set-common.sh" 2>/dev/null
+
+PYTHON="$(find_python 2>/dev/null)" || PYTHON="python3"
+
+exec env PYTHONPATH="$SET_TOOLS_ROOT/lib:$SET_TOOLS_ROOT/modules/web${PYTHONPATH:+:$PYTHONPATH}" \
+     "$PYTHON" -m set_orch.fleet.idle_close "$@"
