@@ -76,3 +76,31 @@ enable the timer. Without it the command SHALL never run on its own.
 #### Scenario: Installing the timer
 - **WHEN** the owner runs `set-fleet-idle-close install-timer`
 - **THEN** a daily user timer exists and is enabled, and its service runs the command
+
+### Requirement: The fleet header shows and steers the auto-close
+
+*Added 2026-11-08 at the owner's request: «rakd ki a fleet felületre is».*
+
+The fleet header SHALL carry one auto-close control beside the other machine-wide switches. Closed,
+it SHALL show whether the daily run is on, and while it is on, how many agents the next run will
+close. Open, as a floating panel that pushes nothing, it SHALL show and change the on/off state and
+the threshold, show the next run, list the agents the next run will close (counting the time until
+that run), and list the most recent closes with a way to bring each one back from the roster. A
+timer that cannot be read SHALL be shown as unknown, never as off. Escape SHALL close the panel and
+SHALL NOT reach a focused agent terminal.
+
+#### Scenario: The coming closes ride on the closed control
+- **WHEN** the run is on and two agents will be past the threshold by the next run
+- **THEN** the closed control shows 2
+
+#### Scenario: A closed agent is brought back
+- **WHEN** a closed session is not running and the owner presses "bring back"
+- **THEN** that one session is restored from the roster, and nothing else
+
+#### Scenario: Unreadable timer
+- **WHEN** systemctl cannot be asked
+- **THEN** the control shows an unknown state and the on/off switch is disabled
+
+#### Scenario: Escape stays in the panel
+- **WHEN** the panel is open and an agent terminal has focus and Escape is pressed
+- **THEN** the panel closes and the terminal receives no Escape

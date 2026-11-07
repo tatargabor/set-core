@@ -42,6 +42,7 @@ import type { ChannelsPayload } from '../lib/fleetWireLayout'
 import FleetUsageStrip from '../components/FleetUsageStrip'
 import FleetWaves from '../components/FleetWaves'
 import FleetRelay from '../components/FleetRelay'
+import FleetIdleClose from '../components/FleetIdleClose'
 import FleetSplitter from '../components/FleetSplitter'
 import {
   MAX_PANE, MIN_PANE, SPLIT_PROJECTS, clampPane, loadSplits, positionOf, saveSplits,
@@ -3722,6 +3723,9 @@ export default function Fleet() {
             channel. Beside the PM switch because both are machine-wide modes; the count
             of questions waiting on the channel rides on it, closed. */}
         <FleetRelay />
+        {/* The nightly auto-close of agents with no input from the owner: its switch, and how
+            many agents the next run will close riding on it. */}
+        <FleetIdleClose />
         {/*
           ONE count, and it says which projects it is counting — raised
           2026-08-19. The header said `12 agent · 6 projektben` while the column

@@ -2700,3 +2700,66 @@ def fleet_pm_forward() -> Dict[str, Any]:
 
     pm_session.queue.forward()
     return pm_session.snapshot()
+
+
+# --------------------------------------------------------------------------- #
+# Auto-close of long-idle agents (openspec change fleet-idle-close)
+# --------------------------------------------------------------------------- #
+
+class IdleCloseBody(BaseModel):
+    """Either field, or both. An absent field is left as it is."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: Optional[bool] = None
+    hours: Optional[float] = None
+
+
+IDLE_CLOSE_MIN_HOURS = 6.0
+IDLE_CLOSE_MAX_HOURS = 24.0 * 30
+
+
+def _idle_close_status() -> Dict[str, Any]:
+    from ..fleet import idle_close
+
+    try:
+        threshold_h = idle_close.threshold_hours()
+        threshold_error = None
+    except ValueError as exc:
+        threshold_h, threshold_error = idle_close.DEFAULT_HOURS, str(exc)
+    listing = fleet_agents(include_oneshot=False)
+    answer = idle_close.status(
+        idle_close.listed_agents(listing),
+        threshold_s=threshold_h * 3600,
+        timer=idle_close.timer_state(),
+        closed=idle_close.read_log(),
+        live_ids=fleet_live_session_ids(),
+        now=time.time(),
+    )
+    answer["threshold_error"] = threshold_error
+    return answer
+
+
+@router.get("/api/fleet/idle-close")
+def fleet_idle_close() -> Dict[str, Any]:
+    """The daily auto-close: on/off, threshold, next run, who goes next, who went."""
+    return _idle_close_status()
+
+
+@router.post("/api/fleet/idle-close")
+def fleet_idle_close_set(body: IdleCloseBody) -> Dict[str, Any]:
+    """Switch the daily run on or off and/or change the threshold. Answers the new status."""
+    from .. import local_config
+    from ..fleet import idle_close
+
+    if body.hours is not None:
+        if not (IDLE_CLOSE_MIN_HOURS <= body.hours <= IDLE_CLOSE_MAX_HOURS):
+            raise HTTPException(status_code=422, detail=(
+                f"hours must be between {IDLE_CLOSE_MIN_HOURS:g} and {IDLE_CLOSE_MAX_HOURS:g}"))
+        local_config.set_value(idle_close.CONFIG_KEY, body.hours)
+        logger.info("fleet api: idle-close threshold set to %sh", body.hours)
+    if body.enabled is not None:
+        try:
+            idle_close.set_enabled(body.enabled)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise HTTPException(status_code=500, detail=f"systemctl failed ({type(exc).__name__})") from exc
+    return _idle_close_status()

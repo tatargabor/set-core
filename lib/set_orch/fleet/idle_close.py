@@ -190,6 +190,133 @@ def run(base_url: str = DEFAULT_BASE_URL, *, threshold_s: float, dry_run: bool =
 
 
 # --------------------------------------------------------------------------- #
+# What the fleet screen shows
+# --------------------------------------------------------------------------- #
+
+LOG_LIMIT = 30
+
+
+def read_log(path: Optional[Path] = None, limit: int = LOG_LIMIT) -> List[Dict[str, Any]]:
+    """The newest closes first. A line that is not a JSON object is skipped and counted in the log."""
+    path = path or log_path()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: List[Dict[str, Any]] = []
+    bad = 0
+    for line in reversed(lines):
+        try:
+            row = json.loads(line)
+        except ValueError:
+            bad += 1
+            continue
+        if isinstance(row, dict) and row.get("session_id"):
+            rows.append(row)
+        if len(rows) >= limit:
+            break
+    if bad:
+        logger.warning("fleet idle-close: %d unreadable line(s) in the close log", bad)
+    return rows
+
+
+def upcoming(agents: List[Dict[str, Any]], threshold_s: float, until_next_s: Optional[float]) -> List[Dict[str, Any]]:
+    """Agents the next run will close if nobody types into them first, longest-idle first.
+
+    Same rule as `classify` but measured at the moment of the next run. A busy agent is listed
+    with `busy` set — it is closed only if it is idle when the run comes.
+    """
+    ahead = max(0.0, until_next_s or 0.0)
+    out: List[Dict[str, Any]] = []
+    for a in agents:
+        idle = a.get("last_human_input_seconds")
+        if a.get("kind") != "interactive" or not a.get("terminal_label"):
+            continue
+        if not isinstance(idle, (int, float)) or isinstance(idle, bool):
+            continue
+        if idle + ahead <= threshold_s:
+            continue
+        out.append({
+            "label": a.get("terminal_label"), "project": a.get("project"),
+            "session_id": a.get("session_id"), "idle_hours": round(idle / 3600, 1),
+            "busy": _is_busy(a),
+        })
+    out.sort(key=lambda r: -r["idle_hours"])
+    return out
+
+
+def _usec_to_s(value: Any) -> Optional[float]:
+    return value / 1_000_000 if isinstance(value, (int, float)) and value > 0 else None
+
+
+def timer_state(runner: Callable[..., Any] = subprocess.run) -> Dict[str, Any]:
+    """Is the daily timer installed and enabled, and when does it fire next / did it fire last.
+
+    `None` for a time systemd does not report. If systemctl itself cannot be asked, `known` is
+    false — an unreadable timer is not a disabled one.
+    """
+    unit = f"{UNIT_NAME}.timer"
+    try:
+        enabled = runner(["systemctl", "--user", "is-enabled", unit],
+                         capture_output=True, text=True, timeout=10)
+        listed = runner(["systemctl", "--user", "list-timers", unit, "--all", "-o", "json", "--no-pager"],
+                        capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("fleet idle-close: systemctl unreadable (%s)", type(exc).__name__)
+        return {"known": False, "installed": None, "enabled": None, "next_run": None, "last_run": None}
+    word = (enabled.stdout or "").strip()
+    rows: List[Dict[str, Any]] = []
+    try:
+        parsed = json.loads(listed.stdout or "[]")
+        rows = [r for r in parsed if isinstance(r, dict) and r.get("unit") == unit]
+    except ValueError:
+        pass
+    row = rows[0] if rows else {}
+    return {
+        "known": True,
+        "installed": word not in ("", "not-found") and "No such file" not in (enabled.stderr or ""),
+        "enabled": word == "enabled",
+        "next_run": _usec_to_s(row.get("next")),
+        "last_run": _usec_to_s(row.get("last")),
+    }
+
+
+def default_command() -> str:
+    return os.environ.get("SET_FLEET_IDLE_CLOSE_BIN") or str(
+        Path(__file__).resolve().parents[3] / "bin" / "set-fleet-idle-close")
+
+
+def set_enabled(enabled: bool, runner: Callable[..., Any] = subprocess.run,
+                command: Optional[str] = None) -> None:
+    """Switch the daily run on (installing the timer the first time) or off. Raises on failure."""
+    unit = f"{UNIT_NAME}.timer"
+    if enabled:
+        state = timer_state(runner)
+        if not state.get("installed"):
+            install_timer(command or default_command(), systemctl=runner)
+            return
+        runner(["systemctl", "--user", "enable", "--now", unit], check=True, capture_output=True, text=True)
+    else:
+        runner(["systemctl", "--user", "disable", "--now", unit], check=True, capture_output=True, text=True)
+    logger.info("fleet idle-close: timer %s", "enabled" if enabled else "disabled")
+
+
+def status(agents: List[Dict[str, Any]], *, threshold_s: float, timer: Dict[str, Any],
+           closed: List[Dict[str, Any]], live_ids: Optional[set], now: float) -> Dict[str, Any]:
+    """The answer of `GET /api/fleet/idle-close`."""
+    next_run = timer.get("next_run")
+    until_next = (next_run - now) if (timer.get("enabled") and next_run) else 0.0
+    return {
+        "threshold_hours": round(threshold_s / 3600, 1),
+        "timer": timer,
+        "upcoming": upcoming(agents, threshold_s, until_next),
+        "closed": [{**row, "running": None if live_ids is None else row.get("session_id") in live_ids}
+                   for row in closed],
+        "liveness_known": live_ids is not None,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # The schedule
 # --------------------------------------------------------------------------- #
 
@@ -262,8 +389,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "install-timer":
-        command = os.environ.get("SET_FLEET_IDLE_CLOSE_BIN") or "set-fleet-idle-close"
-        where = install_timer(command, args.at)
+        where = install_timer(default_command(), args.at)
         print(f"installed {UNIT_NAME}.timer in {where}, daily at {args.at}; "
               f"threshold from local config {CONFIG_KEY} (default 48 h)")
         return 0

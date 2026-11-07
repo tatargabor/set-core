@@ -20,6 +20,12 @@
 - [x] 4.1 Unit tests for selection, dry run, the log and the 404 path, against a real local HTTP server [REQ: only-long-idle-interactive-agents-are-closed]
 - [x] 4.2 A live dry run against the running fleet, then the timer installed on this machine [REQ: the-schedule-is-installed-on-purpose] — 2026-11-07: dry run listed 0 to close (2 unmeasured kept, 16 recent); timer enabled for 04:00 daily; one manual service run finished with the same result. Mutation check: input→movement (4 fail), dry-run ignored (1 fail), busy unchecked (2 fail)
 
+## 5. The fleet header
+
+- [x] 5.1 `GET/POST /api/fleet/idle-close` (core API): status (timer, threshold, upcoming, recent closes with running state), switch on/off (installs the timer the first time), threshold 6 h–30 days [REQ: the-fleet-header-shows-and-steers-the-auto-close]
+- [x] 5.2 `web/src/lib/fleetIdleClose.ts` + `components/FleetIdleClose.tsx`, mounted beside the question relay [REQ: the-fleet-header-shows-and-steers-the-auto-close]
+- [x] 5.3 Visual check in Chrome — 2026-11-08: the moon icon lit on the header; the panel floats over the screen, shows "daily at night · after 2 days · next run today 04:00 · nothing to close" and the 9 hand-closed agents with "bring back"; no write control was clicked. Escape first did NOT close it (the key never reached the document listener); fixed to a capture-phase handler that also stops the key, re-checked: it closes [REQ: the-fleet-header-shows-and-steers-the-auto-close]
+
 ## Acceptance Criteria (from spec scenarios)
 
 - [x] AC-1: WHEN an interactive fleet-started agent's last human input is past the threshold THEN it is closed [REQ: only-long-idle-interactive-agents-are-closed, scenario: an-agent-idle-past-the-threshold-is-closed]
@@ -31,3 +37,7 @@
 - [x] AC-7: WHEN an agent is closed THEN one log line with its session id is appended [REQ: every-close-is-recorded, scenario: a-close-is-logged]
 - [x] AC-8: WHEN the stop route answers 404 THEN it is reported failed and not logged [REQ: every-close-is-recorded, scenario: a-refused-stop-is-not-a-close]
 - [x] AC-9: WHEN install-timer runs THEN a daily enabled user timer runs the command [REQ: the-schedule-is-installed-on-purpose, scenario: installing-the-timer]
+- [x] AC-10: WHEN the run is on and agents will pass the threshold by the next run THEN their count rides on the closed control [REQ: the-fleet-header-shows-and-steers-the-auto-close, scenario: the-coming-closes-ride-on-the-closed-control]
+- [ ] AC-11: WHEN "bring back" is pressed on a closed, not running session THEN only that session is restored — OPEN: not pressed live (it starts a real agent); the request it sends is `keys: [session_id]` to the existing roster restore [REQ: the-fleet-header-shows-and-steers-the-auto-close, scenario: a-closed-agent-is-brought-back]
+- [x] AC-12: WHEN systemctl cannot be asked THEN the control shows unknown and the switch is disabled [REQ: the-fleet-header-shows-and-steers-the-auto-close, scenario: unreadable-timer]
+- [ ] AC-13: WHEN the panel is open and Escape is pressed THEN the panel closes and the terminal receives no Escape — PARTLY: closing verified in Chrome with focus inside the panel; deliberately NOT driven with a live agent terminal focused, because a leaked Escape would interrupt a real agent [REQ: the-fleet-header-shows-and-steers-the-auto-close, scenario: escape-stays-in-the-panel]
